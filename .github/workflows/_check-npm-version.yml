@@ -1,0 +1,43 @@
+name: _check-npm-version
+
+on:
+  workflow_call:
+    outputs:
+      version_changed:
+        description: 'Whether the deployed package version has changed'
+        value: ${{ jobs.check.outputs.version_changed }}
+
+jobs:
+  check:
+    name: Get Deployed Version
+    runs-on: ubuntu-latest
+    outputs:
+      version_changed: ${{ steps.compare_versions.outputs.version_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract Current Version
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(grep version package.json | sed 's/.*"version": "\(.*\)".*/\1/')
+          echo "Current version: $CURRENT_VERSION"
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Fetch NPM Version
+        id: npm_version
+        run: |
+          PUBLISHED_VERSION=$(npm view @dialecte/core version 2>/dev/null || echo "0.0.0")
+          echo "Latest published version: $PUBLISHED_VERSION"
+          echo "npm_version=$PUBLISHED_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Compare Versions
+        id: compare_versions
+        run: |
+          if [ "${{ steps.npm_version.outputs.npm_version }}" != "${{ steps.current_version.outputs.current_version }}" ]; then
+            echo "Version has changed: ${{ steps.npm_version.outputs.npm_version }} -> ${{ steps.current_version.outputs.current_version }}"
+            echo "version_changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version unchanged"
+            echo "version_changed=false" >> $GITHUB_OUTPUT
+          fi

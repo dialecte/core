@@ -1,0 +1,60 @@
+name: Publish @dialecte/core
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  install:
+    name: Install Dependencies
+    uses: ./.github/workflows/_install.yml
+
+  build:
+    name: Build Project
+    needs: install
+    uses: ./.github/workflows/_build.yml
+
+  test:
+    name: Run Tests
+    needs: install
+    uses: ./.github/workflows/_test.yml
+
+  version:
+    name: Check Version
+    uses: ./.github/workflows/_check-npm-version.yml
+
+  extract-version:
+    name: Extract Version
+    uses: ./.github/workflows/_extract-version.yml
+
+  lint:
+    name: Lint Code
+    needs: install
+    uses: ./.github/workflows/_lint.yml
+
+  deploy:
+    name: Publish to NPM
+    if: needs.version.outputs.version_changed == 'true'
+    needs:
+      - build
+      - test
+      - version
+      - lint
+    uses: ./.github/workflows/_publish.yml
+    secrets:
+      npm-token: ${{ secrets.NPM_PUBLISH_PAT }}
+
+  create-release-tag:
+    name: Create Release Tag
+    if: needs.version.outputs.version_changed == 'true'
+    needs:
+      - version
+      - extract-version
+      - deploy
+    uses: ./.github/workflows/_tag-release.yml
+    with:
+      version: ${{ needs.extract-version.outputs.version }}
+    secrets:
+      github-token: ${{ secrets.GITHUB_TOKEN }}

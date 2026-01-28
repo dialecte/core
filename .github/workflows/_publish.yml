@@ -1,0 +1,44 @@
+name: _publish
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      npm-token:
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Extract Version
+        id: version
+        run: |
+          VERSION=$(grep version package.json | sed 's/.*"version": "\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Restore build output cache
+        uses: actions/cache@v3
+        with:
+          path: dist
+          key: ${{ runner.os }}-build-output-${{ hashFiles('**/package-lock.json', '**/src/**', '**/package.json') }}-${{ steps.version.outputs.version }}
+
+      - name: Verify build output exists
+        run: ls -la dist
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.npm-token }}

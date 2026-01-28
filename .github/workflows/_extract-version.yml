@@ -1,0 +1,24 @@
+name: _extract-version
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: 'The version extracted from the package.json file'
+        value: ${{ jobs.extract.outputs.version }}
+
+jobs:
+  extract:
+    name: Get Current Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract Version
+        id: extract-version
+        run: |
+          VERSION=$(grep version package.json | sed 's/.*"version": "\(.*\)".*/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
