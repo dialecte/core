@@ -16,13 +16,7 @@ import { createGoToElementMethod, createGoToParentMethod } from './navigation'
 
 import type { CoreChain, Chain, ChainFactory } from './types'
 import type { DatabaseInstance } from '@/database'
-import type {
-	Context,
-	AnyDialecteConfig,
-	ElementsOf,
-	RuntimeDialecteConfig,
-	ExtensionRegistry,
-} from '@/types'
+import type { Context, AnyDialecteConfig, ElementsOf } from '@/types'
 
 export function createCoreChain<
 	GenericConfig extends AnyDialecteConfig,
@@ -70,7 +64,6 @@ export function createCoreChain<
 		deepCloneChild: createDeepCloneChildMethod({
 			chain,
 			contextPromise,
-			dialecteConfig,
 		}),
 		update: createUpdateElementMethod({
 			chain,

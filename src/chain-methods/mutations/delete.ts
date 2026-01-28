@@ -32,7 +32,7 @@ export function createDeleteElementMethod<
 }) {
 	const { chain, contextPromise, dialecteConfig, databaseInstance } = params
 
-	return function <GenericParentElement extends ParentsOf<GenericConfig, GenericElement>>() {
+	return function () {
 		// Create new context promise with parent as focus
 		const newContextPromise = contextPromise.then(async (context) => {
 			const currentElement = context.currentFocus

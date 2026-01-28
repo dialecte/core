@@ -17,9 +17,8 @@ export function createDeepCloneChildMethod<
 >(params: {
 	chain: ChainFactory
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
-	dialecteConfig: GenericConfig
 }) {
-	const { chain, contextPromise, dialecteConfig } = params
+	const { chain, contextPromise } = params
 
 	return function <GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(
 		params: DeepCloneChildParams<GenericConfig, GenericElement>,

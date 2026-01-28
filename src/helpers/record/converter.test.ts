@@ -11,7 +11,6 @@ import type {
 	ElementsOf,
 	FullAttributeObjectOf,
 	AttributesValueObjectOf,
-	AnyDialecteConfig,
 } from '@/types'
 
 describe('Record Converter', () => {

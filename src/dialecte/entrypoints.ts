@@ -6,13 +6,7 @@ import { assert, toChainRecord } from '@/helpers'
 import type { FromElementParams } from './types'
 import type { Chain } from '@/chain-methods/types'
 import type { DatabaseInstance } from '@/database'
-import type {
-	Context,
-	AnyDialecteConfig,
-	RootElementOf,
-	ElementsOf,
-	RuntimeDialecteConfig,
-} from '@/types'
+import type { Context, AnyDialecteConfig, RootElementOf, ElementsOf } from '@/types'
 
 /**
  * Create a chain starting from the root element

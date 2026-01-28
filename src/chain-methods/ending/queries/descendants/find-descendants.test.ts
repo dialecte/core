@@ -8,7 +8,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 } from '@/helpers'
 
-import type { DescendantsFilter, FindDescendantsReturn } from './types'
+import type { DescendantsFilter } from './types'
 import type { FromElementParams } from '@/dialecte'
 import type { ElementsOf } from '@/types'
 

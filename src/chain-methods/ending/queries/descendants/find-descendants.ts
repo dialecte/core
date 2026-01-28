@@ -1,11 +1,10 @@
-import { DatabaseInstance } from '@/database'
-import { findByAttributes } from '@/helpers'
-
 import { createGetTreeMethod } from '../get-tree'
-
 import { filterToPath, extractTags } from './filter-utils.helper'
 import { flattenTree } from './flatten-tree.helper'
 import { validateDescendants } from './validate-descendants.helper'
+
+import { DatabaseInstance } from '@/database'
+import { findByAttributes } from '@/helpers'
 
 import type { FindDescendantsReturn, DescendantsFilter } from './types'
 import type { AnyDialecteConfig, Context, ElementsOf, ChainRecord, DescendantsOf } from '@/types'

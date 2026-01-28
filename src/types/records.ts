@@ -4,7 +4,6 @@ import type {
 	AttributesOf,
 	ParentsOf,
 	ChildrenOf,
-	DescendantsOf,
 } from './dialecte-config'
 import type { OperationStatus } from './operations'
 

@@ -25,10 +25,7 @@ type AttributeConfig = { required: string[]; optional: string[] }
 // Namespace: _3 elements and c attributes use ext namespace
 // Required: a attribute required, b and c optional
 // Validation: _1 elements required (minOccurrence=1), maxOccurrence = element number
-function getAttributesForPath(
-	path: string,
-	elementNamespace: typeof DIALECTE_NAMESPACES.default | typeof DIALECTE_NAMESPACES.ext,
-): AttributeConfig {
+function getAttributesForPath(path: string): AttributeConfig {
 	return {
 		required: [`a${path}`],
 		optional: [`b${path}`, `c${path}`],
@@ -220,7 +217,7 @@ function getChildren(path: string, maxDepth: number): string[] {
 	const match = path.match(/^([A-Z]+)(?:_(\d+))?$/)
 	if (!match) return []
 
-	const [, letters, number] = match
+	const [, letters] = match
 	const newPrefix = letters + letters.charAt(0)
 
 	return [`${newPrefix}_1`, `${newPrefix}_2`, `${newPrefix}_3`]

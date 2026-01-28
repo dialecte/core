@@ -1,6 +1,6 @@
-import { getRecord, matchesAttributeFilter } from '@/helpers'
-
 import { deduplicateByTag, mapToResult } from './group-records.helper'
+
+import { getRecord, matchesAttributeFilter } from '@/helpers'
 
 import type { PathLevel, ValidationResult, CollectedTags } from './types'
 import type { DatabaseInstance } from '@/index'

@@ -1,8 +1,7 @@
 import { getLatestStagedRecord, getRecord, fetchRecords } from '.'
 
-import { describe, it, expect, Test } from 'vitest'
+import { describe, it, expect } from 'vitest'
 
-import { AnyDatabaseInstance } from '@/database'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestRecord,
@@ -563,7 +562,7 @@ describe('fetchRecords', () => {
 
 		try {
 			const context = await executeChainOperations<TestConfig, TestElement, ChildElement>({
-				chain: dialecte.fromRoot(),
+				chain: dialecte.fromRoot() as CoreChain<TestConfig, TestElement>,
 				operations: [
 					{
 						type: 'addChild',

@@ -1,7 +1,7 @@
 import { GoToElementParams } from '@/chain-methods/navigation'
 
 import type { AddChildParams, UpdateElementParams } from '@/chain-methods/mutations'
-import type { AnyDialecteConfig, ElementsOf, ChildrenOf } from '@/types'
+import type { AnyDialecteConfig, ElementsOf } from '@/types'
 
 export type ChainTestOperation<
 	GenericConfig extends AnyDialecteConfig,

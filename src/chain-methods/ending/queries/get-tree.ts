@@ -98,15 +98,15 @@ async function buildTreeWithFilters<
 /**
  * Check if node should be included based on include filter
  */
-function shouldIncludeNode<GenericConfig extends AnyDialecteConfig>(params: {
-	record: ChainRecord<GenericConfig, ElementsOf<GenericConfig>>
-	includeFilter?: IncludeFilter<GenericConfig, ElementsOf<GenericConfig>>
-}): boolean {
-	const { record, includeFilter } = params
-	if (!includeFilter) return true
+// function shouldIncludeNode<GenericConfig extends AnyDialecteConfig>(params: {
+// 	record: ChainRecord<GenericConfig, ElementsOf<GenericConfig>>
+// 	includeFilter?: IncludeFilter<GenericConfig, ElementsOf<GenericConfig>>
+// }): boolean {
+// 	const { record, includeFilter } = params
+// 	if (!includeFilter) return true
 
-	return matchesFilter({ record, filter: includeFilter })
-}
+// 	return matchesFilter({ record, filter: includeFilter })
+// }
 
 /**
  * Check if we should stop traversing children (exclude with scope: 'children')

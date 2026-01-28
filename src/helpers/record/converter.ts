@@ -1,4 +1,4 @@
-import { isChainRecord, isFullAttributeArray, isRawRecord, isTreeRecord } from './guard'
+import { isFullAttributeArray } from './guard'
 
 import type {
 	RawRecord,
