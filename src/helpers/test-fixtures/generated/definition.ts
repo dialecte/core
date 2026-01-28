@@ -96,7 +96,7 @@ function generateBranch(
 		const endsWithThree = path.endsWith('_3')
 		const ns = endsWithThree ? DIALECTE_NAMESPACES.ext : DIALECTE_NAMESPACES.default
 
-		const attrConfig = getAttributesForPath(path, ns)
+		const attrConfig = getAttributesForPath(path)
 		const allAttrs = [...attrConfig.required, ...attrConfig.optional]
 
 		// Validation rules for element occurrence

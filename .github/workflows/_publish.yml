@@ -3,9 +3,6 @@ name: _publish
 on:
   workflow_dispatch:
   workflow_call:
-    secrets:
-      npm-token:
-        required: true
 
 jobs:
   publish:
@@ -49,5 +46,3 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,6 +1,6 @@
-import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
-
 import Dexie from 'dexie'
+
+import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
 import type { AnyDatabaseInstance } from '@/database'
 import type {
@@ -19,13 +19,15 @@ import type {
  * @param dialecteConfig - Dialecte configuration with IO settings
  * @returns XML document and filename
  */
-export async function exportXmlFile(params: {
+export async function exportXmlFile<GenericConfig extends AnyDialecteConfig>(params: {
 	databaseName: string
-	dialecteConfig: AnyDialecteConfig
+	extension: GenericConfig['io']['supportedFileExtensions'][number]
+	dialecteConfig: GenericConfig
 }): Promise<{ xmlDocument: XMLDocument; filename: string }> {
-	const { databaseName, dialecteConfig } = params
+	const { databaseName, extension, dialecteConfig } = params
 	return handleFileExportWithOptions({
 		databaseName,
+		extension,
 		dialecteConfig,
 		withDatabaseIds: false,
 	})
@@ -47,10 +49,11 @@ export async function exportXmlDocumentForOpenSCD(params: {
 
 async function handleFileExportWithOptions(params: {
 	databaseName: string
+	extension?: string
 	dialecteConfig: AnyDialecteConfig
 	withDatabaseIds: boolean
 }) {
-	const { databaseName, dialecteConfig, withDatabaseIds } = params
+	const { databaseName, extension = 'xml', dialecteConfig, withDatabaseIds } = params
 
 	const databaseInstance = new Dexie(databaseName) as AnyDatabaseInstance
 	await databaseInstance.open()
@@ -68,7 +71,7 @@ async function handleFileExportWithOptions(params: {
 
 		return {
 			xmlDocument,
-			filename: databaseInstance.name + '.scd',
+			filename: databaseInstance.name + extension,
 		}
 	} finally {
 		databaseInstance.close()

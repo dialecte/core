@@ -1,6 +1,3 @@
-import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
-import { exportXmlFile, exportXmlDocumentForOpenSCD } from './main'
-
 import Dexie from 'dexie'
 import { describe, expect, it, afterAll } from 'vitest'
 import xmlFormat from 'xml-formatter'
@@ -14,6 +11,9 @@ import {
 	DIALECTE_NAMESPACES,
 } from '@/helpers'
 import { importXmlFiles } from '@/io/import'
+
+import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
+import { exportXmlFile, exportXmlDocumentForOpenSCD } from './main'
 
 import type { AnyRawRecord } from '@/types'
 
@@ -92,7 +92,12 @@ describe('Export', () => {
 				})
 
 				// Export regular
-				const exported = await exportXmlFile({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG })
+				const exported = await exportXmlFile({
+					databaseName,
+					extension: '.xml',
+					dialecteConfig: TEST_DIALECTE_CONFIG,
+				})
+				expect(exported.filename).toBe(databaseName + '.xml')
 				const exportedString = new XMLSerializer().serializeToString(exported.xmlDocument)
 				expect(xmlFormat(exportedString)).toBe(xmlFormat(expectedXml))
 
@@ -193,7 +198,7 @@ describe('Export', () => {
 				await writeToDatabase(databaseName, data)
 
 				await expect(
-					exportXmlFile({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG }),
+					exportXmlFile({ databaseName, extension: '.xml', dialecteConfig: TEST_DIALECTE_CONFIG }),
 				).rejects.toThrowError(expectedError)
 
 				databaseNames.push(databaseName)
@@ -331,7 +336,11 @@ describe('Export', () => {
 				await writeToDatabase(databaseName, data)
 
 				// Should not throw - defensive code handles malformed data
-				const exported = await exportXmlFile({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG })
+				const exported = await exportXmlFile({
+					databaseName,
+					extension: '.xml',
+					dialecteConfig: TEST_DIALECTE_CONFIG,
+				})
 				const xmlString = new XMLSerializer().serializeToString(exported.xmlDocument)
 
 				// Verify expected content
