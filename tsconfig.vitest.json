@@ -1,0 +1,11 @@
+{
+	"extends": "./tsconfig.node.json",
+	"include": ["src/**/*.test.ts", "dist/**/__tests__/*", "env.d.ts"],
+	"exclude": [],
+	"compilerOptions": {
+		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo",
+
+		"lib": ["ESNext", "DOM"],
+		"types": ["node", "@vitest/browser/providers/playwright"]
+	}
+}

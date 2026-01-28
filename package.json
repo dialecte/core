@@ -1,0 +1,61 @@
+{
+	"name": "@dialecte/core",
+	"version": "0.0.1",
+	"description": "Dialecte - Core functionality for Dialecte applications.",
+	"license": "MIT",
+	"source": "src/index.ts",
+	"files": [
+		"dist"
+	],
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./io": {
+			"types": "./dist/io/index.d.ts",
+			"default": "./dist/io/index.js"
+		}
+	},
+	"scripts": {
+		"//====== SCRIPT ======//": "",
+		"schema:generate": "node --import=tsx src/script/generate-definition.ts --in src/generated/IEC.generated.json --out src/generated",
+		"fixtures:generate": "node --import=tsx src/script/generate-test-fixtures.ts",
+		"//====== BUILD ======//": "",
+		"build": "run-p type-check \"build-only {@}\" --",
+		"build-only": "tsc -p tsconfig.json && vite build",
+		"//====== TEST ======//": "",
+		"test": "vitest",
+		"//====== CHECK ======//": "",
+		"check": "run-p type-check lint:check format:check",
+		"type-check": "tsc --noEmit",
+		"lint:check": "oxlint",
+		"lint:fix": "oxlint . --fix -D correctness --ignore-path .gitignore",
+		"format:check": "oxfmt --check",
+		"format:fix": "oxfmt"
+	},
+	"dependencies": {
+		"dexie": "4.2.0",
+		"sax": "^1.4.3",
+		"xml-formatter": "^3.6.7"
+	},
+	"devDependencies": {
+		"@tsconfig/node22": "^22.0.2",
+		"@types/node": "^22.15.32",
+		"@types/sax": "^1.2.7",
+		"@vitest/browser": "^3.2.4",
+		"@xmldom/xmldom": "^0.8.11",
+		"jiti": "^2.4.2",
+		"npm-run-all2": "^8.0.4",
+		"oxfmt": "^0.24.0",
+		"oxlint": "~1.6.0",
+		"playwright": "^1.53.2",
+		"tsx": "^4.20.6",
+		"typescript": "~5.8.0",
+		"vite": "^7.0.0",
+		"vite-plugin-dts": "^4.5.4",
+		"vitest": "^3.2.4",
+		"vitest-browser-vue": "^1.0.0"
+	}
+}

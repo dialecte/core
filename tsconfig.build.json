@@ -1,0 +1,26 @@
+{
+	"extends": "@tsconfig/node22/tsconfig.json",
+	"compilerOptions": {
+		"noEmit": false,
+		"declaration": true,
+		"declarationMap": true,
+		"emitDeclarationOnly": true,
+		"outDir": "dist",
+		"rootDir": "src",
+		"module": "ESNext",
+		"target": "ES2019",
+		"moduleResolution": "Node",
+		"esModuleInterop": true,
+		"strict": true,
+		"skipLibCheck": false,
+		"lib": ["ESNext", "DOM"],
+		"resolveJsonModule": true,
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["src/*"]
+		}
+	},
+
+	"include": ["src/**/*"],
+	"exclude": ["**/*.test.ts", "**/__tests__/**"]
+}
