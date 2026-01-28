@@ -1,6 +1,6 @@
-import Dexie from 'dexie'
-
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
+
+import Dexie from 'dexie'
 
 import type { AnyDatabaseInstance } from '@/database'
 import type {

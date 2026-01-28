@@ -1,3 +1,6 @@
+import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
+import { exportXmlFile, exportXmlDocumentForOpenSCD } from './main'
+
 import Dexie from 'dexie'
 import { describe, expect, it, afterAll } from 'vitest'
 import xmlFormat from 'xml-formatter'
@@ -11,9 +14,6 @@ import {
 	DIALECTE_NAMESPACES,
 } from '@/helpers'
 import { importXmlFiles } from '@/io/import'
-
-import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
-import { exportXmlFile, exportXmlDocumentForOpenSCD } from './main'
 
 import type { AnyRawRecord } from '@/types'
 
