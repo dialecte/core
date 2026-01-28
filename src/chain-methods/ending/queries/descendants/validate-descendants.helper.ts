@@ -1,6 +1,6 @@
-import { deduplicateByTag, mapToResult } from './group-records.helper'
-
 import { getRecord, matchesAttributeFilter } from '@/helpers'
+
+import { deduplicateByTag, mapToResult } from './group-records.helper'
 
 import type { PathLevel, ValidationResult, CollectedTags } from './types'
 import type { DatabaseInstance } from '@/index'
@@ -21,7 +21,7 @@ export async function validateDescendants<
 	focus: ChainRecord<GenericConfig, ElementsOf<GenericConfig>>
 	path?: PathLevel<GenericConfig, ElementsOf<GenericConfig>>[]
 	collectTags: Set<string>
-}): Promise<Partial<Record<string, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]>>> {
+}): Promise<Record<string, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]>> {
 	const { context, dialecteConfig, databaseInstance, candidates, focus, path, collectTags } = params
 
 	const collected = new Map<string, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]>()

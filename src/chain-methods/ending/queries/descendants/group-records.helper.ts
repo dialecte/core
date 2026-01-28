@@ -49,8 +49,8 @@ export function deduplicateByTag<GenericConfig extends AnyDialecteConfig>(
 export function mapToResult<GenericConfig extends AnyDialecteConfig>(
 	collected: CollectedTags<GenericConfig>,
 	tags: Set<string>,
-): Partial<ResultMap<GenericConfig, string>> {
-	const result: Partial<ResultMap<GenericConfig, string>> = {}
+): Record<string, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
+	const result: Record<string, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]> = {}
 
 	for (const tag of tags) {
 		result[tag] = collected.get(tag) || []

@@ -1,14 +1,14 @@
-import { createGetTreeMethod } from '../get-tree'
-import { filterToPath, extractTags } from './filter-utils.helper'
-import { flattenTree } from './flatten-tree.helper'
-import { groupByTag } from './group-records.helper'
-import { validateDescendants } from './validate-descendants.helper'
-
 import { DatabaseInstance } from '@/database'
 import { findByAttributes } from '@/helpers'
 
+import { createGetTreeMethod } from '../get-tree'
+
+import { filterToPath, extractTags } from './filter-utils.helper'
+import { flattenTree } from './flatten-tree.helper'
+import { validateDescendants } from './validate-descendants.helper'
+
 import type { FindDescendantsReturn, DescendantsFilter } from './types'
-import type { AnyDialecteConfig, Context, ElementsOf } from '@/types'
+import type { AnyDialecteConfig, Context, ElementsOf, ChainRecord, DescendantsOf } from '@/types'
 
 /**
  * Find descendants matching filter with path validation
@@ -27,17 +27,18 @@ export function createFindDescendantsMethod<
 }) {
 	const { contextPromise, dialecteConfig, databaseInstance } = params
 
-	async function findDescendants<GenericFilter extends DescendantsFilter<GenericConfig>>(params: {
-		filter: GenericFilter
-	}): FindDescendantsReturn<GenericConfig, GenericFilter> {
-		const { filter } = params
+	async function findDescendants<
+		GenericFilter extends DescendantsFilter<GenericConfig> | undefined,
+	>(filter?: GenericFilter): FindDescendantsReturn<GenericConfig, GenericFilter, GenericElement> {
 		const context = await contextPromise
 
 		if (!filter) {
-			return findAll({ contextPromise, dialecteConfig, databaseInstance }) as FindDescendantsReturn<
-				GenericConfig,
-				GenericFilter
-			>
+			return findAll({
+				contextPromise,
+				dialecteConfig,
+				databaseInstance,
+				currentElement: context.currentFocus.tagName,
+			}) as FindDescendantsReturn<GenericConfig, GenericFilter, GenericElement>
 		}
 
 		return findFiltered({
@@ -53,6 +54,7 @@ export function createFindDescendantsMethod<
 
 /**
  * Find all descendants without filter (uses tree)
+ * Returns all possible descendant types (including current element) with empty arrays if not present
  */
 async function findAll<
 	GenericConfig extends AnyDialecteConfig,
@@ -61,14 +63,34 @@ async function findAll<
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
+	currentElement: GenericElement
 }) {
-	const { contextPromise, dialecteConfig, databaseInstance } = params
+	const { contextPromise, dialecteConfig, databaseInstance, currentElement } = params
 
 	const getTree = createGetTreeMethod({ contextPromise, dialecteConfig, databaseInstance })
 	const tree = await getTree()
 	const descendants = flattenTree(tree)
 
-	return groupByTag(descendants, undefined)
+	// Get all possible descendant types from config (including current element)
+	const allPossibleTypes = [currentElement, ...dialecteConfig.descendants[currentElement]]
+
+	// Initialize result with empty arrays for all types
+	const result: Record<
+		string,
+		ChainRecord<GenericConfig, DescendantsOf<GenericConfig, GenericElement>>[]
+	> = {}
+	for (const tagName of allPossibleTypes) {
+		result[tagName] = []
+	}
+
+	// Populate with actual records
+	for (const record of descendants) {
+		if (result[record.tagName]) {
+			result[record.tagName].push(record)
+		}
+	}
+
+	return result
 }
 
 /**

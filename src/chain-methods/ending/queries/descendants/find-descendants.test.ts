@@ -8,7 +8,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 } from '@/helpers'
 
-import type { DescendantsFilter } from './types'
+import type { DescendantsFilter, FindDescendantsReturn } from './types'
 import type { FromElementParams } from '@/dialecte'
 import type { ElementsOf } from '@/types'
 
@@ -242,46 +242,45 @@ describe('findDescendants (new API)', () => {
 				A: { count: 1, ids: ['2'] },
 			},
 		},
-		// {
-		// 	description: 'no filter: returns all descendants grouped by tag',
-		// 	xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa" /></AA_1></A><A ${DEV_ID}="5" aA="a2"><AA_1 ${DEV_ID}="6" aAA_1="aa2" /></A></Root>`,
-		// 	startFrom: { tagName: 'Root', id: '1' },
-		// 	expected: {
-		// 		A: { count: 2, ids: ['2', '5'] },
-		// 		AA_1: { count: 2, ids: ['3', '6'] },
-		// 		AAA_1: { count: 1, ids: ['4'] },
-		// 	},
-		// },
-		// {
-		// 	description: 'no filter: empty result when element has no descendants',
-		// 	xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
-		// 	startFrom: { tagName: 'A', id: '2' },
-		// 	expected: {},
-		// },
-		// {
-		// 	description: 'no filter: handles deeply nested tree',
-		// 	xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa"><AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa"><AAAAA_1 ${DEV_ID}="6" aAAAAA_1="aaaaa" /></AAAA_1></AAA_1></AA_1></A></Root>`,
-		// 	startFrom: { tagName: 'Root', id: '1' },
-		// 	expected: {
-		// 		A: { count: 1, ids: ['2'] },
-		// 		AA_1: { count: 1, ids: ['3'] },
-		// 		AAA_1: { count: 1, ids: ['4'] },
-		// 		AAAA_1: { count: 1, ids: ['5'] },
-		// 		AAAAA_1: { count: 1, ids: ['6'] },
-		// 	},
-		// },
-		// {
-		// 	description: 'no filter: collects from multiple branches',
-		// 	xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a1"><AA_1 ${DEV_ID}="3" aAA_1="aa1" /><AA_2 ${DEV_ID}="4" aAA_2="aa2" /></A><B ${DEV_ID}="5" aB="b1"><BB_1 ${DEV_ID}="6" aBB_1="bb1" /></B></Root>`,
-		// 	startFrom: { tagName: 'Root', id: '1' },
-		// 	expected: {
-		// 		A: { count: 1, ids: ['2'] },
-		// 		AA_1: { count: 1, ids: ['3'] },
-		// 		AA_2: { count: 1, ids: ['4'] },
-		// 		B: { count: 1, ids: ['5'] },
-		// 		BB_1: { count: 1, ids: ['6'] },
-		// 	},
-		// },
+		{
+			description: 'no filter: returns all descendants grouped by tag',
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa" /></AA_1></A><A ${DEV_ID}="5" aA="a2"><AA_1 ${DEV_ID}="6" aAA_1="aa2" /></A></Root>`,
+			startFrom: { tagName: 'Root', id: '1' },
+			expected: {
+				A: { count: 2, ids: ['2', '5'] },
+				AA_1: { count: 2, ids: ['3', '6'] },
+				AAA_1: { count: 1, ids: ['4'] },
+			},
+		},
+		{
+			description: 'no filter: empty result when element has no descendants',
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			startFrom: { tagName: 'A', id: '2' },
+			expected: {},
+		},
+		{
+			description: 'no filter: handles deeply nested tree',
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa"><AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" /></AAA_1></AA_1></A></Root>`,
+			startFrom: { tagName: 'Root', id: '1' },
+			expected: {
+				A: { count: 1, ids: ['2'] },
+				AA_1: { count: 1, ids: ['3'] },
+				AAA_1: { count: 1, ids: ['4'] },
+				AAAA_1: { count: 1, ids: ['5'] },
+			},
+		},
+		{
+			description: 'no filter: collects from multiple branches',
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a1"><AA_1 ${DEV_ID}="3" aAA_1="aa1" /><AA_2 ${DEV_ID}="4" aAA_2="aa2" /></A><B ${DEV_ID}="5" aB="b1"><BB_1 ${DEV_ID}="6" aBB_1="bb1" /></B></Root>`,
+			startFrom: { tagName: 'Root', id: '1' },
+			expected: {
+				A: { count: 1, ids: ['2'] },
+				AA_1: { count: 1, ids: ['3'] },
+				AA_2: { count: 1, ids: ['4'] },
+				B: { count: 1, ids: ['5'] },
+				BB_1: { count: 1, ids: ['6'] },
+			},
+		},
 	]
 
 	testCases.forEach(({ description, xml, startFrom, filter, expected }) => {
@@ -289,7 +288,12 @@ describe('findDescendants (new API)', () => {
 			const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 			try {
-				const results = await dialecte.fromElement(startFrom).findDescendants(filter)
+				const results = filter
+					? await dialecte.fromElement(startFrom).findDescendants(filter)
+					: await dialecte.fromElement(startFrom).findDescendants()
+
+				// For no-filter cases, verify only expected tags (allow extra empty arrays)
+				const isNoFilter = filter === undefined
 
 				// Verify each expected tag
 				for (const [tagName, expectedData] of Object.entries(expected)) {
@@ -302,11 +306,13 @@ describe('findDescendants (new API)', () => {
 					}
 				}
 
-				// Verify no unexpected tags in result
-				const expectedTags = new Set(Object.keys(expected))
-				const resultTags = new Set(Object.keys(results))
-				for (const resultTag of resultTags) {
-					expect(expectedTags.has(resultTag), `Unexpected tag ${resultTag} in result`).toBe(true)
+				// For filtered queries, verify no unexpected tags in result
+				if (!isNoFilter) {
+					const expectedTags = new Set(Object.keys(expected))
+					const resultTags = new Set(Object.keys(results))
+					for (const resultTag of resultTags) {
+						expect(expectedTags.has(resultTag), `Unexpected tag ${resultTag} in result`).toBe(true)
+					}
 				}
 			} finally {
 				await cleanup()

@@ -45,9 +45,11 @@ export type CoreChain<
 		params: FindChildrenParams<GenericConfig, GenericElement, GenericChild>,
 	): Promise<Record<GenericChild, ChainRecord<GenericConfig, GenericChild>[]>>
 
-	findDescendants<GenericFilter extends DescendantsFilter<GenericConfig>>(params: {
-		filter: GenericFilter
-	}): FindDescendantsReturn<GenericConfig, GenericFilter>
+	findDescendants(): FindDescendantsReturn<GenericConfig, undefined, GenericElement>
+
+	findDescendants<GenericFilter extends DescendantsFilter<GenericConfig>>(
+		filter: GenericFilter,
+	): FindDescendantsReturn<GenericConfig, GenericFilter, GenericElement>
 
 	getTree(
 		params?: GetTreeParams<GenericConfig, GenericElement>,

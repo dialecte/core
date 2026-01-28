@@ -4,13 +4,15 @@ import type { AnyDialecteConfig, DescendantsOf, ElementsOf, ChainRecord } from '
 export type FindDescendantsReturn<
 	GenericConfig extends AnyDialecteConfig,
 	GenericFilter extends DescendantsFilter<GenericConfig> | undefined,
+	GenericElement extends ElementsOf<GenericConfig> = ElementsOf<GenericConfig>,
 > = Promise<
 	GenericFilter extends undefined
-		? Partial<
-				Record<ElementsOf<GenericConfig>, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]>
+		? Record<
+				GenericElement | DescendantsOf<GenericConfig, GenericElement>,
+				ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]
 			>
 		: GenericFilter extends DescendantsFilter<GenericConfig>
-			? Partial<ResultMap<GenericConfig, ExtractTags<GenericFilter>>>
+			? ResultMap<GenericConfig, ExtractTags<GenericFilter>>
 			: never
 >
 
