@@ -43,8 +43,6 @@ jobs:
       - version
       - lint
     uses: ./.github/workflows/_publish.yml
-    secrets:
-      npm-token: ${{ secrets.NPM_PUBLISH_PAT }}
 
   create-release-tag:
     name: Create Release Tag
