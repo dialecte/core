@@ -1,3 +1,5 @@
+import { AddChildParams } from './create.types'
+
 import { describe, it, expect } from 'vitest'
 
 import { FromElementParams } from '@/dialecte'
@@ -8,8 +10,6 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 } from '@/helpers'
-
-import { AddChildParams } from './create.types'
 
 import type { ElementsOf, ChildrenOf, RawRecord, AnyDialecteConfig, Context } from '@/types'
 

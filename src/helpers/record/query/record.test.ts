@@ -1,3 +1,5 @@
+import { getLatestStagedRecord, getRecord, fetchRecords } from '.'
+
 import { describe, it, expect, Test } from 'vitest'
 
 import { AnyDatabaseInstance } from '@/database'
@@ -11,8 +13,6 @@ import {
 	ChainTestOperation,
 	executeChainOperations,
 } from '@/helpers/test-fixtures'
-
-import { getLatestStagedRecord, getRecord, fetchRecords } from '.'
 
 import type { CoreChain } from '@/chain-methods'
 import type { Operation, RawRecord, ElementsOf, ChildrenOf } from '@/types'

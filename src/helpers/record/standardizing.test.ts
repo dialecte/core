@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest'
-
 import { TEST_DIALECTE_CONFIG } from '../test-fixtures/config'
-
 import { standardizeRecord } from './standardizing'
+
+import { describe, it, expect } from 'vitest'
 
 import type {
 	RawRecord,

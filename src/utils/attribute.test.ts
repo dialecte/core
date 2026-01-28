@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-
 import { getAttributeValueByName, getAttributesValuesByName } from './attributes'
+
+import { describe, it, expect } from 'vitest'
 
 describe('getAttributeValueByName', () => {
 	type TestAttribute = { name: string; value: string }

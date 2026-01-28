@@ -1,8 +1,8 @@
+import { AddChildParams } from './create.types'
+
 import { dialecteState } from '@/dialecte'
 import { createError } from '@/errors'
 import { toChainRecord, addStagedOperation, standardizeRecord } from '@/helpers'
-
-import { AddChildParams } from './create.types'
 
 import type { ChainFactory } from '../types'
 import type {

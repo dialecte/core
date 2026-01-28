@@ -1,5 +1,4 @@
 import { standardizeRecord, toChainRecord, toTreeRecord } from '../record'
-
 import { TEST_DIALECTE_CONFIG } from './config'
 
 import type {

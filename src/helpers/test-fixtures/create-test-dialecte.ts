@@ -1,9 +1,9 @@
+import { TEST_DIALECTE_CONFIG } from './config'
+
 import Dexie from 'dexie'
 
 import { createDialecte } from '@/dialecte'
 import { importXmlFiles } from '@/io'
-
-import { TEST_DIALECTE_CONFIG } from './config'
 
 import type { DialecteCore } from '@/dialecte'
 import type { AnyDialecteConfig } from '@/types'

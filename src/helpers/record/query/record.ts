@@ -1,6 +1,6 @@
-import { assert } from '@/helpers'
-
 import { toChainRecord } from '../converter'
+
+import { assert } from '@/helpers'
 
 import type { DatabaseInstance } from '@/database'
 import type {

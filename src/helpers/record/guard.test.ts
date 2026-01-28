@@ -1,8 +1,7 @@
-import { describe, it, expect } from 'vitest'
-
 import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '../'
-
 import { isRawRecord, isChainRecord, isTreeRecord, isFullAttributeArray } from './guard'
+
+import { describe, it, expect } from 'vitest'
 
 import type { RawRecord, ChainRecord, TreeRecord, AttributesOf } from '@/types'
 

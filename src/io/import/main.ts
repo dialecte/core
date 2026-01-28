@@ -1,8 +1,8 @@
-import { createDatabaseInstance } from '@/database'
-
 import { bulkAddRecords } from './database-helpers'
 import { setSaxParser } from './parser'
 import { resolveCurrentBatchChildrenRelationships } from './relationships'
+
+import { createDatabaseInstance } from '@/database'
 
 import type { ParserInstance } from './types'
 import type { AnyDatabaseInstance } from '@/database'

@@ -1,9 +1,8 @@
-import { describe, it, expect } from 'vitest'
-
 import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '../test-fixtures'
-
 import { toChainRecord, toRawRecord, toTreeRecord, toFullAttributeArray } from './converter'
 import { isRawRecord, isChainRecord, isTreeRecord } from './guard'
+
+import { describe, it, expect } from 'vitest'
 
 import type {
 	RawRecord,

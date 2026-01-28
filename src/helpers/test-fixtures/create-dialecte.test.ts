@@ -1,8 +1,8 @@
-import Dexie from 'dexie'
-import { afterEach, describe, it, expect, Test } from 'vitest'
-
 import { TEST_DIALECTE_CONFIG } from './config'
 import { createTestDialecte } from './create-test-dialecte'
+
+import Dexie from 'dexie'
+import { afterEach, describe, it, expect, Test } from 'vitest'
 
 import type { DialecteCore } from '@/dialecte'
 

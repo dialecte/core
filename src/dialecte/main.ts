@@ -1,9 +1,8 @@
-import { assert } from '@/helpers'
-
 import { createDatabaseInstance } from '../database'
-
 import { fromElement, fromRoot } from './entrypoints'
 import { getState } from './state'
+
+import { assert } from '@/helpers'
 
 import type { DialecteCore, FromElementParams } from './types'
 import type { AnyDialecteConfig, ElementsOf } from '@/types'

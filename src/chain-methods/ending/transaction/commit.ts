@@ -1,7 +1,7 @@
+import { mergeOperations } from './merge-operations'
+
 import { dialecteState } from '@/dialecte'
 import { createError } from '@/errors'
-
-import { mergeOperations } from './merge-operations'
 
 import type { DatabaseInstance } from '@/database'
 import type { AnyDialecteConfig, ElementsOf, Context } from '@/types'

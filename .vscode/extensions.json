@@ -7,8 +7,8 @@
 		"EditorConfig.EditorConfig",
 		"esbenp.prettier-vscode",
 		"Vue.volar",
-    "vitest.explorer",
-    "oxc.oxc-vscode",
+		"vitest.explorer",
+		"oxc.oxc-vscode",
 		"streetsidesoftware.code-spell-checker"
-	],
+	]
 }

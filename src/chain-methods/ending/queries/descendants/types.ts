@@ -1,21 +1,18 @@
 import type { FilterAttributes } from '@/helpers'
-import type {
-	AnyDialecteConfig,
-	DescendantsOf,
-	ElementsOf,
-	ChainRecord,
-} from '@/types'
+import type { AnyDialecteConfig, DescendantsOf, ElementsOf, ChainRecord } from '@/types'
 
 export type FindDescendantsReturn<
 	GenericConfig extends AnyDialecteConfig,
 	GenericFilter extends DescendantsFilter<GenericConfig> | undefined,
 > = Promise<
-		GenericFilter extends undefined
-			? Partial<Record<ElementsOf<GenericConfig>, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]>>
-			: GenericFilter extends DescendantsFilter<GenericConfig>
-				? Partial<ResultMap<GenericConfig, ExtractTags<GenericFilter>>>
-				: never
-	>
+	GenericFilter extends undefined
+		? Partial<
+				Record<ElementsOf<GenericConfig>, ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]>
+			>
+		: GenericFilter extends DescendantsFilter<GenericConfig>
+			? Partial<ResultMap<GenericConfig, ExtractTags<GenericFilter>>>
+			: never
+>
 
 // ============================================================================
 // Core Types

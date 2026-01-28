@@ -1,3 +1,5 @@
+import { findByAttributes, matchesAttributeFilter } from './find-by-attributes'
+
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import { CoreChain } from '@/chain-methods'
@@ -10,8 +12,6 @@ import {
 	DEV_ID,
 	TEST_DIALECTE_CONFIG,
 } from '@/helpers/test-fixtures'
-
-import { findByAttributes, matchesAttributeFilter } from './find-by-attributes'
 
 import type { AnyDialecteConfig, AttributesOf, Context, ElementsOf, RawRecord } from '@/types'
 

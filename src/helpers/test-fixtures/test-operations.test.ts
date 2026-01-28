@@ -1,7 +1,3 @@
-import { describe, it, expect } from 'vitest'
-
-import { CoreChain } from '@/chain-methods'
-
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
@@ -11,6 +7,10 @@ import {
 	ChainTestOperation,
 	executeChainOperations,
 } from '.'
+
+import { describe, it, expect } from 'vitest'
+
+import { CoreChain } from '@/chain-methods'
 
 import type { ElementsOf, ChildrenOf } from '@/types'
 

@@ -1,6 +1,7 @@
+import path from 'node:path'
 /// <reference types="vite/client" />
 import { fileURLToPath, URL } from 'node:url'
-import path from 'node:path'
+
 // VITE
 import { defineConfig } from 'vite'
 // VITE PLUGINS

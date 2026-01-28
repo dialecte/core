@@ -1,3 +1,5 @@
+import { GoToElementParams } from '../navigation'
+
 import { describe, it, expect } from 'vitest'
 
 import {
@@ -7,8 +9,6 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 } from '@/helpers'
-
-import { GoToElementParams } from '../navigation'
 
 import type { ElementsOf } from '@/types'
 

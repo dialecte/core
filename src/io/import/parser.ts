@@ -1,9 +1,9 @@
+import { isSaxQualifiedTag } from './guards'
+import { registerPendingChildrenRelationship } from './relationships'
+
 import * as sax from 'sax'
 
 import { assert, DEV_ID } from '@/helpers'
-
-import { isSaxQualifiedTag } from './guards'
-import { registerPendingChildrenRelationship } from './relationships'
 
 import type { ParserInstance, ParserState } from './types'
 import type {

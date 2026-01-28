@@ -22,8 +22,5 @@ export type GroupedRecordsByTagName<
 	GenericConfig extends AnyDialecteConfig,
 	GenericRecords extends readonly ChainRecord<GenericConfig, any>[],
 > = {
-	[K in GenericRecords[number]['tagName']]?: Extract<
-		GenericRecords[number],
-		{ tagName: K }
-	>[]
+	[K in GenericRecords[number]['tagName']]?: Extract<GenericRecords[number], { tagName: K }>[]
 }

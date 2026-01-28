@@ -1,6 +1,6 @@
-import { assert, toChainRecord, getLatestStagedRecord } from '@/helpers'
-
 import { GoToElementParams } from './types'
+
+import { assert, toChainRecord, getLatestStagedRecord } from '@/helpers'
 
 import type { ChainFactory } from '../types'
 import type { DatabaseInstance } from '@/database'

@@ -1,3 +1,6 @@
+import { importXmlFiles } from './main'
+import { handleExpectedRecords } from './test.handler'
+
 import Dexie from 'dexie'
 import { describe, expect, it, afterAll } from 'vitest'
 
@@ -9,9 +12,6 @@ import {
 	XMLNS_EXT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 } from '@/helpers'
-
-import { importXmlFiles } from './main'
-import { handleExpectedRecords } from './test.handler'
 
 import type { ExpectedRecords } from './test.types'
 import type { AnyDatabaseInstance } from '@/database'

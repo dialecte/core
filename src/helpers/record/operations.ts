@@ -1,6 +1,5 @@
-import { assert } from '../assert'
-
 import { toRawRecord } from '.'
+import { assert } from '../assert'
 
 import type { Operation, RawRecord, ElementsOf, AnyDialecteConfig } from '@/types'
 

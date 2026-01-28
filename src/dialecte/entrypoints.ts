@@ -1,7 +1,7 @@
+import { resetState } from './state'
+
 import { chain } from '@/chain-methods'
 import { assert, toChainRecord } from '@/helpers'
-
-import { resetState } from './state'
 
 import type { FromElementParams } from './types'
 import type { Chain } from '@/chain-methods/types'
