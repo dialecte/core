@@ -1,7 +1,7 @@
 {
 	"name": "@dialecte/core",
 	"version": "0.0.2",
-	"description": "Dialecte - Core functionality for Dialecte applications.",
+	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"source": "src/index.ts",
 	"files": [
