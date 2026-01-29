@@ -94,8 +94,8 @@ export function toFullAttributeArray<
 >(params: {
 	tagName: GenericElement
 	attributes:
-		| AttributesValueObjectOf<GenericConfig, GenericElement>
-		| FullAttributeObjectOf<GenericConfig, GenericElement>[]
+		| Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
+		| Partial<FullAttributeObjectOf<GenericConfig, GenericElement>>[]
 	dialecteConfig: GenericConfig
 }): FullAttributeObjectOf<GenericConfig, GenericElement>[] {
 	const { tagName, attributes, dialecteConfig } = params

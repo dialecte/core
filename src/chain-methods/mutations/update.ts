@@ -22,7 +22,7 @@ export function createUpdateElementMethod<
 	const { chain, contextPromise, dialecteConfig } = params
 
 	return function (params: {
-		attributes?: AttributesValueObjectOf<GenericConfig, GenericElement>
+		attributes?: Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
 		value?: string
 	}) {
 		const { attributes, value } = params
