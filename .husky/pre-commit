@@ -1,4 +1,3 @@
-npm run format:fix
-npm run lint:check
+npm run check
 npm run test
 npm run build
