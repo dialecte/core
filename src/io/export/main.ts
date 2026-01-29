@@ -1,6 +1,7 @@
-import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
-
 import Dexie from 'dexie'
+
+import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
+import { downloadFile } from './download-file'
 
 import type { AnyDatabaseInstance } from '@/database'
 import type {
@@ -22,15 +23,25 @@ import type {
 export async function exportXmlFile<GenericConfig extends AnyDialecteConfig>(params: {
 	databaseName: string
 	extension: GenericConfig['io']['supportedFileExtensions'][number]
+	withDownload?: boolean
 	dialecteConfig: GenericConfig
 }): Promise<{ xmlDocument: XMLDocument; filename: string }> {
-	const { databaseName, extension, dialecteConfig } = params
-	return handleFileExportWithOptions({
+	const { databaseName, extension, withDownload, dialecteConfig } = params
+	const response = await handleFileExportWithOptions({
 		databaseName,
 		extension,
 		dialecteConfig,
 		withDatabaseIds: false,
 	})
+
+	if (withDownload)
+		await downloadFile({
+			extension,
+			xmlDocument: response.xmlDocument,
+			filename: response.filename,
+		})
+
+	return response
 }
 
 export async function exportXmlDocumentForOpenSCD(params: {

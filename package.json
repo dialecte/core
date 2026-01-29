@@ -1,6 +1,6 @@
 {
 	"name": "@dialecte/core",
-	"version": "0.0.4",
+	"version": "0.0.6",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"repository": {
