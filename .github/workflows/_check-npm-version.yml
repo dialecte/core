@@ -15,7 +15,7 @@ jobs:
       version_changed: ${{ steps.compare_versions.outputs.version_changed }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract Current Version
         id: current_version
