@@ -3,6 +3,10 @@
 	"version": "0.0.4",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/dialecte/core.git"
+	},
 	"source": "src/index.ts",
 	"files": [
 		"dist"
@@ -17,10 +21,6 @@
 			"types": "./dist/io/index.d.ts",
 			"default": "./dist/io/index.js"
 		}
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/dialecte/core.git"
 	},
 	"scripts": {
 		"//====== SCRIPT ======//": "",
