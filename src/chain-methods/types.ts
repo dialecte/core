@@ -105,7 +105,7 @@ type ExtractExtensionMethods<T> = {
 /**
  * Extension methods for a specific element from the extension registry
  */
-type ExtensionMethods<
+export type ExtensionMethods<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = GenericConfig extends { extensions: ExtensionRegistry<GenericConfig> }
