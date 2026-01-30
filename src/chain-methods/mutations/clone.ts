@@ -43,27 +43,28 @@ export function createDeepCloneChildMethod<
 				const { chain, childRecord } = params
 
 				let shouldBeCloned = true
-				let transformedRecord = childRecord
+				let transformedChildRecord = childRecord
 				let currentChain = chain
 
 				if (dialecteConfig.hooks?.beforeClone) {
-					;({ shouldBeCloned, transformedRecord } = dialecteConfig.hooks.beforeClone({
-						record: transformedRecord,
-					}))
+					;({ shouldBeCloned, transformedRecord: transformedChildRecord } =
+						dialecteConfig.hooks.beforeClone({
+							record: transformedChildRecord,
+						}))
 				}
 
 				if (shouldBeCloned) {
 					const childChain = chain.addChild({
-						tagName: childRecord.tagName,
-						namespace: childRecord.namespace,
-						attributes: childRecord.attributes,
-						value: childRecord.value,
+						tagName: transformedChildRecord.tagName,
+						namespace: transformedChildRecord.namespace,
+						attributes: transformedChildRecord.attributes,
+						value: transformedChildRecord.value,
 						setFocus: true,
 					})
 
 					currentChain = childChain
 
-					for (const child of childRecord.tree) {
+					for (const child of transformedChildRecord.tree) {
 						currentChain = await addChildRecursively({ chain: currentChain, childRecord: child })
 						currentChain = currentChain.goToParent()
 					}
