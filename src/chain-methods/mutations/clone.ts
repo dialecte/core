@@ -17,8 +17,9 @@ export function createDeepCloneChildMethod<
 >(params: {
 	chain: ChainFactory
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
+	dialecteConfig: GenericConfig
 }) {
-	const { chain, contextPromise } = params
+	const { chain, contextPromise, dialecteConfig } = params
 
 	return function <GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(
 		params: DeepCloneChildParams<GenericConfig, GenericElement>,
@@ -41,19 +42,31 @@ export function createDeepCloneChildMethod<
 			}): Promise<Chain<GenericConfig, ElementsOf<GenericConfig>>> {
 				const { chain, childRecord } = params
 
-				const childChain = chain.addChild({
-					tagName: childRecord.tagName,
-					namespace: childRecord.namespace,
-					attributes: childRecord.attributes,
-					value: childRecord.value,
-					setFocus: true,
-				})
+				let shouldBeCloned = true
+				let transformedRecord = childRecord
+				let currentChain = chain
 
-				let currentChain = childChain
+				if (dialecteConfig.hooks?.beforeClone) {
+					;({ shouldBeCloned, transformedRecord } = dialecteConfig.hooks.beforeClone({
+						record: transformedRecord,
+					}))
+				}
 
-				for (const child of childRecord.tree) {
-					currentChain = await addChildRecursively({ chain: currentChain, childRecord: child })
-					currentChain = currentChain.goToParent()
+				if (shouldBeCloned) {
+					const childChain = chain.addChild({
+						tagName: childRecord.tagName,
+						namespace: childRecord.namespace,
+						attributes: childRecord.attributes,
+						value: childRecord.value,
+						setFocus: true,
+					})
+
+					currentChain = childChain
+
+					for (const child of childRecord.tree) {
+						currentChain = await addChildRecursively({ chain: currentChain, childRecord: child })
+						currentChain = currentChain.goToParent()
+					}
 				}
 
 				return currentChain

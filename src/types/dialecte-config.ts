@@ -2,7 +2,7 @@ import type { Context } from './context'
 import type { AnyDefinition } from './definition'
 import type { ImportOptions, ExportOptions } from './io'
 import type { Operation } from './operations'
-import type { Namespace, ChainRecord, RawRecord } from './records'
+import type { Namespace, ChainRecord, RawRecord, TreeRecord } from './records'
 import type { ChainFactory } from '@/chain-methods'
 
 export type RawDialecteConfig<
@@ -77,8 +77,8 @@ export type DialecteHooks = {
 		GenericConfig extends AnyDialecteConfig,
 		GenericElement extends ElementsOf<GenericConfig>,
 	>(params: {
-		record: ChainRecord<GenericConfig, GenericElement>
-	}) => ChainRecord<GenericConfig, GenericElement>
+		record: TreeRecord<GenericConfig, GenericElement>
+	}) => { shouldBeCloned: boolean; transformedRecord: TreeRecord<GenericConfig, GenericElement> }
 
 	/**
 	 * Called after core standardizes element from definition.

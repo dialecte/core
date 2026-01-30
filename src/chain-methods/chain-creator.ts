@@ -68,6 +68,7 @@ export function createCoreChain<
 		deepCloneChild: createDeepCloneChildMethod({
 			chain,
 			contextPromise,
+			dialecteConfig,
 		}),
 		update: createUpdateElementMethod({
 			chain,
