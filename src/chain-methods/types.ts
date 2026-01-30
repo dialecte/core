@@ -22,6 +22,7 @@ import type {
 	ExtensionRegistry,
 	ChainRecord,
 	TreeRecord,
+	FullAttributeObjectOf,
 } from '@/types'
 
 export type CoreChain<
@@ -52,6 +53,10 @@ export type CoreChain<
 	getTree(
 		params?: GetTreeParams<GenericConfig, GenericElement>,
 	): Promise<TreeRecord<GenericConfig, GenericElement>>
+
+	getAttributesValues<
+		GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
+	>(): Promise<Record<GenericAttribute['name'], GenericAttribute['value']>>
 	//==================== MUTATIONS ====================
 
 	/**

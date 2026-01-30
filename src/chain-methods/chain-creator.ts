@@ -5,6 +5,7 @@ import {
 	createFindChildrenMethod,
 	createFindDescendantsMethod,
 	createGetTreeMethod,
+	createGetAttributesValuesMethod,
 } from './ending'
 import {
 	createAddChildMethod,
@@ -54,6 +55,9 @@ export function createCoreChain<
 			contextPromise,
 			dialecteConfig,
 			databaseInstance,
+		}),
+		getAttributesValues: createGetAttributesValuesMethod({
+			contextPromise,
 		}),
 		//== Mutations
 		addChild: createAddChildMethod({
