@@ -4,6 +4,6 @@ export type UpdateElementParams<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = {
-	attributes?: AttributesValueObjectOf<GenericConfig, GenericElement>
+	attributes?: Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
 	value?: string
 }

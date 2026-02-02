@@ -1,7 +1,9 @@
+import { UpdateElementParams } from './update.types'
+
 import { toFullAttributeArray, addStagedOperation, toChainRecord } from '@/helpers'
 
 import type { ChainFactory } from '../types'
-import type { AnyDialecteConfig, ElementsOf, Context, AttributesValueObjectOf } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, Context } from '@/types'
 
 /**
  * Updates the current focused element's attributes or value.
@@ -21,10 +23,7 @@ export function createUpdateElementMethod<
 }) {
 	const { chain, contextPromise, dialecteConfig } = params
 
-	return function (params: {
-		attributes?: Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
-		value?: string
-	}) {
+	return function (params: UpdateElementParams<GenericConfig, GenericElement>) {
 		const { attributes, value } = params
 
 		const newContextPromise = contextPromise.then(async (context) => {
