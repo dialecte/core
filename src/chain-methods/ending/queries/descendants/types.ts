@@ -7,10 +7,12 @@ export type FindDescendantsReturn<
 	GenericElement extends ElementsOf<GenericConfig> = ElementsOf<GenericConfig>,
 > = Promise<
 	GenericFilter extends undefined
-		? Record<
-				GenericElement | DescendantsOf<GenericConfig, GenericElement>,
-				ChainRecord<GenericConfig, ElementsOf<GenericConfig>>[]
-			>
+		? {
+				[K in GenericElement | DescendantsOf<GenericConfig, GenericElement>]: ChainRecord<
+					GenericConfig,
+					K
+				>[]
+			}
 		: GenericFilter extends DescendantsFilter<GenericConfig>
 			? ResultMap<GenericConfig, ExtractTags<GenericFilter>>
 			: never
