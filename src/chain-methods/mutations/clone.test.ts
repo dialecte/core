@@ -1,281 +1,357 @@
+import { DeepCloneChildParams } from './clone.types'
+
 import { describe, it, expect } from 'vitest'
 
+import { FromElementParams } from '@/dialecte'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
 	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
+	executeChainOperations,
 } from '@/helpers'
 
-import type { FromElementParams } from '@/dialecte'
-import type { ElementsOf, TreeRecord } from '@/types'
+import type { Chain } from '@/chain-methods'
+import type { ChainTestOperation } from '@/helpers'
+import type { ElementsOf, TreeRecord, DialecteHooks, ChildrenOf } from '@/types'
 
-describe('deepCloneChild', () => {
+const xmlString = /* xml */ `
+	<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="root">
+		<A ${DEV_ID}="a" aA="value1" />
+		<B ${DEV_ID}="b">
+			<BB_1 ${DEV_ID}="bb1">
+				<BBB_1 ${DEV_ID}="bbb1" />
+			</BB_1>
+			<BB_2 ${DEV_ID}="bb2">
+				<BBB_1 ${DEV_ID}="bbb1-2" />
+				<BBB_2 ${DEV_ID}="bbb2" />
+			</BB_2>
+		</B>
+		<C ${DEV_ID}="c" />
+	</Root>
+`
+
+describe('CRUD Operations - deepCloneChild', () => {
 	type TestConfig = typeof TEST_DIALECTE_CONFIG
 	type TestElement = ElementsOf<TestConfig>
+	type TestChildElement = ChildrenOf<TestConfig, TestElement>
 
-	describe('basic cloning', () => {
+	describe('comprehensive cloning', () => {
 		type TestCase = {
-			desc: string
-			xmlString: string
-			startFrom: FromElementParams<TestConfig, TestElement>
-			cloneFrom: FromElementParams<TestConfig, 'A'>
-			setFocus: boolean
+			description: string
+			operations?: Array<
+				ChainTestOperation<TestConfig, TestElement, ChildrenOf<TestConfig, TestElement>>
+			>
+			sourceSelector: FromElementParams<TestConfig, TestElement>
+			targetSelector: FromElementParams<TestConfig, TestElement>
+			cloneParams: Omit<DeepCloneChildParams<TestConfig, TestElement>, 'record'>
 			expected: {
-				focusedElement: TestElement
-				clonedChildCount: number
-				originalStillExists: boolean
+				focus: string
+				clonedElement: {
+					tagName: string
+					childrenCount: number
+				}
+				structure?: {
+					tagName: TestElement
+					children: TestElement[]
+				}[]
 			}
 		}
 
 		const testCases: TestCase[] = [
 			{
-				desc: 'clones single element with setFocus: true',
-				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="original"><AA_1 ${DEV_ID}="3" aAA_1="child" /></A>
-					</Root>
-				`,
-				startFrom: { tagName: 'Root', id: '1' },
-				cloneFrom: { tagName: 'A', id: '2' },
-				setFocus: true,
+				description: 'clone simple element without children, setFocus: true',
+				sourceSelector: { tagName: 'A' },
+				targetSelector: { tagName: 'C' },
+				cloneParams: { setFocus: true },
 				expected: {
-					focusedElement: 'A',
-					clonedChildCount: 1,
-					originalStillExists: true,
+					focus: 'A',
+					clonedElement: {
+						tagName: 'A',
+						childrenCount: 0,
+					},
 				},
 			},
 			{
-				desc: 'clones single element with setFocus: false',
-				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="original" />
-					</Root>
-				`,
-				startFrom: { tagName: 'Root', id: '1' },
-				cloneFrom: { tagName: 'A', id: '2' },
-				setFocus: false,
+				description: 'clone simple element without children, setFocus: false',
+				sourceSelector: { tagName: 'A' },
+				targetSelector: { tagName: 'C' },
+				cloneParams: { setFocus: false },
 				expected: {
-					focusedElement: 'Root',
-					clonedChildCount: 2,
-					originalStillExists: true,
+					focus: 'C',
+					clonedElement: {
+						tagName: 'A',
+						childrenCount: 0,
+					},
 				},
 			},
 			{
-				desc: 'clones element preserving attributes',
-				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1" aAA="value2" />
-					</Root>
-				`,
-				startFrom: { tagName: 'Root', id: '1' },
-				cloneFrom: { tagName: 'A', id: '2' },
-				setFocus: false,
+				description: 'clone element with nested children, setFocus: true, verify structure',
+				sourceSelector: { tagName: 'B' },
+				targetSelector: { tagName: 'C' },
+				cloneParams: { setFocus: true },
 				expected: {
-					focusedElement: 'Root',
-					clonedChildCount: 2,
-					originalStillExists: true,
+					focus: 'B',
+					clonedElement: {
+						tagName: 'B',
+						childrenCount: 2,
+					},
+					structure: [
+						{
+							tagName: 'B',
+							children: ['BB_1', 'BB_2'],
+						},
+						{
+							tagName: 'BB_1',
+							children: ['BBB_1'],
+						},
+						{
+							tagName: 'BB_2',
+							children: ['BBB_1', 'BBB_2'],
+						},
+					],
+				},
+			},
+			{
+				description: 'clone element with nested children, setFocus: false',
+				sourceSelector: { tagName: 'B' },
+				targetSelector: { tagName: 'C' },
+				cloneParams: { setFocus: false },
+				expected: {
+					focus: 'C',
+					clonedElement: {
+						tagName: 'B',
+						childrenCount: 2,
+					},
 				},
 			},
 		]
 
-		testCases.forEach(testBasicCloning)
+		testCases.forEach(testCloning)
 
-		function testBasicCloning(testCase: TestCase) {
-			it(testCase.desc, async () => {
+		function testCloning(testCase: TestCase) {
+			it(testCase.description, async () => {
 				// Arrange
-				const { dialecte } = await createTestDialecte({ xmlString: testCase.xmlString })
-				const chain = dialecte.fromElement(testCase.startFrom)
-				// Get tree to clone
-				const sourceChain = dialecte.fromElement(testCase.cloneFrom)
-				const treeToClone = await sourceChain.getTree()
+				const { dialecte, cleanup } = await createTestDialecte({
+					xmlString,
+				})
 
-				// Act
-				let resultChain = chain
+				try {
+					const sourceChain = dialecte.fromElement(testCase.sourceSelector)
+					const sourceRecord = await sourceChain.getTree()
 
-				if (testCase.setFocus) {
-					resultChain = resultChain.deepCloneChild({
-						record: treeToClone,
-						setFocus: true,
-					})
-				} else {
-					resultChain = resultChain.deepCloneChild({
-						record: treeToClone,
-						setFocus: false,
-					})
+					const targetChain = dialecte.fromElement(testCase.targetSelector)
+
+					// Act
+					const resultChain = testCase.cloneParams.setFocus
+						? targetChain.deepCloneChild({
+								record: sourceRecord as TreeRecord<TestConfig, Exclude<TestElement, 'Root'>>,
+								setFocus: true,
+							})
+						: targetChain.deepCloneChild({
+								record: sourceRecord as TreeRecord<TestConfig, Exclude<TestElement, 'Root'>>,
+								setFocus: false,
+							})
+
+					await resultChain.commit()
+
+					// Assert
+
+					const resultContext = await resultChain.getContext()
+					expect(resultContext.currentFocus.tagName).toBe(testCase.expected.focus)
+
+					const targetTree = await dialecte.fromElement(testCase.targetSelector).getTree()
+					const clonedChild = targetTree.tree.find(
+						(child) => child.tagName === testCase.expected.clonedElement.tagName,
+					)
+					expect(clonedChild).toBeDefined()
+					expect(clonedChild?.tagName).toBe(testCase.expected.clonedElement.tagName)
+					expect(clonedChild?.tree.length).toBe(testCase.expected.clonedElement.childrenCount)
+
+					if (testCase.expected.structure) {
+						function findElement(
+							tree: TreeRecord<TestConfig, TestElement>,
+							tagName: TestElement,
+						): TreeRecord<TestConfig, TestElement> | null {
+							if (tree.tagName === tagName) return tree
+							for (const child of tree.tree) {
+								const found = findElement(child, tagName)
+								if (found) return found
+							}
+							return null
+						}
+
+						for (const expectedNode of testCase.expected.structure) {
+							const element = findElement(targetTree, expectedNode.tagName)
+							expect(element, `Expected to find ${expectedNode.tagName}`).toBeDefined()
+
+							const childTags = element?.tree.map(
+								(child: TreeRecord<TestConfig, TestElement>) => child.tagName,
+							)
+							expect(childTags).toEqual(expectedNode.children)
+						}
+					}
+				} finally {
+					await cleanup()
 				}
-
-				const context = await resultChain.getContext()
-
-				// Assert - Focus
-				expect(context.currentFocus.tagName).toBe(testCase.expected.focusedElement)
-
-				// Assert - Parent has correct child count (check in-memory context, not fresh DB fetch)
-				expect(context.currentFocus.children.length).toBe(testCase.expected.clonedChildCount)
-
-				// Assert - Original still exists (unchanged in DB)
-				const originalChain = dialecte.fromElement(testCase.cloneFrom)
-				const originalContext = await originalChain.getContext()
-				expect(originalContext.currentFocus).toBeDefined()
-				expect(originalContext.currentFocus.id).toBe(testCase.cloneFrom.id)
 			})
 		}
 	})
 
-	describe('deep cloning', () => {
+	describe('hook integration', () => {
 		type TestCase = {
-			desc: string
-			only?: boolean
-			xmlString: string
-			startFrom: FromElementParams<TestConfig, TestElement>
-			cloneFrom: FromElementParams<TestConfig, 'A'>
-			setFocus: boolean
+			description: string
+			operations?: Array<ChainTestOperation<TestConfig, TestElement, TestChildElement>>
+			sourceSelector: FromElementParams<TestConfig, TestElement>
+			targetSelector: FromElementParams<TestConfig, TestElement>
+			hookConfig: Pick<DialecteHooks, 'beforeClone'>
 			expected: {
-				treeDepth: number
-				totalDescendants: number
-				leafTagName: TestElement
+				clonedElements: TestElement[]
+				skippedElements: TestElement[]
 			}
 		}
 
 		const testCases: TestCase[] = [
 			{
-				desc: 'clones nested structure 3 levels deep',
-				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="parent">
-							<AA_1 ${DEV_ID}="3" aAA_1="child">
-								<AAA_1 ${DEV_ID}="4" aAAA_1="grandchild" />
-							</AA_1>
-						</A>
-					</Root>
-				`,
-				startFrom: { tagName: 'Root', id: '1' },
-				cloneFrom: { tagName: 'A', id: '2' },
-				setFocus: true,
+				description: 'beforeClone hook skips elements',
+				operations: [
+					{
+						type: 'addChild',
+						goTo: { tagName: 'A' },
+						tagName: 'AA_1',
+						attributes: {
+							aA: 'value-AA1',
+						},
+						setFocus: false,
+					},
+					{
+						type: 'addChild',
+						tagName: 'AA_2',
+						attributes: {
+							aA: 'value-AA2',
+						},
+						setFocus: false,
+					},
+				],
+				sourceSelector: { tagName: 'A' },
+				targetSelector: { tagName: 'C' },
+				hookConfig: {
+					beforeClone: ({ record }) => {
+						if (record.tagName === 'AA_1') {
+							return { shouldBeCloned: false, transformedRecord: record }
+						}
+						return { shouldBeCloned: true, transformedRecord: record }
+					},
+				},
 				expected: {
-					treeDepth: 3,
-					totalDescendants: 2,
-					leafTagName: 'AAA_1',
+					clonedElements: ['A', 'AA_2'],
+					skippedElements: ['AA_1'],
 				},
 			},
 			{
-				desc: 'clones structure with multiple children at same level',
-				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="parent">
-							<AA_1 ${DEV_ID}="3" aAA_1="child1" />
-							<AA_1 ${DEV_ID}="4" aAA_1="child2" />
-							<AA_1 ${DEV_ID}="5" aAA_1="child3" />
-						</A>
-					</Root>
-				`,
-				startFrom: { tagName: 'Root', id: '1' },
-				cloneFrom: { tagName: 'A', id: '2' },
-				setFocus: true,
-				expected: {
-					treeDepth: 2,
-					totalDescendants: 3,
-					leafTagName: 'AA_1',
+				description: 'beforeClone hook transforms attributes',
+				operations: [
+					{
+						type: 'update',
+						goTo: { tagName: 'A' },
+						attributes: [{ name: 'aA', value: 'original-uuid', namespace: undefined }],
+					},
+					{
+						type: 'addChild',
+						tagName: 'AA_1',
+						attributes: { aA: 'child-uuid' },
+						setFocus: false,
+					},
+				],
+				sourceSelector: { tagName: 'A' },
+				targetSelector: { tagName: 'C' },
+				hookConfig: {
+					beforeClone: ({ record }) => {
+						const filteredAttributes = record.attributes.filter(
+							(attribute) => attribute.name !== 'aA',
+						)
+						return {
+							shouldBeCloned: true,
+							transformedRecord: { ...record, attributes: filteredAttributes },
+						}
+					},
 				},
-			},
-			{
-				desc: 'clones complex branching structure',
-				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="root">
-							<AA_1 ${DEV_ID}="3" aAA_1="branch1">
-								<AAA_1 ${DEV_ID}="4" aAAA_1="leaf1" />
-							</AA_1>
-							<AA_1 ${DEV_ID}="5" aAA_1="branch2">
-								<AAA_1 ${DEV_ID}="6" aAAA_1="leaf2" />
-								<AAA_1 ${DEV_ID}="7" aAAA_1="leaf3" />
-							</AA_1>
-						</A>
-					</Root>
-				`,
-				startFrom: { tagName: 'Root', id: '1' },
-				cloneFrom: { tagName: 'A', id: '2' },
-				setFocus: true,
 				expected: {
-					treeDepth: 3,
-					totalDescendants: 5,
-					leafTagName: 'AAA_1',
+					clonedElements: ['A', 'AA_1'],
+					skippedElements: [],
 				},
 			},
 		]
 
-		let filteredTests = testCases
-		const onlyTests = testCases.filter((tc) => tc.only)
-		if (onlyTests.length) {
-			filteredTests = onlyTests
-		}
+		testCases.forEach(testHookIntegration)
 
-		filteredTests.forEach(testDeepCloning)
-
-		function testDeepCloning(testCase: TestCase) {
-			it(testCase.desc, async () => {
+		function testHookIntegration(testCase: TestCase) {
+			it(testCase.description, async () => {
 				// Arrange
-				const { dialecte } = await createTestDialecte({ xmlString: testCase.xmlString })
-				const chain = dialecte.fromElement(testCase.startFrom)
-
-				const sourceChain = dialecte.fromElement(testCase.cloneFrom)
-				const treeToClone = await sourceChain.getTree()
-
-				// Act
-				let resultChain = chain
-
-				if (testCase.setFocus) {
-					resultChain = resultChain.deepCloneChild({
-						record: treeToClone,
-						setFocus: true,
-					})
-				} else {
-					resultChain = resultChain.deepCloneChild({
-						record: treeToClone,
-						setFocus: false,
-					})
+				const customConfig = {
+					...TEST_DIALECTE_CONFIG,
+					hooks: testCase.hookConfig,
 				}
 
-				const clonedTree = await resultChain.getTree()
+				const { dialecte, cleanup } = await createTestDialecte({
+					xmlString,
+					dialecteConfig: customConfig,
+				})
 
-				// Assert - Tree depth
-				const depth = calculateTreeDepth(clonedTree)
-				expect(depth).toBe(testCase.expected.treeDepth)
+				try {
+					if (testCase.operations) {
+						await executeChainOperations<TestConfig, TestElement, TestChildElement>({
+							chain: dialecte.fromRoot() as Chain<TestConfig, TestElement>,
+							operations: testCase.operations,
+						})
+					}
 
-				// Assert - Total descendants
-				const descendantCount = countDescendants(clonedTree)
-				expect(descendantCount).toBe(testCase.expected.totalDescendants)
+					const sourceChain = dialecte.fromElement(testCase.sourceSelector)
+					const sourceRecord = await sourceChain.getTree()
 
-				// Assert - Leaf node type
-				const leaves = findLeafNodes(clonedTree)
-				expect(leaves.every((leaf) => leaf.tagName === testCase.expected.leafTagName)).toBe(true)
+					const targetChain = dialecte.fromElement(testCase.targetSelector)
+
+					// Act
+					const resultChain = targetChain.deepCloneChild({
+						record: sourceRecord as TreeRecord<TestConfig, 'A'>,
+						setFocus: true,
+					})
+
+					await resultChain.commit()
+
+					// Assert - Verify cloned and skipped elements
+					const targetTree = await dialecte.fromElement(testCase.targetSelector).getTree()
+
+					function findAllTagNames(tree: TreeRecord<TestConfig, TestElement>[]): TestElement[] {
+						const tags: TestElement[] = []
+						for (const node of tree) {
+							tags.push(node.tagName)
+							if (node.tree.length > 0) {
+								tags.push(...findAllTagNames(node.tree))
+							}
+						}
+						return tags
+					}
+
+					const allClonedTags = findAllTagNames(targetTree.tree)
+
+					for (const expectedTag of testCase.expected.clonedElements) {
+						expect(
+							allClonedTags.includes(expectedTag),
+							`Expected ${expectedTag} to be cloned`,
+						).toBe(true)
+					}
+
+					for (const skippedTag of testCase.expected.skippedElements) {
+						expect(allClonedTags.includes(skippedTag), `Expected ${skippedTag} to be skipped`).toBe(
+							false,
+						)
+					}
+				} finally {
+					await cleanup()
+				}
 			})
-		}
-
-		function calculateTreeDepth<GenericElement extends TestElement>(
-			record: TreeRecord<TestConfig, GenericElement>,
-			currentDepth = 1,
-		): number {
-			if (record.tree.length === 0) {
-				return currentDepth
-			}
-			return Math.max(...record.tree.map((child) => calculateTreeDepth(child, currentDepth + 1)))
-		}
-
-		function countDescendants<GenericElement extends TestElement>(
-			record: TreeRecord<TestConfig, GenericElement>,
-		): number {
-			return record.tree.reduce((count, child) => count + 1 + countDescendants(child), 0)
-		}
-
-		function findLeafNodes(
-			record: TreeRecord<TestConfig, TestElement>,
-		): TreeRecord<TestConfig, TestElement>[] {
-			if (record.tree.length === 0) {
-				return [record]
-			}
-			return record.tree.flatMap((child) => findLeafNodes(child))
 		}
 	})
 })

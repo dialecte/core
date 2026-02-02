@@ -32,46 +32,11 @@ export function createDeepCloneChildMethod<
 			})
 
 			let endingChain = await addChildRecursively({
-				chain: initialChain,
+				dialecteConfig,
+				clonedRecordRootId: record.id,
+				parentChain: initialChain,
 				childRecord: record,
 			})
-
-			async function addChildRecursively(params: {
-				chain: Chain<GenericConfig, ElementsOf<GenericConfig>>
-				childRecord: TreeRecord<GenericConfig, ElementsOf<GenericConfig>>
-			}): Promise<Chain<GenericConfig, ElementsOf<GenericConfig>>> {
-				const { chain, childRecord } = params
-
-				let shouldBeCloned = true
-				let transformedChildRecord = childRecord
-				let currentChain = chain
-
-				if (dialecteConfig.hooks?.beforeClone) {
-					;({ shouldBeCloned, transformedRecord: transformedChildRecord } =
-						dialecteConfig.hooks.beforeClone({
-							record: transformedChildRecord,
-						}))
-				}
-
-				if (shouldBeCloned) {
-					const childChain = chain.addChild({
-						tagName: transformedChildRecord.tagName,
-						namespace: transformedChildRecord.namespace,
-						attributes: transformedChildRecord.attributes,
-						value: transformedChildRecord.value,
-						setFocus: true,
-					})
-
-					currentChain = childChain
-
-					for (const child of transformedChildRecord.tree) {
-						currentChain = await addChildRecursively({ chain: currentChain, childRecord: child })
-						currentChain = currentChain.goToParent()
-					}
-				}
-
-				return currentChain
-			}
 
 			if (!setFocus) endingChain = endingChain.goToParent()
 
@@ -88,4 +53,52 @@ export function createDeepCloneChildMethod<
 			})
 		}
 	}
+}
+
+async function addChildRecursively<GenericConfig extends AnyDialecteConfig>(params: {
+	dialecteConfig: GenericConfig
+	clonedRecordRootId: string
+	parentChain: Chain<GenericConfig, ElementsOf<GenericConfig>>
+	childRecord: TreeRecord<GenericConfig, ElementsOf<GenericConfig>>
+}): Promise<Chain<GenericConfig, ElementsOf<GenericConfig>>> {
+	const { dialecteConfig, clonedRecordRootId, parentChain, childRecord } = params
+
+	let shouldBeCloned = true
+	let transformedChildRecord = childRecord
+	let currentChain = parentChain
+
+	if (dialecteConfig.hooks?.beforeClone) {
+		const result = dialecteConfig.hooks.beforeClone({
+			record: childRecord,
+		})
+		shouldBeCloned = result.shouldBeCloned
+		transformedChildRecord = result.transformedRecord
+	}
+
+	if (shouldBeCloned) {
+		const childChain = parentChain.addChild({
+			tagName: transformedChildRecord.tagName,
+			namespace: transformedChildRecord.namespace,
+			attributes: transformedChildRecord.attributes,
+			value: transformedChildRecord.value,
+			setFocus: true,
+		})
+
+		currentChain = childChain
+
+		for (const child of transformedChildRecord.tree) {
+			currentChain = await addChildRecursively({
+				dialecteConfig,
+				clonedRecordRootId,
+				parentChain: currentChain,
+				childRecord: child,
+			})
+		}
+
+		if (childRecord.id !== clonedRecordRootId) {
+			currentChain = currentChain.goToParent()
+		}
+	}
+
+	return currentChain
 }

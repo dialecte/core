@@ -2,7 +2,7 @@ import type { Context } from './context'
 import type { AnyDefinition } from './definition'
 import type { ImportOptions, ExportOptions } from './io'
 import type { Operation } from './operations'
-import type { Namespace, ChainRecord, RawRecord, TreeRecord } from './records'
+import type { Namespace, RawRecord, TreeRecord } from './records'
 import type { ChainFactory } from '@/chain-methods'
 
 export type RawDialecteConfig<
@@ -17,7 +17,6 @@ export type RawDialecteConfig<
 		GenericElementNames[number],
 		Record<string, (...args: any[]) => any>
 	>,
-	//GenericDefinition extends AnyDefinition,
 > = {
 	rootElementName: GenericRootElement
 	singletonElements?: readonly GenericElementNames[number][]
@@ -31,7 +30,6 @@ export type RawDialecteConfig<
 	database: DatabaseConfig
 	io: IOConfig
 	definition: AnyDefinition
-	// definition: GenericDefinition
 	extensions: GenericExtensions
 	hooks: DialecteHooks
 }

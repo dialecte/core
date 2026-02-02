@@ -102,3 +102,8 @@ export type TreeRecord<
 > = ChainRecord<GenericConfig, GenericElement> & {
 	tree: TreeRecord<GenericConfig, ChildrenOf<GenericConfig, GenericElement>>[]
 }
+
+export type AnyTreeRecord<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> = TreeRecord<
+	GenericConfig,
+	ElementsOf<GenericConfig>
+>
