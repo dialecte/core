@@ -1,7 +1,16 @@
 import { DeepCloneChildParams } from './clone.types'
 
+import { assert } from '@/index'
+
 import type { Chain, ChainFactory } from '../types'
-import type { AnyDialecteConfig, ElementsOf, ChildrenOf, Context, TreeRecord } from '@/types'
+import type {
+	AnyDialecteConfig,
+	ElementsOf,
+	ChildrenOf,
+	Context,
+	TreeRecord,
+	ExtensionRegistry,
+} from '@/types'
 
 /**
  * Deep clones the child element under the current focused element.
@@ -14,20 +23,23 @@ import type { AnyDialecteConfig, ElementsOf, ChildrenOf, Context, TreeRecord } f
 export function createDeepCloneChildMethod<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 >(params: {
-	chain: ChainFactory
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 	dialecteConfig: GenericConfig
+	focusedTagName: GenericElement
 }) {
-	const { chain, contextPromise, dialecteConfig } = params
+	const { chain, contextPromise, dialecteConfig, focusedTagName: parentTagName } = params
 
 	return function <GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(
-		params: DeepCloneChildParams<GenericConfig, GenericElement>,
+		params: DeepCloneChildParams<GenericConfig, GenericChildElement>,
 	) {
 		const { record, setFocus } = params
 
 		const newContextPromise = contextPromise.then(async (context) => {
-			const initialChain = chain<GenericConfig, GenericElement>({
+			const initialChain = chain<GenericElement>({
 				contextPromise: Promise.resolve(context),
 			})
 
@@ -38,29 +50,40 @@ export function createDeepCloneChildMethod<
 				childRecord: record,
 			})
 
-			if (!setFocus) endingChain = endingChain.goToParent()
+			let endingContext = await endingChain.getContext()
 
-			return await endingChain.getContext()
+			if (!setFocus && endingContext.currentFocus.parent)
+				endingContext = await endingChain
+					.goToParent(endingContext.currentFocus.parent.tagName)
+					.getContext()
+
+			return endingContext
 		})
 
 		if (setFocus) {
-			return chain<GenericConfig, GenericChildElement>({
+			return chain<GenericChildElement>({
 				contextPromise: newContextPromise as Promise<Context<GenericConfig, GenericChildElement>>,
+				newFocusedTagName: record.tagName,
 			})
 		} else {
-			return chain<GenericConfig, GenericElement>({
+			return chain<GenericElement>({
 				contextPromise: newContextPromise as Promise<Context<GenericConfig, GenericElement>>,
+				newFocusedTagName: parentTagName,
 			})
 		}
 	}
 }
 
-async function addChildRecursively<GenericConfig extends AnyDialecteConfig>(params: {
+async function addChildRecursively<
+	GenericConfig extends AnyDialecteConfig,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
+>(params: {
 	dialecteConfig: GenericConfig
 	clonedRecordRootId: string
-	parentChain: Chain<GenericConfig, ElementsOf<GenericConfig>>
+	parentChain: Chain<GenericConfig, ElementsOf<GenericConfig>, GenericExtensionRegistry>
 	childRecord: TreeRecord<GenericConfig, ElementsOf<GenericConfig>>
-}): Promise<Chain<GenericConfig, ElementsOf<GenericConfig>>> {
+}): Promise<Chain<GenericConfig, ElementsOf<GenericConfig>, GenericExtensionRegistry>> {
 	const { dialecteConfig, clonedRecordRootId, parentChain, childRecord } = params
 
 	let shouldBeCloned = true
@@ -96,7 +119,9 @@ async function addChildRecursively<GenericConfig extends AnyDialecteConfig>(para
 		}
 
 		if (childRecord.id !== clonedRecordRootId) {
-			currentChain = currentChain.goToParent()
+			const { currentFocus } = await currentChain.getContext()
+			assert(currentFocus.parent, 'Clone: Current focus parent should be defined here')
+			currentChain = currentChain.goToParent(currentFocus.parent.tagName)
 		}
 	}
 

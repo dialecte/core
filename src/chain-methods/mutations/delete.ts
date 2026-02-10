@@ -2,6 +2,7 @@ import { addStagedOperation, assert, getRecord, toChainRecord } from '@/helpers'
 import { DatabaseInstance } from '@/index'
 
 import type { ChainFactory } from '../types'
+import type { DeleteElementParams } from './delete.types'
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
@@ -10,6 +11,7 @@ import type {
 	ParentsOf,
 	RawRecord,
 	ChildrenOf,
+	ExtensionRegistry,
 } from '@/types'
 
 /**
@@ -24,32 +26,48 @@ import type {
 export function createDeleteElementMethod<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 >(params: {
-	chain: ChainFactory
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
 }) {
 	const { chain, contextPromise, dialecteConfig, databaseInstance } = params
 
-	return function () {
+	return function <GenericParentElement extends ParentsOf<GenericConfig, GenericElement>>(
+		params: DeleteElementParams<GenericConfig, GenericElement, GenericParentElement>,
+	) {
+		const { parentTagName: newFocusedTagName } = params
+
 		// Create new context promise with parent as focus
 		const newContextPromise = contextPromise.then(async (context) => {
-			const currentElement = context.currentFocus
+			const currentFocus = context.currentFocus
+
+			assert(currentFocus.parent, 'Delete: Cannot delete root element')
+			assert(
+				currentFocus.parent.tagName === newFocusedTagName,
+				'Delete: Focused element parent tag name mismatch',
+			)
 
 			addStagedOperation({
 				context,
 				status: 'deleted',
-				record: currentElement,
+				record: currentFocus,
 			})
 
 			await removeAndStageChildren({
 				context,
 				dialecteConfig,
 				databaseInstance,
-				currentChild: currentElement,
+				currentChild: currentFocus,
 			})
-			const updatedParent = await updateAndStageParent({
+			const updatedParent = await updateAndStageParent<
+				GenericConfig,
+				GenericElement,
+				GenericParentElement
+			>({
 				context,
 				dialecteConfig,
 				databaseInstance,
@@ -61,8 +79,9 @@ export function createDeleteElementMethod<
 			}
 		})
 
-		return chain({
+		return chain<GenericParentElement>({
 			contextPromise: newContextPromise,
+			newFocusedTagName,
 		})
 	}
 }
@@ -109,19 +128,20 @@ async function removeAndStageChildren<
 async function updateAndStageParent<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericParentElement extends ParentsOf<GenericConfig, GenericElement>,
 >(params: {
 	context: Context<GenericConfig, GenericElement>
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
-}): Promise<ChainRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
+}): Promise<ChainRecord<GenericConfig, GenericParentElement>> {
 	const { context, dialecteConfig, databaseInstance } = params
 
 	const parentRef = context.currentFocus.parent
 	assert(parentRef, 'Cannot delete root element')
 
-	const parentRecord = await getRecord({
+	const parentRecord = await getRecord<GenericConfig, GenericParentElement>({
 		id: parentRef.id,
-		tagName: parentRef.tagName,
+		tagName: parentRef.tagName as GenericParentElement,
 		stagedOperations: context.stagedOperations,
 		dialecteConfig,
 		databaseInstance,
@@ -141,5 +161,8 @@ async function updateAndStageParent<
 		newRecord: updatedParent,
 	})
 
-	return toChainRecord({ record: updatedParent, status: 'updated' })
+	return toChainRecord<GenericConfig, GenericParentElement>({
+		record: updatedParent,
+		status: 'updated',
+	})
 }

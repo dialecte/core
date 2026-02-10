@@ -3,7 +3,7 @@ import { UpdateElementParams } from './update.types'
 import { toFullAttributeArray, addStagedOperation, toChainRecord } from '@/helpers'
 
 import type { ChainFactory } from '../types'
-import type { AnyDialecteConfig, ElementsOf, Context } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, Context, ExtensionRegistry } from '@/types'
 
 /**
  * Updates the current focused element's attributes or value.
@@ -16,8 +16,10 @@ import type { AnyDialecteConfig, ElementsOf, Context } from '@/types'
 export function createUpdateElementMethod<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 >(params: {
-	chain: ChainFactory
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 	dialecteConfig: GenericConfig
 }) {
@@ -64,6 +66,8 @@ export function createUpdateElementMethod<
 			}
 		})
 
-		return chain({ contextPromise: newContextPromise })
+		return chain<GenericElement>({
+			contextPromise: newContextPromise,
+		})
 	}
 }

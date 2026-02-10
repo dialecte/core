@@ -12,6 +12,7 @@ import type {
 	Context,
 	ChainRecord,
 	RawRecord,
+	ExtensionRegistry,
 } from '@/types'
 
 /**
@@ -25,12 +26,15 @@ import type {
 export function createAddChildMethod<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 >(params: {
-	chain: ChainFactory
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 	dialecteConfig: GenericConfig
+	focusedTagName: GenericElement
 }) {
-	const { chain, contextPromise, dialecteConfig } = params
+	const { chain, contextPromise, dialecteConfig, focusedTagName: parentTagName } = params
 
 	return function <GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(
 		params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>,
@@ -87,12 +91,14 @@ export function createAddChildMethod<
 		})
 
 		if (setFocus) {
-			return chain<GenericConfig, GenericChildElement>({
+			return chain<GenericChildElement>({
 				contextPromise: newContextPromise as Promise<Context<GenericConfig, GenericChildElement>>,
+				newFocusedTagName: tagName,
 			})
 		} else {
-			return chain<GenericConfig, GenericElement>({
+			return chain<GenericElement>({
 				contextPromise: newContextPromise as Promise<Context<GenericConfig, GenericElement>>,
+				newFocusedTagName: parentTagName,
 			})
 		}
 	}

@@ -6,18 +6,28 @@ import { assert, toChainRecord } from '@/helpers'
 import type { FromElementParams } from './types'
 import type { Chain } from '@/chain-methods/types'
 import type { DatabaseInstance } from '@/database'
-import type { Context, AnyDialecteConfig, RootElementOf, ElementsOf } from '@/types'
+import type {
+	Context,
+	AnyDialecteConfig,
+	RootElementOf,
+	ElementsOf,
+	ExtensionRegistry,
+} from '@/types'
 
 /**
  * Create a chain starting from the root element
  */
-export function fromRoot<GenericConfig extends AnyDialecteConfig>(params: {
+export function fromRoot<
+	GenericConfig extends AnyDialecteConfig,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig>,
+>(params: {
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
-}): Chain<GenericConfig, RootElementOf<GenericConfig>> {
+	extensions: GenericExtensionRegistry
+}): Chain<GenericConfig, RootElementOf<GenericConfig>, GenericExtensionRegistry> {
 	resetState()
 
-	const { dialecteConfig, databaseInstance } = params
+	const { dialecteConfig, databaseInstance, extensions } = params
 	const tableName = dialecteConfig.database.tables.xmlElements.name
 	const rootElementName = dialecteConfig.rootElementName
 
@@ -53,11 +63,12 @@ export function fromRoot<GenericConfig extends AnyDialecteConfig>(params: {
 		},
 	)
 
-	return chain<GenericConfig, RootElementOf<GenericConfig>>({
+	return chain<GenericConfig, RootElementOf<GenericConfig>, GenericExtensionRegistry>({
 		contextPromise,
 		dialecteConfig,
 		databaseInstance,
-		tagName: rootElementName,
+		extensions,
+		focusedTagName: rootElementName,
 	})
 }
 
@@ -67,15 +78,17 @@ export function fromRoot<GenericConfig extends AnyDialecteConfig>(params: {
 export function fromElement<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig>,
 >(
 	params: {
 		dialecteConfig: GenericConfig
 		databaseInstance: DatabaseInstance<GenericConfig>
+		extensions: GenericExtensionRegistry
 	} & FromElementParams<GenericConfig, GenericElement>,
-): Chain<GenericConfig, GenericElement> {
+): Chain<GenericConfig, GenericElement, GenericExtensionRegistry> {
 	resetState()
 
-	const { dialecteConfig, databaseInstance, tagName, id } = params
+	const { dialecteConfig, databaseInstance, extensions, tagName, id } = params
 	const tableName = dialecteConfig.database.tables.xmlElements.name
 
 	// Create context promise that fetches the specific element
@@ -109,8 +122,11 @@ export function fromElement<
 		},
 	)
 
-	return chain({ contextPromise, dialecteConfig, databaseInstance, tagName }) as Chain<
-		GenericConfig,
-		GenericElement
-	>
+	return chain({
+		contextPromise,
+		dialecteConfig,
+		databaseInstance,
+		extensions,
+		focusedTagName: tagName,
+	}) as Chain<GenericConfig, GenericElement, GenericExtensionRegistry>
 }

@@ -13,10 +13,6 @@ export type RawDialecteConfig<
 	GenericParents extends Record<string, readonly string[]>,
 	GenericDescendants extends Record<string, readonly string[]>,
 	GenericAncestors extends Record<string, readonly string[]>,
-	GenericExtensions extends Record<
-		GenericElementNames[number],
-		Record<string, (...args: any[]) => any>
-	>,
 > = {
 	rootElementName: GenericRootElement
 	singletonElements?: readonly GenericElementNames[number][]
@@ -30,7 +26,6 @@ export type RawDialecteConfig<
 	database: DatabaseConfig
 	io: IOConfig
 	definition: AnyDefinition
-	extensions: GenericExtensions
 	hooks: DialecteHooks
 }
 
@@ -43,9 +38,11 @@ export type IOConfig = {
 export type ExtensionsMethodParams<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 > = {
-	chain: ChainFactory
-	dialecteConfig: RuntimeDialecteConfig<GenericConfig>
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
+	dialecteConfig: GenericConfig
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 }
 
@@ -118,10 +115,10 @@ export type DatabaseConfig = Readonly<{
 // 	instance: DatabaseInstance<GenericConfig>
 // }
 
-export type RuntimeDialecteConfig<GenericConfig extends AnyDialecteConfig> = GenericConfig & {
-	//database: DatabaseConfigWithInstance<GenericConfig>
-	extensions: ExtensionRegistry<GenericConfig>
-}
+// export type RuntimeDialecteConfig<GenericConfig extends AnyDialecteConfig> = GenericConfig & {
+// 	//database: DatabaseConfigWithInstance<GenericConfig>
+// 	extensions: ExtensionRegistry<GenericConfig>
+// }
 
 /**
  * Generic FlavorConfig type for contexts where specific flavor is not known.
@@ -134,8 +131,7 @@ export type AnyDialecteConfig = RawDialecteConfig<
 	Record<string, readonly string[]>,
 	Record<string, readonly string[]>,
 	Record<string, readonly string[]>,
-	Record<string, readonly string[]>,
-	Record<string, Record<string, (...args: any[]) => any>>
+	Record<string, readonly string[]>
 >
 
 /**
@@ -186,6 +182,7 @@ export type ChildrenOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = GenericConfig['children'][GenericElement][number]
+export type AnyChildren = ChildrenOf<AnyDialecteConfig, AnyElement>
 
 /**
  * Get valid parent elements for a specific element from dialecte config
@@ -194,6 +191,7 @@ export type ParentsOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = GenericConfig['parents'][GenericElement][number]
+export type AnyParent = ParentsOf<AnyDialecteConfig, AnyElement>
 
 /**
  * Get descendants elements for a specific element from dialecte config
@@ -202,7 +200,7 @@ export type DescendantsOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = GenericConfig['descendants'][GenericElement][number]
-
+export type AnyDescendant = DescendantsOf<AnyDialecteConfig, AnyElement>
 /**
  * Get ancestors elements for a specific element from dialecte config
  */
@@ -210,6 +208,7 @@ export type AncestorsOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = GenericConfig['ancestors'][GenericElement][number]
+export type AnyAncestors = AncestorsOf<AnyDialecteConfig, AnyElement>
 
 /**
  * Get the root element type from a dialecte config

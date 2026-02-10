@@ -186,7 +186,7 @@ describe('findChildren', () => {
 			const results = await dialecte
 				.fromElement({ tagName: 'A', id: '2' })
 				.goToElement({ tagName: 'AA_1', id: '3' })
-				.delete()
+				.delete({ parentTagName: 'A' })
 				.findChildren({ AA_1: {} })
 
 			expect(results.AA_1.length).toBe(1)
@@ -205,7 +205,7 @@ describe('findChildren', () => {
 				.fromElement({ tagName: 'A', id: '2' })
 				.goToElement({ tagName: 'AA_1', id: '3' })
 				.update({ attributes: { aAA_1: 'new' } })
-				.goToParent()
+				.goToParent('A')
 				.findChildren({ AA_1: { aAA_1: 'new' } })
 
 			expect(results.AA_1.length).toBe(1)

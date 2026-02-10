@@ -5,12 +5,10 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	ChainTestOperation,
-	executeChainOperations,
+	executeTableDrivenTestsChainOperations,
 } from '.'
 
 import { describe, it, expect } from 'vitest'
-
-import { CoreChain } from '@/chain-methods'
 
 import type { ElementsOf, ChildrenOf } from '@/types'
 
@@ -111,8 +109,8 @@ describe('executeChainOperations', () => {
 			const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 			try {
-				const context = await executeChainOperations({
-					chain: dialecte.fromRoot() as CoreChain<TestConfig, TestElement>,
+				const context = await executeTableDrivenTestsChainOperations({
+					chain: dialecte.fromRoot(),
 					operations,
 				})
 
@@ -131,7 +129,7 @@ describe('executeChainOperations', () => {
 			})
 
 			try {
-				await executeChainOperations({
+				await executeTableDrivenTestsChainOperations({
 					chain: dialecte.fromRoot(),
 					operations: [
 						{

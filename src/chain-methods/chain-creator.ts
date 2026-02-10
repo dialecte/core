@@ -15,31 +15,48 @@ import {
 } from './mutations'
 import { createGoToElementMethod, createGoToParentMethod } from './navigation'
 
-import type { CoreChain, Chain, ChainFactory } from './types'
+import type { CoreChain, ChainFactory, ExtensionChain } from './types'
 import type { DatabaseInstance } from '@/database'
-import type { Context, AnyDialecteConfig, ElementsOf } from '@/types'
+import type { Context, AnyDialecteConfig, ElementsOf, ExtensionRegistry } from '@/types'
 
 export function createCoreChain<
 	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
+	GenericFocusedElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 >(params: {
-	chain: ChainFactory
-	contextPromise: Promise<Context<GenericConfig, GenericElement>>
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
+	contextPromise: Promise<Context<GenericConfig, GenericFocusedElement>>
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
-	tagName: GenericElement
-}): CoreChain<GenericConfig, GenericElement> {
-	const { chain, contextPromise, dialecteConfig, databaseInstance } = params
+	focusedTagName: GenericFocusedElement
+}): CoreChain<GenericConfig, GenericFocusedElement, GenericExtensionRegistry> {
+	const { chain, contextPromise, dialecteConfig, databaseInstance, focusedTagName } = params
 
-	return {
+	const coreChain = {
 		//== Navigation
-		goToElement: createGoToElementMethod({
+		goToElement: createGoToElementMethod<
+			GenericConfig,
+			GenericFocusedElement,
+			GenericExtensionRegistry
+		>({
 			chain,
 			contextPromise,
 			dialecteConfig,
 			databaseInstance,
 		}),
-		goToParent: createGoToParentMethod({ chain, contextPromise, dialecteConfig, databaseInstance }),
+		goToParent: (focusedTagName === dialecteConfig.rootElementName
+			? undefined
+			: createGoToParentMethod<GenericConfig, GenericFocusedElement, GenericExtensionRegistry>({
+					chain,
+					contextPromise,
+					dialecteConfig,
+					databaseInstance,
+				})) as CoreChain<
+			GenericConfig,
+			GenericFocusedElement,
+			GenericExtensionRegistry
+		>['goToParent'],
 		//== Queries
 		findChildren: createFindChildrenMethod({
 			contextPromise,
@@ -60,27 +77,39 @@ export function createCoreChain<
 			contextPromise,
 		}),
 		//== Mutations
-		addChild: createAddChildMethod({
+		addChild: createAddChildMethod<GenericConfig, GenericFocusedElement, GenericExtensionRegistry>({
+			chain,
+			contextPromise,
+			dialecteConfig,
+			focusedTagName,
+		}),
+		deepCloneChild: createDeepCloneChildMethod<
+			GenericConfig,
+			GenericFocusedElement,
+			GenericExtensionRegistry
+		>({
+			chain,
+			contextPromise,
+			dialecteConfig,
+			focusedTagName,
+		}),
+		update: createUpdateElementMethod<
+			GenericConfig,
+			GenericFocusedElement,
+			GenericExtensionRegistry
+		>({
 			chain,
 			contextPromise,
 			dialecteConfig,
 		}),
-		deepCloneChild: createDeepCloneChildMethod({
-			chain,
-			contextPromise,
-			dialecteConfig,
-		}),
-		update: createUpdateElementMethod({
-			chain,
-			contextPromise,
-			dialecteConfig,
-		}),
-		delete: createDeleteElementMethod({
-			chain,
-			contextPromise,
-			dialecteConfig,
-			databaseInstance,
-		}),
+		delete: (focusedTagName === dialecteConfig.rootElementName
+			? undefined
+			: createDeleteElementMethod<GenericConfig, GenericFocusedElement, GenericExtensionRegistry>({
+					chain,
+					contextPromise,
+					dialecteConfig,
+					databaseInstance,
+				})) as CoreChain<GenericConfig, GenericFocusedElement, GenericExtensionRegistry>['delete'],
 		//== Endings
 		getContext: createGetContextMethod({
 			contextPromise,
@@ -96,31 +125,40 @@ export function createCoreChain<
 			databaseInstance,
 		}),
 	}
+
+	return coreChain
 }
 
 export function createExtensionChain<
 	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
+	GenericFocusedElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig>,
 >(params: {
-	coreChain: CoreChain<GenericConfig, GenericElement>
-	tagName: GenericElement
-	chain: ChainFactory
+	focusedTagName: GenericFocusedElement
+	extensions: GenericExtensionRegistry
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
 	dialecteConfig: GenericConfig
-	contextPromise: Promise<Context<GenericConfig, GenericElement>>
-}): Chain<GenericConfig, GenericElement> {
-	const { coreChain, tagName, chain, dialecteConfig, contextPromise } = params
+	contextPromise: Promise<Context<GenericConfig, GenericFocusedElement>>
+}): ExtensionChain<GenericConfig, GenericFocusedElement, GenericExtensionRegistry> {
+	const { extensions, focusedTagName, chain, dialecteConfig, contextPromise } = params
 
-	const chainWithExtensions: any = { ...coreChain }
-	const elementExtensions = dialecteConfig.extensions[tagName] || {}
+	const chainWithExtensions: Record<string, (...args: any[]) => any> = {}
+	const elementExtensions = extensions[focusedTagName]
 
-	// Attach extension methods by calling each method creator
-	for (const [methodName, createMethodFn] of Object.entries(elementExtensions)) {
-		chainWithExtensions[methodName] = createMethodFn({
-			chain,
-			dialecteConfig,
-			contextPromise,
-		})
+	if (elementExtensions) {
+		// Attach extension methods by calling each method creator
+		for (const [methodName, createMethodFn] of Object.entries(elementExtensions)) {
+			chainWithExtensions[methodName] = createMethodFn({
+				chain,
+				dialecteConfig,
+				contextPromise,
+			})
+		}
 	}
 
-	return chainWithExtensions
+	return chainWithExtensions as ExtensionChain<
+		GenericConfig,
+		GenericFocusedElement,
+		GenericExtensionRegistry
+	>
 }

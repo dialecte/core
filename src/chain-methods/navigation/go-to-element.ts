@@ -4,7 +4,7 @@ import { assert, toChainRecord, getLatestStagedRecord } from '@/helpers'
 
 import type { ChainFactory } from '../types'
 import type { DatabaseInstance } from '@/database'
-import type { AnyDialecteConfig, ElementsOf, Context } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, Context, ExtensionRegistry } from '@/types'
 
 /**
  * Navigate to a specific element by tagName and id.
@@ -17,28 +17,31 @@ import type { AnyDialecteConfig, ElementsOf, Context } from '@/types'
 export function createGoToElementMethod<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 >(params: {
-	chain: ChainFactory
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
 }) {
 	const { chain, contextPromise, dialecteConfig, databaseInstance } = params
 
-	return function goToElement<GenericTargetElement extends ElementsOf<GenericConfig>>(
-		params: GoToElementParams<GenericConfig, GenericTargetElement>,
+	return function goToElement<GenericFocusElement extends ElementsOf<GenericConfig>>(
+		params: GoToElementParams<GenericConfig, GenericFocusElement>,
 	) {
 		const { tagName, id } = params
+
 		const tableName = dialecteConfig.database.tables.xmlElements.name
 
 		const newContextPromise = contextPromise.then(async (context) => {
 			const isSingleton = dialecteConfig.singletonElements?.includes(tagName)
 
 			const stagedRecord = id
-				? getLatestStagedRecord<GenericConfig, GenericTargetElement>({
+				? getLatestStagedRecord<GenericConfig, GenericFocusElement>({
 						stagedOperations: context.stagedOperations,
 						id,
-						tagName: tagName as GenericTargetElement,
+						tagName: tagName as GenericFocusElement,
 					})
 				: null
 
@@ -70,12 +73,13 @@ export function createGoToElementMethod<
 
 			return {
 				...context,
-				currentFocus: toChainRecord<GenericConfig, GenericTargetElement>({ record }),
+				currentFocus: toChainRecord<GenericConfig, GenericFocusElement>({ record }),
 			}
 		})
 
-		return chain({
+		return chain<GenericFocusElement>({
 			contextPromise: newContextPromise,
+			newFocusedTagName: tagName as GenericFocusElement,
 		})
 	}
 }

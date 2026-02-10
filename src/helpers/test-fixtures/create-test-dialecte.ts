@@ -6,7 +6,7 @@ import { createDialecte } from '@/dialecte'
 import { importXmlFiles } from '@/io'
 
 import type { DialecteCore } from '@/dialecte'
-import type { AnyDialecteConfig } from '@/types'
+import type { AnyDialecteConfig, ExtensionRegistry } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
@@ -16,15 +16,17 @@ type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
  */
 export async function createTestDialecte<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> = {},
 >(params: {
 	xmlString: string
 	dialecteConfig?: GenericConfig
+	extensions?: GenericExtensionRegistry
 }): Promise<{
-	dialecte: DialecteCore<GenericConfig>
+	dialecte: DialecteCore<GenericConfig, GenericExtensionRegistry>
 	databaseName: string
 	cleanup: () => Promise<void>
 }> {
-	const { xmlString, dialecteConfig = TEST_DIALECTE_CONFIG } = params
+	const { xmlString, dialecteConfig = TEST_DIALECTE_CONFIG, extensions = {} } = params
 
 	const filename = `test-${crypto.randomUUID()}.xml`
 	const file = new File([xmlString], filename, { type: 'text/xml' })
@@ -37,9 +39,10 @@ export async function createTestDialecte<
 
 	const databaseName = databaseNames[0]
 
-	const dialecte = await createDialecte<GenericConfig>({
+	const dialecte = await createDialecte<GenericConfig, GenericExtensionRegistry>({
 		databaseName,
 		dialecteConfig: dialecteConfig as GenericConfig,
+		extensions: extensions as GenericExtensionRegistry,
 	})
 
 	const databaseInstance = dialecte.getDatabaseInstance()

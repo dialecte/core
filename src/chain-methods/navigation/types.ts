@@ -1,4 +1,11 @@
-import type { AnyDialecteConfig, ElementsOf, SingletonElementsOf, AnyElement } from '@/types'
+import type {
+	AnyDialecteConfig,
+	ElementsOf,
+	SingletonElementsOf,
+	AnyElement,
+	ParentsOf,
+	AnyParent,
+} from '@/types'
 
 export type GoToElementParams<
 	GenericConfig extends AnyDialecteConfig,
@@ -9,3 +16,11 @@ export type GoToElementParams<
 		: { tagName: GenericElement; id: string }
 
 export type AnyGoToElementParams = GoToElementParams<AnyDialecteConfig, AnyElement>
+
+export type GoToParentParams<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+	GenericParentElement extends ParentsOf<GenericConfig, GenericElement>,
+> = GenericParentElement
+
+export type AnyGoToParentParams = GoToParentParams<AnyDialecteConfig, AnyElement, AnyParent>

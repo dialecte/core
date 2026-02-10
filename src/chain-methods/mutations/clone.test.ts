@@ -9,12 +9,11 @@ import {
 	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	executeChainOperations,
+	executeTableDrivenTestsChainOperations,
 } from '@/helpers'
 
-import type { Chain } from '@/chain-methods'
-import type { ChainTestOperation } from '@/helpers'
-import type { ElementsOf, TreeRecord, DialecteHooks, ChildrenOf } from '@/types'
+import type { AnyElementChainTestOperation } from '@/helpers'
+import type { ElementsOf, TreeRecord, DialecteHooks } from '@/types'
 
 const xmlString = /* xml */ `
 	<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="root">
@@ -35,14 +34,11 @@ const xmlString = /* xml */ `
 describe('CRUD Operations - deepCloneChild', () => {
 	type TestConfig = typeof TEST_DIALECTE_CONFIG
 	type TestElement = ElementsOf<TestConfig>
-	type TestChildElement = ChildrenOf<TestConfig, TestElement>
 
 	describe('comprehensive cloning', () => {
 		type TestCase = {
 			description: string
-			operations?: Array<
-				ChainTestOperation<TestConfig, TestElement, ChildrenOf<TestConfig, TestElement>>
-			>
+			operations?: Array<AnyElementChainTestOperation<TestConfig>>
 			sourceSelector: FromElementParams<TestConfig, TestElement>
 			targetSelector: FromElementParams<TestConfig, TestElement>
 			cloneParams: Omit<DeepCloneChildParams<TestConfig, TestElement>, 'record'>
@@ -202,7 +198,7 @@ describe('CRUD Operations - deepCloneChild', () => {
 	describe('hook integration', () => {
 		type TestCase = {
 			description: string
-			operations?: Array<ChainTestOperation<TestConfig, TestElement, TestChildElement>>
+			operations?: Array<any> // Allows operations from base config to work with extended configs
 			sourceSelector: FromElementParams<TestConfig, TestElement>
 			targetSelector: FromElementParams<TestConfig, TestElement>
 			hookConfig: Pick<DialecteHooks, 'beforeClone'>
@@ -221,7 +217,7 @@ describe('CRUD Operations - deepCloneChild', () => {
 						goTo: { tagName: 'A' },
 						tagName: 'AA_1',
 						attributes: {
-							aA: 'value-AA1',
+							aAA_1: 'value-AA1',
 						},
 						setFocus: false,
 					},
@@ -229,7 +225,7 @@ describe('CRUD Operations - deepCloneChild', () => {
 						type: 'addChild',
 						tagName: 'AA_2',
 						attributes: {
-							aA: 'value-AA2',
+							aAA_2: 'value-AA2',
 						},
 						setFocus: false,
 					},
@@ -256,13 +252,13 @@ describe('CRUD Operations - deepCloneChild', () => {
 						type: 'update',
 						goTo: { tagName: 'A' },
 						attributes: [{ name: 'aA', value: 'original-uuid', namespace: undefined }],
-					},
+					} as AnyElementChainTestOperation<TestConfig>,
 					{
 						type: 'addChild',
 						tagName: 'AA_1',
-						attributes: { aA: 'child-uuid' },
+						attributes: { aAA_1: 'child-uuid' },
 						setFocus: false,
-					},
+					} as AnyElementChainTestOperation<TestConfig>,
 				],
 				sourceSelector: { tagName: 'A' },
 				targetSelector: { tagName: 'C' },
@@ -301,8 +297,8 @@ describe('CRUD Operations - deepCloneChild', () => {
 
 				try {
 					if (testCase.operations) {
-						await executeChainOperations<TestConfig, TestElement, TestChildElement>({
-							chain: dialecte.fromRoot() as Chain<TestConfig, TestElement>,
+						await executeTableDrivenTestsChainOperations({
+							chain: dialecte.fromRoot(),
 							operations: testCase.operations,
 						})
 					}

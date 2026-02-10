@@ -9,7 +9,7 @@ import {
 } from '@/helpers'
 
 import type { FromElementParams } from '@/dialecte/types'
-import type { ElementsOf } from '@/types'
+import type { ElementsOf, ParentsOf } from '@/types'
 
 describe('CRUD Operations - deleteElement', () => {
 	type TestConfig = typeof TEST_DIALECTE_CONFIG
@@ -19,6 +19,7 @@ describe('CRUD Operations - deleteElement', () => {
 		description: string
 		xml: string
 		deleteElement: FromElementParams<TestConfig, TestElement>
+		deleteParentTagName: ParentsOf<TestConfig, TestElement>
 		expected: {
 			focusAfterDelete: FromElementParams<TestConfig, TestElement>
 			elementShouldNotExist: FromElementParams<TestConfig, TestElement>
@@ -30,6 +31,7 @@ describe('CRUD Operations - deleteElement', () => {
 			description: 'delete leaf element',
 			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
 			deleteElement: { tagName: 'A', id: '2' },
+			deleteParentTagName: 'Root',
 			expected: {
 				focusAfterDelete: { tagName: 'Root', id: '1' },
 				elementShouldNotExist: { tagName: 'A', id: '2' },
@@ -39,6 +41,7 @@ describe('CRUD Operations - deleteElement', () => {
 			description: 'delete element with single child',
 			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="val"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
 			deleteElement: { tagName: 'A', id: '2' },
+			deleteParentTagName: 'Root',
 			expected: {
 				focusAfterDelete: { tagName: 'Root', id: '1' },
 				elementShouldNotExist: { tagName: 'A', id: '2' },
@@ -48,6 +51,7 @@ describe('CRUD Operations - deleteElement', () => {
 			description: 'delete element with multiple children',
 			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="val"><AA_1 ${DEV_ID}="3" aAA_1="child1" /><AA_2 ${DEV_ID}="4" aAA_2="child2" /></A></Root>`,
 			deleteElement: { tagName: 'A', id: '2' },
+			deleteParentTagName: 'Root',
 			expected: {
 				focusAfterDelete: { tagName: 'Root', id: '1' },
 				elementShouldNotExist: { tagName: 'A', id: '2' },
@@ -57,6 +61,7 @@ describe('CRUD Operations - deleteElement', () => {
 			description: 'delete nested child element',
 			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="val"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
 			deleteElement: { tagName: 'AA_1', id: '3' },
+			deleteParentTagName: 'A',
 			expected: {
 				focusAfterDelete: { tagName: 'A', id: '2' },
 				elementShouldNotExist: { tagName: 'AA_1', id: '3' },
@@ -64,14 +69,17 @@ describe('CRUD Operations - deleteElement', () => {
 		},
 	]
 
-	testCases.forEach(({ description, xml, deleteElement, expected }) => {
+	testCases.forEach(({ description, xml, deleteElement, deleteParentTagName, expected }) => {
 		it(description, async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
 				xmlString: xml,
 			})
 
 			try {
-				let chain = dialecte.fromElement(deleteElement).delete()
+				// @ts-ignore: delete is not existing on Root and TS can't resolve union of delete signatures from heterogeneous test cases
+				const chain = dialecte.fromElement(deleteElement).delete({
+					parentTagName: deleteParentTagName,
+				})
 				const context = await chain.getContext()
 				await chain.commit()
 
@@ -96,9 +104,10 @@ describe('CRUD Operations - deleteElement', () => {
 			})
 
 			try {
-				await dialecte.fromElement({ tagName: 'A', id: '2' }).delete().commit()
-
-				// Verify all descendants are deleted
+				await dialecte
+					.fromElement({ tagName: 'A', id: '2' })
+					.delete({ parentTagName: 'Root' })
+					.commit()
 				await expect(dialecte.fromElement({ tagName: 'A', id: '2' }).getContext()).rejects.toThrow()
 				await expect(
 					dialecte.fromElement({ tagName: 'AA_1', id: '3' }).getContext(),
@@ -113,14 +122,16 @@ describe('CRUD Operations - deleteElement', () => {
 	})
 
 	describe('error handling', () => {
-		it('throws error when trying to delete root element', async () => {
+		it('delete method does not exist on root element', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
 				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
 			})
 
 			try {
-				const chain = dialecte.fromRoot().delete()
-				await expect(chain.getContext()).rejects.toThrow('Cannot delete root element')
+				const chain = dialecte.fromRoot()
+				expect((chain as any).delete).toBeUndefined()
+				// resolving promise before cleanup
+				await chain.getContext()
 			} finally {
 				await cleanup()
 			}

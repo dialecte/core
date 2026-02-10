@@ -41,5 +41,4 @@ export const TEST_DIALECTE_CONFIG = {
 	io: IO_CONFIG,
 	definition: DEFINITION,
 	hooks: {},
-	extensions: {},
 } as const satisfies AnyDialecteConfig

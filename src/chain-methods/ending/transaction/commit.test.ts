@@ -4,13 +4,12 @@ import { FromElementParams } from '@/dialecte'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	executeChainOperations,
+	executeTableDrivenTestsChainOperations,
 	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 } from '@/helpers'
 
-import type { CoreChain } from '@/chain-methods'
 import type { ChainTestOperation } from '@/helpers'
 import type { ElementsOf, ChildrenOf } from '@/types'
 
@@ -177,8 +176,8 @@ describe('commit', () => {
 
 			try {
 				// Execute and commit operations
-				await executeChainOperations({
-					chain: dialecte.fromRoot() as CoreChain<TestConfig, TestElement>,
+				await executeTableDrivenTestsChainOperations({
+					chain: dialecte.fromRoot(),
 					operations,
 				})
 

@@ -1,48 +1,63 @@
 import { createCoreChain, createExtensionChain } from './chain-creator'
 
-import type { Chain, ChainFactory } from './types'
+import type { Chain } from './types'
 import type { DatabaseInstance } from '@/database'
-import type { Context, AnyDialecteConfig, ElementsOf } from '@/types'
+import type { Context, AnyDialecteConfig, ElementsOf, ExtensionRegistry } from '@/types'
 
 export function chain<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig>,
 >(params: {
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
-	tagName: GenericElement
-}): Chain<GenericConfig, GenericElement> {
-	const { dialecteConfig, databaseInstance, contextPromise, tagName } = params
+	extensions: GenericExtensionRegistry
+	focusedTagName: GenericElement
+}): Chain<GenericConfig, GenericElement, GenericExtensionRegistry> {
+	const { dialecteConfig, databaseInstance, contextPromise, extensions, focusedTagName } = params
 	// Bound chain factory for core methods
-	function chainFactory(params: {
-		contextPromise: Promise<Context<GenericConfig, GenericElement>>
-	}): Chain<GenericConfig, GenericElement> {
-		const { contextPromise } = params
+	function chainFactory<
+		GenericFocusedElement extends ElementsOf<GenericConfig> = GenericElement,
+	>(params: {
+		contextPromise: Promise<Context<GenericConfig, GenericFocusedElement>>
+		newFocusedTagName?: GenericFocusedElement
+	}): Chain<GenericConfig, GenericFocusedElement, GenericExtensionRegistry> {
+		const { contextPromise, newFocusedTagName = focusedTagName } = params
 
-		return chain<GenericConfig, GenericElement>({
+		return chain<GenericConfig, GenericFocusedElement, GenericExtensionRegistry>({
 			dialecteConfig,
 			databaseInstance,
 			contextPromise: contextPromise,
-			tagName: tagName,
+			extensions,
+			focusedTagName: newFocusedTagName as GenericFocusedElement,
 		})
 	}
 
-	const coreChain = createCoreChain({
-		chain: chainFactory as ChainFactory,
+	const coreChain = createCoreChain<GenericConfig, GenericElement, GenericExtensionRegistry>({
+		chain: chainFactory,
 		dialecteConfig,
 		databaseInstance,
 		contextPromise,
-		tagName,
+		focusedTagName,
 	})
 
 	// const extensionRegistry = dialecteConfig.extensions || {}
 
-	return createExtensionChain<GenericConfig, GenericElement>({
-		coreChain,
-		tagName,
-		chain: chainFactory as ChainFactory,
+	const extensionChain = createExtensionChain<
+		GenericConfig,
+		GenericElement,
+		GenericExtensionRegistry
+	>({
+		focusedTagName,
+		extensions,
+		chain: chainFactory,
 		dialecteConfig,
 		contextPromise,
 	})
+
+	return {
+		...coreChain,
+		...extensionChain,
+	}
 }

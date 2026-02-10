@@ -1,8 +1,16 @@
 import { assert, toChainRecord, getLatestStagedRecord } from '@/helpers'
 
 import type { ChainFactory } from '../types'
+import type { GoToParentParams } from './types'
 import type { DatabaseInstance } from '@/database'
-import type { AnyDialecteConfig, ElementsOf, Context, RawRecord, ParentsOf } from '@/types'
+import type {
+	AnyDialecteConfig,
+	ElementsOf,
+	Context,
+	RawRecord,
+	ParentsOf,
+	ExtensionRegistry,
+} from '@/types'
 
 /**
  * Navigate to the parent element.
@@ -15,20 +23,26 @@ import type { AnyDialecteConfig, ElementsOf, Context, RawRecord, ParentsOf } fro
 export function createGoToParentMethod<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
+		ExtensionRegistry<GenericConfig>,
 >(params: {
-	chain: ChainFactory
+	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
 	contextPromise: Promise<Context<GenericConfig, GenericElement>>
 	dialecteConfig: GenericConfig
 	databaseInstance: DatabaseInstance<GenericConfig>
 }) {
 	const { chain, contextPromise, dialecteConfig, databaseInstance } = params
 
-	return function goToParent<
-		GenericParentElement extends ParentsOf<GenericConfig, GenericElement>,
-	>() {
+	return function goToParent<GenericParentElement extends ParentsOf<GenericConfig, GenericElement>>(
+		parentTagName: GoToParentParams<GenericConfig, GenericElement, GenericParentElement>,
+	) {
 		const newContextPromise = contextPromise.then(async (context) => {
 			const parentRef = context.currentFocus.parent
-			assert(parentRef, 'Current focus parent should be defined here')
+			assert(parentRef, 'GoToParent:Current focus parent should be defined here')
+			assert(
+				parentRef.tagName === parentTagName,
+				'Parent tag name should match the requested parent',
+			)
 
 			const stagedParentRecord = getLatestStagedRecord<GenericConfig, GenericParentElement>({
 				stagedOperations: context.stagedOperations,
@@ -56,6 +70,9 @@ export function createGoToParentMethod<
 			}
 		})
 
-		return chain({ contextPromise: newContextPromise })
+		return chain<GenericParentElement>({
+			contextPromise: newContextPromise,
+			newFocusedTagName: parentTagName,
+		})
 	}
 }

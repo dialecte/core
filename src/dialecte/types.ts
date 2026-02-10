@@ -1,14 +1,23 @@
 import type { Chain } from '@/chain-methods'
 import type { DatabaseInstance } from '@/database'
-import type { AnyDialecteConfig, ElementsOf, RootElementOf, SingletonElementsOf } from '@/types'
+import type {
+	AnyDialecteConfig,
+	ElementsOf,
+	ExtensionRegistry,
+	RootElementOf,
+	SingletonElementsOf,
+} from '@/types'
 
-export type DialecteCore<GenericConfig extends AnyDialecteConfig> = {
+export type DialecteCore<
+	GenericConfig extends AnyDialecteConfig,
+	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig>,
+> = {
 	getState(): DialecteState
 	getDatabaseInstance(): DatabaseInstance<GenericConfig>
-	fromRoot(): Chain<GenericConfig, RootElementOf<GenericConfig>>
+	fromRoot(): Chain<GenericConfig, RootElementOf<GenericConfig>, GenericExtensionRegistry>
 	fromElement<GenericElement extends ElementsOf<GenericConfig>>(
 		params: FromElementParams<GenericConfig, GenericElement>,
-	): Chain<GenericConfig, GenericElement>
+	): Chain<GenericConfig, GenericElement, GenericExtensionRegistry>
 }
 
 export type DialecteState = {

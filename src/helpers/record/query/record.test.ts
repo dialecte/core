@@ -10,10 +10,9 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	ChainTestOperation,
-	executeChainOperations,
+	executeTableDrivenTestsChainOperations,
 } from '@/helpers/test-fixtures'
 
-import type { CoreChain } from '@/chain-methods'
 import type { Operation, RawRecord, ElementsOf, ChildrenOf } from '@/types'
 
 type TestConfig = typeof TEST_DIALECTE_CONFIG
@@ -313,14 +312,14 @@ describe('getRecord', () => {
 			const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 			try {
-				const context = await executeChainOperations<TestConfig, TestElement, ChildElement>({
-					chain: dialecte.fromRoot() as CoreChain<TestConfig, TestElement>,
+				const context = await executeTableDrivenTestsChainOperations({
+					chain: dialecte.fromRoot(),
 					operations,
 				})
 
 				const databaseInstance = dialecte.getDatabaseInstance()
 				const { id, tagName } = fetchParams
-				const record = await getRecord<TestConfig, TestElement>({
+				const record = await getRecord({
 					id,
 					tagName,
 					stagedOperations: context.stagedOperations,
@@ -488,14 +487,14 @@ describe('fetchRecords', () => {
 			const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 			try {
-				const context = await executeChainOperations<TestConfig, TestElement, ChildElement>({
-					chain: dialecte.fromRoot() as CoreChain<TestConfig, TestElement>,
+				const context = await executeTableDrivenTestsChainOperations({
+					chain: dialecte.fromRoot(),
 					operations,
 				})
 
 				const databaseInstance = dialecte.getDatabaseInstance()
 				const { tagName } = fetchParams
-				const records = await fetchRecords<TestConfig, TestElement>({
+				const records = await fetchRecords({
 					tagName,
 					stagedOperations: context.stagedOperations,
 					dialecteConfig: TEST_DIALECTE_CONFIG,
@@ -519,8 +518,8 @@ describe('fetchRecords', () => {
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {
-			const context = await executeChainOperations<TestConfig, TestElement, ChildElement>({
-				chain: dialecte.fromRoot() as CoreChain<TestConfig, TestElement>,
+			const context = await executeTableDrivenTestsChainOperations({
+				chain: dialecte.fromRoot(),
 				operations: [
 					{
 						type: 'addChild',
@@ -538,7 +537,7 @@ describe('fetchRecords', () => {
 			})
 
 			const databaseInstance = dialecte.getDatabaseInstance()
-			const records = await fetchRecords<TestConfig, TestElement>({
+			const records = await fetchRecords({
 				tagName: 'A',
 				stagedOperations: context.stagedOperations,
 				dialecteConfig: TEST_DIALECTE_CONFIG,
@@ -561,8 +560,8 @@ describe('fetchRecords', () => {
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {
-			const context = await executeChainOperations<TestConfig, TestElement, ChildElement>({
-				chain: dialecte.fromRoot() as CoreChain<TestConfig, TestElement>,
+			const context = await executeTableDrivenTestsChainOperations({
+				chain: dialecte.fromRoot(),
 				operations: [
 					{
 						type: 'addChild',
@@ -575,7 +574,7 @@ describe('fetchRecords', () => {
 			})
 
 			const databaseInstance = dialecte.getDatabaseInstance()
-			const records = await fetchRecords<TestConfig, TestElement>({
+			const records = await fetchRecords({
 				tagName: 'A',
 				stagedOperations: context.stagedOperations,
 				dialecteConfig: TEST_DIALECTE_CONFIG,
