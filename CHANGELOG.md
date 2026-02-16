@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.15] - 2026-02-16
+
+### Added
+
+- `findDescendantsAsTree`: wrapper around `findDescendants` to get a tree record instead of a flatten result
+- testing `pyodide` for the generation script - still wip
+
+### Changed
+
+- `findDescendants`: in between elements are optional if not specified with attributes, and collected if present
+
+### Fixed
+
+- `create` method hook integration: set the focus on the right updated parent
+
 ## [0.0.14] - 2026-02-02
 
 ### Changed
