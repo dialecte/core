@@ -189,5 +189,60 @@ describe('CRUD Operations - addChild', () => {
 				await cleanup()
 			}
 		})
+
+		it('reflects hook parent updates in subsequent addChild operations', async () => {
+			const { dialecte, cleanup } = await createTestDialecte({
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+				dialecteConfig: {
+					...TEST_DIALECTE_CONFIG,
+					hooks: {
+						afterCreated: <
+							GenericConfig extends AnyDialecteConfig,
+							GenericElement extends ElementsOf<GenericConfig>,
+							GenericParentElement extends ElementsOf<GenericConfig>,
+						>(params: {
+							childRecord: RawRecord<GenericConfig, GenericElement>
+							parentRecord: RawRecord<GenericConfig, GenericParentElement>
+							context: Context<GenericConfig, GenericParentElement>
+						}) => {
+							const { childRecord, parentRecord } = params
+
+							// Simulate hook removing child from parent
+							const updatedParent: RawRecord<GenericConfig, GenericParentElement> = {
+								...parentRecord,
+								children: parentRecord.children.filter((c) => c.id !== childRecord.id),
+							}
+
+							return [
+								{
+									status: 'updated' as const,
+									oldRecord: parentRecord,
+									newRecord: updatedParent,
+								},
+							]
+						},
+					},
+				},
+			})
+
+			try {
+				const chain = dialecte
+					.fromRoot()
+					.addChild({ tagName: 'A', id: '0-0-0-0-1', attributes: { aA: 'val1' }, setFocus: false })
+					.addChild({ tagName: 'A', id: '0-0-0-0-2', attributes: { aA: 'val2' }, setFocus: false })
+
+				const context = await chain.getContext()
+
+				// Verify: Root's children should be empty (both removed by hook)
+				expect(context.currentFocus.children.length).toBe(0)
+
+				// Verify: Staged operations show both children were removed
+				const updateOps = context.stagedOperations.filter((op) => op.status === 'updated')
+				const finalRootUpdate = updateOps[updateOps.length - 1]
+				expect(finalRootUpdate.newRecord?.children.length).toBe(0)
+			} finally {
+				await cleanup()
+			}
+		})
 	})
 })

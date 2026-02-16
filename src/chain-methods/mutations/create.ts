@@ -148,9 +148,10 @@ function createAndStageChild<
 	})
 
 	if (dialecteConfig.hooks?.afterCreated) {
+		let hookUpdatedParent = updatedParent
 		const hookOperations = dialecteConfig.hooks.afterCreated({
 			childRecord: childRecord,
-			parentRecord: context.currentFocus,
+			parentRecord: updatedParent,
 			context,
 		})
 
@@ -164,7 +165,19 @@ function createAndStageChild<
 					oldRecord: operation.oldRecord,
 					newRecord: operation.newRecord,
 				})
+
+				if (operation.newRecord.id === updatedParent.id) {
+					hookUpdatedParent = toChainRecord<GenericConfig, GenericElement>({
+						record: operation.newRecord as RawRecord<GenericConfig, GenericElement>,
+						status: 'updated',
+					})
+				}
 			}
+		}
+
+		return {
+			childRecord: toChainRecord({ record: childRecord, status: 'created' }),
+			updatedParent: toChainRecord({ record: hookUpdatedParent, status: 'updated' }),
 		}
 	}
 
