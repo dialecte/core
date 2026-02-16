@@ -6,8 +6,6 @@ import type {
 	ElementsOf,
 } from '@/types'
 
-export type Scope = 'global' | 'ancestors' | 'descendants' | 'children'
-
 export type FilterAttributes<
 	GenericVersion extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericVersion>,

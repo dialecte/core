@@ -298,7 +298,7 @@ function matchesFilter<GenericConfig extends AnyDialecteConfig>(params: {
 	}
 
 	if (filter.attributes) {
-		return matchesAttributeFilter(record, filter.attributes)
+		return matchesAttributeFilter({ record, attributeFilter: filter.attributes })
 	}
 
 	return true

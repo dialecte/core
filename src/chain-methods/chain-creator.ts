@@ -4,6 +4,7 @@ import {
 	createGetParentMethod,
 	createFindChildrenMethod,
 	createFindDescendantsMethod,
+	createFindDescendantsAsTreeMethod,
 	createGetTreeMethod,
 	createGetAttributesValuesMethod,
 } from './ending'
@@ -64,6 +65,11 @@ export function createCoreChain<
 			databaseInstance,
 		}),
 		findDescendants: createFindDescendantsMethod({
+			contextPromise,
+			dialecteConfig,
+			databaseInstance,
+		}),
+		findDescendantsAsTree: createFindDescendantsAsTreeMethod({
 			contextPromise,
 			dialecteConfig,
 			databaseInstance,

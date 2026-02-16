@@ -27,7 +27,13 @@ describe('findDescendants (new API)', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'finds single level descendants',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="child" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="value">
+						<AA_1 ${DEV_ID}="3" aAA_1="child" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: { tagName: 'AA_1' },
 			expected: {
@@ -36,7 +42,15 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'finds nested descendants with path',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa" /></AA_1></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa">
+							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa" />
+						</AA_1>
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -55,7 +69,16 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'enforces path context - only descendants of filtered parent',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="match"><AA_1 ${DEV_ID}="3" aAA_1="child1" /></A><A ${DEV_ID}="4" aA="nomatch"><AA_1 ${DEV_ID}="5" aAA_1="child2" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="match">
+						<AA_1 ${DEV_ID}="3" aAA_1="child1" />
+					</A>
+					<A ${DEV_ID}="4" aA="nomatch">
+						<AA_1 ${DEV_ID}="5" aAA_1="child2" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -72,7 +95,17 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'filters by attributes at multiple levels',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a1"><AA_1 ${DEV_ID}="3" aAA_1="aa1" /><AA_1 ${DEV_ID}="4" aAA_1="aa2" /></A><A ${DEV_ID}="5" aA="a2"><AA_1 ${DEV_ID}="6" aAA_1="aa1" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a1">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa1" />
+						<AA_1 ${DEV_ID}="4" aAA_1="aa2" />
+					</A>
+					<A ${DEV_ID}="5" aA="a2">
+						<AA_1 ${DEV_ID}="6" aAA_1="aa1" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -90,7 +123,19 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'supports OR matching with array attribute values',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="opt1"><AA_1 ${DEV_ID}="3" aAA_1="c1" /></A><A ${DEV_ID}="4" aA="opt2"><AA_1 ${DEV_ID}="5" aAA_1="c2" /></A><A ${DEV_ID}="6" aA="opt3"><AA_1 ${DEV_ID}="7" aAA_1="c3" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="opt1">
+						<AA_1 ${DEV_ID}="3" aAA_1="c1" />
+					</A>
+					<A ${DEV_ID}="4" aA="opt2">
+						<AA_1 ${DEV_ID}="5" aAA_1="c2" />
+					</A>
+					<A ${DEV_ID}="6" aA="opt3">
+						<AA_1 ${DEV_ID}="7" aAA_1="c3" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -106,7 +151,14 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'deduplicates ancestors from multiple paths',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="shared"><AA_1 ${DEV_ID}="3" aAA_1="c1" /><AA_1 ${DEV_ID}="4" aAA_1="c2" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="shared">
+						<AA_1 ${DEV_ID}="3" aAA_1="c1" />
+						<AA_1 ${DEV_ID}="4" aAA_1="c2" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -121,22 +173,39 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'skips intermediate levels with DescendantsOf',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa"><AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" /></AAA_1></AA_1></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa">
+							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa">
+								<AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" />
+							</AAA_1>
+						</AA_1>
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
 				descendant: {
-					tagName: 'AAAA_1', // Skip AA_1 and AAA_1
+					tagName: 'AAAA_1', // Skip AA_1 and AAA_1 (optional, no attributes)
 				},
 			},
 			expected: {
 				A: { count: 1, ids: ['2'] },
 				AAAA_1: { count: 1, ids: ['5'] },
+				// AA_1 and AAA_1 not collected (not in filter)
 			},
 		},
 		{
 			description: 'returns empty arrays when no matches',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="nomatch" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="value">
+						<AA_1 ${DEV_ID}="3" aAA_1="nomatch" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -152,7 +221,11 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'returns empty arrays when element has no descendants',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="value" />
+				</Root>
+			`,
 			startFrom: { tagName: 'A', id: '2' },
 			filter: { tagName: 'AA_1' },
 			expected: {
@@ -161,7 +234,17 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'handles deeply nested paths',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa"><AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" /></AAA_1></AA_1></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa">
+							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa">
+								<AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" />
+							</AAA_1>
+						</AA_1>
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -184,7 +267,15 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'finds multiple matches at deepest level',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa1" /><AA_1 ${DEV_ID}="4" aAA_1="aa2" /><AA_1 ${DEV_ID}="5" aAA_1="aa3" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa1" />
+						<AA_1 ${DEV_ID}="4" aAA_1="aa2" />
+						<AA_1 ${DEV_ID}="5" aAA_1="aa3" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -199,7 +290,16 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'filters across multiple branches',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="match"><AA_1 ${DEV_ID}="3" aAA_1="c1" /></A><A ${DEV_ID}="4" aA="match"><AA_1 ${DEV_ID}="5" aAA_1="c2" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="match">
+						<AA_1 ${DEV_ID}="3" aAA_1="c1" />
+					</A>
+					<A ${DEV_ID}="4" aA="match">
+						<AA_1 ${DEV_ID}="5" aAA_1="c2" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -215,7 +315,14 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'combines attribute filters with path at different levels',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a1" bA="b1"><AA_1 ${DEV_ID}="3" aAA_1="aa1" bAA_1="bb1" /><AA_1 ${DEV_ID}="4" aAA_1="aa2" bAA_1="bb2" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a1" bA="b1">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa1" bAA_1="bb1" />
+						<AA_1 ${DEV_ID}="4" aAA_1="aa2" bAA_1="bb2" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -232,7 +339,12 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'works with single tag in filter (no descendants)',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a1" /><A ${DEV_ID}="3" aA="a2" /></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a1" />
+					<A ${DEV_ID}="3" aA="a2" />
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			filter: {
 				tagName: 'A',
@@ -244,7 +356,18 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'no filter: returns all descendants grouped by tag',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa" /></AA_1></A><A ${DEV_ID}="5" aA="a2"><AA_1 ${DEV_ID}="6" aAA_1="aa2" /></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa">
+							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa" />
+						</AA_1>
+					</A>
+					<A ${DEV_ID}="5" aA="a2">
+						<AA_1 ${DEV_ID}="6" aAA_1="aa2" />
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			expected: {
 				A: { count: 2, ids: ['2', '5'] },
@@ -254,13 +377,27 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'no filter: empty result when element has no descendants',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="value" />
+				</Root>
+			`,
 			startFrom: { tagName: 'A', id: '2' },
 			expected: {},
 		},
 		{
 			description: 'no filter: handles deeply nested tree',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a"><AA_1 ${DEV_ID}="3" aAA_1="aa"><AAA_1 ${DEV_ID}="4" aAAA_1="aaa"><AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" /></AAA_1></AA_1></A></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa">
+							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa">
+								<AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" />
+							</AAA_1>
+						</AA_1>
+					</A>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			expected: {
 				A: { count: 1, ids: ['2'] },
@@ -271,7 +408,17 @@ describe('findDescendants (new API)', () => {
 		},
 		{
 			description: 'no filter: collects from multiple branches',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="a1"><AA_1 ${DEV_ID}="3" aAA_1="aa1" /><AA_2 ${DEV_ID}="4" aAA_2="aa2" /></A><B ${DEV_ID}="5" aB="b1"><BB_1 ${DEV_ID}="6" aBB_1="bb1" /></B></Root>`,
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aA="a1">
+						<AA_1 ${DEV_ID}="3" aAA_1="aa1" />
+						<AA_2 ${DEV_ID}="4" aAA_2="aa2" />
+					</A>
+					<B ${DEV_ID}="5" aB="b1">
+						<BB_1 ${DEV_ID}="6" aBB_1="bb1" />
+					</B>
+				</Root>
+			`,
 			startFrom: { tagName: 'Root', id: '1' },
 			expected: {
 				A: { count: 1, ids: ['2'] },
@@ -279,6 +426,105 @@ describe('findDescendants (new API)', () => {
 				AA_2: { count: 1, ids: ['4'] },
 				B: { count: 1, ids: ['5'] },
 				BB_1: { count: 1, ids: ['6'] },
+			},
+		},
+		{
+			description: 'optional intermediates: multiple nested levels collected',
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aFC="fc">
+						<AA_1 ${DEV_ID}="3" aSC1="sc1">
+							<AA_1 ${DEV_ID}="4" aSC2="sc2">
+								<AA_1 ${DEV_ID}="5" aSC3="sc3">
+									<AAA_1 ${DEV_ID}="6" aFCR="fcr" />
+								</AA_1>
+							</AA_1>
+						</AA_1>
+					</A>
+				</Root>
+			`,
+			startFrom: { tagName: 'Root', id: '1' },
+			filter: {
+				tagName: 'A',
+				descendant: {
+					tagName: 'AA_1',
+					descendant: {
+						tagName: 'AAA_1',
+					},
+				},
+			},
+			expected: {
+				A: { count: 1, ids: ['2'] },
+				AA_1: { count: 3, ids: ['3', '4', '5'] },
+				AAA_1: { count: 1, ids: ['6'] },
+			},
+		},
+		{
+			description: 'optional intermediates: mixed depths across branches',
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aFC1="fc1">
+						<AAA_1 ${DEV_ID}="3" aFCR1="fcr1" />
+					</A>
+					<A ${DEV_ID}="4" aFC2="fc2">
+						<AA_1 ${DEV_ID}="5" aSC1="sc1">
+							<AAA_1 ${DEV_ID}="6" aFCR2="fcr2" />
+						</AA_1>
+					</A>
+					<A ${DEV_ID}="7" aFC3="fc3">
+						<AA_1 ${DEV_ID}="8" aSC2="sc2">
+							<AA_1 ${DEV_ID}="9" aSC3="sc3">
+								<AAA_1 ${DEV_ID}="10" aFCR3="fcr3" />
+							</AA_1>
+						</AA_1>
+					</A>
+				</Root>
+			`,
+			startFrom: { tagName: 'Root', id: '1' },
+			filter: {
+				tagName: 'A',
+				descendant: {
+					tagName: 'AA_1',
+					descendant: {
+						tagName: 'AAA_1',
+					},
+				},
+			},
+			expected: {
+				A: { count: 3, ids: ['2', '4', '7'] },
+				AA_1: { count: 3, ids: ['5', '8', '9'] },
+				AAA_1: { count: 3, ids: ['3', '6', '10'] },
+			},
+		},
+		{
+			description: 'optional intermediates: required when has attributes',
+			xml: /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+					<A ${DEV_ID}="2" aFC="fc">
+						<AAA_1 ${DEV_ID}="3" aFCR="fcr" />
+					</A>
+					<A ${DEV_ID}="4" aFC="fc">
+						<AA_1 ${DEV_ID}="5" aAA_1="special">
+							<AAA_1 ${DEV_ID}="6" aFCR="fcr" />
+						</AA_1>
+					</A>
+				</Root>
+			`,
+			startFrom: { tagName: 'Root', id: '1' },
+			filter: {
+				tagName: 'A',
+				descendant: {
+					tagName: 'AA_1',
+					attributes: { aAA_1: 'special' }, // Required, not optional
+					descendant: {
+						tagName: 'AAA_1',
+					},
+				},
+			},
+			expected: {
+				A: { count: 1, ids: ['4'] }, // Only second branch matches
+				AA_1: { count: 1, ids: ['5'] },
+				AAA_1: { count: 1, ids: ['6'] },
 			},
 		},
 	]

@@ -171,7 +171,10 @@ describe('matchesAttributeFilter', () => {
 
 	function runTest(tc: TestCase) {
 		it(tc.desc, () => {
-			const result = matchesAttributeFilter(tc.record, tc.attributeFilter)
+			const result = matchesAttributeFilter({
+				record: tc.record,
+				attributeFilter: tc.attributeFilter,
+			})
 			expect(result).toBe(tc.expected)
 		})
 	}
@@ -186,7 +189,7 @@ describe('findByAttributes', () => {
 		<B ${DEV_ID}="b2" bA="b2" bB="descB" />
 	</Root>`
 
-	let dialecte: DialecteCore<TestConfig>
+	let dialecte: DialecteCore<TestConfig, {}>
 	let context: Context<TestConfig, ElementsOf<TestConfig>>
 	let dialecteConfig: TestConfig
 	let cleanup: () => Promise<void>

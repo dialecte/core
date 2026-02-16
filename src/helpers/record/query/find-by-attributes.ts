@@ -32,7 +32,7 @@ export async function findByAttributes<
 	})
 
 	const matchingByAttributes = candidateRecords.filter((candidateRecord) =>
-		matchesAttributeFilter(candidateRecord, attributes),
+		matchesAttributeFilter({ record: candidateRecord, attributeFilter: attributes }),
 	)
 
 	return matchingByAttributes
@@ -47,10 +47,12 @@ export async function findByAttributes<
 export function matchesAttributeFilter<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
->(
-	record: RawRecord<GenericConfig, GenericElement>,
-	attributeFilter?: FilterAttributes<GenericConfig, GenericElement>,
-): boolean {
+>(params: {
+	record: RawRecord<GenericConfig, GenericElement>
+	attributeFilter?: FilterAttributes<GenericConfig, GenericElement>
+}): boolean {
+	const { record, attributeFilter } = params
+
 	if (!attributeFilter || Object.keys(attributeFilter).length === 0) {
 		return true
 	}

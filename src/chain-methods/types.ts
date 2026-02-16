@@ -53,6 +53,10 @@ export type CoreChain<
 		filter?: GenericFilter,
 	): FindDescendantsReturn<GenericConfig, GenericFilter, GenericElement>
 
+	findDescendantsAsTree<GenericFilter extends DescendantsFilter<GenericConfig>>(
+		filter: GenericFilter,
+	): Promise<TreeRecord<GenericConfig, GenericFilter['tagName']>[]>
+
 	getTree(
 		params?: GetTreeParams<GenericConfig, GenericElement>,
 	): Promise<TreeRecord<GenericConfig, GenericElement>>
