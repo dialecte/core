@@ -37,5 +37,6 @@ src/documentation/
 
 
 src/script/xsd
+src/script/pyodide
 
 AGENTS.md

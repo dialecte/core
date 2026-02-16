@@ -86,32 +86,20 @@ function main() {
 		}
 	}
 
-	// Also consider local element usages where a child element has a type equal
-	// to a global element's type, or where a local element has the same name
+	// Also consider local element usages where a local element has the same name
 	// as a global element (and is not top-level). These count as the global
 	// being 'used as a child' even if via inline declaration.
-	const globalTypeByName = new Map<string, string>()
-	for (const g of globalElements) {
-		if (g.type) {
-			const local = localName(g.type)
-			if (local) globalTypeByName.set(g.name, local)
-		}
-	}
+	// NOTE: We do NOT check for shared types because that creates false positives
+	// (e.g., SubCategory uses tFunctionCategory but that doesn't mean FunctionCategory is referenced)
+	const globalNames = new Set(globalElements.map((g) => g.name))
 
 	for (let i = 0; i < allElementNodes.length; i++) {
 		const el = allElementNodes.item(i)!
-		// if this element is not a top-level global, check its name/type
+		// if this element is not a top-level global, check its name
 		if (el.parentNode !== root) {
 			const name = el.getAttribute('name')
-			if (name && globalElements.some((g) => g.name === name)) {
+			if (name && globalNames.has(name)) {
 				referenced.add(name)
-			}
-			const type = el.getAttribute('type')
-			if (type) {
-				const tLocal = localName(type)
-				for (const [gname, gtypeLocal] of globalTypeByName.entries()) {
-					if (gtypeLocal === tLocal) referenced.add(gname)
-				}
 			}
 		}
 	}

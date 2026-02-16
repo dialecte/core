@@ -62,9 +62,9 @@ def local_name(qname: Optional[str]) -> str:
 
 
 def choose_prefix(uri: str, schema: xmlschema.XMLSchemaBase) -> str:
-    # Default SCL namespace: always 'scl'
+    # Default SCL namespace: always ''
     if uri == 'http://www.iec.ch/61850/2003/SCL':
-        return 'scl'
+        return ''
     # Use the prefix defined in the XSD when available
     for pfx, ns in schema.namespaces.items():
         if ns == uri:

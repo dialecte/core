@@ -50,4 +50,6 @@ export const MAPPING: Record<string, string[]> = {
 	],
 	Project: ['SCL'],
 	FunctionTemplate: ['SCL'],
+	FunctionCategory: ['Substation', 'VoltageLevel', 'Bay', 'Process', 'Line'],
+	CheckoutID: ['IED'],
 }
