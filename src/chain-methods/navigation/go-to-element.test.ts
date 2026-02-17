@@ -105,7 +105,7 @@ describe('Navigation - goToElement', () => {
 		try {
 			// @ts-expect-error - Testing runtime error for non-singleton without id
 			const chain = dialecte.fromRoot().goToElement({ tagName: 'E' })
-			await expect(chain.getContext()).rejects.toThrow('Element E requires an id parameter')
+			await expect(chain.getContext()).rejects.toThrow('Element E requires an id')
 		} finally {
 			await cleanup()
 		}

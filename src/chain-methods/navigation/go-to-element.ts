@@ -37,13 +37,13 @@ export function createGoToElementMethod<
 		const newContextPromise = contextPromise.then(async (context) => {
 			const isSingleton = dialecteConfig.singletonElements?.includes(tagName)
 
-			const stagedRecord = id
-				? getLatestStagedRecord<GenericConfig, GenericFocusElement>({
-						stagedOperations: context.stagedOperations,
-						id,
-						tagName: tagName as GenericFocusElement,
-					})
-				: null
+			// Get latest staged record (supports singletons without id)
+			const stagedRecord = getLatestStagedRecord<GenericConfig, GenericFocusElement>({
+				dialecteConfig,
+				stagedOperations: context.stagedOperations,
+				tagName: tagName as GenericFocusElement,
+				id,
+			})
 
 			let record = stagedRecord?.status !== 'deleted' ? stagedRecord?.record : undefined
 

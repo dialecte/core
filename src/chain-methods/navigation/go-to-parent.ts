@@ -45,6 +45,7 @@ export function createGoToParentMethod<
 			)
 
 			const stagedParentRecord = getLatestStagedRecord<GenericConfig, GenericParentElement>({
+				dialecteConfig,
 				stagedOperations: context.stagedOperations,
 				id: parentRef.id,
 				tagName: parentRef.tagName as GenericParentElement,

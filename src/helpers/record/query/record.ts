@@ -68,6 +68,7 @@ export async function getRecord<
 	const { id, tagName, stagedOperations, dialecteConfig, databaseInstance, type = 'raw' } = params
 
 	const stagedRecord = getLatestStagedRecord({
+		dialecteConfig,
 		stagedOperations,
 		id,
 		tagName,
@@ -179,13 +180,15 @@ export async function fetchRecords<
 }
 
 /**
- * Retrieves the latest staged record for a given element by id.
+ * Retrieves the latest staged record for a given element.
+ * Searches by id if provided, otherwise searches by tagName only (for singletons).
  * Throws if the element has been deleted in staged operations.
  * Searches operations in reverse order (most recent first).
  *
  * @param stagedOperations - Array of staged operations
- * @param id - The id of the element to find
- * @param tagName - Optional tagName for validation and better error messages
+ * @param id - Optional id for singletons, required for non-singletons
+ * @param tagName - TagName for search/validation
+ * @param throwOnDeleted - Whether to throw if element was deleted (default: true)
  * @returns The most recent record (from create or update), or undefined if not found in staged operations
  * @throws Error if element was deleted in staged operations
  */
@@ -193,9 +196,10 @@ export function getLatestStagedRecord<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig> = ElementsOf<GenericConfig>,
 >(params: {
+	dialecteConfig: GenericConfig
 	stagedOperations: Operation<GenericConfig>[]
-	id: string
 	tagName: GenericElement
+	id?: string
 	throwOnDeleted?: boolean
 }):
 	| {
@@ -203,31 +207,43 @@ export function getLatestStagedRecord<
 			status: Operation<GenericConfig>['status']
 	  }
 	| undefined {
-	const { stagedOperations, id, tagName, throwOnDeleted = true } = params
+	const { dialecteConfig, stagedOperations, id, tagName, throwOnDeleted = true } = params
+
+	assert(
+		dialecteConfig.singletonElements?.includes(tagName) || id,
+		`Element ${tagName} requires an id`,
+	)
 
 	const operation = [...stagedOperations].reverse().find((operation) => {
-		if (operation.status === 'created') return operation.newRecord.id === id
-		if (operation.status === 'updated') return operation.newRecord.id === id
-		if (operation.status === 'deleted') return operation.oldRecord.id === id
-		return false
+		// If id provided, match by id first
+		if (id !== undefined) {
+			if (operation.status === 'created') return operation.newRecord.id === id
+			if (operation.status === 'updated') return operation.newRecord.id === id
+			if (operation.status === 'deleted') return operation.oldRecord.id === id
+			return false
+		}
+
+		// No id provided: match by tagName only (for singletons)
+		const opRecord = operation.status === 'deleted' ? operation.oldRecord : operation.newRecord
+		return opRecord.tagName === tagName
 	})
 
 	if (!operation) return undefined
 
 	if (operation.status === 'deleted') {
 		const tagInfo = tagName ? ` ${tagName}` : ''
-		if (throwOnDeleted) throw new Error(`Element${tagInfo} with id ${id} has been deleted`)
+		const idInfo = id ? ` with id ${id}` : ''
+		if (throwOnDeleted) throw new Error(`Element${tagInfo}${idInfo} has been deleted`)
 	}
 
 	const record = (
 		operation.status === 'deleted' ? operation.oldRecord : operation.newRecord
 	) as RawRecord<GenericConfig, GenericElement>
 
-	// Validate tagName if provided
+	// Validate tagName (catches programming errors when id is provided)
 	if (record.tagName !== tagName) {
-		throw new Error(
-			`Element tagName mismatch: expected ${tagName}, got ${record.tagName} for id ${id}`,
-		)
+		const idInfo = id ? ` for id ${id}` : ''
+		throw new Error(`Element tagName mismatch: expected ${tagName}, got ${record.tagName}${idInfo}`)
 	}
 
 	return { record, status: operation.status }

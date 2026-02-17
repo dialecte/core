@@ -221,6 +221,7 @@ describe('getLatestStagedRecord', () => {
 		}) => {
 			it(description, () => {
 				const params = {
+					dialecteConfig: TEST_DIALECTE_CONFIG,
 					stagedOperations,
 					id,
 					tagName,
