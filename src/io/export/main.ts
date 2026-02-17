@@ -108,31 +108,34 @@ async function rebuildXmlFromIndexedDB(params: {
 			null,
 		)
 
-		const sclElement = (await databaseInstance
+		const rootRecord = (await databaseInstance
 			.table(elementsTableName)
 			.where({ tagName: rootElementName })
 			.first()) as AnyRawRecord | undefined
-		if (!sclElement) throw new Error(`No ${rootElementName} root element found in DB`)
+		if (!rootRecord) throw new Error(`No ${rootElementName} root element found in DB`)
 
 		const rootElement = emptyXmlDocument.createElementNS(
-			sclElement.namespace.uri,
-			sclElement.tagName,
+			rootRecord.namespace.uri,
+			rootRecord.tagName,
 		)
 
-		rootElement.setAttribute('xmlns', sclElement.namespace.uri)
+		rootElement.setAttribute('xmlns', rootRecord.namespace.uri)
 
 		// Now add regular attributes, text content, etc.
-		if (sclElement.attributes)
+		if (rootRecord.attributes)
 			addAttributesToElement({
+				dialecteConfig,
 				document: emptyXmlDocument,
 				element: rootElement,
-				attributes: sclElement.attributes,
+				attributes: rootRecord.attributes,
 				isRoot: true,
 			})
 
-		if (sclElement.value) rootElement.textContent = sclElement.value.trim()
+		enforceRootAttributes({ dialecteConfig, rootElement, namespace: rootRecord.namespace })
 
-		if (withDatabaseIds) rootElement.setAttribute(TEMP_IDB_ID_ATTRIBUTE_NAME, sclElement.id)
+		if (rootRecord.value) rootElement.textContent = rootRecord.value.trim()
+
+		if (withDatabaseIds) rootElement.setAttribute(TEMP_IDB_ID_ATTRIBUTE_NAME, rootRecord.id)
 
 		emptyXmlDocument.appendChild(rootElement)
 
@@ -143,7 +146,7 @@ async function rebuildXmlFromIndexedDB(params: {
 			elementsTableName,
 			withDatabaseIds,
 			xmlDocument: emptyXmlDocument,
-			databaseRecord: sclElement,
+			databaseRecord: rootRecord,
 			parentDomElement: rootElement,
 		})
 	}
@@ -187,6 +190,7 @@ async function recursivelyBuildXmlTree(params: {
 
 	for (const childRecord of orderedChildrenRecords) {
 		const childElement = createElementWithAttributesAndText({
+			dialecteConfig,
 			document: xmlDocument,
 			record: childRecord,
 			defaultNamespace: dialecteConfig.namespaces.default,
@@ -211,12 +215,13 @@ async function recursivelyBuildXmlTree(params: {
 }
 
 function createElementWithAttributesAndText(params: {
+	dialecteConfig: AnyDialecteConfig
 	document: XMLDocument
 	record: AnyRawRecord
 	defaultNamespace: Namespace
 	withDatabaseIds: boolean
 }): Element {
-	const { document, record, defaultNamespace, withDatabaseIds } = params
+	const { dialecteConfig, document, record, defaultNamespace, withDatabaseIds } = params
 	let element: Element
 
 	const isDefaultNamespace = record.namespace.uri === defaultNamespace.uri
@@ -225,6 +230,7 @@ function createElementWithAttributesAndText(params: {
 	// Defensive: exclude 'xmlns' prefix (malformed namespace)
 	if (!isDefaultNamespace && record.namespace.prefix && record.namespace.prefix !== 'xmlns') {
 		addNamespaceToRootElementIfNeeded({
+			dialecteConfig,
 			document,
 			namespace: record.namespace,
 		})
@@ -238,7 +244,13 @@ function createElementWithAttributesAndText(params: {
 	}
 
 	if (record.attributes)
-		addAttributesToElement({ document, element, attributes: record.attributes, isRoot: false })
+		addAttributesToElement({
+			dialecteConfig,
+			document,
+			element,
+			attributes: record.attributes,
+			isRoot: false,
+		})
 
 	if (record.value) element.textContent = record.value.trim()
 
@@ -248,12 +260,13 @@ function createElementWithAttributesAndText(params: {
 }
 
 function addAttributesToElement(params: {
+	dialecteConfig: AnyDialecteConfig
 	document: XMLDocument
 	element: Element
 	attributes: AnyAttribute[]
 	isRoot: boolean
 }) {
-	const { document, element, attributes, isRoot } = params
+	const { dialecteConfig, document, element, attributes, isRoot } = params
 
 	for (const attribute of attributes) {
 		// Skip namespace declarations - they're metadata, not data attributes
@@ -265,6 +278,7 @@ function addAttributesToElement(params: {
 
 			if (!isRoot && prefix) {
 				addNamespaceToRootElementIfNeeded({
+					dialecteConfig,
 					document,
 					namespace: attribute.namespace,
 				})
@@ -284,10 +298,11 @@ function addAttributesToElement(params: {
 }
 
 function addNamespaceToRootElementIfNeeded(params: {
+	dialecteConfig: AnyDialecteConfig
 	document: XMLDocument
 	namespace: { prefix: string; uri: string }
 }) {
-	const { document, namespace } = params
+	const { dialecteConfig, document, namespace } = params
 	const rootElement = document.documentElement
 	if (!rootElement) return
 
@@ -302,6 +317,52 @@ function addNamespaceToRootElementIfNeeded(params: {
 	const existing = rootElement.getAttributeNS(XMLNS_NS, namespace.prefix)
 	if (existing === null) {
 		rootElement.setAttributeNS(XMLNS_NS, `xmlns:${namespace.prefix}`, namespace.uri)
+		enforceRootAttributes({ dialecteConfig, rootElement, namespace })
+	}
+}
+
+function enforceRootAttributes(params: {
+	dialecteConfig: AnyDialecteConfig
+	rootElement: Element
+	namespace: { prefix: string; uri: string }
+}) {
+	const { dialecteConfig, rootElement, namespace } = params
+
+	const matchingRootAttributes = Object.entries(
+		dialecteConfig.definition[dialecteConfig.rootElementName].attributes.details,
+	).filter(([_, attribute]) => {
+		const isDefaultNamespace = namespace.uri === dialecteConfig.namespaces.default.uri
+		if (isDefaultNamespace) {
+			const isUnqualifiedAttributeToBeAdded = attribute.namespace === null
+			return isUnqualifiedAttributeToBeAdded
+		}
+
+		const isQualifiedAttributeToBeAdded =
+			attribute.namespace?.prefix === namespace.prefix && attribute.namespace?.uri === namespace.uri
+		return isQualifiedAttributeToBeAdded
+	})
+
+	const hasMatchingAttributes = matchingRootAttributes.length > 0
+	if (!hasMatchingAttributes) return
+
+	for (const [attributeName, attribute] of matchingRootAttributes) {
+		const localName = attributeName.includes(':')
+			? attributeName.split(':').pop() || attributeName
+			: attributeName
+
+		const attributeExists =
+			attribute.namespace === null
+				? rootElement.hasAttribute(localName)
+				: rootElement.hasAttributeNS(attribute.namespace.uri, localName)
+
+		if (attributeExists) continue
+
+		if (attribute.namespace === null) {
+			rootElement.setAttribute(localName, attribute.default || '')
+		} else {
+			const qualifiedName = `${attribute.namespace.prefix}:${localName}`
+			rootElement.setAttributeNS(attribute.namespace.uri, qualifiedName, attribute.default || '')
+		}
 	}
 }
 

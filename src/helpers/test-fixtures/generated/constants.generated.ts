@@ -69,7 +69,7 @@ export const REQUIRED_ATTRIBUTES = {
 	CC_1: ['aCC_1'] as const,
 	CC_2: ['aCC_2'] as const,
 	CC_3: ['aCC_3'] as const,
-	Root: [] as const,
+	Root: ['root'] as const,
 } as const satisfies Record<AvailableElement, readonly string[]>
 
 export const PATTERNS = {} as const satisfies Partial<
@@ -180,7 +180,7 @@ export const ATTRIBUTES = {
 	CC_1: { aCC_1: '' as string, bCC_1: '' as string, cCC_1: '' as string } as AttributesOf<'CC_1'>,
 	CC_2: { aCC_2: '' as string, bCC_2: '' as string, cCC_2: '' as string } as AttributesOf<'CC_2'>,
 	CC_3: { aCC_3: '' as string, bCC_3: '' as string, cCC_3: '' as string } as AttributesOf<'CC_3'>,
-	Root: {} as AttributesOf<'Root'>,
+	Root: { root: '' as string, 'ext:root': '' as string } as AttributesOf<'Root'>,
 } as const satisfies { [K in AvailableElement]: AttributesOf<K> }
 
 export const CHILDREN = {
@@ -357,3 +357,13 @@ export const ANCESTORS = {
 	CC_3: ['C', 'Root'] as const,
 	Root: [] as const,
 } as const satisfies Record<AvailableElement, readonly AvailableElement[]>
+
+/**
+ * Type helper to get all descendants of an element
+ */
+export type DescendantsOf<T extends AvailableElement> = (typeof DESCENDANTS)[T][number]
+
+/**
+ * Type helper to get all ancestors of an element
+ */
+export type AncestorsOf<T extends AvailableElement> = (typeof ANCESTORS)[T][number]

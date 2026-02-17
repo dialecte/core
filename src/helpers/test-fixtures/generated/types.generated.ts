@@ -185,7 +185,10 @@ export type AttributesCC_3 = {
 	cCC_3?: string
 }
 
-export type AttributesRoot = {}
+export type AttributesRoot = {
+	root: string
+	'ext:root'?: string
+}
 
 type AttributesMap = {
 	A: AttributesA

@@ -38,42 +38,101 @@ describe('Export', () => {
 			{
 				description: 'simple document',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A aA="value aA" ${DEV_ID}="2"/></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+						<A aA="value aA" ${DEV_ID}="2"/>
+					</Root>
 				`,
 				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="value aA"/></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">
+						<A aA="value aA"/>
+					</Root>
 				`,
-				expectedOpenScdXml: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1"><A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/></Root>`,
+				expectedOpenScdXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1">
+						<A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
+					</Root>
+				`,
 			},
 			{
 				description: 'children ordering',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A aA="value aA" ${DEV_ID}="2"><AA_1 aAA_1="value aa1" ${DEV_ID}="3"/><AA_2 aAA_2="value aa2" ${DEV_ID}="4"/></A></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
+						<A aA="value aA" ${DEV_ID}="2">
+							<AA_1 aAA_1="value aa1" ${DEV_ID}="3"/>
+							<AA_2 aAA_2="value aa2" ${DEV_ID}="4"/>
+						</A>
+					</Root>
 				`,
 				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="value aA"><AA_1 aAA_1="value aa1"/><AA_2 aAA_2="value aa2"/></A></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">
+						<A aA="value aA">
+							<AA_1 aAA_1="value aa1"/>
+							<AA_2 aAA_2="value aa2"/>
+						</A>
+					</Root>
 				`,
-				expectedOpenScdXml: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1"><A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"><AA_1 aAA_1="value aa1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="3"/><AA_2 aAA_2="value aa2" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="4"/></A></Root>`,
+				expectedOpenScdXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1">
+						<A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2">
+							<AA_1 aAA_1="value aa1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="3"/>
+							<AA_2 aAA_2="value aa2" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="4"/>
+						</A>
+					</Root>
+				`,
 			},
 			{
 				description: 'same attribute with two different namespaces',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1"><A aA="value aA" ext:cA="value cA" ${DEV_ID}="2"/></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1">
+						<A aA="value aA" ext:cA="value cA" ${DEV_ID}="2"/>
+					</Root>
 				`,
 				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_EXT_NAMESPACE}><A aA="value aA" ext:cA="value cA"/></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
+						<A aA="value aA" ext:cA="value cA"/>
+					</Root>
 				`,
-				expectedOpenScdXml: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE}><A aA="value aA" ext:cA="value cA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/></Root>`,
+				expectedOpenScdXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
+						<A aA="value aA" ext:cA="value cA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
+					</Root>
+				`,
 			},
 			{
 				description: 'namespace element',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1"><ext:AA_3 aAA_3="value aAA_3" ${DEV_ID}="2"/></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1">
+						<ext:AA_3 aAA_3="value aAA_3" ${DEV_ID}="2"/>
+					</Root>
 				`,
 				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_EXT_NAMESPACE}><ext:AA_3 aAA_3="value aAA_3"/></Root>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
+						<ext:AA_3 aAA_3="value aAA_3"/>
+					</Root>
 				`,
-				expectedOpenScdXml: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE}><ext:AA_3 aAA_3="value aAA_3" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/></Root>`,
+				expectedOpenScdXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
+						<ext:AA_3 aAA_3="value aAA_3" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
+					</Root>
+				`,
+			},
+			{
+				description: 'root element with both unqualified and qualified version attributes',
+				xml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1">
+						<ext:AA_3 aAA_3="value" ${DEV_ID}="2"/>
+					</Root>
+    		`,
+				expectedXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
+						<ext:AA_3 aAA_3="value"/>
+					</Root>
+    		`,
+				expectedOpenScdXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
+						<ext:AA_3 aAA_3="value" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
+					</Root>
+    		`,
 			},
 		]
 

@@ -52,8 +52,21 @@ function generateTestDefinition() {
 		namespace: DIALECTE_NAMESPACES.default,
 		attributes: {
 			any: false,
-			sequence: [],
-			details: {},
+			sequence: ['root', 'ext:root'],
+			details: {
+				root: {
+					namespace: null,
+					required: true,
+					default: '1',
+					validation: NULL_VALIDATION,
+				},
+				'ext:root': {
+					namespace: DIALECTE_NAMESPACES.ext,
+					required: false,
+					default: '2',
+					validation: NULL_VALIDATION,
+				},
+			},
 		},
 		subElements: {
 			any: false,
