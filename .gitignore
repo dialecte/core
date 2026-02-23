@@ -40,3 +40,6 @@ src/script/xsd
 src/script/pyodide
 
 AGENTS.md
+
+.vitepress/dist
+.vitepress/cache
