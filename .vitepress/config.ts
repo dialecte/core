@@ -7,6 +7,7 @@ export default defineConfig({
 
 	title: 'Dialecte',
 	description: 'XML based DSL builder',
+	head: [['link', { rel: 'icon', href: '/core/logo.svg' }]],
 	themeConfig: {
 		// https://vitepress.dev/reference/default-theme-config
 		logo: '/logo.svg',
@@ -14,8 +15,6 @@ export default defineConfig({
 		search: {
 			provider: 'local',
 		},
-
-		head: [['link', { rel: 'icon', href: '/logo.svg' }]],
 
 		nav: [
 			{ text: 'Home', link: '/' },
