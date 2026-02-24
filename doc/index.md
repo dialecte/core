@@ -6,6 +6,9 @@ hero:
   name: Dialecte
   text: Speak XML your way.
   tagline: A type-safe SDK for building XML-based DSLs — define the XSD schema, Dialecte does the rest.
+  image:
+    src: /logo-reversed.svg
+    alt: Dialecte
   actions:
     - theme: brand
       text: Get Started →
@@ -13,7 +16,6 @@ hero:
     - theme: alt
       text: Why Dialecte?
       link: /guide/introduction/what-is-dialecte
-
 features:
   - icon: 🔗
     title: Chainable API

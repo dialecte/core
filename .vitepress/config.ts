@@ -9,12 +9,16 @@ export default defineConfig({
 	description: 'XML based DSL builder',
 	themeConfig: {
 		// https://vitepress.dev/reference/default-theme-config
+		logo: '/logo.svg',
+		search: {
+			provider: 'local',
+		},
+		head: [['link', { rel: 'icon', href: '/logo.svg' }]],
 		nav: [
 			{ text: 'Home', link: '/' },
-			{ text: 'Guide', link: '/guide' },
+			{ text: 'Guide', link: '/guide/introduction/getting-started' },
 			{ text: 'Api', link: '/api' },
 		],
-
 		sidebar: {
 			'/guide/': [
 				{
@@ -26,10 +30,18 @@ export default defineConfig({
 				},
 				{
 					text: 'Development',
-					items: [{ text: 'Testing', link: '/guide/development/' }],
+					items: [{ text: 'Testing', link: '/guide/development/testing' }],
+				},
+				{
+					text: 'Extensions',
+					items: [{ text: 'Writing Extensions', link: '/guide/extensions/' }],
 				},
 			],
 			'/api/': [
+				{
+					text: 'Introduction',
+					items: [{ text: 'Overview', link: '/api' }],
+				},
 				{
 					text: 'Entrypoints',
 					items: [{ text: 'Overview', link: '/api/entrypoints' }],
