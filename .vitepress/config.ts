@@ -10,15 +10,19 @@ export default defineConfig({
 	themeConfig: {
 		// https://vitepress.dev/reference/default-theme-config
 		logo: '/logo.svg',
+
 		search: {
 			provider: 'local',
 		},
+
 		head: [['link', { rel: 'icon', href: '/logo.svg' }]],
+
 		nav: [
 			{ text: 'Home', link: '/' },
 			{ text: 'Guide', link: '/guide/introduction/getting-started' },
 			{ text: 'Api', link: '/api' },
 		],
+
 		sidebar: {
 			'/guide/': [
 				{
