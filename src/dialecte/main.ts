@@ -7,22 +7,21 @@ import { assert } from '@/helpers'
 import type { DialecteCore, FromElementParams } from './types'
 import type { AnyDialecteConfig, ElementsOf, ExtensionRegistry } from '@/types'
 
-export async function createDialecte<
+export function createDialecte<
 	GenericConfig extends AnyDialecteConfig,
 	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig>,
 >(params: {
 	databaseName: string
 	dialecteConfig: GenericConfig
 	extensions: GenericExtensionRegistry
-}): Promise<DialecteCore<GenericConfig, GenericExtensionRegistry>> {
+}): DialecteCore<GenericConfig, GenericExtensionRegistry> {
 	const { databaseName, dialecteConfig, extensions } = params
 
 	assert(databaseName, 'Database name is required to create SDK')
 
-	const databaseInstance = await createDatabaseInstance({
+	const databaseInstance = createDatabaseInstance({
 		databaseName,
 		dialecteConfig,
-		createRootIfEmpty: true,
 	})
 
 	return {

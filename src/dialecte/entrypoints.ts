@@ -33,15 +33,10 @@ export function fromRoot<
 
 	const contextPromise = Promise.resolve().then(
 		async (): Promise<Context<GenericConfig, RootElementOf<GenericConfig>>> => {
-			const numberOfRootElements = await databaseInstance
-				.table(tableName)
-				.where({ tagName: rootElementName })
-				.count()
-
-			assert(
-				numberOfRootElements === 1,
-				`Expected exactly one root element "${rootElementName}", found ${numberOfRootElements}`,
-			)
+			await ensureRootElementExists({
+				databaseInstance: databaseInstance as DatabaseInstance<GenericConfig>,
+				dialecteConfig,
+			})
 
 			// Fetch the root element
 			const rootRecord = await databaseInstance.table(tableName).get({ tagName: rootElementName })
@@ -69,6 +64,50 @@ export function fromRoot<
 		databaseInstance,
 		extensions,
 		focusedTagName: rootElementName,
+	})
+}
+
+async function ensureRootElementExists<GenericConfig extends AnyDialecteConfig>(params: {
+	databaseInstance: DatabaseInstance<GenericConfig>
+	dialecteConfig: GenericConfig
+}): Promise<void> {
+	const { databaseInstance, dialecteConfig } = params
+	const tableName = dialecteConfig.database.tables.xmlElements.name
+	const rootElementName = dialecteConfig.rootElementName
+
+	await databaseInstance.open()
+	const table = databaseInstance.table(tableName)
+
+	const numberOfRootElements = await table.where({ tagName: rootElementName }).count()
+
+	if (numberOfRootElements > 0) {
+		return assert(
+			numberOfRootElements === 1,
+			`Expected exactly one root element "${rootElementName}", found ${numberOfRootElements}`,
+		)
+	}
+
+	const attributes = dialecteConfig.definition[rootElementName].attributes.details
+
+	let rootAttributes = []
+
+	for (const [attributeName, attribute] of Object.entries(attributes)) {
+		if (attribute.required && attribute.default) {
+			rootAttributes.push({
+				name: attributeName,
+				value: attribute.default.toString(),
+				namespace: attribute.namespace ?? undefined,
+			})
+		}
+	}
+
+	await table.add({
+		id: crypto.randomUUID(),
+		tagName: rootElementName,
+		namespace: dialecteConfig.definition[rootElementName].namespace,
+		attributes: rootAttributes,
+		parent: null,
+		children: [],
 	})
 }
 
