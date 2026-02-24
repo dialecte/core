@@ -31,7 +31,7 @@ describe('Export', () => {
 			description: string
 			xml: string
 			expectedXml: string
-			expectedOpenScdXml: string
+			expectedXmlWithDatabaseIds: string
 		}
 
 		const tests: TestCase[] = [
@@ -47,7 +47,7 @@ describe('Export', () => {
 						<A aA="value aA"/>
 					</Root>
 				`,
-				expectedOpenScdXml: /* xml */ `
+				expectedXmlWithDatabaseIds: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1">
 						<A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
 					</Root>
@@ -71,7 +71,7 @@ describe('Export', () => {
 						</A>
 					</Root>
 				`,
-				expectedOpenScdXml: /* xml */ `
+				expectedXmlWithDatabaseIds: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1">
 						<A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2">
 							<AA_1 aAA_1="value aa1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="3"/>
@@ -92,7 +92,7 @@ describe('Export', () => {
 						<A aA="value aA" ext:cA="value cA"/>
 					</Root>
 				`,
-				expectedOpenScdXml: /* xml */ `
+				expectedXmlWithDatabaseIds: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
 						<A aA="value aA" ext:cA="value cA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
 					</Root>
@@ -110,7 +110,7 @@ describe('Export', () => {
 						<ext:AA_3 aAA_3="value aAA_3"/>
 					</Root>
 				`,
-				expectedOpenScdXml: /* xml */ `
+				expectedXmlWithDatabaseIds: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
 						<ext:AA_3 aAA_3="value aAA_3" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
 					</Root>
@@ -128,7 +128,7 @@ describe('Export', () => {
 						<ext:AA_3 aAA_3="value"/>
 					</Root>
     		`,
-				expectedOpenScdXml: /* xml */ `
+				expectedXmlWithDatabaseIds: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
 						<ext:AA_3 aAA_3="value" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
 					</Root>
@@ -136,7 +136,7 @@ describe('Export', () => {
 			},
 		]
 
-		tests.forEach(({ description, xml, expectedXml, expectedOpenScdXml }) => {
+		tests.forEach(({ description, xml, expectedXml, expectedXmlWithDatabaseIds }) => {
 			it(description, async () => {
 				// Import XML with custom IDs
 				// Generate unique filename per test execution to avoid Dexie log warnings
@@ -160,15 +160,16 @@ describe('Export', () => {
 				const exportedString = new XMLSerializer().serializeToString(exported.xmlDocument)
 				expect(xmlFormat(exportedString)).toBe(xmlFormat(expectedXml))
 
-				// Export for OpenSCD
-				const exportedOpenScd = await exportXmlDocumentForOpenSCD({
+				// Export with database ids
+				const exportedWithDatabaseIds = await exportXmlFile({
 					databaseName,
 					dialecteConfig: TEST_DIALECTE_CONFIG,
+					withDatabaseIds: true,
 				})
-				const exportedOpenScdString = new XMLSerializer().serializeToString(
-					exportedOpenScd.xmlDocument,
+				const exportedWithDatabaseIdsString = new XMLSerializer().serializeToString(
+					exportedWithDatabaseIds.xmlDocument,
 				)
-				expect(xmlFormat(exportedOpenScdString)).toBe(xmlFormat(expectedOpenScdXml))
+				expect(xmlFormat(exportedWithDatabaseIdsString)).toBe(xmlFormat(expectedXmlWithDatabaseIds))
 
 				// Collect database for cleanup
 				databaseNames.push(databaseName)

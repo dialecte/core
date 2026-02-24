@@ -21,17 +21,24 @@ import type {
  * @returns XML document and filename
  */
 export async function exportXmlFile<GenericConfig extends AnyDialecteConfig>(params: {
+	dialecteConfig: GenericConfig
 	databaseName: string
 	extension: GenericConfig['io']['supportedFileExtensions'][number]
 	withDownload?: boolean
-	dialecteConfig: GenericConfig
+	withDatabaseIds?: boolean
 }): Promise<{ xmlDocument: XMLDocument; filename: string }> {
-	const { databaseName, extension, withDownload, dialecteConfig } = params
+	const {
+		dialecteConfig,
+		databaseName,
+		extension,
+		withDownload = false,
+		withDatabaseIds = false,
+	} = params
 	const response = await handleFileExportWithOptions({
 		databaseName,
 		extension,
 		dialecteConfig,
-		withDatabaseIds: false,
+		withDatabaseIds,
 	})
 
 	if (withDownload)
@@ -42,18 +49,6 @@ export async function exportXmlFile<GenericConfig extends AnyDialecteConfig>(par
 		})
 
 	return response
-}
-
-export async function exportXmlDocumentForOpenSCD(params: {
-	databaseName: string
-	dialecteConfig: AnyDialecteConfig
-}): Promise<{ xmlDocument: XMLDocument; filename: string }> {
-	const { databaseName, dialecteConfig } = params
-	return handleFileExportWithOptions({
-		databaseName,
-		dialecteConfig,
-		withDatabaseIds: true,
-	})
 }
 
 //====== PRIVATE FUNCTIONS ======//
