@@ -21,11 +21,12 @@ describe('CRUD Operations - updateElement', () => {
 		xml: string
 		goTo: GoToElementParams<TestConfig, TestElement>
 		update: {
-			attributes?: Record<string, string>
+			attributes?: Record<string, string | undefined | null>
 			value?: string
 		}
 		expected: {
 			attributes?: Record<string, string>
+			removedAttributes?: string[]
 			value?: string
 		}
 	}
@@ -52,6 +53,27 @@ describe('CRUD Operations - updateElement', () => {
 			update: { attributes: { bAA_1: 'updated' } },
 			expected: { attributes: { aAA_1: 'val1', bAA_1: 'updated', cAA_1: 'val3' } },
 		},
+		{
+			description: 'setting attribute to undefined removes it',
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><AA_1 ${DEV_ID}="2" aAA_1="val1" bAA_1="val2" /></Root>`,
+			goTo: { tagName: 'AA_1', id: '2' },
+			update: { attributes: { aAA_1: undefined } },
+			expected: { attributes: { bAA_1: 'val2' }, removedAttributes: ['aAA_1'] },
+		},
+		{
+			description: 'setting attribute to null removes it',
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><AA_1 ${DEV_ID}="2" aAA_1="val1" bAA_1="val2" /></Root>`,
+			goTo: { tagName: 'AA_1', id: '2' },
+			update: { attributes: { aAA_1: null } },
+			expected: { attributes: { bAA_1: 'val2' }, removedAttributes: ['aAA_1'] },
+		},
+		{
+			description: 'removing one attribute preserves others',
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><AA_1 ${DEV_ID}="2" aAA_1="val1" bAA_1="val2" cAA_1="val3" /></Root>`,
+			goTo: { tagName: 'AA_1', id: '2' },
+			update: { attributes: { bAA_1: undefined } },
+			expected: { attributes: { aAA_1: 'val1', cAA_1: 'val3' }, removedAttributes: ['bAA_1'] },
+		},
 	]
 
 	testCases.forEach(({ description, xml, goTo, update, expected }) => {
@@ -68,6 +90,14 @@ describe('CRUD Operations - updateElement', () => {
 					for (const [attrName, attrValue] of Object.entries(expected.attributes)) {
 						const attribute = context.currentFocus.attributes.find((a) => a.name === attrName)
 						expect(attribute?.value).toBe(attrValue)
+					}
+				}
+
+				// Check removed attributes
+				if (expected.removedAttributes) {
+					for (const attrName of expected.removedAttributes) {
+						const attribute = context.currentFocus.attributes.find((a) => a.name === attrName)
+						expect(attribute).toBeUndefined()
 					}
 				}
 

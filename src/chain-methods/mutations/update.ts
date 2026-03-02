@@ -31,7 +31,7 @@ export function createUpdateElementMethod<
 		const newContextPromise = contextPromise.then(async (context) => {
 			const currentElement = context.currentFocus
 
-			let updatedAttributes = currentElement.attributes
+			let updatedAttributesWithoutUndefined = currentElement.attributes
 			if (attributes) {
 				const newAttributes = toFullAttributeArray({
 					tagName: currentElement.tagName,
@@ -44,12 +44,14 @@ export function createUpdateElementMethod<
 						!newAttributes.some((newAttribute) => newAttribute.name === oldAttribute.name),
 				)
 
-				updatedAttributes = [...unchangedAttributes, ...newAttributes]
+				updatedAttributesWithoutUndefined = [...unchangedAttributes, ...newAttributes].filter(
+					(attribute) => attribute.value !== undefined && attribute.value !== null,
+				)
 			}
 
 			const updatedElement = {
 				...currentElement,
-				attributes: updatedAttributes,
+				attributes: updatedAttributesWithoutUndefined,
 				value: value !== undefined ? value : currentElement.value,
 			}
 
