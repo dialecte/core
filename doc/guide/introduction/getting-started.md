@@ -1,6 +1,6 @@
 # Getting Started
 
-Dialecte core is the engine behind any Dialecte dialecte. You bring a schema-driven config; Dialecte provides the chainable API, the streaming XML parser, and the IndexedDB persistence.
+Dialecte core is the engine behind any xml dialecte. You bring a schema-driven config; Dialecte provides the chainable API, the streaming XML parser, and the IndexedDB persistence.
 
 ::: info Same elements throughout
 Every example below uses the built-in test definition shipped with `@dialecte/core`. Its tree structure is documented in [Testing](/guide/development/testing), so you can follow the same logic across the guide.

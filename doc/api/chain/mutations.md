@@ -61,10 +61,10 @@ chain.update({ attributes: { name: 'new-value' } })
 
 ### Parameters
 
-| Name         | Type                                                | Required | Description                                     |
-| ------------ | --------------------------------------------------- | -------- | ----------------------------------------------- |
-| `attributes` | `Partial<AttributesValueObjectOf<Config, Element>>` | no       | Partial attribute update — merges with existing |
-| `value`      | `string`                                            | no       | New text content                                |
+| Name         | Type                                                                     | Required | Description                                     |
+| ------------ | ------------------------------------------------------------------------ | -------- | ----------------------------------------------- |
+| `attributes` | `Partial<AttributesValueObjectOf<Config, Element> \| null \| undefined>` | no       | Partial attribute update — merges with existing |
+| `value`      | `string`                                                                 | no       | New text content                                |
 
 ### Returns
 
@@ -73,15 +73,24 @@ chain.update({ attributes: { name: 'new-value' } })
 ### Behavior
 
 - Merges new attributes with existing ones: replaces matching names, keeps others.
+- Passing `undefined` or `null` as an attribute value **removes** that attribute from the record entirely.
+- Attributes with value `undefined` or `null` are never written to the XML output.
 - Stages an `updated` operation with both old and new records.
 
 ### Example
 
 ```ts
+// Update an attribute
 const chain = dialecte
 	.goToElement({ tagName: 'AA_1', id: 'aa1-001' })
 	.update({ attributes: { aAA_1: 'renamed' } })
 // still focused on AA_1
+
+// Remove an attribute by passing undefined
+const chain = dialecte
+	.goToElement({ tagName: 'AA_1', id: 'aa1-001' })
+	.update({ attributes: { aAA_1: undefined } })
+// aAA_1 attribute is removed from the record and will not appear in the XML output
 ```
 
 ## delete
