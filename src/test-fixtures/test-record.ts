@@ -1,5 +1,6 @@
-import { standardizeRecord, toChainRecord, toTreeRecord } from '../record'
 import { TEST_DIALECTE_CONFIG } from './config'
+
+import { standardizeRecord, toChainRecord, toTreeRecord } from '@/helpers/record'
 
 import type {
 	ElementsOf,

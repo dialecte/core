@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 
 import { FromElementParams } from '@/dialecte'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { ElementsOf, ParentsOf } from '@/types'
 
@@ -27,14 +27,14 @@ describe('Navigation - goToParent', () => {
 	}> = [
 		{
 			description: 'navigate to parent from child',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			startElement: { tagName: 'A', id: '2' },
 			parentElement: 'Root',
 			expected: { tagName: 'Root', id: '1' },
 		},
 		{
 			description: 'navigate to parent from nested child',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nested" /></A></Root>`,
 			startElement: { tagName: 'AA_1', id: '3' },
 			parentElement: 'A',
 			expected: { tagName: 'A', id: '2' },
@@ -62,7 +62,7 @@ describe('Navigation - goToParent', () => {
 
 	it('navigate to parent from staged element', async () => {
 		const { dialecte, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 		})
 
 		try {
@@ -90,7 +90,7 @@ describe('Navigation - goToParent', () => {
 	describe('multiple levels', () => {
 		it('navigates up multiple parent levels', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nested" /></A></Root>`,
 			})
 
 			try {
@@ -112,7 +112,7 @@ describe('Navigation - goToParent', () => {
 	describe('error handling', () => {
 		it('goToParent method does not exist on root element', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			})
 
 			try {

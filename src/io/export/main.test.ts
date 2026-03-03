@@ -1,19 +1,19 @@
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
-import { exportXmlFile, exportXmlDocumentForOpenSCD } from './main'
+import { exportXmlFile } from './main'
 
 import Dexie from 'dexie'
 import { describe, expect, it, afterAll } from 'vitest'
 import xmlFormat from 'xml-formatter'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import { importXmlFiles } from '@/io/import'
 import {
+	DIALECTE_NAMESPACES,
+	XMLNS_EXT_NAMESPACE,
 	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	DEV_ID,
-	XMLNS_EXT_NAMESPACE,
-	DIALECTE_NAMESPACES,
-} from '@/helpers'
-import { importXmlFiles } from '@/io/import'
+} from '@/test-fixtures'
 
 import type { AnyRawRecord } from '@/types'
 
@@ -38,8 +38,8 @@ describe('Export', () => {
 			{
 				description: 'simple document',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A aA="value aA" ${DEV_ID}="2"/>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
 				`,
 				expectedXml: /* xml */ `
@@ -56,10 +56,10 @@ describe('Export', () => {
 			{
 				description: 'children ordering',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A aA="value aA" ${DEV_ID}="2">
-							<AA_1 aAA_1="value aa1" ${DEV_ID}="3"/>
-							<AA_2 aAA_2="value aa2" ${DEV_ID}="4"/>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2">
+							<AA_1 aAA_1="value aa1" ${CUSTOM_RECORD_ID_ATTRIBUTE}="3"/>
+							<AA_2 aAA_2="value aa2" ${CUSTOM_RECORD_ID_ATTRIBUTE}="4"/>
 						</A>
 					</Root>
 				`,
@@ -83,8 +83,8 @@ describe('Export', () => {
 			{
 				description: 'same attribute with two different namespaces',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1">
-						<A aA="value aA" ext:cA="value cA" ${DEV_ID}="2"/>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A aA="value aA" ext:cA="value cA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
 				`,
 				expectedXml: /* xml */ `
@@ -101,8 +101,8 @@ describe('Export', () => {
 			{
 				description: 'namespace element',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1">
-						<ext:AA_3 aAA_3="value aAA_3" ${DEV_ID}="2"/>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<ext:AA_3 aAA_3="value aAA_3" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
 				`,
 				expectedXml: /* xml */ `
@@ -119,8 +119,8 @@ describe('Export', () => {
 			{
 				description: 'root element with both unqualified and qualified version attributes',
 				xml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1">
-						<ext:AA_3 aAA_3="value" ${DEV_ID}="2"/>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<ext:AA_3 aAA_3="value" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
     		`,
 				expectedXml: /* xml */ `
@@ -162,8 +162,9 @@ describe('Export', () => {
 
 				// Export with database ids
 				const exportedWithDatabaseIds = await exportXmlFile({
-					databaseName,
 					dialecteConfig: TEST_DIALECTE_CONFIG,
+					databaseName,
+					extension: '.xml',
 					withDatabaseIds: true,
 				})
 				const exportedWithDatabaseIdsString = new XMLSerializer().serializeToString(

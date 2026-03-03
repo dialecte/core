@@ -2,7 +2,7 @@ import { mergeOperations } from './merge-operations'
 
 import { describe, it, expect } from 'vitest'
 
-import { TEST_DIALECTE_CONFIG, createTestRecord } from '@/helpers'
+import { TEST_DIALECTE_CONFIG, createTestRecord } from '@/test-fixtures'
 
 import type { Operation } from '@/types'
 

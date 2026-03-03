@@ -16,7 +16,7 @@
 import { writeFile, unlink } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-import { DEFINITION } from '../helpers/test-fixtures/generated/definition.js'
+import { DEFINITION } from '../test-fixtures/generated/definition.js'
 
 const TEMP_JSON = resolve(import.meta.dirname, '../helpers/test-fixtures/definition.temp.json')
 const TEMP_MAPPING = resolve(import.meta.dirname, './element-parent-mapping.temp.ts')

@@ -2,13 +2,13 @@ import { GoToElementParams } from './types'
 
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { ElementsOf } from '@/types'
 
@@ -27,13 +27,13 @@ describe('Navigation - goToElement', () => {
 	}> = [
 		{
 			description: 'navigate to element by id',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /><AA_1 ${DEV_ID}="3" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" /></Root>`,
 			goTo: { tagName: 'AA_1', id: '3' },
 			expected: { tagName: 'AA_1', id: '3' },
 		},
 		{
 			description: 'navigate to singleton without id',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			goTo: { tagName: 'A' },
 			expected: { tagName: 'A', id: '2' },
 		},
@@ -59,7 +59,7 @@ describe('Navigation - goToElement', () => {
 
 	it('navigate from staged element', async () => {
 		const { dialecte, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 		})
 
 		try {
@@ -84,7 +84,7 @@ describe('Navigation - goToElement', () => {
 
 	it('throw error for non-existent element', async () => {
 		const { dialecte, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 		})
 
 		try {
@@ -99,7 +99,7 @@ describe('Navigation - goToElement', () => {
 
 	it('throw error for non-singleton element without id', async () => {
 		const { dialecte, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><E ${DEV_ID}="2" aE="value" /></Root>`,
+			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><E ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aE="value" /></Root>`,
 		})
 
 		try {

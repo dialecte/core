@@ -1,7 +1,7 @@
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
+	CUSTOM_RECORD_ID_ATTRIBUTE,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	ChainTestOperation,
@@ -30,7 +30,7 @@ describe('executeChainOperations', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'handles empty operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [],
 			expected: {
 				focusTagName: 'Root',
@@ -39,7 +39,7 @@ describe('executeChainOperations', () => {
 		},
 		{
 			description: 'executes single addChild operation',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					type: 'addChild',
@@ -55,7 +55,7 @@ describe('executeChainOperations', () => {
 		},
 		{
 			description: 'executes operations in sequence',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					type: 'addChild',
@@ -77,7 +77,7 @@ describe('executeChainOperations', () => {
 		},
 		{
 			description: 'executes mixed operations (create, update, delete)',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="old" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="old" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -125,7 +125,7 @@ describe('executeChainOperations', () => {
 	describe('commit behavior', () => {
 		it('commits operations to database', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			})
 
 			try {

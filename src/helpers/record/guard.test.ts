@@ -1,9 +1,10 @@
-import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '../'
 import { isRawRecord, isChainRecord, isTreeRecord, isFullAttributeArray } from './guard'
 
 import { describe, it, expect } from 'vitest'
 
-import type { RawRecord, ChainRecord, TreeRecord, AttributesOf } from '@/types'
+import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '@/test-fixtures'
+
+import type { RawRecord, ChainRecord, TreeRecord } from '@/types'
 
 type TestConfig = typeof TEST_DIALECTE_CONFIG
 
@@ -21,7 +22,7 @@ describe('isRawRecord', () => {
 				id: '1',
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				parent: null,
 				value: '',
@@ -34,7 +35,7 @@ describe('isRawRecord', () => {
 				id: '1',
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				status: 'unchanged',
 				parent: null,
@@ -48,7 +49,7 @@ describe('isRawRecord', () => {
 				id: '1',
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				parent: null,
 				value: '',
@@ -62,7 +63,7 @@ describe('isRawRecord', () => {
 			record: {
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				parent: null,
 				value: '',
@@ -74,7 +75,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				parent: null,
 				value: '',
@@ -86,7 +87,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				parent: null,
 				value: '',
@@ -111,7 +112,7 @@ describe('isRawRecord', () => {
 				id: '1',
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				parent: null,
 				value: '',
 			},
@@ -123,7 +124,7 @@ describe('isRawRecord', () => {
 				id: '1',
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				value: '',
 			},
@@ -135,7 +136,7 @@ describe('isRawRecord', () => {
 				id: '1',
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
-				attributes: {} as AttributesOf<TestConfig, 'Root'>,
+				attributes: [],
 				children: [],
 				parent: null,
 			},
@@ -173,7 +174,7 @@ describe('isChainRecord', () => {
 		id: '1',
 		tagName: 'Root',
 		namespace: DIALECTE_NAMESPACES.default,
-		attributes: {} as AttributesOf<TestConfig, 'Root'>,
+		attributes: [],
 		children: [],
 		parent: null,
 		value: '',
@@ -183,7 +184,7 @@ describe('isChainRecord', () => {
 		id: '1',
 		tagName: 'Root',
 		namespace: DIALECTE_NAMESPACES.default,
-		attributes: {} as AttributesOf<TestConfig, 'Root'>,
+		attributes: [],
 		children: [],
 		status: 'unchanged',
 		parent: null,
@@ -234,7 +235,7 @@ describe('isTreeRecord', () => {
 		id: '1',
 		tagName: 'Root',
 		namespace: DIALECTE_NAMESPACES.default,
-		attributes: {} as AttributesOf<TestConfig, 'Root'>,
+		attributes: [],
 		children: [],
 		parent: null,
 		value: '',
@@ -250,6 +251,20 @@ describe('isTreeRecord', () => {
 		tree: [],
 	}
 
+	const rootTreeRecords: TreeRecord<TestConfig, 'Root'>['tree'] = [
+		{
+			id: '2',
+			tagName: 'A',
+			namespace: DIALECTE_NAMESPACES.default,
+			attributes: [],
+			children: [],
+			parent: { id: '1', tagName: 'Root' },
+			value: '',
+			status: 'unchanged',
+			tree: [],
+		},
+	]
+
 	const testCases: TestCase[] = [
 		{
 			desc: 'valid TreeRecord',
@@ -258,7 +273,7 @@ describe('isTreeRecord', () => {
 		},
 		{
 			desc: 'valid TreeRecord with children in tree',
-			record: { ...treeRecord, tree: [treeRecord] },
+			record: { ...treeRecord, tree: rootTreeRecords },
 			expected: true,
 		},
 		{

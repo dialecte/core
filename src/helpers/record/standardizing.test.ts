@@ -1,25 +1,22 @@
-import { TEST_DIALECTE_CONFIG } from '../test-fixtures/config'
 import { standardizeRecord } from './standardizing'
 
 import { describe, it, expect } from 'vitest'
 
+import { TEST_DIALECTE_CONFIG } from '@/test-fixtures'
+
 import type {
 	RawRecord,
 	FullAttributeObjectOf,
-	RuntimeDialecteConfig,
 	ElementsOf,
 	AttributesValueObjectOf,
 	ParentRelationship,
 	ChildRelationship,
+	AnyDialecteConfig,
+	DialecteHooks,
 } from '@/types'
 
 type TestConfig = typeof TEST_DIALECTE_CONFIG
 type TestElement = ElementsOf<TestConfig>
-
-const runtimeConfig: RuntimeDialecteConfig<TestConfig> = {
-	...TEST_DIALECTE_CONFIG,
-	hooks: undefined,
-} as unknown as RuntimeDialecteConfig<TestConfig>
 
 type TestCase<GenericElement extends TestElement> = {
 	description: string
@@ -38,7 +35,7 @@ type TestCase<GenericElement extends TestElement> = {
 
 describe('standardizeRecord', () => {
 	describe('attributes handling', () => {
-		const testCases = [
+		const testCases: TestCase<'AA_1'>[] = [
 			{
 				description: 'converts object attributes to array format',
 				input: {
@@ -133,8 +130,8 @@ describe('standardizeRecord', () => {
 		testCases.forEach((testCase) => {
 			it(testCase.description, () => {
 				const result = standardizeRecord({
-					record: testCase.input as RawRecord<TestConfig, TestElement>,
-					dialecteConfig: runtimeConfig,
+					record: testCase.input,
+					dialecteConfig: TEST_DIALECTE_CONFIG,
 				})
 
 				expect(result.attributes).toHaveLength(testCase.expected.attributeCount)
@@ -151,7 +148,7 @@ describe('standardizeRecord', () => {
 		it('generates UUID when id not provided', () => {
 			const result = standardizeRecord({
 				record: { tagName: 'AA_1' },
-				dialecteConfig: runtimeConfig,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result.id).toBeDefined()
@@ -163,7 +160,7 @@ describe('standardizeRecord', () => {
 			const customId = 'custom-id-123'
 			const result = standardizeRecord({
 				record: { tagName: 'AA_1', id: customId },
-				dialecteConfig: runtimeConfig,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result.id).toBe(customId)
@@ -172,7 +169,7 @@ describe('standardizeRecord', () => {
 		it('validates RawRecord structure', () => {
 			const result = standardizeRecord({
 				record: { tagName: 'AA_1' },
-				dialecteConfig: runtimeConfig,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result).toHaveProperty('id')
@@ -188,7 +185,7 @@ describe('standardizeRecord', () => {
 		it('sets dialecte namespace for known elements', () => {
 			const result = standardizeRecord({
 				record: { tagName: 'AA_1' },
-				dialecteConfig: runtimeConfig,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result.namespace).toEqual(TEST_DIALECTE_CONFIG.namespaces.default)
@@ -201,7 +198,7 @@ describe('standardizeRecord', () => {
 					tagName: 'UnknownElement' as TestElement,
 					namespace: customNamespace,
 				},
-				dialecteConfig: runtimeConfig,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result.namespace).toEqual(customNamespace)
@@ -224,7 +221,7 @@ describe('standardizeRecord', () => {
 					parent,
 					children: [child],
 				},
-				dialecteConfig: runtimeConfig,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result.parent).toBe(parent)
@@ -235,7 +232,7 @@ describe('standardizeRecord', () => {
 		it('preserves value', () => {
 			const result = standardizeRecord({
 				record: { tagName: 'AA_1', value: 'test value' },
-				dialecteConfig: runtimeConfig,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result.value).toBe('test value')
@@ -245,16 +242,16 @@ describe('standardizeRecord', () => {
 	describe('non-dialecte elements', () => {
 		it('returns input record with attributes preserved for unknown elements', () => {
 			const unknownElement = {
-				tagName: 'UnknownElement',
+				tagName: 'UnknownElement' as TestElement,
 				attributes: [
-					{ name: 'attr1', value: 'val1', namespace: undefined },
-					{ name: 'attr2', value: 'val2', namespace: undefined },
-				],
+					{ name: 'attr1', value: 'val1' },
+					{ name: 'attr2', value: 'val2' },
+				] as FullAttributeObjectOf<TestConfig, TestElement>[],
 			}
 
 			const result = standardizeRecord({
-				record: unknownElement as unknown as RawRecord<TestConfig, TestElement>,
-				dialecteConfig: runtimeConfig,
+				record: unknownElement,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
 
 			expect(result.tagName).toBe('UnknownElement')
@@ -269,19 +266,20 @@ describe('standardizeRecord', () => {
 			let hookCalled = false
 			let hookRecord: RawRecord<TestConfig, TestElement> | undefined
 
-			const configWithHook: RuntimeDialecteConfig<TestConfig> = {
+			const configWithHook = {
 				...TEST_DIALECTE_CONFIG,
 				hooks: {
-					afterStandardizedRecord: ({ record }: { record: RawRecord<TestConfig, TestElement> }) => {
+					afterStandardizedRecord: <C extends AnyDialecteConfig, E extends ElementsOf<C>>({
+						record,
+					}: {
+						record: RawRecord<C, E>
+					}): RawRecord<C, E> => {
 						hookCalled = true
-						hookRecord = record
-						return {
-							...record,
-							value: 'modified by hook',
-						}
+						hookRecord = record as unknown as RawRecord<TestConfig, TestElement>
+						return { ...record, value: 'modified by hook' }
 					},
-				},
-			} as unknown as RuntimeDialecteConfig<TestConfig>
+				} satisfies DialecteHooks,
+			}
 
 			const result = standardizeRecord({
 				record: { tagName: 'AA_1', value: 'original' },

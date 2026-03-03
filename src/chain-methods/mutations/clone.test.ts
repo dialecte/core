@@ -3,31 +3,31 @@ import { DeepCloneChildParams } from './clone.types'
 import { describe, it, expect } from 'vitest'
 
 import { FromElementParams } from '@/dialecte'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	executeTableDrivenTestsChainOperations,
-} from '@/helpers'
+} from '@/test-fixtures'
 
-import type { AnyElementChainTestOperation } from '@/helpers'
+import type { AnyElementChainTestOperation } from '@/test-fixtures'
 import type { ElementsOf, TreeRecord, DialecteHooks } from '@/types'
 
 const xmlString = /* xml */ `
-	<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="root">
-		<A ${DEV_ID}="a" aA="value1" />
-		<B ${DEV_ID}="b">
-			<BB_1 ${DEV_ID}="bb1">
-				<BBB_1 ${DEV_ID}="bbb1" />
+	<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="root">
+		<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a" aA="value1" />
+		<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="b">
+			<BB_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="bb1">
+				<BBB_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="bbb1" />
 			</BB_1>
-			<BB_2 ${DEV_ID}="bb2">
-				<BBB_1 ${DEV_ID}="bbb1-2" />
-				<BBB_2 ${DEV_ID}="bbb2" />
+			<BB_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="bb2">
+				<BBB_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="bbb1-2" />
+				<BBB_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="bbb2" />
 			</BB_2>
 		</B>
-		<C ${DEV_ID}="c" />
+		<C ${CUSTOM_RECORD_ID_ATTRIBUTE}="c" />
 	</Root>
 `
 

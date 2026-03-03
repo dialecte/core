@@ -4,14 +4,14 @@ import { handleExpectedRecords } from './test.handler'
 import Dexie from 'dexie'
 import { describe, expect, it, afterAll } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
-	TEST_DIALECTE_CONFIG,
 	DIALECTE_NAMESPACES,
-	DEV_ID,
-	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_EXT_NAMESPACE,
+	TEST_DIALECTE_CONFIG,
+	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { ExpectedRecords } from './test.types'
 import type { AnyDatabaseInstance } from '@/database'
@@ -36,7 +36,7 @@ describe('Import', () => {
 		const testCases: TestCase[] = [
 			{
 				description: 'empty root',
-				fileContent: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"></Root>`,
+				fileContent: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"></Root>`,
 				expectedFileName: 'empty-root',
 				expectedRecords: [
 					{
@@ -47,7 +47,7 @@ describe('Import', () => {
 			},
 			{
 				description: 'child with attribute',
-				fileContent: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A aA="value aA" ${DEV_ID}="2"></A></Root>`,
+				fileContent: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"></A></Root>`,
 				expectedFileName: 'single-child',
 				expectedRecords: [
 					{
@@ -64,9 +64,9 @@ describe('Import', () => {
 			{
 				description: 'namespace element with text',
 				fileContent: `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE}  ${DEV_ID}="1">
-						<A aA="value aA" ${DEV_ID}="2"></A>
-						<ext:AA_3 aAA_3="value aAA_3" ${DEV_ID}="3">text value</ext:AA_3>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE}  ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"></A>
+						<ext:AA_3 aAA_3="value aAA_3" ${CUSTOM_RECORD_ID_ATTRIBUTE}="3">text value</ext:AA_3>
 					</Root>
 				`,
 				expectedFileName: 'namespace-with-text',
@@ -92,9 +92,9 @@ describe('Import', () => {
 			{
 				description: 'multiple siblings',
 				fileContent: `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A aA="value aA" ${DEV_ID}="2"></A>
-						<B aB="value aB" ${DEV_ID}="3"></B>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"></A>
+						<B aB="value aB" ${CUSTOM_RECORD_ID_ATTRIBUTE}="3"></B>
 					</Root>
 				`,
 				expectedFileName: 'multiple-siblings',
@@ -117,7 +117,7 @@ describe('Import', () => {
 			},
 			{
 				description: 'parent/child relationships',
-				fileContent: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A aA="value aA" ${DEV_ID}="2"><AA_1 aAA_1="value aAA_1" ${DEV_ID}="3"/></A></Root>`,
+				fileContent: `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"><AA_1 aAA_1="value aAA_1" ${CUSTOM_RECORD_ID_ATTRIBUTE}="3"/></A></Root>`,
 				expectedFileName: 'parent-relationships',
 				expectedRecords: [
 					{
@@ -145,8 +145,8 @@ describe('Import', () => {
 			// 	description: 'xmlns NOT imported as attributes',
 			// 	fileName: 'xmlns-not-imported.xml',
 			// 	fileContent: `
-			// 		<Root xmlns="http://root.org/ROOT" xmlns:ext="http://example.com/ext" version="1.0" ${DEV_NAMESPACE} ${DEV_ID}="1">
-			// 			<A name="TestA" ${DEV_ID}="2"></A>
+			// 		<Root xmlns="http://root.org/ROOT" xmlns:ext="http://example.com/ext" version="1.0" ${DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+			// 			<A name="TestA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"></A>
 			// 		</Root>
 			// 	`,
 			// 	expectedFileName: 'xmlns-not-imported',
@@ -170,8 +170,8 @@ describe('Import', () => {
 			{
 				description: 'qualified attributes with local name',
 				fileContent: `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${DEV_ID}="1">
-						<A aA="value aA" ext:cA="value cA" ${DEV_ID}="2"></A>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A aA="value aA" ext:cA="value cA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"></A>
 					</Root>
 				`,
 				expectedFileName: 'qualified-attributes',
@@ -199,11 +199,11 @@ describe('Import', () => {
 			{
 				description: 'deep nesting',
 				fileContent: `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A aA="value aA" ${DEV_ID}="2">
-							<AA_1 aAA_1="value aAA_1" ${DEV_ID}="3">
-								<AAA_1 aAAA_1="value aAAA_1" ${DEV_ID}="4">
-									<AAAA_1 aAAAA_1="value aAAAA_1" ${DEV_ID}="5"/>
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2">
+							<AA_1 aAA_1="value aAA_1" ${CUSTOM_RECORD_ID_ATTRIBUTE}="3">
+								<AAA_1 aAAA_1="value aAAA_1" ${CUSTOM_RECORD_ID_ATTRIBUTE}="4">
+									<AAAA_1 aAAAA_1="value aAAAA_1" ${CUSTOM_RECORD_ID_ATTRIBUTE}="5"/>
 								</AAA_1>
 							</AA_1>
 						</A>

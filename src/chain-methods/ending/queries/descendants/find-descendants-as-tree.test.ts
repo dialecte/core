@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { DescendantsFilter } from './types'
 import type { FromElementParams } from '@/dialecte'
@@ -35,10 +35,10 @@ describe('findDescendantsAsTree', () => {
 		{
 			description: 'stops tree at deepest element',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa1">
-							<ShouldNotBeIncluded ${DEV_ID}="999" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa1">
+							<ShouldNotBeIncluded ${CUSTOM_RECORD_ID_ATTRIBUTE}="999" />
 						</AA_1>
 					</A>
 				</Root>
@@ -69,9 +69,9 @@ describe('findDescendantsAsTree', () => {
 		{
 			description: 'handles optional intermediates - no AA_1',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1">
-						<AAA_1 ${DEV_ID}="3" aAAA_1="aaa1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1">
+						<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAAA_1="aaa1" />
 					</A>
 				</Root>
 			`,
@@ -104,10 +104,10 @@ describe('findDescendantsAsTree', () => {
 		{
 			description: 'handles optional intermediates - one AA_1',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa1">
-							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa1">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="aaa1" />
 						</AA_1>
 					</A>
 				</Root>
@@ -146,12 +146,12 @@ describe('findDescendantsAsTree', () => {
 		{
 			description: 'handles optional intermediates - nested AA_1',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa1">
-							<AA_1 ${DEV_ID}="4" aAA_1="aa2">
-								<AA_1 ${DEV_ID}="5" aAA_1="aa3">
-									<AAA_1 ${DEV_ID}="6" aAAA_1="aaa1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa1">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="aa2">
+								<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="aa3">
+									<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aAAA_1="aaa1" />
 								</AA_1>
 							</AA_1>
 						</AA_1>
@@ -202,19 +202,19 @@ describe('findDescendantsAsTree', () => {
 		{
 			description: 'handles mixed depths across multiple branches',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1">
-						<AAA_1 ${DEV_ID}="3" aAAA_1="aaa1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1">
+						<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAAA_1="aaa1" />
 					</A>
-					<A ${DEV_ID}="4" aA="a2">
-						<AA_1 ${DEV_ID}="5" aAA_1="aa1">
-							<AAA_1 ${DEV_ID}="6" aAAA_1="aaa2" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="a2">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="aa1">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aAAA_1="aaa2" />
 						</AA_1>
 					</A>
-					<A ${DEV_ID}="7" aA="a3">
-						<AA_1 ${DEV_ID}="8" aAA_1="aa2">
-							<AA_1 ${DEV_ID}="9" aAA_1="aa3">
-								<AAA_1 ${DEV_ID}="10" aAAA_1="aaa3" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="7" aA="a3">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="8" aAA_1="aa2">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="9" aAA_1="aa3">
+								<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="10" aAAA_1="aaa3" />
 							</AA_1>
 						</AA_1>
 					</A>

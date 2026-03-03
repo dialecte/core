@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest'
 
 import { FromElementParams } from '@/dialecte'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
 	executeTableDrivenTestsChainOperations,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
-import type { ChainTestOperation } from '@/helpers'
+import type { ChainTestOperation } from '@/test-fixtures'
 import type { ElementsOf, ChildrenOf } from '@/types'
 
 describe('commit', () => {
@@ -36,7 +36,7 @@ describe('commit', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'commits single create operation',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					type: 'addChild',
@@ -51,7 +51,7 @@ describe('commit', () => {
 		},
 		{
 			description: 'commits single update operation',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="old" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="old" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -69,7 +69,7 @@ describe('commit', () => {
 		},
 		{
 			description: 'commits single delete operation',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			operations: [
 				{
 					type: 'delete',
@@ -82,7 +82,7 @@ describe('commit', () => {
 		},
 		{
 			description: 'commits multiple create operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					type: 'addChild',
@@ -103,7 +103,7 @@ describe('commit', () => {
 		},
 		{
 			description: 'commits mixed operations (create, update, delete)',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="old" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="old" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -134,7 +134,7 @@ describe('commit', () => {
 		},
 		{
 			description: 'merges multiple operations on same element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -162,7 +162,7 @@ describe('commit', () => {
 		},
 		{
 			description: 'handles empty operations (no-op commit)',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [],
 			expected: {},
 		},

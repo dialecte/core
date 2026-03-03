@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { FromElementParams } from '@/dialecte'
 import type { ElementsOf } from '@/types'
@@ -28,7 +28,7 @@ describe('getParent', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'returns parent of immediate child',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			expected: {
 				parentTagName: 'Root',
@@ -37,7 +37,7 @@ describe('getParent', () => {
 		},
 		{
 			description: 'returns parent of nested child',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nested" /></A></Root>`,
 			startFrom: { tagName: 'AA_1', id: '3' },
 			expected: {
 				parentTagName: 'A',
@@ -46,7 +46,7 @@ describe('getParent', () => {
 		},
 		{
 			description: 'returns parent of deeply nested element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="l2"><AAA_1 ${DEV_ID}="4" aAAA_1="l3"><AAAA_1 ${DEV_ID}="5" aAAAA_1="l4" /></AAA_1></AA_1></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="l2"><AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="l3"><AAAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAAAA_1="l4" /></AAA_1></AA_1></A></Root>`,
 			startFrom: { tagName: 'AAAA_1', id: '5' },
 			expected: {
 				parentTagName: 'AAA_1',
@@ -55,7 +55,7 @@ describe('getParent', () => {
 		},
 		{
 			description: 'returns parent of second child',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="first" /><A ${DEV_ID}="3" aA="second" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="first" /><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="second" /></Root>`,
 			startFrom: { tagName: 'A', id: '3' },
 			expected: {
 				parentTagName: 'Root',
@@ -85,7 +85,7 @@ describe('getParent', () => {
 	describe('error handling', () => {
 		it('throws error when getting parent of root element', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			})
 
 			try {

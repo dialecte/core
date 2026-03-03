@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { GetTreeParams } from './get-tree.types'
 import type { FromElementParams } from '@/dialecte'
@@ -36,10 +36,10 @@ describe('getTree', () => {
 			{
 				desc: 'includes only matching tagName',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1"><AA_1 ${DEV_ID}="5" aAA_1="valueA" /></A>
-						<B ${DEV_ID}="3" bB="value2" />
-						<A ${DEV_ID}="4" aA="value3" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="valueA" /></A>
+						<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" bB="value2" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="value3" />
 					</Root>
 				`,
 				startFrom: { tagName: 'Root', id: '1' },
@@ -56,10 +56,10 @@ describe('getTree', () => {
 			{
 				desc: 'includes only matching attributes',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="match" />
-						<A ${DEV_ID}="3" aA="nomatch" />
-						<A ${DEV_ID}="4" aA="match" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="match" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="nomatch" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="match" />
 					</Root>
 				`,
 				startFrom: { tagName: 'Root', id: '1' },
@@ -76,14 +76,14 @@ describe('getTree', () => {
 			{
 				desc: 'includes nested children',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1">
-							<AA_1 ${DEV_ID}="3" bB="value2">
-								<AAA_1 ${DEV_ID}="4" cC="target" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" bB="value2">
+								<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" cC="target" />
 							</AA_1>
 						</A>
-						<B ${DEV_ID}="5" bA="value5">
-							<BB_1 ${DEV_ID}="6" bB="value6" />
+						<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" bA="value5">
+							<BB_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" bB="value6" />
 						</B>
 					</Root>
 				`,
@@ -112,15 +112,15 @@ describe('getTree', () => {
 			{
 				desc: 'handles multiple descendant branches for different sibling types',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1">
-							<AA_1 ${DEV_ID}="3" aAA_1="valueA">
-								<AAA_1 ${DEV_ID}="4" aAAA_1="deep" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="valueA">
+								<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="deep" />
 							</AA_1>
-							<AA_2 ${DEV_ID}="5" aAA_2="valueB" />
+							<AA_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_2="valueB" />
 						</A>
-						<A ${DEV_ID}="6" aA="value2">
-							<AA_1 ${DEV_ID}="7" aAA_1="valueC" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aA="value2">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="7" aAA_1="valueC" />
 						</A>
 					</Root>
 				`,
@@ -203,10 +203,10 @@ describe('getTree', () => {
 			{
 				desc: 'excludes matching elements with scope: self',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1" />
-						<B ${DEV_ID}="3" bB="value2" />
-						<A ${DEV_ID}="4" aA="value3" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1" />
+						<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" bB="value2" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="value3" />
 					</Root>
 				`,
 				startFrom: { tagName: 'Root', id: '1' },
@@ -220,9 +220,9 @@ describe('getTree', () => {
 			{
 				desc: 'stops traversal with scope: children',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1">
-							<B ${DEV_ID}="3" bB="value2" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1">
+							<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" bB="value2" />
 						</A>
 					</Root>
 				`,
@@ -243,9 +243,9 @@ describe('getTree', () => {
 			{
 				desc: 'excludes with attribute matching',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="exclude" />
-						<A ${DEV_ID}="3" aA="keep" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="exclude" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="keep" />
 					</Root>
 				`,
 				startFrom: { tagName: 'Root', id: '1' },
@@ -303,10 +303,10 @@ describe('getTree', () => {
 			{
 				desc: 'unwraps matching elements and promotes children',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1">
-							<B ${DEV_ID}="3" bB="value2" />
-							<C ${DEV_ID}="4" cC="value3" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1">
+							<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" bB="value2" />
+							<C ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" cC="value3" />
 						</A>
 					</Root>
 				`,
@@ -322,12 +322,12 @@ describe('getTree', () => {
 			{
 				desc: 'unwraps multiple elements at same level',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1">
-							<C ${DEV_ID}="3" cC="value3" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1">
+							<C ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" cC="value3" />
 						</A>
-						<A ${DEV_ID}="4" aA="value2">
-							<C ${DEV_ID}="5" cC="value4" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="value2">
+							<C ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" cC="value4" />
 						</A>
 					</Root>
 				`,
@@ -343,10 +343,10 @@ describe('getTree', () => {
 			{
 				desc: 'unwraps nested elements recursively',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1">
-							<B ${DEV_ID}="3" bB="value2">
-								<C ${DEV_ID}="4" cC="value3" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1">
+							<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" bB="value2">
+								<C ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" cC="value3" />
 							</B>
 						</A>
 					</Root>
@@ -401,10 +401,10 @@ describe('getTree', () => {
 			{
 				desc: 'combines include and exclude filters',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="keep" />
-						<A ${DEV_ID}="3" aA="exclude" />
-						<B ${DEV_ID}="4" bB="value" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="keep" />
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="exclude" />
+						<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" bB="value" />
 					</Root>
 				`,
 				startFrom: { tagName: 'Root', id: '1' },
@@ -421,9 +421,9 @@ describe('getTree', () => {
 			{
 				desc: 'combines all three filters',
 				xmlString: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-						<A ${DEV_ID}="2" aA="value1">
-							<AA_1 ${DEV_ID}="3" bB="value2" />
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+						<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value1">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" bB="value2" />
 						</A>
 					</Root>
 				`,

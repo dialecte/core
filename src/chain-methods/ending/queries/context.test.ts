@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { FromElementParams } from '@/dialecte'
 import type { ElementsOf } from '@/types'
@@ -29,7 +29,7 @@ describe('getContext', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'returns context for root element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			startFrom: { tagName: 'Root' },
 			expected: {
 				focusTagName: 'Root',
@@ -38,7 +38,7 @@ describe('getContext', () => {
 		},
 		{
 			description: 'returns context for specific element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			expected: {
 				focusTagName: 'A',
@@ -47,7 +47,7 @@ describe('getContext', () => {
 		},
 		{
 			description: 'returns context for nested element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nested" /></A></Root>`,
 			startFrom: { tagName: 'AA_1', id: '3' },
 			expected: {
 				focusTagName: 'AA_1',
@@ -76,7 +76,7 @@ describe('getContext', () => {
 
 	it('returns deep cloned snapshot - mutations do not affect returned context', async () => {
 		const { dialecte, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 		})
 
 		try {
@@ -100,7 +100,7 @@ describe('getContext', () => {
 
 	it('multiple getContext calls return independent snapshots', async () => {
 		const { dialecte, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 		})
 
 		try {
@@ -123,7 +123,7 @@ describe('getContext', () => {
 
 	it('includes staged operations in context', async () => {
 		const { dialecte, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 		})
 
 		try {

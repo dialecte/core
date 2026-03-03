@@ -1,4 +1,4 @@
-import { assert } from '../assert'
+import { assert } from '@/helpers/assert'
 
 import type { ChainTestOperation } from './test-operations.types'
 import type { Chain, AnyChain } from '@/chain-methods'

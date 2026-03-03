@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { FindChildrenParams } from './find-children.types'
 import type { FromElementParams } from '@/dialecte'
@@ -27,7 +27,7 @@ describe('findChildren', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'finds single child by tagName',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="child" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="child" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: {} },
 			expected: {
@@ -36,7 +36,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'finds multiple children of same tagName',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="c1" /><AA_1 ${DEV_ID}="4" aAA_1="c2" /><AA_1 ${DEV_ID}="5" aAA_1="c3" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="c1" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="c2" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="c3" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: {} },
 			expected: {
@@ -45,7 +45,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'finds children filtered by attribute',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="match" /><AA_1 ${DEV_ID}="4" aAA_1="nomatch" /><AA_1 ${DEV_ID}="5" aAA_1="match" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="match" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="nomatch" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="match" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: { aAA_1: 'match' } },
 			expected: {
@@ -54,7 +54,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'finds children of different tagNames',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="c1" /><AA_2 ${DEV_ID}="4" aAA_2="c2" /><AA_3 ${DEV_ID}="5" aAA_3="c3" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="c1" /><AA_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_2="c2" /><AA_3 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_3="c3" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: {}, AA_2: {}, AA_3: {} },
 			expected: {
@@ -65,7 +65,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'finds children with different attribute filters',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="a1" bAA_1="b1" /><AA_1 ${DEV_ID}="4" aAA_1="a2" bAA_1="b2" /><AA_2 ${DEV_ID}="5" aAA_2="a3" bAA_2="b3" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="a1" bAA_1="b1" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="a2" bAA_1="b2" /><AA_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_2="a3" bAA_2="b3" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: { aAA_1: 'a1' }, AA_2: { bAA_2: 'b3' } },
 			expected: {
@@ -75,7 +75,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'returns empty array when no children match',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="nomatch" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nomatch" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: { aAA_1: 'match' } },
 			expected: {
@@ -84,7 +84,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'returns empty array when element has no children',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: {} },
 			expected: {
@@ -93,7 +93,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'finds children with multiple attribute filters',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="a1" bAA_1="b1" /><AA_1 ${DEV_ID}="4" aAA_1="a1" bAA_1="b2" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="a1" bAA_1="b1" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="a1" bAA_1="b2" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: { aAA_1: 'a1', bAA_1: 'b1' } },
 			expected: {
@@ -102,7 +102,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'excludes grandchildren from results',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="child"><AAA_1 ${DEV_ID}="4" aAAA_1="grandchild" /></AA_1></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="child"><AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="grandchild" /></AA_1></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: {} },
 			expected: {
@@ -111,7 +111,7 @@ describe('findChildren', () => {
 		},
 		{
 			description: 'finds children when filtering by array attribute',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="opt1" /><AA_1 ${DEV_ID}="4" aAA_1="opt2" /><AA_1 ${DEV_ID}="5" aAA_1="opt3" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="opt1" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="opt2" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="opt3" /></A></Root>`,
 			startFrom: { tagName: 'A', id: '2' },
 			filters: { AA_1: { aAA_1: ['opt1', 'opt3'] } },
 			expected: {
@@ -143,7 +143,7 @@ describe('findChildren', () => {
 	})
 
 	it('includes status property on returned records', async () => {
-		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="child" /></A></Root>`
+		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="child" /></A></Root>`
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {
@@ -160,7 +160,7 @@ describe('findChildren', () => {
 	})
 
 	it('finds newly created children from staged operations', async () => {
-		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="existing" /></A></Root>`
+		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="existing" /></A></Root>`
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {
@@ -179,7 +179,7 @@ describe('findChildren', () => {
 	})
 
 	it('excludes deleted children from results', async () => {
-		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="c1" /><AA_1 ${DEV_ID}="4" aAA_1="c2" /></A></Root>`
+		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="c1" /><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="c2" /></A></Root>`
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {
@@ -197,7 +197,7 @@ describe('findChildren', () => {
 	})
 
 	it('finds updated children with new attribute values', async () => {
-		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value"><AA_1 ${DEV_ID}="3" aAA_1="old" /></A></Root>`
+		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="old" /></A></Root>`
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {

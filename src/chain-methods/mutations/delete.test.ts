@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { FromElementParams } from '@/dialecte/types'
 import type { ElementsOf, ParentsOf } from '@/types'
@@ -29,7 +29,7 @@ describe('CRUD Operations - deleteElement', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'delete leaf element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			deleteElement: { tagName: 'A', id: '2' },
 			deleteParentTagName: 'Root',
 			expected: {
@@ -39,7 +39,7 @@ describe('CRUD Operations - deleteElement', () => {
 		},
 		{
 			description: 'delete element with single child',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="val"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="val"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nested" /></A></Root>`,
 			deleteElement: { tagName: 'A', id: '2' },
 			deleteParentTagName: 'Root',
 			expected: {
@@ -49,7 +49,7 @@ describe('CRUD Operations - deleteElement', () => {
 		},
 		{
 			description: 'delete element with multiple children',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="val"><AA_1 ${DEV_ID}="3" aAA_1="child1" /><AA_2 ${DEV_ID}="4" aAA_2="child2" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="val"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="child1" /><AA_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_2="child2" /></A></Root>`,
 			deleteElement: { tagName: 'A', id: '2' },
 			deleteParentTagName: 'Root',
 			expected: {
@@ -59,7 +59,7 @@ describe('CRUD Operations - deleteElement', () => {
 		},
 		{
 			description: 'delete nested child element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="val"><AA_1 ${DEV_ID}="3" aAA_1="nested" /></A></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="val"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nested" /></A></Root>`,
 			deleteElement: { tagName: 'AA_1', id: '3' },
 			deleteParentTagName: 'A',
 			expected: {
@@ -100,7 +100,7 @@ describe('CRUD Operations - deleteElement', () => {
 	describe('cascading delete', () => {
 		it('deletes all descendants recursively', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="val"><AA_1 ${DEV_ID}="3" aAA_1="nested"><AAA_1 ${DEV_ID}="4" aAAA_1="deeply" /></AA_1></A></Root>`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="val"><AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nested"><AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="deeply" /></AA_1></A></Root>`,
 			})
 
 			try {
@@ -124,7 +124,7 @@ describe('CRUD Operations - deleteElement', () => {
 	describe('error handling', () => {
 		it('delete method does not exist on root element', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			})
 
 			try {

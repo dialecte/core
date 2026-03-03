@@ -2,17 +2,17 @@ import { getLatestStagedRecord, getRecord, fetchRecords } from '.'
 
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
-	createTestRecord,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	ChainTestOperation,
+	createTestRecord,
 	executeTableDrivenTestsChainOperations,
-} from '@/helpers/test-fixtures'
+} from '@/test-fixtures'
 
+import type { ChainTestOperation } from '@/test-fixtures'
 import type { Operation, RawRecord, ElementsOf, ChildrenOf } from '@/types'
 
 type TestConfig = typeof TEST_DIALECTE_CONFIG
@@ -261,14 +261,14 @@ describe('getRecord', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'returns record from database when no staged operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			operations: [],
 			fetchParams: { id: '2', tagName: 'A' },
 			expected: { exists: true, tagName: 'A' },
 		},
 		{
 			description: 'returns record from staged operations instead of database',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					type: 'addChild',
@@ -283,7 +283,7 @@ describe('getRecord', () => {
 		},
 		{
 			description: 'returns undefined for deleted element',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="value" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" /></Root>`,
 			operations: [
 				{
 					type: 'delete',
@@ -295,7 +295,7 @@ describe('getRecord', () => {
 		},
 		{
 			description: 'returns updated record from staged operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="old" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="old" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -360,21 +360,21 @@ describe('fetchRecords', () => {
 	const testCases: TestCase[] = [
 		{
 			description: 'returns empty array when no records exist',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [],
 			fetchParams: { tagName: 'A' },
 			expected: { count: 0 },
 		},
 		{
 			description: 'returns records from database when no staged operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /><A ${DEV_ID}="3" aA="v2" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="v2" /></Root>`,
 			operations: [],
 			fetchParams: { tagName: 'A' },
 			expected: { count: 2, ids: ['2', '3'] },
 		},
 		{
 			description: 'includes created records from staged operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					type: 'addChild',
@@ -396,7 +396,7 @@ describe('fetchRecords', () => {
 		},
 		{
 			description: 'merges database records with created staged records',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /></Root>`,
 			operations: [
 				{
 					type: 'addChild',
@@ -411,7 +411,7 @@ describe('fetchRecords', () => {
 		},
 		{
 			description: 'returns updated records from staged operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="old" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="old" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -424,7 +424,7 @@ describe('fetchRecords', () => {
 		},
 		{
 			description: 'excludes deleted records from staged operations',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /><A ${DEV_ID}="3" aA="v2" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="v2" /></Root>`,
 			operations: [
 				{
 					type: 'delete',
@@ -436,7 +436,7 @@ describe('fetchRecords', () => {
 		},
 		{
 			description: 'handles mixed operations (create, update, delete)',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /><A ${DEV_ID}="3" aA="v2" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="v2" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -460,7 +460,7 @@ describe('fetchRecords', () => {
 		},
 		{
 			description: 'handles multiple updates to same record',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /></Root>`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /></Root>`,
 			operations: [
 				{
 					type: 'update',
@@ -515,7 +515,7 @@ describe('fetchRecords', () => {
 	})
 
 	it('includes status property when type=dialecte', async () => {
-		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /></Root>`
+		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /></Root>`
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {
@@ -557,7 +557,7 @@ describe('fetchRecords', () => {
 	})
 
 	it('excludes status property when type=raw', async () => {
-		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /></Root>`
+		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /></Root>`
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {
@@ -593,7 +593,7 @@ describe('fetchRecords', () => {
 	})
 
 	it('excludes status property when type is omitted', async () => {
-		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1"><A ${DEV_ID}="2" aA="v1" /></Root>`
+		const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1"><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="v1" /></Root>`
 		const { dialecte, cleanup } = await createTestDialecte({ xmlString: xml })
 
 		try {

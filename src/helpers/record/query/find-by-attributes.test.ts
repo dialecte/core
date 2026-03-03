@@ -3,14 +3,14 @@ import { findByAttributes, matchesAttributeFilter } from './find-by-attributes'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import { DialecteCore } from '@/dialecte'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
+	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	createTestRecord,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	DEV_ID,
-	TEST_DIALECTE_CONFIG,
-} from '@/helpers/test-fixtures'
+	createTestRecord,
+} from '@/test-fixtures'
 
 import type { AttributesOf, Context, ElementsOf, RawRecord } from '@/types'
 
@@ -181,12 +181,12 @@ describe('matchesAttributeFilter', () => {
 })
 
 describe('findByAttributes', () => {
-	const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="root-id">
-		<A ${DEV_ID}="a1" aA="a1" aB="typeA" />
-		<A ${DEV_ID}="a2" aA="a2" aB="typeA" />
-		<A ${DEV_ID}="a3" aA="a3" aB="typeB" />
-		<B ${DEV_ID}="b1" bA="b1" bB="descB" />
-		<B ${DEV_ID}="b2" bA="b2" bB="descB" />
+	const xml = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="root-id">
+		<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a1" aA="a1" aB="typeA" />
+		<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a2" aA="a2" aB="typeA" />
+		<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a3" aA="a3" aB="typeB" />
+		<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="b1" bA="b1" bB="descB" />
+		<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="b2" bA="b2" bB="descB" />
 	</Root>`
 
 	let dialecte: DialecteCore<TestConfig, {}>

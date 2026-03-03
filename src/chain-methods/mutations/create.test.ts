@@ -3,13 +3,13 @@ import { AddChildParams } from './create.types'
 import { describe, it, expect } from 'vitest'
 
 import { FromElementParams } from '@/dialecte'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { ElementsOf, ChildrenOf, RawRecord, AnyDialecteConfig, Context } from '@/types'
 
@@ -31,7 +31,7 @@ describe('CRUD Operations - addChild', () => {
 	const testCases: testCase[] = [
 		{
 			description: 'create child without changing focus (setFocus: false)',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					tagName: 'A',
@@ -50,7 +50,7 @@ describe('CRUD Operations - addChild', () => {
 		},
 		{
 			description: 'create child and change focus (setFocus: true)',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					tagName: 'A',
@@ -69,7 +69,7 @@ describe('CRUD Operations - addChild', () => {
 		},
 		{
 			description: 'create nested elements with setFocus: true',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					tagName: 'A',
@@ -98,7 +98,7 @@ describe('CRUD Operations - addChild', () => {
 		},
 		{
 			description: 'create multiple children without changing focus',
-			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+			xml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 			operations: [
 				{
 					tagName: 'A',
@@ -153,7 +153,7 @@ describe('CRUD Operations - addChild', () => {
 			let hookParentRecord: unknown
 
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 				dialecteConfig: {
 					...TEST_DIALECTE_CONFIG,
 					hooks: {
@@ -192,7 +192,7 @@ describe('CRUD Operations - addChild', () => {
 
 		it('reflects hook parent updates in subsequent addChild operations', async () => {
 			const { dialecte, cleanup } = await createTestDialecte({
-				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1" />`,
+				xmlString: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1" />`,
 				dialecteConfig: {
 					...TEST_DIALECTE_CONFIG,
 					hooks: {

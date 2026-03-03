@@ -17,7 +17,7 @@ export function standardizeRecord<
 		attributes?:
 			| AttributesValueObjectOf<GenericConfig, GenericElement>
 			| FullAttributeObjectOf<GenericConfig, GenericElement>[]
-	} & Partial<RawRecord<GenericConfig, GenericElement>>
+	} & Omit<Partial<RawRecord<GenericConfig, GenericElement>>, 'attributes'>
 	dialecteConfig: GenericConfig
 }): RawRecord<GenericConfig, GenericElement> {
 	const { record, dialecteConfig } = params

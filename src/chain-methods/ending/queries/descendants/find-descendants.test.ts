@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
 	createTestDialecte,
-	DEV_ID,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/helpers'
+} from '@/test-fixtures'
 
 import type { DescendantsFilter } from './types'
 import type { FromElementParams } from '@/dialecte'
@@ -28,9 +28,9 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'finds single level descendants',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="value">
-						<AA_1 ${DEV_ID}="3" aAA_1="child" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="child" />
 					</A>
 				</Root>
 			`,
@@ -43,10 +43,10 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'finds nested descendants with path',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa">
-							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="aaa" />
 						</AA_1>
 					</A>
 				</Root>
@@ -70,12 +70,12 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'enforces path context - only descendants of filtered parent',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="match">
-						<AA_1 ${DEV_ID}="3" aAA_1="child1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="match">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="child1" />
 					</A>
-					<A ${DEV_ID}="4" aA="nomatch">
-						<AA_1 ${DEV_ID}="5" aAA_1="child2" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="nomatch">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="child2" />
 					</A>
 				</Root>
 			`,
@@ -96,13 +96,13 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'filters by attributes at multiple levels',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa1" />
-						<AA_1 ${DEV_ID}="4" aAA_1="aa2" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa1" />
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="aa2" />
 					</A>
-					<A ${DEV_ID}="5" aA="a2">
-						<AA_1 ${DEV_ID}="6" aAA_1="aa1" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aA="a2">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aAA_1="aa1" />
 					</A>
 				</Root>
 			`,
@@ -124,15 +124,15 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'supports OR matching with array attribute values',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="opt1">
-						<AA_1 ${DEV_ID}="3" aAA_1="c1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="opt1">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="c1" />
 					</A>
-					<A ${DEV_ID}="4" aA="opt2">
-						<AA_1 ${DEV_ID}="5" aAA_1="c2" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="opt2">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="c2" />
 					</A>
-					<A ${DEV_ID}="6" aA="opt3">
-						<AA_1 ${DEV_ID}="7" aAA_1="c3" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aA="opt3">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="7" aAA_1="c3" />
 					</A>
 				</Root>
 			`,
@@ -152,10 +152,10 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'deduplicates ancestors from multiple paths',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="shared">
-						<AA_1 ${DEV_ID}="3" aAA_1="c1" />
-						<AA_1 ${DEV_ID}="4" aAA_1="c2" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="shared">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="c1" />
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="c2" />
 					</A>
 				</Root>
 			`,
@@ -174,11 +174,11 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'skips intermediate levels with DescendantsOf',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa">
-							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa">
-								<AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="aaa">
+								<AAAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAAAA_1="aaaa" />
 							</AAA_1>
 						</AA_1>
 					</A>
@@ -200,9 +200,9 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'returns empty arrays when no matches',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="value">
-						<AA_1 ${DEV_ID}="3" aAA_1="nomatch" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="nomatch" />
 					</A>
 				</Root>
 			`,
@@ -222,8 +222,8 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'returns empty arrays when element has no descendants',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="value" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" />
 				</Root>
 			`,
 			startFrom: { tagName: 'A', id: '2' },
@@ -235,11 +235,11 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'handles deeply nested paths',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa">
-							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa">
-								<AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="aaa">
+								<AAAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAAAA_1="aaaa" />
 							</AAA_1>
 						</AA_1>
 					</A>
@@ -268,11 +268,11 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'finds multiple matches at deepest level',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa1" />
-						<AA_1 ${DEV_ID}="4" aAA_1="aa2" />
-						<AA_1 ${DEV_ID}="5" aAA_1="aa3" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa1" />
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="aa2" />
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="aa3" />
 					</A>
 				</Root>
 			`,
@@ -291,12 +291,12 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'filters across multiple branches',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="match">
-						<AA_1 ${DEV_ID}="3" aAA_1="c1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="match">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="c1" />
 					</A>
-					<A ${DEV_ID}="4" aA="match">
-						<AA_1 ${DEV_ID}="5" aAA_1="c2" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aA="match">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="c2" />
 					</A>
 				</Root>
 			`,
@@ -316,10 +316,10 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'combines attribute filters with path at different levels',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1" bA="b1">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa1" bAA_1="bb1" />
-						<AA_1 ${DEV_ID}="4" aAA_1="aa2" bAA_1="bb2" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1" bA="b1">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa1" bAA_1="bb1" />
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_1="aa2" bAA_1="bb2" />
 					</A>
 				</Root>
 			`,
@@ -340,9 +340,9 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'works with single tag in filter (no descendants)',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1" />
-					<A ${DEV_ID}="3" aA="a2" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aA="a2" />
 				</Root>
 			`,
 			startFrom: { tagName: 'Root', id: '1' },
@@ -357,14 +357,14 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'no filter: returns all descendants grouped by tag',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa">
-							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="aaa" />
 						</AA_1>
 					</A>
-					<A ${DEV_ID}="5" aA="a2">
-						<AA_1 ${DEV_ID}="6" aAA_1="aa2" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aA="a2">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aAA_1="aa2" />
 					</A>
 				</Root>
 			`,
@@ -378,8 +378,8 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'no filter: empty result when element has no descendants',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="value" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="value" />
 				</Root>
 			`,
 			startFrom: { tagName: 'A', id: '2' },
@@ -388,11 +388,11 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'no filter: handles deeply nested tree',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa">
-							<AAA_1 ${DEV_ID}="4" aAAA_1="aaa">
-								<AAAA_1 ${DEV_ID}="5" aAAAA_1="aaaa" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAAA_1="aaa">
+								<AAAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAAAA_1="aaaa" />
 							</AAA_1>
 						</AA_1>
 					</A>
@@ -409,13 +409,13 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'no filter: collects from multiple branches',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aA="a1">
-						<AA_1 ${DEV_ID}="3" aAA_1="aa1" />
-						<AA_2 ${DEV_ID}="4" aAA_2="aa2" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aA="a1">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aAA_1="aa1" />
+						<AA_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aAA_2="aa2" />
 					</A>
-					<B ${DEV_ID}="5" aB="b1">
-						<BB_1 ${DEV_ID}="6" aBB_1="bb1" />
+					<B ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aB="b1">
+						<BB_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aBB_1="bb1" />
 					</B>
 				</Root>
 			`,
@@ -431,12 +431,12 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'optional intermediates: multiple nested levels collected',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aFC="fc">
-						<AA_1 ${DEV_ID}="3" aSC1="sc1">
-							<AA_1 ${DEV_ID}="4" aSC2="sc2">
-								<AA_1 ${DEV_ID}="5" aSC3="sc3">
-									<AAA_1 ${DEV_ID}="6" aFCR="fcr" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aFC="fc">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aSC1="sc1">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aSC2="sc2">
+								<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aSC3="sc3">
+									<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aFCR="fcr" />
 								</AA_1>
 							</AA_1>
 						</AA_1>
@@ -462,19 +462,19 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'optional intermediates: mixed depths across branches',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aFC1="fc1">
-						<AAA_1 ${DEV_ID}="3" aFCR1="fcr1" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aFC1="fc1">
+						<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aFCR1="fcr1" />
 					</A>
-					<A ${DEV_ID}="4" aFC2="fc2">
-						<AA_1 ${DEV_ID}="5" aSC1="sc1">
-							<AAA_1 ${DEV_ID}="6" aFCR2="fcr2" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aFC2="fc2">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aSC1="sc1">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aFCR2="fcr2" />
 						</AA_1>
 					</A>
-					<A ${DEV_ID}="7" aFC3="fc3">
-						<AA_1 ${DEV_ID}="8" aSC2="sc2">
-							<AA_1 ${DEV_ID}="9" aSC3="sc3">
-								<AAA_1 ${DEV_ID}="10" aFCR3="fcr3" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="7" aFC3="fc3">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="8" aSC2="sc2">
+							<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="9" aSC3="sc3">
+								<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="10" aFCR3="fcr3" />
 							</AA_1>
 						</AA_1>
 					</A>
@@ -499,13 +499,13 @@ describe('findDescendants (new API)', () => {
 		{
 			description: 'optional intermediates: required when has attributes',
 			xml: /* xml */ `
-				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-					<A ${DEV_ID}="2" aFC="fc">
-						<AAA_1 ${DEV_ID}="3" aFCR="fcr" />
+				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="2" aFC="fc">
+						<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="3" aFCR="fcr" />
 					</A>
-					<A ${DEV_ID}="4" aFC="fc">
-						<AA_1 ${DEV_ID}="5" aAA_1="special">
-							<AAA_1 ${DEV_ID}="6" aFCR="fcr" />
+					<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="4" aFC="fc">
+						<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="5" aAA_1="special">
+							<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="6" aFCR="fcr" />
 						</AA_1>
 					</A>
 				</Root>

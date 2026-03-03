@@ -118,14 +118,14 @@ async function createTestDialecte(params: {
 import {
 	createTestDialecte,
 	XMLNS_DEFAULT_NAMESPACE,
-	DEV_ID,
+	CUSTOM_RECORD_ID_ATTRIBUTE,
 	XMLNS_DEV_NAMESPACE,
 } from '@dialecte/core'
 
 const { dialecte, cleanup } = await createTestDialecte({
 	xmlString: `
-    <Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="1">
-      <A aA="value" ${DEV_ID}="2"/>
+    <Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
+      <A aA="value" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
     </Root>
   `,
 })
@@ -148,8 +148,8 @@ await cleanup()
 Use `dev:db-id` attributes in your XML to set predictable record IDs. This makes assertions easier:
 
 ```xml
-<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${DEV_ID}="root-1">
-  <A aA="val" ${DEV_ID}="a-1"/>
+<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="root-1">
+  <A aA="val" ${CUSTOM_RECORD_ID_ATTRIBUTE}="a-1"/>
 </Root>
 ```
 
