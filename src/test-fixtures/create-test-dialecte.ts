@@ -39,7 +39,7 @@ export async function createTestDialecte<
 
 	const databaseName = databaseNames[0]
 
-	const dialecte = await createDialecte<GenericConfig, GenericExtensionRegistry>({
+	const dialecte = createDialecte<GenericConfig, GenericExtensionRegistry>({
 		databaseName,
 		dialecteConfig: dialecteConfig as GenericConfig,
 		extensions: extensions as GenericExtensionRegistry,
