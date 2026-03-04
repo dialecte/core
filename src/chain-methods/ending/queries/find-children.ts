@@ -1,8 +1,8 @@
 import { findByAttributes } from '@/helpers'
 
 import type { FindChildrenParams } from './find-children.types'
+import type { DatabaseInstance } from '@/database'
 import type { FilterAttributes } from '@/helpers'
-import type { DatabaseInstance } from '@/index'
 import type { AnyDialecteConfig, ElementsOf, Context, ChildrenOf, ChainRecord } from '@/types'
 
 export function createFindChildrenMethod<

@@ -1,4 +1,4 @@
-import { getAttributesValuesByName } from '@/utils'
+import { getAttributesValuesByName } from '@/helpers'
 
 import type { AnyDialecteConfig, ElementsOf, Context, FullAttributeObjectOf } from '@/types'
 

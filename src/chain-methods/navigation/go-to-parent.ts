@@ -1,4 +1,5 @@
-import { assert, toChainRecord, getLatestStagedRecord } from '@/helpers'
+import { toChainRecord, getLatestStagedRecord } from '@/helpers'
+import { assert } from '@/utils'
 
 import type { ChainFactory } from '../types'
 import type { GoToParentParams } from './types'

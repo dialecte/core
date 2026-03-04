@@ -1,6 +1,6 @@
 import { fetchRecords } from '..'
 
-import { getAttributeValueByName } from '@/utils'
+import { getAttributeValueByName } from '@/helpers'
 
 import type { FilterAttributes } from './types'
 import type { DatabaseInstance } from '@/database'

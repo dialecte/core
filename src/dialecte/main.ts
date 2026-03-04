@@ -2,7 +2,7 @@ import { createDatabaseInstance } from '../database'
 import { fromElement, fromRoot } from './entrypoints'
 import { getState } from './state'
 
-import { assert } from '@/helpers'
+import { assert } from '@/utils'
 
 import type { DialecteCore, FromElementParams } from './types'
 import type { AnyDialecteConfig, ElementsOf, ExtensionRegistry } from '@/types'

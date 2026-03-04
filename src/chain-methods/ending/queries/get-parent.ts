@@ -1,5 +1,6 @@
-import { getRecord, assert } from '@/helpers'
-import { DatabaseInstance } from '@/index'
+import { DatabaseInstance } from '@/database'
+import { getRecord } from '@/helpers'
+import { assert } from '@/utils'
 
 import type { AnyDialecteConfig, ElementsOf, Context, ParentsOf, ChainRecord } from '@/types'
 

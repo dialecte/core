@@ -24,6 +24,14 @@
 		"./test": {
 			"types": "./dist/test.d.ts",
 			"default": "./dist/test.js"
+		},
+		"./utils": {
+			"types": "./dist/utils.d.ts",
+			"default": "./dist/utils.js"
+		},
+		"./helpers": {
+			"types": "./dist/helpers.d.ts",
+			"default": "./dist/helpers.js"
 		}
 	},
 	"scripts": {

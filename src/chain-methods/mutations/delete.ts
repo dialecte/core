@@ -1,5 +1,6 @@
-import { addStagedOperation, assert, getRecord, toChainRecord } from '@/helpers'
-import { DatabaseInstance } from '@/index'
+import { DatabaseInstance } from '@/database'
+import { addStagedOperation, getRecord, toChainRecord } from '@/helpers'
+import { assert } from '@/utils'
 
 import type { ChainFactory } from '../types'
 import type { DeleteElementParams } from './delete.types'

@@ -1,7 +1,7 @@
 import { getRecord, matchesAttributeFilter, toTreeRecord } from '@/helpers'
 
 import type { GetTreeParams, IncludeFilter, ExcludeFilter } from './get-tree.types'
-import type { DatabaseInstance } from '@/index'
+import type { DatabaseInstance } from '@/database'
 import type { AnyDialecteConfig, ElementsOf, Context, ChainRecord, TreeRecord } from '@/types'
 
 export function createGetTreeMethod<

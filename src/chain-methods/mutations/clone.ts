@@ -1,6 +1,6 @@
 import { DeepCloneChildParams } from './clone.types'
 
-import { assert } from '@/index'
+import { assert } from '@/utils'
 
 import type { Chain, ChainFactory } from '../types'
 import type {
