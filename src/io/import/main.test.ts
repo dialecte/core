@@ -13,8 +13,8 @@ import {
 	XMLNS_DEV_NAMESPACE,
 } from '@/test-fixtures'
 
+import type { AnyDatabaseInstance } from '../database'
 import type { ExpectedRecords } from './test.types'
-import type { AnyDatabaseInstance } from '@/database'
 
 describe('Import', () => {
 	describe('Feature', () => {

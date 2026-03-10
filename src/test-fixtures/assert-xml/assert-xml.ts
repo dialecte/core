@@ -103,7 +103,7 @@ function assertExpectedXPath(params: {
 
 		const contextInfo =
 			lastSuccessfulStep === 0
-				? '[No parent matched — failed from document root]'
+				? `[No parent matched — failed from document root]\n  Document:\n${formatXml({ xml: new XMLSerializer().serializeToString(xmlDocument) })}`
 				: `[Last match at step ${lastSuccessfulStep}/${steps.length}]:\n${prevElement ? formatXml({ xml: prevElement.outerHTML }) : '(none)'}`
 
 		expect(

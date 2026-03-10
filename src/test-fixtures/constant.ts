@@ -1,6 +1,4 @@
-import { DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
-
-export { CUSTOM_RECORD_ID_ATTRIBUTE, DEV_CUSTOM_RECORD_ID_ATTRIBUTE_NAME } from '@/helpers/constant'
+import { DIALECTE_DEV_NAMESPACE } from '@/helpers'
 
 export const DIALECTE_NAMESPACES = {
 	default: {

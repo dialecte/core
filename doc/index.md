@@ -17,9 +17,9 @@ hero:
       text: Why Dialecte?
       link: /guide/introduction/what-is-dialecte
 features:
-  - icon: 🔗
-    title: Chainable API
-    details: Navigate, mutate, query, and commit — all in a single fluent chain. No intermediate variables, no boilerplate.
+  - icon: �
+    title: Document Model
+    details: A clear separation of concerns — Document for lifecycle, Query for reads, Transaction for writes. No hidden state, no surprises.
   - icon: 🛡️
     title: Type-Safe by Design
     details: Your schema drives the types. The compiler catches invalid children and attributes before your code ever runs.

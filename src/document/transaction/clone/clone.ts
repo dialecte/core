@@ -1,0 +1,91 @@
+import { stageAddChild } from '../create'
+
+import { toRef } from '@/helpers'
+
+import type { CloneResult, CloneMapping } from './clone.types'
+import type { Context } from '@/document'
+import type { AnyDialecteConfig, ElementsOf, ChildrenOf, TreeRecord, Ref } from '@/types'
+
+/**
+ * Recursively stages a deep clone of a TreeRecord under a parent.
+ * Returns a CloneResult with the new root ref and a full source→target mapping.
+ *
+ */
+export async function stageDeepClone<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+	GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
+>(params: {
+	dialecteConfig: GenericConfig
+	context: Context<GenericConfig>
+	parentRef: Ref<GenericConfig, GenericElement>
+	record: TreeRecord<GenericConfig, GenericChildElement>
+}): Promise<CloneResult<GenericConfig, GenericChildElement>> {
+	const { dialecteConfig, context, parentRef, record } = params
+
+	const mappings: CloneMapping<GenericConfig>[] = []
+
+	await cloneRecursively({
+		dialecteConfig,
+		context,
+		parentRef,
+		record,
+		mappings,
+	})
+
+	return {
+		ref: toRef(record),
+		mappings,
+	}
+}
+
+async function cloneRecursively<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(params: {
+	dialecteConfig: GenericConfig
+	context: Context<GenericConfig>
+	parentRef: Ref<GenericConfig, ElementsOf<GenericConfig>>
+	record: TreeRecord<GenericConfig, GenericElement>
+	mappings: CloneMapping<GenericConfig>[]
+}): Promise<void> {
+	const { dialecteConfig, context, parentRef, record, mappings } = params
+
+	let shouldBeCloned = true
+	let transformedRecord = record
+
+	if (dialecteConfig.hooks?.beforeClone) {
+		const result = dialecteConfig.hooks.beforeClone({ record })
+		shouldBeCloned = result.shouldBeCloned
+		transformedRecord = result.transformedRecord
+	}
+
+	if (!shouldBeCloned) return
+
+	const childRef = await stageAddChild({
+		dialecteConfig,
+		context,
+		parentRef,
+		params: {
+			tagName: transformedRecord.tagName,
+			namespace: transformedRecord.namespace,
+			attributes: transformedRecord.attributes,
+			value: transformedRecord.value,
+		},
+	})
+
+	mappings.push({
+		source: toRef(record),
+		target: childRef,
+	})
+
+	for (const child of transformedRecord.tree) {
+		await cloneRecursively({
+			dialecteConfig,
+			context,
+			parentRef: childRef,
+			record: child,
+			mappings,
+		})
+	}
+}

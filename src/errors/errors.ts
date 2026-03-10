@@ -1,50 +1,37 @@
 import { ERROR_CATALOG } from './codes'
 
-import type { DialecteErrorKey, DialecteErrorContext, DialecteCoreError } from './types'
-import type { AnyDialecteConfig } from '@/types'
+import type { DialecteErrorKey } from './types'
 
 /**
- * Create a structured error with code, message, and context
+ * Create a structured error and throw it.
  *
- * @param errorKey - Error key from ERROR_CATALOG (e.g., 'DATABASE_COMMIT_ERROR')
- * @param messageOverride - Optional custom message (uses default if not provided)
- * @param context - Context with method, currentFocus, operations, and custom props
- * @returns CoreError with all metadata
+ * Wraps the DialecteError in a real Error (for stack trace) and sets it as `.cause`
+ * so `toDialecteError` can extract it in catch blocks.
  *
  * @example
- * ```typescript
- * throw createError({
- *   errorKey: 'DATABASE_COMMIT_ERROR',
- *   context: {
- *     method: 'commit',
- *     currentFocus: apiRecord,
- *     operations: context.stagedOperations,
- *     creates: 5,
- *     updates: 3
- *   }
- * })
- * ```
+ * throwDialecteError('ELEMENT_NOT_FOUND', { detail: 'parent not found', method: 'addChild' })
  */
-export function createError<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig>(params: {
-	errorKey: DialecteErrorKey
-	messageOverride?: string
-	context: DialecteErrorContext<GenericConfig>
-}): DialecteCoreError<GenericConfig> {
-	const { errorKey, messageOverride, context } = params
-	const { code, message: defaultMessage } = ERROR_CATALOG[errorKey]
-
-	const error = new Error(messageOverride ?? defaultMessage) as DialecteCoreError<GenericConfig>
-	error.code = code
-	error.errorKey = errorKey
-	error.defaultMessage = defaultMessage
-	error.context = context
-
-	return error
-}
-
-/**
- * Check if error is a CoreError
- */
-export function isCoreError(error: unknown): error is DialecteCoreError {
-	return error instanceof Error && 'code' in error && 'errorKey' in error
+export function throwDialecteError(
+	key: DialecteErrorKey,
+	params: {
+		detail: string
+		method: string
+		message?: string
+		ref?: { tagName: string; id?: string }
+		cause?: Error
+	},
+): never {
+	const entry = ERROR_CATALOG[key]
+	const dialecteError = {
+		code: entry.code,
+		key,
+		message: params.message ?? entry.message,
+		detail: params.detail,
+		method: params.method,
+		ref: params.ref,
+		cause: params.cause,
+	}
+	const error = new Error(params.detail)
+	error.cause = dialecteError
+	throw error
 }

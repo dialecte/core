@@ -1,11 +1,10 @@
-import { bulkAddRecords } from './database-helpers'
+import { createDatabaseInstance } from '../database'
+import { bulkAddRecords, bulkUpdateRecords, bulkDeleteRecords } from './database-helpers'
 import { setSaxParser } from './parser'
 import { resolveCurrentBatchChildrenRelationships } from './relationships'
 
-import { createDatabaseInstance } from '@/database'
-
+import type { AnyDatabaseInstance } from '../database'
 import type { ParserInstance } from './types'
-import type { AnyDatabaseInstance } from '@/database'
 import type { AnyDialecteConfig, ImportOptions, ChunkOptions } from '@/types'
 
 const DEFAULT_IMPORT_OPTIONS: ImportOptions = {
@@ -94,6 +93,19 @@ async function handleFileImport(params: {
 					batchSize: options.batchSize,
 				},
 			})
+		}
+
+		if (dialecteConfig.io.hooks?.afterImport) {
+			const { creates, updates, deletes } = await dialecteConfig.io.hooks.afterImport()
+			if (creates?.length) {
+				await bulkAddRecords({ databaseInstance, elementsTableName, records: creates })
+			}
+			if (updates?.length) {
+				await bulkUpdateRecords({ databaseInstance, elementsTableName, updates })
+			}
+			if (deletes?.length) {
+				await bulkDeleteRecords({ databaseInstance, elementsTableName, ids: deletes })
+			}
 		}
 
 		return databaseName

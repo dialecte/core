@@ -96,7 +96,7 @@ const DIALECTE_NAMESPACES = {
 
 ## createTestDialecte
 
-Creates a fully configured dialecte instance from an XML string. Handles import, database creation, and cleanup.
+Creates a fully configured `Document` instance from an XML string for testing. Handles import, database creation, and cleanup.
 
 ### Signature
 
@@ -104,11 +104,13 @@ Creates a fully configured dialecte instance from an XML string. Handles import,
 async function createTestDialecte(params: {
 	xmlString: string
 	dialecteConfig?: AnyDialecteConfig // defaults to TEST_DIALECTE_CONFIG
-	extensions?: ExtensionRegistry // defaults to {}
 }): Promise<{
-	dialecte: DialecteCore
+	document: Document<Config>
 	databaseName: string
 	cleanup: () => Promise<void>
+	exportCurrentTest: (params?) => Promise<{ xmlDocument: XMLDocument; filename: string }>
+	assertExpectedElementQueries: (xmlDocument, queries) => void
+	assertUnexpectedElementQueries: (xmlDocument, queries) => void
 }>
 ```
 
@@ -120,9 +122,9 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	CUSTOM_RECORD_ID_ATTRIBUTE,
 	XMLNS_DEV_NAMESPACE,
-} from '@dialecte/core'
+} from '@dialecte/core/test'
 
-const { dialecte, cleanup } = await createTestDialecte({
+const { document: doc, cleanup } = await createTestDialecte({
 	xmlString: `
     <Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
       <A aA="value" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
@@ -130,8 +132,17 @@ const { dialecte, cleanup } = await createTestDialecte({
   `,
 })
 
-// Use the dialecte instance
-const ctx = await dialecte.goToElement({ tagName: 'A' }).getContext()
+// Query
+const record = await doc.query.getRecord({ tagName: 'A', id: '2' })
+
+// Mutate
+await doc.transaction(async (tx) => {
+	await tx.update({ tagName: 'A', id: '2' }, { attributes: { aA: 'updated' } })
+})
+
+// Export and assert XML
+const { xmlDocument } = await exportCurrentTest()
+assertExpectedElementQueries(xmlDocument, ['//A[@aA="updated"]'])
 
 // Always cleanup after test
 await cleanup()
@@ -141,8 +152,8 @@ await cleanup()
 
 1. Wraps the XML string in a `File` object
 2. Imports it via `importXmlFiles` with `useCustomRecordsIds: true` (preserves `dev:db-id` as record IDs)
-3. Creates a `DialecteCore` instance connected to the database
-4. Returns a `cleanup` function that closes the DB connection and deletes the database
+3. Creates a `Document` instance connected to the database
+4. Returns a `cleanup` function that destroys the database
 
 ::: tip
 Use `dev:db-id` attributes in your XML to set predictable record IDs. This makes assertions easier:
@@ -153,7 +164,7 @@ Use `dev:db-id` attributes in your XML to set predictable record IDs. This makes
 </Root>
 ```
 
-Then in your test: `goToElement({ tagName: 'A', id: 'a-1' })`
+Then in your test: `doc.query.getRecord({ tagName: 'A', id: 'a-1' })`
 :::
 
 ## createTestRecord
@@ -164,28 +175,28 @@ Creates a standardized test record with sensible defaults. Supports three output
 
 ```ts
 function createTestRecord(params: {
-	type?: 'raw' | 'chain' | 'tree' // default: 'raw'
+	type?: 'raw' | 'tracked' | 'tree' // default: 'raw'
 	record: {
 		tagName: ElementsOf<Config>
 		attributes?: AttributesValueObjectOf | FullAttributeObjectOf[]
 		// ...other RawRecord fields (optional)
 	}
-}): RawRecord | ChainRecord | TreeRecord
+}): RawRecord | TrackedRecord | TreeRecord
 ```
 
 ### Usage
 
 ```ts
-import { createTestRecord } from '@dialecte/core/helpers'
+import { createTestRecord } from '@dialecte/core/test'
 
 // Raw record (database format)
 const raw = createTestRecord({
 	record: { tagName: 'A', attributes: { aA: 'value' } },
 })
 
-// Chain record (with status field)
-const chain = createTestRecord({
-	type: 'chain',
+// Tracked record (with status field)
+const tracked = createTestRecord({
+	type: 'tracked',
 	record: { tagName: 'A', attributes: { aA: 'value' } },
 })
 
@@ -194,57 +205,4 @@ const tree = createTestRecord({
 	type: 'tree',
 	record: { tagName: 'A', attributes: { aA: 'value' } },
 })
-```
-
-## executeTableDrivenTestsChainOperations
-
-Runs a sequence of chain operations for table-driven tests. Commits the chain and returns the context.
-
-### Signature
-
-```ts
-async function executeTableDrivenTestsChainOperations(params: {
-	chain: Chain<Config, Element, ExtensionRegistry>
-	operations: ChainTestOperation[]
-}): Promise<Context>
-```
-
-### Operations
-
-Each operation is a discriminated union on `type`:
-
-```ts
-type ChainTestOperation =
-  | { type: 'update'; goTo?: GoToElementParams; attributes?: ...; value?: ... }
-  | { type: 'delete'; goTo?: GoToElementParams }
-  | { type: 'addChild'; goTo?: GoToElementParams; tagName: ...; attributes: ...; ... }
-```
-
-The optional `goTo` field navigates to an element before executing the operation.
-
-### Usage
-
-```ts
-import { createTestDialecte, executeTableDrivenTestsChainOperations } from '@dialecte/core'
-
-const { dialecte, cleanup } = await createTestDialecte({ xmlString: '...' })
-
-const context = await executeTableDrivenTestsChainOperations({
-	chain: dialecte.goToElement({ tagName: 'A' }),
-	operations: [
-		{
-			type: 'addChild',
-			tagName: 'AA_1',
-			attributes: { aAA_1: 'test' },
-		},
-		{
-			type: 'update',
-			goTo: { tagName: 'A' },
-			attributes: { aA: 'updated' },
-		},
-	],
-})
-
-// Assert on context.stagedOperations, re-query DB, etc.
-await cleanup()
 ```

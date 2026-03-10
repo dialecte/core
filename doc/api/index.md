@@ -1,9 +1,10 @@
 # API Overview
 
-The `@dialecte/core` API is organised in two steps:
+The `@dialecte/core` API is organised around three concepts:
 
-1. **Create** — import an XML file and instantiate a dialecte
-2. **Consume** — start chains via [entrypoints](/api/entrypoints) and navigate, mutate, or query
+1. **I/O** — import XML files into IndexedDB, export them back to XML
+2. **Document** — open a database, query records, run transactions, undo/redo
+3. **Query / Transaction** — the read and write interfaces exposed by a Document
 
 ## importXmlFiles
 
@@ -26,29 +27,33 @@ const [databaseName] = await importXmlFiles({
 
 Returns `Promise<string[]>` — one database name per successfully imported file.
 
-## createDialecte
+## openDialecteDocument
 
-Connects to an existing IndexedDB database and returns a dialecte instance ready to consume.
+Connects to an existing IndexedDB database and returns a `Document` instance.
 
 ```ts
-import { createDialecte, TEST_DIALECTE_CONFIG } from '@dialecte/core'
+import { openDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
-const dialecte = await createDialecte({
-	databaseName, // returned by importXmlFiles
-	dialecteConfig: TEST_DIALECTE_CONFIG,
-	extensions: {},
+const doc = openDialecteDocument({
+	config: TEST_DIALECTE_CONFIG,
+	storage: { type: 'local', databaseName },
 })
 ```
 
-| Parameter        | Type                | Description                                       |
-| ---------------- | ------------------- | ------------------------------------------------- |
-| `databaseName`   | `string`            | Name of the IndexedDB database to connect to      |
-| `dialecteConfig` | `AnyDialecteConfig` | The config describing your XML schema             |
-| `extensions`     | `ExtensionRegistry` | Domain extension methods to inject into the chain |
+| Parameter | Type                | Description                                                      |
+| --------- | ------------------- | ---------------------------------------------------------------- |
+| `config`  | `AnyDialecteConfig` | The config describing your XML schema                            |
+| `storage` | `StorageOptions`    | `{ type: 'local', databaseName }` or `{ type: 'custom', store }` |
 
-Returns `Promise<DialecteCore>`.
+Returns `Document<Config>`. See [Document](/api/document) for the full interface.
 
-Once you have a `dialecte` instance, start a chain from [fromRoot or fromElement](/api/entrypoints).
+### StorageOptions
+
+```ts
+type StorageOptions =
+	| { type: 'local'; databaseName: string } // uses built-in DexieStore
+	| { type: 'custom'; store: Store } // bring your own Store implementation
+```
 
 ## exportXmlFile
 
@@ -65,11 +70,18 @@ const { xmlDocument, filename } = await exportXmlFile({
 })
 ```
 
-| Parameter        | Type                 | Default | Description                                             |
-| ---------------- | -------------------- | ------- | ------------------------------------------------------- |
-| `databaseName`   | `string`             | —       | Database to export                                      |
-| `extension`      | `SupportedExtension` | —       | File extension; must be in `io.supportedFileExtensions` |
-| `withDownload`   | `boolean`            | `false` | Triggers a browser `<a download>` after export          |
-| `dialecteConfig` | `AnyDialecteConfig`  | —       | Schema config                                           |
+| Parameter         | Type                 | Default | Description                                             |
+| ----------------- | -------------------- | ------- | ------------------------------------------------------- |
+| `databaseName`    | `string`             | —       | Database to export                                      |
+| `extension`       | `SupportedExtension` | —       | File extension; must be in `io.supportedFileExtensions` |
+| `withDownload`    | `boolean`            | `false` | Triggers a browser `<a download>` after export          |
+| `withDatabaseIds` | `boolean`            | `false` | Include `dev:db-id` attributes in the output            |
+| `dialecteConfig`  | `AnyDialecteConfig`  | —       | Schema config                                           |
 
 Returns `Promise<{ xmlDocument: XMLDocument; filename: string }>`.
+
+## Further reading
+
+- [Document](/api/document) — lifecycle, state, transactions, undo/redo
+- [Query](/api/query) — record lookup, descendants, attributes
+- [Transaction](/api/transaction) — addChild, update, delete, deepClone

@@ -1,9 +1,8 @@
-import type { Context } from './context'
 import type { AnyDefinition } from './definition'
-import type { ImportOptions, ExportOptions } from './io'
+import type { ImportOptions, ExportOptions, IOHooks } from './io'
 import type { Operation } from './operations'
 import type { Namespace, RawRecord, TreeRecord } from './records'
-import type { ChainFactory } from '@/chain-methods'
+import type { Context } from '@/document'
 
 export type RawDialecteConfig<
 	GenericElementNames extends readonly string[],
@@ -26,44 +25,17 @@ export type RawDialecteConfig<
 	database: DatabaseConfig
 	io: IOConfig
 	definition: AnyDefinition
-	hooks: DialecteHooks
+	hooks: TransactionHooks
 }
 
 export type IOConfig = {
 	supportedFileExtensions: readonly string[]
 	importOptions?: Partial<ImportOptions>
 	exportOptions?: Partial<ExportOptions>
+	hooks?: IOHooks
 }
 
-export type ExtensionsMethodParams<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> =
-		ExtensionRegistry<GenericConfig>,
-> = {
-	chain: ChainFactory<GenericConfig, GenericExtensionRegistry>
-	dialecteConfig: GenericConfig
-	contextPromise: Promise<Context<GenericConfig, GenericElement>>
-}
-
-/**
- * Extension method creator - receives context params and returns the actual extension method
- * The returned method should be chainable (return a CoreChain) unless it's an ending method
- */
-export type ExtensionMethodCreator<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-> = (params: ExtensionsMethodParams<GenericConfig, GenericElement>) => (...args: any[]) => any // Extension methods can take any args and return any (chain or data)
-
-/**
- * Extension registry - maps element types to their extension methods
- * Each element can have multiple extension methods identified by method name
- */
-export type ExtensionRegistry<GenericConfig extends AnyDialecteConfig> = Partial<{
-	[K in ElementsOf<GenericConfig>]: Record<string, ExtensionMethodCreator<GenericConfig, K>>
-}>
-
-export type DialecteHooks = {
+export type TransactionHooks = {
 	/**
 	 * Called before cloning a record.
 	 * Return modified attributes for the clone.
@@ -97,8 +69,8 @@ export type DialecteHooks = {
 	>(params: {
 		childRecord: RawRecord<GenericConfig, GenericElement>
 		parentRecord: RawRecord<GenericConfig, GenericParentElement>
-		context: Context<GenericConfig, GenericParentElement>
-	}) => Operation<GenericConfig>[]
+		context: Context<GenericConfig>
+	}) => Promise<Operation<GenericConfig>[]>
 }
 
 export type DatabaseConfig = Readonly<{
@@ -110,15 +82,6 @@ export type DatabaseConfig = Readonly<{
 		additionalTables?: Record<string, { schema: string }>
 	}
 }>
-
-// export type DatabaseConfigWithInstance<GenericConfig extends AnyDialecteConfig> = DatabaseConfig & {
-// 	instance: DatabaseInstance<GenericConfig>
-// }
-
-// export type RuntimeDialecteConfig<GenericConfig extends AnyDialecteConfig> = GenericConfig & {
-// 	//database: DatabaseConfigWithInstance<GenericConfig>
-// 	extensions: ExtensionRegistry<GenericConfig>
-// }
 
 /**
  * Generic FlavorConfig type for contexts where specific flavor is not known.
@@ -143,7 +106,6 @@ export type AnyElement = string
 /**
  * Get attributes type for a specific element from dialecte config
  */
-//TODO: old type name AttributesOf
 export type AttributesValueObjectOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
@@ -153,7 +115,6 @@ export type AnyAttributesValueObject = Record<string, string>
 /**
  * Get attribute name union for a specific element from dialecte config
  */
-//TODO: old type name AvailableAttribute
 export type AttributesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
@@ -163,7 +124,6 @@ export type AnyAttributeName = string
 /**
  * Get attribute object type for a specific element from dialecte config
  */
-//TODO: old type name AvailableAttributeObject
 export type FullAttributeObjectOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
@@ -217,7 +177,9 @@ export type RootElementOf<GenericConfig extends AnyDialecteConfig> =
 	GenericConfig['rootElementName']
 
 /**
- * Get singleton elements from dialecte config
+ * Get singleton elements from dialecte config.
+ * Always includes the root element — a root is by definition a singleton.
  */
 export type SingletonElementsOf<GenericConfig extends AnyDialecteConfig> =
-	GenericConfig['singletonElements'] extends readonly (infer E)[] ? E : never
+	| GenericConfig['rootElementName']
+	| (GenericConfig['singletonElements'] extends readonly (infer E)[] ? E : never)

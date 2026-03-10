@@ -1,6 +1,6 @@
 # What is Dialecte?
 
-Dialecte is an SDK for **turning an XSD schema into a fully-typed, domain-specific language (DSL)**. Point it at your XSD, generate a definition, and you get a chainable API that speaks your XML dialect natively — complete type safety, IndexedDB persistence, and streaming import/export included.
+Dialecte is an SDK for **turning an XSD schema into a fully-typed, domain-specific language (DSL)**. Point it at your XSD, generate a definition, and you get a Document API that speaks your XML dialect natively — complete type safety, IndexedDB persistence, and streaming import/export included.
 
 The key idea: **every XML standard that ships with an XSD can become its own Dialecte.** You own the DSL; Dialecte handles everything underneath it.
 
@@ -24,24 +24,30 @@ The shape of your XML is described once, in a config object. Every element name,
 
 In practice you generate the config from an XSD file using the definition generator (in progress). You never write it by hand.
 
-### Chainable API
+### Document / Query / Transaction
 
-All operations — navigation, mutation, and querying — are expressed as a **chain**. A chain starts from the root or a specific element, accumulates operations, and ends with either `.commit()` (writes) or a terminal query (reads).
+All operations follow a clear separation of concerns:
+
+- **Document** — the entry point. Owns the database connection, exposes `query` for reads and `transaction()` for writes.
+- **Query** — read-only access. Get records, find descendants, read attributes.
+- **Transaction** — scoped writes. Add children, update attributes, delete elements, deep-clone subtrees. All staged operations are committed atomically.
 
 ```ts
-// Stage two mutations, then commit atomically
-await dialecte
-	.fromRoot()
-	.addChild({ tagName: 'A', attributes: { aA: 'value' }, setFocus: true })
-	.addChild({
+const root = await doc.query.getRoot()
+
+await doc.transaction(async (tx) => {
+	const aRef = await tx.addChild(root, {
+		tagName: 'A',
+		attributes: { aA: 'value' },
+	})
+	await tx.addChild(aRef, {
 		tagName: 'AA_1',
 		attributes: { aAA_1: 'nested' },
-		setFocus: false,
 	})
-	.commit()
+})
 ```
 
-Chains are immutable — each method returns a new chain, so branching and composing operations has no side effects.
+Reads and writes never mix in the same scope. Transactions are atomic — either everything commits or nothing does.
 
 ### IndexedDB persistence
 
@@ -55,56 +61,60 @@ A **dialecte** is a thin package that combines three things:
 
 1. **A generated definition** — produced by the definition generator from your XSD. Captures every element, attribute, namespace, parent–child rule, and cardinality.
 2. **A config object** — wraps the definition and wires it into `@dialecte/core`.
-3. **Chain extensions** _(optional)_ — domain-specific methods injected directly into the chain, fully typed against your element set. This is what graduates a config into a genuine DSL.
-4. **Hooks** _(optional)_ — lifecycle callbacks that run during import, export and in the chain itself, letting you enforce invariants or enrich elements as they flow through the pipeline.
+3. **Domain-specific subclasses** _(optional)_ — extend `Query` and `Transaction` with typed domain methods. This is what graduates a config into a genuine DSL.
+4. **Hooks** _(optional)_ — lifecycle callbacks that run during import and export, letting you enforce invariants or enrich elements as they flow through the pipeline.
 
-The result is a self-contained DSL package. Consumers import it and get a chain API that knows your XML dialect by heart:
+The result is a self-contained DSL package. Consumers import it and get a typed API that knows your XML dialect by heart:
 
 ```ts
-// Your custom dialecte — generated from your XSD
-import { createMyDialecte } from '@my-scope/my-dialecte'
+import { openMyDocument } from '@my-scope/my-dialecte'
 
-const dialecte = await createMyDialecte({ databaseName })
+const doc = openMyDocument({ databaseName })
 
-// The chain knows your elements and attributes
-await dialecte
-	.fromRoot()
-	.addChild({
-		tagName: 'Section',
-		attributes: { name: 'Intro' },
-		setFocus: false,
-	})
-	.commit()
+// Query knows your elements and attributes
+const sections = await doc.query.findDescendants(root, {
+	tagName: 'Section',
+	attributes: { name: 'Intro' },
+})
 
-// Domain extension you wrote — fully typed
-await dialecte.fromElement({ tagName: 'Section', id }).publishTo({ target })
+// Domain method on a custom SclTransaction
+await doc.transaction(async (tx) => {
+	await tx.publishTo(section, { target })
+})
 ```
 
-`@dialecte/scl` is the reference implementation: it wraps `@dialecte/core` with the IEC 61850 SCL definition, SCL-specific chain extensions, and hooks.
+`@dialecte/scl` is the reference implementation: it wraps `@dialecte/core` with the IEC 61850 SCL definition and SCL-specific query/transaction extensions.
 
 ### Extensions — shaping the DSL
 
-Chain extensions are plain functions registered against a dialecte. Once registered, they appear as first-class methods on the chain, typed to the elements that support them:
+Domain-specific methods are added by subclassing `Query` or `Transaction`. The `Document` subclass overrides `createQuery()` and `createTransaction()` to return the domain-specific versions:
 
 ```ts
-// @dialecte/scl extension — only available on VoltageLevel chains
-const result = await dialecte
-	.fromElement({ tagName: 'Function', id })
-	.extractTo({ target: 'function.fsd' }) // custom extension method
+// @dialecte/scl — domain query
+class SclQuery extends Query<SclConfig> {
+	async getVoltageLevels(substationRef: Ref<SclConfig, 'Substation'>) {
+		return this.findDescendants(substationRef, { tagName: 'VoltageLevel' })
+	}
+}
 
-const tree = await dialecte.fromElement({ tagName: 'LNode', id }).resolveDataModel() // another extension
+// @dialecte/scl — domain transaction
+class SclTransaction extends Transaction<SclConfig> {
+	async createBay(voltageLevelRef: Ref<SclConfig, 'VoltageLevel'>, params: BayParams) {
+		return this.addChild(voltageLevelRef, {
+			tagName: 'Bay',
+			attributes: params,
+		})
+	}
+}
 ```
-
-Extensions receive the current chain context and can call any core chain method internally. They compose naturally with built-in methods — the chain stays fluent throughout.
 
 ### Hooks — lifecycle control
 
-Hooks can run at import, export and anywhere in the chain. A `beforeImportRecord` hook, for example, can auto-assign identifiers or validate structure before an element reaches the database:
+Hooks run at import and export. A `beforeImportRecord` hook, for example, can auto-assign identifiers or validate structure before an element reaches the database:
 
 ```ts
-// @dialecte/scl — ensures every element that supports uuid gets one on import
 beforeImportRecord(record) {
-	ensureUuid(record)    // idempotent — no-op if uuid already present
+	ensureUuid(record)
 	return record
 }
 ```
@@ -113,10 +123,10 @@ This keeps domain invariants enforced at the pipeline level rather than scattere
 
 ### The core / dialecte split
 
-| Layer    | Package                                     | Responsibility                                                 |
-| -------- | ------------------------------------------- | -------------------------------------------------------------- |
-| Engine   | `@dialecte/core`                            | Parsing, storage, chain API, type system — no domain knowledge |
-| Dialecte | `@dialecte/scl`, `@my-scope/my-dialecte`, … | XSD-generated definition, config, domain extensions            |
+| Layer    | Package                                     | Responsibility                                                     |
+| -------- | ------------------------------------------- | ------------------------------------------------------------------ |
+| Engine   | `@dialecte/core`                            | Parsing, storage, Document/Query/Transaction, type system          |
+| Dialecte | `@dialecte/scl`, `@my-scope/my-dialecte`, … | XSD-generated definition, config, domain query/transaction methods |
 
 `@dialecte/core` has no knowledge of any XML standard. It only understands elements, attributes, namespaces, and trees. Your dialecte package is what makes it speak a specific language.
 

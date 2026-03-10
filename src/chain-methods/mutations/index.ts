@@ -1,8 +1,0 @@
-export * from './create'
-export * from './clone'
-export * from './update'
-export * from './delete'
-export type * from './create.types'
-export type * from './clone.types'
-export type * from './update.types'
-export type * from './delete.types'

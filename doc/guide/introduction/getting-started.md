@@ -1,6 +1,6 @@
 # Getting Started
 
-Dialecte core is the engine behind any xml dialecte. You bring a schema-driven config; Dialecte provides the chainable API, the streaming XML parser, and the IndexedDB persistence.
+Dialecte core is the engine behind any XML dialecte. You bring a schema-driven config; Dialecte provides the Document API, the streaming XML parser, and the IndexedDB persistence.
 
 ::: info Same elements throughout
 Every example below uses the built-in test definition shipped with `@dialecte/core`. Its tree structure is documented in [Testing](/guide/development/testing), so you can follow the same logic across the guide.
@@ -60,59 +60,78 @@ const [databaseName] = await importXmlFiles({
 })
 ```
 
-## Step 3 — Create a dialecte instance
+## Step 3 — Open a document
+
+`openDialecteDocument` connects to an existing IndexedDB database and returns a `Document` ready to use.
 
 ```ts
-import { createDialecte, TEST_DIALECTE_CONFIG } from '@dialecte/core'
+import { openDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
-const dialecte = await createDialecte({
-	databaseName,
-	dialecteConfig: TEST_DIALECTE_CONFIG,
-	extensions: {},
+const doc = openDialecteDocument({
+	config: TEST_DIALECTE_CONFIG,
+	storage: { type: 'local', databaseName },
 })
 ```
 
-The returned instance exposes `fromRoot()`, `fromElement()`, and `getState()`.
+The returned `Document` exposes two access paths:
+
+- `doc.query` — read-only queries
+- `doc.transaction(async (tx) => { ... })` — scoped writes
 
 ## Step 4 — Query the tree
 
-Start a chain from the root, then navigate or query:
+Use `doc.query` to read records, find descendants, and inspect attributes:
 
 ```ts
-// Get all descendants of type AA_1
-const results = await dialecte.fromRoot().findDescendants({ tagName: 'AA_1' })
+const root = await doc.query.getRoot()
+
+const results = await doc.query.findDescendants(root, {
+	tagName: 'AA_1',
+})
 
 for (const aa1 of results.AA_1) {
 	console.log(aa1.id, aa1.attributes) // { aAA_1: 'foo' }
 }
 ```
 
-Jump to a specific element by tag name (or id):
+Get a single record by ref:
 
 ```ts
-const { currentFocus } = await dialecte.fromElement({ tagName: 'A' }).getContext()
-
-console.log(currentFocus.tagName) // 'A'
-console.log(currentFocus.attributes) // { aA: 'hello', bA: 'world' }
+const record = await doc.query.getRecord({ tagName: 'A', id: 'some-id' })
+console.log(record?.attributes) // { aA: 'hello', bA: 'world' }
 ```
 
 ## Step 5 — Mutate the tree
 
-Mutations are staged on the chain and written atomically when you call `.commit()`.
+Mutations happen inside a `transaction`. All operations are staged, then committed atomically when the callback returns.
 
 ```ts
-await dialecte
-	.fromRoot()
-	.addChild({ tagName: 'A', attributes: { aA: 'new-branch' }, setFocus: true })
-	.addChild({
+await doc.transaction(async (tx) => {
+	const aRef = await tx.addChild(root, {
+		tagName: 'A',
+		attributes: { aA: 'new-branch' },
+	})
+
+	await tx.addChild(aRef, {
 		tagName: 'AA_1',
 		attributes: { aAA_1: 'child' },
-		setFocus: false,
 	})
-	.commit()
+})
 ```
 
-Chains are immutable — every method returns a new chain, so you can branch freely without side effects.
+Inside a transaction, you can also query records — reads inside a transaction see staged (not-yet-committed) changes:
+
+```ts
+await doc.transaction(async (tx) => {
+	const ref = await tx.addChild(root, {
+		tagName: 'A',
+		attributes: { aA: 'new' },
+	})
+
+	// This reads the staged record before commit
+	const record = await tx.getRecord(ref)
+})
+```
 
 ## Step 6 — Export to XML
 
@@ -127,25 +146,18 @@ const { xmlDocument } = await exportXmlFile({
 })
 ```
 
-## Extensions
+## Step 7 — Undo / Redo
 
-Extensions add domain-specific methods directly to the chain. Pass them when creating the dialecte instance:
+The store keeps a changelog. Call `undo()` and `redo()` on the document:
 
 ```ts
-import { createDialecte, TEST_DIALECTE_CONFIG } from '@dialecte/core'
-import { MY_EXTENSIONS } from './extensions'
-
-const dialecte = await createDialecte({
-	databaseName,
-	dialecteConfig: TEST_DIALECTE_CONFIG,
-	extensions: MY_EXTENSIONS,
-})
-
-// Extension methods are available on the typed chain
-await dialecte.fromElement({ tagName: 'A' }).myExtensionMethod()
+await doc.undo()
+await doc.redo()
 ```
 
-## Next Steps
+## Next steps
 
-- [API — Entrypoints](/api/entrypoints) — `createDialecte`, `importXmlFiles`, `exportXmlFile`
-- [API — Chain methods](/api/chain/) — full reference for navigation, mutations, and queries
+- [API — Document](/api/document) — lifecycle, transactions, undo/redo
+- [API — Query](/api/query) — full reference for all read methods
+- [API — Transaction](/api/transaction) — full reference for all mutation methods
+- [API — I/O](/api/) — import and export functions

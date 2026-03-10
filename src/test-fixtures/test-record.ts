@@ -1,12 +1,12 @@
 import { TEST_DIALECTE_CONFIG } from './config'
 
-import { standardizeRecord, toChainRecord, toTreeRecord } from '@/helpers/record'
+import { standardizeRecord, toTrackedRecord, toTreeRecord } from '@/helpers'
 
 import type {
 	ElementsOf,
 	FullAttributeObjectOf,
 	RawRecord,
-	ChainRecord,
+	TrackedRecord,
 	AttributesValueObjectOf,
 	TreeRecord,
 } from '@/types'
@@ -39,14 +39,14 @@ export function createTestRecord<GenericElement extends ElementsOf<TestDialecteC
 }): RawRecord<TestDialecteConfig, GenericElement>
 
 export function createTestRecord<GenericElement extends ElementsOf<TestDialecteConfig>>(params: {
-	type: 'chain'
+	type: 'tracked'
 	record: {
 		tagName: GenericElement
 		attributes?:
 			| AttributesValueObjectOf<TestDialecteConfig, GenericElement>
 			| FullAttributeObjectOf<TestDialecteConfig, GenericElement>[]
 	} & Partial<RawRecord<TestDialecteConfig, GenericElement>>
-}): ChainRecord<TestDialecteConfig, GenericElement>
+}): TrackedRecord<TestDialecteConfig, GenericElement>
 
 export function createTestRecord<GenericElement extends ElementsOf<TestDialecteConfig>>(params: {
 	type: 'tree'
@@ -59,7 +59,7 @@ export function createTestRecord<GenericElement extends ElementsOf<TestDialecteC
 }): TreeRecord<TestDialecteConfig, GenericElement>
 
 export function createTestRecord<GenericElement extends ElementsOf<TestDialecteConfig>>(params: {
-	type?: 'raw' | 'chain' | 'tree'
+	type?: 'raw' | 'tracked' | 'tree'
 	record: {
 		tagName: GenericElement
 		attributes?:
@@ -68,7 +68,7 @@ export function createTestRecord<GenericElement extends ElementsOf<TestDialecteC
 	} & Partial<RawRecord<TestDialecteConfig, GenericElement>>
 }):
 	| RawRecord<TestDialecteConfig, GenericElement>
-	| ChainRecord<TestDialecteConfig, GenericElement>
+	| TrackedRecord<TestDialecteConfig, GenericElement>
 	| TreeRecord<TestDialecteConfig, GenericElement> {
 	const { record, type = 'raw' } = params
 
@@ -80,8 +80,8 @@ export function createTestRecord<GenericElement extends ElementsOf<TestDialecteC
 	switch (type) {
 		case 'raw':
 			return standardizedRecord
-		case 'chain':
-			return toChainRecord({ record: standardizedRecord })
+		case 'tracked':
+			return toTrackedRecord({ record: standardizedRecord })
 		case 'tree':
 			return toTreeRecord({ record: standardizedRecord })
 		default:

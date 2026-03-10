@@ -3,7 +3,8 @@ import { registerPendingChildrenRelationship } from './relationships'
 
 import * as sax from 'sax'
 
-import { assert, DEV_ID } from '@/helpers'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import { assert } from '@/utils'
 
 import type { ParserInstance, ParserState } from './types'
 import type {
@@ -13,6 +14,7 @@ import type {
 	AnyQualifiedAttribute,
 	AnyAttribute,
 	AnyRelationship,
+	IOHooks,
 } from '@/types'
 
 //====== PUBLIC FUNCTIONS ======//
@@ -28,6 +30,7 @@ export function setSaxParser(params: {
 	useCustomRecordsIds: boolean
 }): ParserInstance {
 	const { dialecteConfig, useCustomRecordsIds } = params
+	const ioHooks = dialecteConfig.io.hooks
 
 	const initialState: ParserState = {
 		defaultNamespace: null,
@@ -61,6 +64,7 @@ export function setSaxParser(params: {
 	parser.onclosetag = () =>
 		({ updatedState } = handleCloseTag({
 			state: updatedState,
+			ioHooks,
 		}))
 
 	parser.onerror = handleError
@@ -159,10 +163,10 @@ function handleText(params: { text: string; state: ParserState }): ParserState {
  * @param options Parser options
  * @returns Updated state
  */
-function handleCloseTag(params: { state: ParserState }): {
+function handleCloseTag(params: { state: ParserState; ioHooks?: IOHooks }): {
 	updatedState: ParserState
 } {
-	const { state } = params
+	const { state, ioHooks } = params
 
 	const currentRecord = state.stack.at(-1)
 	// removing the last record from the stack and current parent elements
@@ -170,6 +174,13 @@ function handleCloseTag(params: { state: ParserState }): {
 	const updatedRecordsBatch = [...state.recordsBatch]
 
 	if (currentRecord) {
+		if (ioHooks?.beforeImportRecord) {
+			ioHooks.beforeImportRecord({
+				record: currentRecord,
+				ancestry: updatedStack,
+			})
+		}
+
 		if (updatedStack.length) {
 			// create children relationship if parent is still in the stack
 			const parentIndex = updatedStack.length - 1
@@ -225,10 +236,10 @@ function getDefaultNamespace(params: {
 	rootElementName: string
 }): Namespace {
 	const { element, defaultNamespace, rootElementName } = params
-	assert(
-		element.name === rootElementName,
-		`Default namespace can only be set on ${rootElementName} element`,
-	)
+	assert(element.name === rootElementName, {
+		detail: `Expected root element <${rootElementName}>, got <${element.name}>`,
+		method: 'import::getDefaultNamespace',
+	})
 
 	if (element.attributes?.xmlns?.value)
 		return {
@@ -289,7 +300,7 @@ function getElementId(params: {
 	useCustomRecordsIds: boolean
 }): string {
 	const { attributes, useCustomRecordsIds } = params
-	const testIdAttribute = attributes[DEV_ID]
+	const testIdAttribute = attributes[CUSTOM_RECORD_ID_ATTRIBUTE]
 
 	if (useCustomRecordsIds && testIdAttribute && testIdAttribute.value) return testIdAttribute.value
 	return crypto.randomUUID()
@@ -301,6 +312,7 @@ function getFilteredAttributes(params: {
 }): sax.QualifiedAttribute[] {
 	const { attributes, useCustomRecordsIds } = params
 
-	if (useCustomRecordsIds) return Object.values(attributes).filter((attr) => attr.name !== DEV_ID)
+	if (useCustomRecordsIds)
+		return Object.values(attributes).filter((attr) => attr.name !== CUSTOM_RECORD_ID_ATTRIBUTE)
 	return Object.values(attributes)
 }

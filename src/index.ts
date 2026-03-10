@@ -1,4 +1,6 @@
-export type * from './chain-methods'
+export * from './document'
+export * from './errors'
+export * from './store'
 export * from './io'
 export * from './dialecte'
 

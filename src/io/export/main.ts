@@ -3,7 +3,7 @@ import { downloadFile } from './download-file'
 
 import Dexie from 'dexie'
 
-import type { AnyDatabaseInstance } from '@/database'
+import type { AnyDatabaseInstance } from '../database'
 import type {
 	AnyDialecteConfig,
 	AnyQualifiedAttribute,
@@ -271,7 +271,14 @@ function addAttributesToElement(params: {
 		if (isQualifiedAttribute(attribute)) {
 			const prefix = attribute.namespace?.prefix || ''
 
-			if (!isRoot && prefix) {
+			// In XML, unprefixed attributes are in NO namespace, even if element is namespaced
+			// Only use setAttributeNS for attributes with an actual prefix
+			if (!prefix) {
+				element.setAttribute(attribute.name, String(attribute.value))
+				continue
+			}
+
+			if (!isRoot) {
 				addNamespaceToRootElementIfNeeded({
 					dialecteConfig,
 					document,
@@ -285,7 +292,7 @@ function addAttributesToElement(params: {
 				? attribute.name.split(':').pop() || attribute.name
 				: attribute.name
 
-			const qualifiedName = prefix ? `${prefix}:${localName}` : localName
+			const qualifiedName = `${prefix}:${localName}`
 
 			element.setAttributeNS(attribute.namespace.uri, qualifiedName, String(attribute.value))
 		} else element.setAttribute(attribute.name, String(attribute.value))

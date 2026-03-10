@@ -1,26 +1,18 @@
 import type { ERROR_CATALOG } from './codes'
-import type { AnyDialecteConfig, ChainRecord, ElementsOf, Operation } from '@/types'
 
 export type DialecteErrorKey = keyof typeof ERROR_CATALOG
 export type DialecteErrorCode = (typeof ERROR_CATALOG)[DialecteErrorKey]['code']
 
 /**
- * Standard error context that all errors should include
+ * Structured error — serializable, worker-safe, UI-consumable.
+ * Original Error goes in `cause` to preserve stack trace.
  */
-export type DialecteErrorContext<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> = {
-	method?: string
-	currentFocus?: ChainRecord<GenericConfig, ElementsOf<GenericConfig>>
-	operations?: Operation<GenericConfig>[]
-	[key: string]: any // Allow additional context properties
+export type DialecteError = {
+	code: DialecteErrorCode
+	key: DialecteErrorKey
+	message: string // UI-consumable (toast)
+	detail: string // developer-consumable (console)
+	method: string // which operation failed
+	ref?: { tagName: string; id: string }
+	cause?: Error
 }
-
-/**
- * Core error type with code, default message, and context
- */
-export type DialecteCoreError<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> =
-	Error & {
-		code: DialecteErrorCode
-		errorKey: DialecteErrorKey
-		defaultMessage: string
-		context?: DialecteErrorContext<GenericConfig>
-	}

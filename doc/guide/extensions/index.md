@@ -1,115 +1,124 @@
 # Writing Extensions
 
-Extensions inject domain-specific methods directly into the chain, typed to the elements that support them. Once registered, they are indistinguishable from built-in methods.
+Extensions add domain-specific methods by subclassing `Query` and `Transaction`. Once wired into a `Document` subclass, they appear as first-class methods — fully typed against your element set.
 
 ## How it works
 
-An extension is a function that:
+A dialecte package extends the core classes:
 
-1. Receives **chain internals** via `ExtensionsMethodParams`
-2. Returns the **actual method** — the function the caller will invoke
+1. **`Query` subclass** — domain-specific read methods
+2. **`Transaction` subclass** — domain-specific write methods
+3. **`Document` subclass** — overrides `createQuery()` and `createTransaction()` to return your subclasses
 
-`ExtensionsMethodParams` carries three values:
+## Query extensions
 
-| Field            | Type               | Description                                              |
-| ---------------- | ------------------ | -------------------------------------------------------- |
-| `chain`          | `ChainFactory`     | Factory to create a new chain from a context — see below |
-| `dialecteConfig` | `GenericConfig`    | The full dialecte config                                 |
-| `contextPromise` | `Promise<Context>` | Resolves to the current focus and staged operations      |
-
-## Registering extensions
-
-Extensions are grouped by element in an `ExtensionRegistry` object. Pass it to `createDialecte`:
+Extend `Query` to add domain-specific reads. Your subclass has access to `this.context` and all protected methods.
 
 ```ts
-import { createDialecte, TEST_DIALECTE_CONFIG } from '@dialecte/core'
+import { Query } from '@dialecte/core'
+import type { RefOrRecord } from '@dialecte/core'
 
-const MY_EXTENSIONS = {
-	A: { summarize },
-	AA_1: { describe },
-}
-
-const dialecte = await createDialecte({
-	databaseName,
-	dialecteConfig: TEST_DIALECTE_CONFIG,
-	extensions: MY_EXTENSIONS,
-})
-
-// Available only when the chain is focused on 'A'
-const summary = await dialecte.fromElement({ tagName: 'A' }).summarize()
-```
-
-The TypeScript compiler infers which methods are available based on the focused element — calling `summarize()` on a chain focused on `AA_1` is a type error.
-
-## Two method types
-
-Extension methods come in two shapes depending on what they return.
-
-### Ending methods
-
-An ending method returns a **value** — data, an object, a boolean. The caller awaits it directly.
-
-```ts
-// Returns data — caller awaits it
-function summarize(params: ExtensionsMethodParams<Config, 'A'>) {
-	const { contextPromise } = params
-
-	return async function () {
-		const context = await contextPromise
-		return {
-			id: context.currentFocus.id,
-			attributes: context.currentFocus.attributes,
-		}
+class SclQuery extends Query<SclConfig> {
+	async getSubstations() {
+		return this.getRecordsByTagName('Substation')
 	}
-}
 
-const data = await dialecte.fromElement({ tagName: 'A' }).summarize()
-```
+	async getVoltageLevels(ref: RefOrRecord<SclConfig, 'Substation'>) {
+		const results = await this.findDescendants(ref, { tagName: 'VoltageLevel' })
+		return results.VoltageLevel
+	}
 
-Because the method is `async`, it returns a `Promise`. The chain ends here — nothing can be dot-chained after it.
-
----
-
-### Chain methods
-
-A chain method returns **a chain**, so the caller can keep dot-chaining.
-
-Wrap the work inside `contextPromise.then(...)` and return `chain({ contextPromise: newContextPromise })` **synchronously**. The caller receives a `Chain` immediately — not a Promise — so dot-chaining works naturally:
-
-```ts
-function addStandardBranch(params: ExtensionsMethodParams<Config, 'A'>) {
-	const { chain, contextPromise } = params
-
-	return function (p: { label: string }) {
-		const newContextPromise = contextPromise.then(async (context) => {
-			const sourceChain = chain({ contextPromise: Promise.resolve(context) })
-
-			const endingChain = sourceChain
-				.addChild({
-					tagName: 'AA_1',
-					attributes: { aAA_1: p.label },
-					setFocus: true,
-				})
-				.addChild({
-					tagName: 'AAA_1',
-					attributes: { aAAA_1: 'default' },
-					setFocus: false,
-				})
-				.goToElement({ tagName: 'A' })
-
-			// Return a Context — this becomes the resolved value of newContextPromise
-			return await endingChain.getContext()
+	async getBaysByName(ref: RefOrRecord<SclConfig, 'VoltageLevel'>, name: string) {
+		return this.findByAttributes({
+			tagName: 'Bay',
+			attributes: { name },
 		})
-
-		// Return a chain synchronously — the work above is deferred
-		return chain({ contextPromise: newContextPromise })
 	}
 }
-
-// ✅ Fluent dot-chaining works — nothing executes until .commit()
-await dialecte.fromElement({ tagName: 'A' }).addStandardBranch({ label: 'section-1' }).commit()
 ```
 
-**Why this keeps the chain lazy:**
+## Transaction extensions
 
-The inner `.then` callback only runs when something awaits `newContextPromise` — which happens when the terminal method (`.commit()`, `.getContext()`, etc.) is finally called. All prior mutations are preserved because `context` captured them at that point.
+Extend `Transaction` to add domain-specific writes. Since `Transaction` extends `Query`, your transaction subclass has access to both query and mutation methods.
+
+```ts
+import { Transaction } from '@dialecte/core'
+
+class SclTransaction extends Transaction<SclConfig> {
+	async createBay(
+		vlRef: RefOrRecord<SclConfig, 'VoltageLevel'>,
+		params: { name: string; desc?: string },
+	) {
+		return this.addChild(vlRef, {
+			tagName: 'Bay',
+			attributes: params,
+		})
+	}
+
+	async moveBay(
+		bayRef: RefOrRecord<SclConfig, 'Bay'>,
+		targetVlRef: RefOrRecord<SclConfig, 'VoltageLevel'>,
+	) {
+		const tree = await this.getTree(bayRef)
+		if (!tree) return
+
+		await this.delete(bayRef)
+		return this.deepClone(targetVlRef, tree)
+	}
+}
+```
+
+## Wiring into Document
+
+Override `createQuery()` and `createTransaction()` in a `Document` subclass:
+
+```ts
+import { Document } from '@dialecte/core'
+
+class SclDocument extends Document<SclConfig> {
+	protected override createQuery() {
+		return new SclQuery(this.store, this.config)
+	}
+
+	protected override createTransaction() {
+		return new SclTransaction(this.store, this.config, this.state)
+	}
+}
+```
+
+Now `doc.query` returns an `SclQuery` and `doc.transaction()` provides an `SclTransaction`:
+
+```ts
+const doc = new SclDocument(store, config)
+
+// Domain query
+const substations = await doc.query.getSubstations()
+
+// Domain transaction
+await doc.transaction(async (tx) => {
+	await tx.createBay(vlRef, { name: 'Bay1' })
+})
+```
+
+## Type safety
+
+TypeScript enforces the full hierarchy:
+
+- `addChild` only accepts tag names that are valid children of the parent element
+- Attribute objects are narrowed to the specific element's attributes
+- `RefOrRecord` accepts refs, records, and relationships — no need for manual conversions
+
+Invalid operations are caught at compile time, not runtime.
+
+## Hooks — lifecycle control
+
+Hooks run at import and export. A `beforeImportRecord` hook can auto-assign identifiers or validate structure before an element reaches the database:
+
+```ts
+beforeImportRecord(record) {
+	ensureUuid(record)
+	return record
+}
+```
+
+This keeps domain invariants enforced at the pipeline level rather than scattered across application code.

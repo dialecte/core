@@ -1,7 +1,7 @@
 import { expect } from 'vitest'
 
+import type { AnyDatabaseInstance } from '../database'
 import type { ExpectedRecord, ExpectedRecords } from './test.types'
-import type { AnyDatabaseInstance } from '@/database'
 import type { AnyRawRecord, AnyDialecteConfig } from '@/types'
 
 //====== MAIN FUNCTION ======//

@@ -1,0 +1,1 @@
+export { stageDelete } from './delete'

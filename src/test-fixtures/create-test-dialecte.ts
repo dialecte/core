@@ -1,32 +1,41 @@
+import { createXmlAssertions } from './assert-xml'
 import { TEST_DIALECTE_CONFIG } from './config'
 
-import Dexie from 'dexie'
+import { openDialecteDocument } from '@/dialecte'
+import { importXmlFiles, exportXmlFile } from '@/io'
+import { DexieStore } from '@/store'
 
-import { createDialecte } from '@/dialecte'
-import { importXmlFiles } from '@/io'
-
-import type { DialecteCore } from '@/dialecte'
-import type { AnyDialecteConfig, ExtensionRegistry } from '@/types'
+import type { Context } from '@/document'
+import type { Document } from '@/document'
+import type { AnyDialecteConfig } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
 /**
- * Create SDK instance from XML string for testing
- * Imports the XML into a database and returns configured SDK
+ * Create a Document instance from an XML string for testing.
+ * Imports the XML into an IndexedDB database and returns a configured Document.
  */
 export async function createTestDialecte<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
-	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig> = {},
 >(params: {
 	xmlString: string
 	dialecteConfig?: GenericConfig
-	extensions?: GenericExtensionRegistry
 }): Promise<{
-	dialecte: DialecteCore<GenericConfig, GenericExtensionRegistry>
+	document: Document<GenericConfig>
 	databaseName: string
 	cleanup: () => Promise<void>
+	exportCurrentTest: (params?: {
+		extension?: GenericConfig['io']['supportedFileExtensions'][number]
+		withDatabaseIds?: boolean
+	}) => Promise<{ xmlDocument: XMLDocument; filename: string }>
+	assertExpectedElementQueries: ReturnType<
+		typeof createXmlAssertions
+	>['assertExpectedElementQueries']
+	assertUnexpectedElementQueries: ReturnType<
+		typeof createXmlAssertions
+	>['assertUnexpectedElementQueries']
 }> {
-	const { xmlString, dialecteConfig = TEST_DIALECTE_CONFIG, extensions = {} } = params
+	const { xmlString, dialecteConfig = TEST_DIALECTE_CONFIG } = params
 
 	const filename = `test-${crypto.randomUUID()}.xml`
 	const file = new File([xmlString], filename, { type: 'text/xml' })
@@ -39,21 +48,59 @@ export async function createTestDialecte<
 
 	const databaseName = databaseNames[0]
 
-	const dialecte = createDialecte<GenericConfig, GenericExtensionRegistry>({
-		databaseName,
-		dialecteConfig: dialecteConfig as GenericConfig,
-		extensions: extensions as GenericExtensionRegistry,
+	const document = openDialecteDocument({
+		config: dialecteConfig as GenericConfig,
+		storage: { type: 'local', databaseName },
 	})
 
-	const databaseInstance = dialecte.getDatabaseInstance()
-	const cleanup = async () => {
-		if (databaseInstance?.isOpen()) {
-			databaseInstance.close()
-			// Small delay to let IndexedDB fully close before deletion
-			await new Promise((resolve) => setTimeout(resolve, 20))
-		}
-		await Dexie.delete(databaseName)
+	//== Callbacks
+
+	const exportCurrentTest = async (params?: {
+		extension?: GenericConfig['io']['supportedFileExtensions'][number]
+		withDatabaseIds?: boolean
+	}) => {
+		const { extension = dialecteConfig.io.supportedFileExtensions[0], withDatabaseIds = false } =
+			params || {}
+
+		return exportXmlFile({
+			dialecteConfig: dialecteConfig as GenericConfig,
+			databaseName,
+			extension,
+			withDatabaseIds,
+		})
 	}
 
-	return { dialecte, databaseName, cleanup }
+	const cleanup = async () => {
+		document.destroy()
+	}
+
+	const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
+		namespaces: dialecteConfig.namespaces,
+	})
+
+	return {
+		document,
+		databaseName,
+		exportCurrentTest,
+		cleanup,
+		assertExpectedElementQueries,
+		assertUnexpectedElementQueries,
+	}
+}
+
+/**
+ * Create a Context directly from a databaseName for testing FP query functions.
+ * The store is not pre-opened — call store.open() before use if needed,
+ * or use DexieStore which opens lazily on first query.
+ */
+export function createTestContext<GenericConfig extends AnyDialecteConfig>(params: {
+	databaseName: string
+	dialecteConfig: GenericConfig
+}): Context<GenericConfig> {
+	const { databaseName, dialecteConfig } = params
+	return {
+		store: new DexieStore(databaseName, dialecteConfig),
+		recordCache: new Map(),
+		stagedOperations: [],
+	}
 }

@@ -82,24 +82,24 @@ export type AnyRawRecord = {
 	children: AnyRelationship[]
 }
 
-//== Dialecte Record
+//== Tracked Record
 
-export type ChainRecord<
+export type TrackedRecord<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = RawRecord<GenericConfig, GenericElement> & {
 	status: OperationStatus
 }
 
-export type AnyChainRecord<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> =
-	ChainRecord<GenericConfig, ElementsOf<GenericConfig>>
+export type AnyTrackedRecord<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> =
+	TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 
 //== Tree Record
 
 export type TreeRecord<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
-> = ChainRecord<GenericConfig, GenericElement> & {
+> = TrackedRecord<GenericConfig, GenericElement> & {
 	tree: TreeRecord<GenericConfig, ChildrenOf<GenericConfig, GenericElement>>[]
 }
 
@@ -107,3 +107,13 @@ export type AnyTreeRecord<GenericConfig extends AnyDialecteConfig = AnyDialecteC
 	GenericConfig,
 	ElementsOf<GenericConfig>
 >
+
+export type DialecteRecord<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> =
+	| RawRecord<GenericConfig, GenericElement>
+	| TrackedRecord<GenericConfig, GenericElement>
+	| TreeRecord<GenericConfig, GenericElement>
+
+export type AnyDialecteRecord = AnyRawRecord | AnyTrackedRecord | AnyTreeRecord

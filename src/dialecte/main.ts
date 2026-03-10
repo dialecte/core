@@ -1,41 +1,17 @@
-import { createDatabaseInstance } from '../database'
-import { fromElement, fromRoot } from './entrypoints'
-import { getState } from './state'
+import { Document } from '@/document'
+import { DexieStore } from '@/store'
 
-import { assert } from '@/utils'
+import type { StorageOptions } from '@/store'
+import type { AnyDialecteConfig } from '@/types'
 
-import type { DialecteCore, FromElementParams } from './types'
-import type { AnyDialecteConfig, ElementsOf, ExtensionRegistry } from '@/types'
-
-export function createDialecte<
-	GenericConfig extends AnyDialecteConfig,
-	GenericExtensionRegistry extends ExtensionRegistry<GenericConfig>,
->(params: {
-	databaseName: string
-	dialecteConfig: GenericConfig
-	extensions: GenericExtensionRegistry
-}): DialecteCore<GenericConfig, GenericExtensionRegistry> {
-	const { databaseName, dialecteConfig, extensions } = params
-
-	assert(databaseName, 'Database name is required to create SDK')
-
-	const databaseInstance = createDatabaseInstance({
-		databaseName,
-		dialecteConfig,
-	})
-
-	return {
-		getState,
-		getDatabaseInstance: () => databaseInstance,
-		fromRoot: () => fromRoot({ dialecteConfig, databaseInstance, extensions }),
-		fromElement: <GenericElement extends ElementsOf<GenericConfig>>(
-			params: FromElementParams<GenericConfig, GenericElement>,
-		) =>
-			fromElement<GenericConfig, GenericElement, GenericExtensionRegistry>({
-				dialecteConfig,
-				databaseInstance,
-				extensions,
-				...params,
-			}),
+export function openDialecteDocument<GenericConfig extends AnyDialecteConfig>(params: {
+	config: GenericConfig
+	storage: StorageOptions
+}): Document<GenericConfig> {
+	const { config, storage } = params
+	if (storage.type === 'local') {
+		return new Document(new DexieStore(storage.databaseName, config), config)
+	} else {
+		return new Document(storage.store, config)
 	}
 }

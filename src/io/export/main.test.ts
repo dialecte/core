@@ -420,8 +420,8 @@ describe('Export', () => {
 })
 
 async function writeToDatabase(databaseName: string, records: AnyRawRecord[]) {
-	const { createDatabaseInstance } = await import('@/database')
-	const databaseInstance = await createDatabaseInstance({
+	const { createDatabaseInstance } = await import('../database')
+	const databaseInstance = createDatabaseInstance({
 		databaseName,
 		dialecteConfig: TEST_DIALECTE_CONFIG,
 	})

@@ -46,17 +46,11 @@ export default defineConfig({
 					items: [{ text: 'Overview', link: '/api' }],
 				},
 				{
-					text: 'Entrypoints',
-					items: [{ text: 'Overview', link: '/api/entrypoints' }],
-				},
-				{
-					text: 'Chain methods',
+					text: 'API Reference',
 					items: [
-						{ text: 'Overview', link: '/api/chain/' },
-						{ text: 'Navigation', link: '/api/chain/navigation' },
-						{ text: 'Mutations', link: '/api/chain/mutations' },
-						{ text: 'Queries', link: '/api/chain/queries' },
-						{ text: 'Endings', link: '/api/chain/endings' },
+						{ text: 'Document', link: '/api/document' },
+						{ text: 'Query', link: '/api/query' },
+						{ text: 'Transaction', link: '/api/transaction' },
 					],
 				},
 			],
