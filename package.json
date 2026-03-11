@@ -1,6 +1,6 @@
 {
 	"name": "@dialecte/core",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"repository": {
@@ -74,9 +74,9 @@
 		"husky": "^9.1.7",
 		"jiti": "^2.4.2",
 		"npm-run-all2": "^8.0.4",
-		"oxfmt": "^0.35.0",
-		"oxlint": "^1.50.0",
-		"oxlint-tsgolint": "^0.14.2",
+		"oxfmt": "^0.38.0",
+		"oxlint": "^1.53.0",
+		"oxlint-tsgolint": "^0.16.0",
 		"playwright": "^1.53.2",
 		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
