@@ -73,6 +73,21 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 
 	//== Mutation methods
 
+	/**
+	 * Add a child element to a parent.
+	 *
+	 * @param parentRefOrRecord - The parent element (ref, record, or relationship). `undefined` for root.
+	 * @param params - Child tagName, attributes and optional namespace, value, id.
+	 * @returns Ref to the created child.
+	 *
+	 * @example
+	 * ```ts
+	 * const bayRef = await tx.addChild(substation, {
+	 *   tagName: 'VoltageLevel',
+	 *   attributes: { name: 'VL1' },
+	 * })
+	 * ```
+	 */
 	async addChild<
 		GenericElement extends ElementsOf<GenericConfig>,
 		GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
@@ -88,6 +103,20 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		})
 	}
 
+	/**
+	 * Update attributes of an existing element.
+	 *
+	 * @param refOrRecord - The element to update (ref, record, or relationship).
+	 * @param params - New attribute values.
+	 * @returns Ref to the updated element.
+	 *
+	 * @example
+	 * ```ts
+	 * await tx.update(bay, {
+	 *   attributes: { name: 'Q02', desc: 'Feeder bay' },
+	 * })
+	 * ```
+	 */
 	async update<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: UpdateParams<GenericConfig, GenericElement>,
@@ -100,12 +129,36 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		})
 	}
 
+	/**
+	 * Delete an element and its entire subtree.
+	 *
+	 * @param refOrRecord - The element to delete (ref, record, or relationship).
+	 * @returns Ref to the deleted element's parent.
+	 *
+	 * @example
+	 * ```ts
+	 * const parentRef = await tx.delete(bay)
+	 * ```
+	 */
 	async delete<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 	): Promise<Ref<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
 		return stageDelete({ context: this.context, ref: toRef(refOrRecord) })
 	}
 
+	/**
+	 * Deep-clone a subtree under a new parent.
+	 *
+	 * @param parentRefOrRecord - The target parent for the clone.
+	 * @param record - The tree record to clone (from `getTree`).
+	 * @returns The cloned root ref and an ID mapping from old to new.
+	 *
+	 * @example
+	 * ```ts
+	 * const tree = await tx.getTree(bay)
+	 * const { ref, idMap } = await tx.deepClone(substation, tree)
+	 * ```
+	 */
 	async deepClone<
 		GenericElement extends ElementsOf<GenericConfig>,
 		GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,

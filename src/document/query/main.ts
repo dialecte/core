@@ -71,6 +71,16 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 
 	//== Record lookup
 
+	/**
+	 * Get the root element of the document.
+	 *
+	 * @returns The root record, or `undefined` if the database is empty.
+	 *
+	 * @example
+	 * ```ts
+	 * const root = await query.getRoot()
+	 * ```
+	 */
 	async getRoot(): Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>> | undefined> {
 		return getRecord({
 			context: this.context,
@@ -81,12 +91,34 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		})
 	}
 
+	/**
+	 * Get a single record by ref, record, or relationship.
+	 *
+	 * @param refOrRecord - A ref `{ tagName, id }`, or any record/relationship.
+	 * @returns The tracked record, or `undefined` if not found.
+	 *
+	 * @example
+	 * ```ts
+	 * const ied = await query.getRecord({ tagName: 'IED', id: knownId })
+	 * ```
+	 */
 	async getRecord<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 	): Promise<TrackedRecord<GenericConfig, GenericElement> | undefined> {
 		return getRecord({ context: this.context, ref: toRef(refOrRecord) })
 	}
 
+	/**
+	 * Get multiple records in a single call.
+	 *
+	 * @param refsOrRecords - Array of refs, records, or relationships.
+	 * @returns Array of tracked records (same order, `undefined` for missing).
+	 *
+	 * @example
+	 * ```ts
+	 * const [bay1, bay2] = await query.getRecords([ref1, ref2])
+	 * ```
+	 */
 	async getRecords<GenericElement extends ElementsOf<GenericConfig>>(
 		refsOrRecords: (RefOrRecord<GenericConfig, GenericElement> | undefined)[],
 	): Promise<(TrackedRecord<GenericConfig, GenericElement> | undefined)[]> {
@@ -94,12 +126,35 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		return getRecords({ context: this.context, refs })
 	}
 
+	/**
+	 * Get all records of a given tag name.
+	 *
+	 * @param tagName - The element type to retrieve.
+	 * @returns All tracked records matching that tag name.
+	 *
+	 * @example
+	 * ```ts
+	 * const ieds = await query.getRecordsByTagName('IED')
+	 * ```
+	 */
 	async getRecordsByTagName<GenericElement extends ElementsOf<GenericConfig>>(
 		tagName: GenericElement,
 	): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
 		return getRecordsByTagName({ context: this.context, tagName })
 	}
 
+	/**
+	 * Find all descendants of an element, grouped by tag name.
+	 *
+	 * @param refOrRecord - The ancestor element.
+	 * @param filter - Optional filter to restrict which tag names are returned.
+	 * @returns Object keyed by tag name, each value an array of tracked records.
+	 *
+	 * @example
+	 * ```ts
+	 * const { Bay, VoltageLevel } = await query.findDescendants(substation)
+	 * ```
+	 */
 	async findDescendants<
 		GenericElement extends ElementsOf<GenericConfig>,
 		GenericFilter extends DescendantsFilter<GenericConfig> | undefined = undefined,
@@ -115,6 +170,18 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		})
 	}
 
+	/**
+	 * Build a full tree structure from an element down.
+	 *
+	 * @param refOrRecord - The root of the subtree.
+	 * @param options - Optional depth/filter controls.
+	 * @returns A tree record with nested children, or `undefined` if not found.
+	 *
+	 * @example
+	 * ```ts
+	 * const tree = await query.getTree(bay)
+	 * ```
+	 */
 	async getTree<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		options?: GetTreeParams<GenericConfig, GenericElement>,
@@ -125,19 +192,45 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	//== Attribute queries
 
 	/**
+	 * Get a single attribute value from a record.
+	 *
+	 * @param refOrRecord - The element to read from.
+	 * @param params - Attribute name.
+	 * @returns The attribute value, or `''` if absent.
+	 *
 	 * @example
-	 * await doc.query.getAttribute({ ref, name: 'name' })                    // → string | ''
-	 * await doc.query.getAttribute({ ref, name: 'name', fullObject: true })  // → FullAttributeObject | undefined
+	 * ```ts
+	 * const name = await query.getAttribute(bay, { name: 'name' })
+	 * ```
 	 */
+	async getAttribute<GenericElement extends ElementsOf<GenericConfig>>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		params: { name: AttributesOf<GenericConfig, GenericElement>; fullObject?: false },
+	): Promise<FullAttributeObjectOf<GenericConfig, GenericElement>['value'] | ''>
+	/**
+	 * Get the full attribute object for a single attribute.
+	 *
+	 * @param refOrRecord - The element to read from.
+	 * @param params - Attribute name and `fullObject: true`.
+	 * @returns The full attribute object, or `undefined` if absent.
+	 *
+	 * @example
+	 * ```ts
+	 * const fullAttributeObject = await query.getAttribute(bay, { name: 'name', fullObject: true })
+	 * ```
+	 */
+	async getAttribute<GenericElement extends ElementsOf<GenericConfig>>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		params: { name: AttributesOf<GenericConfig, GenericElement>; fullObject: true },
+	): Promise<FullAttributeObjectOf<GenericConfig, GenericElement> | undefined>
 	async getAttribute<
 		GenericElement extends ElementsOf<GenericConfig>,
 		GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
-		FullObject extends boolean = false,
 	>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: {
 			name: AttributesOf<GenericConfig, GenericElement>
-			fullObject?: FullObject
+			fullObject?: boolean
 		},
 	): Promise<GenericAttribute | undefined | GenericAttribute['value'] | ''> {
 		const resolvedRef = toRef(refOrRecord)
@@ -148,19 +241,41 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
+	 * Get all attributes of a record as a destructurable key/value object.
+	 *
+	 * @param refOrRecord - The element to read from.
+	 * @returns A `{ name, desc, ... }` object with attribute names as keys.
+	 *
 	 * @example
-	 * const { name, desc } = await doc.query.getAttributes({ ref })                   // destructurable
-	 * const fullAttrs      = await doc.query.getAttributes({ ref, fullObject: true }) // FullAttributeObject[]
+	 * ```ts
+	 * const { name, desc } = await query.getAttributes(bay)
+	 * ```
 	 */
+	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		params?: { fullObject?: false },
+	): Promise<AttributesValueObjectOf<GenericConfig, GenericElement>>
+	/**
+	 * Get all attributes of a record as an array of full attribute objects.
+	 *
+	 * @param refOrRecord - The element to read from.
+	 * @returns An array of full attribute objects.
+	 *
+	 * @example
+	 * ```ts
+	 * const fullAttributeObjects = await query.getAttributes(bay, { fullObject: true })
+	 * ```
+	 */
+	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		params: { fullObject: true },
+	): Promise<FullAttributeObjectOf<GenericConfig, GenericElement>[]>
 	async getAttributes<
 		GenericElement extends ElementsOf<GenericConfig>,
 		GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
-		FullObject extends boolean = false,
 	>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-		params?: {
-			fullObject?: FullObject
-		},
+		params?: { fullObject?: boolean },
 	): Promise<GenericAttribute[] | AttributesValueObjectOf<GenericConfig, GenericElement>> {
 		const resolvedRef = toRef(refOrRecord)
 		const { fullObject } = params || {}
@@ -171,6 +286,20 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 
 	//== Find queries
 
+	/**
+	 * Find records matching specific attribute values.
+	 *
+	 * @param params - Tag name and attribute filter criteria.
+	 * @returns All matching tracked records.
+	 *
+	 * @example
+	 * ```ts
+	 * const bays = await query.findByAttributes({
+	 *   tagName: 'Bay',
+	 *   attributes: { name: 'Q01' },
+	 * })
+	 * ```
+	 */
 	async findByAttributes<GenericElement extends ElementsOf<GenericConfig>>(params: {
 		tagName: GenericElement
 		attributes: FilterAttributes<GenericConfig, GenericElement>

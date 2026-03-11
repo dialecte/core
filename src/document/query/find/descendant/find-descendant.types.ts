@@ -5,7 +5,7 @@ import type { AnyDialecteConfig, DescendantsOf, ElementsOf, TrackedRecord } from
 // Filter Types - Recursive descendant matching (any depth)
 // ============================================================================
 
-type Depth = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] // Support up to 20 levels of nesting
+type Depth = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8] // Support up to 8 levels of nesting
 
 type FilterNode<
 	GenericConfig extends AnyDialecteConfig,
@@ -37,7 +37,7 @@ export type DescendantsFilter<GenericConfig extends AnyDialecteConfig> = {
 		 * Default: false (required — candidates whose path lacks this element are excluded).
 		 */
 		isOptional?: boolean
-		descendant?: FilterNode<GenericConfig, K, 20>
+		descendant?: FilterNode<GenericConfig, K, 8>
 	}
 }[ElementsOf<GenericConfig>]
 
