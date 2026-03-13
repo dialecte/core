@@ -102,7 +102,6 @@ export class DexieStore implements Store {
 							const failedRecord = this.extractFailedRecordFromError(error, creates)
 							throwDialecteError('STORE_BULK_ADD_FAILED', {
 								detail: error instanceof Error ? error.message : String(error),
-								method: 'commit.bulkAdd',
 								cause: error instanceof Error ? error : undefined,
 								...(failedRecord && {
 									ref: { tagName: failedRecord.tagName!, id: failedRecord.id! },
@@ -120,7 +119,6 @@ export class DexieStore implements Store {
 							const failedRecord = this.extractFailedRecordFromError(error, updates)
 							throwDialecteError('STORE_BULK_UPDATE_FAILED', {
 								detail: error instanceof Error ? error.message : String(error),
-								method: 'commit.bulkPut',
 								cause: error instanceof Error ? error : undefined,
 								...(failedRecord && {
 									ref: { tagName: failedRecord.tagName!, id: failedRecord.id! },
@@ -137,7 +135,6 @@ export class DexieStore implements Store {
 						} catch (error) {
 							throwDialecteError('STORE_DELETE_FAILED', {
 								detail: error instanceof Error ? error.message : String(error),
-								method: 'commit.bulkDelete',
 								cause: error instanceof Error ? error : undefined,
 							})
 						}
@@ -173,7 +170,6 @@ export class DexieStore implements Store {
 			}
 			throwDialecteError('STORE_COMMIT_FAILED', {
 				detail: error instanceof Error ? error.message : String(error),
-				method: 'commit',
 				cause: error instanceof Error ? error : undefined,
 			})
 		}

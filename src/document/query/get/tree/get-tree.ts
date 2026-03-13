@@ -20,7 +20,6 @@ export async function getTree<
 	const root = await getRecord({ context, ref })
 	assert(root, {
 		detail: 'No record found for provided ref',
-		method: 'getTree',
 		key: 'ELEMENT_NOT_FOUND',
 	})
 

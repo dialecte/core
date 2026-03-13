@@ -40,21 +40,18 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 	if (status === 'created') {
 		assert(rawRecord, {
 			detail: 'Record is required for created',
-			method: 'stageOperation',
 			key: 'ELEMENT_NOT_FOUND',
 		})
 		context.stagedOperations.push({ status, oldRecord: undefined, newRecord: rawRecord })
 	} else if (status === 'updated') {
 		assert(rawOldRecord && rawNewRecord, {
 			detail: 'Old record and new record are required for updated',
-			method: 'stageOperation',
 			key: 'ELEMENT_NOT_FOUND',
 		})
 		context.stagedOperations.push({ status, oldRecord: rawOldRecord, newRecord: rawNewRecord })
 	} else if (status === 'deleted' && rawRecord) {
 		assert(rawRecord, {
 			detail: 'Record is required for deleted',
-			method: 'stageOperation',
 			key: 'ELEMENT_NOT_FOUND',
 		})
 		context.stagedOperations.push({ status, oldRecord: rawRecord, newRecord: undefined })

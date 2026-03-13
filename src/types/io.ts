@@ -27,6 +27,19 @@ export type ExportOptions = {
 export type RecordPatch = { recordId: string } & Partial<Omit<AnyRawRecord, 'id'>>
 
 /**
+ * A warning produced during import.
+ *
+ * `type` is a discriminant string owned by the dialecte (e.g. `'unresolved-reference'`).
+ * `recordId` identifies the record that triggered the warning.
+ * `details` carries dialecte-specific context — its shape is defined by the dialecte.
+ */
+export type ImportWarning = {
+	type: string
+	recordId: string
+	details?: Record<string, unknown>
+}
+
+/**
  * Return value of the afterImport hook.
  * Core applies each collection in order: creates → updates → deletes.
  */
@@ -37,15 +50,12 @@ export type AfterImportResult = {
 	updates?: RecordPatch[]
 	/** IDs of records to remove */
 	deletes?: string[]
+	/** Warnings collected during resolution — unresolved refs, unknown paths, etc. */
+	warnings?: ImportWarning[]
 }
 
 /**
  * IO hooks for import/export lifecycle.
- *
- * - `beforeImportRecord`: called synchronously per record during streaming.
- *   Use to collect data (e.g., build path indexes) without blocking the parser.
- * - `afterImport`: called once after all records are stored.
- *   Use for cross-record resolution (e.g., path → UUID) via bulk writes.
  */
 export type IOHooks = {
 	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void

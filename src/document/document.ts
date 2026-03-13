@@ -84,7 +84,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 		if (this.activeTransactions > 0) {
 			throwDialecteError('CONCURRENT_TRANSACTION', {
 				detail: `${this.activeTransactions} transaction(s) already active. Concurrent transactions risk lost updates — serialize them or implement a transaction queue.`,
-				method: 'transaction',
 			})
 		}
 
@@ -117,7 +116,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
 					detail: error instanceof Error ? error.message : String(error),
-					method: 'transaction',
 					cause: error instanceof Error ? error : undefined,
 				})
 			)
@@ -166,7 +164,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
 					detail: error instanceof Error ? error.message : String(error),
-					method: 'prepare',
 					cause: error instanceof Error ? error : undefined,
 				})
 			)
@@ -217,7 +214,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 						this.state.error ??
 						throwDialecteError('UNKNOWN', {
 							detail: error instanceof Error ? error.message : String(error),
-							method: 'commit',
 							cause: error instanceof Error ? error : undefined,
 						})
 					)
@@ -255,7 +251,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
 					detail: error instanceof Error ? error.message : String(error),
-					method: 'undo',
 					cause: error instanceof Error ? error : undefined,
 				})
 			)
@@ -280,7 +275,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
 					detail: error instanceof Error ? error.message : String(error),
-					method: 'redo',
 					cause: error instanceof Error ? error : undefined,
 				})
 			)

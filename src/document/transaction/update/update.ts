@@ -28,7 +28,6 @@ export async function stageUpdate<
 	const record = await getRecord({ context, ref })
 	assert(record, {
 		detail: `Record not found (tagName=${ref.tagName}, id=${ref.id})`,
-		method: 'update',
 		key: 'ELEMENT_NOT_FOUND',
 		ref,
 	})

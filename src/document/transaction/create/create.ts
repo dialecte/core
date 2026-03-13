@@ -28,7 +28,6 @@ export async function stageAddChild<
 	const parentRecord = await getRecord({ context, ref: parentRef })
 	assert(parentRecord, {
 		detail: 'Parent record not found',
-		method: 'addChild',
 		key: 'ELEMENT_NOT_FOUND',
 		ref: parentRef,
 	})

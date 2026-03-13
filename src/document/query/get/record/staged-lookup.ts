@@ -58,7 +58,6 @@ export function getLatestStagedRecord<
 			const actualTagName: string = operation.newRecord.tagName
 			if (actualTagName !== tagName) {
 				throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
-					method: 'getLatestStagedRecord',
 					detail: `Expected tagName '${tagName}', got '${actualTagName}' for id '${id}'`,
 					ref: { tagName, id },
 				})
@@ -72,7 +71,6 @@ export function getLatestStagedRecord<
 			const actualTagName: string = operation.newRecord.tagName
 			if (actualTagName !== tagName) {
 				throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
-					method: 'getLatestStagedRecord',
 					detail: `Expected tagName '${tagName}', got '${actualTagName}' for id '${id}'`,
 					ref: { tagName, id },
 				})
@@ -86,7 +84,6 @@ export function getLatestStagedRecord<
 			const actualTagName: string = operation.oldRecord.tagName
 			if (actualTagName !== tagName) {
 				throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
-					method: 'getLatestStagedRecord',
 					detail: `Expected tagName '${tagName}', got '${actualTagName}' for id '${id}'`,
 					ref: { tagName, id },
 				})

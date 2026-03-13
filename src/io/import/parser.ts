@@ -238,7 +238,6 @@ function getDefaultNamespace(params: {
 	const { element, defaultNamespace, rootElementName } = params
 	assert(element.name === rootElementName, {
 		detail: `Expected root element <${rootElementName}>, got <${element.name}>`,
-		method: 'import::getDefaultNamespace',
 	})
 
 	if (element.attributes?.xmlns?.value)

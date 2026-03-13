@@ -164,7 +164,6 @@ export function toRef<
 ): Ref<GenericConfig, GenericElement> {
 	assert(input, {
 		detail: 'The record or ref is undefined',
-		method: 'core::toRef',
 	})
 
 	return {
