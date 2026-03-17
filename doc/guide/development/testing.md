@@ -1,3 +1,7 @@
+---
+description: Documents the built-in test helpers and the Rule-of-3 test definition shipped with @dialecte/core. Covers the deterministic tree structure, seeded database utilities, and patterns for writing reliable unit tests against a dialecte.
+---
+
 # Testing
 
 Dialecte core provides test helpers and a pre-built test definition to make writing tests straightforward. These utilities are exported from `@dialecte/core`.

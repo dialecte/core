@@ -1,6 +1,7 @@
 ---
 # https://vitepress.dev/reference/default-theme-home-page
 layout: home
+description: Dialecte is a type-safe SDK for building XML-based DSLs. Point it at an XSD schema and get a fully-typed Document API with IndexedDB persistence and streaming XML import/export.
 
 hero:
   name: Dialecte

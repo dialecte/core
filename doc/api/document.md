@@ -1,3 +1,7 @@
+---
+description: API reference for the Document class — the main entry point for a dialecte. Covers openDialecteDocument, the query accessor, transaction(), prepare(), undo/redo, and the observable DocumentState.
+---
+
 # Document
 
 `Document` is the public entry point for interacting with a dialecte database. It owns the store connection and exposes read access via `query` and write access via `transaction()`.
@@ -101,10 +105,9 @@ Each call updates `state.history` and broadcasts the change to other `Document` 
 A single observable object that tracks the document lifecycle. In a reactive framework (Vue, etc.), wrap it with `reactive()` to drive the UI.
 
 ```ts
-doc.state.loading // boolean — true while a transaction is running
+doc.state.loading // boolean — true while busy
 doc.state.error // DialecteError | null
-doc.state.activity // { method, message } | null — drives spinners
-doc.state.progress // { current, total } | null — drives progress bars
+doc.state.progress // { message, current, total } | null — drives progress bars and status messages
 doc.state.history // TransactionEntry[] — breadcrumb trail
 doc.state.lastUpdate // number | null — timestamp of last commit (local or remote)
 ```
@@ -115,8 +118,7 @@ doc.state.lastUpdate // number | null — timestamp of last commit (local or rem
 type DocumentState = {
 	loading: boolean
 	error: DialecteError | null
-	activity: { method: string; message: string } | null
-	progress: { current: number; total: number } | null
+	progress: { message: string; current: number; total: number } | null
 	history: TransactionEntry[]
 	lastUpdate: number | null
 }

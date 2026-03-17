@@ -1,3 +1,7 @@
+---
+description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, findAncestors, getTree, and filtering utilities.
+---
+
 # Query
 
 `Query` provides read-only access to a dialecte's store. It is accessed via `doc.query` and is also the base class for `Transaction` — so all query methods are available inside a transaction too.

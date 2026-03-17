@@ -1,3 +1,7 @@
+---
+description: Overview of the @dialecte/core public API — importXmlFiles for streaming XML into IndexedDB, Document for lifecycle management, and the Query/Transaction interfaces for reading and mutating records.
+---
+
 # API Overview
 
 The `@dialecte/core` API is organised around three concepts:

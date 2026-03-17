@@ -1,3 +1,7 @@
+---
+description: API reference for Transaction — extends Query with atomic mutation methods including addChild, update, delete, deepClone, and move. All operations stage in memory and commit atomically; reads within the callback see staged changes.
+---
+
 # Transaction
 
 `Transaction` extends [Query](/api/query) with mutation methods. It is created by `doc.transaction()` and scoped to a single unit of work. All operations are staged in memory and committed atomically when the callback returns.

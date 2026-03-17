@@ -1,3 +1,7 @@
+---
+description: Explains the problem Dialecte solves — turning an XSD schema into a fully-typed DSL with Document/Query/Transaction API, IndexedDB persistence, and streaming XML import/export — eliminating repetitive parser and storage boilerplate for XML-heavy applications.
+---
+
 # What is Dialecte?
 
 Dialecte is an SDK for **turning an XSD schema into a fully-typed, domain-specific language (DSL)**. Point it at your XSD, generate a definition, and you get a Document API that speaks your XML dialect natively — complete type safety, IndexedDB persistence, and streaming import/export included.

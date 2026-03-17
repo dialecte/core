@@ -1,3 +1,7 @@
+---
+description: Step-by-step guide to installing @dialecte/core, importing an XML file, opening a Document, querying records, and running your first transaction.
+---
+
 # Getting Started
 
 Dialecte core is the engine behind any XML dialecte. You bring a schema-driven config; Dialecte provides the Document API, the streaming XML parser, and the IndexedDB persistence.

@@ -1,114 +1,166 @@
+---
+description: How to write and register domain-specific extensions for a dialecte. Extensions are plain functions bound onto the Query/Transaction instances via mergeExtensions(), making methods like doc.query.History.getSortedHitems() available with full type safety.
+---
+
 # Writing Extensions
 
-Extensions add domain-specific methods by subclassing `Query` and `Transaction`. Once wired into a `Document` subclass, they appear as first-class methods — fully typed against your element set.
+Extensions add domain-specific methods as plain functions registered under a named group. Once wired into `openDialecteDocument`, they appear directly on `doc.query` and on the `tx` callback argument — fully typed against your element set.
 
 ## How it works
 
-A dialecte package extends the core classes:
+1. **Write functions** — plain async functions whose first argument is `Scl.Query` or `Scl.Transaction`
+2. **Bundle into a module** — gather related functions into `{ query, transaction }` objects
+3. **Register** — pass named modules to `mergeExtensions({ History, IED, ... })`
+4. **Wire** — pass the result as `extensions` to `openDialecteDocument`
 
-1. **`Query` subclass** — domain-specific read methods
-2. **`Transaction` subclass** — domain-specific write methods
-3. **`Document` subclass** — overrides `createQuery()` and `createTransaction()` to return your subclasses
+The `Document` binds them onto each `Query`/`Transaction` instance automatically. No subclassing needed.
 
-## Query extensions
+## Writing extension functions
 
-Extend `Query` to add domain-specific reads. Your subclass has access to `this.context` and all protected methods.
+Each function takes the query (or transaction) as its first argument. The remaining arguments become its public signature after binding.
+
+**Query extension** (`History/query/get-sorted-hitem.ts`):
 
 ```ts
-import { Query } from '@dialecte/core'
-import type { RefOrRecord } from '@dialecte/core'
+import type { Scl } from '@/v2019C1/config'
 
-class SclQuery extends Query<SclConfig> {
-	async getSubstations() {
-		return this.getRecordsByTagName('Substation')
-	}
+export async function getSortedHitems(query: Scl.Query): Promise<Scl.TrackedRecord<'Hitem'>[]> {
+	const history = (await query.getRecordsByTagName('History'))[0]
+	if (!history) return []
 
-	async getVoltageLevels(ref: RefOrRecord<SclConfig, 'Substation'>) {
-		const results = await this.findDescendants(ref, { tagName: 'VoltageLevel' })
-		return results.VoltageLevel
-	}
+	const { Hitem: hitems = [] } = await query.findDescendants(history)
 
-	async getBaysByName(ref: RefOrRecord<SclConfig, 'VoltageLevel'>, name: string) {
-		return this.findByAttributes({
-			tagName: 'Bay',
-			attributes: { name },
-		})
-	}
+	return [...hitems].sort((a, b) => {
+		const vA = Number(a.attributes.find((attr) => attr.name === 'version')?.value ?? 0)
+		const vB = Number(b.attributes.find((attr) => attr.name === 'version')?.value ?? 0)
+		if (vA !== vB) return vA - vB
+		const rA = Number(a.attributes.find((attr) => attr.name === 'revision')?.value ?? 0)
+		const rB = Number(b.attributes.find((attr) => attr.name === 'revision')?.value ?? 0)
+		return rA - rB
+	})
 }
 ```
 
-## Transaction extensions
-
-Extend `Transaction` to add domain-specific writes. Since `Transaction` extends `Query`, your transaction subclass has access to both query and mutation methods.
+**Calling sibling extensions** — import the function directly, passing `query` through:
 
 ```ts
-import { Transaction } from '@dialecte/core'
+import { getSortedHitems } from './get-sorted-hitem'
+import type { Scl } from '@/v2019C1/config'
 
-class SclTransaction extends Transaction<SclConfig> {
-	async createBay(
-		vlRef: RefOrRecord<SclConfig, 'VoltageLevel'>,
-		params: { name: string; desc?: string },
-	) {
-		return this.addChild(vlRef, {
-			tagName: 'Bay',
-			attributes: params,
-		})
-	}
-
-	async moveBay(
-		bayRef: RefOrRecord<SclConfig, 'Bay'>,
-		targetVlRef: RefOrRecord<SclConfig, 'VoltageLevel'>,
-	) {
-		const tree = await this.getTree(bayRef)
-		if (!tree) return
-
-		await this.delete(bayRef)
-		return this.deepClone(targetVlRef, tree)
-	}
+export async function getLatestHitem(
+	query: Scl.Query,
+): Promise<Scl.TrackedRecord<'Hitem'> | undefined> {
+	const sorted = await getSortedHitems(query)
+	return sorted.at(-1)
 }
 ```
 
-## Wiring into Document
-
-Override `createQuery()` and `createTransaction()` in a `Document` subclass:
+**Transaction extension** — use `Scl.Transaction` as the first arg:
 
 ```ts
-import { Document } from '@dialecte/core'
+import type { Scl } from '@/v2019C1/config'
 
-class SclDocument extends Document<SclConfig> {
-	protected override createQuery() {
-		return new SclQuery(this.store, this.config)
-	}
+export async function addHitem(
+	tx: Scl.Transaction,
+	params: { version: string; revision: string; who: string; what: string },
+) {
+	const history = (await tx.getRecordsByTagName('History'))[0]
+	if (!history) return
 
-	protected override createTransaction() {
-		return new SclTransaction(this.store, this.config, this.state)
-	}
+	return tx.addChild(history, { tagName: 'Hitem', attributes: params })
 }
 ```
 
-Now `doc.query` returns an `SclQuery` and `doc.transaction()` provides an `SclTransaction`:
+## Bundling into a module
+
+Collect the functions for one domain concept into an `index.ts` and export a module object:
 
 ```ts
-const doc = new SclDocument(store, config)
+// History/index.ts
+import * as historyQueries from './query'
+import * as historyMutations from './transaction'
 
-// Domain query
-const substations = await doc.query.getSubstations()
+export const History = {
+	query: historyQueries,
+	transaction: historyMutations,
+}
+```
 
-// Domain transaction
+If the module has no transaction methods, omit the key:
+
+```ts
+export const History = {
+	query: historyQueries,
+}
+```
+
+## Registering extensions
+
+Pass all modules to `mergeExtensions` and export the result:
+
+```ts
+// extensions/index.ts
+import { mergeExtensions } from '@dialecte/core/helpers'
+import { History } from './History'
+import { IED } from './IED'
+
+export const EXTENSIONS = mergeExtensions({ History, IED })
+```
+
+`mergeExtensions` flattens `{ History: { query, transaction } }` into:
+
+```ts
+{
+  query:       { History: historyQueries, IED: iedQueries },
+  transaction: { History: historyMutations },
+}
+```
+
+## Wiring into a dialecte
+
+Pass `EXTENSIONS` to `openDialecteDocument`:
+
+```ts
+// dialecte.ts
+import { openDialecteDocument } from '@dialecte/core'
+import { SCL_DIALECTE_CONFIG } from './config/dialecte.config'
+import { EXTENSIONS } from './extensions'
+
+export function openSclDocument(storage: StorageOptions) {
+	return openDialecteDocument({
+		config: SCL_DIALECTE_CONFIG,
+		storage,
+		extensions: EXTENSIONS,
+	})
+}
+```
+
+## Consumer API
+
+Extensions appear flat on `doc.query` and `tx`, grouped by module name:
+
+```ts
+const doc = openSclDocument({ type: 'local', databaseName: 'my-scl' })
+
+// Query extensions
+const latest = await doc.query.History.getLatestHitem()
+
+// Transaction extensions
 await doc.transaction(async (tx) => {
-	await tx.createBay(vlRef, { name: 'Bay1' })
+	await tx.History.addHitem({ version: '1', revision: '0', who: 'Alice', what: 'Initial' })
 })
 ```
 
+The first argument (`query`/`tx`) is bound automatically — it never appears in the call site.
+
 ## Type safety
 
-TypeScript enforces the full hierarchy:
+TypeScript infers the full extension shape from `EXTENSIONS`:
 
-- `addChild` only accepts tag names that are valid children of the parent element
-- Attribute objects are narrowed to the specific element's attributes
-- `RefOrRecord` accepts refs, records, and relationships — no need for manual conversions
-
-Invalid operations are caught at compile time, not runtime.
+- `doc.query.History` is typed with the exact functions in `historyQueries`
+- `tx.History` adds transaction methods on top
+- The `query` first-arg is stripped from each function's public signature
+- Unknown group names and invalid argument types are caught at compile time
 
 ## Hooks — lifecycle control
 

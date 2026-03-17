@@ -1,7 +1,11 @@
 import { defineConfig } from 'vitepress'
+import llmstxt from 'vitepress-plugin-llms'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+	vite: {
+		plugins: [llmstxt()],
+	},
 	srcDir: 'doc',
 	base: '/core/',
 
@@ -33,7 +37,10 @@ export default defineConfig({
 				},
 				{
 					text: 'Development',
-					items: [{ text: 'Testing', link: '/guide/development/testing' }],
+					items: [
+						{ text: 'State & Errors', link: '/guide/development/state-and-errors' },
+						{ text: 'Testing', link: '/guide/development/testing' },
+					],
 				},
 				{
 					text: 'Extensions',
