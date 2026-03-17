@@ -15,8 +15,8 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 
 	const totalOperations = creates.length + updates.length + deletes.length
 
-	documentState.activity = { method: 'commit', message: 'Committing changes...' }
-	documentState.progress = { current: 0, total: totalOperations }
+	documentState.loading = true
+	documentState.progress = { message: 'Committing changes...', current: 0, total: totalOperations }
 
 	try {
 		await store.commit({
@@ -24,11 +24,11 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 			updates: updates.map((op) => op.newRecord),
 			deletes: deletes.map((op) => op.oldRecord.id),
 			onProgress: (current, total) => {
-				documentState.progress = { current, total }
+				documentState.progress = { message: 'Committing changes...', current, total }
 			},
 		})
 	} catch (error) {
-		documentState.activity = null
+		documentState.loading = false
 		documentState.progress = null
 		throw error
 	}

@@ -45,20 +45,15 @@ export type TransactionEntry = {
  * Single observable state for a Document.
  * In Vue: reactive(doc.state) makes all fields trigger re-renders.
  *
- * Usage: const { loading, error, activity, progress } = doc.state
+ * Usage: const { loading, error, progress } = doc.state
  */
 export type DocumentState = {
 	loading: boolean
 	error: DialecteError | null
 
-	/** What's happening right now — drives spinners, toasts */
-	activity: {
-		method: string
-		message: string
-	} | null
-
-	/** Measurable progress — drives progress bars (deepClone, commit, bulk ops) */
+	/** Drives progress bars and status messages (commit, deepClone, bulk ops) */
 	progress: {
+		message: string
 		current: number
 		total: number
 	} | null

@@ -1,2 +1,2 @@
-export { Transaction } from './main'
+export { Transaction } from './transaction'
 export { isTransactionContext } from './guard'

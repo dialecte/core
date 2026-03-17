@@ -1,3 +1,3 @@
-export { Query } from './main'
+export { Query } from './query'
 export * from './get'
 export * from './find'

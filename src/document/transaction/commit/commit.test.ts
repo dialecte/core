@@ -15,7 +15,6 @@ function makeState(): DocumentState {
 	return {
 		loading: false,
 		error: null,
-		activity: null,
 		progress: null,
 		history: [],
 		lastUpdate: null,
@@ -50,6 +49,9 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 				calls.progressCalls.push({ current: i + 1, total })
 			}
 		}),
+		undo: vi.fn(),
+		redo: vi.fn(),
+		getChangeLog: vi.fn().mockResolvedValue([]),
 		destroy: vi.fn(),
 	}
 
@@ -59,9 +61,9 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('commitTransaction', () => {
-	it('sets activity and initial progress before writing to store', async () => {
+	it('sets loading and initial progress before writing to store', async () => {
 		const state = makeState()
-		const activitySnapshot: (typeof state.activity)[] = []
+		const loadingSnapshot: (typeof state.loading)[] = []
 		const progressSnapshot: (typeof state.progress)[] = []
 
 		const store: Store = {
@@ -72,8 +74,11 @@ describe('commitTransaction', () => {
 			open: vi.fn(),
 			close: vi.fn(),
 			destroy: vi.fn(),
+			undo: vi.fn(),
+			redo: vi.fn(),
+			getChangeLog: vi.fn().mockResolvedValue([]),
 			commit: vi.fn(async () => {
-				activitySnapshot.push(state.activity)
+				loadingSnapshot.push(state.loading)
 				progressSnapshot.push(state.progress)
 			}),
 		}
@@ -85,8 +90,8 @@ describe('commitTransaction', () => {
 		}
 		await commitTransaction({ stagedOperations: [op], store, documentState: state })
 
-		expect(activitySnapshot[0]).toEqual({ method: 'commit', message: 'Committing changes...' })
-		expect(progressSnapshot[0]).toEqual({ current: 0, total: 1 })
+		expect(loadingSnapshot[0]).toBe(true)
+		expect(progressSnapshot[0]).toEqual({ message: 'Committing changes...', current: 0, total: 1 })
 	})
 
 	it('sets lastUpdate after a successful commit', async () => {
@@ -182,7 +187,7 @@ describe('commitTransaction', () => {
 		])
 	})
 
-	it('clears activity and progress then rethrows on store error', async () => {
+	it('resets loading and progress then rethrows on store error', async () => {
 		const state = makeState()
 		const err = new Error('DB exploded')
 		const { store } = makeStore({ shouldThrow: err })
@@ -197,7 +202,7 @@ describe('commitTransaction', () => {
 			commitTransaction({ stagedOperations: [op], store, documentState: state }),
 		).rejects.toThrow('DB exploded')
 
-		expect(state.activity).toBeNull()
+		expect(state.loading).toBe(false)
 		expect(state.progress).toBeNull()
 	})
 

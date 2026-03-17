@@ -1,3 +1,4 @@
+import { bindExtensions } from './bind-extensions'
 import { Query } from './query'
 import { Transaction } from './transaction'
 
@@ -6,6 +7,7 @@ import { throwDialecteError } from '@/errors'
 import type { PreparedTransaction, DocumentState } from './types'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig } from '@/types/dialecte-config'
+import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from '@/types/extensions'
 
 /**
  * Document — the public entry point for querying and mutating a dialecte.
@@ -13,20 +15,23 @@ import type { AnyDialecteConfig } from '@/types/dialecte-config'
  * Queries: doc.query.getRoot(), doc.query.findChildren(...), etc.
  * Mutations: doc.transaction(async (tx) => { tx.addChild(...) })
  *
- * Single observable state: doc.state — loading, error, activity, progress, history.
+ * Single observable state: doc.state — loading, error, progress, history.
  * Transaction mutates this state directly (no separate transaction state).
  *
  * Subclass in a dialecte to override createQuery() / createTransaction()
  * and return domain-specific subclasses (e.g. SclQuery, SclTransaction).
  */
-export class Document<GenericConfig extends AnyDialecteConfig> {
+export class Document<
+	GenericConfig extends AnyDialecteConfig,
+	GenericExtension extends ExtensionsRegistry = {},
+> {
 	protected store: Store
 	protected config: GenericConfig
+	private extensionsRegistry?: GenericExtension
 
 	readonly state: DocumentState = {
 		loading: false,
 		error: null,
-		activity: null,
 		progress: null,
 		history: [],
 		lastUpdate: null,
@@ -45,9 +50,10 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 	 */
 	private channel: BroadcastChannel
 
-	constructor(store: Store, config: GenericConfig) {
+	constructor(store: Store, config: GenericConfig, extensions?: GenericExtension) {
 		this.store = store
 		this.config = config
+		this.extensionsRegistry = extensions
 		this.channel = new BroadcastChannel(`core::${store.name}`)
 		this.channel.onmessage = (event: MessageEvent<number>) => {
 			this.state.lastUpdate = event.data
@@ -56,6 +62,22 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 
 	//== Query access (read-only, no mutations exposed)
 
+	private withQueryExtensions(
+		query: Query<GenericConfig>,
+	): Query<GenericConfig> & QueryExtensions<GenericExtension> {
+		const bound = bindExtensions(this.extensionsRegistry?.query, query)
+		return Object.assign(query, bound) as Query<GenericConfig> & QueryExtensions<GenericExtension>
+	}
+
+	private withAllExtensions(
+		tx: Transaction<GenericConfig>,
+	): Transaction<GenericConfig> & AllExtensions<GenericExtension> {
+		const queryBound = bindExtensions(this.extensionsRegistry?.query, tx)
+		const txBound = bindExtensions(this.extensionsRegistry?.transaction, tx)
+		return Object.assign(tx, queryBound, txBound) as Transaction<GenericConfig> &
+			AllExtensions<GenericExtension>
+	}
+
 	/**
 	 * Override in dialecte subclass to return a domain-specific Query.
 	 */
@@ -63,8 +85,8 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 		return new Query(this.store, this.config)
 	}
 
-	get query(): Query<GenericConfig> {
-		return this.createQuery()
+	get query(): Query<GenericConfig> & QueryExtensions<GenericExtension> {
+		return this.withQueryExtensions(this.createQuery())
 	}
 
 	//== Transaction scope
@@ -78,7 +100,7 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	async transaction<T>(
-		fn: (tx: Transaction<GenericConfig>) => Promise<T>,
+		fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<T>,
 		options?: { label?: string },
 	): Promise<T> {
 		if (this.activeTransactions > 0) {
@@ -91,17 +113,15 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 		this.state.loading = true
 		this.state.error = null
 
-		const tx = this.createTransaction()
+		const tx = this.withAllExtensions(this.createTransaction())
 
 		try {
 			const result = await fn(tx)
 
-			this.state.activity = { method: 'commit', message: 'Saving changes...' }
 			await tx.commit()
 			this.channel.postMessage(this.state.lastUpdate)
 			tx.clearStagedOperations()
 			tx.clearRecordCache()
-			this.state.activity = null
 			this.state.history.push({
 				method: 'commit',
 				message: options?.label ?? 'Changes committed',
@@ -110,7 +130,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 
 			return result
 		} catch (error) {
-			this.state.activity = null
 			this.state.progress = null
 			throw (
 				this.state.error ??
@@ -121,7 +140,7 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 			)
 		} finally {
 			this.activeTransactions--
-			this.state.loading = this.activeTransactions > 0
+			this.state.loading = false
 		}
 	}
 
@@ -146,7 +165,7 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 	 * ```
 	 */
 	async prepare(
-		fn: (tx: Transaction<GenericConfig>) => Promise<void>,
+		fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<void>,
 		options?: { label?: string },
 	): Promise<PreparedTransaction<GenericConfig>> {
 		this.activeTransactions++
@@ -156,10 +175,10 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 		const tx = this.createTransaction()
 
 		try {
-			await fn(tx)
+			await fn(this.withAllExtensions(tx))
 		} catch (error) {
 			this.activeTransactions--
-			this.state.loading = this.activeTransactions > 0
+			this.state.loading = false
 			throw (
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
@@ -171,7 +190,7 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 
 		// Stop loading — build phase done, waiting for user decision
 		this.activeTransactions--
-		this.state.loading = this.activeTransactions > 0
+		this.state.loading = false
 
 		const operations = tx.getStagedOperations()
 		const summary = {
@@ -194,7 +213,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 
 				this.activeTransactions++
 				this.state.loading = true
-				this.state.activity = { method: 'commit', message: 'Saving changes...' }
 
 				try {
 					await tx.commit()
@@ -202,14 +220,12 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 
 					tx.clearStagedOperations()
 					tx.clearRecordCache()
-					this.state.activity = null
 					this.state.history.push({
 						method: 'commit',
 						message: options?.label ?? 'Changes committed',
 						timestamp: Date.now(),
 					})
 				} catch (error) {
-					this.state.activity = null
 					throw (
 						this.state.error ??
 						throwDialecteError('UNKNOWN', {
@@ -219,7 +235,7 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 					)
 				} finally {
 					this.activeTransactions--
-					this.state.loading = this.activeTransactions > 0
+					this.state.loading = false
 				}
 			},
 
@@ -238,15 +254,13 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 
 	async undo(): Promise<void> {
 		this.state.loading = true
-		this.state.activity = { method: 'commit', message: 'Undoing...' }
 		this.state.error = null
 
 		try {
 			await this.store.undo()
 			this.channel.postMessage(Date.now())
-			this.state.history.push({ method: 'commit', message: 'Undo', timestamp: Date.now() })
+			this.state.history.push({ method: 'undo', message: 'Undo', timestamp: Date.now() })
 		} catch (error) {
-			this.state.activity = null
 			throw (
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
@@ -256,21 +270,18 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 			)
 		} finally {
 			this.state.loading = false
-			this.state.activity = null
 		}
 	}
 
 	async redo(): Promise<void> {
 		this.state.loading = true
-		this.state.activity = { method: 'commit', message: 'Redoing...' }
 		this.state.error = null
 
 		try {
 			await this.store.redo()
 			this.channel.postMessage(Date.now())
-			this.state.history.push({ method: 'commit', message: 'Redo', timestamp: Date.now() })
+			this.state.history.push({ method: 'redo', message: 'Redo', timestamp: Date.now() })
 		} catch (error) {
-			this.state.activity = null
 			throw (
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
@@ -280,7 +291,6 @@ export class Document<GenericConfig extends AnyDialecteConfig> {
 			)
 		} finally {
 			this.state.loading = false
-			this.state.activity = null
 		}
 	}
 
