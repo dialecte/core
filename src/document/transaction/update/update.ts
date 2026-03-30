@@ -6,7 +6,7 @@ import { assert } from '@/utils'
 
 import type { UpdateParams } from './update.types'
 import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, Ref } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, RawRecord, Ref } from '@/types'
 
 /**
  * Merges attribute/value changes onto an existing record.
@@ -21,7 +21,7 @@ export async function stageUpdate<
 	context: Context<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 	params: UpdateParams<GenericConfig, GenericElement>
-}): Promise<Ref<GenericConfig, GenericElement>> {
+}): Promise<RawRecord<GenericConfig, GenericElement>> {
 	const { dialecteConfig, context, ref, params: updateParams } = params
 	const { attributes, value } = updateParams
 
@@ -57,5 +57,5 @@ export async function stageUpdate<
 
 	stageOperation({ context, status: 'updated', oldRecord: record, newRecord: updatedRecord })
 
-	return ref
+	return updatedRecord
 }

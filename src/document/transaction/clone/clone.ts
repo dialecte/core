@@ -4,7 +4,7 @@ import { toRef } from '@/helpers'
 
 import type { CloneResult, CloneMapping } from './clone.types'
 import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, ChildrenOf, TreeRecord, Ref } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, ChildrenOf, TreeRecord, Ref, RawRecord } from '@/types'
 
 /**
  * Recursively stages a deep clone of a TreeRecord under a parent.
@@ -25,7 +25,7 @@ export async function stageDeepClone<
 
 	const mappings: CloneMapping<GenericConfig>[] = []
 
-	await cloneRecursively({
+	const clonedRecord = await cloneRecursively({
 		dialecteConfig,
 		context,
 		parentRef,
@@ -34,7 +34,7 @@ export async function stageDeepClone<
 	})
 
 	return {
-		ref: toRef(record),
+		record: clonedRecord,
 		mappings,
 	}
 }
@@ -48,7 +48,7 @@ async function cloneRecursively<
 	parentRef: Ref<GenericConfig, ElementsOf<GenericConfig>>
 	record: TreeRecord<GenericConfig, GenericElement>
 	mappings: CloneMapping<GenericConfig>[]
-}): Promise<void> {
+}): Promise<RawRecord<GenericConfig, GenericElement>> {
 	const { dialecteConfig, context, parentRef, record, mappings } = params
 
 	let shouldBeCloned = true
@@ -60,9 +60,9 @@ async function cloneRecursively<
 		transformedRecord = result.transformedRecord
 	}
 
-	if (!shouldBeCloned) return
+	if (!shouldBeCloned) return transformedRecord
 
-	const childRef = await stageAddChild({
+	const childRecord = await stageAddChild({
 		dialecteConfig,
 		context,
 		parentRef,
@@ -76,16 +76,18 @@ async function cloneRecursively<
 
 	mappings.push({
 		source: toRef(record),
-		target: childRef,
+		target: toRef(childRecord),
 	})
 
 	for (const child of transformedRecord.tree) {
 		await cloneRecursively({
 			dialecteConfig,
 			context,
-			parentRef: childRef,
+			parentRef: toRef(childRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
 			record: child,
 			mappings,
 		})
 	}
+
+	return childRecord
 }

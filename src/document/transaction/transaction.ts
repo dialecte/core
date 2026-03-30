@@ -20,7 +20,7 @@ import type {
 	ElementsOf,
 	Operation,
 	ParentsOf,
-	Ref,
+	RawRecord,
 	RefOrRecord,
 	TreeRecord,
 } from '@/types'
@@ -94,7 +94,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	>(
 		parentRefOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>,
-	): Promise<Ref<GenericConfig, GenericChildElement>> {
+	): Promise<RawRecord<GenericConfig, GenericChildElement>> {
 		return stageAddChild({
 			context: this.context,
 			parentRef: toRef(parentRefOrRecord),
@@ -120,7 +120,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	async update<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: UpdateParams<GenericConfig, GenericElement>,
-	): Promise<Ref<GenericConfig, GenericElement>> {
+	): Promise<RawRecord<GenericConfig, GenericElement>> {
 		return stageUpdate({
 			context: this.context,
 			ref: toRef(refOrRecord),
@@ -142,7 +142,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 */
 	async delete<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-	): Promise<Ref<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
+	): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
 		return stageDelete({ context: this.context, ref: toRef(refOrRecord) })
 	}
 

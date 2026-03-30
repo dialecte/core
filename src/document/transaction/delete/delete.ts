@@ -5,7 +5,14 @@ import { toRef } from '@/helpers'
 import { assert } from '@/utils'
 
 import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, ParentsOf, TrackedRecord, Ref } from '@/types'
+import type {
+	AnyDialecteConfig,
+	ElementsOf,
+	ParentsOf,
+	TrackedRecord,
+	Ref,
+	RawRecord,
+} from '@/types'
 
 /**
  * Stages deletion of a record and all its descendants.
@@ -18,7 +25,7 @@ export async function stageDelete<
 >(params: {
 	context: Context<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
-}): Promise<Ref<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
+}): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
 	const { context, ref } = params
 
 	const record = await getRecord({ context, ref })
@@ -54,7 +61,7 @@ export async function stageDelete<
 
 	stageOperation({ context, status: 'updated', oldRecord: parentRecord, newRecord: updatedParent })
 
-	return parentRef
+	return updatedParent
 }
 
 async function stageDescendants<

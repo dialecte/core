@@ -1,4 +1,4 @@
-import type { AnyDialecteConfig, ElementsOf, Ref } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, RawRecord, Ref } from '@/types'
 
 /**
  * Mapping of source to target refs during cloning operations.
@@ -15,6 +15,6 @@ export type CloneResult<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = {
-	ref: Ref<GenericConfig, GenericElement>
+	record: RawRecord<GenericConfig, GenericElement>
 	mappings: CloneMapping<GenericConfig>[]
 }

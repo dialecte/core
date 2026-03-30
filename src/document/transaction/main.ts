@@ -20,6 +20,7 @@ import type {
 	ElementsOf,
 	Operation,
 	ParentsOf,
+	RawRecord,
 	Ref,
 	RefOrRecord,
 	TreeRecord,
@@ -78,11 +79,11 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * @param parentRefOrRecord - The parent element (ref, record, or relationship). `undefined` for root.
 	 * @param params - Child tagName, attributes and optional namespace, value, id.
-	 * @returns Ref to the created child.
+	 * @returns RawRecord of the created child.
 	 *
 	 * @example
 	 * ```ts
-	 * const bayRef = await tx.addChild(substation, {
+	 * const bayRecord = await tx.addChild(substation, {
 	 *   tagName: 'VoltageLevel',
 	 *   attributes: { name: 'VL1' },
 	 * })
@@ -94,7 +95,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	>(
 		parentRefOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>,
-	): Promise<Ref<GenericConfig, GenericChildElement>> {
+	): Promise<RawRecord<GenericConfig, GenericChildElement>> {
 		return stageAddChild({
 			context: this.context,
 			parentRef: toRef(parentRefOrRecord),
@@ -108,7 +109,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * @param refOrRecord - The element to update (ref, record, or relationship).
 	 * @param params - New attribute values.
-	 * @returns Ref to the updated element.
+	 * @returns RawRecord of the updated element.
 	 *
 	 * @example
 	 * ```ts
@@ -120,7 +121,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	async update<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: UpdateParams<GenericConfig, GenericElement>,
-	): Promise<Ref<GenericConfig, GenericElement>> {
+	): Promise<RawRecord<GenericConfig, GenericElement>> {
 		return stageUpdate({
 			context: this.context,
 			ref: toRef(refOrRecord),
@@ -133,16 +134,16 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 * Delete an element and its entire subtree.
 	 *
 	 * @param refOrRecord - The element to delete (ref, record, or relationship).
-	 * @returns Ref to the deleted element's parent.
+	 * @returns RawRecord of the deleted element's parent.
 	 *
 	 * @example
 	 * ```ts
-	 * const parentRef = await tx.delete(bay)
+	 * const parentRecord = await tx.delete(bay)
 	 * ```
 	 */
 	async delete<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-	): Promise<Ref<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
+	): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
 		return stageDelete({ context: this.context, ref: toRef(refOrRecord) })
 	}
 

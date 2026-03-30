@@ -21,7 +21,7 @@ export async function stageAddChild<
 	context: Context<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
 	params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>
-}): Promise<Ref<GenericConfig, GenericChildElement>> {
+}): Promise<RawRecord<GenericConfig, GenericChildElement>> {
 	const { dialecteConfig, context, parentRef, params: childParams } = params
 	const { id, tagName, attributes, namespace, value } = childParams
 
@@ -72,5 +72,5 @@ export async function stageAddChild<
 		stageOperations({ context, operations: hookOperations })
 	}
 
-	return toRef<GenericConfig, GenericChildElement>(childRecord)
+	return childRecord
 }
