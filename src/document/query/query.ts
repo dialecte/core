@@ -9,6 +9,7 @@ import {
 import { getRecord, getRecords, getRecordsByTagName } from './get/record'
 
 import { toRef } from '@/helpers'
+import { assert } from '@/utils'
 
 import type { Context } from '../types'
 import type { FilterAttributes, DescendantsFilter, FindDescendantsReturn } from './find'
@@ -81,14 +82,20 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * const root = await query.getRoot()
 	 * ```
 	 */
-	async getRoot(): Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>> | undefined> {
-		return getRecord({
+	async getRoot(): Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>>> {
+		const root = await getRecord({
 			context: this.context,
 			ref: { tagName: this.dialecteConfig.rootElementName } as Ref<
 				GenericConfig,
 				RootElementOf<GenericConfig>
 			>,
 		})
+
+		assert(root, {
+			key: 'ROOT_NOT_FOUND',
+			detail: `Expected tag name: ${this.dialecteConfig.rootElementName}`,
+		})
+		return root
 	}
 
 	/**
