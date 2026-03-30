@@ -1,0 +1,433 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Test XSD for Dialecte core test fixtures.
+  Follows A/B/C deterministic tree: Root → A,B,C → XX_1/2/3 → XXX_1/2/3 → XXXX_1/2/3
+
+  Feature coverage:
+    Branch A → attribute facets (pattern, enum, minLength, maxLength, range, digits, length,
+whiteSpace)
+    Branch B → identity constraints (unique, key, keyref, deep, multi-step, multi-field, union
+selector)
+    Branch C → children config (choice, xs:any, fixed attr, simpleContent textContent, documentation)
+
+  Convention:
+    _1 = required (minOccurs=1)
+    _2 = maxOccurs=2
+    _3 = maxOccurs=3
+    Attributes: a{NAME} (required), b{NAME} (optional), c{NAME} (optional, ext namespace)
+
+  Namespace rules:
+    _3 suffix elements → ext namespace (http://dialecte.dev/XML/DEV-EXT)
+    c-prefix attributes → always ext namespace (qualified)
+    everything else → default namespace (http://dialecte.dev/XML/DEFAULT)
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	targetNamespace="http://dialecte.dev/XML/DEFAULT"
+	xmlns="http://dialecte.dev/XML/DEFAULT"
+	xmlns:ext="http://dialecte.dev/XML/DEV-EXT"
+>
+	<xs:import namespace="http://dialecte.dev/XML/DEV-EXT" schemaLocation="test-ext.xsd" />
+
+	<!-- ================================================================== -->
+	<!-- Simple types (reusable facet definitions)                          -->
+	<!-- ================================================================== -->
+
+	<xs:simpleType name="tPattern">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[A-Z]+" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tEnum">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="x" />
+			<xs:enumeration value="y" />
+			<xs:enumeration value="z" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tName">
+		<xs:restriction base="xs:normalizedString">
+			<xs:minLength value="1" />
+			<xs:maxLength value="32" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tPercent">
+		<xs:restriction base="xs:integer">
+			<xs:minInclusive value="0" />
+			<xs:maxInclusive value="100" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tDigits">
+		<xs:restriction base="xs:decimal">
+			<xs:totalDigits value="5" />
+			<xs:fractionDigits value="2" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tFixedLen">
+		<xs:restriction base="xs:string">
+			<xs:length value="8" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tCode">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="[a-z]{3}" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<xs:simpleType name="tNonEmpty">
+		<xs:restriction base="xs:string">
+			<xs:pattern value="\S+" />
+			<xs:minLength value="1" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!-- ================================================================== -->
+	<!-- Root                                                                -->
+	<!-- ================================================================== -->
+
+	<xs:element name="Root">
+		<xs:annotation>
+			<xs:documentation>Root element for test fixture</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="A" minOccurs="0" />
+				<xs:element ref="B" minOccurs="0" />
+				<xs:element ref="C" minOccurs="0" />
+			</xs:sequence>
+			<xs:attribute name="root" type="xs:string" default="1" />
+			<xs:attribute ref="ext:root" default="2" />
+		</xs:complexType>
+		<!-- deep wildcard unique — exercises .//* selector -->
+		<xs:unique name="uniqueAllByRoot">
+			<xs:selector xpath=".//*" />
+			<xs:field xpath="@root" />
+		</xs:unique>
+	</xs:element>
+
+	<!-- ================================================================== -->
+	<!-- Branch A — Attribute facets                                        -->
+	<!-- ================================================================== -->
+
+	<!-- A: pattern + enum attrs, union selector constraint -->
+	<xs:element name="A">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="AA_1" />
+				<xs:element ref="AA_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:AA_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aA" type="tPattern" use="required" />
+			<xs:attribute name="bA" type="tEnum" />
+			<xs:attribute ref="ext:cA" />
+		</xs:complexType>
+		<xs:unique name="uniqueChildInA">
+			<xs:selector xpath="AA_1|AA_2|ext:AA_3" />
+			<xs:field xpath="@aAA_1" />
+		</xs:unique>
+	</xs:element>
+
+	<!-- AA_1: minLength/maxLength (tName) -->
+	<xs:element name="AA_1">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="AAA_1" />
+				<xs:element ref="AAA_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:AAA_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aAA_1" type="tName" use="required" />
+			<xs:attribute name="bAA_1" type="xs:string" />
+			<xs:attribute ref="ext:cAA_1" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- AA_2: numeric range (tPercent) -->
+	<xs:element name="AA_2">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="AAA_1" />
+				<xs:element ref="AAA_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:AAA_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aAA_2" type="tPercent" use="required" />
+			<xs:attribute name="bAA_2" type="xs:string" />
+			<xs:attribute ref="ext:cAA_2" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- AAA_1: pattern (tCode) -->
+	<xs:element name="AAA_1">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="AAAA_1" />
+				<xs:element ref="AAAA_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:AAAA_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aAAA_1" type="tCode" use="required" />
+			<xs:attribute name="bAAA_1" type="xs:string" />
+			<xs:attribute ref="ext:cAAA_1" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- AAA_2: pattern (tCode) -->
+	<xs:element name="AAA_2">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="AAAA_1" />
+				<xs:element ref="AAAA_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:AAAA_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aAAA_2" type="tCode" use="required" />
+			<xs:attribute name="bAAA_2" type="xs:string" />
+			<xs:attribute ref="ext:cAAA_2" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- AAAA_1: mixed content + anyAttribute (leaf) -->
+	<xs:element name="AAAA_1">
+		<xs:complexType mixed="true">
+			<xs:sequence />
+			<xs:attribute name="aAAAA_1" type="xs:string" use="required" />
+			<xs:attribute name="bAAAA_1" type="xs:string" />
+			<xs:attribute ref="ext:cAAAA_1" />
+			<xs:anyAttribute namespace="##other" processContents="lax" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- AAAA_2: totalDigits/fractionDigits (tDigits) (leaf) -->
+	<xs:element name="AAAA_2">
+		<xs:complexType>
+			<xs:attribute name="aAAAA_2" type="tDigits" use="required" />
+			<xs:attribute name="bAAAA_2" type="xs:string" />
+			<xs:attribute ref="ext:cAAAA_2" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- ================================================================== -->
+	<!-- Branch B — Identity constraints                                    -->
+	<!-- ================================================================== -->
+
+	<!-- B: key + keyref, xs:any children -->
+	<xs:element name="B">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="BB_1" />
+				<xs:element ref="BB_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:BB_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aB" type="xs:string" use="required" />
+			<xs:attribute name="bB" type="xs:string" />
+			<xs:attribute ref="ext:cB" />
+		</xs:complexType>
+		<xs:key name="keyBB">
+			<xs:selector xpath="BB_1" />
+			<xs:field xpath="@aBB_1" />
+		</xs:key>
+		<xs:keyref name="refBB" refer="keyBB">
+			<xs:selector xpath="ext:BB_3" />
+			<xs:field xpath="@aBB_3" />
+		</xs:keyref>
+	</xs:element>
+
+	<!-- BB_1: multi-step selector constraint -->
+	<xs:element name="BB_1">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="BBB_1" />
+				<xs:element ref="BBB_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:BBB_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aBB_1" type="xs:string" use="required" />
+			<xs:attribute name="bBB_1" type="xs:string" />
+			<xs:attribute ref="ext:cBB_1" />
+		</xs:complexType>
+		<xs:unique name="uniqueBBB_multiStep">
+			<xs:selector xpath="BBB_1/BBBB_1" />
+			<xs:field xpath="@aBBBB_1" />
+		</xs:unique>
+	</xs:element>
+
+	<!-- BB_2: deep unique -->
+	<xs:element name="BB_2">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="BBB_1" />
+				<xs:element ref="BBB_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:BBB_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aBB_2" type="xs:string" use="required" />
+			<xs:attribute name="bBB_2" type="xs:string" />
+			<xs:attribute ref="ext:cBB_2" />
+		</xs:complexType>
+		<xs:unique name="deepUniqueBBB">
+			<xs:selector xpath=".//BBB_1" />
+			<xs:field xpath="@aBBB_1" />
+		</xs:unique>
+	</xs:element>
+
+	<!-- BBB_1: multi-field unique constraint -->
+	<xs:element name="BBB_1">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="BBBB_1" />
+				<xs:element ref="BBBB_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:BBBB_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aBBB_1" type="xs:string" use="required" />
+			<xs:attribute name="bBBB_1" type="xs:string" />
+			<xs:attribute ref="ext:cBBB_1" />
+		</xs:complexType>
+		<xs:unique name="uniqueBBBB_multiField">
+			<xs:selector xpath="BBBB_1" />
+			<xs:field xpath="@aBBBB_1" />
+			<xs:field xpath="@bBBBB_1" />
+		</xs:unique>
+	</xs:element>
+
+	<!-- BBB_2: plain -->
+	<xs:element name="BBB_2">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="BBBB_1" />
+				<xs:element ref="BBBB_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:BBBB_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aBBB_2" type="xs:string" use="required" />
+			<xs:attribute name="bBBB_2" type="xs:string" />
+			<xs:attribute ref="ext:cBBB_2" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- BBBB_1: simpleContent textContent with pattern (leaf) -->
+	<xs:element name="BBBB_1">
+		<xs:complexType>
+			<xs:simpleContent>
+				<xs:extension base="tNonEmpty">
+					<xs:attribute name="aBBBB_1" type="xs:string" use="required" />
+					<xs:attribute name="bBBBB_1" type="xs:string" />
+					<xs:attribute ref="ext:cBBBB_1" />
+				</xs:extension>
+			</xs:simpleContent>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- BBBB_2: plain (leaf) -->
+	<xs:element name="BBBB_2">
+		<xs:complexType>
+			<xs:attribute name="aBBBB_2" type="xs:string" use="required" />
+			<xs:attribute name="bBBBB_2" type="xs:string" />
+			<xs:attribute ref="ext:cBBBB_2" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- ================================================================== -->
+	<!-- Branch C — Children config                                         -->
+	<!-- ================================================================== -->
+
+	<!-- C: xs:choice + xs:any, union selector constraint -->
+	<xs:element name="C">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:choice minOccurs="0" maxOccurs="1">
+					<xs:element ref="CC_1" />
+					<xs:element ref="CC_2" />
+				</xs:choice>
+				<xs:element ref="ext:CC_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aC" type="xs:string" use="required" />
+			<xs:attribute name="bC" type="xs:string" />
+			<xs:attribute ref="ext:cC" />
+		</xs:complexType>
+		<xs:unique name="uniqueCC_union">
+			<xs:selector xpath="CC_1|CC_2" />
+			<xs:field xpath="@aCC_1" />
+		</xs:unique>
+	</xs:element>
+
+	<!-- CC_1: fixed attribute -->
+	<xs:element name="CC_1">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="CCC_1" />
+				<xs:element ref="CCC_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:CCC_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aCC_1" type="xs:string" use="required" fixed="fixed_val" />
+			<xs:attribute name="bCC_1" type="xs:string" />
+			<xs:attribute ref="ext:cCC_1" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- CC_2: plain -->
+	<xs:element name="CC_2">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="CCC_1" />
+				<xs:element ref="CCC_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:CCC_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aCC_2" type="xs:string" use="required" />
+			<xs:attribute name="bCC_2" type="xs:string" />
+			<xs:attribute ref="ext:cCC_2" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- CCC_1: plain -->
+	<xs:element name="CCC_1">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="CCCC_1" />
+				<xs:element ref="CCCC_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:CCCC_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aCCC_1" type="xs:string" use="required" />
+			<xs:attribute name="bCCC_1" type="xs:string" />
+			<xs:attribute ref="ext:cCCC_1" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- CCC_2: plain -->
+	<xs:element name="CCC_2">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="CCCC_1" />
+				<xs:element ref="CCCC_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:CCCC_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aCCC_2" type="xs:string" use="required" />
+			<xs:attribute name="bCCC_2" type="xs:string" />
+			<xs:attribute ref="ext:cCCC_2" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- CCCC_1: documentation + simpleContent textContent (leaf) -->
+	<xs:element name="CCCC_1">
+		<xs:annotation>
+			<xs:documentation>Leaf element in C branch</xs:documentation>
+		</xs:annotation>
+		<xs:complexType>
+			<xs:simpleContent>
+				<xs:extension base="xs:token">
+					<xs:attribute name="aCCCC_1" type="xs:string" use="required" />
+					<xs:attribute name="bCCCC_1" type="xs:string" />
+					<xs:attribute ref="ext:cCCCC_1" />
+				</xs:extension>
+			</xs:simpleContent>
+		</xs:complexType>
+	</xs:element>
+
+	<!-- CCCC_2: plain (leaf) -->
+	<xs:element name="CCCC_2">
+		<xs:complexType>
+			<xs:attribute name="aCCCC_2" type="xs:string" use="required" />
+			<xs:attribute name="bCCCC_2" type="xs:string" />
+			<xs:attribute ref="ext:cCCCC_2" />
+		</xs:complexType>
+	</xs:element>
+
+</xs:schema>

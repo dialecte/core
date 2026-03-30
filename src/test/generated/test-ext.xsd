@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Extension namespace schema for test fixtures.
+  Contains _3 elements and all c-prefixed (qualified) attributes.
+  Namespace: http://dialecte.dev/XML/DEV-EXT
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	targetNamespace="http://dialecte.dev/XML/DEV-EXT"
+	xmlns:ext="http://dialecte.dev/XML/DEV-EXT"
+	xmlns:dflt="http://dialecte.dev/XML/DEFAULT"
+	elementFormDefault="qualified"
+	attributeFormDefault="qualified"
+>
+	<xs:import namespace="http://dialecte.dev/XML/DEFAULT" schemaLocation="test.xsd" />
+
+	<!-- ================================================================== -->
+	<!-- Global qualified attributes (c-prefix = always ext namespace)       -->
+	<!-- ================================================================== -->
+
+	<!-- Root -->
+	<xs:attribute name="root" type="xs:string" />
+
+	<!-- Branch A -->
+	<xs:attribute name="cA" type="xs:string" />
+	<xs:attribute name="cAA_1" type="xs:string" />
+	<xs:attribute name="cAA_2" type="xs:string" />
+	<xs:attribute name="cAA_3" type="xs:string" />
+	<xs:attribute name="cAAA_1" type="xs:string" />
+	<xs:attribute name="cAAA_2" type="xs:string" />
+	<xs:attribute name="cAAA_3" type="xs:string" />
+	<xs:attribute name="cAAAA_1" type="xs:string" />
+	<xs:attribute name="cAAAA_2" type="xs:string" />
+	<xs:attribute name="cAAAA_3" type="xs:string" />
+
+	<!-- Branch B -->
+	<xs:attribute name="cB" type="xs:string" />
+	<xs:attribute name="cBB_1" type="xs:string" />
+	<xs:attribute name="cBB_2" type="xs:string" />
+	<xs:attribute name="cBB_3" type="xs:string" />
+	<xs:attribute name="cBBB_1" type="xs:string" />
+	<xs:attribute name="cBBB_2" type="xs:string" />
+	<xs:attribute name="cBBB_3" type="xs:string" />
+	<xs:attribute name="cBBBB_1" type="xs:string" />
+	<xs:attribute name="cBBBB_2" type="xs:string" />
+	<xs:attribute name="cBBBB_3" type="xs:string" />
+
+	<!-- Branch C -->
+	<xs:attribute name="cC" type="xs:string" />
+	<xs:attribute name="cCC_1" type="xs:string" />
+	<xs:attribute name="cCC_2" type="xs:string" />
+	<xs:attribute name="cCC_3" type="xs:string" />
+	<xs:attribute name="cCCC_1" type="xs:string" />
+	<xs:attribute name="cCCC_2" type="xs:string" />
+	<xs:attribute name="cCCC_3" type="xs:string" />
+	<xs:attribute name="cCCCC_1" type="xs:string" />
+	<xs:attribute name="cCCCC_2" type="xs:string" />
+	<xs:attribute name="cCCCC_3" type="xs:string" />
+
+	<!-- ================================================================== -->
+	<!-- _3 elements (ext namespace)                                        -->
+	<!-- ================================================================== -->
+
+	<!-- Branch A _3 elements -->
+	<xs:element name="AA_3">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="dflt:AAA_1" />
+				<xs:element ref="dflt:AAA_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:AAA_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aAA_3" type="xs:string" use="required" />
+			<xs:attribute name="bAA_3">
+				<xs:simpleType>
+					<xs:restriction base="xs:string">
+						<xs:whiteSpace value="collapse" />
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:attribute>
+			<xs:attribute ref="ext:cAA_3" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="AAA_3">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="dflt:AAAA_1" />
+				<xs:element ref="dflt:AAAA_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:AAAA_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aAAA_3" type="dflt:tCode" use="required" />
+			<xs:attribute name="bAAA_3" type="xs:string" />
+			<xs:attribute ref="ext:cAAA_3" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="AAAA_3">
+		<xs:complexType>
+			<xs:attribute name="aAAAA_3" type="dflt:tFixedLen" use="required" />
+			<xs:attribute name="bAAAA_3" type="xs:string" />
+			<xs:attribute ref="ext:cAAAA_3" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- Branch B _3 elements -->
+	<xs:element name="BB_3">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="dflt:BBB_1" />
+				<xs:element ref="dflt:BBB_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:BBB_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aBB_3" type="xs:string" use="required" />
+			<xs:attribute name="bBB_3" type="xs:string" />
+			<xs:attribute ref="ext:cBB_3" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="BBB_3">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="dflt:BBBB_1" />
+				<xs:element ref="dflt:BBBB_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:BBBB_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aBBB_3" type="xs:string" use="required" />
+			<xs:attribute name="bBBB_3" type="xs:string" />
+			<xs:attribute ref="ext:cBBB_3" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="BBBB_3">
+		<xs:complexType>
+			<xs:attribute name="aBBBB_3" type="xs:string" use="required" />
+			<xs:attribute name="bBBBB_3" type="xs:string" />
+			<xs:attribute ref="ext:cBBBB_3" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- Branch C _3 elements -->
+	<xs:element name="CC_3">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="dflt:CCC_1" />
+				<xs:element ref="dflt:CCC_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:CCC_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aCC_3" type="xs:string" use="required" />
+			<xs:attribute name="bCC_3" type="xs:string" />
+			<xs:attribute ref="ext:cCC_3" />
+		</xs:complexType>
+		<xs:unique name="uniqueCCC_inCC3">
+			<xs:selector xpath="dflt:CCC_1" />
+			<xs:field xpath="@aCCC_1" />
+		</xs:unique>
+	</xs:element>
+
+	<xs:element name="CCC_3">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="dflt:CCCC_1" />
+				<xs:element ref="dflt:CCCC_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:CCCC_3" minOccurs="0" maxOccurs="3" />
+			</xs:sequence>
+			<xs:attribute name="aCCC_3" type="xs:string" use="required" />
+			<xs:attribute name="bCCC_3" type="xs:string" />
+			<xs:attribute ref="ext:cCCC_3" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="CCCC_3">
+		<xs:complexType>
+			<xs:attribute name="aCCCC_3" type="xs:string" use="required" />
+			<xs:attribute name="bCCCC_3" type="xs:string" />
+			<xs:attribute ref="ext:cCCCC_3" />
+		</xs:complexType>
+	</xs:element>
+
+</xs:schema>

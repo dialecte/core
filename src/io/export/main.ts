@@ -335,8 +335,7 @@ function enforceRootAttributes(params: {
 	).filter(([_, attribute]) => {
 		const isDefaultNamespace = namespace.uri === dialecteConfig.namespaces.default.uri
 		if (isDefaultNamespace) {
-			const isUnqualifiedAttributeToBeAdded = attribute.namespace === null
-			return isUnqualifiedAttributeToBeAdded
+			return !attribute.namespace
 		}
 
 		const isQualifiedAttributeToBeAdded =
@@ -352,18 +351,17 @@ function enforceRootAttributes(params: {
 			? attributeName.split(':').pop() || attributeName
 			: attributeName
 
-		const attributeExists =
-			attribute.namespace === null
-				? rootElement.hasAttribute(localName)
-				: rootElement.hasAttributeNS(attribute.namespace.uri, localName)
+		const attributeExists = attribute.namespace
+			? rootElement.hasAttributeNS(attribute.namespace.uri, localName)
+			: rootElement.hasAttribute(localName)
 
 		if (attributeExists) continue
 
-		if (attribute.namespace === null) {
-			rootElement.setAttribute(localName, attribute.default || '')
-		} else {
+		if (attribute.namespace) {
 			const qualifiedName = `${attribute.namespace.prefix}:${localName}`
 			rootElement.setAttributeNS(attribute.namespace.uri, qualifiedName, attribute.default || '')
+		} else {
+			rootElement.setAttribute(localName, attribute.default || '')
 		}
 	}
 }
