@@ -16,11 +16,11 @@ Creates a new child element under a parent.
 
 ```ts
 await doc.transaction(async (tx) => {
-	const ref = await tx.addChild(parentRef, {
+	const record = await tx.addChild(parentRef, {
 		tagName: 'Bay',
 		attributes: { name: 'Bay1', desc: 'First bay' },
 	})
-	// ref: Ref<Config, 'Bay'>
+	// record: RawRecord<Config, 'Bay'>
 })
 ```
 
@@ -34,7 +34,7 @@ await doc.transaction(async (tx) => {
 | `value`      | `string`                                         | Text content of the element              |
 | `id`         | `UUID`                                           | Explicit ID (for tests with `dev:db-id`) |
 
-Returns `Promise<Ref<Config, ChildElement>>` — a ref to the newly created element.
+Returns `Promise<RawRecord<Config, ChildElement>>` — the full record of the newly created element.
 
 The child's tag name is type-narrowed to the parent's allowed children. The compiler rejects invalid parent–child combinations.
 
@@ -57,7 +57,7 @@ await doc.transaction(async (tx) => {
 | `attributes` | `Partial<AttributesValueObject>` | Attributes to update; `undefined`/`null` removes |
 | `value`      | `string`                         | New text content                                 |
 
-Returns `Promise<Ref<Config, Element>>`.
+Returns `Promise<RawRecord<Config, Element>>`.
 
 Setting an attribute to `undefined` or `null` removes it from the record — it will no longer appear in the XML output.
 
@@ -67,12 +67,12 @@ Deletes an element and its entire subtree.
 
 ```ts
 await doc.transaction(async (tx) => {
-	const parentRef = await tx.delete(ref)
-	// parentRef: Ref<Config, ParentElement>
+	const parentRecord = await tx.delete(ref)
+	// parentRecord: RawRecord<Config, ParentElement>
 })
 ```
 
-Returns `Promise<Ref<Config, ParentElement>>` — a ref to the deleted element's parent.
+Returns `Promise<RawRecord<Config, ParentElement>>` — the updated parent record.
 
 ### deepClone
 
@@ -81,8 +81,8 @@ Clones a tree record (with its entire subtree) as a new child of a parent elemen
 ```ts
 await doc.transaction(async (tx) => {
 	const tree = await tx.getTree(sourceRef)
-	const { ref, mappings } = await tx.deepClone(parentRef, tree)
-	// ref: Ref to the cloned root
+	const { record, mappings } = await tx.deepClone(parentRef, tree)
+	// record: RawRecord to the cloned root
 	// mappings: [{ source, target }] — old ID → new ID for every element
 })
 ```
@@ -91,7 +91,7 @@ await doc.transaction(async (tx) => {
 
 ```ts
 type CloneResult<Config, Element> = {
-	ref: Ref<Config, Element>
+	record: RawRecord<Config, Element>
 	mappings: CloneMapping<Config>[]
 }
 
@@ -109,14 +109,14 @@ Since `Transaction` extends `Query`, all query methods are available and **see s
 
 ```ts
 await doc.transaction(async (tx) => {
-	const ref = await tx.addChild(root, {
+	const record = await tx.addChild(root, {
 		tagName: 'A',
 		attributes: { aA: 'new' },
 	})
 
 	// Read the staged record before commit
-	const record = await tx.getRecord(ref)
-	console.log(record?.attributes.aA) // 'new'
+	const staged = await tx.getRecord(record)
+	console.log(staged?.attributes.aA) // 'new'
 
 	// Find descendants including staged elements
 	const results = await tx.findDescendants(root)

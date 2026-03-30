@@ -10,11 +10,11 @@ description: API reference for the Query class — read-only access to a dialect
 
 ### getRoot
 
-Returns the root element of the document.
+Returns the root element of the document. Throws a `ROOT_NOT_FOUND` error (`D2002`) if the database is empty.
 
 ```ts
 const root = await doc.query.getRoot()
-// TrackedRecord<Config, RootElement> | undefined
+// TrackedRecord<Config, RootElement>
 ```
 
 ### getRecord
