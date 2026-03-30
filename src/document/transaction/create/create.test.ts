@@ -1,79 +1,63 @@
-import { AddChildParams } from './create.types'
-
 import { describe, expect, it } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
-	DIALECTE_NAMESPACES,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	createXmlAssertions,
 	createTestDialecte,
-} from '@/test-fixtures'
+	runTestCases,
+} from '@/test'
 
-import type { TestDialecteConfig } from '@/test-fixtures'
+import type { AddChildParams } from './create.types'
+import type { ActParams, ActResult, BaseTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { Ref, ElementsOf, ChildrenOf } from '@/types'
-
-const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
-	namespaces: DIALECTE_NAMESPACES,
-})
 
 describe('stageAddChild', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
-	type TestCase = {
-		description: string
-		xmlString: string
+	type TestCase = BaseTestCase & {
 		parentRef: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		childPayload: AddChildParams<
 			TestDialecteConfig,
 			ElementsOf<TestDialecteConfig>,
 			ChildrenOf<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		>
-		withDatabaseIds?: boolean
-		expectedElementQueries?: string[]
-		unexpectedElementQueries?: string[]
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'adds a child with attributes to the parent',
-			xmlString: /* xml */ `
+	const testCases: TestCases<TestCase> = {
+		'add child with attributes → child nested under parent': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="parent" />
 				</Root>
 			`,
 			parentRef: { tagName: 'A', id: 'a1' },
 			childPayload: { tagName: 'AA_1', attributes: { aAA_1: 'new-child' } },
-			expectedElementQueries: ['//default:A[@aA="parent"]/default:AA_1[@aAA_1="new-child"]'],
+			expectedQueries: ['//default:A[@aA="parent"]/default:AA_1[@aAA_1="new-child"]'],
 		},
-		{
-			description: 'returns a ref with the correct tagName',
-			xmlString: /* xml */ `
+		'addChild called → child element exists in exported XML': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="parent" />
 				</Root>
 			`,
 			parentRef: { tagName: 'A', id: 'a1' },
 			childPayload: { tagName: 'AA_1', attributes: { aAA_1: 'child' } },
-			expectedElementQueries: ['//default:AA_1[@aAA_1="child"]'],
+			expectedQueries: ['//default:AA_1[@aAA_1="child"]'],
 		},
-		{
-			description: 'uses provided id when given',
-			xmlString: /* xml */ `
+		'child payload with explicit id → child has that id in exported XML': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="parent" />
 				</Root>
 			`,
 			parentRef: { tagName: 'A', id: 'a1' },
 			childPayload: { tagName: 'AA_1', id: '0-0-0-0-1', attributes: { aAA_1: 'child' } },
-			withDatabaseIds: true,
-			expectedElementQueries: ['//default:AA_1[@_temp-idb-id="0-0-0-0-1"]'],
+			expectedQueries: ['//default:AA_1[@_temp-idb-id="0-0-0-0-1"]'],
 		},
-		{
-			description: 'parent children list is updated after add',
-			xmlString: /* xml */ `
+		'parent with existing child + addChild → both children present': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="parent">
 						<AA_1 ${customId}="aa-existing" aAA_1="existing" />
@@ -82,14 +66,13 @@ describe('stageAddChild', () => {
 			`,
 			parentRef: { tagName: 'A', id: 'a1' },
 			childPayload: { tagName: 'AA_2', attributes: { aAA_2: 'new' } },
-			expectedElementQueries: [
+			expectedQueries: [
 				'//default:A[@aA="parent"]/default:AA_1[@aAA_1="existing"]',
 				'//default:A[@aA="parent"]/default:AA_2[@aAA_2="new"]',
 			],
 		},
-		{
-			description: 'sibling parents are not affected',
-			xmlString: /* xml */ `
+		'addChild on one parent → sibling parent unchanged': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="target" />
 					<B ${customId}="b1" aB="sibling" />
@@ -97,15 +80,14 @@ describe('stageAddChild', () => {
 			`,
 			parentRef: { tagName: 'A', id: 'a1' },
 			childPayload: { tagName: 'AA_1', attributes: { aAA_1: 'child' } },
-			expectedElementQueries: [
+			expectedQueries: [
 				'//default:A[@aA="target"]/default:AA_1[@aAA_1="child"]',
 				'//default:B[@aB="sibling"]',
 			],
-			unexpectedElementQueries: ['//default:B/default:AA_1'],
+			unexpectedQueries: ['//default:B/default:AA_1'],
 		},
-		{
-			description: 'adds deeply nested child',
-			xmlString: /* xml */ `
+		'deeply nested parent + addChild → child appended at correct depth': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="l0">
 						<AA_1 ${customId}="aa1" aAA_1="l1">
@@ -116,40 +98,21 @@ describe('stageAddChild', () => {
 			`,
 			parentRef: { tagName: 'AAA_1', id: 'aaa1' },
 			childPayload: { tagName: 'AAAA_1', attributes: { aAAAA_1: 'leaf' } },
-			expectedElementQueries: ['//default:AAA_1[@aAAA_1="l2"]/default:AAAA_1[@aAAAA_1="leaf"]'],
+			expectedQueries: ['//default:AAA_1[@aAAA_1="l2"]/default:AAAA_1[@aAAAA_1="leaf"]'],
 		},
-	]
+	}
 
-	it.each(testCases)(
-		'$description',
-		async ({
-			xmlString,
-			parentRef,
-			childPayload,
-			withDatabaseIds,
-			expectedElementQueries,
-			unexpectedElementQueries,
-		}) => {
-			const { document, exportCurrentTest, cleanup } = await createTestDialecte({ xmlString })
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		await source.document.transaction(async (tx) => {
+			await tx.addChild(testCase.parentRef, testCase.childPayload)
+		})
+		return { assertDatabaseName: source.databaseName }
+	}
 
-			try {
-				await document.transaction(async (tx) => {
-					await tx.addChild(parentRef, childPayload)
-				})
-
-				const { xmlDocument } = await exportCurrentTest({ withDatabaseIds })
-
-				if (expectedElementQueries) {
-					assertExpectedElementQueries({ xmlDocument, queries: expectedElementQueries })
-				}
-				if (unexpectedElementQueries) {
-					assertUnexpectedElementQueries({ xmlDocument, queries: unexpectedElementQueries })
-				}
-			} finally {
-				await cleanup()
-			}
-		},
-	)
+	runTestCases({ testCases, act })
 
 	it('throws when parent does not exist', async () => {
 		const xmlString = /* xml */ `<Root ${ns} />`

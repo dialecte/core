@@ -2,58 +2,46 @@ import { describe, expect, it } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
-	DIALECTE_NAMESPACES,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	createXmlAssertions,
 	createTestDialecte,
-} from '@/test-fixtures'
+	runTestCases,
+} from '@/test'
 
-import type { TestDialecteConfig } from '@/test-fixtures'
+import type { ActParams, ActResult, BaseTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { Ref, ElementsOf } from '@/types'
-
-const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
-	namespaces: DIALECTE_NAMESPACES,
-})
 
 describe('stageDelete', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
-	type TestCase = {
-		description: string
-		xmlString: string
+	type TestCase = BaseTestCase & {
 		deleteRef: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
-		expectedElementQueries?: string[]
-		unexpectedElementQueries?: string[]
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'deletes a leaf element',
-			xmlString: /* xml */ `
+	const testCases: TestCases<TestCase> = {
+		'delete leaf → element removed': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="target" />
 				</Root>
 			`,
 			deleteRef: { tagName: 'A', id: 'a1' },
-			unexpectedElementQueries: ['//default:A[@aA="target"]'],
+			unexpectedQueries: ['//default:A[@aA="target"]'],
 		},
-		{
-			description: 'does not affect sibling elements',
-			xmlString: /* xml */ `
+		'delete one sibling → other sibling remains': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="target" />
 					<A ${customId}="a2" aA="sibling" />
 				</Root>
 			`,
 			deleteRef: { tagName: 'A', id: 'a1' },
-			expectedElementQueries: ['//default:A[@aA="sibling"]'],
-			unexpectedElementQueries: ['//default:A[@aA="target"]'],
+			expectedQueries: ['//default:A[@aA="sibling"]'],
+			unexpectedQueries: ['//default:A[@aA="target"]'],
 		},
-		{
-			description: 'deletes element together with its direct children',
-			xmlString: /* xml */ `
+		'delete parent with children → parent and children removed': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="parent">
 						<AA_1 ${customId}="aa1" aAA_1="child" />
@@ -61,11 +49,10 @@ describe('stageDelete', () => {
 				</Root>
 			`,
 			deleteRef: { tagName: 'A', id: 'a1' },
-			unexpectedElementQueries: ['//default:A[@aA="parent"]', '//default:AA_1[@aAA_1="child"]'],
+			unexpectedQueries: ['//default:A[@aA="parent"]', '//default:AA_1[@aAA_1="child"]'],
 		},
-		{
-			description: 'deletes element together with all its deep descendants',
-			xmlString: /* xml */ `
+		'delete element with deep descendants → full subtree removed': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="level0">
 						<AA_1 ${customId}="aa1" aAA_1="level1">
@@ -75,15 +62,14 @@ describe('stageDelete', () => {
 				</Root>
 			`,
 			deleteRef: { tagName: 'A', id: 'a1' },
-			unexpectedElementQueries: [
+			unexpectedQueries: [
 				'//default:A[@aA="level0"]',
 				'//default:AA_1[@aAA_1="level1"]',
 				'//default:AAA_1[@aAAA_1="level2"]',
 			],
 		},
-		{
-			description: 'only deletes the targeted subtree, leaving other subtrees intact',
-			xmlString: /* xml */ `
+		'delete one subtree → sibling subtree untouched': {
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="delete-me">
 						<AA_1 ${customId}="aa1" aAA_1="child-of-deleted" />
@@ -92,37 +78,25 @@ describe('stageDelete', () => {
 				</Root>
 			`,
 			deleteRef: { tagName: 'A', id: 'a1' },
-			expectedElementQueries: ['//default:B[@aB="keep-me"]'],
-			unexpectedElementQueries: [
+			expectedQueries: ['//default:B[@aB="keep-me"]'],
+			unexpectedQueries: [
 				'//default:A[@aA="delete-me"]',
 				'//default:AA_1[@aAA_1="child-of-deleted"]',
 			],
 		},
-	]
+	}
 
-	it.each(testCases)(
-		'$description',
-		async ({ xmlString, deleteRef, expectedElementQueries, unexpectedElementQueries }) => {
-			const { document, exportCurrentTest, cleanup } = await createTestDialecte({ xmlString })
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		await source.document.transaction(async (tx) => {
+			await tx.delete(testCase.deleteRef as any)
+		})
+		return { assertDatabaseName: source.databaseName }
+	}
 
-			try {
-				await document.transaction(async (tx) => {
-					await tx.delete(deleteRef as any)
-				})
-
-				const { xmlDocument } = await exportCurrentTest()
-
-				if (expectedElementQueries) {
-					assertExpectedElementQueries({ xmlDocument, queries: expectedElementQueries })
-				}
-				if (unexpectedElementQueries) {
-					assertUnexpectedElementQueries({ xmlDocument, queries: unexpectedElementQueries })
-				}
-			} finally {
-				await cleanup()
-			}
-		},
-	)
+	runTestCases({ testCases, act })
 
 	it('throws when attempting to delete the root element', async () => {
 		const xmlString = /* xml */ `<Root ${ns} />`
