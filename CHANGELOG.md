@@ -7,19 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-## Added
+## [0.1.4] - 2026-03-30
+
+### Added
+
+- `runTestCases`: table-driven test helper for XPath-based assertions in Dialecte unit tests
+
+### Changed
+
+- changing folder structure (`test-fixtures` to `test`)
+- migrated existing tests to `runTestCases`
+- updated testing documentation
+- test dialecte update based on latest generation script (based now on test.xsd)
+- generic definition type updated
+- return `RawRecord` instead of `Ref` for `Core` transaction methods
+- updated transaction tests
+
+## [0.1.3] - 2026-03-13
+
+### Added
 
 - Extension system
-- Documentation update
 
-## Added
+### Changed
 
-- `warnings` field on `AfterImportResult`: surface non-fatal import issues (e.g. unresolved references) instead of silently dropping them
-
-## Changed
-
-- `DialecteError.method` is now auto-resolved from the stack trace — no longer required in `throwDialecteError` or `assert`
-- `createTestRecordFactory<Config>(dialecteConfig)`: replaces `createTestRecord`, returns a typed record factory bound to a specific dialecte config
+- updated global documentation
 
 ## [0.1.2] - 2026-03-11
 
