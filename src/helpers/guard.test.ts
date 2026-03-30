@@ -8,7 +8,7 @@ import {
 
 import { describe, it, expect } from 'vitest'
 
-import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '@/test-fixtures'
+import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '@/test'
 
 import type {
 	RawRecord,

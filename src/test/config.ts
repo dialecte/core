@@ -1,6 +1,8 @@
 import { DIALECTE_NAMESPACES } from './constant'
 import {
 	DEFINITION,
+	ROOT_ELEMENT,
+	SINGLETON_ELEMENTS,
 	ELEMENT_NAMES,
 	ATTRIBUTES,
 	CHILDREN,
@@ -28,8 +30,8 @@ export const DATABASE_CONFIG = {
 } as const satisfies DatabaseConfig
 
 export const TEST_DIALECTE_CONFIG = {
-	rootElementName: 'Root',
-	singletonElements: ['Root', 'A', 'B', 'C', 'D'],
+	rootElementName: ROOT_ELEMENT,
+	singletonElements: SINGLETON_ELEMENTS,
 	elements: ELEMENT_NAMES,
 	namespaces: DIALECTE_NAMESPACES,
 	attributes: ATTRIBUTES,

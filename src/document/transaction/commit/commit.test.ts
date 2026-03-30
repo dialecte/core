@@ -2,11 +2,11 @@ import { commitTransaction } from './commit'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { createTestRecord } from '@/test-fixtures'
+import { createTestRecord } from '@/test'
 
 import type { DocumentState } from '@/document'
 import type { Store } from '@/store'
-import type { TestDialecteConfig } from '@/test-fixtures'
+import type { TestDialecteConfig } from '@/test'
 import type { AnyRawRecord, Operation } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

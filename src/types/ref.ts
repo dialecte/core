@@ -8,7 +8,6 @@ import type { DialecteRecord, ParentRelationship, ChildRelationship } from './re
  * id is optional for singleton elements — the system resolves the record by tagName alone.
  * id is required for all other elements.
  *
- * Obtained by: addChild, deepClone, find, findChildren, findDescendants, getRoot
  */
 export type Ref<
 	GenericConfig extends AnyDialecteConfig,

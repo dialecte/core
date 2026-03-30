@@ -28,12 +28,6 @@ export async function createTestDialecte<
 		extension?: GenericConfig['io']['supportedFileExtensions'][number]
 		withDatabaseIds?: boolean
 	}) => Promise<{ xmlDocument: XMLDocument; filename: string }>
-	assertExpectedElementQueries: ReturnType<
-		typeof createXmlAssertions
-	>['assertExpectedElementQueries']
-	assertUnexpectedElementQueries: ReturnType<
-		typeof createXmlAssertions
-	>['assertUnexpectedElementQueries']
 }> {
 	const { xmlString, dialecteConfig = TEST_DIALECTE_CONFIG } = params
 
@@ -74,17 +68,11 @@ export async function createTestDialecte<
 		document.destroy()
 	}
 
-	const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
-		namespaces: dialecteConfig.namespaces,
-	})
-
 	return {
 		document,
 		databaseName,
 		exportCurrentTest,
 		cleanup,
-		assertExpectedElementQueries,
-		assertUnexpectedElementQueries,
 	}
 }
 

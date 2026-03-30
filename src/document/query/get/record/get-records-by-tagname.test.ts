@@ -9,7 +9,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	createTestContext,
 	createTestDialecte,
-} from '@/test-fixtures'
+} from '@/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE

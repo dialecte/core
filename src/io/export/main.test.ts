@@ -13,7 +13,7 @@ import {
 	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-} from '@/test-fixtures'
+} from '@/test'
 
 import type { AnyRawRecord } from '@/types'
 

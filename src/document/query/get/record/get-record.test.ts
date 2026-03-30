@@ -9,9 +9,9 @@ import {
 	TEST_DIALECTE_CONFIG,
 	createTestContext,
 	createTestDialecte,
-} from '@/test-fixtures'
+} from '@/test'
 
-import type { TestDialecteConfig } from '@/test-fixtures'
+import type { TestDialecteConfig } from '@/test'
 import type { ElementsOf, Ref } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`

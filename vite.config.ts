@@ -25,7 +25,7 @@ export default defineConfig({
 		lib: {
 			entry: {
 				index: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
-				test: fileURLToPath(new URL('./src/test-fixtures/index.ts', import.meta.url)),
+				test: fileURLToPath(new URL('./src/test/index.ts', import.meta.url)),
 				utils: fileURLToPath(new URL('./src/utils/index.ts', import.meta.url)),
 				helpers: fileURLToPath(new URL('./src/helpers/index.ts', import.meta.url)),
 			},
@@ -33,6 +33,7 @@ export default defineConfig({
 			formats: ['es'],
 		},
 		rollupOptions: {
+			external: ['vitest'],
 			output: {
 				entryFileNames: '[name].js',
 			},

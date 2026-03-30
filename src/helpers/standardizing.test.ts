@@ -2,7 +2,7 @@ import { standardizeRecord } from './standardizing'
 
 import { describe, expect, it } from 'vitest'
 
-import { DIALECTE_NAMESPACES, TEST_DIALECTE_CONFIG, TestDialecteConfig } from '@/test-fixtures'
+import { DIALECTE_NAMESPACES, TEST_DIALECTE_CONFIG, TestDialecteConfig } from '@/test'
 
 import type {
 	AnyDialecteConfig,
@@ -64,12 +64,12 @@ describe('standardizeRecord', () => {
 				description: 'includes all provided optional attributes alongside required',
 				input: {
 					tagName: 'AA_1',
-					attributes: { aAA_1: 'required', bAA_1: 'optional1', cAA_1: 'optional2' },
+					attributes: { aAA_1: 'required', bAA_1: 'optional1', 'ext:cAA_1': 'optional2' },
 				},
 				expectedAttributes: [
 					{ name: 'aAA_1', value: 'required' },
 					{ name: 'bAA_1', value: 'optional1' },
-					{ name: 'cAA_1', value: 'optional2' },
+					{ name: 'ext:cAA_1', value: 'optional2' },
 				],
 			},
 		]
@@ -85,16 +85,16 @@ describe('standardizeRecord', () => {
 
 		it('preserves namespace from schema for standard attributes', () => {
 			const result = standardizeRecord({
-				record: { tagName: 'AA_1', attributes: { aAA_1: 'v', cAA_1: 'x' } },
+				record: { tagName: 'AA_1', attributes: { aAA_1: 'v', 'ext:cAA_1': 'x' } },
 				dialecteConfig: config,
 			})
 
 			const a: FullAttributeObjectOf<TestDialecteConfig, 'AA_1'> | undefined =
 				result.attributes.find((attribute) => attribute.name === 'aAA_1')
 			const c: FullAttributeObjectOf<TestDialecteConfig, 'AA_1'> | undefined =
-				result.attributes.find((attribute) => attribute.name === 'cAA_1')
+				result.attributes.find((attribute) => attribute.name === 'ext:cAA_1')
 
-			expect(a?.namespace).toEqual(ns.default)
+			expect(a?.namespace).toBeUndefined()
 			expect(c?.namespace).toEqual(ns.ext)
 		})
 

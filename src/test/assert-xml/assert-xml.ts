@@ -9,7 +9,7 @@ import type { Namespace } from '@/types'
 /**
  * Creates a pair of assertion functions pre-configured with a namespace resolver
  * derived from a prefix → URI map. Intended to be instantiated once per dialecte
- * (e.g. in scl test-fixtures) and re-exported alongside createTestDialecte.
+ * (e.g. in scl test) and re-exported alongside createTestDialecte.
  */
 export function createXmlAssertions(params: { namespaces: Record<string, Namespace> }) {
 	const { namespaces } = params

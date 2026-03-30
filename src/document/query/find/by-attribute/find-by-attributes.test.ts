@@ -8,10 +8,10 @@ import {
 	createXmlAssertions,
 	createTestDialecte,
 	createTestRecord,
-} from '@/test-fixtures'
+} from '@/test'
 
 import type { FilterAttributes } from './find-by-attributes.types'
-import type { TestDialecteConfig } from '@/test-fixtures'
+import type { TestDialecteConfig } from '@/test'
 import type { TrackedRecord } from '@/types'
 
 const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
