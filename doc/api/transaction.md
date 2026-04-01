@@ -10,6 +10,34 @@ Inside a transaction, all Query methods are available and **see staged changes**
 
 ## Mutation methods
 
+### ensureChild
+
+Gets an existing child record or creates it if absent. Idempotent — safe to call multiple times.
+
+```ts
+await doc.transaction(async (tx) => {
+	const a = await tx.ensureChild(root, {
+		tagName: 'A',
+		attributes: {},
+	})
+
+	const aa = await tx.ensureChild(a, {
+		tagName: 'AA_1',
+		attributes: { aAA_1: 'foo' },
+	})
+})
+```
+
+Lookup strategy (in order):
+
+1. **Non-empty attributes** → `findByAttributes`, returns first match.
+2. **No attributes** → `getRecord` by id (if provided) or by tagName alone for singletons.
+3. **No match** → creates via `addChild`.
+
+Returns `Promise<TrackedRecord<Config, ChildElement> | RawRecord<Config, ChildElement>>`.
+
+Accepts both attribute forms (`AttributesValueObject` or `FullAttributeObject[]`). When using a `FullAttributeObject[]`, the array is converted to a key-value map before the lookup.
+
 ### addChild
 
 Creates a new child element under a parent.
@@ -17,10 +45,10 @@ Creates a new child element under a parent.
 ```ts
 await doc.transaction(async (tx) => {
 	const record = await tx.addChild(parentRef, {
-		tagName: 'Bay',
-		attributes: { name: 'Bay1', desc: 'First bay' },
+		tagName: 'AA_1',
+		attributes: { aAA_1: 'foo', bAA_1: 'bar' },
 	})
-	// record: RawRecord<Config, 'Bay'>
+	// record: RawRecord<Config, 'AA_1'>
 })
 ```
 
@@ -45,7 +73,7 @@ Updates attributes and/or text content of an existing element.
 ```ts
 await doc.transaction(async (tx) => {
 	await tx.update(ref, {
-		attributes: { name: 'Bay1-renamed' },
+		attributes: { aAA_1: 'new-value' },
 	})
 })
 ```
@@ -140,13 +168,10 @@ await doc.transaction(async (tx) => {
 Add domain-specific mutations by extending `Transaction`:
 
 ```ts
-class SclTransaction extends Transaction<SclConfig> {
-	async createBay(
-		vlRef: RefOrRecord<SclConfig, 'VoltageLevel'>,
-		params: { name: string; desc?: string },
-	) {
-		return this.addChild(vlRef, {
-			tagName: 'Bay',
+class MyTransaction extends Transaction<MyConfig> {
+	async createAA(aRef: RefOrRecord<MyConfig, 'A'>, params: { aAA_1: string; bAA_1?: string }) {
+		return this.addChild(aRef, {
+			tagName: 'AA_1',
 			attributes: params,
 		})
 	}
@@ -156,9 +181,9 @@ class SclTransaction extends Transaction<SclConfig> {
 The `Document` subclass wires it in via `createTransaction()`:
 
 ```ts
-class SclDocument extends Document<SclConfig> {
+class MyDocument extends Document<MyConfig> {
 	protected override createTransaction() {
-		return new SclTransaction(this.store, this.config, this.state)
+		return new MyTransaction(this.store, this.config, this.state)
 	}
 }
 ```

@@ -42,9 +42,56 @@ const records = await doc.query.getRecords([refA, refB, refC])
 Returns all records with a given tag name.
 
 ```ts
-const allBays = await doc.query.getRecordsByTagName('Bay')
-// TrackedRecord<Config, 'Bay'>[]
+const all = await doc.query.getRecordsByTagName('AA_1')
+// TrackedRecord<Config, 'AA_1'>[]
 ```
+
+### getChild
+
+Returns the first direct child of an element matching a given tag name. Returns `undefined` if the parent does not exist or has no matching child.
+
+```ts
+const child = await doc.query.getChild(a, 'AA_1')
+// TrackedRecord<Config, 'AA_1'> | undefined
+```
+
+### getChildren
+
+Returns all direct children of an element matching a given tag name. Returns an empty array if the parent does not exist or has no matching children.
+
+```ts
+const children = await doc.query.getChildren(a, 'AA_1')
+// TrackedRecord<Config, 'AA_1'>[]
+```
+
+Both methods are type-safe: the child tag name is constrained to valid children of the parent element type by `ChildrenOf<Config, ParentElement>`.
+
+## Finding ancestors
+
+### findAncestors
+
+Walks the parent chain upward from a record and returns ancestors bottom-up: `[parent, grandparent, …, root]`. The starting record is **not** included.
+
+```ts
+const ancestors = await doc.query.findAncestors(ref)
+// TrackedRecord[] — [parent, grandparent, …]
+```
+
+With options:
+
+```ts
+const ancestors = await doc.query.findAncestors(ref, {
+	depth: 2, // at most 2 ancestors
+	stopAtTagName: 'A', // stop after collecting this element (inclusive)
+})
+```
+
+#### FindAncestorsOptions
+
+| Option          | Type          | Description                                                          |
+| --------------- | ------------- | -------------------------------------------------------------------- |
+| `depth`         | `number`      | Maximum number of ancestors to collect. Default: unlimited.          |
+| `stopAtTagName` | `ElementName` | Stop walking after collecting the first ancestor with this tag name. |
 
 ## Finding descendants
 
@@ -87,10 +134,10 @@ Partial attribute match. Values can be a single value or an array of accepted va
 
 ```ts
 {
-	name: 'Bay1'
+	aAA_1: 'foo'
 } // exact match
 {
-	name: ['Bay1', 'Bay2']
+	aAA_1: ['foo', 'bar']
 } // match either
 ```
 
@@ -99,11 +146,11 @@ Partial attribute match. Values can be a single value or an array of accepted va
 Find all records of a given tag name matching attribute filters.
 
 ```ts
-const bays = await doc.query.findByAttributes({
-	tagName: 'Bay',
-	attributes: { name: 'Bay1' },
+const results = await doc.query.findByAttributes({
+	tagName: 'AA_1',
+	attributes: { aAA_1: 'foo' },
 })
-// TrackedRecord<Config, 'Bay'>[]
+// TrackedRecord<Config, 'AA_1'>[]
 ```
 
 ## Tree queries
@@ -148,11 +195,11 @@ Returns a single attribute value, or the full attribute object.
 
 ```ts
 // Value only (string or empty string)
-const name = await doc.query.getAttribute(ref, { name: 'name' })
-// → 'Bay1' or ''
+const value = await doc.query.getAttribute(ref, { name: 'aAA_1' })
+// → 'foo' or ''
 
 // Full object with namespace, qualifiedName, etc.
-const attr = await doc.query.getAttribute(ref, { name: 'name', fullObject: true })
+const attr = await doc.query.getAttribute(ref, { name: 'aAA_1', fullObject: true })
 // → FullAttributeObject | undefined
 ```
 
@@ -162,7 +209,7 @@ Returns all attributes as a destructurable value object, or as an array of full 
 
 ```ts
 // Value object
-const { name, desc } = await doc.query.getAttributes(ref)
+const { aA, bA } = await doc.query.getAttributes(ref)
 
 // Full objects
 const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
@@ -195,14 +242,14 @@ const children = await doc.query.findDescendants(parent)
 Add domain-specific queries by extending `Query`:
 
 ```ts
-class SclQuery extends Query<SclConfig> {
-	async getSubstations() {
-		return this.getRecordsByTagName('Substation')
+class MyQuery extends Query<MyConfig> {
+	async getAllA() {
+		return this.getRecordsByTagName('A')
 	}
 
-	async getVoltageLevels(substation: RefOrRecord<SclConfig, 'Substation'>) {
-		const results = await this.findDescendants(substation, { tagName: 'VoltageLevel' })
-		return results.VoltageLevel
+	async getChildrenAA(a: RefOrRecord<MyConfig, 'A'>) {
+		const results = await this.findDescendants(a, { tagName: 'AA_1' })
+		return results.AA_1
 	}
 }
 ```
