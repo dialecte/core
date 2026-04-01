@@ -76,7 +76,8 @@ export type ChildDefinition = {
 
 export type ChoiceGroup = {
 	readonly options: readonly string[]
-	readonly maxOccurs: number
+	readonly minOccurs?: number
+	readonly maxOccurs?: number
 }
 
 export type TextContent = {
