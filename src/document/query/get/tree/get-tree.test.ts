@@ -21,16 +21,14 @@ function toShape(record: AnyTreeRecord): TreeShape {
 
 describe('getTree', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		options?: GetTreeParams<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		expectedShape: TreeShape
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'returns leaf node with empty tree',
+	const testCases: Record<string, TestCase> = {
+		'returns leaf node with empty tree': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -41,8 +39,7 @@ describe('getTree', () => {
 			ref: { tagName: 'AA_1', id: 'aa1' },
 			expectedShape: { tagName: 'AA_1', tree: [] },
 		},
-		{
-			description: 'returns direct children',
+		'returns direct children': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -60,8 +57,7 @@ describe('getTree', () => {
 				],
 			},
 		},
-		{
-			description: 'returns full recursive tree',
+		'returns full recursive tree': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -77,8 +73,7 @@ describe('getTree', () => {
 				tree: [{ tagName: 'AA_1', tree: [{ tagName: 'AAA_1', tree: [] }] }],
 			},
 		},
-		{
-			description: 'include filter: only matching tagName is returned',
+		'include filter: only matching tagName is returned': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -94,8 +89,7 @@ describe('getTree', () => {
 				tree: [{ tagName: 'AA_1', tree: [] }],
 			},
 		},
-		{
-			description: 'include filter with attributes: only matching attribute value',
+		'include filter with attributes: only matching attribute value': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -111,8 +105,7 @@ describe('getTree', () => {
 				tree: [{ tagName: 'AA_1', tree: [] }],
 			},
 		},
-		{
-			description: 'include filter nested: grandchildren filtered by children config',
+		'include filter nested: grandchildren filtered by children config': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -130,8 +123,7 @@ describe('getTree', () => {
 				tree: [{ tagName: 'AA_1', tree: [{ tagName: 'AAA_1', tree: [] }] }],
 			},
 		},
-		{
-			description: 'exclude filter (scope: self): removes node and its subtree',
+		'exclude filter (scope: self): removes node and its subtree': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -149,8 +141,7 @@ describe('getTree', () => {
 				tree: [{ tagName: 'AA_2', tree: [] }],
 			},
 		},
-		{
-			description: 'exclude filter (scope: children): keeps node but stops traversal',
+		'exclude filter (scope: children): keeps node but stops traversal': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -167,8 +158,7 @@ describe('getTree', () => {
 				tree: [{ tagName: 'AA_1', tree: [] }],
 			},
 		},
-		{
-			description: 'unwrap: removes intermediate layer and promotes grandchildren',
+		'unwrap: removes intermediate layer and promotes grandchildren': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -185,16 +175,16 @@ describe('getTree', () => {
 				tree: [{ tagName: 'AAA_1', tree: [] }],
 			},
 		},
-	]
+	}
 
-	it.each(testCases)('$description', async ({ xmlString, ref, options, expectedShape }) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 		try {
-			const result = await document.query.getTree(ref, options)
+			const result = await document.query.getTree(tc.ref, tc.options)
 
 			expect(result).toBeDefined()
-			expect(toShape(result as AnyTreeRecord)).toEqual(expectedShape)
+			expect(toShape(result as AnyTreeRecord)).toEqual(tc.expectedShape)
 		} finally {
 			await cleanup()
 		}

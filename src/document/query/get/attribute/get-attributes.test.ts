@@ -11,15 +11,13 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getAttributes', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		expected: Record<string, string>
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'returns value object for all present attributes',
+	const testCases: Record<string, TestCase> = {
+		'returns value object for all present attributes': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="hello" />
@@ -28,8 +26,7 @@ describe('getAttributes', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: { aA: 'hello' },
 		},
-		{
-			description: 'returns empty object when record has no attributes',
+		'returns empty object when record has no attributes': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
@@ -38,14 +35,12 @@ describe('getAttributes', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: {},
 		},
-		{
-			description: 'returns empty object when ref does not exist',
+		'returns empty object when ref does not exist': {
 			xmlString: /* xml */ `<Root ${ns} />`,
 			ref: { tagName: 'A', id: 'missing' },
 			expected: {},
 		},
-		{
-			description: 'returns multiple attributes when record has several',
+		'returns multiple attributes when record has several': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<AA_1 ${customId}="aa1" aAA_1="v1" />
@@ -54,14 +49,14 @@ describe('getAttributes', () => {
 			ref: { tagName: 'AA_1', id: 'aa1' },
 			expected: { aAA_1: 'v1' },
 		},
-	]
+	}
 
-	it.each(testCases)('$description', async ({ xmlString, ref, expected }) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 		try {
-			const result = await document.query.getAttributes(ref)
-			expect(result).toEqual(expected)
+			const result = await document.query.getAttributes(tc.ref)
+			expect(result).toEqual(tc.expected)
 		} finally {
 			await cleanup()
 		}
@@ -70,15 +65,13 @@ describe('getAttributes', () => {
 
 describe('getAttributesFullObject', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		expected: { name: string; value: string }[]
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'returns full attribute objects for all present attributes',
+	const testCases: Record<string, TestCase> = {
+		'returns full attribute objects for all present attributes': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="world" />
@@ -87,8 +80,7 @@ describe('getAttributesFullObject', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: [{ name: 'aA', value: 'world' }],
 		},
-		{
-			description: 'returns empty array when record has no attributes',
+		'returns empty array when record has no attributes': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
@@ -97,23 +89,22 @@ describe('getAttributesFullObject', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: [],
 		},
-		{
-			description: 'returns empty array when ref does not exist',
+		'returns empty array when ref does not exist': {
 			xmlString: /* xml */ `<Root ${ns} />`,
 			ref: { tagName: 'A', id: 'missing' },
 			expected: [],
 		},
-	]
+	}
 
-	it.each(testCases)('$description', async ({ xmlString, ref, expected }) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 		try {
-			const result = await document.query.getAttributes(ref, { fullObject: true })
+			const result = await document.query.getAttributes(tc.ref, { fullObject: true })
 			expect(result).toEqual(
-				expect.arrayContaining(expected.map((e) => expect.objectContaining(e))),
+				expect.arrayContaining(tc.expected.map((e) => expect.objectContaining(e))),
 			)
-			expect(result).toHaveLength(expected.length)
+			expect(result).toHaveLength(tc.expected.length)
 		} finally {
 			await cleanup()
 		}

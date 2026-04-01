@@ -1,4 +1,4 @@
-import { findByAttributes, findDescendants } from './find'
+import { findAncestors, findByAttributes, findDescendants } from './find'
 import { getTree } from './get'
 import {
 	getAttribute,
@@ -6,12 +6,18 @@ import {
 	getAttributeFullObject,
 	getAttributesFullObject,
 } from './get/attribute'
-import { getRecord, getRecords, getRecordsByTagName } from './get/record'
+import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } from './get/record'
 
 import { toRef } from '@/helpers'
+import { assert } from '@/utils'
 
 import type { Context } from '../types'
-import type { FilterAttributes, DescendantsFilter, FindDescendantsReturn } from './find'
+import type {
+	FindAncestorsOptions,
+	FilterAttributes,
+	DescendantsFilter,
+	FindDescendantsReturn,
+} from './find'
 import type { GetTreeParams } from './get'
 import type { Store } from '@/store'
 import type {
@@ -19,6 +25,7 @@ import type {
 	AttributesOf,
 	AttributesValueObjectOf,
 	ElementsOf,
+	ChildrenOf,
 	FullAttributeObjectOf,
 	TrackedRecord,
 	TreeRecord,
@@ -74,21 +81,27 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	/**
 	 * Get the root element of the document.
 	 *
-	 * @returns The root record, or `undefined` if the database is empty.
+	 * @returns The root record.
 	 *
 	 * @example
 	 * ```ts
 	 * const root = await query.getRoot()
 	 * ```
 	 */
-	async getRoot(): Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>> | undefined> {
-		return getRecord({
+	async getRoot(): Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>>> {
+		const root = await getRecord({
 			context: this.context,
 			ref: { tagName: this.dialecteConfig.rootElementName } as Ref<
 				GenericConfig,
 				RootElementOf<GenericConfig>
 			>,
 		})
+
+		assert(root, {
+			key: 'ROOT_NOT_FOUND',
+			detail: `Expected tag name: ${this.dialecteConfig.rootElementName}`,
+		})
+		return root
 	}
 
 	/**
@@ -99,7 +112,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const ied = await query.getRecord({ tagName: 'IED', id: knownId })
+	 * const a = await query.getRecord({ tagName: 'A', id: knownId })
 	 * ```
 	 */
 	async getRecord<GenericElement extends ElementsOf<GenericConfig>>(
@@ -116,7 +129,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const [bay1, bay2] = await query.getRecords([ref1, ref2])
+	 * const [a1, a2] = await query.getRecords([ref1, ref2])
 	 * ```
 	 */
 	async getRecords<GenericElement extends ElementsOf<GenericConfig>>(
@@ -127,6 +140,52 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
+	 * Get the first direct child of an element matching a given tag name.
+	 *
+	 * @param refOrRecord - The parent element.
+	 * @param tagName - The child element type to look for.
+	 * @returns The first matching child record, or `undefined` if none.
+	 *
+	 * @example
+	 * ```ts
+	 * const aa1 = await query.getChild(a, 'AA_1')
+	 * ```
+	 */
+	async getChild<
+		GenericElement extends ElementsOf<GenericConfig>,
+		GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
+	>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		tagName: GenericChildElement,
+	): Promise<TrackedRecord<GenericConfig, GenericChildElement> | undefined> {
+		if (!refOrRecord) return undefined
+		return getChild({ context: this.context, ref: toRef(refOrRecord), tagName })
+	}
+
+	/**
+	 * Get all direct children of an element matching a given tag name.
+	 *
+	 * @param refOrRecord - The parent element.
+	 * @param tagName - The child element type to look for.
+	 * @returns All matching child records.
+	 *
+	 * @example
+	 * ```ts
+	 * const children = await query.getChildren(a, 'AA_1')
+	 * ```
+	 */
+	async getChildren<
+		GenericElement extends ElementsOf<GenericConfig>,
+		GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
+	>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		tagName: GenericChildElement,
+	): Promise<TrackedRecord<GenericConfig, GenericChildElement>[]> {
+		if (!refOrRecord) return []
+		return getChildren({ context: this.context, ref: toRef(refOrRecord), tagName })
+	}
+
+	/**
 	 * Get all records of a given tag name.
 	 *
 	 * @param tagName - The element type to retrieve.
@@ -134,7 +193,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const ieds = await query.getRecordsByTagName('IED')
+	 * const records = await query.getRecordsByTagName('A')
 	 * ```
 	 */
 	async getRecordsByTagName<GenericElement extends ElementsOf<GenericConfig>>(
@@ -152,7 +211,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const { Bay, VoltageLevel } = await query.findDescendants(substation)
+	 * const { AA_1, AA_2 } = await query.findDescendants(a)
 	 * ```
 	 */
 	async findDescendants<
@@ -171,6 +230,27 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
+	 * Walk the parent chain from an element upward.
+	 *
+	 * @param refOrRecord - The starting element (not included in results).
+	 * @param options - Optional depth limit or stop-at tag name.
+	 * @returns Ancestors bottom-up: [parent, grandparent, …, root]. Stop element is included.
+	 *
+	 * @example
+	 * ```ts
+	 * const ancestors = await query.findAncestors(aa1)
+	 * // [A, Root]
+	 * ```
+	 */
+	async findAncestors<GenericElement extends ElementsOf<GenericConfig>>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		options?: FindAncestorsOptions<GenericConfig>,
+	): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
+		if (!refOrRecord) return []
+		return findAncestors({ context: this.context, ref: toRef(refOrRecord), options })
+	}
+
+	/**
 	 * Build a full tree structure from an element down.
 	 *
 	 * @param refOrRecord - The root of the subtree.
@@ -179,7 +259,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const tree = await query.getTree(bay)
+	 * const tree = await query.getTree(a)
 	 * ```
 	 */
 	async getTree<GenericElement extends ElementsOf<GenericConfig>>(
@@ -200,7 +280,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const name = await query.getAttribute(bay, { name: 'name' })
+	 * const val = await query.getAttribute(a, { name: 'aA' })
 	 * ```
 	 */
 	async getAttribute<GenericElement extends ElementsOf<GenericConfig>>(
@@ -216,7 +296,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const fullAttributeObject = await query.getAttribute(bay, { name: 'name', fullObject: true })
+	 * const fullAttributeObject = await query.getAttribute(a, { name: 'aA', fullObject: true })
 	 * ```
 	 */
 	async getAttribute<GenericElement extends ElementsOf<GenericConfig>>(
@@ -248,7 +328,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const { name, desc } = await query.getAttributes(bay)
+	 * const { aA } = await query.getAttributes(a)
 	 * ```
 	 */
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
@@ -263,7 +343,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const fullAttributeObjects = await query.getAttributes(bay, { fullObject: true })
+	 * const fullAttributeObjects = await query.getAttributes(a, { fullObject: true })
 	 * ```
 	 */
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
@@ -294,9 +374,9 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 *
 	 * @example
 	 * ```ts
-	 * const bays = await query.findByAttributes({
-	 *   tagName: 'Bay',
-	 *   attributes: { name: 'Q01' },
+	 * const records = await query.findByAttributes({
+	 *   tagName: 'A',
+	 *   attributes: { aA: 'val' },
 	 * })
 	 * ```
 	 */

@@ -3,7 +3,7 @@ import { getLatestStagedRecord } from './staged-lookup'
 import { isTransactionContext } from '@/document'
 
 import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord, Ref } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord, RefOrRecord } from '@/types'
 
 /**
  * Fetch a single record by ref.
@@ -19,7 +19,7 @@ export async function getRecord<
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
 	context: Context<GenericConfig>
-	ref: Ref<GenericConfig, GenericElement>
+	ref: RefOrRecord<GenericConfig, GenericElement>
 }): Promise<TrackedRecord<GenericConfig, GenericElement> | undefined> {
 	const { context, ref } = params
 	// 1. Staged operations (highest priority)

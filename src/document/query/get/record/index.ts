@@ -1,3 +1,5 @@
 export { getRecord } from './get-record'
 export { getRecords } from './get-records'
 export { getRecordsByTagName } from './get-records-by-tagname'
+export { getChild } from './get-child'
+export { getChildren } from './get-children'

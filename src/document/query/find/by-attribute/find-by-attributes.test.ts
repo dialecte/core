@@ -24,7 +24,6 @@ const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createX
 
 describe('findByAttributes', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		tagName: 'A' | 'B'
 		attributes?:
@@ -37,9 +36,8 @@ describe('findByAttributes', () => {
 
 	const ns = XMLNS_DEFAULT_NAMESPACE
 
-	const testCases: TestCase[] = [
-		{
-			description: 'returns all records when no attribute filter',
+	const testCases: Record<string, TestCase> = {
+		'returns all records when no attribute filter': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A aA="first" />
@@ -54,8 +52,7 @@ describe('findByAttributes', () => {
 				'//default:Root/default:A[@aA="second"]',
 			],
 		},
-		{
-			description: 'returns matching records for single attribute value',
+		'returns matching records for single attribute value': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A aA="match" />
@@ -68,8 +65,7 @@ describe('findByAttributes', () => {
 			expectedElementQueries: ['//default:A[@aA="match"]'],
 			unexpectedElementQueries: ['//default:A[@aA="wrong"]'],
 		},
-		{
-			description: 'returns empty array when no records match',
+		'returns empty array when no records match': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A aA="other" />
@@ -80,8 +76,7 @@ describe('findByAttributes', () => {
 			expectedCount: 0,
 			unexpectedElementQueries: ['//default:A[@aA="match"]'],
 		},
-		{
-			description: 'returns records matching array of values (OR logic)',
+		'returns records matching array of values (OR logic)': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A aA="x" />
@@ -95,8 +90,7 @@ describe('findByAttributes', () => {
 			expectedElementQueries: ['//default:A[@aA="x"]', '//default:A[@aA="y"]'],
 			unexpectedElementQueries: ['//default:A[@aA="not-present"]'],
 		},
-		{
-			description: 'returns records matching all attributes (AND logic)',
+		'returns records matching all attributes (AND logic)': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A aA="x" bA="y" />
@@ -109,8 +103,7 @@ describe('findByAttributes', () => {
 			expectedElementQueries: ['//default:A[@aA="x"][@bA="y"]'],
 			unexpectedElementQueries: ['//default:A[@bA="not-present"]'],
 		},
-		{
-			description: 'returns empty array when tagName has no records in store',
+		'returns empty array when tagName has no records in store': {
 			xmlString: /* xml */ `
 				<Root ${ns} />
 			`,
@@ -119,8 +112,7 @@ describe('findByAttributes', () => {
 			expectedCount: 0,
 			unexpectedElementQueries: ['//default:A'],
 		},
-		{
-			description: 'filters by tagName — does not return other element types',
+		'filters by tagName — does not return other element types': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A aA="val" />
@@ -132,42 +124,34 @@ describe('findByAttributes', () => {
 			expectedCount: 1,
 			expectedElementQueries: ['//default:B[@aB="val"]'],
 		},
-	]
+	}
 
-	it.each(testCases)(
-		'$description',
-		async ({
-			xmlString,
-			tagName,
-			attributes,
-			expectedCount,
-			expectedElementQueries,
-			unexpectedElementQueries,
-		}) => {
-			const { document, exportCurrentTest, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, exportCurrentTest, cleanup } = await createTestDialecte({
+			xmlString: tc.xmlString,
+		})
 
-			try {
-				const result = await document.query.findByAttributes({
-					tagName,
-					attributes: attributes as FilterAttributes<TestDialecteConfig, typeof tagName>,
-				})
+		try {
+			const result = await document.query.findByAttributes({
+				tagName: tc.tagName,
+				attributes: tc.attributes as FilterAttributes<TestDialecteConfig, typeof tc.tagName>,
+			})
 
-				expect(result).toHaveLength(expectedCount)
+			expect(result).toHaveLength(tc.expectedCount)
 
-				const { xmlDocument } = await exportCurrentTest()
+			const { xmlDocument } = await exportCurrentTest()
 
-				if (expectedElementQueries) {
-					assertExpectedElementQueries({ xmlDocument, queries: expectedElementQueries })
-				}
-
-				if (unexpectedElementQueries) {
-					assertUnexpectedElementQueries({ xmlDocument, queries: unexpectedElementQueries })
-				}
-			} finally {
-				await cleanup()
+			if (tc.expectedElementQueries) {
+				assertExpectedElementQueries({ xmlDocument, queries: tc.expectedElementQueries })
 			}
-		},
-	)
+
+			if (tc.unexpectedElementQueries) {
+				assertUnexpectedElementQueries({ xmlDocument, queries: tc.unexpectedElementQueries })
+			}
+		} finally {
+			await cleanup()
+		}
+	})
 })
 
 // ---------------------------------------------------------------------------
@@ -176,45 +160,38 @@ describe('findByAttributes', () => {
 
 describe('matchesAttributeFilter', () => {
 	type TestCase = {
-		description: string
 		attributes: { name: string; value: string }[]
 		attributeFilter: FilterAttributes<TestDialecteConfig, 'A'>
 		expected: boolean
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'empty filter object matches any record',
+	const testCases: Record<string, TestCase> = {
+		'empty filter object matches any record': {
 			attributes: [],
 			attributeFilter: {},
 			expected: true,
 		},
-		{
-			description: 'single attribute value matches',
+		'single attribute value matches': {
 			attributes: [{ name: 'aA', value: 'match' }],
 			attributeFilter: { aA: 'match' },
 			expected: true,
 		},
-		{
-			description: 'single attribute value does not match',
+		'single attribute value does not match': {
 			attributes: [{ name: 'aA', value: 'no-match' }],
 			attributeFilter: { aA: 'match' },
 			expected: false,
 		},
-		{
-			description: 'array OR logic — matches one value',
+		'array OR logic — matches one value': {
 			attributes: [{ name: 'aA', value: 'b' }],
 			attributeFilter: { aA: ['a', 'b', 'c'] },
 			expected: true,
 		},
-		{
-			description: 'array OR logic — matches none',
+		'array OR logic — matches none': {
 			attributes: [{ name: 'aA', value: 'd' }],
 			attributeFilter: { aA: ['a', 'b', 'c'] },
 			expected: false,
 		},
-		{
-			description: 'multiple attributes AND logic — all match',
+		'multiple attributes AND logic — all match': {
 			attributes: [
 				{ name: 'aA', value: 'x' },
 				{ name: 'bA', value: 'y' },
@@ -222,8 +199,7 @@ describe('matchesAttributeFilter', () => {
 			attributeFilter: { aA: 'x', bA: 'y' },
 			expected: true,
 		},
-		{
-			description: 'multiple attributes AND logic — one fails',
+		'multiple attributes AND logic — one fails': {
 			attributes: [
 				{ name: 'aA', value: 'x' },
 				{ name: 'bA', value: 'wrong' },
@@ -231,29 +207,27 @@ describe('matchesAttributeFilter', () => {
 			attributeFilter: { aA: 'x', bA: 'y' },
 			expected: false,
 		},
-		{
-			description: 'missing attribute returns false',
+		'missing attribute returns false': {
 			attributes: [],
 			attributeFilter: { aA: 'something' },
 			expected: false,
 		},
-		{
-			description: 'undefined filter value is ignored',
+		'undefined filter value is ignored': {
 			attributes: [{ name: 'aA', value: 'x' }],
 			attributeFilter: { aA: 'x', bA: undefined },
 			expected: true,
 		},
-	]
+	}
 
-	it.each(testCases)('$description', ({ attributes, attributeFilter, expected }) => {
+	it.each(Object.entries(testCases))('%s', (_, tc) => {
 		const record = createTestRecord({
 			type: 'tracked',
 			record: {
 				tagName: 'A',
-				attributes: attributes as TrackedRecord<TestDialecteConfig, 'A'>['attributes'],
+				attributes: tc.attributes as TrackedRecord<TestDialecteConfig, 'A'>['attributes'],
 			},
 		})
-		const result = matchesAttributeFilter({ record, attributeFilter })
-		expect(result).toBe(expected)
+		const result = matchesAttributeFilter({ record, attributeFilter: tc.attributeFilter })
+		expect(result).toBe(tc.expected)
 	})
 })

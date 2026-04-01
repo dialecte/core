@@ -1,7 +1,7 @@
 import { getRecord } from './get-record'
 
 import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, TrackedRecord, Ref } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, TrackedRecord, RefOrRecord } from '@/types'
 
 /**
  * Batch lookup — resolve multiple refs in parallel.
@@ -12,7 +12,7 @@ export async function getRecords<
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
 	context: Context<GenericConfig>
-	refs: Ref<GenericConfig, GenericElement>[]
+	refs: RefOrRecord<GenericConfig, GenericElement>[]
 }): Promise<(TrackedRecord<GenericConfig, GenericElement> | undefined)[]> {
 	const { context, refs } = params
 	return Promise.all(refs.map((ref) => getRecord({ context, ref })))

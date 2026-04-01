@@ -17,22 +17,19 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 describe('getRecordsByTagName', () => {
 	describe('store reads', () => {
 		type TestCase = {
-			description: string
 			xmlString: string
 			tagName: 'A' | 'B' | 'AA_1'
 			expectedCount: number
 			expectedIds?: string[]
 		}
 
-		const testCases: TestCase[] = [
-			{
-				description: 'returns empty array when no records match tagName',
+		const testCases: Record<string, TestCase> = {
+			'returns empty array when no records match tagName': {
 				xmlString: /* xml */ `<Root ${ns} />`,
 				tagName: 'A',
 				expectedCount: 0,
 			},
-			{
-				description: 'returns single record matching tagName',
+			'returns single record matching tagName': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
@@ -42,8 +39,7 @@ describe('getRecordsByTagName', () => {
 				expectedCount: 1,
 				expectedIds: ['a1'],
 			},
-			{
-				description: 'returns all records of a tagName when multiple exist',
+			'returns all records of a tagName when multiple exist': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="first" />
@@ -55,8 +51,7 @@ describe('getRecordsByTagName', () => {
 				expectedCount: 3,
 				expectedIds: ['a1', 'a2', 'a3'],
 			},
-			{
-				description: 'only returns records of the requested tagName',
+			'only returns records of the requested tagName': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
@@ -67,8 +62,7 @@ describe('getRecordsByTagName', () => {
 				expectedCount: 1,
 				expectedIds: ['a1'],
 			},
-			{
-				description: 'returns records with status unchanged',
+			'returns records with status unchanged': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
@@ -77,33 +71,30 @@ describe('getRecordsByTagName', () => {
 				tagName: 'A',
 				expectedCount: 1,
 			},
-		]
+		}
 
-		it.each(testCases)(
-			'$description',
-			async ({ xmlString, tagName, expectedCount, expectedIds }) => {
-				const { document, cleanup } = await createTestDialecte({ xmlString })
+		it.each(Object.entries(testCases))('%s', async (_, tc) => {
+			const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
-				try {
-					const records = await document.query.getRecordsByTagName(tagName)
+			try {
+				const records = await document.query.getRecordsByTagName(tc.tagName)
 
-					expect(records).toHaveLength(expectedCount)
+				expect(records).toHaveLength(tc.expectedCount)
 
-					if (expectedIds) {
-						const ids = records.map((r) => r.id)
-						for (const id of expectedIds) {
-							expect(ids).toContain(id)
-						}
+				if (tc.expectedIds) {
+					const ids = records.map((r) => r.id)
+					for (const id of tc.expectedIds) {
+						expect(ids).toContain(id)
 					}
-
-					for (const record of records) {
-						expect(record.status).toBe('unchanged')
-					}
-				} finally {
-					await cleanup()
 				}
-			},
-		)
+
+				for (const record of records) {
+					expect(record.status).toBe('unchanged')
+				}
+			} finally {
+				await cleanup()
+			}
+		})
 	})
 
 	describe('staged operation visibility', () => {

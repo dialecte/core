@@ -12,15 +12,13 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('findDescendants – no filter', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		expectedCounts: Partial<Record<ElementsOf<TestDialecteConfig>, number>>
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'returns empty result for a leaf node',
+	const testCases: Record<string, TestCase> = {
+		'returns empty result for a leaf node': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -31,8 +29,7 @@ describe('findDescendants – no filter', () => {
 			ref: { tagName: 'AA_1', id: 'aa1' },
 			expectedCounts: { AAA_1: 0, AAA_2: 0, AAA_3: 0 },
 		},
-		{
-			description: 'returns direct children',
+		'returns direct children': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -44,8 +41,7 @@ describe('findDescendants – no filter', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expectedCounts: { AA_1: 1, AA_2: 1, AA_3: 0 },
 		},
-		{
-			description: 'returns all descendants at every depth',
+		'returns all descendants at every depth': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -60,8 +56,7 @@ describe('findDescendants – no filter', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expectedCounts: { AA_1: 1, AAA_1: 1, AAAA_1: 1 },
 		},
-		{
-			description: 'does not include descendants of sibling elements',
+		'does not include descendants of sibling elements': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="target">
@@ -75,15 +70,15 @@ describe('findDescendants – no filter', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expectedCounts: { AA_1: 1 },
 		},
-	]
+	}
 
-	it.each(testCases)('$description', async ({ xmlString, ref, expectedCounts }) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 		try {
-			const result = await document.query.findDescendants(ref)
+			const result = await document.query.findDescendants(tc.ref)
 
-			for (const [tagName, count] of Object.entries(expectedCounts)) {
+			for (const [tagName, count] of Object.entries(tc.expectedCounts)) {
 				expect(
 					(result as Record<string, unknown[]>)[tagName] ?? [],
 					`expected ${tagName} count`,
@@ -97,16 +92,14 @@ describe('findDescendants – no filter', () => {
 
 describe('findDescendants – with filter', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		filter: DescendantsFilter<TestDialecteConfig>
 		expectedCounts: Partial<Record<ElementsOf<TestDialecteConfig>, number>>
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'filters descendants by tagName',
+	const testCases: Record<string, TestCase> = {
+		'filters descendants by tagName': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -119,8 +112,7 @@ describe('findDescendants – with filter', () => {
 			filter: { tagName: 'AA_1' },
 			expectedCounts: { AA_1: 1 },
 		},
-		{
-			description: 'filters descendants by tagName and attribute',
+		'filters descendants by tagName and attribute': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -133,8 +125,7 @@ describe('findDescendants – with filter', () => {
 			filter: { tagName: 'AA_1', attributes: { aAA_1: 'match' } },
 			expectedCounts: { AA_1: 1 },
 		},
-		{
-			description: 'returns empty when filter matches nothing',
+		'returns empty when filter matches nothing': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -146,8 +137,7 @@ describe('findDescendants – with filter', () => {
 			filter: { tagName: 'AA_2' },
 			expectedCounts: { AA_2: 0 },
 		},
-		{
-			description: 'requires tagName match by default (no isOptional)',
+		'requires tagName match by default (no isOptional)': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -165,8 +155,7 @@ describe('findDescendants – with filter', () => {
 			filter: { tagName: 'AA_1', descendant: { tagName: 'AAA_1' } },
 			expectedCounts: { AA_1: 1, AAA_1: 1 },
 		},
-		{
-			description: 'isOptional: true collects when present but does not exclude absent paths',
+		'isOptional: true collects when present but does not exclude absent paths': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -184,8 +173,7 @@ describe('findDescendants – with filter', () => {
 			filter: { tagName: 'AA_1', isOptional: true, descendant: { tagName: 'AAA_1' } },
 			expectedCounts: { AA_1: 1, AAA_1: 2 },
 		},
-		{
-			description: 'attribute filter on ancestor makes it a required condition',
+		'attribute filter on ancestor makes it a required condition': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
@@ -207,8 +195,7 @@ describe('findDescendants – with filter', () => {
 			},
 			expectedCounts: { AA_1: 1, AAA_1: 1 },
 		},
-		{
-			description: 'does not include results outside the ref subtree',
+		'does not include results outside the ref subtree': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="target">
@@ -223,15 +210,15 @@ describe('findDescendants – with filter', () => {
 			filter: { tagName: 'AA_1' },
 			expectedCounts: { AA_1: 1 },
 		},
-	]
+	}
 
-	it.each(testCases)('$description', async ({ xmlString, ref, filter, expectedCounts }) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 		try {
-			const result = await document.query.findDescendants(ref, filter)
+			const result = await document.query.findDescendants(tc.ref, tc.filter)
 
-			for (const [tagName, count] of Object.entries(expectedCounts)) {
+			for (const [tagName, count] of Object.entries(tc.expectedCounts)) {
 				expect(
 					(result as Record<string, unknown[]>)[tagName] ?? [],
 					`expected ${tagName} count`,

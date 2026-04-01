@@ -11,16 +11,14 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getAttribute', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		ref: Ref<TestDialecteConfig, 'A'>
 		attributeName: AttributesOf<TestDialecteConfig, 'A'>
 		expected: string
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'returns attribute value when it exists',
+	const testCases: Record<string, TestCase> = {
+		'returns attribute value when it exists': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="hello" />
@@ -30,8 +28,7 @@ describe('getAttribute', () => {
 			attributeName: 'aA',
 			expected: 'hello',
 		},
-		{
-			description: "returns '' when attribute does not exist on the record",
+		"returns '' when attribute does not exist on the record": {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
@@ -41,15 +38,13 @@ describe('getAttribute', () => {
 			attributeName: 'aA',
 			expected: '',
 		},
-		{
-			description: "returns '' when the ref does not exist",
+		"returns '' when the ref does not exist": {
 			xmlString: /* xml */ `<Root ${ns} />`,
 			ref: { tagName: 'A', id: 'missing' },
 			attributeName: 'aA',
 			expected: '',
 		},
-		{
-			description: 'returns empty string for an empty attribute value',
+		'returns empty string for an empty attribute value': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="" />
@@ -59,14 +54,14 @@ describe('getAttribute', () => {
 			attributeName: 'aA',
 			expected: '',
 		},
-	]
+	}
 
-	it.each(testCases)('$description', async ({ xmlString, ref, attributeName, expected }) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 		try {
-			const result = await document.query.getAttribute(ref, { name: attributeName as 'aA' })
-			expect(result).toBe(expected)
+			const result = await document.query.getAttribute(tc.ref, { name: tc.attributeName as 'aA' })
+			expect(result).toBe(tc.expected)
 		} finally {
 			await cleanup()
 		}
@@ -75,16 +70,14 @@ describe('getAttribute', () => {
 
 describe('getAttributeFullObject', () => {
 	type TestCase = {
-		description: string
 		xmlString: string
 		ref: Ref<TestDialecteConfig, 'A'>
 		attributeName: AttributesOf<TestDialecteConfig, 'A'>
 		expected: { name: string; value: string } | undefined
 	}
 
-	const testCases: TestCase[] = [
-		{
-			description: 'returns the full attribute object when it exists',
+	const testCases: Record<string, TestCase> = {
+		'returns the full attribute object when it exists': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="world" />
@@ -94,8 +87,7 @@ describe('getAttributeFullObject', () => {
 			attributeName: 'aA',
 			expected: { name: 'aA', value: 'world' },
 		},
-		{
-			description: 'returns undefined when attribute does not exist on the record',
+		'returns undefined when attribute does not exist on the record': {
 			xmlString: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
@@ -105,27 +97,26 @@ describe('getAttributeFullObject', () => {
 			attributeName: 'aA',
 			expected: undefined,
 		},
-		{
-			description: 'returns undefined when the ref does not exist',
+		'returns undefined when the ref does not exist': {
 			xmlString: /* xml */ `<Root ${ns} />`,
 			ref: { tagName: 'A', id: 'missing' },
 			attributeName: 'aA',
 			expected: undefined,
 		},
-	]
+	}
 
-	it.each(testCases)('$description', async ({ xmlString, ref, attributeName, expected }) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString })
+	it.each(Object.entries(testCases))('%s', async (_, tc) => {
+		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 		try {
-			const result = await document.query.getAttribute(ref, {
-				name: attributeName as 'aA',
+			const result = await document.query.getAttribute(tc.ref, {
+				name: tc.attributeName as 'aA',
 				fullObject: true,
 			})
-			if (expected === undefined) {
+			if (tc.expected === undefined) {
 				expect(result).toBeUndefined()
 			} else {
-				expect(result).toMatchObject(expected)
+				expect(result).toMatchObject(tc.expected)
 			}
 		} finally {
 			await cleanup()

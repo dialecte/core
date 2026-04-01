@@ -12,21 +12,18 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 describe('getRecords', () => {
 	describe('store reads', () => {
 		type TestCase = {
-			description: string
 			xmlString: string
 			refs: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>[]
 			expectedResults: ({ id: string; tagName: string; status: 'unchanged' } | undefined)[]
 		}
 
-		const testCases: TestCase[] = [
-			{
-				description: 'returns empty array for empty refs',
+		const testCases: Record<string, TestCase> = {
+			'returns empty array for empty refs': {
 				xmlString: /* xml */ `<Root ${ns} />`,
 				refs: [],
 				expectedResults: [],
 			},
-			{
-				description: 'returns a single found record',
+			'returns a single found record': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
@@ -35,14 +32,12 @@ describe('getRecords', () => {
 				refs: [{ tagName: 'A', id: 'a1' }],
 				expectedResults: [{ id: 'a1', tagName: 'A', status: 'unchanged' }],
 			},
-			{
-				description: 'returns undefined for a missing ref',
+			'returns undefined for a missing ref': {
 				xmlString: /* xml */ `<Root ${ns} />`,
 				refs: [{ tagName: 'A', id: 'non-existent' }],
 				expectedResults: [undefined],
 			},
-			{
-				description: 'preserves order of results matching order of refs',
+			'preserves order of results matching order of refs': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="first" />
@@ -61,8 +56,7 @@ describe('getRecords', () => {
 					{ id: 'a2', tagName: 'A', status: 'unchanged' },
 				],
 			},
-			{
-				description: 'mixes found and undefined for partial matches',
+			'mixes found and undefined for partial matches': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
@@ -74,8 +68,7 @@ describe('getRecords', () => {
 				],
 				expectedResults: [{ id: 'a1', tagName: 'A', status: 'unchanged' }, undefined],
 			},
-			{
-				description: 'resolves refs of different tagNames',
+			'resolves refs of different tagNames': {
 				xmlString: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
@@ -91,18 +84,18 @@ describe('getRecords', () => {
 					{ id: 'b1', tagName: 'B', status: 'unchanged' },
 				],
 			},
-		]
+		}
 
-		it.each(testCases)('$description', async ({ xmlString, refs, expectedResults }) => {
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+		it.each(Object.entries(testCases))('%s', async (_, tc) => {
+			const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
 
 			try {
-				const results = await document.query.getRecords(refs)
+				const results = await document.query.getRecords(tc.refs)
 
-				expect(results).toHaveLength(expectedResults.length)
+				expect(results).toHaveLength(tc.expectedResults.length)
 
-				for (let i = 0; i < expectedResults.length; i++) {
-					const expected = expectedResults[i]
+				for (let i = 0; i < tc.expectedResults.length; i++) {
+					const expected = tc.expectedResults[i]
 					if (expected === undefined) {
 						expect(results[i]).toBeUndefined()
 					} else {
