@@ -9,6 +9,7 @@ import type {
 	AnyRawRecord,
 	AnyTrackedRecord,
 	AnyTreeRecord,
+	AnyRelationship,
 } from '@/types'
 
 /**
@@ -123,4 +124,31 @@ export function isRecordOf(
 	tagName: string,
 ): boolean {
 	return record.tagName === tagName
+}
+
+/**
+ * Type predicate narrowing a relationship to a specific tag name.
+ *
+ * @example
+ * const aa1Refs = recordA.children.filter((child) => isChildOf(child, 'AA_1'))
+ * const aa1Elements = await query.getRecords(aa1Refs) // TrackedRecord<Config, 'AA_1'>[]
+ */
+export function isChildOf<T extends string>(
+	child: AnyRelationship,
+	tagName: T,
+): child is AnyRelationship & { tagName: T } {
+	return child.tagName === tagName
+}
+
+/**
+ * Type predicate narrowing a parent relationship to a specific tag name.
+ *
+ * @example
+ * if (record.parent && isParentOf(record.parent, 'Root')) { ... }
+ */
+export function isParentOf<T extends string>(
+	parent: AnyRelationship,
+	tagName: T,
+): parent is AnyRelationship & { tagName: T } {
+	return parent.tagName === tagName
 }

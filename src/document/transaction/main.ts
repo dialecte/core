@@ -3,6 +3,7 @@ import { stageDeepClone } from './clone'
 import { commitTransaction } from './commit'
 import { stageAddChild } from './create'
 import { stageDelete } from './delete'
+import { stageEnsureChild } from './ensure'
 import { stageUpdate } from './update'
 
 import { toRef } from '@/helpers'
@@ -21,7 +22,6 @@ import type {
 	Operation,
 	ParentsOf,
 	RawRecord,
-	Ref,
 	RefOrRecord,
 	TreeRecord,
 } from '@/types'
@@ -33,7 +33,7 @@ import type {
  * via getOperations() override (the single override point).
  * Adds mutation methods (addChild, update, delete, deepClone).
  *
- * Mutates Document's state directly (activity, progress, history).
+ * Mutates Document's state directly (loading, progress, history).
  * No separate transaction state — the UI sees one unified state.
  *
  * Lifecycle: created by Document → used in callback → committed by Document → discarded.
@@ -83,9 +83,9 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * @example
 	 * ```ts
-	 * const bayRecord = await tx.addChild(substation, {
-	 *   tagName: 'VoltageLevel',
-	 *   attributes: { name: 'VL1' },
+	 * const aRecord = await tx.addChild(root, {
+	 *   tagName: 'A',
+	 *   attributes: { name: 'aA1' },
 	 * })
 	 * ```
 	 */
@@ -105,6 +105,42 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	}
 
 	/**
+	 * Get an existing child record or create it under the given parent.
+	 *
+	 * Lookup strategy:
+	 * - Singleton child (id absent in params): resolves by tagName.
+	 * - Non-singleton child (id present in params): resolves by tagName + id.
+	 * - Non-singleton child without id: no lookup, always creates.
+	 *
+	 * @param parentRefOrRecord - The parent element (ref, record, or relationship). `undefined` for root.
+	 * @param params - Child tagName, attributes and optional namespace, value, id.
+	 * @returns Ref to the existing or created child.
+	 *
+	 * @example
+	 * ```ts
+	 * const aRef = await tx.ensureChild(root, {
+	 *   tagName: 'A',
+	 *   attributes: {},
+	 * })
+	 * ```
+	 * If A already exists under root, returns its ref. Otherwise, creates it and returns the new ref.
+	 */
+	async ensureChild<
+		GenericElement extends ElementsOf<GenericConfig>,
+		GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
+	>(
+		parentRefOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>,
+	): Promise<RawRecord<GenericConfig, GenericChildElement>> {
+		return stageEnsureChild({
+			context: this.context,
+			parentRef: toRef(parentRefOrRecord),
+			params,
+			dialecteConfig: this.dialecteConfig,
+		})
+	}
+
+	/**
 	 * Update attributes of an existing element.
 	 *
 	 * @param refOrRecord - The element to update (ref, record, or relationship).
@@ -113,8 +149,8 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * @example
 	 * ```ts
-	 * await tx.update(bay, {
-	 *   attributes: { name: 'Q02', desc: 'Feeder bay' },
+	 * await tx.update(root, {
+	 *   attributes: { name: 'aA1', desc: 'new element' },
 	 * })
 	 * ```
 	 */
@@ -138,7 +174,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * @example
 	 * ```ts
-	 * const parentRecord = await tx.delete(bay)
+	 * const parentRecord = await tx.delete(aRecord)
 	 * ```
 	 */
 	async delete<GenericElement extends ElementsOf<GenericConfig>>(
@@ -152,11 +188,11 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * @param parentRefOrRecord - The target parent for the clone.
 	 * @param record - The tree record to clone (from `getTree`).
-	 * @returns The cloned root ref and an ID mapping from old to new.
+	 * @returns The cloned root raw record and an ID mapping from old to new.
 	 *
 	 * @example
 	 * ```ts
-	 * const tree = await tx.getTree(bay)
+	 * const tree = await tx.getTree(aRecord)
 	 * const { ref, idMap } = await tx.deepClone(substation, tree)
 	 * ```
 	 */
@@ -196,7 +232,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 * Commit all staged operations to the store atomically.
 	 * Called by Document.transaction() after user callback completes.
 	 *
-	 * Updates documentState (activity, progress, lastCommit).
+	 * Updates documentState (loading, progress, lastCommit).
 	 * Merges operations by ID to optimize database writes.
 	 */
 	async commit(): Promise<void> {
