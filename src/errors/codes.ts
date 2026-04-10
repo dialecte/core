@@ -89,4 +89,8 @@ export const ERROR_CATALOG = {
 	// D5xxx — Import/Export
 
 	// D6xxx — Config
+	EXTENSION_METHOD_COLLISION: {
+		code: 'D6001',
+		message: 'Extension method name collision detected',
+	},
 } as const
