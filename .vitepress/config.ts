@@ -27,8 +27,8 @@ export default defineConfig({
 			{
 				text: 'LLMs',
 				items: [
-					{ text: 'llms.txt', link: '/llms.txt', target: '_blank' },
-					{ text: 'llms-full.txt', link: '/llms-full.txt', target: '_blank' },
+					{ text: 'llms.txt', link: '/core/llms.txt', target: '_blank' },
+					{ text: 'llms-full.txt', link: '/core/llms-full.txt', target: '_blank' },
 				],
 			},
 		],
