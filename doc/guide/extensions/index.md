@@ -118,21 +118,51 @@ export const EXTENSIONS = mergeExtensions({ History, IED })
 
 ## Wiring into a dialecte
 
-Pass `EXTENSIONS` to `openDialecteDocument`:
+Pass extension modules to `openDialecteDocument` under the `base` key:
 
 ```ts
 // dialecte.ts
 import { openDialecteDocument } from '@dialecte/core'
-import { SCL_DIALECTE_CONFIG } from './config/dialecte.config'
-import { EXTENSIONS } from './extensions'
+import { MY_CONFIG } from './config'
+import { EXTENSION_MODULES } from './extensions'
 
-export function openSclDocument(storage: StorageOptions) {
+export function openMyDocument(storage: StorageOptions) {
 	return openDialecteDocument({
-		config: SCL_DIALECTE_CONFIG,
+		config: MY_CONFIG,
 		storage,
-		extensions: EXTENSIONS,
+		extensions: { base: EXTENSION_MODULES },
 	})
 }
+```
+
+## Letting consumers add their own extensions
+
+Expose a `extensions` param on the open function and pass it as `custom`. Core merges `base` and `custom` automatically and throws a `DialecteError` (D6001) if the same method name appears in both — collision is never silently ignored.
+
+```ts
+// dialecte.ts
+import type { ExtensionModules } from '@dialecte/core'
+
+export function openMyDocument<
+	CustomModules extends ExtensionModules = Record<never, never>,
+>(params: { storage: StorageOptions; extensions?: CustomModules }) {
+	return openDialecteDocument({
+		config: MY_CONFIG,
+		storage: params.storage,
+		extensions: { base: EXTENSION_MODULES, custom: params.extensions },
+	})
+}
+```
+
+Consumers then pass their own modules without importing core:
+
+```ts
+const doc = openMyDocument({
+	storage: { type: 'local', databaseName },
+	extensions: { myFeature: myExtension },
+})
+// doc.query.History.getLatestHitem()  ← built-in
+// doc.query.myFeature.doSomething()   ← custom, fully typed
 ```
 
 ## Consumer API

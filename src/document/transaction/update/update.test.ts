@@ -1,7 +1,12 @@
-import { describe } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
+import {
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+	TEST_DIALECTE_CONFIG,
+	runXmlTestCases,
+} from '@/test'
 
 import type { UpdateParams } from './update.types'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -117,4 +122,110 @@ describe('stageUpdate', () => {
 	}
 
 	runXmlTestCases({ testCases, act })
+})
+
+describe('stageUpdate hooks — spy behavior', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	const afterUpdated = vi.fn().mockResolvedValue([])
+	const config = { ...TEST_DIALECTE_CONFIG, hooks: { afterUpdated } }
+
+	type TestCase = BaseXmlTestCase & {
+		updateRef: Ref<TestDialecteConfig, 'A'>
+		expectedOldValue: string
+		expectedNewValue: string
+		expectThrow: boolean
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'afterUpdated → called with old and new record': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="old" />
+				</Root>
+			`,
+			updateRef: { tagName: 'A', id: 'a1' },
+			expectedOldValue: 'old',
+			expectedNewValue: 'new',
+			expectThrow: false,
+		},
+		'afterUpdated → not called when record does not exist': {
+			sourceXml: /* xml */ `<Root ${ns} />`,
+			updateRef: { tagName: 'A', id: 'non-existent' },
+			expectedOldValue: '',
+			expectedNewValue: 'x',
+			expectThrow: true,
+		},
+	}
+
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		afterUpdated.mockClear()
+		const transaction = source.document.transaction(async (tx) => {
+			await tx.update(testCase.updateRef, { attributes: { aA: testCase.expectedNewValue } })
+		})
+
+		if (testCase.expectThrow) {
+			await expect(transaction).rejects.toThrow()
+			expect(afterUpdated).not.toHaveBeenCalled()
+		} else {
+			await transaction
+			expect(afterUpdated).toHaveBeenCalledOnce()
+			const [[callArgs]] = afterUpdated.mock.calls
+			expect(callArgs.oldRecord.attributes.find((a: any) => a.name === 'aA')?.value).toBe(
+				testCase.expectedOldValue,
+			)
+			expect(callArgs.newRecord.attributes.find((a: any) => a.name === 'aA')?.value).toBe(
+				testCase.expectedNewValue,
+			)
+		}
+	}
+
+	runXmlTestCases({ testCases, act, dialecteConfig: config as any })
+})
+
+describe('stageUpdate hooks — returned operations applied', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase
+	const testCases: TestCases<TestCase> = {
+		'afterUpdated returns update op on sibling → sibling also updated in export': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="old" />
+					<B ${customId}="b1" aB="unchanged" />
+				</Root>
+			`,
+			expectedQueries: ['//default:A[@aA="new"]', '//default:B[@aB="cascade"]'],
+			unexpectedQueries: ['//default:B[@aB="unchanged"]'],
+		},
+	}
+
+	const config = {
+		...TEST_DIALECTE_CONFIG,
+		hooks: {
+			afterUpdated: vi.fn().mockImplementation(async ({ newRecord, context }: any) => {
+				if (newRecord.tagName !== 'A') return []
+				const [bRecord] = await context.store.getByTagName('B')
+				if (!bRecord) return []
+				const updatedB = {
+					...bRecord,
+					attributes: bRecord.attributes.map((a: any) =>
+						a.name === 'aB' ? { ...a, value: 'cascade' } : a,
+					),
+				}
+				return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
+			}),
+		},
+	}
+
+	async function act({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		await source.document.transaction(async (tx) => {
+			await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'new' } })
+		})
+		return { assertDatabaseName: source.databaseName }
+	}
+
+	runXmlTestCases({ testCases, act, dialecteConfig: config as any })
 })

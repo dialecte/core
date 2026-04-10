@@ -89,6 +89,8 @@ Returns `Promise<RawRecord<Config, Element>>`.
 
 Setting an attribute to `undefined` or `null` removes it from the record — it will no longer appear in the XML output.
 
+`update` fires `hooks.afterUpdated` with the old and new record. See [Hooks — afterUpdated](/api/hooks#afterupdated) for the full reference.
+
 ### delete
 
 Deletes an element and its entire subtree.
@@ -101,6 +103,12 @@ await doc.transaction(async (tx) => {
 ```
 
 Returns `Promise<RawRecord<Config, ParentElement>>` — the updated parent record.
+
+`delete` fires `hooks.beforeDelete` before cascading the subtree. See [Hooks — beforeDelete](/api/hooks#beforedelete) for the full reference.
+
+::: tip
+Define `beforeDelete` to clear or delete elements that reference the deleted subtree before it is removed.
+:::
 
 ### deepClone
 

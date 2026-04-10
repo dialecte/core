@@ -2,7 +2,7 @@ import type { AnyDefinition } from './definition'
 import type { ImportOptions, ExportOptions, IOHooks } from './io'
 import type { Operation } from './operations'
 import type { Namespace, RawRecord, TreeRecord } from './records'
-import type { Context } from '@/document'
+import type { Context, CloneMapping } from '@/document'
 
 export type RawDialecteConfig<
 	GenericElementNames extends readonly string[],
@@ -69,6 +69,43 @@ export type TransactionHooks = {
 	>(params: {
 		childRecord: RawRecord<GenericConfig, GenericElement>
 		parentRecord: RawRecord<GenericConfig, GenericParentElement>
+		context: Context<GenericConfig>
+	}) => Promise<Operation<GenericConfig>[]>
+
+	/**
+	 * Called after deepClone completes all recursive cloning.
+	 * Receives the full source→target mapping. Return additional operations to stage
+	 */
+	afterDeepClone?: <GenericConfig extends AnyDialecteConfig>(params: {
+		mappings: CloneMapping<GenericConfig>[]
+		context: Context<GenericConfig>
+	}) => Promise<Operation<GenericConfig>[]>
+
+	/**
+	 * Called after a record is updated (attributes or value changed).
+	 * Return additional operations to stage (e.g., update path attrs on dependent refs).
+	 */
+	afterUpdated?: <
+		GenericConfig extends AnyDialecteConfig,
+		GenericElement extends ElementsOf<GenericConfig>,
+	>(params: {
+		oldRecord: RawRecord<GenericConfig, GenericElement>
+		newRecord: RawRecord<GenericConfig, GenericElement>
+		context: Context<GenericConfig>
+	}) => Promise<Operation<GenericConfig>[]>
+
+	/**
+	 * Called before a record and its subtree are staged for deletion.
+	 * Root and all descendants are still live in context at this point.
+	 *
+	 * Return additional operations to stage (e.g., clear or delete ref elements
+	 * pointing to this record or any of its descendants).
+	 */
+	beforeDelete?: <
+		GenericConfig extends AnyDialecteConfig,
+		GenericElement extends ElementsOf<GenericConfig>,
+	>(params: {
+		record: RawRecord<GenericConfig, GenericElement>
 		context: Context<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
 }

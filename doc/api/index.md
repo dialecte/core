@@ -44,10 +44,11 @@ const doc = openDialecteDocument({
 })
 ```
 
-| Parameter | Type                | Description                                                      |
-| --------- | ------------------- | ---------------------------------------------------------------- |
-| `config`  | `AnyDialecteConfig` | The config describing your XML schema                            |
-| `storage` | `StorageOptions`    | `{ type: 'local', databaseName }` or `{ type: 'custom', store }` |
+| Parameter    | Type                 | Description                                                                                                                                          |
+| ------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `config`     | `AnyDialecteConfig`  | The config describing your XML schema                                                                                                                |
+| `storage`    | `StorageOptions`     | `{ type: 'local', databaseName }` or `{ type: 'custom', store }`                                                                                     |
+| `extensions` | `{ base?, custom? }` | Extension modules to bind onto `query` and `tx`. `base` holds the dialecte's built-ins; `custom` holds consumer-supplied modules. Both are optional. |
 
 Returns `Document<Config>`. See [Document](/api/document) for the full interface.
 
@@ -59,19 +60,16 @@ type StorageOptions =
 	| { type: 'custom'; store: Store } // bring your own Store implementation
 ```
 
-## exportXmlFile
+### Extensions
 
-Reconstructs and serialises the XML tree from IndexedDB. Optionally triggers a browser download.
-
-```ts
-import { exportXmlFile, TEST_DIALECTE_CONFIG } from '@dialecte/core'
-
+`base` and `custom` both accept an `ExtensionModules` record — a map of module names to `{ query?, transaction? }` objects. Core merges them before opening and throws a `DialecteError` (D6001) if the same method name appears in both. See [Writing Extensions](/guide/extensions/) for the full authoring guide.
 const { xmlDocument, filename } = await exportXmlFile({
-	databaseName,
-	extension: '.xml',
-	withDownload: true,
-	dialecteConfig: TEST_DIALECTE_CONFIG,
+databaseName,
+extension: '.xml',
+withDownload: true,
+dialecteConfig: TEST_DIALECTE_CONFIG,
 })
+
 ```
 
 | Parameter         | Type                 | Default | Description                                             |
@@ -89,3 +87,6 @@ Returns `Promise<{ xmlDocument: XMLDocument; filename: string }>`.
 - [Document](/api/document) — lifecycle, state, transactions, undo/redo
 - [Query](/api/query) — record lookup, descendants, attributes
 - [Transaction](/api/transaction) — addChild, update, delete, deepClone
+- [Hooks](/api/hooks) — transaction lifecycle hooks
+- [IO](/io/) — importXmlFiles, exportXmlFile, IOConfig, IO hooks
+```

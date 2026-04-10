@@ -1,4 +1,4 @@
-import { stageOperation } from '../stage-operations'
+import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
 import { toFullAttributeArray } from '@/helpers'
@@ -56,6 +56,15 @@ export async function stageUpdate<
 	}
 
 	stageOperation({ context, status: 'updated', oldRecord: record, newRecord: updatedRecord })
+
+	if (dialecteConfig.hooks?.afterUpdated) {
+		const hookOperations = await dialecteConfig.hooks.afterUpdated({
+			oldRecord: record,
+			newRecord: updatedRecord,
+			context,
+		})
+		stageOperations({ context, operations: hookOperations })
+	}
 
 	return updatedRecord
 }

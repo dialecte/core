@@ -1,4 +1,4 @@
-import { stageOperation } from '../stage-operations'
+import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
 import { toRef } from '@/helpers'
@@ -23,10 +23,11 @@ export async function stageDelete<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
+	dialecteConfig: GenericConfig
 	context: Context<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 }): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
-	const { context, ref } = params
+	const { dialecteConfig, context, ref } = params
 
 	const record = await getRecord({ context, ref })
 	assert(record, {
@@ -39,6 +40,13 @@ export async function stageDelete<
 		detail: 'Cannot delete root element',
 		key: 'PROTECTED_ROOT',
 	})
+
+	// Fire before stageDescendants — root and descendants are still live in context here.
+	// Hook receives the subtree root; SCL impl uses findDescendants to cover the full tree.
+	if (dialecteConfig.hooks?.beforeDelete) {
+		const hookOperations = await dialecteConfig.hooks.beforeDelete({ record, context })
+		stageOperations({ context, operations: hookOperations })
+	}
 
 	// Stage descendants first (depth-first), then the record itself
 	await stageDescendants({ context, record })

@@ -1,12 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import {
-	XMLNS_DEFAULT_NAMESPACE,
-	XMLNS_DEV_NAMESPACE,
-	createTestDialecte,
-	runXmlTestCases,
-} from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
 
 import type { AddChildParams } from './create.types'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -23,6 +18,7 @@ describe('stageAddChild', () => {
 			ElementsOf<TestDialecteConfig>,
 			ChildrenOf<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		>
+		expectThrow?: boolean
 	}
 
 	const testCases: TestCases<TestCase> = {
@@ -100,35 +96,28 @@ describe('stageAddChild', () => {
 			childPayload: { tagName: 'AAAA_1', attributes: { aAAAA_1: 'leaf' } },
 			expectedQueries: ['//default:AAA_1[@aAAA_1="l2"]/default:AAAA_1[@aAAAA_1="leaf"]'],
 		},
+		'throws when parent does not exist': {
+			sourceXml: /* xml */ `<Root ${ns} />`,
+			parentRef: { tagName: 'A', id: 'non-existent' },
+			childPayload: { tagName: 'AA_1', attributes: { aAA_1: 'child' } },
+			expectThrow: true,
+		},
 	}
 
 	async function act({
 		source,
 		testCase,
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		await source.document.transaction(async (tx) => {
+		const transaction = source.document.transaction(async (tx) => {
 			await tx.addChild(testCase.parentRef, testCase.childPayload)
 		})
+		if (testCase.expectThrow) {
+			await expect(transaction).rejects.toThrow()
+		} else {
+			await transaction
+		}
 		return { assertDatabaseName: source.databaseName }
 	}
 
 	runXmlTestCases({ testCases, act })
-
-	it('throws when parent does not exist', async () => {
-		const xmlString = /* xml */ `<Root ${ns} />`
-		const { document, cleanup } = await createTestDialecte({ xmlString })
-
-		try {
-			await expect(
-				document.transaction(async (tx) => {
-					await tx.addChild(
-						{ tagName: 'A', id: 'non-existent' },
-						{ tagName: 'AA_1', attributes: { aAA_1: 'child' } },
-					)
-				}),
-			).rejects.toThrow()
-		} finally {
-			await cleanup()
-		}
-	})
 })

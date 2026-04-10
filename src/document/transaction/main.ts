@@ -180,7 +180,11 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	async delete<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 	): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
-		return stageDelete({ context: this.context, ref: toRef(refOrRecord) })
+		return stageDelete({
+			context: this.context,
+			ref: toRef(refOrRecord),
+			dialecteConfig: this.dialecteConfig,
+		})
 	}
 
 	/**

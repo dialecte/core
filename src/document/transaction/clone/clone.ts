@@ -33,6 +33,11 @@ export async function stageDeepClone<
 		mappings,
 	})
 
+	if (dialecteConfig.hooks?.afterDeepClone) {
+		const additionalOperations = await dialecteConfig.hooks.afterDeepClone({ mappings, context })
+		context.stagedOperations.push(...additionalOperations)
+	}
+
 	return {
 		record: clonedRecord,
 		mappings,
