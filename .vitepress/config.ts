@@ -24,6 +24,13 @@ export default defineConfig({
 			{ text: 'Home', link: '/' },
 			{ text: 'Guide', link: '/guide/introduction/getting-started' },
 			{ text: 'Api', link: '/api' },
+			{
+				text: 'LLMs',
+				items: [
+					{ text: 'llms.txt', link: '/llms.txt', target: '_blank' },
+					{ text: 'llms-full.txt', link: '/llms-full.txt', target: '_blank' },
+				],
+			},
 		],
 
 		sidebar: {
@@ -58,6 +65,17 @@ export default defineConfig({
 						{ text: 'Document', link: '/api/document' },
 						{ text: 'Query', link: '/api/query' },
 						{ text: 'Transaction', link: '/api/transaction' },
+						{ text: 'Hooks', link: '/api/hooks' },
+					],
+				},
+			],
+			'/io/': [
+				{
+					text: 'IO',
+					items: [
+						{ text: 'Overview', link: '/io/' },
+						{ text: 'Reference', link: '/io/io' },
+						{ text: 'Hooks', link: '/io/hooks' },
 					],
 				},
 			],
