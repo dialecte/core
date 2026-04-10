@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { AddChildParams } from './create.types'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -119,5 +119,5 @@ describe('stageAddChild', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withExport({ testCases, act })
 })

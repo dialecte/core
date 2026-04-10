@@ -9,7 +9,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	createTestContext,
 	createTestDialecte,
-	runXmlTestCases,
+	runTestCases,
 } from '@/test'
 
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -95,7 +95,7 @@ describe('getRecordsByTagName', () => {
 			}
 		}
 
-		runXmlTestCases({ testCases, act })
+		runTestCases.withoutExport({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {

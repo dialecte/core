@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { GetTreeParams } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
@@ -182,5 +182,5 @@ describe('getTree', () => {
 		expect(toShape(result as AnyTreeRecord)).toEqual(testCase.expectedShape)
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withoutExport({ testCases, act })
 })

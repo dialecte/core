@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { ElementsOf, Ref } from '@/types'
@@ -56,7 +56,7 @@ describe('getAttributes', () => {
 		expect(result).toEqual(testCase.expected)
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withoutExport({ testCases, act })
 })
 
 describe('getAttributesFullObject', () => {
@@ -99,5 +99,5 @@ describe('getAttributesFullObject', () => {
 		expect(result).toHaveLength(testCase.expected.length)
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withoutExport({ testCases, act })
 })

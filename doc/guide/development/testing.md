@@ -8,14 +8,24 @@ Dialecte core provides test helpers and a pre-built test definition to make writ
 
 ## runTestCases
 
-Runs synchronous, pure-function table-driven tests. No XML, no async setup.
+`runTestCases` is an object with three methods pre-bound to the core test dialecte config.
 
-Use when: testing helpers, converters, guards, or any function that takes a value and returns a value.
+| Method                       | Use when                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `runTestCases.generic`       | Sync, pure-function tests — no XML, no async setup                          |
+| `runTestCases.withoutExport` | Async tests with direct query assertions (`act` returns `Promise<void>`)    |
+| `runTestCases.withExport`    | Async tests with XML export assertions (`act` returns `Promise<ActResult>`) |
+
+---
+
+## runTestCases.generic
+
+Runs synchronous, pure-function table-driven tests. No XML, no async setup.
 
 ### Signature
 
 ```ts
-function runTestCases<GenericTestCase extends BaseTestCase>(
+runTestCases.generic(
 	testCases: Record<string, GenericTestCase>,
 	act: (testCase: GenericTestCase) => void,
 ): void
@@ -43,17 +53,17 @@ function act(tc: TestCase) {
 }
 
 describe('isNonEmpty', () => {
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })
 ```
 
 ---
 
-## runXmlTestCases
+## runTestCases.withoutExport / runTestCases.withExport
 
-Runs async table-driven tests backed by a real in-memory database. Imports `sourceXml` (and optional `targetXml`), calls `act` with the mounted document contexts, then cleans up.
+Run async table-driven tests backed by a real in-memory database. Import `sourceXml` (and optional `targetXml`), call `act` with the mounted document contexts, then clean up.
 
-Two overload variants enforce the right contract at call-site.
+Two methods enforce the right contract at call-site.
 
 ### Scenario 1 - query assertions only (act returns void)
 
@@ -61,7 +71,7 @@ Use when `act` makes all assertions directly on query results via `expect`. No X
 
 ```ts
 import { describe, expect } from 'vitest'
-import { runXmlTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
+import { runTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@dialecte/core/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
@@ -85,7 +95,7 @@ async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>
 }
 
 describe('getAttribute', () => {
-	runXmlTestCases({ testCases, act })
+	runTestCases.withoutExport({ testCases, act })
 })
 ```
 
@@ -95,7 +105,7 @@ Use when `act` performs transactions and assertions must run on the exported XML
 
 ```ts
 import { describe } from 'vitest'
-import { runXmlTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
+import { runTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
 import type {
 	ActParams,
 	ActResult,
@@ -130,13 +140,13 @@ async function act({
 }
 
 describe('update', () => {
-	runXmlTestCases({ testCases, act })
+	runTestCases.withExport({ testCases, act })
 })
 ```
 
-After `act` returns, `runXmlTestCases` exports the database identified by `assertDatabaseName` and runs XPath assertions from `expectedQueries` / `unexpectedQueries`.
+After `act` returns, `runTestCases.withExport` exports the database identified by `assertDatabaseName` and runs XPath assertions from `expectedQueries` / `unexpectedQueries`.
 
-TypeScript enforces the contract at call-site: if `act` returns `Promise<ActResult>`, the return type requires `assertDatabaseName: string`. If `act` returns `Promise<void>`, no return is needed.
+Use `runTestCases.withoutExport` when no export is needed — `act` returns `Promise<void>`, XPath assertions are skipped.
 
 ### BaseXmlTestCase shape
 

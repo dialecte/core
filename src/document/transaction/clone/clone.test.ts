@@ -7,7 +7,7 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	createTestDialecte,
-	runXmlTestCases,
+	runTestCases,
 } from '@/test'
 import { assert } from '@/utils'
 
@@ -220,7 +220,7 @@ describe('stageDeepClone', () => {
 		return { assertDatabaseName: source.databaseName, withDatabaseIds: true }
 	}
 
-	runXmlTestCases({ testCases, dialecteConfig: makeCloneConfig(), act })
+	runTestCases.withExport({ testCases, dialecteConfig: makeCloneConfig(), act })
 
 	// ── beforeClone skip ─────────────────────────────────────────────────────
 
@@ -242,7 +242,11 @@ describe('stageDeepClone', () => {
 		},
 	}
 
-	runXmlTestCases({ testCases: skipTestCases, dialecteConfig: makeSkipConfig('AAA_1'), act })
+	runTestCases.withExport({
+		testCases: skipTestCases,
+		dialecteConfig: makeSkipConfig('AAA_1'),
+		act,
+	})
 
 	// ── Return value ─────────────────────────────────────────────────────────
 
@@ -376,7 +380,7 @@ describe('stageDeepClone', () => {
 		},
 	}
 
-	runXmlTestCases({
+	runTestCases.withExport({
 		testCases: afterDeepCloneTestCases,
 		dialecteConfig: makeAfterDeepCloneConfig(),
 		act,

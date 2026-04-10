@@ -30,28 +30,12 @@ export function createMockRandomUUID(): () => `${string}-${string}-${string}-${s
 
 // ── Runner ───────────────────────────────────────────────────────────────────
 
-export function runXmlTestCases<
+function xmlWithExport<
 	GenericTestCase extends BaseXmlTestCase,
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
 >(params: {
 	testCases: TestCases<GenericTestCase>
 	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
-	dialecteConfig?: GenericConfig
-}): void
-export function runXmlTestCases<
-	GenericTestCase extends BaseXmlTestCase,
-	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
->(params: {
-	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
-	dialecteConfig?: GenericConfig
-}): void
-export function runXmlTestCases<
-	GenericTestCase extends BaseXmlTestCase,
-	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
->(params: {
-	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult | void>
 	dialecteConfig?: GenericConfig
 }): void {
 	const {
@@ -68,54 +52,37 @@ export function runXmlTestCases<
 		const testFn = testCase.only ? it.only : it
 
 		testFn(description, async () => {
-			// Arrange — real UUIDs for database setup
 			crypto.randomUUID = originalRandomUUID
 
-			const source = await createTestDialecte({
-				xmlString: testCase.sourceXml,
-				dialecteConfig,
-			})
+			const source = await createTestDialecte({ xmlString: testCase.sourceXml, dialecteConfig })
 			const target = testCase.targetXml
 				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig })
 				: undefined
 
 			try {
-				// Act — mock UUIDs for deterministic creation
 				crypto.randomUUID = createMockRandomUUID()
 
-				const actResult = await act({
+				const { assertDatabaseName, withDatabaseIds } = await act({
 					testCase,
 					source: { document: source.document, databaseName: source.databaseName },
 					target: target
 						? { document: target.document, databaseName: target.databaseName }
 						: undefined,
 				})
-				const assertDatabaseName = actResult?.assertDatabaseName
 
-				const hasXmlAssertions =
-					testCase.expectedQueries?.length || testCase.unexpectedQueries?.length
+				const { xmlDocument } = await exportXmlFile({
+					dialecteConfig,
+					databaseName: assertDatabaseName,
+					extension: dialecteConfig.io.supportedFileExtensions[0],
+					withDatabaseIds: withDatabaseIds ?? true,
+				})
 
-				if (hasXmlAssertions) {
-					if (!assertDatabaseName) {
-						throw new Error(
-							`Test "${description}": assertDatabaseName is required when expectedQueries or unexpectedQueries are defined`,
-						)
-					}
+				if (testCase.expectedQueries?.length) {
+					assertExpectedElementQueries({ xmlDocument, queries: testCase.expectedQueries })
+				}
 
-					const { xmlDocument } = await exportXmlFile({
-						dialecteConfig,
-						databaseName: assertDatabaseName,
-						extension: dialecteConfig.io.supportedFileExtensions[0],
-						withDatabaseIds: true,
-					})
-
-					if (testCase.expectedQueries?.length) {
-						assertExpectedElementQueries({ xmlDocument, queries: testCase.expectedQueries })
-					}
-
-					if (testCase.unexpectedQueries?.length) {
-						assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
-					}
+				if (testCase.unexpectedQueries?.length) {
+					assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
 				}
 			} finally {
 				await source.cleanup()
@@ -125,26 +92,79 @@ export function runXmlTestCases<
 	}
 }
 
-/**
- * Runs a record of synchronous test cases where each key is the test description.
- * Use for pure-function table-driven tests that need no XML or async setup.
- *
- * @example
- * ```ts
- * runTestCases<{ input: number; expected: number }>({
- *   'positive → doubled': { input: 2, expected: 4 },
- *   'zero → zero':        { input: 0, expected: 0 },
- * }, ({ input, expected }) => {
- *   expect(double(input)).toBe(expected)
- * })
- * ```
- */
-export function runTestCases<GenericTestCase extends BaseTestCase>(
+function xmlWithoutExport<
+	GenericTestCase extends BaseXmlTestCase,
+	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+>(params: {
+	testCases: TestCases<GenericTestCase>
+	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
+	dialecteConfig?: GenericConfig
+}): void {
+	const {
+		testCases,
+		act,
+		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
+	} = params
+
+	for (const [description, testCase] of Object.entries(testCases)) {
+		const testFn = testCase.only ? it.only : it
+
+		testFn(description, async () => {
+			crypto.randomUUID = originalRandomUUID
+
+			const source = await createTestDialecte({ xmlString: testCase.sourceXml, dialecteConfig })
+			const target = testCase.targetXml
+				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig })
+				: undefined
+
+			try {
+				crypto.randomUUID = createMockRandomUUID()
+
+				await act({
+					testCase,
+					source: { document: source.document, databaseName: source.databaseName },
+					target: target
+						? { document: target.document, databaseName: target.databaseName }
+						: undefined,
+				})
+			} finally {
+				await source.cleanup()
+				await target?.cleanup()
+			}
+		})
+	}
+}
+
+function genericTestCases<GenericTestCase extends BaseTestCase>(
 	testCases: Record<string, GenericTestCase>,
 	act: (testCase: GenericTestCase) => void,
 ): void {
 	for (const [description, testCase] of Object.entries(testCases)) {
 		const testFn = testCase.only ? it.only : it
 		testFn(description, () => act(testCase))
+	}
+}
+
+export const runTestCases = createTestRunner(TEST_DIALECTE_CONFIG)
+
+export function createTestRunner<GenericConfig extends AnyDialecteConfig>(
+	dialecteConfig: GenericConfig,
+): {
+	withExport<GenericTestCase extends BaseXmlTestCase>(params: {
+		testCases: TestCases<GenericTestCase>
+		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
+		dialecteConfig?: GenericConfig
+	}): void
+	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
+		testCases: TestCases<GenericTestCase>
+		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
+		dialecteConfig?: GenericConfig
+	}): void
+	generic: typeof genericTestCases
+} {
+	return {
+		withExport: (params) => xmlWithExport({ dialecteConfig, ...params }),
+		withoutExport: (params) => xmlWithoutExport({ dialecteConfig, ...params }),
+		generic: genericTestCases,
 	}
 }

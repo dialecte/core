@@ -1,5 +1,5 @@
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, XMLNS_EXT_NAMESPACE } from './constant'
-import { runXmlTestCases } from './run-test-cases'
+import { runTestCases } from './run-test-cases'
 
 import { describe, expect } from 'vitest'
 
@@ -33,7 +33,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runXmlTestCases<TestCase>({
+		runTestCases.withExport<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				return { assertDatabaseName: source.databaseName }
@@ -52,7 +52,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runXmlTestCases<TestCase>({
+		runTestCases.withExport<TestCase>({
 			testCases,
 			act: async ({ target }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				expect(target, 'target context must be provided when targetXml is set').toBeDefined()
@@ -71,7 +71,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runXmlTestCases<TestCase>({
+		runTestCases.withExport<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				const records = await source.document.query.getRecordsByTagName('A')
@@ -94,7 +94,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runXmlTestCases<TestCase>({
+		runTestCases.withExport<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				const [recordA] = await source.document.query.getRecordsByTagName('A')
@@ -120,7 +120,7 @@ describe('runTestCases', () => {
 
 		// The real cleanup signal is that the full suite passes without DB leak warnings.
 		// Here we just confirm the round-trip works even with a minimal empty-root document.
-		runXmlTestCases<TestCase>({
+		runTestCases.withExport<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				return { assertDatabaseName: source.databaseName }

@@ -2,7 +2,7 @@ import { matchesAttributeFilter } from './find-by-attributes'
 
 import { describe, expect } from 'vitest'
 
-import { XMLNS_DEFAULT_NAMESPACE, createTestRecord, runTestCases, runXmlTestCases } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, createTestRecord, runTestCases } from '@/test'
 
 import type { FilterAttributes } from './find-by-attributes.types'
 import type {
@@ -137,7 +137,7 @@ describe('findByAttributes', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withExport({ testCases, act })
 })
 
 // ---------------------------------------------------------------------------
@@ -217,5 +217,5 @@ describe('matchesAttributeFilter', () => {
 		expect(result).toBe(tc.expected)
 	}
 
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })

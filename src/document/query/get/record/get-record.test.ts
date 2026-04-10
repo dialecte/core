@@ -9,7 +9,7 @@ import {
 	TEST_DIALECTE_CONFIG,
 	createTestContext,
 	createTestDialecte,
-	runXmlTestCases,
+	runTestCases,
 } from '@/test'
 
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -94,7 +94,7 @@ describe('getRecord', () => {
 			}
 		}
 
-		runXmlTestCases({ testCases, act })
+		runTestCases.withoutExport({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {

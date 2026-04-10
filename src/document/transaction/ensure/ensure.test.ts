@@ -1,7 +1,7 @@
 import { describe } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { Ref } from '@/types'
@@ -93,5 +93,5 @@ describe('ensureChild', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withExport({ testCases, act })
 })

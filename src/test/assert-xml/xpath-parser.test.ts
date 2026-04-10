@@ -95,5 +95,5 @@ describe('splitXpathIntoSteps', () => {
 		expect(result).toEqual(expected)
 	}
 
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })

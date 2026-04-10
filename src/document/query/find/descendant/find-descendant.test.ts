@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { DescendantsFilter } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
@@ -81,7 +81,7 @@ describe('findDescendants – no filter', () => {
 		}
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withoutExport({ testCases, act })
 })
 
 describe('findDescendants – with filter', () => {
@@ -215,5 +215,5 @@ describe('findDescendants – with filter', () => {
 		}
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withoutExport({ testCases, act })
 })

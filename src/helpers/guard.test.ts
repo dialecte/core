@@ -164,7 +164,7 @@ describe('isRawRecord', () => {
 		expect(isRawRecord(record)).toBe(expected)
 	}
 
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })
 
 describe('isTrackedRecord', () => {
@@ -217,7 +217,7 @@ describe('isTrackedRecord', () => {
 		expect(isTrackedRecord(record)).toBe(expected)
 	}
 
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })
 
 describe('isTreeRecord', () => {
@@ -286,7 +286,7 @@ describe('isTreeRecord', () => {
 		expect(isTreeRecord(record)).toBe(expected)
 	}
 
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })
 
 describe('isFullAttributeArray', () => {
@@ -324,7 +324,7 @@ describe('isFullAttributeArray', () => {
 		expect(isFullAttributeArray(attributes)).toBe(expected)
 	}
 
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })
 
 describe('isRecordOf', () => {
@@ -398,5 +398,5 @@ describe('isRecordOf', () => {
 		expect(isRecordOf(record, tagName)).toBe(expected)
 	}
 
-	runTestCases(testCases, act)
+	runTestCases.generic(testCases, act)
 })

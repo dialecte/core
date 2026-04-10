@@ -78,7 +78,7 @@ describe('standardizeRecord', () => {
 			}
 		}
 
-		runTestCases(testCases, act)
+		runTestCases.generic(testCases, act)
 
 		it('preserves namespace from schema for standard attributes', () => {
 			const result = standardizeRecord({

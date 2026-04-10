@@ -78,7 +78,7 @@ describe('Record Converter', () => {
 			expect('tree' in result).toBe(false)
 		}
 
-		runTestCases(testCases, act)
+		runTestCases.generic(testCases, act)
 	})
 
 	describe('toChainRecord', () => {
@@ -141,7 +141,7 @@ describe('Record Converter', () => {
 			expect('tree' in result).toBe(false)
 		}
 
-		runTestCases(testCases, act)
+		runTestCases.generic(testCases, act)
 	})
 
 	describe('toTreeRecord', () => {
@@ -222,7 +222,7 @@ describe('Record Converter', () => {
 			expect(result.tree).toHaveLength(expectedTreeLength)
 		}
 
-		runTestCases(testCases, act)
+		runTestCases.generic(testCases, act)
 	})
 
 	describe('toFullAttributeArray', () => {
@@ -299,6 +299,6 @@ describe('Record Converter', () => {
 			})
 		}
 
-		runTestCases(testCases, act)
+		runTestCases.generic(testCases, act)
 	})
 })

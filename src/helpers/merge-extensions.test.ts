@@ -82,7 +82,7 @@ describe('mergeExtensions', () => {
 			expect(Object.keys(result.transaction)).toEqual(expectedTransaction)
 		}
 
-		runTestCases(testCases, act)
+		runTestCases.generic(testCases, act)
 
 		// standalone: verifies merged method-level access, not just key presence
 		it('same module key, different methods → merged methods accessible', () => {
@@ -121,6 +121,6 @@ describe('mergeExtensions', () => {
 			expect(() => mergeExtensions(modules)).toThrow(expectedDetail)
 		}
 
-		runTestCases(testCases, act)
+		runTestCases.generic(testCases, act)
 	})
 })

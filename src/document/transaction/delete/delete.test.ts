@@ -5,7 +5,7 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	TEST_DIALECTE_CONFIG,
-	runXmlTestCases,
+	runTestCases,
 } from '@/test'
 
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -109,7 +109,7 @@ describe('stageDelete', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withExport({ testCases, act })
 })
 
 describe('stageDelete hooks — spy behavior', () => {
@@ -161,7 +161,7 @@ describe('stageDelete hooks — spy behavior', () => {
 		expect(callArgs.record.children).toHaveLength(testCase.expectedChildCount)
 	}
 
-	runXmlTestCases({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withoutExport({ testCases, act, dialecteConfig: config as any })
 })
 
 describe('stageDelete hooks — returned operations applied', () => {
@@ -207,5 +207,5 @@ describe('stageDelete hooks — returned operations applied', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runXmlTestCases({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withExport({ testCases, act, dialecteConfig: config as any })
 })

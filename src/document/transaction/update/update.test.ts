@@ -5,7 +5,7 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	TEST_DIALECTE_CONFIG,
-	runXmlTestCases,
+	runTestCases,
 } from '@/test'
 
 import type { UpdateParams } from './update.types'
@@ -121,7 +121,7 @@ describe('stageUpdate', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runXmlTestCases({ testCases, act })
+	runTestCases.withExport({ testCases, act })
 })
 
 describe('stageUpdate hooks — spy behavior', () => {
@@ -181,7 +181,7 @@ describe('stageUpdate hooks — spy behavior', () => {
 		}
 	}
 
-	runXmlTestCases({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withoutExport({ testCases, act, dialecteConfig: config as any })
 })
 
 describe('stageUpdate hooks — returned operations applied', () => {
@@ -227,5 +227,5 @@ describe('stageUpdate hooks — returned operations applied', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runXmlTestCases({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withExport({ testCases, act, dialecteConfig: config as any })
 })

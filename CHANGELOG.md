@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.8] - 2026-04-10
+
+### Added
+
+- `createTestRunner`: factory returning a pre-bound test runner object `{ withExport, withoutExport, generic }`
+- `runTestCases`: pre-bound instance of `createTestRunner` for the core test dialecte config
+
 ## [0.1.7] - 2026-04-10
 
 ### Added
 
 - `afterDeepClone`, `beforeDelete`, `afterUpdated` transaction hooks
-- `runXmlTestCases`: table-driven test helper supporting `Promise<ActResult>` and `Promise<void>` overloads
 - docs: `llms.txt` generation on deploy
 - docs: hooks API, IO API pages
 

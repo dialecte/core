@@ -5,7 +5,7 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	createTestDialecte,
-	runXmlTestCases,
+	runTestCases,
 } from '@/test'
 
 import type { FindAncestorsOptions } from './find-ancestor.types'
@@ -80,7 +80,7 @@ describe('findAncestors', () => {
 			expect(ancestors.map((a) => a.tagName)).toEqual(testCase.expectedTagNames)
 		}
 
-		runXmlTestCases({ testCases, act })
+		runTestCases.withoutExport({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {
