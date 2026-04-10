@@ -7,35 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.7] - 2026-04-10
+
+### Added
+
+- `afterDeepClone`, `beforeDelete`, `afterUpdated` transaction hooks
+- `runXmlTestCases`: table-driven test helper supporting `Promise<ActResult>` and `Promise<void>` overloads
+- docs: `llms.txt` generation on deploy
+- docs: hooks API, IO API pages
+
+### Changed
+
+- extensions merging reworked — custom extensions can now be defined outside a Dialecte library
+- migrated all transaction and query tests to `runXmlTestCases` / `runTestCases`
+- updated testing documentation (3 scenarios: sync, async void, async ActResult)
+
 ## [0.1.6] - 2026-04-01
 
 ### Changed
 
-- definition type
+- definition type fix
 
 ## [0.1.5] - 2026-04-01
 
 ### Added
 
-- `ensureChild`
-- `findAncestor`
-- `getChild` and `getChildren`
+- `ensureChild`, `findAncestor`, `getChild`, `getChildren`
 
 ## [0.1.4] - 2026-03-30
 
 ### Added
 
-- `runTestCases`: table-driven test helper for XPath-based assertions in Dialecte unit tests
+- `runTestCases`: table-driven XPath test helper
 
 ### Changed
 
-- changing folder structure (`test-fixtures` to `test`)
-- migrated existing tests to `runTestCases`
-- updated testing documentation
-- test dialecte update based on latest generation script (based now on test.xsd)
-- generic definition type updated
-- return `RawRecord` instead of `Ref` for `Core` transaction methods
-- updated transaction tests
+- `test-fixtures` folder renamed to `test`
+- migrated transaction tests to `runTestCases`
+- definition type updated; `RawRecord` returned instead of `Ref` from transaction methods
 
 ## [0.1.3] - 2026-03-13
 
