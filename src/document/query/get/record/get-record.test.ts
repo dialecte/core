@@ -9,9 +9,10 @@ import {
 	TEST_DIALECTE_CONFIG,
 	createTestContext,
 	createTestDialecte,
+	runXmlTestCases,
 } from '@/test'
 
-import type { TestDialecteConfig } from '@/test'
+import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { ElementsOf, Ref } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
@@ -19,8 +20,7 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getRecord', () => {
 	describe('store reads', () => {
-		type TestCase = {
-			xmlString: string
+		type TestCase = BaseXmlTestCase & {
 			ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 			expectedTagName?: string
 			expectedId?: string
@@ -28,9 +28,9 @@ describe('getRecord', () => {
 			expectUndefined?: true
 		}
 
-		const testCases: Record<string, TestCase> = {
+		const testCases: TestCases<TestCase> = {
 			'returns record by id with status unchanged': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="val" />
 					</Root>
@@ -41,7 +41,7 @@ describe('getRecord', () => {
 				expectedStatus: 'unchanged',
 			},
 			'returns undefined when id does not exist': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="val" />
 					</Root>
@@ -50,13 +50,13 @@ describe('getRecord', () => {
 				expectUndefined: true,
 			},
 			'returns singleton by tagName when id is omitted': {
-				xmlString: /* xml */ `<Root ${ns} />`,
+				sourceXml: /* xml */ `<Root ${ns} />`,
 				ref: { tagName: 'Root' } as Ref<TestDialecteConfig, 'Root'>,
 				expectedTagName: 'Root',
 				expectedStatus: 'unchanged',
 			},
 			'returns deeply nested record by id': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="l0">
 							<AA_1 ${customId}="aa1" aAA_1="l1">
@@ -72,30 +72,29 @@ describe('getRecord', () => {
 			},
 		}
 
-		it.each(Object.entries(testCases))('%s', async (_, tc) => {
-			const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			const record = await source.document.query.getRecord(testCase.ref)
 
-			try {
-				const record = await document.query.getRecord(tc.ref)
-
-				if (tc.expectUndefined) {
-					expect(record).toBeUndefined()
-				} else {
-					expect(record).toBeDefined()
-					if (tc.expectedTagName !== undefined) {
-						expect(record?.tagName).toBe(tc.expectedTagName)
-					}
-					if (tc.expectedId !== undefined) {
-						expect(record?.id).toBe(tc.expectedId)
-					}
-					if (tc.expectedStatus !== undefined) {
-						expect(record?.status).toBe(tc.expectedStatus)
-					}
+			if (testCase.expectUndefined) {
+				expect(record).toBeUndefined()
+			} else {
+				expect(record).toBeDefined()
+				if (testCase.expectedTagName !== undefined) {
+					expect(record?.tagName).toBe(testCase.expectedTagName)
 				}
-			} finally {
-				await cleanup()
+				if (testCase.expectedId !== undefined) {
+					expect(record?.id).toBe(testCase.expectedId)
+				}
+				if (testCase.expectedStatus !== undefined) {
+					expect(record?.status).toBe(testCase.expectedStatus)
+				}
 			}
-		})
+		}
+
+		runXmlTestCases({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {

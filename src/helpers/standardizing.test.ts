@@ -2,8 +2,9 @@ import { standardizeRecord } from './standardizing'
 
 import { describe, expect, it } from 'vitest'
 
-import { DIALECTE_NAMESPACES, TEST_DIALECTE_CONFIG, TestDialecteConfig } from '@/test'
+import { DIALECTE_NAMESPACES, TEST_DIALECTE_CONFIG, TestDialecteConfig, runTestCases } from '@/test'
 
+import type { BaseTestCase } from '@/test'
 import type {
 	AnyDialecteConfig,
 	TransactionHooks,
@@ -21,23 +22,20 @@ const config = TEST_DIALECTE_CONFIG
 
 describe('standardizeRecord', () => {
 	describe('attributes handling', () => {
-		type TestCase = {
-			description: string
+		type TestCase = BaseTestCase & {
 			input: Parameters<typeof standardizeRecord>[0]['record']
 			expectedAttributes: { name: string; value: string }[]
 		}
 
-		const testCases: TestCase[] = [
-			{
-				description: 'converts object attributes to array format',
+		const testCases: Record<string, TestCase> = {
+			'converts object attributes to array format': {
 				input: { tagName: 'AA_1', attributes: { aAA_1: 'value1', bAA_1: 'value2' } },
 				expectedAttributes: [
 					{ name: 'aAA_1', value: 'value1' },
 					{ name: 'bAA_1', value: 'value2' },
 				],
 			},
-			{
-				description: 'converts qualified array attributes',
+			'converts qualified array attributes': {
 				input: {
 					tagName: 'AA_1',
 					attributes: [
@@ -50,18 +48,15 @@ describe('standardizeRecord', () => {
 					{ name: 'bAA_1', value: 'value2' },
 				],
 			},
-			{
-				description: 'adds empty default for required attribute when missing',
+			'adds empty default for required attribute when missing': {
 				input: { tagName: 'AA_1', attributes: {} as { aAA_1: string } },
 				expectedAttributes: [{ name: 'aAA_1', value: '' }],
 			},
-			{
-				description: 'omits optional attributes when not provided',
+			'omits optional attributes when not provided': {
 				input: { tagName: 'AA_1', attributes: { aAA_1: 'required' } },
 				expectedAttributes: [{ name: 'aAA_1', value: 'required' }],
 			},
-			{
-				description: 'includes all provided optional attributes alongside required',
+			'includes all provided optional attributes alongside required': {
 				input: {
 					tagName: 'AA_1',
 					attributes: { aAA_1: 'required', bAA_1: 'optional1', 'ext:cAA_1': 'optional2' },
@@ -72,16 +67,18 @@ describe('standardizeRecord', () => {
 					{ name: 'ext:cAA_1', value: 'optional2' },
 				],
 			},
-		]
+		}
 
-		it.each(testCases)('$description', ({ input, expectedAttributes }) => {
-			const result = standardizeRecord({ record: input as any, dialecteConfig: config })
+		function act(tc: TestCase): void {
+			const result = standardizeRecord({ record: tc.input as any, dialecteConfig: config })
 
-			expect(result.attributes).toHaveLength(expectedAttributes.length)
-			for (const expected of expectedAttributes) {
+			expect(result.attributes).toHaveLength(tc.expectedAttributes.length)
+			for (const expected of tc.expectedAttributes) {
 				expect(result.attributes).toContainEqual(expect.objectContaining(expected))
 			}
-		})
+		}
+
+		runTestCases(testCases, act)
 
 		it('preserves namespace from schema for standard attributes', () => {
 			const result = standardizeRecord({

@@ -5,18 +5,18 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	createTestDialecte,
-	runTestCases,
+	runXmlTestCases,
 } from '@/test'
 
 import type { AddChildParams } from './create.types'
-import type { ActParams, ActResult, BaseTestCase, TestCases, TestDialecteConfig } from '@/test'
+import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { Ref, ElementsOf, ChildrenOf } from '@/types'
 
 describe('stageAddChild', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
-	type TestCase = BaseTestCase & {
+	type TestCase = BaseXmlTestCase & {
 		parentRef: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		childPayload: AddChildParams<
 			TestDialecteConfig,
@@ -112,7 +112,7 @@ describe('stageAddChild', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runTestCases({ testCases, act })
+	runXmlTestCases({ testCases, act })
 
 	it('throws when parent does not exist', async () => {
 		const xmlString = /* xml */ `<Root ${ns} />`

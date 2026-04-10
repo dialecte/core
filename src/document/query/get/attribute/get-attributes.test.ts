@@ -1,24 +1,23 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestDialecte } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
 
-import type { TestDialecteConfig } from '@/test'
+import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { ElementsOf, Ref } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getAttributes', () => {
-	type TestCase = {
-		xmlString: string
+	type TestCase = BaseXmlTestCase & {
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		expected: Record<string, string>
 	}
 
 	const testCases: Record<string, TestCase> = {
 		'returns value object for all present attributes': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="hello" />
 				</Root>
@@ -27,7 +26,7 @@ describe('getAttributes', () => {
 			expected: { aA: 'hello' },
 		},
 		'returns empty object when record has no attributes': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
 				</Root>
@@ -36,12 +35,13 @@ describe('getAttributes', () => {
 			expected: {},
 		},
 		'returns empty object when ref does not exist': {
-			xmlString: /* xml */ `<Root ${ns} />`,
+			sourceXml: /* xml */ `<Root ${ns} />`,
+
 			ref: { tagName: 'A', id: 'missing' },
 			expected: {},
 		},
 		'returns multiple attributes when record has several': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<AA_1 ${customId}="aa1" aAA_1="v1" />
 				</Root>
@@ -51,28 +51,23 @@ describe('getAttributes', () => {
 		},
 	}
 
-	it.each(Object.entries(testCases))('%s', async (_, tc) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const result = await source.document.query.getAttributes(testCase.ref)
+		expect(result).toEqual(testCase.expected)
+	}
 
-		try {
-			const result = await document.query.getAttributes(tc.ref)
-			expect(result).toEqual(tc.expected)
-		} finally {
-			await cleanup()
-		}
-	})
+	runXmlTestCases({ testCases, act })
 })
 
 describe('getAttributesFullObject', () => {
-	type TestCase = {
-		xmlString: string
+	type TestCase = BaseXmlTestCase & {
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		expected: { name: string; value: string }[]
 	}
 
 	const testCases: Record<string, TestCase> = {
 		'returns full attribute objects for all present attributes': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="world" />
 				</Root>
@@ -81,7 +76,7 @@ describe('getAttributesFullObject', () => {
 			expected: [{ name: 'aA', value: 'world' }],
 		},
 		'returns empty array when record has no attributes': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
 				</Root>
@@ -90,23 +85,19 @@ describe('getAttributesFullObject', () => {
 			expected: [],
 		},
 		'returns empty array when ref does not exist': {
-			xmlString: /* xml */ `<Root ${ns} />`,
+			sourceXml: /* xml */ `<Root ${ns} />`,
 			ref: { tagName: 'A', id: 'missing' },
 			expected: [],
 		},
 	}
 
-	it.each(Object.entries(testCases))('%s', async (_, tc) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const result = await source.document.query.getAttributes(testCase.ref, { fullObject: true })
+		expect(result).toEqual(
+			expect.arrayContaining(testCase.expected.map((e) => expect.objectContaining(e))),
+		)
+		expect(result).toHaveLength(testCase.expected.length)
+	}
 
-		try {
-			const result = await document.query.getAttributes(tc.ref, { fullObject: true })
-			expect(result).toEqual(
-				expect.arrayContaining(tc.expected.map((e) => expect.objectContaining(e))),
-			)
-			expect(result).toHaveLength(tc.expected.length)
-		} finally {
-			await cleanup()
-		}
-	})
+	runXmlTestCases({ testCases, act })
 })

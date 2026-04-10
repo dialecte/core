@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestDialecte } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
 
 import type { GetTreeParams } from '@/document'
-import type { TestDialecteConfig } from '@/test'
+import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { AnyTreeRecord, ElementsOf, Ref } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
@@ -20,8 +20,7 @@ function toShape(record: AnyTreeRecord): TreeShape {
 }
 
 describe('getTree', () => {
-	type TestCase = {
-		xmlString: string
+	type TestCase = BaseXmlTestCase & {
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		options?: GetTreeParams<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 		expectedShape: TreeShape
@@ -29,7 +28,7 @@ describe('getTree', () => {
 
 	const testCases: Record<string, TestCase> = {
 		'returns leaf node with empty tree': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="v" />
@@ -40,7 +39,7 @@ describe('getTree', () => {
 			expectedShape: { tagName: 'AA_1', tree: [] },
 		},
 		'returns direct children': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="first" />
@@ -58,7 +57,7 @@ describe('getTree', () => {
 			},
 		},
 		'returns full recursive tree': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="v">
@@ -74,7 +73,7 @@ describe('getTree', () => {
 			},
 		},
 		'include filter: only matching tagName is returned': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="v" />
@@ -90,7 +89,7 @@ describe('getTree', () => {
 			},
 		},
 		'include filter with attributes: only matching attribute value': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="match" />
@@ -106,7 +105,7 @@ describe('getTree', () => {
 			},
 		},
 		'include filter nested: grandchildren filtered by children config': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="v">
@@ -124,7 +123,7 @@ describe('getTree', () => {
 			},
 		},
 		'exclude filter (scope: self): removes node and its subtree': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="v">
@@ -142,7 +141,7 @@ describe('getTree', () => {
 			},
 		},
 		'exclude filter (scope: children): keeps node but stops traversal': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="v">
@@ -159,7 +158,7 @@ describe('getTree', () => {
 			},
 		},
 		'unwrap: removes intermediate layer and promotes grandchildren': {
-			xmlString: /* xml */ `
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="v">
 						<AA_1 ${customId}="aa1" aAA_1="v">
@@ -177,16 +176,11 @@ describe('getTree', () => {
 		},
 	}
 
-	it.each(Object.entries(testCases))('%s', async (_, tc) => {
-		const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const result = await source.document.query.getTree(testCase.ref, testCase.options)
+		expect(result).toBeDefined()
+		expect(toShape(result as AnyTreeRecord)).toEqual(testCase.expectedShape)
+	}
 
-		try {
-			const result = await document.query.getTree(tc.ref, tc.options)
-
-			expect(result).toBeDefined()
-			expect(toShape(result as AnyTreeRecord)).toEqual(tc.expectedShape)
-		} finally {
-			await cleanup()
-		}
-	})
+	runXmlTestCases({ testCases, act })
 })

@@ -8,115 +8,158 @@ Dialecte core provides test helpers and a pre-built test definition to make writ
 
 ## runTestCases
 
-The primary test helper. Wraps the full test lifecycle — setup, act, export, assert, cleanup — so tests focus only on what changes.
+Runs synchronous, pure-function table-driven tests. No XML, no async setup.
+
+Use when: testing helpers, converters, guards, or any function that takes a value and returns a value.
 
 ### Signature
 
 ```ts
-function runTestCases<GenericTestCase extends BaseTestCase>(params: {
-	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericTestCase>) => Promise<ActResult>
-	dialecteConfig?: AnyDialecteConfig // defaults to TEST_DIALECTE_CONFIG
-}): void
+function runTestCases<GenericTestCase extends BaseTestCase>(
+	testCases: Record<string, GenericTestCase>,
+	act: (testCase: GenericTestCase) => void,
+): void
 ```
 
 ### Pattern
 
 ```ts
+import { describe, expect } from 'vitest'
+import { runTestCases } from '@dialecte/core/test'
+import type { BaseTestCase } from '@dialecte/core/test'
+
+type TestCase = BaseTestCase & {
+	input: string
+	expected: boolean
+}
+
+const testCases: Record<string, TestCase> = {
+	'non-empty string → true': { input: 'hello', expected: true },
+	'empty string → false': { input: '', expected: false },
+}
+
+function act(tc: TestCase) {
+	expect(isNonEmpty(tc.input)).toBe(tc.expected)
+}
+
+describe('isNonEmpty', () => {
+	runTestCases(testCases, act)
+})
+```
+
+---
+
+## runXmlTestCases
+
+Runs async table-driven tests backed by a real in-memory database. Imports `sourceXml` (and optional `targetXml`), calls `act` with the mounted document contexts, then cleans up.
+
+Two overload variants enforce the right contract at call-site.
+
+### Scenario 1 - query assertions only (act returns void)
+
+Use when `act` makes all assertions directly on query results via `expect`. No XML export needed.
+
+```ts
+import { describe, expect } from 'vitest'
+import { runXmlTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
+import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@dialecte/core/test'
+
+const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+
+type TestCase = BaseXmlTestCase & {
+	ref: Ref<TestDialecteConfig, 'A'>
+	expected: string
+}
+
+const testCases: TestCases<TestCase> = {
+	'attribute present → returns value': {
+		sourceXml: `<Root ${ns}><A dev:db-id="a1" aA="hello"/></Root>`,
+		ref: { tagName: 'A', id: 'a1' },
+		expected: 'hello',
+	},
+}
+
+async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+	const result = await source.document.query.getAttribute(testCase.ref, { name: 'aA' })
+	expect(result).toBe(testCase.expected)
+}
+
+describe('getAttribute', () => {
+	runXmlTestCases({ testCases, act })
+})
+```
+
+### Scenario 2 - XML export assertions (act returns ActResult)
+
+Use when `act` performs transactions and assertions must run on the exported XML via XPath. `assertDatabaseName` is **required** in the returned `ActResult`.
+
+```ts
 import { describe } from 'vitest'
-import { runTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
+import { runXmlTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
+import type {
+	ActParams,
+	ActResult,
+	BaseXmlTestCase,
+	TestCases,
+	TestDialecteConfig,
+} from '@dialecte/core/test'
 
-import type { BaseTestCase, TestCases, ActParams, ActResult } from '@dialecte/core/test'
+const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 
-const testCases: TestCases<BaseTestCase> = {
-	'element A updated → attribute aA has new value': {
-		sourceXml: `
-			<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} dev:db-id="1">
-				<A aA="old" dev:db-id="2"/>
-			</Root>
-		`,
+type TestCase = BaseXmlTestCase & {
+	newValue: string
+}
+
+const testCases: TestCases<TestCase> = {
+	'update aA → reflected in export': {
+		sourceXml: `<Root ${ns}><A dev:db-id="a1" aA="old"/></Root>`,
+		newValue: 'new',
 		expectedQueries: ['//default:A[@aA="new"]'],
 		unexpectedQueries: ['//default:A[@aA="old"]'],
 	},
 }
 
-async function act({ source }: ActParams<BaseTestCase>): Promise<ActResult> {
+async function act({
+	source,
+	testCase,
+}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
 	await source.document.transaction(async (tx) => {
-		await tx.update({ tagName: 'A', id: '2' }, { attributes: { aA: 'new' } })
+		await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: testCase.newValue } })
 	})
 	return { assertDatabaseName: source.databaseName }
 }
 
-describe('A', () => {
-	runTestCases({ testCases, act })
+describe('update', () => {
+	runXmlTestCases({ testCases, act })
 })
 ```
 
-### What it does per test
+After `act` returns, `runXmlTestCases` exports the database identified by `assertDatabaseName` and runs XPath assertions from `expectedQueries` / `unexpectedQueries`.
 
-1. Imports `sourceXml` (and optional `targetXml`) into isolated databases
-2. Calls `act` with the mounted documents
-3. Exports the database named by `assertDatabaseName` with `withDatabaseIds: true`
-4. Runs XPath assertions from `expectedQueries` and `unexpectedQueries`
-5. Cleans up all databases
+TypeScript enforces the contract at call-site: if `act` returns `Promise<ActResult>`, the return type requires `assertDatabaseName: string`. If `act` returns `Promise<void>`, no return is needed.
 
-### TestCase shape
+### BaseXmlTestCase shape
 
 ```ts
-type BaseTestCase = {
+type BaseXmlTestCase = {
 	sourceXml: string // input document
 	targetXml?: string // second document (for copy/transfer operations)
 	only?: boolean // run this case exclusively (it.only)
-	expectedQueries?: string[] // XPath expressions that must match
-	unexpectedQueries?: string[] // XPath expressions that must not match
+	expectedQueries?: string[] // XPath expressions that must match (scenario 2)
+	unexpectedQueries?: string[] // XPath expressions that must not match (scenario 2)
 }
 ```
 
-### XPath namespace prefixes
+### What runXmlTestCases does per test
 
-XPath queries run against a namespace-aware document. Each namespace registered in `dialecteConfig.namespaces` is available by its prefix. The default namespace (no prefix in XML) is mapped to `default`.
-
-For dialectes where the root element uses a default namespace (e.g. SCL's `xmlns="http://..."`), **all element names in XPath must be prefixed with `default:`**:
-
-```ts
-// ✗ No prefix — fails silently (no match)
-expectedQueries: ['//A']
-
-// ✓ Correct prefix
-expectedQueries: ['//default:A', '//default:A_1']
-```
-
-Attributes do not need a prefix unless they are in a specific namespace (e.g. `dev:db-id`).
-
-```ts
-type MyTestCase = BaseTestCase & {
-	targetElementId: string
-}
-
-const testCases: TestCases<MyTestCase> = {
-	'leaf element → moved to target': {
-		sourceXml: `...`,
-		targetXml: `...`,
-		targetElementId: '2',
-		expectedQueries: ['//default:A'],
-	},
-}
-
-async function act({ testCase, source, target }: ActParams<MyTestCase>): Promise<ActResult> {
-	// testCase.targetElementId is typed here
-	return { assertDatabaseName: target!.databaseName }
-}
-
-describe('move', () => {
-	runTestCases<MyTestCase>({ testCases, act })
-})
-```
+1. Imports `sourceXml` (and `targetXml` if present) into isolated in-memory databases
+2. Calls `act` with the mounted document contexts
+3. If `act` returns `ActResult`: exports the named database and runs XPath assertions
+4. Cleans up all databases
 
 ### Stable record IDs with dev:db-id
 
 During import, `createTestDialecte` always sets `useCustomRecordsIds: true`. Any `dev:db-id` attribute in the XML becomes the actual database record ID — no random UUIDs, no lookups required in `act`.
-
-The attribute name is exported as `CUSTOM_RECORD_ID_ATTRIBUTE` (`"dev:db-id"`).
 
 ```xml
 <!-- In source XML: assign a predictable ID -->
@@ -128,40 +171,52 @@ The attribute name is exported as `CUSTOM_RECORD_ID_ATTRIBUTE` (`"dev:db-id"`).
 await tx.update({ tagName: 'A', id: 'elem-a-1' }, { attributes: { aA: 'updated' } })
 ```
 
-Because `runTestCases` exports with `withDatabaseIds: true`, the `dev:db-id` attribute is present in the output XML. XPath assertions can target by ID:
+Because `runXmlTestCases` exports with `withDatabaseIds: true`, the `dev:db-id` attribute is present in the output XML and XPath assertions can target by ID:
 
 ```ts
-expectedQueries: ['//A[@dev:db-id="elem-a-1"][@aA="updated"]']
+expectedQueries: ['//default:A[@dev:db-id="elem-a-1"][@aA="updated"]']
 ```
 
 ### Deterministic UUIDs for created elements
 
-When a transaction creates new elements (no `dev:db-id` in the source XML), they receive random UUIDs as their database IDs. `runTestCases` automatically replaces `crypto.randomUUID` with a counter-based mock during the `act` phase, so these IDs are deterministic: `"0"`, `"1"`, `"2"`, ...
-
-This lets tests assert on the generated IDs when needed:
+When a transaction creates new elements (no `dev:db-id` in the source XML), they receive random UUIDs. `runXmlTestCases` replaces `crypto.randomUUID` with a counter-based mock during `act`, so generated IDs are deterministic: `"0"`, `"1"`, `"2"`, ...
 
 ```ts
-expectedQueries: ['//default:AA_1[@_temp-idb-id="0"][@aAA_1="created"]']
+expectedQueries: ['//default:AA_1[@dev:db-id="0"][@aAA_1="created"]']
 ```
 
-The mock is scoped to each test's act phase. The setup phase (database import) always uses real UUIDs to avoid collisions between parallel tests.
+The mock is scoped to each test's act phase. Setup always uses real UUIDs to avoid collisions between parallel tests.
 
-`createMockRandomUUID` is exported if you need the same mock in manual tests outside `runTestCases`:
+`createMockRandomUUID` is exported for manual tests outside `runXmlTestCases`:
 
 ```ts
 import { createMockRandomUUID } from '@dialecte/core/test'
 
 crypto.randomUUID = createMockRandomUUID()
-// IDs assigned from here will be "0", "1", "2", ...
+// IDs from here: "0", "1", "2", ...
 ```
 
-**Prefer `dev:db-id` over mock UUIDs** when possible — it is more explicit and doesn't couple assertions to creation order. Use mock UUIDs only when the element has no domain attributes that uniquely identify it in the output.
+Prefer `dev:db-id` over mock UUIDs when possible — more explicit, decoupled from creation order.
+
+### XPath namespace prefixes
+
+The default namespace (no prefix in XML) maps to `default` in XPath. All element names must be prefixed:
+
+```ts
+// ✗ fails silently
+expectedQueries: ['//A']
+
+// ✓ correct
+expectedQueries: ['//default:A']
+```
+
+Attributes don't need a prefix unless they are in a specific namespace (e.g. `dev:db-id`).
 
 ---
 
 ## createXmlAssertions
 
-Factory that returns a pair of XPath assertion helpers pre-bound to a namespace resolver. Used directly when tests need manual control over export and assertion (outside `runTestCases`).
+Factory that returns a pair of XPath assertion helpers pre-bound to a namespace resolver. Used directly when tests need manual control over export and assertion (outside `runXmlTestCases`).
 
 ### Signature
 
@@ -280,7 +335,7 @@ try {
 }
 ```
 
-### When to use over runTestCases
+### When to use over runXmlTestCases
 
 - Asserting intermediate states between transactions
 - Tests that need multiple exports at different stages
@@ -346,6 +401,7 @@ import {
 	createTestRecordFactory,
 	createXmlAssertions,
 	runTestCases,
+	runXmlTestCases,
 	XMLNS_DEV_NAMESPACE,
 	TEST_DIALECTE_CONFIG,
 } from '@dialecte/core/test'
@@ -357,12 +413,15 @@ export const XMLNS_DEFAULT_NAMESPACE = `xmlns="http://dialecte.dev/XML/DEFAULT"`
 export const ALL_XMLNS_NAMESPACES = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 export { CUSTOM_RECORD_ID_ATTRIBUTE, CUSTOM_RECORD_ID_ATTRIBUTE_NAME }
 
-// Wrap runTestCases with the dialecte config
-export function runDialecteTestCases<GenericTestCase extends BaseTestCase>(params: {
+// Wrap runTestCases with no config (pure sync, no config needed)
+export { runTestCases }
+
+// Wrap runXmlTestCases with the dialecte config
+export function runDialecteXmlTestCases<GenericTestCase extends BaseXmlTestCase>(params: {
 	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericTestCase>) => Promise<ActResult>
+	act: (params: ActParams<GenericTestCase>) => Promise<ActResult | void>
 }): void {
-	return runTestCases({ ...params, dialecteConfig: TEST_DIALECTE_CONFIG })
+	return runXmlTestCases({ ...params, dialecteConfig: TEST_DIALECTE_CONFIG })
 }
 
 // Wrap createTestDialecte with the dialecte config
@@ -383,31 +442,33 @@ export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = 
 
 | Export                                                            | Purpose                                                                                   |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `runDialecteTestCases`                                            | Table-driven runner pre-bound to the dialecte config                                      |
+| `runTestCases`                                                    | Sync table-driven runner for pure-function tests                                          |
+| `runDialecteXmlTestCases`                                         | Async XML runner pre-bound to the dialecte config                                         |
 | `createDialecteTestDialecte`                                      | Manual test setup pre-bound to the dialecte config                                        |
-| `createDialecteTestRecord`                                        | Typed record factory — `tagName` is narrowed to the dialecte's elements                   |
+| `createDialecteTestRecord`                                        | Typed record factory — `tagName` narrowed to the dialecte's elements                      |
 | `assertExpectedElementQueries` / `assertUnexpectedElementQueries` | XPath assertions with namespace prefix resolution pre-configured                          |
 | Namespace constants                                               | `XMLNS_*` strings for XML template literals; `CUSTOM_RECORD_ID_ATTRIBUTE` for `dev:db-id` |
 
 ### Usage in tests
 
 ```ts
-import { runDialecteTestCases, ALL_XMLNS_NAMESPACES, CUSTOM_RECORD_ID_ATTRIBUTE } from '@/test'
+import { runDialecteXmlTestCases, ALL_XMLNS_NAMESPACES, CUSTOM_RECORD_ID_ATTRIBUTE } from '@/test'
 
-runDialecteTestCases({
+runDialecteXmlTestCases({
 	testCases: {
 		'element A updated → attribute aA has new value': {
 			sourceXml: `
-        <Root ${ALL_XMLNS_NAMESPACES} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
-          <A aA="old" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
-        </Root>
-      `,
-			expectedQueries: ['//A[@aA="new"]'],
+				<Root ${ALL_XMLNS_NAMESPACES}>
+					<A aA="old" ${CUSTOM_RECORD_ID_ATTRIBUTE}="a1"/>
+				</Root>
+			`,
+			expectedQueries: ['//default:A[@aA="new"]'],
+			unexpectedQueries: ['//default:A[@aA="old"]'],
 		},
 	},
 	act: async ({ source }) => {
 		await source.document.transaction(async (tx) => {
-			await tx.update({ tagName: 'A', id: '2' }, { attributes: { aA: 'new' } })
+			await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'new' } })
 		})
 		return { assertDatabaseName: source.databaseName }
 	},

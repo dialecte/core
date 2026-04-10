@@ -6,7 +6,13 @@ import { it } from 'vitest'
 
 import { exportXmlFile } from '@/io'
 
-import type { BaseTestCase, TestCases, ActParams, ActResult } from './run-test-cases.type'
+import type {
+	BaseTestCase,
+	BaseXmlTestCase,
+	TestCases,
+	ActParams,
+	ActResult,
+} from './run-test-cases.type'
 import type { AnyDialecteConfig } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
@@ -24,12 +30,28 @@ export function createMockRandomUUID(): () => `${string}-${string}-${string}-${s
 
 // ── Runner ───────────────────────────────────────────────────────────────────
 
-export function runTestCases<
-	GenericTestCase extends BaseTestCase,
+export function runXmlTestCases<
+	GenericTestCase extends BaseXmlTestCase,
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
 >(params: {
 	testCases: TestCases<GenericTestCase>
 	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
+	dialecteConfig?: GenericConfig
+}): void
+export function runXmlTestCases<
+	GenericTestCase extends BaseXmlTestCase,
+	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+>(params: {
+	testCases: TestCases<GenericTestCase>
+	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
+	dialecteConfig?: GenericConfig
+}): void
+export function runXmlTestCases<
+	GenericTestCase extends BaseXmlTestCase,
+	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+>(params: {
+	testCases: TestCases<GenericTestCase>
+	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult | void>
 	dialecteConfig?: GenericConfig
 }): void {
 	const {
@@ -61,32 +83,68 @@ export function runTestCases<
 				// Act — mock UUIDs for deterministic creation
 				crypto.randomUUID = createMockRandomUUID()
 
-				const { assertDatabaseName } = await act({
+				const actResult = await act({
 					testCase,
 					source: { document: source.document, databaseName: source.databaseName },
 					target: target
 						? { document: target.document, databaseName: target.databaseName }
 						: undefined,
 				})
+				const assertDatabaseName = actResult?.assertDatabaseName
 
-				const { xmlDocument } = await exportXmlFile({
-					dialecteConfig,
-					databaseName: assertDatabaseName,
-					extension: dialecteConfig.io.supportedFileExtensions[0],
-					withDatabaseIds: true,
-				})
+				const hasXmlAssertions =
+					testCase.expectedQueries?.length || testCase.unexpectedQueries?.length
 
-				if (testCase.expectedQueries?.length) {
-					assertExpectedElementQueries({ xmlDocument, queries: testCase.expectedQueries })
-				}
+				if (hasXmlAssertions) {
+					if (!assertDatabaseName) {
+						throw new Error(
+							`Test "${description}": assertDatabaseName is required when expectedQueries or unexpectedQueries are defined`,
+						)
+					}
 
-				if (testCase.unexpectedQueries?.length) {
-					assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
+					const { xmlDocument } = await exportXmlFile({
+						dialecteConfig,
+						databaseName: assertDatabaseName,
+						extension: dialecteConfig.io.supportedFileExtensions[0],
+						withDatabaseIds: true,
+					})
+
+					if (testCase.expectedQueries?.length) {
+						assertExpectedElementQueries({ xmlDocument, queries: testCase.expectedQueries })
+					}
+
+					if (testCase.unexpectedQueries?.length) {
+						assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
+					}
 				}
 			} finally {
 				await source.cleanup()
 				await target?.cleanup()
 			}
 		})
+	}
+}
+
+/**
+ * Runs a record of synchronous test cases where each key is the test description.
+ * Use for pure-function table-driven tests that need no XML or async setup.
+ *
+ * @example
+ * ```ts
+ * runTestCases<{ input: number; expected: number }>({
+ *   'positive → doubled': { input: 2, expected: 4 },
+ *   'zero → zero':        { input: 0, expected: 0 },
+ * }, ({ input, expected }) => {
+ *   expect(double(input)).toBe(expected)
+ * })
+ * ```
+ */
+export function runTestCases<GenericTestCase extends BaseTestCase>(
+	testCases: Record<string, GenericTestCase>,
+	act: (testCase: GenericTestCase) => void,
+): void {
+	for (const [description, testCase] of Object.entries(testCases)) {
+		const testFn = testCase.only ? it.only : it
+		testFn(description, () => act(testCase))
 	}
 }

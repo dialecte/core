@@ -1,10 +1,10 @@
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, XMLNS_EXT_NAMESPACE } from './constant'
-import { runTestCases } from './run-test-cases'
+import { runXmlTestCases } from './run-test-cases'
 
 import { describe, expect } from 'vitest'
 
 import type { TEST_DIALECTE_CONFIG } from './config'
-import type { BaseTestCase, TestCases, ActParams, ActResult } from './run-test-cases.type'
+import type { BaseXmlTestCase, TestCases, ActParams, ActResult } from './run-test-cases.type'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
@@ -12,7 +12,7 @@ const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESP
 
 describe('runTestCases', () => {
 	describe('source-only tests', () => {
-		type TestCase = BaseTestCase
+		type TestCase = BaseXmlTestCase
 
 		const testCases: TestCases<TestCase> = {
 			'source XML imported and exported → expected element found': {
@@ -33,7 +33,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runTestCases<TestCase>({
+		runXmlTestCases<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				return { assertDatabaseName: source.databaseName }
@@ -42,7 +42,7 @@ describe('runTestCases', () => {
 	})
 
 	describe('source + target tests', () => {
-		type TestCase = BaseTestCase & { targetXml: string }
+		type TestCase = BaseXmlTestCase & { targetXml: string }
 
 		const testCases: TestCases<TestCase> = {
 			'target document accessible in act → asserts on target': {
@@ -52,7 +52,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runTestCases<TestCase>({
+		runXmlTestCases<TestCase>({
 			testCases,
 			act: async ({ target }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				expect(target, 'target context must be provided when targetXml is set').toBeDefined()
@@ -62,7 +62,7 @@ describe('runTestCases', () => {
 	})
 
 	describe('act receives document with working query API', () => {
-		type TestCase = BaseTestCase
+		type TestCase = BaseXmlTestCase
 
 		const testCases: TestCases<TestCase> = {
 			'document.query.getRecordsByTagName returns imported records': {
@@ -71,7 +71,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runTestCases<TestCase>({
+		runXmlTestCases<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				const records = await source.document.query.getRecordsByTagName('A')
@@ -82,7 +82,7 @@ describe('runTestCases', () => {
 	})
 
 	describe('mutation through document.transaction', () => {
-		type TestCase = BaseTestCase
+		type TestCase = BaseXmlTestCase
 
 		const testCases: TestCases<TestCase> = {
 			'element added via transaction → visible in exported XML': {
@@ -94,7 +94,7 @@ describe('runTestCases', () => {
 			},
 		}
 
-		runTestCases<TestCase>({
+		runXmlTestCases<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				const [recordA] = await source.document.query.getRecordsByTagName('A')
@@ -110,7 +110,7 @@ describe('runTestCases', () => {
 	})
 
 	describe('cleanup on act failure', () => {
-		type TestCase = BaseTestCase
+		type TestCase = BaseXmlTestCase
 
 		const testCases: TestCases<TestCase> = {
 			'act throws → cleanup still runs (no leaked DBs)': {
@@ -120,7 +120,7 @@ describe('runTestCases', () => {
 
 		// The real cleanup signal is that the full suite passes without DB leak warnings.
 		// Here we just confirm the round-trip works even with a minimal empty-root document.
-		runTestCases<TestCase>({
+		runXmlTestCases<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				return { assertDatabaseName: source.databaseName }

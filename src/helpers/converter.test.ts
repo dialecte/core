@@ -1,10 +1,11 @@
 import { toTrackedRecord, toRawRecord, toTreeRecord, toFullAttributeArray } from './converter'
 import { isRawRecord, isTrackedRecord, isTreeRecord } from './guard'
 
-import { describe, it, expect } from 'vitest'
+import { describe, expect } from 'vitest'
 
-import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '@/test'
+import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES, runTestCases } from '@/test'
 
+import type { BaseTestCase } from '@/test'
 import type {
 	RawRecord,
 	TrackedRecord,
@@ -19,8 +20,7 @@ describe('Record Converter', () => {
 	type TestElement = ElementsOf<TestConfig>
 
 	describe('toRawRecord', () => {
-		type TestCase = {
-			desc: string
+		type TestCase = BaseTestCase & {
 			input:
 				| RawRecord<TestConfig, TestElement>
 				| TrackedRecord<TestConfig, TestElement>
@@ -28,9 +28,8 @@ describe('Record Converter', () => {
 			expectedKeys: number
 		}
 
-		const testCases: TestCase[] = [
-			{
-				desc: 'converts ChainRecord to RawRecord by stripping status',
+		const testCases: Record<string, TestCase> = {
+			'converts ChainRecord to RawRecord by stripping status': {
 				input: {
 					id: '1',
 					tagName: 'A',
@@ -43,8 +42,7 @@ describe('Record Converter', () => {
 				},
 				expectedKeys: 7,
 			},
-			{
-				desc: 'converts TreeRecord to RawRecord by stripping status and tree',
+			'converts TreeRecord to RawRecord by stripping status and tree': {
 				input: {
 					id: '2',
 					tagName: 'A',
@@ -58,8 +56,7 @@ describe('Record Converter', () => {
 				},
 				expectedKeys: 7,
 			},
-			{
-				desc: 'returns RawRecord unchanged',
+			'returns RawRecord unchanged': {
 				input: {
 					id: '3',
 					tagName: 'A',
@@ -71,22 +68,21 @@ describe('Record Converter', () => {
 				},
 				expectedKeys: 7,
 			},
-		]
+		}
 
-		testCases.forEach(({ desc, input, expectedKeys }) => {
-			it(desc, () => {
-				const result = toRawRecord(input)
-				expect(Object.keys(result)).toHaveLength(expectedKeys)
-				expect(isRawRecord(result)).toBe(true)
-				expect('status' in result).toBe(false)
-				expect('tree' in result).toBe(false)
-			})
-		})
+		function act({ input, expectedKeys }: TestCase) {
+			const result = toRawRecord(input)
+			expect(Object.keys(result)).toHaveLength(expectedKeys)
+			expect(isRawRecord(result)).toBe(true)
+			expect('status' in result).toBe(false)
+			expect('tree' in result).toBe(false)
+		}
+
+		runTestCases(testCases, act)
 	})
 
 	describe('toChainRecord', () => {
-		type TestCase = {
-			desc: string
+		type TestCase = BaseTestCase & {
 			input: {
 				record:
 					| RawRecord<TestConfig, 'A'>
@@ -107,19 +103,16 @@ describe('Record Converter', () => {
 			value: '',
 		}
 
-		const testCases: TestCase[] = [
-			{
-				desc: 'converts RawRecord to ChainRecord with default status=unchanged',
+		const testCases: Record<string, TestCase> = {
+			'converts RawRecord to ChainRecord with default status=unchanged': {
 				input: { record: rawRecord },
 				expectedStatus: 'unchanged',
 			},
-			{
-				desc: 'converts RawRecord to ChainRecord with custom status',
+			'converts RawRecord to ChainRecord with custom status': {
 				input: { record: rawRecord, status: 'created' },
 				expectedStatus: 'created',
 			},
-			{
-				desc: 'param overrides ChainRecord status',
+			'param overrides ChainRecord status': {
 				input: {
 					record: {
 						...rawRecord,
@@ -129,8 +122,7 @@ describe('Record Converter', () => {
 				},
 				expectedStatus: 'created',
 			},
-			{
-				desc: 'strips tree from TreeRecord',
+			'strips tree from TreeRecord': {
 				input: {
 					record: {
 						...rawRecord,
@@ -140,21 +132,20 @@ describe('Record Converter', () => {
 				},
 				expectedStatus: 'created',
 			},
-		]
+		}
 
-		testCases.forEach(({ desc, input, expectedStatus }) => {
-			it(desc, () => {
-				const result = toTrackedRecord(input)
-				expect(isTrackedRecord(result)).toBe(true)
-				expect(result.status).toBe(expectedStatus)
-				expect('tree' in result).toBe(false)
-			})
-		})
+		function act({ input, expectedStatus }: TestCase) {
+			const result = toTrackedRecord(input)
+			expect(isTrackedRecord(result)).toBe(true)
+			expect(result.status).toBe(expectedStatus)
+			expect('tree' in result).toBe(false)
+		}
+
+		runTestCases(testCases, act)
 	})
 
 	describe('toTreeRecord', () => {
-		type TestCase = {
-			desc: string
+		type TestCase = BaseTestCase & {
 			input: {
 				record:
 					| RawRecord<TestConfig, TestElement>
@@ -189,15 +180,13 @@ describe('Record Converter', () => {
 			tree: [],
 		} as TreeRecord<TestConfig, 'AA_1'>
 
-		const testCases: TestCase[] = [
-			{
-				desc: 'converts RawRecord to TreeRecord with default status and empty tree',
+		const testCases: Record<string, TestCase> = {
+			'converts RawRecord to TreeRecord with default status and empty tree': {
 				input: { record: rawRecord },
 				expectedStatus: 'unchanged',
 				expectedTreeLength: 0,
 			},
-			{
-				desc: 'converts RawRecord to TreeRecord with custom status and tree',
+			'converts RawRecord to TreeRecord with custom status and tree': {
 				input: {
 					record: rawRecord,
 					status: 'created',
@@ -206,16 +195,14 @@ describe('Record Converter', () => {
 				expectedStatus: 'created',
 				expectedTreeLength: 1,
 			},
-			{
-				desc: 'converts ChainRecord to TreeRecord with empty tree',
+			'converts ChainRecord to TreeRecord with empty tree': {
 				input: {
 					record: { ...rawRecord, status: 'updated' } as TreeRecord<TestConfig, TestElement>,
 				},
 				expectedStatus: 'updated',
 				expectedTreeLength: 0,
 			},
-			{
-				desc: 'returns TreeRecord unchanged',
+			'returns TreeRecord unchanged': {
 				input: {
 					record: {
 						...rawRecord,
@@ -226,21 +213,20 @@ describe('Record Converter', () => {
 				expectedStatus: 'created',
 				expectedTreeLength: 1,
 			},
-		]
+		}
 
-		testCases.forEach(({ desc, input, expectedStatus, expectedTreeLength }) => {
-			it(desc, () => {
-				const result = toTreeRecord(input)
-				expect(isTreeRecord(result)).toBe(true)
-				expect(result.status).toBe(expectedStatus)
-				expect(result.tree).toHaveLength(expectedTreeLength)
-			})
-		})
+		function act({ input, expectedStatus, expectedTreeLength }: TestCase) {
+			const result = toTreeRecord(input)
+			expect(isTreeRecord(result)).toBe(true)
+			expect(result.status).toBe(expectedStatus)
+			expect(result.tree).toHaveLength(expectedTreeLength)
+		}
+
+		runTestCases(testCases, act)
 	})
 
 	describe('toFullAttributeArray', () => {
-		type TestCase = {
-			desc: string
+		type TestCase = BaseTestCase & {
 			input: {
 				tagName: 'A'
 				attributes:
@@ -252,9 +238,8 @@ describe('Record Converter', () => {
 			isArray: boolean
 		}
 
-		const testCases: TestCase[] = [
-			{
-				desc: 'returns array format unchanged',
+		const testCases: Record<string, TestCase> = {
+			'returns array format unchanged': {
 				input: {
 					tagName: 'A',
 					attributes: { aA: 'val1' },
@@ -263,8 +248,7 @@ describe('Record Converter', () => {
 				expectedLength: 1,
 				isArray: true,
 			},
-			{
-				desc: 'converts object format to array format',
+			'converts object format to array format': {
 				input: {
 					tagName: 'A',
 					attributes: { aA: 'val1' },
@@ -273,8 +257,7 @@ describe('Record Converter', () => {
 				expectedLength: 1,
 				isArray: true,
 			},
-			{
-				desc: 'handles empty array',
+			'handles empty array': {
 				input: {
 					tagName: 'A',
 					attributes: [] as FullAttributeObjectOf<TestConfig, 'A'>[],
@@ -283,8 +266,7 @@ describe('Record Converter', () => {
 				expectedLength: 0,
 				isArray: true,
 			},
-			{
-				desc: 'handles empty object',
+			'handles empty object': {
 				input: {
 					tagName: 'A',
 					attributes: {} as AttributesValueObjectOf<TestConfig, 'A'>,
@@ -293,8 +275,7 @@ describe('Record Converter', () => {
 				expectedLength: 0,
 				isArray: true,
 			},
-			{
-				desc: 'converts multiple attributes',
+			'converts multiple attributes': {
 				input: {
 					tagName: 'A',
 					attributes: [
@@ -306,18 +287,18 @@ describe('Record Converter', () => {
 				expectedLength: 2,
 				isArray: true,
 			},
-		]
+		}
 
-		testCases.forEach(({ desc, input, expectedLength, isArray }) => {
-			it(desc, () => {
-				const result = toFullAttributeArray(input)
-				expect(Array.isArray(result)).toBe(isArray)
-				expect(result).toHaveLength(expectedLength)
-				result.forEach((attr) => {
-					expect(attr).toHaveProperty('name')
-					expect(attr).toHaveProperty('value')
-				})
+		function act({ input, expectedLength, isArray }: TestCase) {
+			const result = toFullAttributeArray(input)
+			expect(Array.isArray(result)).toBe(isArray)
+			expect(result).toHaveLength(expectedLength)
+			result.forEach((attr) => {
+				expect(attr).toHaveProperty('name')
+				expect(attr).toHaveProperty('value')
 			})
-		})
+		}
+
+		runTestCases(testCases, act)
 	})
 })

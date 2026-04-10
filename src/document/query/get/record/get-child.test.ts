@@ -1,24 +1,30 @@
 import { describe, expect, it } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestDialecte } from '@/test'
+import {
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+	createTestDialecte,
+	runXmlTestCases,
+} from '@/test'
+
+import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getChild', () => {
 	describe('store reads', () => {
-		type TestCase = {
-			xmlString: string
+		type TestCase = BaseXmlTestCase & {
 			parentRef: { tagName: 'A'; id: string }
 			childTagName: 'AA_1' | 'AA_2' | 'AA_3'
 			expectedId?: string
 			expectUndefined?: true
 		}
 
-		const testCases: Record<string, TestCase> = {
+		const testCases: TestCases<TestCase> = {
 			'returns matching child record': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v">
 							<AA_1 ${customId}="aa1" aAA_1="c" />
@@ -30,7 +36,7 @@ describe('getChild', () => {
 				expectedId: 'aa1',
 			},
 			'returns first child when multiple exist': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v">
 							<AA_1 ${customId}="aa1" aAA_1="first" />
@@ -43,7 +49,7 @@ describe('getChild', () => {
 				expectedId: 'aa1',
 			},
 			'returns undefined when parent has no matching child tag': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v">
 							<AA_1 ${customId}="aa1" aAA_1="c" />
@@ -55,13 +61,13 @@ describe('getChild', () => {
 				expectUndefined: true,
 			},
 			'returns undefined when parent does not exist': {
-				xmlString: /* xml */ `<Root ${ns} />`,
+				sourceXml: /* xml */ `<Root ${ns} />`,
 				parentRef: { tagName: 'A', id: 'non-existent' },
 				childTagName: 'AA_1',
 				expectUndefined: true,
 			},
 			'returns undefined when parent has no children': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 					</Root>
@@ -72,24 +78,23 @@ describe('getChild', () => {
 			},
 		}
 
-		it.each(Object.entries(testCases))('%s', async (_, tc) => {
-			const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			const child = await source.document.query.getChild(testCase.parentRef, testCase.childTagName)
 
-			try {
-				const child = await document.query.getChild(tc.parentRef, tc.childTagName)
-
-				if (tc.expectUndefined) {
-					expect(child).toBeUndefined()
-				} else {
-					expect(child).toBeDefined()
-					if (tc.expectedId !== undefined) expect(child?.id).toBe(tc.expectedId)
-					expect(child?.tagName).toBe(tc.childTagName)
-					expect(child?.status).toBe('unchanged')
-				}
-			} finally {
-				await cleanup()
+			if (testCase.expectUndefined) {
+				expect(child).toBeUndefined()
+			} else {
+				expect(child).toBeDefined()
+				if (testCase.expectedId !== undefined) expect(child?.id).toBe(testCase.expectedId)
+				expect(child?.tagName).toBe(testCase.childTagName)
+				expect(child?.status).toBe('unchanged')
 			}
-		})
+		}
+
+		runXmlTestCases({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {

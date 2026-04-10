@@ -1,24 +1,30 @@
 import { describe, expect, it } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestDialecte } from '@/test'
+import {
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+	createTestDialecte,
+	runXmlTestCases,
+} from '@/test'
+
+import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getChildren', () => {
 	describe('store reads', () => {
-		type TestCase = {
-			xmlString: string
+		type TestCase = BaseXmlTestCase & {
 			parentRef: { tagName: 'A'; id: string }
 			childTagName: 'AA_1' | 'AA_2' | 'AA_3'
 			expectedCount: number
 			expectedIds?: string[]
 		}
 
-		const testCases: Record<string, TestCase> = {
+		const testCases: TestCases<TestCase> = {
 			'returns empty array when parent has no matching children': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 					</Root>
@@ -28,7 +34,7 @@ describe('getChildren', () => {
 				expectedCount: 0,
 			},
 			'returns all matching children': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v">
 							<AA_1 ${customId}="aa1" aAA_1="first" />
@@ -43,7 +49,7 @@ describe('getChildren', () => {
 				expectedIds: ['aa1', 'aa2', 'aa3'],
 			},
 			'returns only children matching requested tag, ignores siblings of other tags': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v">
 							<AA_1 ${customId}="aa1" aAA_1="v" />
@@ -57,34 +63,36 @@ describe('getChildren', () => {
 				expectedIds: ['aa1'],
 			},
 			'returns empty array when parent does not exist': {
-				xmlString: /* xml */ `<Root ${ns} />`,
+				sourceXml: /* xml */ `<Root ${ns} />`,
 				parentRef: { tagName: 'A', id: 'non-existent' },
 				childTagName: 'AA_1',
 				expectedCount: 0,
 			},
 		}
 
-		it.each(Object.entries(testCases))('%s', async (_, tc) => {
-			const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			const children = await source.document.query.getChildren(
+				testCase.parentRef,
+				testCase.childTagName,
+			)
 
-			try {
-				const children = await document.query.getChildren(tc.parentRef, tc.childTagName)
+			expect(children).toHaveLength(testCase.expectedCount)
 
-				expect(children).toHaveLength(tc.expectedCount)
-
-				if (tc.expectedIds) {
-					const ids = children.map((c) => c.id)
-					for (const id of tc.expectedIds) expect(ids).toContain(id)
-				}
-
-				for (const child of children) {
-					expect(child.tagName).toBe(tc.childTagName)
-					expect(child.status).toBe('unchanged')
-				}
-			} finally {
-				await cleanup()
+			if (testCase.expectedIds) {
+				const ids = children.map((c) => c.id)
+				for (const id of testCase.expectedIds) expect(ids).toContain(id)
 			}
-		})
+
+			for (const child of children) {
+				expect(child.tagName).toBe(testCase.childTagName)
+				expect(child.status).toBe('unchanged')
+			}
+		}
+
+		runXmlTestCases({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {

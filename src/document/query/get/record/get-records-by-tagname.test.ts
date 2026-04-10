@@ -9,28 +9,30 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	createTestContext,
 	createTestDialecte,
+	runXmlTestCases,
 } from '@/test'
+
+import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getRecordsByTagName', () => {
 	describe('store reads', () => {
-		type TestCase = {
-			xmlString: string
+		type TestCase = BaseXmlTestCase & {
 			tagName: 'A' | 'B' | 'AA_1'
 			expectedCount: number
 			expectedIds?: string[]
 		}
 
-		const testCases: Record<string, TestCase> = {
+		const testCases: TestCases<TestCase> = {
 			'returns empty array when no records match tagName': {
-				xmlString: /* xml */ `<Root ${ns} />`,
+				sourceXml: /* xml */ `<Root ${ns} />`,
 				tagName: 'A',
 				expectedCount: 0,
 			},
 			'returns single record matching tagName': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 					</Root>
@@ -40,7 +42,7 @@ describe('getRecordsByTagName', () => {
 				expectedIds: ['a1'],
 			},
 			'returns all records of a tagName when multiple exist': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="first" />
 						<A ${customId}="a2" aA="second" />
@@ -52,7 +54,7 @@ describe('getRecordsByTagName', () => {
 				expectedIds: ['a1', 'a2', 'a3'],
 			},
 			'only returns records of the requested tagName': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 						<B ${customId}="b1" aB="v" />
@@ -63,7 +65,7 @@ describe('getRecordsByTagName', () => {
 				expectedIds: ['a1'],
 			},
 			'returns records with status unchanged': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 					</Root>
@@ -73,28 +75,27 @@ describe('getRecordsByTagName', () => {
 			},
 		}
 
-		it.each(Object.entries(testCases))('%s', async (_, tc) => {
-			const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			const records = await source.document.query.getRecordsByTagName(testCase.tagName)
 
-			try {
-				const records = await document.query.getRecordsByTagName(tc.tagName)
+			expect(records).toHaveLength(testCase.expectedCount)
 
-				expect(records).toHaveLength(tc.expectedCount)
-
-				if (tc.expectedIds) {
-					const ids = records.map((r) => r.id)
-					for (const id of tc.expectedIds) {
-						expect(ids).toContain(id)
-					}
+			if (testCase.expectedIds) {
+				const ids = records.map((r) => r.id)
+				for (const id of testCase.expectedIds) {
+					expect(ids).toContain(id)
 				}
-
-				for (const record of records) {
-					expect(record.status).toBe('unchanged')
-				}
-			} finally {
-				await cleanup()
 			}
-		})
+
+			for (const record of records) {
+				expect(record.status).toBe('unchanged')
+			}
+		}
+
+		runXmlTestCases({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {

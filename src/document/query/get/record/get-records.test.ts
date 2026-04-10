@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestDialecte } from '@/test'
+import {
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+	createTestDialecte,
+	runXmlTestCases,
+} from '@/test'
 
-import type { TestDialecteConfig } from '@/test'
+import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { ElementsOf, Ref } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
@@ -11,20 +16,19 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getRecords', () => {
 	describe('store reads', () => {
-		type TestCase = {
-			xmlString: string
+		type TestCase = BaseXmlTestCase & {
 			refs: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>[]
 			expectedResults: ({ id: string; tagName: string; status: 'unchanged' } | undefined)[]
 		}
 
-		const testCases: Record<string, TestCase> = {
+		const testCases: TestCases<TestCase> = {
 			'returns empty array for empty refs': {
-				xmlString: /* xml */ `<Root ${ns} />`,
+				sourceXml: /* xml */ `<Root ${ns} />`,
 				refs: [],
 				expectedResults: [],
 			},
 			'returns a single found record': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 					</Root>
@@ -33,12 +37,12 @@ describe('getRecords', () => {
 				expectedResults: [{ id: 'a1', tagName: 'A', status: 'unchanged' }],
 			},
 			'returns undefined for a missing ref': {
-				xmlString: /* xml */ `<Root ${ns} />`,
+				sourceXml: /* xml */ `<Root ${ns} />`,
 				refs: [{ tagName: 'A', id: 'non-existent' }],
 				expectedResults: [undefined],
 			},
 			'preserves order of results matching order of refs': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="first" />
 						<A ${customId}="a2" aA="second" />
@@ -57,7 +61,7 @@ describe('getRecords', () => {
 				],
 			},
 			'mixes found and undefined for partial matches': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 					</Root>
@@ -69,7 +73,7 @@ describe('getRecords', () => {
 				expectedResults: [{ id: 'a1', tagName: 'A', status: 'unchanged' }, undefined],
 			},
 			'resolves refs of different tagNames': {
-				xmlString: /* xml */ `
+				sourceXml: /* xml */ `
 					<Root ${ns}>
 						<A ${customId}="a1" aA="v" />
 						<B ${customId}="b1" aB="v" />
@@ -86,26 +90,25 @@ describe('getRecords', () => {
 			},
 		}
 
-		it.each(Object.entries(testCases))('%s', async (_, tc) => {
-			const { document, cleanup } = await createTestDialecte({ xmlString: tc.xmlString })
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			const results = await source.document.query.getRecords(testCase.refs)
 
-			try {
-				const results = await document.query.getRecords(tc.refs)
+			expect(results).toHaveLength(testCase.expectedResults.length)
 
-				expect(results).toHaveLength(tc.expectedResults.length)
-
-				for (let i = 0; i < tc.expectedResults.length; i++) {
-					const expected = tc.expectedResults[i]
-					if (expected === undefined) {
-						expect(results[i]).toBeUndefined()
-					} else {
-						expect(results[i]).toMatchObject(expected)
-					}
+			for (let i = 0; i < testCase.expectedResults.length; i++) {
+				const expected = testCase.expectedResults[i]
+				if (expected === undefined) {
+					expect(results[i]).toBeUndefined()
+				} else {
+					expect(results[i]).toMatchObject(expected)
 				}
-			} finally {
-				await cleanup()
 			}
-		})
+		}
+
+		runXmlTestCases({ testCases, act })
 	})
 
 	describe('staged operation visibility', () => {

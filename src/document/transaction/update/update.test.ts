@@ -1,14 +1,14 @@
 import { describe } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runXmlTestCases } from '@/test'
 
 import type { UpdateParams } from './update.types'
-import type { ActParams, ActResult, BaseTestCase, TestCases, TestDialecteConfig } from '@/test'
+import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { Ref } from '@/types'
 
 describe('stageUpdate', () => {
-	type TestCase = BaseTestCase & {
+	type TestCase = BaseXmlTestCase & {
 		targetRef: Ref<TestDialecteConfig, 'A'> | Ref<TestDialecteConfig, 'B'>
 		updateParams: UpdateParams<TestDialecteConfig, 'A'> | UpdateParams<TestDialecteConfig, 'B'>
 	}
@@ -116,5 +116,5 @@ describe('stageUpdate', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runTestCases({ testCases, act })
+	runXmlTestCases({ testCases, act })
 })

@@ -6,10 +6,12 @@ import {
 	isRecordOf,
 } from './guard'
 
-import { describe, it, expect } from 'vitest'
+import { describe, expect } from 'vitest'
 
-import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES } from '@/test'
+import { DIALECTE_NAMESPACES, runTestCases } from '@/test'
+import { TEST_DIALECTE_CONFIG } from '@/test'
 
+import type { BaseTestCase } from '@/test'
 import type {
 	RawRecord,
 	TrackedRecord,
@@ -23,15 +25,13 @@ import type {
 type TestConfig = typeof TEST_DIALECTE_CONFIG
 
 describe('isRawRecord', () => {
-	type TestCase = {
-		desc: string
+	type TestCase = BaseTestCase & {
 		record: unknown
 		expected: boolean
 	}
 
-	const testCases: TestCase[] = [
-		{
-			desc: 'valid RawRecord',
+	const testCases: Record<string, TestCase> = {
+		'valid RawRecord': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -43,8 +43,7 @@ describe('isRawRecord', () => {
 			},
 			expected: true,
 		},
-		{
-			desc: 'rejects TrackedRecord (has status)',
+		'rejects TrackedRecord (has status)': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -57,8 +56,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects TreeRecord (has status and tree)',
+		'rejects TreeRecord (has status and tree)': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -72,8 +70,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object missing id',
+		'rejects object missing id': {
 			record: {
 				tagName: 'Root',
 				namespace: DIALECTE_NAMESPACES.default,
@@ -84,8 +81,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object missing tagName',
+		'rejects object missing tagName': {
 			record: {
 				id: '1',
 				namespace: DIALECTE_NAMESPACES.default,
@@ -96,8 +92,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object missing namespace',
+		'rejects object missing namespace': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -108,8 +103,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object missing attributes',
+		'rejects object missing attributes': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -120,8 +114,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object missing children',
+		'rejects object missing children': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -132,8 +125,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object missing parent',
+		'rejects object missing parent': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -144,8 +136,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object missing value',
+		'rejects object missing value': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -156,8 +147,7 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-		{
-			desc: 'rejects object with extra properties',
+		'rejects object with extra properties': {
 			record: {
 				id: '1',
 				tagName: 'Root',
@@ -168,18 +158,17 @@ describe('isRawRecord', () => {
 			},
 			expected: false,
 		},
-	]
+	}
 
-	testCases.forEach(({ desc, record, expected }) => {
-		it(desc, () => {
-			expect(isRawRecord(record)).toBe(expected)
-		})
-	})
+	function act({ record, expected }: TestCase) {
+		expect(isRawRecord(record)).toBe(expected)
+	}
+
+	runTestCases(testCases, act)
 })
 
 describe('isTrackedRecord', () => {
-	type TestCase = {
-		desc: string
+	type TestCase = BaseTestCase & {
 		record: RawRecord<TestConfig, 'Root'> | TrackedRecord<TestConfig, 'Root'>
 		expected: boolean
 	}
@@ -205,39 +194,34 @@ describe('isTrackedRecord', () => {
 		value: '',
 	}
 
-	const testCases: TestCase[] = [
-		{
-			desc: 'valid TrackedRecord with status=unchanged',
+	const testCases: Record<string, TestCase> = {
+		'valid TrackedRecord with status=unchanged': {
 			record: trackedRecord,
 			expected: true,
 		},
-		{
-			desc: 'valid TrackedRecord with status=created',
+		'valid TrackedRecord with status=created': {
 			record: { ...trackedRecord, status: 'created' },
 			expected: true,
 		},
-		{
-			desc: 'valid TrackedRecord with status=updated',
+		'valid TrackedRecord with status=updated': {
 			record: { ...trackedRecord, status: 'updated' },
 			expected: true,
 		},
-		{
-			desc: 'rejects RawRecord (no status)',
+		'rejects RawRecord (no status)': {
 			record: rawRecord,
 			expected: false,
 		},
-	]
+	}
 
-	testCases.forEach(({ desc, record, expected }) => {
-		it(desc, () => {
-			expect(isTrackedRecord(record)).toBe(expected)
-		})
-	})
+	function act({ record, expected }: TestCase) {
+		expect(isTrackedRecord(record)).toBe(expected)
+	}
+
+	runTestCases(testCases, act)
 })
 
 describe('isTreeRecord', () => {
-	type TestCase = {
-		desc: string
+	type TestCase = BaseTestCase & {
 		record:
 			| RawRecord<TestConfig, 'Root'>
 			| TrackedRecord<TestConfig, 'Root'>
@@ -279,82 +263,72 @@ describe('isTreeRecord', () => {
 		},
 	]
 
-	const testCases: TestCase[] = [
-		{
-			desc: 'valid TreeRecord',
+	const testCases: Record<string, TestCase> = {
+		'valid TreeRecord': {
 			record: treeRecord,
 			expected: true,
 		},
-		{
-			desc: 'valid TreeRecord with children in tree',
+		'valid TreeRecord with children in tree': {
 			record: { ...treeRecord, tree: rootTreeRecords },
 			expected: true,
 		},
-		{
-			desc: 'rejects TrackedRecord (no tree)',
+		'rejects TrackedRecord (no tree)': {
 			record: trackedRecord,
 			expected: false,
 		},
-		{
-			desc: 'rejects RawRecord',
+		'rejects RawRecord': {
 			record: rawRecord,
 			expected: false,
 		},
-	]
+	}
 
-	testCases.forEach(({ desc, record, expected }) => {
-		it(desc, () => {
-			expect(isTreeRecord(record)).toBe(expected)
-		})
-	})
+	function act({ record, expected }: TestCase) {
+		expect(isTreeRecord(record)).toBe(expected)
+	}
+
+	runTestCases(testCases, act)
 })
 
 describe('isFullAttributeArray', () => {
-	type TestCase = {
-		desc: string
+	type TestCase = BaseTestCase & {
 		attributes: unknown
 		expected: boolean
 	}
 
-	const testCases: TestCase[] = [
-		{
-			desc: 'array with FullAttributeObjects',
+	const testCases: Record<string, TestCase> = {
+		'array with FullAttributeObjects': {
 			attributes: [
 				{ name: 'aAA_1', value: 'value1', namespace: DIALECTE_NAMESPACES.default },
 				{ name: 'bAA_1', value: 'value2', namespace: DIALECTE_NAMESPACES.default },
 			],
 			expected: true,
 		},
-		{
-			desc: 'empty array',
+		'empty array': {
 			attributes: [],
 			expected: true,
 		},
-		{
-			desc: 'object with AttributesValueObject',
+		'object with AttributesValueObject': {
 			attributes: {
 				aAA_1: 'value1',
 				bAA_1: 'value2',
 			},
 			expected: false,
 		},
-		{
-			desc: 'empty object',
+		'empty object': {
 			attributes: {},
 			expected: false,
 		},
-	]
+	}
 
-	testCases.forEach(({ desc, attributes, expected }) => {
-		it(desc, () => {
-			expect(isFullAttributeArray(attributes)).toBe(expected)
-		})
-	})
+	function act({ attributes, expected }: TestCase) {
+		expect(isFullAttributeArray(attributes)).toBe(expected)
+	}
+
+	runTestCases(testCases, act)
 })
 
 describe('isRecordOf', () => {
-	type TestCase = {
-		desc: string
+	type TestCase = BaseTestCase & {
 		record: AnyRawRecord | AnyTrackedRecord | AnyTreeRecord
 		tagName: ElementsOf<TestConfig>
 		expected: boolean
@@ -382,54 +356,47 @@ describe('isRecordOf', () => {
 		tree: [],
 	}
 
-	const testCases: TestCase[] = [
-		{
-			desc: 'RawRecord matches given tagName',
+	const testCases: Record<string, TestCase> = {
+		'RawRecord matches given tagName': {
 			record: rawRecord,
 			tagName: 'Root',
 			expected: true,
 		},
-		{
-			desc: 'TrackedRecord matches given tagName',
+		'TrackedRecord matches given tagName': {
 			record: trackedRecord,
 			tagName: 'Root',
 			expected: true,
 		},
-		{
-			desc: 'TreeRecord matches given tagName',
+		'TreeRecord matches given tagName': {
 			record: treeRecord,
 			tagName: 'Root',
 			expected: true,
 		},
-		{
-			desc: 'rejects RawRecord with different tagName',
+		'rejects RawRecord with different tagName': {
 			record: rawRecord,
 			tagName: 'A',
 			expected: false,
 		},
-		{
-			desc: 'rejects TrackedRecord with different tagName',
+		'rejects TrackedRecord with different tagName': {
 			record: trackedRecord,
 			tagName: 'A',
 			expected: false,
 		},
-		{
-			desc: 'rejects TreeRecord with different tagName',
+		'rejects TreeRecord with different tagName': {
 			record: treeRecord,
 			tagName: 'A',
 			expected: false,
 		},
-		{
-			desc: 'matches record whose tagName is A',
+		'matches record whose tagName is A': {
 			record: { ...base, tagName: 'A' } as AnyRawRecord,
 			tagName: 'A',
 			expected: true,
 		},
-	]
+	}
 
-	testCases.forEach(({ desc, record, tagName, expected }) => {
-		it(desc, () => {
-			expect(isRecordOf(record, tagName)).toBe(expected)
-		})
-	})
+	function act({ record, tagName, expected }: TestCase) {
+		expect(isRecordOf(record, tagName)).toBe(expected)
+	}
+
+	runTestCases(testCases, act)
 })
