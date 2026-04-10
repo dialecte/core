@@ -23,7 +23,7 @@ export default defineConfig({
 		nav: [
 			{ text: 'Home', link: '/' },
 			{ text: 'Guide', link: '/guide/introduction/getting-started' },
-			{ text: 'Api', link: '/api' },
+			{ text: 'Api', link: '/api/' },
 			{
 				text: 'LLMs',
 				items: [
@@ -57,7 +57,7 @@ export default defineConfig({
 			'/api/': [
 				{
 					text: 'Introduction',
-					items: [{ text: 'Overview', link: '/api' }],
+					items: [{ text: 'Overview', link: '/api/' }],
 				},
 				{
 					text: 'API Reference',

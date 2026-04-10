@@ -57,5 +57,5 @@ See [IO hooks](/io/hooks) for the full reference.
 
 - [IO reference](/io/io) - `importXmlFiles`, `exportXmlFile`, `IOConfig`
 - [IO hooks](/io/hooks) - `beforeImportRecord`, `afterImport`
-- [API overview](/api) - Document, Query, Transaction
+- [API overview](/api/) - Document, Query, Transaction
 - [Transaction hooks](/api/hooks) - mutation lifecycle hooks
