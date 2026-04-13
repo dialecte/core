@@ -160,7 +160,7 @@ type BaseXmlTestCase = {
 }
 ```
 
-### What runXmlTestCases does per test
+### What runTestCases does per test
 
 1. Imports `sourceXml` (and `targetXml` if present) into isolated in-memory databases
 2. Calls `act` with the mounted document contexts
@@ -181,7 +181,7 @@ During import, `createTestDialecte` always sets `useCustomRecordsIds: true`. Any
 await tx.update({ tagName: 'A', id: 'elem-a-1' }, { attributes: { aA: 'updated' } })
 ```
 
-Because `runXmlTestCases` exports with `withDatabaseIds: true`, the `dev:db-id` attribute is present in the output XML and XPath assertions can target by ID:
+Because `runTestCases.withExport` exports with `withDatabaseIds: true`, the `dev:db-id` attribute is present in the output XML and XPath assertions can target by ID:
 
 ```ts
 expectedQueries: ['//default:A[@dev:db-id="elem-a-1"][@aA="updated"]']
@@ -189,7 +189,7 @@ expectedQueries: ['//default:A[@dev:db-id="elem-a-1"][@aA="updated"]']
 
 ### Deterministic UUIDs for created elements
 
-When a transaction creates new elements (no `dev:db-id` in the source XML), they receive random UUIDs. `runXmlTestCases` replaces `crypto.randomUUID` with a counter-based mock during `act`, so generated IDs are deterministic: `"0"`, `"1"`, `"2"`, ...
+When a transaction creates new elements (no `dev:db-id` in the source XML), they receive random UUIDs. `runTestCases.withExport` replaces `crypto.randomUUID` with a counter-based mock during `act`, so generated IDs are deterministic: `"0"`, `"1"`, `"2"`, ...
 
 ```ts
 expectedQueries: ['//default:AA_1[@dev:db-id="0"][@aAA_1="created"]']
@@ -197,7 +197,7 @@ expectedQueries: ['//default:AA_1[@dev:db-id="0"][@aAA_1="created"]']
 
 The mock is scoped to each test's act phase. Setup always uses real UUIDs to avoid collisions between parallel tests.
 
-`createMockRandomUUID` is exported for manual tests outside `runXmlTestCases`:
+`createMockRandomUUID` is exported for manual tests outside `runTestCases`:
 
 ```ts
 import { createMockRandomUUID } from '@dialecte/core/test'
@@ -226,7 +226,7 @@ Attributes don't need a prefix unless they are in a specific namespace (e.g. `de
 
 ## createXmlAssertions
 
-Factory that returns a pair of XPath assertion helpers pre-bound to a namespace resolver. Used directly when tests need manual control over export and assertion (outside `runXmlTestCases`).
+Factory that returns a pair of XPath assertion helpers pre-bound to a namespace resolver. Used directly when tests need manual control over export and assertion (outside `runTestCases`).
 
 ### Signature
 
@@ -345,7 +345,7 @@ try {
 }
 ```
 
-### When to use over runXmlTestCases
+### When to use over runTestCases
 
 - Asserting intermediate states between transactions
 - Tests that need multiple exports at different stages
@@ -410,41 +410,32 @@ import {
 	createTestDialecte,
 	createTestRecordFactory,
 	createXmlAssertions,
-	runTestCases,
-	runXmlTestCases,
+	createTestRunner,
 	XMLNS_DEV_NAMESPACE,
-	TEST_DIALECTE_CONFIG,
 } from '@dialecte/core/test'
+import type { TestRunner } from '@dialecte/core/test'
 
-import type { Config } from '@/config/dialecte.config'
+import { MY_DIALECTE_CONFIG } from '@/config'
 
 // Namespace strings for use in XML template literals
 export const XMLNS_DEFAULT_NAMESPACE = `xmlns="http://dialecte.dev/XML/DEFAULT"`
 export const ALL_XMLNS_NAMESPACES = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 export { CUSTOM_RECORD_ID_ATTRIBUTE, CUSTOM_RECORD_ID_ATTRIBUTE_NAME }
 
-// Wrap runTestCases with no config (pure sync, no config needed)
-export { runTestCases }
-
-// Wrap runXmlTestCases with the dialecte config
-export function runDialecteXmlTestCases<GenericTestCase extends BaseXmlTestCase>(params: {
-	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericTestCase>) => Promise<ActResult | void>
-}): void {
-	return runXmlTestCases({ ...params, dialecteConfig: TEST_DIALECTE_CONFIG })
-}
+// Pre-bound runner — same shape as runTestCases but for this dialecte config
+export const runDialecteTestCases = createTestRunner(MY_DIALECTE_CONFIG)
 
 // Wrap createTestDialecte with the dialecte config
 export async function createDialecteTestDialecte(params: { xmlString: string }) {
-	return createTestDialecte({ xmlString: params.xmlString, dialecteConfig: TEST_DIALECTE_CONFIG })
+	return createTestDialecte({ xmlString: params.xmlString, dialecteConfig: MY_DIALECTE_CONFIG })
 }
 
-// Typed record factory — createSclTestRecord({ record: { tagName: 'A', ... } })
-export const createDialecteTestRecord = createTestRecordFactory<Config>(TEST_DIALECTE_CONFIG)
+// Typed record factory — createDialecteTestRecord({ record: { tagName: 'A', ... } })
+export const createDialecteTestRecord = createTestRecordFactory(MY_DIALECTE_CONFIG)
 
 // Namespace-aware XPath assertion helpers
 export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions(
-	{ namespaces: TEST_DIALECTE_CONFIG.namespaces },
+	{ namespaces: MY_DIALECTE_CONFIG.namespaces },
 )
 ```
 
@@ -452,8 +443,7 @@ export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = 
 
 | Export                                                            | Purpose                                                                                   |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `runTestCases`                                                    | Sync table-driven runner for pure-function tests                                          |
-| `runDialecteXmlTestCases`                                         | Async XML runner pre-bound to the dialecte config                                         |
+| `runDialecteTestCases`                                            | Pre-bound runner: `.withExport`, `.withoutExport`, `.generic`                             |
 | `createDialecteTestDialecte`                                      | Manual test setup pre-bound to the dialecte config                                        |
 | `createDialecteTestRecord`                                        | Typed record factory — `tagName` narrowed to the dialecte's elements                      |
 | `assertExpectedElementQueries` / `assertUnexpectedElementQueries` | XPath assertions with namespace prefix resolution pre-configured                          |
@@ -462,9 +452,9 @@ export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = 
 ### Usage in tests
 
 ```ts
-import { runDialecteXmlTestCases, ALL_XMLNS_NAMESPACES, CUSTOM_RECORD_ID_ATTRIBUTE } from '@/test'
+import { runDialecteTestCases, ALL_XMLNS_NAMESPACES, CUSTOM_RECORD_ID_ATTRIBUTE } from '@/test'
 
-runDialecteXmlTestCases({
+runDialecteTestCases.withExport({
 	testCases: {
 		'element A updated → attribute aA has new value': {
 			sourceXml: `

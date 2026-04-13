@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.9] - 2026-04-10
+
+### Added
+
+- `TestRunner<Config>`: exported type for `createTestRunner` return value
+
 ## [0.1.8] - 2026-04-10
 
 ### Added

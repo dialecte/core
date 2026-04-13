@@ -32,3 +32,20 @@ export type ActResult = {
 	assertDatabaseName: string
 	withDatabaseIds?: boolean
 }
+
+export type TestRunner<GenericConfig extends AnyDialecteConfig> = {
+	withExport<GenericTestCase extends BaseXmlTestCase>(params: {
+		testCases: TestCases<GenericTestCase>
+		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
+		dialecteConfig?: GenericConfig
+	}): void
+	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
+		testCases: TestCases<GenericTestCase>
+		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
+		dialecteConfig?: GenericConfig
+	}): void
+	generic<GenericTestCase extends BaseTestCase>(
+		testCases: Record<string, GenericTestCase>,
+		act: (testCase: GenericTestCase) => void,
+	): void
+}

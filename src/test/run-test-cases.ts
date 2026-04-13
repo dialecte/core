@@ -12,6 +12,7 @@ import type {
 	TestCases,
 	ActParams,
 	ActResult,
+	TestRunner,
 } from './run-test-cases.type'
 import type { AnyDialecteConfig } from '@/types'
 
@@ -149,19 +150,7 @@ export const runTestCases = createTestRunner(TEST_DIALECTE_CONFIG)
 
 export function createTestRunner<GenericConfig extends AnyDialecteConfig>(
 	dialecteConfig: GenericConfig,
-): {
-	withExport<GenericTestCase extends BaseXmlTestCase>(params: {
-		testCases: TestCases<GenericTestCase>
-		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
-		dialecteConfig?: GenericConfig
-	}): void
-	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
-		testCases: TestCases<GenericTestCase>
-		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
-		dialecteConfig?: GenericConfig
-	}): void
-	generic: typeof genericTestCases
-} {
+): TestRunner<GenericConfig> {
 	return {
 		withExport: (params) => xmlWithExport({ dialecteConfig, ...params }),
 		withoutExport: (params) => xmlWithoutExport({ dialecteConfig, ...params }),
