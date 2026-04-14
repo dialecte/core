@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `assert` utility renamed to `invariant` — adopts the invariant pattern for assumption/precondition checks where it improves readability over nested if+throw structures; named `invariant` (not `assert`) to avoid clashes with other assert functions in consuming projects
+- `assert` utility renamed to `invariant` to avoid clashes with other assert functions in consuming projects
 
 ## [0.1.10] - 2026-04-14
 

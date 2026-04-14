@@ -1,5 +1,5 @@
 ---
-description: How to write and register domain-specific extensions for a dialecte. Extensions are plain functions bound onto the Query/Transaction instances via mergeExtensions(), making methods like doc.query.History.getSortedHitems() available with full type safety.
+description: How to write and register domain-specific extensions for a dialecte. Extensions are plain functions bound onto the Query/Transaction instances, making methods like doc.query.history.getSortedHitems() available with full type safety.
 ---
 
 # Writing Extensions
@@ -10,8 +10,8 @@ Extensions add domain-specific methods as plain functions registered under a nam
 
 1. **Write functions** — plain async functions whose first argument is `Scl.Query` or `Scl.Transaction`
 2. **Bundle into a module** — gather related functions into `{ query, transaction }` objects
-3. **Register** — pass named modules to `mergeExtensions({ History, IED, ... })`
-4. **Wire** — pass the result as `extensions` to `openDialecteDocument`
+3. **Register** — collect named modules into a plain object: `{ history, dataModel, ... }`
+4. **Wire** — pass the result as `extensions.base` to `openDialecteDocument`
 
 The `Document` binds them onto each `Query`/`Transaction` instance automatically. No subclassing needed.
 
@@ -19,129 +19,88 @@ The `Document` binds them onto each `Query`/`Transaction` instance automatically
 
 Each function takes the query (or transaction) as its first argument. The remaining arguments become its public signature after binding.
 
-**Query extension** (`History/query/get-sorted-hitem.ts`):
+> Examples below use `TestDialecteConfig` from `@dialecte/core/test` — the built-in Rule-of-3 tree with elements like `A`, `AA_1`, `AAA_1`, etc.
+
+**Query extension** (`a/query/get-aa-items.ts`):
 
 ```ts
-import type { Scl } from '@/v2019C1/config'
+import type { TestDialecteConfig } from '@dialecte/core/test'
+import type { Document } from '@dialecte/core'
 
-export async function getSortedHitems(query: Scl.Query): Promise<Scl.TrackedRecord<'Hitem'>[]> {
-	const history = (await query.getRecordsByTagName('History'))[0]
-	if (!history) return []
+type Query = Document<TestDialecteConfig>['query']
 
-	const { Hitem: hitems = [] } = await query.findDescendants(history)
-
-	return [...hitems].sort((a, b) => {
-		const vA = Number(a.attributes.find((attr) => attr.name === 'version')?.value ?? 0)
-		const vB = Number(b.attributes.find((attr) => attr.name === 'version')?.value ?? 0)
-		if (vA !== vB) return vA - vB
-		const rA = Number(a.attributes.find((attr) => attr.name === 'revision')?.value ?? 0)
-		const rB = Number(b.attributes.find((attr) => attr.name === 'revision')?.value ?? 0)
-		return rA - rB
-	})
-}
+export async function getAaItems(query: Query): Promise<void> {}
 ```
 
 **Calling sibling extensions** — import the function directly, passing `query` through:
 
 ```ts
-import { getSortedHitems } from './get-sorted-hitem'
-import type { Scl } from '@/v2019C1/config'
+import { getAaItems } from './get-aa-items'
+import type { TestDialecteConfig } from '@dialecte/core/test'
+import type { Document } from '@dialecte/core'
 
-export async function getLatestHitem(
-	query: Scl.Query,
-): Promise<Scl.TrackedRecord<'Hitem'> | undefined> {
-	const sorted = await getSortedHitems(query)
-	return sorted.at(-1)
+type Query = Document<TestDialecteConfig>['query']
+
+export async function getLatestAaItem(query: Query): Promise<void> {
+	await getAaItems(query)
 }
 ```
 
-**Transaction extension** — use `Scl.Transaction` as the first arg:
+**Transaction extension** (`a/transaction/add-aa-item.ts`):
 
 ```ts
-import type { Scl } from '@/v2019C1/config'
+import type { TestDialecteConfig } from '@dialecte/core/test'
+import type { Document } from '@dialecte/core'
 
-export async function addHitem(
-	tx: Scl.Transaction,
-	params: { version: string; revision: string; who: string; what: string },
-) {
-	const history = (await tx.getRecordsByTagName('History'))[0]
-	if (!history) return
+type Transaction = Parameters<Parameters<Document<TestDialecteConfig>['transaction']>[0]>[0]
 
-	return tx.addChild(history, { tagName: 'Hitem', attributes: params })
-}
+export async function addAaItem(tx: Transaction, params: { aAA_1: string }): Promise<void> {}
 ```
 
 ## Bundling into a module
 
-Collect the functions for one domain concept into an `index.ts` and export a module object:
+Collect the functions for one domain concept into an `index.ts` and export a module object. Module names are **lowercase** (camelCase for multi-word names):
 
 ```ts
-// History/index.ts
-import * as historyQueries from './query'
-import * as historyMutations from './transaction'
+// a/index.ts
+import * as aQueries from './query'
+import * as aTransactions from './transaction'
 
-export const History = {
-	query: historyQueries,
-	transaction: historyMutations,
+export const a = {
+	query: aQueries,
+	transaction: aTransactions,
 }
 ```
 
 If the module has no transaction methods, omit the key:
 
 ```ts
-export const History = {
-	query: historyQueries,
+export const a = {
+	query: aQueries,
 }
 ```
 
 ## Registering extensions
 
-Pass all modules to `mergeExtensions` and export the result:
+Collect all modules into a plain object and export it:
 
 ```ts
 // extensions/index.ts
-import { mergeExtensions } from '@dialecte/core/helpers'
-import { History } from './History'
-import { IED } from './IED'
+import { a } from './a'
+import { b } from './b'
 
-export const EXTENSIONS = mergeExtensions({ History, IED })
-```
-
-`mergeExtensions` flattens `{ History: { query, transaction } }` into:
-
-```ts
-{
-  query:       { History: historyQueries, IED: iedQueries },
-  transaction: { History: historyMutations },
-}
+export const MY_EXTENSION_MODULES = { a, b }
 ```
 
 ## Wiring into a dialecte
 
-Pass extension modules to `openDialecteDocument` under the `base` key:
+Pass all params as an object to `openDialecteDocument`:
 
 ```ts
 // dialecte.ts
 import { openDialecteDocument } from '@dialecte/core'
 import { MY_CONFIG } from './config'
-import { EXTENSION_MODULES } from './extensions'
-
-export function openMyDocument(storage: StorageOptions) {
-	return openDialecteDocument({
-		config: MY_CONFIG,
-		storage,
-		extensions: { base: EXTENSION_MODULES },
-	})
-}
-```
-
-## Letting consumers add their own extensions
-
-Expose a `extensions` param on the open function and pass it as `custom`. Core merges `base` and `custom` automatically and throws a `DialecteError` (D6001) if the same method name appears in both — collision is never silently ignored.
-
-```ts
-// dialecte.ts
-import type { ExtensionModules } from '@dialecte/core'
+import { MY_EXTENSION_MODULES } from './extensions'
 
 export function openMyDocument<
 	CustomModules extends ExtensionModules = Record<never, never>,
@@ -149,35 +108,39 @@ export function openMyDocument<
 	return openDialecteDocument({
 		config: MY_CONFIG,
 		storage: params.storage,
-		extensions: { base: EXTENSION_MODULES, custom: params.extensions },
+		extensions: { base: MY_EXTENSION_MODULES, custom: params.extensions },
 	})
 }
 ```
 
-Consumers then pass their own modules without importing core:
+## Letting consumers add their own extensions
+
+The `extensions` param accepts a `custom` key. Core merges `base` and `custom` at the function level. If `base` and `custom` share the same module key (e.g. both define `a`), their methods are merged — but a `DialecteError` is thrown if the same function name appears in both groups.
+
+Consumers pass their own modules without importing core:
 
 ```ts
 const doc = openMyDocument({
 	storage: { type: 'local', databaseName },
 	extensions: { myFeature: myExtension },
 })
-// doc.query.History.getLatestHitem()  ← built-in
-// doc.query.myFeature.doSomething()   ← custom, fully typed
+// doc.query.a.getLatestAaItem()      ← built-in
+// doc.query.myFeature.doSomething()  ← custom, fully typed
 ```
 
 ## Consumer API
 
-Extensions appear flat on `doc.query` and `tx`, grouped by module name:
+Extensions appear on `doc.query` and `tx`, grouped by module name:
 
 ```ts
-const doc = openSclDocument({ type: 'local', databaseName: 'my-scl' })
+const doc = openMyDocument({ storage: { type: 'local', databaseName: 'my-db' } })
 
 // Query extensions
-const latest = await doc.query.History.getLatestHitem()
+const items = await doc.query.a.getAaItems()
 
 // Transaction extensions
 await doc.transaction(async (tx) => {
-	await tx.History.addHitem({ version: '1', revision: '0', who: 'Alice', what: 'Initial' })
+	await tx.a.addAaItem({ aAA_1: 'value' })
 })
 ```
 
@@ -185,22 +148,11 @@ The first argument (`query`/`tx`) is bound automatically — it never appears in
 
 ## Type safety
 
-TypeScript infers the full extension shape from `EXTENSIONS`:
+TypeScript infers the full extension shape from the extension modules object:
 
-- `doc.query.History` is typed with the exact functions in `historyQueries`
-- `tx.History` adds transaction methods on top
+- `doc.query.a` is typed with the exact functions in `aQueries`
+- `tx.a` adds transaction methods on top
 - The `query` first-arg is stripped from each function's public signature
 - Unknown group names and invalid argument types are caught at compile time
 
-## Hooks — lifecycle control
-
-Hooks run at import and export. A `beforeImportRecord` hook can auto-assign identifiers or validate structure before an element reaches the database:
-
-```ts
-beforeImportRecord(record) {
-	ensureUuid(record)
-	return record
-}
-```
-
-This keeps domain invariants enforced at the pipeline level rather than scattered across application code.
+**Collision rule** — when `base` and `custom` share the same module key, their methods are merged at the function level. If the same function name appears in both, a `DialecteError` (`EXTENSION_METHOD_COLLISION`) is thrown immediately at document open time. Collision is never silently ignored.
