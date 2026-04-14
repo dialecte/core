@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.10] - 2026-04-14
+
+### Added
+
+- `FindAncestorsOptions.order`: `'bottom-up'` (default) | `'top-down'` — controls result order of `findAncestors`
+
+### Changed
+
+- `TransactionHooks` async hooks (`afterCreated`, `afterDeepClone`, `afterUpdated`, `beforeDelete`): `context: Context<Config>` replaced by `query: Query<Config>`. Use `query.getRecord`, `query.findAncestors`, `query.getRecordsByTagName` directly instead of bare helper functions.
+
 ## [0.1.9] - 2026-04-10
 
 ### Added

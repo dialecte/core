@@ -5,7 +5,7 @@ import { toFullAttributeArray } from '@/helpers'
 import { assert } from '@/utils'
 
 import type { UpdateParams } from './update.types'
-import type { Context } from '@/document'
+import type { Context, Query } from '@/document'
 import type { AnyDialecteConfig, ElementsOf, RawRecord, Ref } from '@/types'
 
 /**
@@ -19,10 +19,11 @@ export async function stageUpdate<
 >(params: {
 	dialecteConfig: GenericConfig
 	context: Context<GenericConfig>
+	query: Query<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 	params: UpdateParams<GenericConfig, GenericElement>
 }): Promise<RawRecord<GenericConfig, GenericElement>> {
-	const { dialecteConfig, context, ref, params: updateParams } = params
+	const { dialecteConfig, context, query, ref, params: updateParams } = params
 	const { attributes, value } = updateParams
 
 	const record = await getRecord({ context, ref })
@@ -61,7 +62,7 @@ export async function stageUpdate<
 		const hookOperations = await dialecteConfig.hooks.afterUpdated({
 			oldRecord: record,
 			newRecord: updatedRecord,
-			context,
+			query,
 		})
 		stageOperations({ context, operations: hookOperations })
 	}

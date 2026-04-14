@@ -4,7 +4,7 @@ import { getRecord } from '@/document'
 import { toRef } from '@/helpers'
 import { assert } from '@/utils'
 
-import type { Context } from '@/document'
+import type { Context, Query } from '@/document'
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
@@ -25,9 +25,10 @@ export async function stageDelete<
 >(params: {
 	dialecteConfig: GenericConfig
 	context: Context<GenericConfig>
+	query: Query<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 }): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
-	const { dialecteConfig, context, ref } = params
+	const { dialecteConfig, context, query, ref } = params
 
 	const record = await getRecord({ context, ref })
 	assert(record, {
@@ -44,7 +45,7 @@ export async function stageDelete<
 	// Fire before stageDescendants — root and descendants are still live in context here.
 	// Hook receives the subtree root; SCL impl uses findDescendants to cover the full tree.
 	if (dialecteConfig.hooks?.beforeDelete) {
-		const hookOperations = await dialecteConfig.hooks.beforeDelete({ record, context })
+		const hookOperations = await dialecteConfig.hooks.beforeDelete({ record, query })
 		stageOperations({ context, operations: hookOperations })
 	}
 

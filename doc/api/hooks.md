@@ -10,7 +10,7 @@ Hooks are defined on the `dialecteConfig` object and are called automatically by
 
 ## Transaction hooks
 
-Registered under `dialecteConfig.hooks`. All async hooks receive `context` — the current transaction context where staged ops are readable via `getRecord` / `findDescendants`.
+Registered under `dialecteConfig.hooks`. All async hooks receive `query` — a read-only `Query` instance scoped to the current transaction state. Use it to call `query.getRecord`, `query.findAncestors`, `query.getRecordsByTagName`, etc. Staged ops from earlier in the same transaction are visible.
 
 ### `beforeClone`
 
@@ -68,7 +68,7 @@ Fires **per record** after it is staged via `addChild` (including inside `deepCl
 afterCreated?: (params: {
   childRecord: RawRecord<Config, Element>
   parentRecord: RawRecord<Config, ParentElement>
-  context: Context<Config>
+  query: Query<Config>
 }) => Promise<Operation<Config>[]>
 ```
 
@@ -89,7 +89,7 @@ Fires **once** after `deepClone` completes the full recursive clone. Receives th
 ```ts
 afterDeepClone?: (params: {
   mappings: CloneMapping<Config>[]
-  context: Context<Config>
+  query: Query<Config>
 }) => Promise<Operation<Config>[]>
 ```
 
@@ -106,11 +106,11 @@ type CloneMapping<Config> = {
 
 ```ts
 hooks: {
-  afterDeepClone: async ({ mappings, context }) => {
+  afterDeepClone: async ({ mappings, query }) => {
     const ops: Operation[] = []
     for (const { source, target } of mappings) {
-      const sourceRecord = await getRecord({ context, ref: source })
-      const targetRecord = await getRecord({ context, ref: target })
+      const sourceRecord = await query.getRecord(source)
+      const targetRecord = await query.getRecord(target)
       // build updates based on the source→target record pairs
     }
     return ops
@@ -130,7 +130,7 @@ Fires **per update** after the updated record is staged. Receives both the old a
 afterUpdated?: (params: {
   oldRecord: RawRecord<Config, Element>
   newRecord: RawRecord<Config, Element>
-  context: Context<Config>
+  query: Query<Config>
 }) => Promise<Operation<Config>[]>
 ```
 
@@ -140,7 +140,7 @@ afterUpdated?: (params: {
 
 ### `beforeDelete`
 
-Fires **once per deletion root** before the subtree is cascaded. Root and all descendants are **still live in context** at this point.
+Fires **once per deletion root** before the subtree is cascaded. Root and all descendants are **still live in `query`** at this point.
 
 The hook receives only the deletion root — not each descendant individually. Use `findDescendants(record)` to collect the full set of elements about to be removed.
 
@@ -149,7 +149,7 @@ The hook receives only the deletion root — not each descendant individually. U
 ```ts
 beforeDelete?: (params: {
   record: RawRecord<Config, Element>
-  context: Context<Config>
+  query: Query<Config>
 }) => Promise<Operation<Config>[]>
 ```
 

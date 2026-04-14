@@ -12,7 +12,7 @@ import {
 import { assert } from '@/utils'
 
 import type { CloneMapping } from './clone.types'
-import type { Context } from '@/document'
+import type { Transaction } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { AnyDialecteConfig, AnyTreeRecord, Operation, Ref } from '@/types'
 
@@ -72,17 +72,17 @@ function makeAfterDeepCloneConfig(): typeof TEST_DIALECTE_CONFIG {
 			...base.hooks,
 			afterDeepClone: async <GenericConfig extends AnyDialecteConfig>({
 				mappings,
-				context,
+				query,
 			}: {
 				mappings: CloneMapping<GenericConfig>[]
-				context: Context<GenericConfig>
+				query: Transaction<GenericConfig>
 			}): Promise<Operation<GenericConfig>[]> => {
 				const operations: Operation<GenericConfig>[] = []
 				for (const mapping of mappings) {
 					// Find the latest operation for this target to get current state
-					const allOps = context.stagedOperations.filter(
-						(op) => op.status !== 'deleted' && op.newRecord?.id === mapping.target.id,
-					)
+					const allOps = query
+						.getStagedOperations()
+						.filter((op) => op.status !== 'deleted' && op.newRecord?.id === mapping.target.id)
 					const latestOp = allOps[allOps.length - 1]
 					if (!latestOp || latestOp.status === 'deleted') continue
 

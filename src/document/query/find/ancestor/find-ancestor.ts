@@ -6,7 +6,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord, Ref } from '@/types'
 /**
  * Walk the parent chain from a record upward.
  *
- * Returns ancestors bottom-up: [parent, grandparent, …, root].
+ * Returns ancestors bottom-up: [parent, grandparent, …, root] by default.
+ * Pass `order: 'top-down'` to get [root, …, grandparent, parent] instead.
  * The starting record is NOT included.
  * When `stopAtTagName` is set, the walk stops after collecting that element (inclusive).
  * When `depth` is set, at most that many ancestors are returned.
@@ -22,6 +23,7 @@ export async function findAncestors<
 	const { context, ref, options } = params
 	const maxDepth = options?.depth ?? Infinity
 	const stopAtTagName = options?.stopAtTagName
+	const order = options?.order ?? 'bottom-up'
 
 	const ancestors: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[] = []
 
@@ -41,5 +43,5 @@ export async function findAncestors<
 		current = parentRecord
 	}
 
-	return ancestors
+	return order === 'top-down' ? ancestors.reverse() : ancestors
 }

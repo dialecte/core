@@ -9,8 +9,9 @@ import {
 } from '@/test'
 
 import type { UpdateParams } from './update.types'
+import type { Transaction } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { Ref } from '@/types'
+import type { Ref, RawRecord, ElementsOf } from '@/types'
 
 describe('stageUpdate', () => {
 	type TestCase = BaseXmlTestCase & {
@@ -205,18 +206,28 @@ describe('stageUpdate hooks — returned operations applied', () => {
 	const config = {
 		...TEST_DIALECTE_CONFIG,
 		hooks: {
-			afterUpdated: vi.fn().mockImplementation(async ({ newRecord, context }: any) => {
-				if (newRecord.tagName !== 'A') return []
-				const [bRecord] = await context.store.getByTagName('B')
-				if (!bRecord) return []
-				const updatedB = {
-					...bRecord,
-					attributes: bRecord.attributes.map((a: any) =>
-						a.name === 'aB' ? { ...a, value: 'cascade' } : a,
-					),
-				}
-				return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
-			}),
+			afterUpdated: vi
+				.fn()
+				.mockImplementation(
+					async ({
+						newRecord,
+						query,
+					}: {
+						newRecord: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+						query: Transaction<TestDialecteConfig>
+					}) => {
+						if (newRecord.tagName !== 'A') return []
+						const [bRecord] = await query.getRecordsByTagName('B')
+						if (!bRecord) return []
+						const updatedB = {
+							...bRecord,
+							attributes: bRecord.attributes.map((a: any) =>
+								a.name === 'aB' ? { ...a, value: 'cascade' } : a,
+							),
+						}
+						return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
+					},
+				),
 		},
 	}
 

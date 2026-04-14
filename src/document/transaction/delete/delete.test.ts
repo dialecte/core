@@ -8,8 +8,9 @@ import {
 	runTestCases,
 } from '@/test'
 
+import type { Transaction } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { Ref, ElementsOf } from '@/types'
+import type { Ref, ElementsOf, RawRecord } from '@/types'
 
 describe('stageDelete', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
@@ -185,18 +186,28 @@ describe('stageDelete hooks — returned operations applied', () => {
 	const config = {
 		...TEST_DIALECTE_CONFIG,
 		hooks: {
-			beforeDelete: vi.fn().mockImplementation(async ({ record, context }: any) => {
-				if (record.tagName !== 'A') return []
-				const [bRecord] = await context.store.getByTagName('B')
-				if (!bRecord) return []
-				const updatedB = {
-					...bRecord,
-					attributes: bRecord.attributes.map((a: any) =>
-						a.name === 'aB' ? { ...a, value: 'after' } : a,
-					),
-				}
-				return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
-			}),
+			beforeDelete: vi
+				.fn()
+				.mockImplementation(
+					async ({
+						record,
+						query,
+					}: {
+						record: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+						query: Transaction<TestDialecteConfig>
+					}) => {
+						if (record.tagName !== 'A') return []
+						const [bRecord] = await query.getRecordsByTagName('B')
+						if (!bRecord) return []
+						const updatedB = {
+							...bRecord,
+							attributes: bRecord.attributes.map((a: any) =>
+								a.name === 'aB' ? { ...a, value: 'after' } : a,
+							),
+						}
+						return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
+					},
+				),
 		},
 	}
 

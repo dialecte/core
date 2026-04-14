@@ -5,7 +5,7 @@ import { standardizeRecord } from '@/helpers'
 import { assert } from '@/utils'
 
 import type { AddChildParams } from './create.types'
-import type { Context } from '@/document'
+import type { Context, Query } from '@/document'
 import type { AnyDialecteConfig, ElementsOf, ChildrenOf, RawRecord, Ref } from '@/types'
 
 /**
@@ -19,10 +19,11 @@ export async function stageAddChild<
 >(params: {
 	dialecteConfig: GenericConfig
 	context: Context<GenericConfig>
+	query: Query<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
 	params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>
 }): Promise<RawRecord<GenericConfig, GenericChildElement>> {
-	const { dialecteConfig, context, parentRef, params: childParams } = params
+	const { dialecteConfig, context, query, parentRef, params: childParams } = params
 	const { id, tagName, attributes, namespace, value } = childParams
 
 	const parentRecord = await getRecord({ context, ref: parentRef })
@@ -67,7 +68,7 @@ export async function stageAddChild<
 		const hookOperations = await dialecteConfig.hooks.afterCreated({
 			childRecord,
 			parentRecord: updatedParent,
-			context,
+			query,
 		})
 		stageOperations({ context, operations: hookOperations })
 	}

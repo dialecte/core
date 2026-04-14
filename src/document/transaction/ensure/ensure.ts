@@ -3,7 +3,7 @@ import { stageAddChild } from '../create/create'
 import { findByAttributes, getRecord } from '@/document'
 
 import type { AddChildParams } from '../create/create.types'
-import type { Context, FilterAttributes } from '@/document'
+import type { Context, FilterAttributes, Query } from '@/document'
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
@@ -34,12 +34,13 @@ export async function stageEnsureChild<
 >(params: {
 	dialecteConfig: GenericConfig
 	context: Context<GenericConfig>
+	query: Query<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
 	params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>
 }): Promise<
 	TrackedRecord<GenericConfig, GenericChildElement> | RawRecord<GenericConfig, GenericChildElement>
 > {
-	const { dialecteConfig, context, parentRef, params: childParams } = params
+	const { dialecteConfig, context, query, parentRef, params: childParams } = params
 
 	const filter = toFilterAttributes<GenericConfig, GenericChildElement>(childParams.attributes)
 
@@ -62,6 +63,7 @@ export async function stageEnsureChild<
 	return stageAddChild({
 		dialecteConfig,
 		context,
+		query,
 		parentRef,
 		params: childParams,
 	})

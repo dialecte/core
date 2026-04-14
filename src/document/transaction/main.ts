@@ -101,6 +101,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			parentRef: toRef(parentRefOrRecord),
 			params,
 			dialecteConfig: this.dialecteConfig,
+			query: this,
 		})
 	}
 
@@ -137,6 +138,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			parentRef: toRef(parentRefOrRecord),
 			params,
 			dialecteConfig: this.dialecteConfig,
+			query: this,
 		})
 	}
 
@@ -163,6 +165,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			ref: toRef(refOrRecord),
 			params,
 			dialecteConfig: this.dialecteConfig,
+			query: this,
 		})
 	}
 
@@ -184,6 +187,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			context: this.context,
 			ref: toRef(refOrRecord),
 			dialecteConfig: this.dialecteConfig,
+			query: this,
 		})
 	}
 
@@ -212,6 +216,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			context: this.context,
 			parentRef: toRef(parentRefOrRecord),
 			record,
+			query: this,
 		})
 	}
 

@@ -2,7 +2,7 @@ import type { AnyDefinition } from './definition'
 import type { ImportOptions, ExportOptions, IOHooks } from './io'
 import type { Operation } from './operations'
 import type { Namespace, RawRecord, TreeRecord } from './records'
-import type { Context, CloneMapping } from '@/document'
+import type { CloneMapping, Query } from '@/document'
 
 export type RawDialecteConfig<
 	GenericElementNames extends readonly string[],
@@ -69,7 +69,7 @@ export type TransactionHooks = {
 	>(params: {
 		childRecord: RawRecord<GenericConfig, GenericElement>
 		parentRecord: RawRecord<GenericConfig, GenericParentElement>
-		context: Context<GenericConfig>
+		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
 
 	/**
@@ -78,7 +78,7 @@ export type TransactionHooks = {
 	 */
 	afterDeepClone?: <GenericConfig extends AnyDialecteConfig>(params: {
 		mappings: CloneMapping<GenericConfig>[]
-		context: Context<GenericConfig>
+		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
 
 	/**
@@ -91,7 +91,7 @@ export type TransactionHooks = {
 	>(params: {
 		oldRecord: RawRecord<GenericConfig, GenericElement>
 		newRecord: RawRecord<GenericConfig, GenericElement>
-		context: Context<GenericConfig>
+		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
 
 	/**
@@ -106,7 +106,7 @@ export type TransactionHooks = {
 		GenericElement extends ElementsOf<GenericConfig>,
 	>(params: {
 		record: RawRecord<GenericConfig, GenericElement>
-		context: Context<GenericConfig>
+		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
 }
 

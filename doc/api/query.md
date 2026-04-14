@@ -88,10 +88,11 @@ const ancestors = await doc.query.findAncestors(ref, {
 
 #### FindAncestorsOptions
 
-| Option          | Type          | Description                                                          |
-| --------------- | ------------- | -------------------------------------------------------------------- |
-| `depth`         | `number`      | Maximum number of ancestors to collect. Default: unlimited.          |
-| `stopAtTagName` | `ElementName` | Stop walking after collecting the first ancestor with this tag name. |
+| Option          | Type                        | Description                                                                                                 |
+| --------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `depth`         | `number`                    | Maximum number of ancestors to collect. Default: unlimited.                                                 |
+| `stopAtTagName` | `ElementName`               | Stop walking after collecting the first ancestor with this tag name.                                        |
+| `order`         | `'bottom-up' \| 'top-down'` | Result order. `'bottom-up'` (default): `[parent, grandparent, …, root]`. `'top-down'`: `[root, …, parent]`. |
 
 ## Finding descendants
 
