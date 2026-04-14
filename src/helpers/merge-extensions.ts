@@ -1,4 +1,4 @@
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { ExtensionModules, MergedExtensions } from '@/types/extensions'
 
@@ -10,7 +10,7 @@ function assertNoGroupCollision(
 ): void {
 	if (!a || !b) return
 	const conflicts = Object.keys(b).filter((k) => k in a)
-	assert(conflicts.length === 0, {
+	invariant(conflicts.length === 0, {
 		key: 'EXTENSION_METHOD_COLLISION',
 		detail: `Module "${moduleKey}" has conflicting ${group} method(s): ${conflicts.map((c) => `"${c}"`).join(', ')}`,
 	})

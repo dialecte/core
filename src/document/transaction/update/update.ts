@@ -2,7 +2,7 @@ import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
 import { toFullAttributeArray } from '@/helpers'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { UpdateParams } from './update.types'
 import type { Context, Query } from '@/document'
@@ -27,7 +27,7 @@ export async function stageUpdate<
 	const { attributes, value } = updateParams
 
 	const record = await getRecord({ context, ref })
-	assert(record, {
+	invariant(record, {
 		detail: `Record not found (tagName=${ref.tagName}, id=${ref.id})`,
 		key: 'ELEMENT_NOT_FOUND',
 		ref,

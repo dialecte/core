@@ -6,10 +6,10 @@ import type { DialecteErrorKey } from '@/errors'
  * Assert a condition, throwing a structured DialecteError if it fails.
  *
  * @example
- * assert(record, { detail: 'addChild: parent not found' })
- * assert(ref.id, { detail: 'Singleton element has no id', key: 'ELEMENT_NOT_FOUND' })
+ * invariant(record, { detail: 'addChild: parent not found' })
+ * invariant(ref.id, { detail: 'Singleton element has no id', key: 'ELEMENT_NOT_FOUND' })
  */
-export function assert(
+export function invariant(
 	condition: unknown,
 	error: {
 		detail: string

@@ -2,7 +2,7 @@ import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
 import { toRef } from '@/helpers'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { Context, Query } from '@/document'
 import type {
@@ -31,13 +31,13 @@ export async function stageDelete<
 	const { dialecteConfig, context, query, ref } = params
 
 	const record = await getRecord({ context, ref })
-	assert(record, {
+	invariant(record, {
 		detail: `Record not found (tagName=${ref.tagName}, id=${ref.id})`,
 		key: 'ELEMENT_NOT_FOUND',
 		ref,
 	})
 
-	assert(record.parent, {
+	invariant(record.parent, {
 		detail: 'Cannot delete root element',
 		key: 'PROTECTED_ROOT',
 	})
@@ -58,7 +58,7 @@ export async function stageDelete<
 	const parentRef = toRef(record.parent)
 
 	const parentRecord = await getRecord({ context, ref: parentRef })
-	assert(parentRecord, {
+	invariant(parentRecord, {
 		detail: `Parent record not found (tagName=${record.parent.tagName}, id=${record.parent.id})`,
 		key: 'ELEMENT_NOT_FOUND',
 	})

@@ -9,7 +9,7 @@ import {
 import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } from './get/record'
 
 import { toRef } from '@/helpers'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { Context } from '../types'
 import type {
@@ -97,7 +97,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			>,
 		})
 
-		assert(root, {
+		invariant(root, {
 			key: 'ROOT_NOT_FOUND',
 			detail: `Expected tag name: ${this.dialecteConfig.rootElementName}`,
 		})

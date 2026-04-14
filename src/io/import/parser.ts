@@ -4,7 +4,7 @@ import { registerPendingChildrenRelationship } from './relationships'
 import * as sax from 'sax'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { ParserInstance, ParserState } from './types'
 import type {
@@ -236,7 +236,7 @@ function getDefaultNamespace(params: {
 	rootElementName: string
 }): Namespace {
 	const { element, defaultNamespace, rootElementName } = params
-	assert(element.name === rootElementName, {
+	invariant(element.name === rootElementName, {
 		detail: `Expected root element <${rootElementName}>, got <${element.name}>`,
 	})
 

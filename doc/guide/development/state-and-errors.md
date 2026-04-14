@@ -1,5 +1,5 @@
 ---
-description: How to use Document state for UI feedback (loading, error, progress, history) and how to create structured errors via throwDialecteError and the assert utility.
+description: How to use Document state for UI feedback (loading, error, progress, history) and how to create structured errors via throwDialecteError and the invariant utility.
 ---
 
 # State & Errors
@@ -116,20 +116,20 @@ throwDialecteError('ELEMENT_NOT_FOUND', {
 | `ref`     | no       | Element reference for contextual error display          |
 | `cause`   | no       | Original `Error` to chain                               |
 
-### assert
+### invariant
 
 A guard that throws a structured `DialecteError` when a condition is falsy. TypeScript narrows the value after the call (`asserts condition`).
 
 ```ts
-import { assert } from '@dialecte/core/utils'
+import { invariant } from '@dialecte/core/utils'
 
 const record = await query.getRecord(ref)
-assert(record, {
+invariant(record, {
 	detail: `record ${ref.tagName}#${ref.id} not found`,
 })
 // record is narrowed to non-nullable here
 
-assert(record.parentRef, {
+invariant(record.parentRef, {
 	detail: 'root element cannot be moved',
 	key: 'PROTECTED_ROOT',
 	ref: { tagName: record.tagName, id: record.id },
@@ -147,7 +147,7 @@ assert(record.parentRef, {
 
 ### Stack trace resolution
 
-Both `throwDialecteError` and `assert` auto-resolve the `method` field from the call stack. Internal frames (`throwDialecteError`, `assert`) are skipped so the reported method is always the actual caller:
+Both `throwDialecteError` and `invariant` auto-resolve the `method` field from the call stack. Internal frames (`throwDialecteError`, `invariant`) are skipped so the reported method is always the actual caller:
 
 ```
 core/src/document/query/query::findChildren

@@ -1,6 +1,6 @@
 import { matchesAttributeFilter, getRecord } from '@/document'
 import { toRef, toTreeRecord } from '@/helpers'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { GetTreeParams, IncludeFilter, ExcludeFilter } from './get-tree.types'
 import type { Context } from '@/document'
@@ -18,7 +18,7 @@ export async function getTree<
 	const { include, exclude, unwrap } = options
 
 	const root = await getRecord({ context, ref })
-	assert(root, {
+	invariant(root, {
 		detail: 'No record found for provided ref',
 		key: 'ELEMENT_NOT_FOUND',
 	})

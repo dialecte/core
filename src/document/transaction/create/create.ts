@@ -2,7 +2,7 @@ import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
 import { standardizeRecord } from '@/helpers'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { AddChildParams } from './create.types'
 import type { Context, Query } from '@/document'
@@ -27,7 +27,7 @@ export async function stageAddChild<
 	const { id, tagName, attributes, namespace, value } = childParams
 
 	const parentRecord = await getRecord({ context, ref: parentRef })
-	assert(parentRecord, {
+	invariant(parentRecord, {
 		detail: 'Parent record not found',
 		key: 'ELEMENT_NOT_FOUND',
 		ref: parentRef,

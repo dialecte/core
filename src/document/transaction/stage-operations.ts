@@ -1,5 +1,5 @@
 import { toRawRecord } from '@/helpers'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { Context } from '@/document'
 import type { AnyDialecteConfig, Operation, RawRecord, ElementsOf } from '@/types'
@@ -38,19 +38,19 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 	if (newRecord) rawNewRecord = toRawRecord(newRecord)
 
 	if (status === 'created') {
-		assert(rawRecord, {
+		invariant(rawRecord, {
 			detail: 'Record is required for created',
 			key: 'ELEMENT_NOT_FOUND',
 		})
 		context.stagedOperations.push({ status, oldRecord: undefined, newRecord: rawRecord })
 	} else if (status === 'updated') {
-		assert(rawOldRecord && rawNewRecord, {
+		invariant(rawOldRecord && rawNewRecord, {
 			detail: 'Old record and new record are required for updated',
 			key: 'ELEMENT_NOT_FOUND',
 		})
 		context.stagedOperations.push({ status, oldRecord: rawOldRecord, newRecord: rawNewRecord })
 	} else if (status === 'deleted' && rawRecord) {
-		assert(rawRecord, {
+		invariant(rawRecord, {
 			detail: 'Record is required for deleted',
 			key: 'ELEMENT_NOT_FOUND',
 		})

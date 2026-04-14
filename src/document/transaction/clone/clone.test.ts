@@ -9,7 +9,7 @@ import {
 	createTestDialecte,
 	runTestCases,
 } from '@/test'
-import { assert } from '@/utils'
+import { invariant } from '@/utils'
 
 import type { CloneMapping } from './clone.types'
 import type { Transaction } from '@/document'
@@ -210,7 +210,7 @@ describe('stageDeepClone', () => {
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
 		const treeRecord = await source.document.query.getTree(testCase.sourceRef)
 		await source.document.transaction(async (tx) => {
-			assert(treeRecord, {
+			invariant(treeRecord, {
 				key: 'ELEMENT_NOT_FOUND',
 				detail: 'getTree returned undefined for sourceRef',
 				ref: testCase.sourceRef,
@@ -315,7 +315,7 @@ describe('stageDeepClone', () => {
 
 			try {
 				const treeRecord = await document.query.getTree(tc.sourceRef)
-				assert(treeRecord, {
+				invariant(treeRecord, {
 					key: 'ELEMENT_NOT_FOUND',
 					detail: 'getTree returned undefined for sourceRef',
 					ref: tc.sourceRef,

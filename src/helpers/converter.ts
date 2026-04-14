@@ -1,6 +1,6 @@
 import { isFullAttributeArray } from './guard'
 
-import { assert } from '@/utils/assert'
+import { invariant } from '@/utils'
 
 import type {
 	RawRecord,
@@ -162,7 +162,7 @@ export function toRef<
 		| TreeRecord<GenericConfig, GenericElement>
 		| undefined,
 ): Ref<GenericConfig, GenericElement> {
-	assert(input, {
+	invariant(input, {
 		detail: 'The record or ref is undefined',
 	})
 
