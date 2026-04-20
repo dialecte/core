@@ -6,7 +6,14 @@ import { invariant } from '@/utils'
 
 import type { AddChildParams } from './create.types'
 import type { Context, Query } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, ChildrenOf, RawRecord, Ref } from '@/types'
+import type {
+	AnyDialecteConfig,
+	ElementsOf,
+	ChildrenOf,
+	RawRecord,
+	Ref,
+	TransactionHooks,
+} from '@/types'
 
 /**
  * Fetches parent, builds and stages operations for adding a child.
@@ -18,12 +25,13 @@ export async function stageAddChild<
 	GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
 >(params: {
 	dialecteConfig: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 	context: Context<GenericConfig>
 	query: Query<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
 	params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>
 }): Promise<RawRecord<GenericConfig, GenericChildElement>> {
-	const { dialecteConfig, context, query, parentRef, params: childParams } = params
+	const { dialecteConfig, hooks, context, query, parentRef, params: childParams } = params
 	const { id, tagName, attributes, namespace, value } = childParams
 
 	const parentRecord = await getRecord({ context, ref: parentRef })
@@ -35,6 +43,7 @@ export async function stageAddChild<
 
 	const childRecord = standardizeRecord({
 		dialecteConfig,
+		hooks,
 		record: {
 			id: id ?? crypto.randomUUID(),
 			tagName,
@@ -64,8 +73,8 @@ export async function stageAddChild<
 		newRecord: updatedParent,
 	})
 
-	if (dialecteConfig.hooks?.afterCreated) {
-		const hookOperations = await dialecteConfig.hooks.afterCreated({
+	if (hooks?.afterCreated) {
+		const hookOperations = await hooks.afterCreated({
 			childRecord,
 			parentRecord: updatedParent,
 			query,

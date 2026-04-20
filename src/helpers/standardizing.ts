@@ -6,6 +6,7 @@ import type {
 	FullAttributeObjectOf,
 	RawRecord,
 	AttributesValueObjectOf,
+	TransactionHooks,
 } from '@/types'
 
 export function standardizeRecord<
@@ -13,6 +14,7 @@ export function standardizeRecord<
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
 	dialecteConfig: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 	record: {
 		tagName: GenericElement
 		attributes?:
@@ -20,7 +22,7 @@ export function standardizeRecord<
 			| FullAttributeObjectOf<GenericConfig, GenericElement>[]
 	} & Omit<Partial<RawRecord<GenericConfig, GenericElement>>, 'attributes'>
 }): RawRecord<GenericConfig, GenericElement> {
-	const { dialecteConfig, record } = params
+	const { dialecteConfig, hooks, record } = params
 	const { id, tagName, attributes, namespace, value } = record
 
 	const recordId = id ?? crypto.randomUUID()
@@ -82,8 +84,8 @@ export function standardizeRecord<
 		attributes: [...standardizedAttributes, ...extraQualifiedAttributes],
 	}
 
-	if (dialecteConfig.hooks?.afterStandardizedRecord) {
-		standardizedRecord = dialecteConfig.hooks.afterStandardizedRecord({
+	if (hooks?.afterStandardizedRecord) {
+		standardizedRecord = hooks.afterStandardizedRecord({
 			record: standardizedRecord,
 		})
 	}

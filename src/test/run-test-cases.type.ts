@@ -1,5 +1,5 @@
 import type { Document } from '@/document'
-import type { AnyDialecteConfig } from '@/types'
+import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 export type BaseTestCase = {
 	only?: boolean
@@ -38,11 +38,13 @@ export type TestRunner<GenericConfig extends AnyDialecteConfig> = {
 		testCases: TestCases<GenericTestCase>
 		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
 		dialecteConfig?: GenericConfig
+		hooks?: TransactionHooks<GenericConfig>
 	}): void
 	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
 		testCases: TestCases<GenericTestCase>
 		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
 		dialecteConfig?: GenericConfig
+		hooks?: TransactionHooks<GenericConfig>
 	}): void
 	generic<GenericTestCase extends BaseTestCase>(
 		testCases: Record<string, GenericTestCase>,

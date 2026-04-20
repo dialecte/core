@@ -14,7 +14,7 @@ import { invariant } from '@/utils'
 import type { CloneMapping } from './clone.types'
 import type { Transaction } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { AnyDialecteConfig, AnyTreeRecord, Operation, Ref } from '@/types'
+import type { AnyDialecteConfig, AnyTreeRecord, Operation, Ref, TransactionHooks } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -25,38 +25,32 @@ import type { AnyDialecteConfig, AnyTreeRecord, Operation, Ref } from '@/types'
  * This lets tests assert both that the source still exists (via _temp-idb-id)
  * and that the clone also exists (via dev:clone-index).
  */
-function makeCloneConfig(): typeof TEST_DIALECTE_CONFIG {
+function makeCloneHooks(): TransactionHooks<TestDialecteConfig> {
 	return {
-		...TEST_DIALECTE_CONFIG,
-		hooks: {
-			beforeClone: ({ record }: { record: AnyTreeRecord }) => ({
-				shouldBeCloned: true,
-				transformedRecord: {
-					...record,
-					attributes: [
-						...(record.attributes as any[]),
-						{
-							name: 'clone-index',
-							value: `clone:${record.id}`,
-							namespace: DIALECTE_NAMESPACES.dev,
-						},
-					],
-				} as typeof record,
-			}),
-		},
-	} as typeof TEST_DIALECTE_CONFIG
+		beforeClone: ({ record }: { record: AnyTreeRecord }) => ({
+			shouldBeCloned: true,
+			transformedRecord: {
+				...record,
+				attributes: [
+					...(record.attributes as any[]),
+					{
+						name: 'clone-index',
+						value: `clone:${record.id}`,
+						namespace: DIALECTE_NAMESPACES.dev,
+					},
+				],
+			} as typeof record,
+		}),
+	}
 }
 
-function makeSkipConfig(skipTagName: string): typeof TEST_DIALECTE_CONFIG {
+function makeSkipHooks(skipTagName: string): TransactionHooks<TestDialecteConfig> {
 	return {
-		...TEST_DIALECTE_CONFIG,
-		hooks: {
-			beforeClone: ({ record }: { record: AnyTreeRecord }) => ({
-				shouldBeCloned: record.tagName !== skipTagName,
-				transformedRecord: record,
-			}),
-		},
-	} as typeof TEST_DIALECTE_CONFIG
+		beforeClone: ({ record }: { record: AnyTreeRecord }) => ({
+			shouldBeCloned: record.tagName !== skipTagName,
+			transformedRecord: record,
+		}),
+	}
 }
 
 /**
@@ -64,46 +58,41 @@ function makeSkipConfig(skipTagName: string): typeof TEST_DIALECTE_CONFIG {
  * adding `dev:post-clone="mapped:<source.id>"` to every cloned target.
  * This proves the hook fires after all clones with correct mappings.
  */
-function makeAfterDeepCloneConfig(): typeof TEST_DIALECTE_CONFIG {
-	const base = makeCloneConfig()
+function makeAfterDeepCloneHooks(): TransactionHooks<TestDialecteConfig> {
 	return {
-		...base,
-		hooks: {
-			...base.hooks,
-			afterDeepClone: async <GenericConfig extends AnyDialecteConfig>({
-				mappings,
-				query,
-			}: {
-				mappings: CloneMapping<GenericConfig>[]
-				query: Transaction<GenericConfig>
-			}): Promise<Operation<GenericConfig>[]> => {
-				const operations: Operation<GenericConfig>[] = []
-				for (const mapping of mappings) {
-					// Find the latest operation for this target to get current state
-					const allOps = query
-						.getStagedOperations()
-						.filter((op) => op.status !== 'deleted' && op.newRecord?.id === mapping.target.id)
-					const latestOp = allOps[allOps.length - 1]
-					if (!latestOp || latestOp.status === 'deleted') continue
+		...makeCloneHooks(),
+		afterDeepClone: async <GenericConfig extends AnyDialecteConfig>({
+			mappings,
+			query,
+		}: {
+			mappings: CloneMapping<GenericConfig>[]
+			query: Transaction<GenericConfig>
+		}): Promise<Operation<GenericConfig>[]> => {
+			const operations: Operation<GenericConfig>[] = []
+			for (const mapping of mappings) {
+				const allOps = query
+					.getStagedOperations()
+					.filter((op) => op.status !== 'deleted' && op.newRecord?.id === mapping.target.id)
+				const latestOp = allOps[allOps.length - 1]
+				if (!latestOp || latestOp.status === 'deleted') continue
 
-					const currentRecord = latestOp.newRecord!
-					const newRecord = {
-						...currentRecord,
-						attributes: [
-							...currentRecord.attributes,
-							{
-								name: 'post-clone',
-								value: `mapped:${String(mapping.source.id)}`,
-								namespace: DIALECTE_NAMESPACES.dev,
-							},
-						],
-					}
-					operations.push({ status: 'updated', oldRecord: currentRecord, newRecord })
+				const currentRecord = latestOp.newRecord!
+				const newRecord = {
+					...currentRecord,
+					attributes: [
+						...currentRecord.attributes,
+						{
+							name: 'post-clone',
+							value: `mapped:${String(mapping.source.id)}`,
+							namespace: DIALECTE_NAMESPACES.dev,
+						},
+					],
 				}
-				return operations
-			},
+				operations.push({ status: 'updated', oldRecord: currentRecord, newRecord })
+			}
+			return operations
 		},
-	} as typeof TEST_DIALECTE_CONFIG
+	}
 }
 
 describe('stageDeepClone', () => {
@@ -220,7 +209,7 @@ describe('stageDeepClone', () => {
 		return { assertDatabaseName: source.databaseName, withDatabaseIds: true }
 	}
 
-	runTestCases.withExport({ testCases, dialecteConfig: makeCloneConfig(), act })
+	runTestCases.withExport({ testCases, hooks: makeCloneHooks(), act })
 
 	// ── beforeClone skip ─────────────────────────────────────────────────────
 
@@ -244,7 +233,7 @@ describe('stageDeepClone', () => {
 
 	runTestCases.withExport({
 		testCases: skipTestCases,
-		dialecteConfig: makeSkipConfig('AAA_1'),
+		hooks: makeSkipHooks('AAA_1'),
 		act,
 	})
 
@@ -310,7 +299,7 @@ describe('stageDeepClone', () => {
 		it.each(Object.entries(returnValueCases))('%s', async (_, tc) => {
 			const { document, cleanup } = await createTestDialecte({
 				xmlString: tc.sourceXml,
-				dialecteConfig: makeCloneConfig(),
+				hooks: makeCloneHooks(),
 			})
 
 			try {
@@ -382,7 +371,7 @@ describe('stageDeepClone', () => {
 
 	runTestCases.withExport({
 		testCases: afterDeepCloneTestCases,
-		dialecteConfig: makeAfterDeepCloneConfig(),
+		hooks: makeAfterDeepCloneHooks(),
 		act,
 	})
 })

@@ -76,6 +76,21 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		}
 	}
 
+	//== Document lookup
+
+	/**
+	 * Get the filename (store name) of this document.
+	 * @returns The filename.
+	 *
+	 * @example
+	 * ```ts
+	 * const filename = query.getFilename()
+	 * ```
+	 */
+	getFilename(): string {
+		return this.store.name
+	}
+
 	//== Record lookup
 
 	/**

@@ -14,7 +14,7 @@ import type {
 	ActResult,
 	TestRunner,
 } from './run-test-cases.type'
-import type { AnyDialecteConfig } from '@/types'
+import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
@@ -38,10 +38,12 @@ function xmlWithExport<
 	testCases: TestCases<GenericTestCase>
 	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
 	dialecteConfig?: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 }): void {
 	const {
 		testCases,
 		act,
+		hooks,
 		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
 	} = params
 
@@ -55,9 +57,13 @@ function xmlWithExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const source = await createTestDialecte({ xmlString: testCase.sourceXml, dialecteConfig })
+			const source = await createTestDialecte({
+				xmlString: testCase.sourceXml,
+				dialecteConfig,
+				hooks,
+			})
 			const target = testCase.targetXml
-				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig })
+				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig, hooks })
 				: undefined
 
 			try {
@@ -100,10 +106,12 @@ function xmlWithoutExport<
 	testCases: TestCases<GenericTestCase>
 	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
 	dialecteConfig?: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 }): void {
 	const {
 		testCases,
 		act,
+		hooks,
 		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
 	} = params
 
@@ -113,9 +121,13 @@ function xmlWithoutExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const source = await createTestDialecte({ xmlString: testCase.sourceXml, dialecteConfig })
+			const source = await createTestDialecte({
+				xmlString: testCase.sourceXml,
+				dialecteConfig,
+				hooks,
+			})
 			const target = testCase.targetXml
-				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig })
+				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig, hooks })
 				: undefined
 
 			try {
@@ -150,10 +162,11 @@ export const runTestCases = createTestRunner(TEST_DIALECTE_CONFIG)
 
 export function createTestRunner<GenericConfig extends AnyDialecteConfig>(
 	dialecteConfig: GenericConfig,
+	hooks?: TransactionHooks<GenericConfig>,
 ): TestRunner<GenericConfig> {
 	return {
-		withExport: (params) => xmlWithExport({ dialecteConfig, ...params }),
-		withoutExport: (params) => xmlWithoutExport({ dialecteConfig, ...params }),
+		withExport: (params) => xmlWithExport({ dialecteConfig, hooks, ...params }),
+		withoutExport: (params) => xmlWithoutExport({ dialecteConfig, hooks, ...params }),
 		generic: genericTestCases,
 	}
 }

@@ -11,6 +11,7 @@ import type {
 	RawRecord,
 	TrackedRecord,
 	Ref,
+	TransactionHooks,
 } from '@/types'
 
 /**
@@ -33,6 +34,7 @@ export async function stageEnsureChild<
 	GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
 >(params: {
 	dialecteConfig: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 	context: Context<GenericConfig>
 	query: Query<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
@@ -40,7 +42,7 @@ export async function stageEnsureChild<
 }): Promise<
 	TrackedRecord<GenericConfig, GenericChildElement> | RawRecord<GenericConfig, GenericChildElement>
 > {
-	const { dialecteConfig, context, query, parentRef, params: childParams } = params
+	const { dialecteConfig, hooks, context, query, parentRef, params: childParams } = params
 
 	const filter = toFilterAttributes<GenericConfig, GenericChildElement>(childParams.attributes)
 
@@ -62,6 +64,7 @@ export async function stageEnsureChild<
 
 	return stageAddChild({
 		dialecteConfig,
+		hooks,
 		context,
 		query,
 		parentRef,

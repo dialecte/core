@@ -7,7 +7,7 @@ import { DexieStore } from '@/store'
 
 import type { Context } from '@/document'
 import type { Document } from '@/document'
-import type { AnyDialecteConfig } from '@/types'
+import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
@@ -20,6 +20,7 @@ export async function createTestDialecte<
 >(params: {
 	xmlString: string
 	dialecteConfig?: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 }): Promise<{
 	document: Document<GenericConfig>
 	databaseName: string
@@ -29,7 +30,15 @@ export async function createTestDialecte<
 		withDatabaseIds?: boolean
 	}) => Promise<{ xmlDocument: XMLDocument; filename: string }>
 }> {
-	const { xmlString, dialecteConfig = TEST_DIALECTE_CONFIG } = params
+	const {
+		xmlString,
+		dialecteConfig = TEST_DIALECTE_CONFIG,
+		hooks,
+	} = params as {
+		xmlString: string
+		dialecteConfig: GenericConfig
+		hooks?: TransactionHooks<GenericConfig>
+	}
 
 	const filename = `test-${crypto.randomUUID()}.xml`
 	const file = new File([xmlString], filename, { type: 'text/xml' })
@@ -45,6 +54,7 @@ export async function createTestDialecte<
 	const document = openDialecteDocument({
 		config: dialecteConfig as GenericConfig,
 		storage: { type: 'local', databaseName },
+		hooks,
 	})
 
 	//== Callbacks

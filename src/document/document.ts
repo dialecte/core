@@ -6,7 +6,7 @@ import { throwDialecteError } from '@/errors'
 
 import type { PreparedTransaction, DocumentState } from './types'
 import type { Store } from '@/store'
-import type { AnyDialecteConfig } from '@/types/dialecte-config'
+import type { AnyDialecteConfig, TransactionHooks } from '@/types/dialecte-config'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from '@/types/extensions'
 
 /**
@@ -27,6 +27,7 @@ export class Document<
 > {
 	protected store: Store
 	protected config: GenericConfig
+	protected hooks: TransactionHooks<GenericConfig> | undefined
 	private extensionsRegistry?: GenericExtension
 
 	readonly state: DocumentState = {
@@ -50,9 +51,15 @@ export class Document<
 	 */
 	private channel: BroadcastChannel
 
-	constructor(store: Store, config: GenericConfig, extensions?: GenericExtension) {
+	constructor(
+		store: Store,
+		config: GenericConfig,
+		extensions?: GenericExtension,
+		hooks?: TransactionHooks<GenericConfig>,
+	) {
 		this.store = store
 		this.config = config
+		this.hooks = hooks
 		this.extensionsRegistry = extensions
 		this.channel = new BroadcastChannel(`core::${store.name}`)
 		this.channel.onmessage = (event: MessageEvent<number>) => {
@@ -96,7 +103,7 @@ export class Document<
 	 * e.g. SclDocument overrides this to return new SclTransaction(...)
 	 */
 	protected createTransaction(): Transaction<GenericConfig> {
-		return new Transaction(this.store, this.config, this.state)
+		return new Transaction(this.store, this.config, this.state, this.hooks)
 	}
 
 	async transaction<T>(

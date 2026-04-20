@@ -42,7 +42,6 @@ export const TEST_DIALECTE_CONFIG = {
 	database: DATABASE_CONFIG,
 	io: IO_CONFIG,
 	definition: DEFINITION,
-	hooks: {},
 } as const satisfies AnyDialecteConfig
 
 export type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG

@@ -6,7 +6,7 @@ import { invariant } from '@/utils'
 
 import type { UpdateParams } from './update.types'
 import type { Context, Query } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, RawRecord, Ref } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, RawRecord, Ref, TransactionHooks } from '@/types'
 
 /**
  * Merges attribute/value changes onto an existing record.
@@ -18,12 +18,13 @@ export async function stageUpdate<
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
 	dialecteConfig: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 	context: Context<GenericConfig>
 	query: Query<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 	params: UpdateParams<GenericConfig, GenericElement>
 }): Promise<RawRecord<GenericConfig, GenericElement>> {
-	const { dialecteConfig, context, query, ref, params: updateParams } = params
+	const { dialecteConfig, hooks, context, query, ref, params: updateParams } = params
 	const { attributes, value } = updateParams
 
 	const record = await getRecord({ context, ref })
@@ -58,8 +59,8 @@ export async function stageUpdate<
 
 	stageOperation({ context, status: 'updated', oldRecord: record, newRecord: updatedRecord })
 
-	if (dialecteConfig.hooks?.afterUpdated) {
-		const hookOperations = await dialecteConfig.hooks.afterUpdated({
+	if (hooks?.afterUpdated) {
+		const hookOperations = await hooks.afterUpdated({
 			oldRecord: record,
 			newRecord: updatedRecord,
 			query,

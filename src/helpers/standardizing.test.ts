@@ -5,13 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { DIALECTE_NAMESPACES, TEST_DIALECTE_CONFIG, TestDialecteConfig, runTestCases } from '@/test'
 
 import type { BaseTestCase } from '@/test'
-import type {
-	AnyDialecteConfig,
-	TransactionHooks,
-	ElementsOf,
-	FullAttributeObjectOf,
-	RawRecord,
-} from '@/types'
+import type { AnyDialecteConfig, ElementsOf, FullAttributeObjectOf, RawRecord } from '@/types'
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -231,23 +225,21 @@ describe('standardizeRecord', () => {
 		it('calls the hook and applies the returned record', () => {
 			let hookCalled = false
 
-			const configWithHook = {
-				...config,
-				hooks: {
-					afterStandardizedRecord: <C extends AnyDialecteConfig, E extends ElementsOf<C>>({
-						record,
-					}: {
-						record: RawRecord<C, E>
-					}): RawRecord<C, E> => {
-						hookCalled = true
-						return { ...record, value: 'from hook' }
-					},
-				} satisfies TransactionHooks,
+			const hooks = {
+				afterStandardizedRecord: <C extends AnyDialecteConfig, E extends ElementsOf<C>>({
+					record,
+				}: {
+					record: RawRecord<C, E>
+				}): RawRecord<C, E> => {
+					hookCalled = true
+					return { ...record, value: 'from hook' }
+				},
 			}
 
 			const result = standardizeRecord({
 				record: { tagName: 'AA_1', value: 'original' },
-				dialecteConfig: configWithHook,
+				dialecteConfig: config,
+				hooks,
 			})
 
 			expect(hookCalled).toBe(true)

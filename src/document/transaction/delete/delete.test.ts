@@ -118,7 +118,7 @@ describe('stageDelete hooks — spy behavior', () => {
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 	const beforeDelete = vi.fn().mockImplementation(async () => [])
-	const config = { ...TEST_DIALECTE_CONFIG, hooks: { beforeDelete } }
+	const hooks = { beforeDelete }
 
 	type TestCase = BaseXmlTestCase & {
 		deleteRef: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
@@ -162,7 +162,7 @@ describe('stageDelete hooks — spy behavior', () => {
 		expect(callArgs.record.children).toHaveLength(testCase.expectedChildCount)
 	}
 
-	runTestCases.withoutExport({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withoutExport({ testCases, act, hooks })
 })
 
 describe('stageDelete hooks — returned operations applied', () => {
@@ -183,32 +183,29 @@ describe('stageDelete hooks — returned operations applied', () => {
 		},
 	}
 
-	const config = {
-		...TEST_DIALECTE_CONFIG,
-		hooks: {
-			beforeDelete: vi
-				.fn()
-				.mockImplementation(
-					async ({
-						record,
-						query,
-					}: {
-						record: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
-						query: Transaction<TestDialecteConfig>
-					}) => {
-						if (record.tagName !== 'A') return []
-						const [bRecord] = await query.getRecordsByTagName('B')
-						if (!bRecord) return []
-						const updatedB = {
-							...bRecord,
-							attributes: bRecord.attributes.map((a: any) =>
-								a.name === 'aB' ? { ...a, value: 'after' } : a,
-							),
-						}
-						return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
-					},
-				),
-		},
+	const hooks = {
+		beforeDelete: vi
+			.fn()
+			.mockImplementation(
+				async ({
+					record,
+					query,
+				}: {
+					record: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+					query: Transaction<TestDialecteConfig>
+				}) => {
+					if (record.tagName !== 'A') return []
+					const [bRecord] = await query.getRecordsByTagName('B')
+					if (!bRecord) return []
+					const updatedB = {
+						...bRecord,
+						attributes: bRecord.attributes.map((a: any) =>
+							a.name === 'aB' ? { ...a, value: 'after' } : a,
+						),
+					}
+					return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
+				},
+			),
 	}
 
 	async function act({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
@@ -218,5 +215,5 @@ describe('stageDelete hooks — returned operations applied', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runTestCases.withExport({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withExport({ testCases, act, hooks })
 })

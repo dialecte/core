@@ -12,6 +12,7 @@ import type {
 	TrackedRecord,
 	Ref,
 	RawRecord,
+	TransactionHooks,
 } from '@/types'
 
 /**
@@ -24,11 +25,12 @@ export async function stageDelete<
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
 	dialecteConfig: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
 	context: Context<GenericConfig>
 	query: Query<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 }): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
-	const { dialecteConfig, context, query, ref } = params
+	const { dialecteConfig, hooks, context, query, ref } = params
 
 	const record = await getRecord({ context, ref })
 	invariant(record, {
@@ -44,8 +46,8 @@ export async function stageDelete<
 
 	// Fire before stageDescendants — root and descendants are still live in context here.
 	// Hook receives the subtree root; SCL impl uses findDescendants to cover the full tree.
-	if (dialecteConfig.hooks?.beforeDelete) {
-		const hookOperations = await dialecteConfig.hooks.beforeDelete({ record, query })
+	if (hooks?.beforeDelete) {
+		const hookOperations = await hooks.beforeDelete({ record, query })
 		stageOperations({ context, operations: hookOperations })
 	}
 

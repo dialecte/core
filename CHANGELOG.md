@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.12] - 2026-04-20
+
+### Added
+
+- `createDialecteDocument`: async factory that opens a document **and** commits the root element in a single call
+- `query.getFilename()`: returns the document's store name (filename)
+
+### Changed
+
+- `hooks` rework: to avoid circular dependencies in types and function, they are now passed as a separate parameters like the extensions.
+  - removed from `DialecteConfig` / `RawDialecteConfig`
+  - `TransactionHooks` is now generic: `TransactionHooks<GenericConfig>`
+
 ## [0.1.11] - 2026-04-14
 
 ### Changed

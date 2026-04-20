@@ -24,6 +24,7 @@ import type {
 	RawRecord,
 	RefOrRecord,
 	TreeRecord,
+	TransactionHooks,
 } from '@/types'
 
 /**
@@ -44,10 +45,17 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	protected stagedOperations: Operation<GenericConfig>[] = []
 	protected documentState: DocumentState
 	protected recordCache = new Map<string, AnyRawRecord>()
+	protected hooks: TransactionHooks<GenericConfig> | undefined
 
-	constructor(store: Store, dialecteConfig: GenericConfig, documentState: DocumentState) {
+	constructor(
+		store: Store,
+		dialecteConfig: GenericConfig,
+		documentState: DocumentState,
+		hooks?: TransactionHooks<GenericConfig>,
+	) {
 		super(store, dialecteConfig)
 		this.documentState = documentState
+		this.hooks = hooks
 	}
 
 	//== Mutations (sync — stage operations, return Refs)
@@ -101,6 +109,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			parentRef: toRef(parentRefOrRecord),
 			params,
 			dialecteConfig: this.dialecteConfig,
+			hooks: this.hooks,
 			query: this,
 		})
 	}
@@ -138,6 +147,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			parentRef: toRef(parentRefOrRecord),
 			params,
 			dialecteConfig: this.dialecteConfig,
+			hooks: this.hooks,
 			query: this,
 		})
 	}
@@ -165,6 +175,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			ref: toRef(refOrRecord),
 			params,
 			dialecteConfig: this.dialecteConfig,
+			hooks: this.hooks,
 			query: this,
 		})
 	}
@@ -187,6 +198,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			context: this.context,
 			ref: toRef(refOrRecord),
 			dialecteConfig: this.dialecteConfig,
+			hooks: this.hooks,
 			query: this,
 		})
 	}
@@ -213,6 +225,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	): Promise<CloneResult<GenericConfig, GenericChildElement>> {
 		return stageDeepClone({
 			dialecteConfig: this.dialecteConfig,
+			hooks: this.hooks,
 			context: this.context,
 			parentRef: toRef(parentRefOrRecord),
 			record,

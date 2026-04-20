@@ -25,7 +25,6 @@ export type RawDialecteConfig<
 	database: DatabaseConfig
 	io: IOConfig
 	definition: AnyDefinition
-	hooks: TransactionHooks
 }
 
 export type IOConfig = {
@@ -35,15 +34,12 @@ export type IOConfig = {
 	hooks?: IOHooks
 }
 
-export type TransactionHooks = {
+export type TransactionHooks<GenericConfig extends AnyDialecteConfig> = {
 	/**
 	 * Called before cloning a record.
 	 * Return modified attributes for the clone.
 	 */
-	beforeClone?: <
-		GenericConfig extends AnyDialecteConfig,
-		GenericElement extends ElementsOf<GenericConfig>,
-	>(params: {
+	beforeClone?: <GenericElement extends ElementsOf<GenericConfig>>(params: {
 		record: TreeRecord<GenericConfig, GenericElement>
 	}) => { shouldBeCloned: boolean; transformedRecord: TreeRecord<GenericConfig, GenericElement> }
 
@@ -51,10 +47,7 @@ export type TransactionHooks = {
 	 * Called after core standardizes element from definition.
 	 * Use to enrich record (e.g., auto-generate UUIDs).
 	 */
-	afterStandardizedRecord?: <
-		GenericConfig extends AnyDialecteConfig,
-		GenericElement extends ElementsOf<GenericConfig>,
-	>(params: {
+	afterStandardizedRecord?: <GenericElement extends ElementsOf<GenericConfig>>(params: {
 		record: RawRecord<GenericConfig, GenericElement>
 	}) => RawRecord<GenericConfig, GenericElement>
 
@@ -63,7 +56,6 @@ export type TransactionHooks = {
 	 * Return additional operations (e.g., wrapper elements).
 	 */
 	afterCreated?: <
-		GenericConfig extends AnyDialecteConfig,
 		GenericElement extends ElementsOf<GenericConfig>,
 		GenericParentElement extends ParentsOf<GenericConfig, GenericElement>,
 	>(params: {
@@ -76,7 +68,7 @@ export type TransactionHooks = {
 	 * Called after deepClone completes all recursive cloning.
 	 * Receives the full source→target mapping. Return additional operations to stage
 	 */
-	afterDeepClone?: <GenericConfig extends AnyDialecteConfig>(params: {
+	afterDeepClone?: (params: {
 		mappings: CloneMapping<GenericConfig>[]
 		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
@@ -85,10 +77,7 @@ export type TransactionHooks = {
 	 * Called after a record is updated (attributes or value changed).
 	 * Return additional operations to stage (e.g., update path attrs on dependent refs).
 	 */
-	afterUpdated?: <
-		GenericConfig extends AnyDialecteConfig,
-		GenericElement extends ElementsOf<GenericConfig>,
-	>(params: {
+	afterUpdated?: <GenericElement extends ElementsOf<GenericConfig>>(params: {
 		oldRecord: RawRecord<GenericConfig, GenericElement>
 		newRecord: RawRecord<GenericConfig, GenericElement>
 		query: Query<GenericConfig>
@@ -101,10 +90,7 @@ export type TransactionHooks = {
 	 * Return additional operations to stage (e.g., clear or delete ref elements
 	 * pointing to this record or any of its descendants).
 	 */
-	beforeDelete?: <
-		GenericConfig extends AnyDialecteConfig,
-		GenericElement extends ElementsOf<GenericConfig>,
-	>(params: {
+	beforeDelete?: <GenericElement extends ElementsOf<GenericConfig>>(params: {
 		record: RawRecord<GenericConfig, GenericElement>
 		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
