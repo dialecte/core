@@ -197,7 +197,6 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		return stageDelete({
 			context: this.context,
 			ref: toRef(refOrRecord),
-			dialecteConfig: this.dialecteConfig,
 			hooks: this.hooks,
 			query: this,
 		})

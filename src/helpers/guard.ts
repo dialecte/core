@@ -3,6 +3,7 @@ import type {
 	TrackedRecord,
 	AnyDialecteConfig,
 	ElementsOf,
+	AttributesOf,
 	FullAttributeObjectOf,
 	AttributesValueObjectOf,
 	TreeRecord,
@@ -151,4 +152,41 @@ export function isParentOf<T extends string>(
 	tagName: T,
 ): parent is AnyRelationship & { tagName: T } {
 	return parent.tagName === tagName
+}
+
+/**
+ * Type predicate narrowing a string to a valid element tag name for a given config.
+ *
+ *
+ * @example
+ * if (isElementOf<MyConfig>(tagName, dialecteConfig)) {
+ *   const records = await query.getRecordsByTagName(tagName) // fully typed
+ * }
+ */
+export function isElementOf<GenericConfig extends AnyDialecteConfig>(
+	tagName: string,
+	dialecteConfig: GenericConfig,
+): tagName is ElementsOf<GenericConfig> {
+	return (dialecteConfig.elements as readonly string[]).includes(tagName)
+}
+
+/**
+ * Type predicate narrowing a string to a valid attribute name for a given record.
+ *
+ * @example
+ * if (isAttributeOf(record, entry.uuidAttr)) {
+ *   const value = await query.getAttribute(record, entry.uuidAttr) // fully typed
+ * }
+ */
+export function isAttributeOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(
+	record:
+		| RawRecord<GenericConfig, GenericElement>
+		| TrackedRecord<GenericConfig, GenericElement>
+		| TreeRecord<GenericConfig, GenericElement>,
+	name: string,
+): name is AttributesOf<GenericConfig, GenericElement> {
+	return record.attributes.some((attribute) => attribute.name === name)
 }

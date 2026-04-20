@@ -24,13 +24,12 @@ export async function stageDelete<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
-	dialecteConfig: GenericConfig
 	hooks?: TransactionHooks<GenericConfig>
 	context: Context<GenericConfig>
 	query: Query<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 }): Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>> {
-	const { dialecteConfig, hooks, context, query, ref } = params
+	const { hooks, context, query, ref } = params
 
 	const record = await getRecord({ context, ref })
 	invariant(record, {

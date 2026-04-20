@@ -66,6 +66,10 @@ export const ERROR_CATALOG = {
 		code: 'D3003',
 		message: 'Root element cannot be deleted',
 	},
+	REQUIRED_ATTRIBUTE_MISSING: {
+		code: 'D3004',
+		message: 'Required attribute is missing',
+	},
 
 	// D4xxx — Transaction lifecycle
 	ALREADY_COMMITTED: {
