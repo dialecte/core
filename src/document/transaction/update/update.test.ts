@@ -1,12 +1,7 @@
 import { describe, expect, vi } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import {
-	XMLNS_DEFAULT_NAMESPACE,
-	XMLNS_DEV_NAMESPACE,
-	TEST_DIALECTE_CONFIG,
-	runTestCases,
-} from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { UpdateParams } from './update.types'
 import type { Transaction } from '@/document'
@@ -130,7 +125,7 @@ describe('stageUpdate hooks — spy behavior', () => {
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 	const afterUpdated = vi.fn().mockResolvedValue([])
-	const config = { ...TEST_DIALECTE_CONFIG, hooks: { afterUpdated } }
+	const hooks = { afterUpdated }
 
 	type TestCase = BaseXmlTestCase & {
 		updateRef: Ref<TestDialecteConfig, 'A'>
@@ -182,7 +177,7 @@ describe('stageUpdate hooks — spy behavior', () => {
 		}
 	}
 
-	runTestCases.withoutExport({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withoutExport({ testCases, act, hooks })
 })
 
 describe('stageUpdate hooks — returned operations applied', () => {
@@ -203,32 +198,29 @@ describe('stageUpdate hooks — returned operations applied', () => {
 		},
 	}
 
-	const config = {
-		...TEST_DIALECTE_CONFIG,
-		hooks: {
-			afterUpdated: vi
-				.fn()
-				.mockImplementation(
-					async ({
-						newRecord,
-						query,
-					}: {
-						newRecord: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
-						query: Transaction<TestDialecteConfig>
-					}) => {
-						if (newRecord.tagName !== 'A') return []
-						const [bRecord] = await query.getRecordsByTagName('B')
-						if (!bRecord) return []
-						const updatedB = {
-							...bRecord,
-							attributes: bRecord.attributes.map((a: any) =>
-								a.name === 'aB' ? { ...a, value: 'cascade' } : a,
-							),
-						}
-						return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
-					},
-				),
-		},
+	const hooks = {
+		afterUpdated: vi
+			.fn()
+			.mockImplementation(
+				async ({
+					newRecord,
+					query,
+				}: {
+					newRecord: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+					query: Transaction<TestDialecteConfig>
+				}) => {
+					if (newRecord.tagName !== 'A') return []
+					const [bRecord] = await query.getRecordsByTagName('B')
+					if (!bRecord) return []
+					const updatedB = {
+						...bRecord,
+						attributes: bRecord.attributes.map((a: any) =>
+							a.name === 'aB' ? { ...a, value: 'cascade' } : a,
+						),
+					}
+					return [{ status: 'updated' as const, oldRecord: bRecord, newRecord: updatedB }]
+				},
+			),
 	}
 
 	async function act({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
@@ -238,5 +230,5 @@ describe('stageUpdate hooks — returned operations applied', () => {
 		return { assertDatabaseName: source.databaseName }
 	}
 
-	runTestCases.withExport({ testCases, act, dialecteConfig: config as any })
+	runTestCases.withExport({ testCases, act, hooks })
 })

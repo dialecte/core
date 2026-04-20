@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	DIALECTE_NAMESPACES,
-	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	createTestDialecte,
@@ -11,10 +10,9 @@ import {
 } from '@/test'
 import { invariant } from '@/utils'
 
-import type { CloneMapping } from './clone.types'
 import type { Transaction } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { AnyDialecteConfig, AnyTreeRecord, Operation, Ref, TransactionHooks } from '@/types'
+import type { Operation, Ref, TransactionHooks } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +25,7 @@ import type { AnyDialecteConfig, AnyTreeRecord, Operation, Ref, TransactionHooks
  */
 function makeCloneHooks(): TransactionHooks<TestDialecteConfig> {
 	return {
-		beforeClone: ({ record }: { record: AnyTreeRecord }) => ({
+		beforeClone: ({ record }) => ({
 			shouldBeCloned: true,
 			transformedRecord: {
 				...record,
@@ -46,7 +44,7 @@ function makeCloneHooks(): TransactionHooks<TestDialecteConfig> {
 
 function makeSkipHooks(skipTagName: string): TransactionHooks<TestDialecteConfig> {
 	return {
-		beforeClone: ({ record }: { record: AnyTreeRecord }) => ({
+		beforeClone: ({ record }) => ({
 			shouldBeCloned: record.tagName !== skipTagName,
 			transformedRecord: record,
 		}),
@@ -54,23 +52,17 @@ function makeSkipHooks(skipTagName: string): TransactionHooks<TestDialecteConfig
 }
 
 /**
- * Composes makeCloneConfig + an afterDeepClone hook that stages an update
+ * Composes makeCloneHooks + an afterDeepClone hook that stages an update
  * adding `dev:post-clone="mapped:<source.id>"` to every cloned target.
  * This proves the hook fires after all clones with correct mappings.
  */
 function makeAfterDeepCloneHooks(): TransactionHooks<TestDialecteConfig> {
 	return {
 		...makeCloneHooks(),
-		afterDeepClone: async <GenericConfig extends AnyDialecteConfig>({
-			mappings,
-			query,
-		}: {
-			mappings: CloneMapping<GenericConfig>[]
-			query: Transaction<GenericConfig>
-		}): Promise<Operation<GenericConfig>[]> => {
-			const operations: Operation<GenericConfig>[] = []
+		afterDeepClone: async ({ mappings, query }) => {
+			const operations: Operation<TestDialecteConfig>[] = []
 			for (const mapping of mappings) {
-				const allOps = query
+				const allOps = (query as Transaction<TestDialecteConfig>)
 					.getStagedOperations()
 					.filter((op) => op.status !== 'deleted' && op.newRecord?.id === mapping.target.id)
 				const latestOp = allOps[allOps.length - 1]
@@ -87,7 +79,7 @@ function makeAfterDeepCloneHooks(): TransactionHooks<TestDialecteConfig> {
 							namespace: DIALECTE_NAMESPACES.dev,
 						},
 					],
-				}
+				} as typeof currentRecord
 				operations.push({ status: 'updated', oldRecord: currentRecord, newRecord })
 			}
 			return operations

@@ -1,4 +1,3 @@
-import { createXmlAssertions } from './assert-xml'
 import { TEST_DIALECTE_CONFIG } from './config'
 
 import { openDialecteDocument } from '@/dialecte'
