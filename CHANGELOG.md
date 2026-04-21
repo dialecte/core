@@ -7,12 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.13] - 2026-04-21
+
+### Added
+
+- simple untyped api entrypoint (`AnyRefOrRecord`):
+  - `query.getAnyAttribute(ref, name)`
+  - `query.getAnyAttributes(ref)`
+  - `query.getAnyChild(ref, tagName)`
+  - `query.getAnyChildren(ref, tagName)`
+
+### Changed
+
+- `afterDeepClone` hook: removed `mappings` param - use `cumulativeCloneMappings` (strict superset)
+- `CloneMapping.source` now carries `attributes: readonly AnyAttribute[]` - avoids cross-DB record lookup in hooks
+
 ## [0.1.12] - 2026-04-20
 
 ### Added
 
 - `createDialecteDocument`: async factory that opens a document **and** commits the root element in a single call
 - `query.getFilename()`: returns the document's store name (filename)
+- guards: `isElementOf` & `isAttributeOf``
+- utils: `stripAttribute`
 
 ### Changed
 
