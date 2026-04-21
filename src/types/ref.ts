@@ -1,5 +1,10 @@
 import type { AnyDialecteConfig, ElementsOf, SingletonElementsOf } from './dialecte-config'
-import type { DialecteRecord, ParentRelationship, ChildRelationship } from './records'
+import type {
+	DialecteRecord,
+	AnyDialecteRecord,
+	ParentRelationship,
+	ChildRelationship,
+} from './records'
 
 /**
  * A Ref is a typed pointer to a record in the document tree.
@@ -18,6 +23,8 @@ export type Ref<
 		: { readonly tagName: GenericElement; readonly id: string }
 
 export type AnyRef = { readonly tagName: string; readonly id?: string }
+
+export type AnyRefOrRecord = AnyRef | AnyDialecteRecord
 
 /**
  * Any value that can be resolved to a Ref: a typed ref, any record variant,

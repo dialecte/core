@@ -22,6 +22,8 @@ import type { GetTreeParams } from './get'
 import type { Store } from '@/store'
 import type {
 	AnyDialecteConfig,
+	AnyTrackedRecord,
+	AnyRefOrRecord,
 	AttributesOf,
 	AttributesValueObjectOf,
 	ElementsOf,
@@ -302,18 +304,6 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: { name: AttributesOf<GenericConfig, GenericElement>; fullObject?: false },
 	): Promise<FullAttributeObjectOf<GenericConfig, GenericElement>['value'] | ''>
-	/**
-	 * Get the full attribute object for a single attribute.
-	 *
-	 * @param refOrRecord - The element to read from.
-	 * @param params - Attribute name and `fullObject: true`.
-	 * @returns The full attribute object, or `undefined` if absent.
-	 *
-	 * @example
-	 * ```ts
-	 * const fullAttributeObject = await query.getAttribute(a, { name: 'aA', fullObject: true })
-	 * ```
-	 */
 	async getAttribute<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: { name: AttributesOf<GenericConfig, GenericElement>; fullObject: true },
@@ -324,7 +314,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params: {
-			name: AttributesOf<GenericConfig, GenericElement>
+			name: string
 			fullObject?: boolean
 		},
 	): Promise<GenericAttribute | undefined | GenericAttribute['value'] | ''> {
@@ -377,6 +367,59 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		if (fullObject)
 			return getAttributesFullObject({ context: this.context, ref: resolvedRef, ...params })
 		return getAttributes({ context: this.context, ref: resolvedRef, ...params })
+	}
+
+	//== Any-typed companions (for union-element / untyped-ref call sites)
+
+	/**
+	 * Get a single attribute value without element-type constraint.
+	 * Use when the element type is a union or unknown at the call site.
+	 * Returns `''` if the attribute is absent.
+	 */
+	async getAnyAttribute(refOrRecord: AnyRefOrRecord | undefined, name: string): Promise<string> {
+		return this.getAttribute(
+			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
+			{ name } as { name: AttributesOf<GenericConfig, ElementsOf<GenericConfig>> },
+		)
+	}
+
+	/**
+	 * Get all attributes as a plain `Record<string, string>` without element-type constraint.
+	 * Use when the element type is a union or unknown at the call site.
+	 */
+	async getAnyAttributes(refOrRecord: AnyRefOrRecord | undefined): Promise<Record<string, string>> {
+		const attrs = await this.getAttributes(
+			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
+		)
+		return attrs as Record<string, string>
+	}
+
+	/**
+	 * Get the first direct child matching a tag name without element-type constraint.
+	 * Use when the parent or child element type is a union or unknown at the call site.
+	 */
+	async getAnyChild(
+		refOrRecord: AnyRefOrRecord | undefined,
+		tagName: string,
+	): Promise<AnyTrackedRecord<GenericConfig> | undefined> {
+		return this.getChild(
+			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
+			tagName as ChildrenOf<GenericConfig, ElementsOf<GenericConfig>>,
+		)
+	}
+
+	/**
+	 * Get all direct children matching a tag name without element-type constraint.
+	 * Use when the parent or child element type is a union or unknown at the call site.
+	 */
+	async getAnyChildren(
+		refOrRecord: AnyRefOrRecord | undefined,
+		tagName: string,
+	): Promise<AnyTrackedRecord<GenericConfig>[]> {
+		return this.getChildren(
+			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
+			tagName as ChildrenOf<GenericConfig, ElementsOf<GenericConfig>>,
+		)
 	}
 
 	//== Find queries
