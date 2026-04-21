@@ -59,7 +59,7 @@ function makeSkipHooks(skipTagName: string): TransactionHooks<TestDialecteConfig
 function makeAfterDeepCloneHooks(): TransactionHooks<TestDialecteConfig> {
 	return {
 		...makeCloneHooks(),
-		afterDeepClone: async ({ mappings, query }) => {
+		afterDeepClone: async ({ cumulativeCloneMappings: mappings, query }) => {
 			const operations: Operation<TestDialecteConfig>[] = []
 			for (const mapping of mappings) {
 				const allOps = (query as Transaction<TestDialecteConfig>)

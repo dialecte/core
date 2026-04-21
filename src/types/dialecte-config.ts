@@ -66,10 +66,10 @@ export type TransactionHooks<GenericConfig extends AnyDialecteConfig> = {
 
 	/**
 	 * Called after deepClone completes all recursive cloning.
-	 * Receives the full source→target mapping. Return additional operations to stage
+	 * Receives the full source->target mapping. Return additional operations to stage
 	 */
 	afterDeepClone?: (params: {
-		mappings: CloneMapping<GenericConfig>[]
+		cumulativeCloneMappings: CloneMapping<GenericConfig>[]
 		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
 

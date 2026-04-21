@@ -30,8 +30,10 @@ export async function stageDeepClone<
 	query: Query<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
 	record: TreeRecord<GenericConfig, GenericChildElement>
+	cumulativeCloneMappings: CloneMapping<GenericConfig>[]
 }): Promise<CloneResult<GenericConfig, GenericChildElement>> {
-	const { dialecteConfig, hooks, context, query, parentRef, record } = params
+	const { dialecteConfig, hooks, context, query, parentRef, record, cumulativeCloneMappings } =
+		params
 
 	const mappings: CloneMapping<GenericConfig>[] = []
 
@@ -45,9 +47,11 @@ export async function stageDeepClone<
 		mappings,
 	})
 
+	cumulativeCloneMappings.push(...mappings)
+
 	if (hooks?.afterDeepClone) {
 		const additionalOperations = await hooks.afterDeepClone({
-			mappings,
+			cumulativeCloneMappings,
 			query,
 		})
 		context.stagedOperations.push(...additionalOperations)
@@ -98,8 +102,11 @@ async function cloneRecursively<
 		},
 	})
 
+	const source = toRef(record) as CloneMapping<GenericConfig>['source']
 	mappings.push({
-		source: toRef(record),
+		source: Object.assign(source, {
+			attributes: [...record.attributes],
+		}),
 		target: toRef(childRecord),
 	})
 
