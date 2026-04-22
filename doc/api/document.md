@@ -1,5 +1,5 @@
 ---
-description: API reference for the Document class — the main entry point for a dialecte. Covers openDialecteDocument, the query accessor, transaction(), prepare(), undo/redo, and the observable DocumentState.
+description: API reference for the Document class -- the main entry point for a dialecte. Covers openDialecteDocument, createDialecteDocument, the query accessor, transaction(), prepare(), undo/redo, and the observable DocumentState.
 ---
 
 # Document
@@ -8,6 +8,10 @@ description: API reference for the Document class — the main entry point for a
 
 ## Creating a Document
 
+### openDialecteDocument
+
+Opens a connection to an existing database. Does not create a root element.
+
 ```ts
 import { openDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
@@ -15,6 +19,20 @@ const doc = openDialecteDocument({
 	config: TEST_DIALECTE_CONFIG,
 	storage: { type: 'local', databaseName },
 })
+```
+
+### createDialecteDocument
+
+Creates a new database with a root element pre-populated from the config's definition. Required attributes are initialized with their `fixed`, `default`, or empty-string value.
+
+```ts
+import { createDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
+
+const doc = await createDialecteDocument({
+	config: TEST_DIALECTE_CONFIG,
+	storage: { type: 'local', databaseName },
+})
+// Root element already committed -- ready for queries and transactions
 ```
 
 ## query

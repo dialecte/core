@@ -119,7 +119,7 @@ await doc.transaction(async (tx) => {
 	const tree = await tx.getTree(sourceRef)
 	const { record, mappings } = await tx.deepClone(parentRef, tree)
 	// record: RawRecord to the cloned root
-	// mappings: [{ source, target }] — old ID → new ID for every element
+	// mappings: [{ source, target }] -- old ID -> new ID for every element
 })
 ```
 
@@ -132,12 +132,16 @@ type CloneResult<Config, Element> = {
 }
 
 type CloneMapping<Config> = {
-	source: Ref<Config, ElementsOf<Config>>
+	source: Ref<Config, ElementsOf<Config>> & {
+		attributes: readonly AnyAttribute[]
+	}
 	target: Ref<Config, ElementsOf<Config>>
 }
 ```
 
-Use `mappings` to update cross-references or external data that pointed to the original elements.
+`source` carries the original record's attributes so hooks can recover source-side data without querying across databases.
+
+`mappings` in `CloneResult` are scoped to the current `deepClone` call. The `afterDeepClone` hook receives `cumulativeCloneMappings` -- all mappings accumulated across the entire transaction. See [Hooks -- afterDeepClone](/api/hooks#afterdeepclone).
 
 ## Reading inside a transaction
 

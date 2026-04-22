@@ -82,36 +82,40 @@ During `deepClone`, `afterCreated` fires in insertion order. Elements staged ear
 
 ### `afterDeepClone`
 
-Fires **once** after `deepClone` completes the full recursive clone. Receives the complete source→target `CloneMapping[]`. Use it to remap cross-references after the entire subtree is staged.
+Fires **once** after `deepClone` completes the full recursive clone. Receives `cumulativeCloneMappings` -- the complete source->target mappings accumulated across all `deepClone` calls within the current transaction. Use it to remap cross-references after the entire subtree is staged.
 
 **Signature**
 
 ```ts
 afterDeepClone?: (params: {
-  mappings: CloneMapping<Config>[]
+  cumulativeCloneMappings: CloneMapping<Config>[]
   query: Query<Config>
 }) => Promise<Operation<Config>[]>
 ```
 
 ```ts
 type CloneMapping<Config> = {
-	source: Ref<Config, ElementsOf<Config>>
+	source: Ref<Config, ElementsOf<Config>> & {
+		attributes: readonly AnyAttribute[]
+	}
 	target: Ref<Config, ElementsOf<Config>>
 }
 ```
 
-**Return** — additional operations to stage.
+`source` carries the original record's attributes so hooks can recover source-side data without querying across databases.
 
-**Example — remap cross-references after clone**
+**Return** -- additional operations to stage.
+
+**Example -- remap cross-references after clone**
 
 ```ts
 hooks: {
-  afterDeepClone: async ({ mappings, query }) => {
+  afterDeepClone: async ({ cumulativeCloneMappings, query }) => {
     const ops: Operation[] = []
-    for (const { source, target } of mappings) {
-      const sourceRecord = await query.getRecord(source)
+    for (const { source, target } of cumulativeCloneMappings) {
       const targetRecord = await query.getRecord(target)
-      // build updates based on the source→target record pairs
+      // source.attributes available for cross-DB lookup
+      // build updates based on the source->target record pairs
     }
     return ops
   },
@@ -181,7 +185,7 @@ For a single `deepClone` call (N elements in the tree):
 beforeClone            (per element, depth-first)
 afterStandardizedRecord (per element)
 afterCreated           (per element, insertion order)
-afterDeepClone         (once, after full tree staged)
+afterDeepClone         (once, after full tree staged -- receives cumulativeCloneMappings)
 ```
 
 For `update`:

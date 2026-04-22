@@ -6,6 +6,15 @@ description: API reference for the Query class — read-only access to a dialect
 
 `Query` provides read-only access to a dialecte's store. It is accessed via `doc.query` and is also the base class for `Transaction` — so all query methods are available inside a transaction too.
 
+## getFilename
+
+Returns the filename (store name) of the document.
+
+```ts
+const filename = doc.query.getFilename()
+// string
+```
+
 ## Record lookup
 
 ### getRoot
@@ -215,6 +224,50 @@ const { aA, bA } = await doc.query.getAttributes(ref)
 // Full objects
 const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 // → FullAttributeObject[]
+```
+
+## Any-typed companions
+
+Loose-typed versions of core query methods for call sites where the element type is a union or unknown. Accept `AnyRefOrRecord` instead of `RefOrRecord<Config, Element>`.
+
+```ts
+type AnyRefOrRecord = AnyRef | AnyDialecteRecord
+```
+
+### getAnyAttribute
+
+Returns a single attribute value without element-type constraint. Returns `''` if absent.
+
+```ts
+const value = await doc.query.getAnyAttribute(ref, 'name')
+// string
+```
+
+### getAnyAttributes
+
+Returns all attributes as a plain `Record<string, string>` without element-type constraint.
+
+```ts
+const attrs = await doc.query.getAnyAttributes(ref)
+// Record<string, string>
+```
+
+### getAnyChild
+
+Returns the first direct child matching a tag name without element-type constraint.
+
+```ts
+const child = await doc.query.getAnyChild(ref, 'AA_1')
+// AnyTrackedRecord | undefined
+```
+
+### getAnyChildren
+
+Returns all direct children matching a tag name without element-type constraint.
+
+```ts
+const children = await doc.query.getAnyChildren(ref, 'AA_1')
+// AnyTrackedRecord[]
 ```
 
 ## RefOrRecord
