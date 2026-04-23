@@ -24,6 +24,7 @@ export default defineConfig({
 			{ text: 'Home', link: '/' },
 			{ text: 'Guide', link: '/guide/introduction/getting-started' },
 			{ text: 'Api', link: '/api/' },
+			{ text: 'IO', link: '/io/' },
 			{
 				text: 'LLMs',
 				items: [
@@ -45,6 +46,7 @@ export default defineConfig({
 				{
 					text: 'Development',
 					items: [
+						{ text: 'Overview', link: '/guide/development/' },
 						{ text: 'State & Errors', link: '/guide/development/state-and-errors' },
 						{ text: 'Testing', link: '/guide/development/testing' },
 						{ text: 'Helpers', link: '/guide/development/helpers' },
