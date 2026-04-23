@@ -25,7 +25,7 @@ export async function downloadFile<GenericConfig extends AnyDialecteConfig>(para
 				suggestedName: filename,
 				types: [
 					{
-						description: 'FSD Files',
+						description: `${extension.replace(/^\./, '').toUpperCase()} Files`,
 						accept: { 'application/xml': [extension] },
 					},
 				],

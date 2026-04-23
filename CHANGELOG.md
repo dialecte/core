@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.15] - 2026-04-23
+
+### Changed
+
+- `downloadFile`: file picker description now derived from extension - strips leading dot and uppercases (e.g. `.xml` -> `XML Files`)
+
 ## [0.1.14] - 2026-04-23
 
 ### Changed
