@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.14] - 2026-04-23
+
+### Changed
+
+- `getAnyAttribute` / `getAnyAttributes`: signature aligned with typed counterparts - accept `{ name, fullObject? }` params object with overloads for value vs full-object return
+
 ## [0.1.13] - 2026-04-21
 
 ### Added

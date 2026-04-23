@@ -21,6 +21,7 @@ import type {
 import type { GetTreeParams } from './get'
 import type { Store } from '@/store'
 import type {
+	AnyAttribute,
 	AnyDialecteConfig,
 	AnyTrackedRecord,
 	AnyRefOrRecord,
@@ -376,22 +377,44 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * Use when the element type is a union or unknown at the call site.
 	 * Returns `''` if the attribute is absent.
 	 */
-	async getAnyAttribute(refOrRecord: AnyRefOrRecord | undefined, name: string): Promise<string> {
-		return this.getAttribute(
-			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
-			{ name } as { name: AttributesOf<GenericConfig, ElementsOf<GenericConfig>> },
-		)
+	async getAnyAttribute(
+		refOrRecord: AnyRefOrRecord | undefined,
+		params: { name: string; fullObject?: false },
+	): Promise<string>
+	async getAnyAttribute(
+		refOrRecord: AnyRefOrRecord | undefined,
+		params: { name: string; fullObject: true },
+	): Promise<AnyAttribute | undefined>
+	async getAnyAttribute(
+		refOrRecord: AnyRefOrRecord | undefined,
+		params: { name: string; fullObject?: boolean },
+	): Promise<string | AnyAttribute | undefined> {
+		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
+		const { fullObject } = params
+		if (fullObject) return getAttributeFullObject({ context: this.context, ref, ...params })
+		return getAttribute({ context: this.context, ref, ...params })
 	}
 
 	/**
-	 * Get all attributes as a plain `Record<string, string>` without element-type constraint.
+	 * Get all attributes without element-type constraint.
 	 * Use when the element type is a union or unknown at the call site.
 	 */
-	async getAnyAttributes(refOrRecord: AnyRefOrRecord | undefined): Promise<Record<string, string>> {
-		const attrs = await this.getAttributes(
-			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
-		)
-		return attrs as Record<string, string>
+	async getAnyAttributes(
+		refOrRecord: AnyRefOrRecord | undefined,
+		params?: { fullObject?: false },
+	): Promise<Record<string, string>>
+	async getAnyAttributes(
+		refOrRecord: AnyRefOrRecord | undefined,
+		params: { fullObject: true },
+	): Promise<AnyAttribute[]>
+	async getAnyAttributes(
+		refOrRecord: AnyRefOrRecord | undefined,
+		params?: { fullObject?: boolean },
+	): Promise<Record<string, string> | AnyAttribute[]> {
+		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
+		const { fullObject } = params || {}
+		if (fullObject) return getAttributesFullObject({ context: this.context, ref, ...params })
+		return getAttributes({ context: this.context, ref, ...params })
 	}
 
 	/**
