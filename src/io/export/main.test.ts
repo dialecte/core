@@ -2,19 +2,19 @@ import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 import { exportXmlFile } from './main'
 
 import Dexie from 'dexie'
-import { describe, expect, it, afterAll } from 'vitest'
-import xmlFormat from 'xml-formatter'
+import { afterAll, describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { importXmlFiles } from '@/io/import'
 import {
 	DIALECTE_NAMESPACES,
 	XMLNS_EXT_NAMESPACE,
 	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
+	runTestCases,
 } from '@/test'
 
+import type { BaseTestCase, BaseXmlTestCase, ActResult } from '@/test'
 import type { AnyRawRecord } from '@/types'
 
 const databaseNames: string[] = []
@@ -27,35 +27,25 @@ afterAll(async () => {
 
 describe('Export', () => {
 	describe('Feature', () => {
-		type TestCase = {
-			description: string
-			xml: string
-			expectedXml: string
-			expectedXmlWithDatabaseIds: string
-		}
+		type TestCase = BaseXmlTestCase
 
-		const tests: TestCase[] = [
-			{
-				description: 'simple document',
-				xml: /* xml */ `
+		const testCases: Record<string, TestCase> = {
+			'simple document': {
+				sourceXml: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
 						<A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
 				`,
-				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">
-						<A aA="value aA"/>
-					</Root>
-				`,
-				expectedXmlWithDatabaseIds: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1">
-						<A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
-					</Root>
-				`,
+				expectedQueries: [
+					'//default:Root[@root="1"]',
+					'//default:Root/default:A[@aA="value aA"]',
+					`//default:Root[@${TEMP_IDB_ID_ATTRIBUTE_NAME}="1"]`,
+					`//default:Root/default:A[@${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"]`,
+				],
+				unexpectedQueries: [`//default:Root[@${CUSTOM_RECORD_ID_ATTRIBUTE}]`],
 			},
-			{
-				description: 'children ordering',
-				xml: /* xml */ `
+			'children ordering': {
+				sourceXml: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
 						<A aA="value aA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2">
 							<AA_1 aAA_1="value aa1" ${CUSTOM_RECORD_ID_ATTRIBUTE}="3"/>
@@ -63,129 +53,67 @@ describe('Export', () => {
 						</A>
 					</Root>
 				`,
-				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">
-						<A aA="value aA">
-							<AA_1 aAA_1="value aa1"/>
-							<AA_2 aAA_2="value aa2"/>
-						</A>
-					</Root>
-				`,
-				expectedXmlWithDatabaseIds: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1">
-						<A aA="value aA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2">
-							<AA_1 aAA_1="value aa1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="3"/>
-							<AA_2 aAA_2="value aa2" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="4"/>
-						</A>
-					</Root>
-				`,
+				expectedQueries: [
+					'//default:Root/default:A[@aA="value aA"]',
+					'//default:A/default:AA_1[@aAA_1="value aa1"]',
+					'//default:A/default:AA_2[@aAA_2="value aa2"]',
+					'//default:A/*[1][self::default:AA_1]',
+					'//default:A/*[2][self::default:AA_2]',
+				],
 			},
-			{
-				description: 'same attribute with two different namespaces',
-				xml: /* xml */ `
+			'same attribute with two different namespaces': {
+				sourceXml: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
 						<A aA="value aA" ext:cA="value cA" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
 				`,
-				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
-						<A aA="value aA" ext:cA="value cA"/>
-					</Root>
-				`,
-				expectedXmlWithDatabaseIds: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
-						<A aA="value aA" ext:cA="value cA" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
-					</Root>
-				`,
+				expectedQueries: [
+					'//default:Root[@root="1"]',
+					'//default:Root[@ext:root="2"]',
+					'//default:Root/default:A[@aA="value aA"]',
+					'//default:Root/default:A[@ext:cA="value cA"]',
+				],
 			},
-			{
-				description: 'namespace element',
-				xml: /* xml */ `
+			'namespace element': {
+				sourceXml: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
 						<ext:AA_3 aAA_3="value aAA_3" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
 				`,
-				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
-						<ext:AA_3 aAA_3="value aAA_3"/>
-					</Root>
-				`,
-				expectedXmlWithDatabaseIds: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
-						<ext:AA_3 aAA_3="value aAA_3" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
-					</Root>
-				`,
+				expectedQueries: [
+					'//default:Root[@root="1"]',
+					'//default:Root[@ext:root="2"]',
+					'//default:Root/ext:AA_3[@aAA_3="value aAA_3"]',
+				],
 			},
-			{
-				description: 'root element with both unqualified and qualified version attributes',
-				xml: /* xml */ `
+			'root element with both unqualified and qualified version attributes': {
+				sourceXml: /* xml */ `
 					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
 						<ext:AA_3 aAA_3="value" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
 					</Root>
-    		`,
-				expectedXml: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
-						<ext:AA_3 aAA_3="value"/>
-					</Root>
-    		`,
-				expectedXmlWithDatabaseIds: /* xml */ `
-					<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="1" ${XMLNS_EXT_NAMESPACE} ext:root="2">
-						<ext:AA_3 aAA_3="value" ${TEMP_IDB_ID_ATTRIBUTE_NAME}="2"/>
-					</Root>
-    		`,
+				`,
+				expectedQueries: [
+					'//default:Root[@root="1"]',
+					'//default:Root[@ext:root="2"]',
+					'//default:Root/ext:AA_3[@aAA_3="value"]',
+				],
 			},
-		]
+		}
 
-		tests.forEach(({ description, xml, expectedXml, expectedXmlWithDatabaseIds }) => {
-			it(description, async () => {
-				// Import XML with custom IDs
-				// Generate unique filename per test execution to avoid Dexie log warnings
-				const filename = `${description.replace(/\s+/g, '-')}-${crypto.randomUUID()}.xml`
-				const file = new File([xml], filename, {
-					type: 'text/xml',
-				})
-				const [databaseName] = await importXmlFiles({
-					files: [file],
-					dialecteConfig: TEST_DIALECTE_CONFIG,
-					useCustomRecordsIds: true,
-				})
-
-				// Export regular
-				const exported = await exportXmlFile({
-					databaseName,
-					extension: '.xml',
-					dialecteConfig: TEST_DIALECTE_CONFIG,
-				})
-				expect(exported.filename).toBe(databaseName + '.xml')
-				const exportedString = new XMLSerializer().serializeToString(exported.xmlDocument)
-				expect(xmlFormat(exportedString)).toBe(xmlFormat(expectedXml))
-
-				// Export with database ids
-				const exportedWithDatabaseIds = await exportXmlFile({
-					dialecteConfig: TEST_DIALECTE_CONFIG,
-					databaseName,
-					extension: '.xml',
-					withDatabaseIds: true,
-				})
-				const exportedWithDatabaseIdsString = new XMLSerializer().serializeToString(
-					exportedWithDatabaseIds.xmlDocument,
-				)
-				expect(xmlFormat(exportedWithDatabaseIdsString)).toBe(xmlFormat(expectedXmlWithDatabaseIds))
-
-				// Collect database for cleanup
-				databaseNames.push(databaseName)
-			})
+		runTestCases.withExport({
+			testCases,
+			act: async ({ source }): Promise<ActResult> => {
+				return { assertDatabaseName: source.databaseName }
+			},
 		})
 
-		type CorruptionTestCase = {
-			description: string
+		type CorruptionTestCase = BaseTestCase & {
 			data: AnyRawRecord[]
 			expectedError: string
 		}
 
-		const corruptionTests: CorruptionTestCase[] = [
-			{
-				description: 'parent references single non-existent child',
+		const corruptionTestCases: Record<string, CorruptionTestCase> = {
+			'parent references single non-existent child': {
 				data: [
 					{
 						id: '1',
@@ -212,8 +140,7 @@ describe('Export', () => {
 				expectedError:
 					"Database corruption detected: Parent element 'Root' (id: 1) references 1 non-existent child record(s): 'A' (id: 3)",
 			},
-			{
-				description: 'parent references multiple non-existent children',
+			'parent references multiple non-existent children': {
 				data: [
 					{
 						id: '1',
@@ -250,34 +177,170 @@ describe('Export', () => {
 				expectedError:
 					"Database corruption detected: Parent element 'A' (id: 2) references 2 non-existent child record(s): 'B' (id: 4), 'B' (id: 5)",
 			},
-		]
+		}
 
-		corruptionTests.forEach(({ description, data, expectedError }) => {
-			it(description, async () => {
-				const databaseName = `corruption-${description.replace(/\s+/g, '-')}-${crypto.randomUUID()}`
+		runTestCases.generic(corruptionTestCases, async (tc: CorruptionTestCase) => {
+			const databaseName = `corruption-${crypto.randomUUID()}`
+			await writeToDatabase(databaseName, tc.data)
 
-				await writeToDatabase(databaseName, data)
+			await expect(
+				exportXmlFile({ databaseName, extension: '.xml', dialecteConfig: TEST_DIALECTE_CONFIG }),
+			).rejects.toThrowError(tc.expectedError)
 
-				await expect(
-					exportXmlFile({ databaseName, extension: '.xml', dialecteConfig: TEST_DIALECTE_CONFIG }),
-				).rejects.toThrowError(expectedError)
-
-				databaseNames.push(databaseName)
-			})
+			databaseNames.push(databaseName)
 		})
 	})
 
-	describe('Malformed data resilience', () => {
-		type MalformedDataTestCase = {
-			description: string
+	describe('Empty-attribute stripping', () => {
+		type StrippingTestCase = BaseTestCase & {
 			data: AnyRawRecord[]
 			expectedContains: string[]
 			expectedNotContains: string[]
 		}
 
-		const malformedTests: MalformedDataTestCase[] = [
-			{
-				description: 'element with xmlns prefix in namespace object',
+		const testCases: Record<string, StrippingTestCase> = {
+			'identity-field attribute matching empty default -> preserved': {
+				data: [
+					{
+						id: '1',
+						tagName: 'Root',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [],
+						parent: null,
+						children: [{ id: '2', tagName: 'A' }],
+					},
+					{
+						id: '2',
+						tagName: 'A',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [{ name: 'aA', value: 'val' }],
+						parent: { id: '1', tagName: 'Root' },
+						children: [{ id: '3', tagName: 'B' }],
+					},
+					{
+						id: '3',
+						tagName: 'B',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [{ name: 'aB', value: 'val' }],
+						parent: { id: '2', tagName: 'A' },
+						children: [{ id: '4', tagName: 'BB_1' }],
+					},
+					{
+						id: '4',
+						tagName: 'BB_1',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [
+							{ name: 'aBB_1', value: 'req' },
+							{ name: 'dBB_1', value: '' },
+							{ name: 'eBB_1', value: '' },
+						],
+						parent: { id: '3', tagName: 'B' },
+						children: [{ id: '5', tagName: 'BBB_1' }],
+					},
+					{
+						id: '5',
+						tagName: 'BBB_1',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [{ name: 'aBBB_1', value: 'x' }],
+						parent: { id: '4', tagName: 'BB_1' },
+						children: [],
+					},
+				],
+				expectedContains: ['dBB_1=""', 'aBB_1="req"'],
+				expectedNotContains: ['eBB_1'],
+			},
+			'non-default value on non-identity attribute -> preserved': {
+				data: [
+					{
+						id: '1',
+						tagName: 'Root',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [],
+						parent: null,
+						children: [{ id: '2', tagName: 'A' }],
+					},
+					{
+						id: '2',
+						tagName: 'A',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [{ name: 'aA', value: 'val' }],
+						parent: { id: '1', tagName: 'Root' },
+						children: [{ id: '3', tagName: 'B' }],
+					},
+					{
+						id: '3',
+						tagName: 'B',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [{ name: 'aB', value: 'val' }],
+						parent: { id: '2', tagName: 'A' },
+						children: [{ id: '4', tagName: 'BB_1' }],
+					},
+					{
+						id: '4',
+						tagName: 'BB_1',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [
+							{ name: 'aBB_1', value: 'req' },
+							{ name: 'eBB_1', value: 'custom' },
+						],
+						parent: { id: '3', tagName: 'B' },
+						children: [{ id: '5', tagName: 'BBB_1' }],
+					},
+					{
+						id: '5',
+						tagName: 'BBB_1',
+						namespace: DIALECTE_NAMESPACES.default,
+						value: '',
+						attributes: [{ name: 'aBBB_1', value: 'x' }],
+						parent: { id: '4', tagName: 'BB_1' },
+						children: [],
+					},
+				],
+				expectedContains: ['eBB_1="custom"'],
+				expectedNotContains: [],
+			},
+		}
+
+		runTestCases.generic(testCases, async (tc: StrippingTestCase) => {
+			const databaseName = `stripping-${crypto.randomUUID()}`
+			await writeToDatabase(databaseName, tc.data)
+
+			const exported = await exportXmlFile({
+				databaseName,
+				extension: '.xml',
+				dialecteConfig: TEST_DIALECTE_CONFIG,
+			})
+			const xmlString = new XMLSerializer().serializeToString(exported.xmlDocument)
+
+			for (const expected of tc.expectedContains) {
+				expect(xmlString).toContain(expected)
+			}
+			for (const notExpected of tc.expectedNotContains) {
+				expect(xmlString).not.toContain(notExpected)
+			}
+
+			databaseNames.push(databaseName)
+		})
+	})
+
+	describe('Malformed data resilience', () => {
+		type MalformedTestCase = BaseTestCase & {
+			data: AnyRawRecord[]
+			expectedContains: string[]
+			expectedNotContains: string[]
+		}
+
+		const testCases: Record<string, MalformedTestCase> = {
+			'element with xmlns prefix in namespace object': {
 				data: [
 					{
 						id: '1',
@@ -301,8 +364,7 @@ describe('Export', () => {
 				expectedContains: ['<A'],
 				expectedNotContains: ['xmlns:A', ':A'],
 			},
-			{
-				description: 'xmlns attribute stored by extension',
+			'xmlns attribute stored by extension': {
 				data: [
 					{
 						id: '1',
@@ -330,8 +392,7 @@ describe('Export', () => {
 				expectedContains: ['data="valid"'],
 				expectedNotContains: ['xmlns="http://should-be-filtered.com"', 'xmlns:bad'],
 			},
-			{
-				description: 'qualified xmlns attribute stored by extension',
+			'qualified xmlns attribute stored by extension': {
 				data: [
 					{
 						id: '1',
@@ -362,8 +423,7 @@ describe('Export', () => {
 				expectedContains: ['valid="data"'],
 				expectedNotContains: ['xmlns:dev'],
 			},
-			{
-				description: 'empty prefix in non-default namespace',
+			'empty prefix in non-default namespace': {
 				data: [
 					{
 						id: '1',
@@ -377,7 +437,6 @@ describe('Export', () => {
 					{
 						id: '2',
 						tagName: 'A',
-						// Malformed: non-default namespace with empty prefix
 						namespace: { prefix: '', uri: 'http://different-namespace.com' },
 						value: '',
 						attributes: [],
@@ -388,33 +447,27 @@ describe('Export', () => {
 				expectedContains: ['<A'],
 				expectedNotContains: [],
 			},
-		]
+		}
 
-		malformedTests.forEach(({ description, data, expectedContains, expectedNotContains }) => {
-			it(description, async () => {
-				const databaseName = `malformed-${description.replace(/\s+/g, '-')}-${crypto.randomUUID()}`
+		runTestCases.generic(testCases, async (tc: MalformedTestCase) => {
+			const databaseName = `malformed-${crypto.randomUUID()}`
+			await writeToDatabase(databaseName, tc.data)
 
-				await writeToDatabase(databaseName, data)
-
-				// Should not throw - defensive code handles malformed data
-				const exported = await exportXmlFile({
-					databaseName,
-					extension: '.xml',
-					dialecteConfig: TEST_DIALECTE_CONFIG,
-				})
-				const xmlString = new XMLSerializer().serializeToString(exported.xmlDocument)
-
-				// Verify expected content
-				expectedContains.forEach((expected) => {
-					expect(xmlString).toContain(expected)
-				})
-
-				expectedNotContains.forEach((notExpected) => {
-					expect(xmlString).not.toContain(notExpected)
-				})
-
-				databaseNames.push(databaseName)
+			const exported = await exportXmlFile({
+				databaseName,
+				extension: '.xml',
+				dialecteConfig: TEST_DIALECTE_CONFIG,
 			})
+			const xmlString = new XMLSerializer().serializeToString(exported.xmlDocument)
+
+			for (const expected of tc.expectedContains) {
+				expect(xmlString).toContain(expected)
+			}
+			for (const notExpected of tc.expectedNotContains) {
+				expect(xmlString).not.toContain(notExpected)
+			}
+
+			databaseNames.push(databaseName)
 		})
 	})
 })

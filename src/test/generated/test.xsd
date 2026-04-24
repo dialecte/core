@@ -227,10 +227,12 @@ selector)
 		<xs:key name="keyBB">
 			<xs:selector xpath="BB_1" />
 			<xs:field xpath="@aBB_1" />
+			<xs:field xpath="@dBB_1" />
 		</xs:key>
 		<xs:keyref name="refBB" refer="keyBB">
 			<xs:selector xpath="ext:BB_3" />
 			<xs:field xpath="@aBB_3" />
+			<xs:field xpath="@bBB_3" />
 		</xs:keyref>
 	</xs:element>
 
@@ -244,6 +246,8 @@ selector)
 			</xs:sequence>
 			<xs:attribute name="aBB_1" type="xs:string" use="required" />
 			<xs:attribute name="bBB_1" type="xs:string" />
+			<xs:attribute name="dBB_1" type="xs:string" default="" />
+			<xs:attribute name="eBB_1" type="xs:string" default="" />
 			<xs:attribute ref="ext:cBB_1" />
 		</xs:complexType>
 		<xs:unique name="uniqueBBB_multiStep">

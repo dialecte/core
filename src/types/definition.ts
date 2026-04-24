@@ -94,6 +94,7 @@ export type ElementDefinition = {
 	readonly attributes: {
 		readonly sequence: readonly string[]
 		readonly details: Record<string, AttributeDefinition>
+		readonly identityFields?: readonly string[]
 	}
 	readonly children: {
 		readonly sequence: readonly string[]

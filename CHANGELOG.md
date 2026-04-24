@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.16] - 2026-04-24
+
+### Added
+
+- `identityFields` on element definition: precomputed list of attribute names participating in XSD identity constraints (unique/key), derived at generation time
+- export: `shouldSkipDefaultAttribute` guard strips optional attributes matching their schema default, unless they participate in identity constraints
+
+### Fixed
+
+- `standardizeRecord`: `||` replaced with `??` - optional attributes with empty-string defaults are now correctly preserved during import and record creation
+
 ## [0.1.15] - 2026-04-23
 
 ### Changed

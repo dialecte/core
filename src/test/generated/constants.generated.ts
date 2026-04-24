@@ -296,6 +296,8 @@ export const ATTRIBUTES = {
 	BB_1: {
 		aBB_1: '' as string,
 		bBB_1: '' as string,
+		dBB_1: '' as string,
+		eBB_1: '' as string,
 		'ext:cBB_1': '' as string,
 	} as AttributesOf<'BB_1'>,
 	BB_2: {

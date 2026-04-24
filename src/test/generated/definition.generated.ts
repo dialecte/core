@@ -110,8 +110,8 @@ export const DEFINITION = {
 	},
 	AAA_1: {
 		tag: 'AAA_1',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		parents: ['AA_1', 'AA_2', 'AA_3'],
+		namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		parents: ['AA_3', 'AA_1', 'AA_2'],
 		attributes: {
 			sequence: ['aAAA_1', 'bAAA_1', 'ext:cAAA_1'],
 			details: {
@@ -134,8 +134,8 @@ export const DEFINITION = {
 	},
 	AAA_2: {
 		tag: 'AAA_2',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		parents: ['AA_1', 'AA_2', 'AA_3'],
+		namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		parents: ['AA_3', 'AA_1', 'AA_2'],
 		attributes: {
 			sequence: ['aAAA_2', 'bAAA_2', 'ext:cAAA_2'],
 			details: {
@@ -159,7 +159,7 @@ export const DEFINITION = {
 	AAA_3: {
 		tag: 'AAA_3',
 		namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-		parents: ['AA_1', 'AA_2', 'AA_3'],
+		parents: ['AA_3', 'AA_1', 'AA_2'],
 		attributes: {
 			sequence: ['ext:aAAA_3', 'ext:bAAA_3', 'ext:cAAA_3'],
 			details: {
@@ -201,6 +201,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aAA_1'],
 		},
 		children: {
 			sequence: ['AAA_1', 'AAA_2', 'AAA_3'],
@@ -228,6 +229,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aAA_1'],
 		},
 		children: {
 			sequence: ['AAA_1', 'AAA_2', 'AAA_3'],
@@ -259,6 +261,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aAA_1'],
 		},
 		children: {
 			sequence: ['AAA_1', 'AAA_2', 'AAA_3'],
@@ -327,14 +330,20 @@ export const DEFINITION = {
 				kind: 'key',
 				name: 'keyBB',
 				selector: [{ steps: [{ kind: 'name', value: 'BB_1' }] }],
-				fields: [{ target: { kind: 'attribute', value: 'aBB_1', isAttribute: true } }],
+				fields: [
+					{ target: { kind: 'attribute', value: 'aBB_1', isAttribute: true } },
+					{ target: { kind: 'attribute', value: 'dBB_1', isAttribute: true } },
+				],
 			},
 			{
 				kind: 'keyref',
 				name: 'refBB',
 				refer: 'keyBB',
 				selector: [{ steps: [{ kind: 'name', value: 'BB_3' }] }],
-				fields: [{ target: { kind: 'attribute', value: 'aBB_3', isAttribute: true } }],
+				fields: [
+					{ target: { kind: 'attribute', value: 'aBB_3', isAttribute: true } },
+					{ target: { kind: 'attribute', value: 'bBB_3', isAttribute: true } },
+				],
 			},
 		],
 	},
@@ -352,6 +361,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aBBBB_1', 'bBBBB_1'],
 		},
 		children: {
 			sequence: [],
@@ -408,8 +418,8 @@ export const DEFINITION = {
 	},
 	BBB_1: {
 		tag: 'BBB_1',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		parents: ['BB_1', 'BB_2', 'BB_3'],
+		namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		parents: ['BB_3', 'BB_1', 'BB_2'],
 		attributes: {
 			sequence: ['aBBB_1', 'bBBB_1', 'ext:cBBB_1'],
 			details: {
@@ -420,6 +430,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aBBBB_1', 'aBBB_1'],
 		},
 		children: {
 			sequence: ['BBBB_1', 'BBBB_2', 'BBBB_3'],
@@ -443,8 +454,8 @@ export const DEFINITION = {
 	},
 	BBB_2: {
 		tag: 'BBB_2',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		parents: ['BB_1', 'BB_2', 'BB_3'],
+		namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		parents: ['BB_3', 'BB_1', 'BB_2'],
 		attributes: {
 			sequence: ['aBBB_2', 'bBBB_2', 'ext:cBBB_2'],
 			details: {
@@ -468,7 +479,7 @@ export const DEFINITION = {
 	BBB_3: {
 		tag: 'BBB_3',
 		namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-		parents: ['BB_1', 'BB_2', 'BB_3'],
+		parents: ['BB_3', 'BB_1', 'BB_2'],
 		attributes: {
 			sequence: ['ext:aBBB_3', 'ext:bBBB_3', 'ext:cBBB_3'],
 			details: {
@@ -501,15 +512,18 @@ export const DEFINITION = {
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
 		parents: ['B'],
 		attributes: {
-			sequence: ['aBB_1', 'bBB_1', 'ext:cBB_1'],
+			sequence: ['aBB_1', 'bBB_1', 'dBB_1', 'eBB_1', 'ext:cBB_1'],
 			details: {
 				aBB_1: { required: true, facets: { whiteSpace: 'preserve' } },
 				bBB_1: { facets: { whiteSpace: 'preserve' } },
+				dBB_1: { default: '', facets: { whiteSpace: 'preserve' } },
+				eBB_1: { default: '', facets: { whiteSpace: 'preserve' } },
 				'ext:cBB_1': {
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aBB_1', 'dBB_1'],
 		},
 		children: {
 			sequence: ['BBB_1', 'BBB_2', 'BBB_3'],
@@ -760,8 +774,8 @@ export const DEFINITION = {
 	},
 	CCC_1: {
 		tag: 'CCC_1',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		parents: ['CC_1', 'CC_2', 'CC_3'],
+		namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		parents: ['CC_3', 'CC_1', 'CC_2'],
 		attributes: {
 			sequence: ['aCCC_1', 'bCCC_1', 'ext:cCCC_1'],
 			details: {
@@ -772,6 +786,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aCCC_1'],
 		},
 		children: {
 			sequence: ['CCCC_1', 'CCCC_2', 'CCCC_3'],
@@ -784,8 +799,8 @@ export const DEFINITION = {
 	},
 	CCC_2: {
 		tag: 'CCC_2',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		parents: ['CC_1', 'CC_2', 'CC_3'],
+		namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		parents: ['CC_3', 'CC_1', 'CC_2'],
 		attributes: {
 			sequence: ['aCCC_2', 'bCCC_2', 'ext:cCCC_2'],
 			details: {
@@ -809,7 +824,7 @@ export const DEFINITION = {
 	CCC_3: {
 		tag: 'CCC_3',
 		namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-		parents: ['CC_1', 'CC_2', 'CC_3'],
+		parents: ['CC_3', 'CC_1', 'CC_2'],
 		attributes: {
 			sequence: ['ext:aCCC_3', 'ext:bCCC_3', 'ext:cCCC_3'],
 			details: {
@@ -851,6 +866,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aCC_1'],
 		},
 		children: {
 			sequence: ['CCC_1', 'CCC_2', 'CCC_3'],
@@ -875,6 +891,7 @@ export const DEFINITION = {
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
+			identityFields: ['aCC_1'],
 		},
 		children: {
 			sequence: ['CCC_1', 'CCC_2', 'CCC_3'],
@@ -965,14 +982,20 @@ export const DEFINITION = {
 							kind: 'key',
 							name: 'keyBB',
 							selector: [{ steps: [{ kind: 'name', value: 'BB_1' }] }],
-							fields: [{ target: { kind: 'attribute', value: 'aBB_1', isAttribute: true } }],
+							fields: [
+								{ target: { kind: 'attribute', value: 'aBB_1', isAttribute: true } },
+								{ target: { kind: 'attribute', value: 'dBB_1', isAttribute: true } },
+							],
 						},
 						{
 							kind: 'keyref',
 							name: 'refBB',
 							refer: 'keyBB',
 							selector: [{ steps: [{ kind: 'name', value: 'BB_3' }] }],
-							fields: [{ target: { kind: 'attribute', value: 'aBB_3', isAttribute: true } }],
+							fields: [
+								{ target: { kind: 'attribute', value: 'aBB_3', isAttribute: true } },
+								{ target: { kind: 'attribute', value: 'bBB_3', isAttribute: true } },
+							],
 						},
 					],
 				},

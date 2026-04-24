@@ -9,15 +9,14 @@
 		"rootDir": "src",
 		"module": "ESNext",
 		"target": "ES2019",
-		"moduleResolution": "Node",
+		"moduleResolution": "Bundler",
 		"esModuleInterop": true,
 		"strict": true,
 		"skipLibCheck": false,
 		"lib": ["ESNext", "DOM"],
 		"resolveJsonModule": true,
-		"baseUrl": ".",
 		"paths": {
-			"@/*": ["src/*"]
+			"@/*": ["./src/*"]
 		}
 	},
 

@@ -123,6 +123,7 @@ async function rebuildXmlFromIndexedDB(params: {
 				document: emptyXmlDocument,
 				element: rootElement,
 				attributes: rootRecord.attributes,
+				tagName: rootRecord.tagName,
 				isRoot: true,
 			})
 
@@ -244,6 +245,7 @@ function createElementWithAttributesAndText(params: {
 			document,
 			element,
 			attributes: record.attributes,
+			tagName: record.tagName,
 			isRoot: false,
 		})
 
@@ -259,14 +261,17 @@ function addAttributesToElement(params: {
 	document: XMLDocument
 	element: Element
 	attributes: AnyAttribute[]
+	tagName: string
 	isRoot: boolean
 }) {
-	const { dialecteConfig, document, element, attributes, isRoot } = params
+	const { dialecteConfig, document, element, attributes, tagName, isRoot } = params
 
 	for (const attribute of attributes) {
 		// Skip namespace declarations - they're metadata, not data attributes
 		// They're handled separately via addNamespaceToRootElementIfNeeded
 		if (isNamespaceDeclaration(attribute)) continue
+
+		if (!isRoot && shouldSkipDefaultAttribute({ dialecteConfig, tagName, attribute })) continue
 
 		if (isQualifiedAttribute(attribute)) {
 			const prefix = attribute.namespace?.prefix || ''
@@ -452,4 +457,27 @@ function isNamespaceDeclaration(attribute: AnyAttribute | AnyQualifiedAttribute)
 	if (isQualifiedAttribute(attribute) && attribute.namespace?.prefix === 'xmlns') return true
 
 	return false
+}
+
+function shouldSkipDefaultAttribute(params: {
+	dialecteConfig: AnyDialecteConfig
+	tagName: string
+	attribute: AnyAttribute | AnyQualifiedAttribute
+}): boolean {
+	const { dialecteConfig, tagName, attribute } = params
+
+	if (!dialecteConfig.elements.includes(tagName)) return false
+
+	const definition = dialecteConfig.definition[tagName]
+	if (!definition) return false
+
+	const details = definition.attributes.details[attribute.name]
+	if (!details || details.required) return false
+	if (details.default === undefined) return false
+	if (String(attribute.value) !== details.default) return false
+
+	const identityFields = definition.attributes.identityFields
+	if (identityFields?.includes(attribute.name)) return false
+
+	return true
 }

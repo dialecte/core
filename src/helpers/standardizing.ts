@@ -57,8 +57,10 @@ export function standardizeRecord<
 
 		const foundAttribute = attributesArray.find((attribute) => attribute.name === attributeName)
 		const attributeValue =
-			foundAttribute?.value ||
-			(attributeIsRequired ? details[attributeName]?.default || '' : undefined)
+			foundAttribute?.value ??
+			(attributeIsRequired
+				? (details[attributeName]?.default ?? '')
+				: details[attributeName]?.default)
 
 		if (attributeValue === undefined) return []
 
