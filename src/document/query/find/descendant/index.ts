@@ -1,7 +1,10 @@
 export { findDescendants } from './find-descendant'
 export type {
-	DescendantsFilter,
+	Collect,
+	CollectArrayEntry,
+	CollectEntryWithFilter,
+	CollectPath,
+	FindDescendantsParams,
 	FindDescendantsReturn,
-	ExtractTags,
-	ResultMap,
+	ExtractCollectTags,
 } from './find-descendant.types'

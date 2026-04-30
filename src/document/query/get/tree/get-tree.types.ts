@@ -1,35 +1,48 @@
 import type { FilterAttributes } from '@/document'
 import type { AnyDialecteConfig, ChildrenOf, ElementsOf } from '@/types'
 
+// Reserved config keys - cannot collide with PascalCase element names.
+type SelectConfigKeys = 'where' | 'recursive'
+
+/**
+ * Prisma-style tree projection. Keys = element names (PascalCase), values control traversal.
+ * - `true` - include element and all its descendants
+ * - `false` - exclude element (scoped to this level)
+ * - `TreeSelect<...>` - nested projection with further narrowing
+ *
+ * Config options (camelCase):
+ * - `where` - attribute filter for elements at this level
+ * - `recursive` - re-apply this select block on self-referencing children (true = infinite, number = max depth)
+ */
+export type TreeSelect<
+	GenericConfig extends AnyDialecteConfig,
+	GenericParent extends ElementsOf<GenericConfig>,
+> = {
+	[Child in ChildrenOf<GenericConfig, GenericParent> as Exclude<Child, SelectConfigKeys>]?:
+		| true
+		| false
+		| TreeSelect<GenericConfig, Child & ElementsOf<GenericConfig>>
+} & {
+	where?: FilterAttributes<GenericConfig, GenericParent>
+	recursive?: true | number
+}
+
+/**
+ * Omit entry: plain tagName string (exclude all) or object with attribute filter.
+ */
+export type OmitEntry<GenericConfig extends AnyDialecteConfig> =
+	| ElementsOf<GenericConfig>
+	| {
+			tagName: ElementsOf<GenericConfig>
+			where?: FilterAttributes<GenericConfig, ElementsOf<GenericConfig>>
+			scope?: 'self' | 'children'
+	  }
+
 export type GetTreeParams<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = {
-	include?: IncludeFilter<GenericConfig, GenericElement>
-	exclude?: ExcludeFilter<GenericConfig>[]
+	select?: TreeSelect<GenericConfig, GenericElement>
+	omit?: OmitEntry<GenericConfig>[]
 	unwrap?: ElementsOf<GenericConfig>[]
-}
-
-// Recursive tree filter with type narrowing at each level.
-// The filter for children is nested inside the filter for their parent —
-// which child Server to include depends on which AccessPoint matched, etc.
-export type IncludeFilter<
-	GenericConfig extends AnyDialecteConfig,
-	GenericParent extends ElementsOf<GenericConfig>,
-> =
-	ChildrenOf<GenericConfig, GenericParent> extends infer Child
-		? Child extends ElementsOf<GenericConfig>
-			? {
-					tagName: Child
-					attributes?: FilterAttributes<GenericConfig, Child>
-					children?: IncludeFilter<GenericConfig, Child>[]
-				}
-			: never
-		: never
-
-// Flat exclude filter — same predicate regardless of ancestry path.
-export type ExcludeFilter<GenericConfig extends AnyDialecteConfig> = {
-	tagName: ElementsOf<GenericConfig>
-	attributes?: FilterAttributes<GenericConfig, ElementsOf<GenericConfig>>
-	scope?: 'self' | 'children' // 'self' = prune entire branch (default), 'children' = keep element but stop traversal
 }

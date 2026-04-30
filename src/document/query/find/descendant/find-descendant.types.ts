@@ -2,85 +2,115 @@ import type { FilterAttributes } from '@/document/query/find/by-attribute/find-b
 import type { AnyDialecteConfig, DescendantsOf, ElementsOf, TrackedRecord } from '@/types'
 
 // ============================================================================
-// Filter Types - Recursive descendant matching (any depth)
+// Collect Types
 // ============================================================================
 
-type Depth = [never, 0, 1, 2, 3, 4, 5, 6, 7, 8] // Support up to 8 levels of nesting
-
-type FilterNode<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-	D extends number,
-> = Depth[D] extends never
-	? never
-	: {
-			[K in DescendantsOf<GenericConfig, GenericElement>]: {
-				tagName: K
-				/** Match only if this element has these attributes. */
-				attributes?: FilterAttributes<GenericConfig, K>
-				/**
-				 * When true, collect this element if present but do not require it on the path.
-				 * Default: false (required — candidates whose path lacks this element are excluded).
-				 */
-				isOptional?: boolean
-				descendant?: FilterNode<GenericConfig, K, Depth[D]>
-			}
-		}[DescendantsOf<GenericConfig, GenericElement>]
-
-export type DescendantsFilter<GenericConfig extends AnyDialecteConfig> = {
-	[K in ElementsOf<GenericConfig>]: {
-		tagName: K
-		/** Match only if this element has these attributes. */
-		attributes?: FilterAttributes<GenericConfig, K>
-		/**
-		 * When true, collect this element if present but do not require it on the path.
-		 * Default: false (required — candidates whose path lacks this element are excluded).
-		 */
-		isOptional?: boolean
-		descendant?: FilterNode<GenericConfig, K, 8>
-	}
-}[ElementsOf<GenericConfig>]
-
-// ============================================================================
-// Internal Types
-// ============================================================================
-
-export type FilterCondition<
+/**
+ * Single collect entry with optional where filter.
+ * { LNode: { where: { lnClass: 'LPHD' } } }
+ */
+export type CollectEntryWithFilter<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = {
-	tagName: GenericElement
-	attributes?: FilterAttributes<GenericConfig, GenericElement>
-	optional: boolean
+	[K in DescendantsOf<GenericConfig, GenericElement>]?: {
+		where?: FilterAttributes<GenericConfig, K>
+	}
+}
+
+/**
+ * Path-aware collect using nested object shape (descendant-of semantic at each level).
+ * { Function: { LNode: true } } means "LNode anywhere under Function anywhere under ref"
+ */
+export type CollectPath<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = {
+	[K in DescendantsOf<GenericConfig, GenericElement>]?:
+		| true
+		| { where?: FilterAttributes<GenericConfig, K> }
+		| CollectPath<GenericConfig, K & ElementsOf<GenericConfig>>
+}
+
+/**
+ * Array collect entry: either a plain tagName or an object with where filter.
+ */
+export type CollectArrayEntry<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> =
+	| DescendantsOf<GenericConfig, GenericElement>
+	| CollectEntryWithFilter<GenericConfig, GenericElement>
+
+/**
+ * The collect parameter discriminated union:
+ * - string: single tagName
+ * - array: multiple tagNames or objects with where
+ * - object: path-aware collect
+ */
+export type Collect<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> =
+	| DescendantsOf<GenericConfig, GenericElement>
+	| CollectArrayEntry<GenericConfig, GenericElement>[]
+	| CollectPath<GenericConfig, GenericElement>
+
+// ============================================================================
+// Params
+// ============================================================================
+
+export type FindDescendantsParams<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+	GenericCollect extends Collect<GenericConfig, GenericElement>,
+> = {
+	collect: GenericCollect
+	omit?: ElementsOf<GenericConfig>[]
 }
 
 // ============================================================================
-// Type Utilities
+// Return Type Extraction
 // ============================================================================
 
-export type ExtractTags<F> = F extends { tagName: infer T }
-	? T | (F extends { descendant?: infer D } ? ExtractTags<D> : never)
-	: never
+/**
+ * Extract all tagNames from a collect spec for the return type.
+ */
+export type ExtractCollectTags<C> = C extends string
+	? C
+	: C extends Array<infer Item>
+		? Item extends string
+			? Item
+			: Item extends Record<string, unknown>
+				? keyof Item & string
+				: never
+		: C extends Record<string, unknown>
+			? ExtractPathTags<C>
+			: never
+
+/**
+ * Recursively extract all keys from a nested path object.
+ */
+type ExtractPathTags<T> =
+	T extends Record<string, unknown>
+		? {
+				[K in keyof T & string]:
+					| K
+					| (T[K] extends Record<string, unknown> ? ExtractPathTags<T[K]> : never)
+			}[keyof T & string]
+		: never
 
 // ============================================================================
 // Result Types
 // ============================================================================
 
-export type ResultMap<GenericConfig extends AnyDialecteConfig, GenericTags extends string> = {
-	[K in GenericTags]: TrackedRecord<GenericConfig, K>[]
-}
-
 export type FindDescendantsReturn<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
-	GenericFilter extends DescendantsFilter<GenericConfig> | undefined,
-> = GenericFilter extends undefined
-	? {
-			[K in GenericElement | DescendantsOf<GenericConfig, GenericElement>]: TrackedRecord<
-				GenericConfig,
-				K
-			>[]
-		}
-	: GenericFilter extends DescendantsFilter<GenericConfig>
-		? ResultMap<GenericConfig, ExtractTags<GenericFilter>>
-		: never
+	GenericCollect extends Collect<GenericConfig, GenericElement>,
+> = {
+	[K in ExtractCollectTags<GenericCollect> & ElementsOf<GenericConfig>]: TrackedRecord<
+		GenericConfig,
+		K
+	>[]
+}

@@ -15,7 +15,8 @@ import type { Context } from '../types'
 import type {
 	FindAncestorsOptions,
 	FilterAttributes,
-	DescendantsFilter,
+	Collect,
+	FindDescendantsParams,
 	FindDescendantsReturn,
 } from './find'
 import type { GetTreeParams } from './get'
@@ -224,26 +225,25 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * Find all descendants of an element, grouped by tag name.
 	 *
 	 * @param refOrRecord - The ancestor element.
-	 * @param filter - Optional filter to restrict which tag names are returned.
+	 * @param options - Collect spec and optional omit list.
 	 * @returns Object keyed by tag name, each value an array of tracked records.
 	 *
 	 * @example
 	 * ```ts
-	 * const { AA_1, AA_2 } = await query.findDescendants(a)
+	 * const { AA_1 } = await query.findDescendants(a, { collect: 'AA_1' })
 	 * ```
 	 */
 	async findDescendants<
 		GenericElement extends ElementsOf<GenericConfig>,
-		GenericFilter extends DescendantsFilter<GenericConfig> | undefined = undefined,
+		GenericCollect extends Collect<GenericConfig, GenericElement>,
 	>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-		filter?: GenericFilter,
-	): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericFilter>> {
+		options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>,
+	): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>> {
 		return findDescendants({
 			context: this.context,
-			dialecteConfig: this.dialecteConfig,
 			ref: toRef(refOrRecord),
-			filter,
+			options,
 		})
 	}
 

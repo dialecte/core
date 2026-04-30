@@ -1,2 +1,2 @@
 export { getTree } from './get-tree'
-export type { GetTreeParams, IncludeFilter, ExcludeFilter } from './get-tree.types'
+export type { GetTreeParams, TreeSelect, OmitEntry } from './get-tree.types'

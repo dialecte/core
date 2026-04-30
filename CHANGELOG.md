@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.17] - 2026-04-29
+
+### Changed
+
+- `getTree`: new Prisma-style options - `select` (typed nested object to pick branches), `omit` (string or conditional with `where`/`scope`), `unwrap` (flatten intermediary tagNames)
+- `findDescendants`: new `collect` + `omit` API replacing recursive linked-list filter:
+  - `collect: string` - single tagName at any depth
+  - `collect: array` - multiple tagNames with optional `where` filters
+  - `collect: object` - path-aware nesting order
+  - return type inferred from `collect` value - typed destructurable `{ [tagName]: TrackedRecord[] }`
+  - optimized for large files: indexed bottom-up ancestry (flat mode), pre-filtered level-order traversal (path mode)
+
 ## [0.1.16] - 2026-04-24
 
 ### Added
