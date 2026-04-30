@@ -3,6 +3,7 @@ import { toRef } from '@/helpers'
 
 import type { Collect, FindDescendantsParams, FindDescendantsReturn } from './find-descendant.types'
 import type { Context } from '@/document'
+import type { OmitEntry } from '@/document/query/get/tree/get-tree.types'
 import type { AnyDialecteConfig, ElementsOf, TrackedRecord, Ref } from '@/types'
 
 // ============================================================================
@@ -21,7 +22,7 @@ export async function findDescendants<
 	const { context, ref, options } = params
 	const { collect, omit } = options
 
-	const omitSet = new Set<string>(omit ?? [])
+	const omitSpec = parseOmitEntries(omit)
 	const collectSpec = parseCollect(collect)
 
 	const collected = new Map<
@@ -42,9 +43,9 @@ export async function findDescendants<
 		>
 
 	if (collectSpec.mode === 'flat') {
-		await traverseFlat({ context, rootId: root.id, collectSpec, omitSet, collected })
+		await traverseFlat({ context, rootId: root.id, collectSpec, omitSpec, collected })
 	} else {
-		await traversePath({ context, record: root, pathNodes: collectSpec.paths, omitSet, collected })
+		await traversePath({ context, record: root, pathNodes: collectSpec.paths, omitSpec, collected })
 	}
 
 	return buildResult(collected) as FindDescendantsReturn<
@@ -52,6 +53,63 @@ export async function findDescendants<
 		GenericElement,
 		GenericCollect
 	>
+}
+
+// ============================================================================
+// Omit specification
+// ============================================================================
+
+type OmitSpec = {
+	unconditional: Set<string>
+	conditional: Array<{
+		tagName: string
+		where: Record<string, unknown>
+	}>
+}
+
+function parseOmitEntries<GenericConfig extends AnyDialecteConfig>(
+	omit: OmitEntry<GenericConfig>[] | undefined,
+): OmitSpec {
+	const unconditional = new Set<string>()
+	const conditional: OmitSpec['conditional'] = []
+
+	if (!omit) return { unconditional, conditional }
+
+	for (const entry of omit) {
+		if (typeof entry === 'string') {
+			unconditional.add(entry)
+		} else {
+			const tagName = Object.keys(entry)[0]
+			const config = (entry as Record<string, { where?: Record<string, unknown> }>)[tagName]
+			if (!config?.where) {
+				unconditional.add(tagName)
+			} else {
+				conditional.push({ tagName, where: config.where })
+			}
+		}
+	}
+	return { unconditional, conditional }
+}
+
+function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
+	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+	omitSpec: OmitSpec
+}): boolean {
+	const { record, omitSpec } = params
+	if (omitSpec.unconditional.has(record.tagName)) return true
+	for (const cond of omitSpec.conditional) {
+		if (cond.tagName !== record.tagName) continue
+		if (
+			matchesAttributeFilter({
+				record,
+				attributeFilter: cond.where as Parameters<
+					typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
+				>[0]['attributeFilter'],
+			})
+		)
+			return true
+	}
+	return false
 }
 
 // ============================================================================
@@ -163,14 +221,14 @@ async function traverseFlat<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>
 	rootId: string
 	collectSpec: { targets: FlatTarget[]; allTags: Set<string> }
-	omitSet: Set<string>
+	omitSpec: OmitSpec
 	collected: Map<string, Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>>
 }): Promise<void> {
-	const { context, rootId, collectSpec, omitSet, collected } = params
+	const { context, rootId, collectSpec, omitSpec, collected } = params
 
 	for (const target of collectSpec.targets) {
-		// omit takes precedence: if target tagName is omitted, skip entirely
-		if (omitSet.has(target.tagName)) continue
+		// omit takes precedence: if target tagName is unconditionally omitted, skip entirely
+		if (omitSpec.unconditional.has(target.tagName)) continue
 
 		// O(matching records) via Dexie tagName index
 		const candidates = await getRecordsByTagName({
@@ -180,9 +238,10 @@ async function traverseFlat<GenericConfig extends AnyDialecteConfig>(params: {
 
 		for (const candidate of candidates) {
 			if (!matchesFlatTarget({ record: candidate, where: target.where })) continue
+			if (isOmitted({ record: candidate, omitSpec })) continue
 
 			// Verify ancestry: walk parent refs up to rootId
-			if (await isDescendantOf({ context, record: candidate, rootId, omitSet })) {
+			if (await isDescendantOf({ context, record: candidate, rootId, omitSpec })) {
 				collected.get(target.tagName)!.set(candidate.id, candidate)
 			}
 		}
@@ -211,9 +270,9 @@ async function isDescendantOf<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	rootId: string
-	omitSet: Set<string>
+	omitSpec: OmitSpec
 }): Promise<boolean> {
-	const { context, record, rootId, omitSet } = params
+	const { context, record, rootId, omitSpec } = params
 
 	if (record.id === rootId) return true
 
@@ -222,14 +281,17 @@ async function isDescendantOf<GenericConfig extends AnyDialecteConfig>(params: {
 	while (current) {
 		if (!current.parent) return false
 
-		// Check omit on parent ref before fetching
-		if (omitSet.has(current.parent.tagName)) return false
+		// Check unconditional omit on parent ref before fetching
+		if (omitSpec.unconditional.has(current.parent.tagName)) return false
 
 		if (current.parent.id === rootId) return true
 
 		const parent: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined =
 			await getRecord({ context, ref: toRef(current.parent) })
 		if (!parent) return false
+
+		// Check conditional omit on fetched parent
+		if (isOmitted({ record: parent, omitSpec })) return false
 
 		current = parent
 	}
@@ -247,10 +309,10 @@ async function traversePath<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	pathNodes: PathNode[]
-	omitSet: Set<string>
+	omitSpec: OmitSpec
 	collected: Map<string, Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>>
 }): Promise<void> {
-	const { context, record, pathNodes, omitSet, collected } = params
+	const { context, record, pathNodes, omitSpec, collected } = params
 
 	if (!record.children?.length) return
 
@@ -264,7 +326,7 @@ async function traversePath<GenericConfig extends AnyDialecteConfig>(params: {
 			record,
 			tagName: pathNode.tagName,
 			where: pathNode.where,
-			omitSet,
+			omitSpec,
 			stopAtTagNames: targetTagNames,
 		})
 
@@ -276,7 +338,7 @@ async function traversePath<GenericConfig extends AnyDialecteConfig>(params: {
 					context,
 					record: match,
 					pathNodes: pathNode.children,
-					omitSet,
+					omitSpec,
 					collected,
 				})
 			}
@@ -293,10 +355,10 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	tagName: string
 	where?: Record<string, unknown>
-	omitSet: Set<string>
+	omitSpec: OmitSpec
 	stopAtTagNames: Set<string>
 }): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
-	const { context, record, tagName, where, omitSet, stopAtTagNames } = params
+	const { context, record, tagName, where, omitSpec, stopAtTagNames } = params
 
 	const results: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[] = []
 
@@ -306,7 +368,7 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
 	const queue: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[] = []
 
 	// Seed: fetch only non-omitted children
-	const seedChildren = await fetchChildrenPrefiltered({ context, record, omitSet })
+	const seedChildren = await fetchChildrenPrefiltered({ context, record, omitSpec })
 	queue.push(...seedChildren)
 
 	while (queue.length > 0) {
@@ -324,7 +386,7 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
 
 		// Continue searching deeper
 		if (current.children?.length) {
-			const grandchildren = await fetchChildrenPrefiltered({ context, record: current, omitSet })
+			const grandchildren = await fetchChildrenPrefiltered({ context, record: current, omitSpec })
 			queue.push(...grandchildren)
 		}
 	}
@@ -337,18 +399,19 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
 // ============================================================================
 
 /**
- * Fetch children with omit pre-filtering on refs (avoids fetching omitted records).
+ * Fetch children with omit pre-filtering on refs (avoids fetching unconditionally omitted records).
+ * Conditional omit entries are checked after fetching.
  */
 async function fetchChildrenPrefiltered<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
-	omitSet: Set<string>
+	omitSpec: OmitSpec
 }): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
-	const { context, record, omitSet } = params
+	const { context, record, omitSpec } = params
 
 	if (!record.children?.length) return []
 
-	const relevantRefs = record.children.filter((ref) => !omitSet.has(ref.tagName))
+	const relevantRefs = record.children.filter((ref) => !omitSpec.unconditional.has(ref.tagName))
 	if (!relevantRefs.length) return []
 
 	const records = await Promise.all(
@@ -356,7 +419,8 @@ async function fetchChildrenPrefiltered<GenericConfig extends AnyDialecteConfig>
 	)
 
 	return records.filter(
-		(r): r is TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> => r !== undefined,
+		(r): r is TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> =>
+			r !== undefined && !isOmitted({ record: r, omitSpec }),
 	)
 }
 

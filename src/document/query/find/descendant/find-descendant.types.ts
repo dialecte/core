@@ -1,4 +1,5 @@
 import type { FilterAttributes } from '@/document/query/find/by-attribute/find-by-attributes.types'
+import type { OmitEntry } from '@/document/query/get/tree/get-tree.types'
 import type { AnyDialecteConfig, DescendantsOf, ElementsOf, TrackedRecord } from '@/types'
 
 // ============================================================================
@@ -66,7 +67,7 @@ export type FindDescendantsParams<
 	GenericCollect extends Collect<GenericConfig, GenericElement>,
 > = {
 	collect: GenericCollect
-	omit?: ElementsOf<GenericConfig>[]
+	omit?: OmitEntry<GenericConfig>[]
 }
 
 // ============================================================================

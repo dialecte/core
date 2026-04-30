@@ -356,6 +356,23 @@ describe('findDescendants - omit', () => {
 			options: { collect: { AA_1: { AAA_1: true } }, omit: ['AA_1'] },
 			expectedCounts: { AA_1: 0, AAA_1: 0 },
 		},
+		'omit with where - conditional exclusion': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_1 ${customId}="aa1" aAA_1="skip" />
+						<AA_1 ${customId}="aa2" aAA_1="keep" />
+						<AA_2 ${customId}="aa3" aAA_2="v" />
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			options: {
+				collect: ['AA_1', 'AA_2'],
+				omit: [{ AA_1: { where: { aAA_1: 'skip' } } }],
+			},
+			expectedCounts: { AA_1: 1, AA_2: 1 },
+		},
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {

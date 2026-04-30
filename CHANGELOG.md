@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.19] - 2026-04-30
+
+### Changed
+
+- `omit` entries in `getTree` and `findDescendants` now use key-based syntax: `{ TagName: { where?, scope? } }` instead of `{ tagName: 'TagName', where?, scope? }`
+- `findDescendants`: `omit` upgraded from plain `string[]` to shared `OmitEntry[]` - supports conditional exclusion with `where` filters
+
 ## [0.1.18] - 2026-04-30
 
 ### Added

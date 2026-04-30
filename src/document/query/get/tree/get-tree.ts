@@ -74,13 +74,17 @@ function parseOmit<GenericConfig extends AnyDialecteConfig>(
 		if (typeof entry === 'string') {
 			unconditional.add(entry)
 		} else {
-			if (!entry.where) {
-				unconditional.add(entry.tagName)
+			const tagName = Object.keys(entry)[0] as ElementsOf<GenericConfig>
+			const config = (
+				entry as Record<string, { where?: Record<string, unknown>; scope?: 'self' | 'children' }>
+			)[tagName]
+			if (!config?.where) {
+				unconditional.add(tagName)
 			} else {
 				conditional.push({
-					tagName: entry.tagName,
-					where: entry.where as Record<string, unknown>,
-					scope: entry.scope ?? 'self',
+					tagName,
+					where: config.where as Record<string, unknown>,
+					scope: config.scope ?? 'self',
 				})
 			}
 		}

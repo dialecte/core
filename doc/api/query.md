@@ -114,29 +114,30 @@ const results = await doc.query.findDescendants(root)
 // { A: TrackedRecord[], AA_1: TrackedRecord[], ... }
 ```
 
-With a filter — only collect specific tag names along a path:
+With options - collect specific tag names and omit branches:
 
 ```ts
-const results = await doc.query.findDescendants(root, {
-	tagName: 'A',
-	descendant: {
-		tagName: 'AA_1',
-		attributes: { aAA_1: 'foo' },
-	},
+const results = await doc.query.findDescendants(ref, {
+	collect: { AA_1: { AAA_1: true } },
+	omit: ['AA_3', { AA_1: { where: { aAA_1: 'skip' } } }],
 })
-// { A: TrackedRecord[], AA_1: TrackedRecord[] }
+// { AA_1: TrackedRecord[], AAA_1: TrackedRecord[] }
 ```
 
-#### DescendantsFilter
+#### FindDescendantsParams
 
-```ts
-type DescendantsFilter = {
-	tagName: ElementName
-	attributes?: FilterAttributes // match only if element has these values
-	isOptional?: boolean // when true, collect if present but don't require
-	descendant?: DescendantsFilter // recurse into children
-}
-```
+| Option    | Type          | Description                                                |
+| --------- | ------------- | ---------------------------------------------------------- |
+| `collect` | `Collect`     | Tag names to collect - string, array, or path object       |
+| `omit`    | `OmitEntry[]` | Exclude branches - string or key-based object with `where` |
+
+**collect modes:**
+
+- `string` - single tag name at any depth
+- `array` - multiple tag names, optional `where` filters per entry
+- `object` - path-aware nesting (only collect in traversal order)
+
+**omit** shares the same `OmitEntry` type as `getTree.omit` (see above).
 
 #### FilterAttributes
 
@@ -178,21 +179,33 @@ With options to filter the tree shape:
 
 ```ts
 const tree = await doc.query.getTree(ref, {
-	include: [{ tagName: 'AA_1', children: [{ tagName: 'AAA_1' }] }],
-	exclude: [{ tagName: 'AA_3', scope: 'self' }],
+	select: { AA_1: { AAA_1: true } },
+	omit: ['AA_3', { LNode: { where: { lnClass: 'LPHD' }, scope: 'children' } }],
 	unwrap: ['A'],
 })
 ```
 
 #### GetTreeParams
 
-| Option    | Type              | Description                                    |
-| --------- | ----------------- | ---------------------------------------------- |
-| `include` | `IncludeFilter[]` | Only include these child elements (recursive)  |
-| `exclude` | `ExcludeFilter[]` | Exclude elements matching this filter          |
-| `unwrap`  | `ElementName[]`   | Skip these elements and promote their children |
+| Option   | Type            | Description                                                   |
+| -------- | --------------- | ------------------------------------------------------------- |
+| `select` | `TreeSelect`    | Prisma-style nested projection to pick branches               |
+| `omit`   | `OmitEntry[]`   | Exclude elements - string or key-based object with conditions |
+| `unwrap` | `ElementName[]` | Skip these elements and promote their children                |
 
-**ExcludeFilter.scope:**
+#### OmitEntry
+
+Key-based format consistent with `collect` entries:
+
+```ts
+omit: [
+	'DOS', // unconditional: prune all DOS
+	{ LNode: { where: { lnClass: 'LPHD' } } }, // conditional: prune only matching
+	{ AA_1: { scope: 'children' } }, // keep node, stop traversal
+]
+```
+
+**scope:**
 
 - `'self'` (default) — prune the entire branch
 - `'children'` — keep the element but stop traversal

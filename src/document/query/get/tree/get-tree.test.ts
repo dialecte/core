@@ -214,7 +214,7 @@ describe('getTree', () => {
 			`,
 			ref: { tagName: 'A', id: 'a1' },
 			options: {
-				omit: [{ tagName: 'AA_1', where: { aAA_1: 'exclude-me' } }],
+				omit: [{ AA_1: { where: { aAA_1: 'exclude-me' } } }],
 			},
 			expectedShape: {
 				tagName: 'A',
@@ -233,7 +233,7 @@ describe('getTree', () => {
 			`,
 			ref: { tagName: 'A', id: 'a1' },
 			options: {
-				omit: [{ tagName: 'AA_1', where: { aAA_1: 'v' }, scope: 'children' }],
+				omit: [{ AA_1: { where: { aAA_1: 'v' }, scope: 'children' } }],
 			},
 			expectedShape: {
 				tagName: 'A',
