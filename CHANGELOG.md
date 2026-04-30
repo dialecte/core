@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.18] - 2026-04-30
+
+### Added
+
+- `query.findDescendants(ref)` overload (no options): collects all descendant tag names from dialecteConfig. Returns `Partial<Record<DescendantsOf<Config, E>, TrackedRecord[]>>`
+
 ## [0.1.17] - 2026-04-29
 
 ### Changed

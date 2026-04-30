@@ -28,6 +28,7 @@ import type {
 	AnyRefOrRecord,
 	AttributesOf,
 	AttributesValueObjectOf,
+	DescendantsOf,
 	ElementsOf,
 	ChildrenOf,
 	FullAttributeObjectOf,
@@ -225,24 +226,58 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * Find all descendants of an element, grouped by tag name.
 	 *
 	 * @param refOrRecord - The ancestor element.
-	 * @param options - Collect spec and optional omit list.
+	 * @param options - Collect spec and optional omit list. When omitted, collects all descendant tag names.
 	 * @returns Object keyed by tag name, each value an array of tracked records.
 	 *
 	 * @example
 	 * ```ts
+	 * // All descendants
+	 * const all = await query.findDescendants(a)
+	 * // Specific collect
 	 * const { AA_1 } = await query.findDescendants(a, { collect: 'AA_1' })
 	 * ```
 	 */
+	async findDescendants<GenericElement extends ElementsOf<GenericConfig>>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+	): Promise<
+		Partial<
+			Record<
+				DescendantsOf<GenericConfig, GenericElement>,
+				TrackedRecord<GenericConfig, DescendantsOf<GenericConfig, GenericElement>>[]
+			>
+		>
+	>
 	async findDescendants<
 		GenericElement extends ElementsOf<GenericConfig>,
 		GenericCollect extends Collect<GenericConfig, GenericElement>,
 	>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>,
-	): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>> {
+	): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>>
+	async findDescendants<
+		GenericElement extends ElementsOf<GenericConfig>,
+		GenericCollect extends Collect<GenericConfig, GenericElement>,
+	>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+		options?: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>,
+	): Promise<unknown> {
+		const ref = toRef(refOrRecord)
+		if (!options) {
+			const collectAll = (this.dialecteConfig.descendants[ref.tagName] ??
+				[]) as unknown as GenericCollect
+			return findDescendants({
+				context: this.context,
+				ref,
+				options: { collect: collectAll } as FindDescendantsParams<
+					GenericConfig,
+					GenericElement,
+					GenericCollect
+				>,
+			})
+		}
 		return findDescendants({
 			context: this.context,
-			ref: toRef(refOrRecord),
+			ref,
 			options,
 		})
 	}
