@@ -180,7 +180,7 @@ With options to filter the tree shape:
 ```ts
 const tree = await doc.query.getTree(ref, {
 	select: { AA_1: { AAA_1: true } },
-	omit: ['AA_3', { LNode: { where: { lnClass: 'LPHD' }, scope: 'children' } }],
+	omit: ['AA_3', { AAA_2: { where: { aAAA_2: 'skip' }, scope: 'children' } }],
 	unwrap: ['A'],
 })
 ```
@@ -193,14 +193,58 @@ const tree = await doc.query.getTree(ref, {
 | `omit`   | `OmitEntry[]`   | Exclude elements - string or key-based object with conditions |
 | `unwrap` | `ElementName[]` | Skip these elements and promote their children                |
 
+#### TreeSelect
+
+Keys are element names (PascalCase), values control traversal:
+
+- `true` - include element and all its descendants
+- `false` - exclude element at this level
+- `{ ... }` - nested projection with further narrowing
+
+Config options (camelCase):
+
+| Option      | Type                      | Description                                                                       |
+| ----------- | ------------------------- | --------------------------------------------------------------------------------- |
+| `where`     | `FilterAttributes`        | Attribute filter applied to elements at this level                                |
+| `recursive` | `true \| false \| number` | Control self-recursion (`true` = infinite, number = max depth, `false` = disable) |
+
+**Auto-recursion:** Elements that contain themselves in the schema (e.g. `AAA_1` contains `AAA_1`) are automatically recursed without needing an explicit `recursive: true` flag. The same select block is re-applied at each recursive depth.
+
+```ts
+// Auto-recursion: AAA_1 contains AAA_1 per config
+// No need for `recursive: true` - core detects self-recursive elements
+select: {
+	AA_1: {
+		AAA_1: {
+			AAAA_1: true
+		}
+	}
+}
+```
+
+**Explicit self-key override:** Writing the self-tag explicitly in select disables auto-recursion and uses the explicit structure instead:
+
+```ts
+// Only recurse into AAA_1 elements matching a specific attribute
+AAA_1: {
+  AAA_1: { where: { aAAA_1: 'target' }, AAAA_1: true }
+}
+```
+
+**Opt-out:** Set `recursive: false` to disable auto-recursion for a specific level:
+
+```ts
+AAA_1: { recursive: false, AAAA_1: true }
+```
+
 #### OmitEntry
 
 Key-based format consistent with `collect` entries:
 
 ```ts
 omit: [
-	'DOS', // unconditional: prune all DOS
-	{ LNode: { where: { lnClass: 'LPHD' } } }, // conditional: prune only matching
+	'AAA_2', // unconditional: prune all AAA_2
+	{ AAA_1: { where: { aAAA_1: 'skip' } } }, // conditional: prune only matching
 	{ AA_1: { scope: 'children' } }, // keep node, stop traversal
 ]
 ```

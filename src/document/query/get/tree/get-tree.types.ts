@@ -12,7 +12,7 @@ type SelectConfigKeys = 'where' | 'recursive'
  *
  * Config options (camelCase):
  * - `where` - attribute filter for elements at this level
- * - `recursive` - re-apply this select block on self-referencing children (true = infinite, number = max depth)
+ * - `recursive` - re-apply this select block on self-referencing children (true = infinite, number = max depth, false = disable auto-recursion)
  */
 export type TreeSelect<
 	GenericConfig extends AnyDialecteConfig,
@@ -24,7 +24,7 @@ export type TreeSelect<
 		| TreeSelect<GenericConfig, Child & ElementsOf<GenericConfig>>
 } & {
 	where?: FilterAttributes<GenericConfig, GenericParent>
-	recursive?: true | number
+	recursive?: true | false | number
 }
 
 /**

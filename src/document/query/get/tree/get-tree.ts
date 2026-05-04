@@ -15,8 +15,9 @@ export async function getTree<
 	context: Context<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
 	options?: GetTreeParams<GenericConfig, GenericElement>
+	dialecteConfig?: GenericConfig
 }): Promise<TreeRecord<GenericConfig, GenericElement> | undefined> {
-	const { context, ref, options = {} } = params
+	const { context, ref, options = {}, dialecteConfig } = params
 	const { select, omit, unwrap } = options
 
 	const root = await getRecord({ context, ref })
@@ -32,6 +33,7 @@ export async function getTree<
 		record: root as TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>,
 		select: select as TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined,
 		compiledOmit,
+		dialecteConfig,
 	})
 
 	if (!tree) {
@@ -73,21 +75,24 @@ function parseOmit<GenericConfig extends AnyDialecteConfig>(
 	for (const entry of omit) {
 		if (typeof entry === 'string') {
 			unconditional.add(entry)
-		} else {
-			const tagName = Object.keys(entry)[0] as ElementsOf<GenericConfig>
-			const config = (
-				entry as Record<string, { where?: Record<string, unknown>; scope?: 'self' | 'children' }>
-			)[tagName]
-			if (!config?.where) {
-				unconditional.add(tagName)
-			} else {
-				conditional.push({
-					tagName,
-					where: config.where as Record<string, unknown>,
-					scope: config.scope ?? 'self',
-				})
-			}
+			continue
 		}
+
+		const tagName = Object.keys(entry)[0] as ElementsOf<GenericConfig>
+		const config = (
+			entry as Record<string, { where?: Record<string, unknown>; scope?: 'self' | 'children' }>
+		)[tagName]
+
+		if (!config?.where) {
+			unconditional.add(tagName)
+			continue
+		}
+
+		conditional.push({
+			tagName,
+			where: config.where as Record<string, unknown>,
+			scope: config.scope ?? 'self',
+		})
 	}
 	return { unconditional, conditional }
 }
@@ -99,8 +104,9 @@ async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	compiledOmit: OmitSpecification<GenericConfig>
+	dialecteConfig?: GenericConfig
 }): Promise<TreeRecord<GenericConfig, ElementsOf<GenericConfig>> | null> {
-	const { context, record, select, compiledOmit } = params
+	const { context, record, select, compiledOmit, dialecteConfig } = params
 
 	// Stop traversal if omit scope=children matches
 	if (shouldStopTraversal({ record, compiledOmit })) {
@@ -112,11 +118,12 @@ async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 		record,
 		select,
 		compiledOmit,
+		dialecteConfig,
 	})
 
 	const childTrees = await Promise.all(
 		childrenToProcess.map(({ record: child, select: childSelect }) =>
-			buildNode({ context, record: child, select: childSelect, compiledOmit }),
+			buildNode({ context, record: child, select: childSelect, compiledOmit, dialecteConfig }),
 		),
 	)
 
@@ -176,18 +183,30 @@ async function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(p
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	compiledOmit: OmitSpecification<GenericConfig>
+	dialecteConfig?: GenericConfig
 }): Promise<
 	Array<{
 		record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 		select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	}>
 > {
-	const { context, record, select, compiledOmit } = params
+	const { context, record, select, compiledOmit, dialecteConfig } = params
 
 	if (!record.children?.length) return []
 
 	// Extract allowed tagNames from select keys (PascalCase only, skip config keys)
 	const selectKeys = select ? getSelectElementKeys(select) : undefined
+
+	// Auto-recursion: if element is self-recursive per config and no explicit self-key in select,
+	// include self tagName in selectKeys so self-referencing children are fetched
+	if (selectKeys && select && dialecteConfig && select.recursive !== false) {
+		const selfTag = record.tagName
+		const childrenOfSelf = (dialecteConfig.children as Record<string, readonly string[]>)[selfTag]
+		const hasExplicitSelfKey = (select as Record<string, unknown>)[selfTag] !== undefined
+		if (childrenOfSelf?.includes(selfTag) && !hasExplicitSelfKey) {
+			selectKeys.add(selfTag)
+		}
+	}
 
 	// Pre-filter child refs by tagName before fetching records
 	const relevantRefs = record.children.filter((childRef) =>
@@ -214,7 +233,7 @@ async function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(p
 	const nonOmitted = children.filter((child) => !isOmitted({ record: child, compiledOmit }))
 
 	// Apply where filter from select and resolve child select
-	return resolveChildSelect({ children: nonOmitted, select, record })
+	return resolveChildSelect({ children: nonOmitted, select, record, dialecteConfig })
 }
 
 //== Select resolution
@@ -246,11 +265,12 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 	children: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+	dialecteConfig?: GenericConfig
 }): Array<{
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 }> {
-	const { children, select, record } = params
+	const { children, select, record, dialecteConfig } = params
 
 	// No select = include all descendants
 	if (!select) {
@@ -265,6 +285,15 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 	for (const child of children) {
 		const entry = (select as Record<string, unknown>)[child.tagName]
 
+		// Auto-recursion: child has same tagName as parent and is self-recursive per config
+		if (entry === undefined && child.tagName === record.tagName) {
+			const resolved = resolveAutoRecursion({ child, select, dialecteConfig })
+			if (resolved) {
+				result.push(resolved)
+				continue
+			}
+		}
+
 		if (entry === undefined || entry === false) continue
 
 		if (entry === true) {
@@ -277,6 +306,38 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 	}
 
 	return result
+}
+
+function resolveAutoRecursion<GenericConfig extends AnyDialecteConfig>(params: {
+	child: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>>
+	dialecteConfig?: GenericConfig
+}):
+	| {
+			record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+			select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>>
+	  }
+	| undefined {
+	const { child, select, dialecteConfig } = params
+	if (!dialecteConfig || select.recursive === false) return undefined
+
+	const childrenOfTag = (dialecteConfig.children as Record<string, readonly string[]>)[
+		child.tagName
+	]
+	if (!childrenOfTag?.includes(child.tagName)) return undefined
+
+	// Apply where filter from select to auto-recursed child
+	if (select.where) {
+		const matches = matchesAttributeFilter({
+			record: child,
+			attributeFilter: select.where as Parameters<
+				typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
+			>[0]['attributeFilter'],
+		})
+		if (!matches) return undefined
+	}
+
+	return { record: child, select }
 }
 
 function resolveNestedSelect<GenericConfig extends AnyDialecteConfig>(params: {
@@ -312,6 +373,11 @@ function resolveNestedSelect<GenericConfig extends AnyDialecteConfig>(params: {
 
 	if (childSelect.recursive) {
 		return { record: child, select: injectRecursive(childSelect, child.tagName) }
+	}
+
+	// Explicit self-key without recursive: suppress auto-recursion at deeper levels
+	if (child.tagName === parentRecord.tagName) {
+		return { record: child, select: { ...childSelect, recursive: false } }
 	}
 
 	return { record: child, select: childSelect }

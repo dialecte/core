@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.20] - 2026-05-04
+
+### Changed
+
+- `getTree`: auto-recursion for self-recursive elements - core detects when an element can contain itself and recurses automatically without explicit `recursive: true`
+
 ## [0.1.19] - 2026-04-30
 
 ### Changed

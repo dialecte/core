@@ -319,7 +319,12 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		options?: GetTreeParams<GenericConfig, GenericElement>,
 	): Promise<TreeRecord<GenericConfig, GenericElement> | undefined> {
-		return getTree({ context: this.context, ref: toRef(refOrRecord), options })
+		return getTree({
+			context: this.context,
+			ref: toRef(refOrRecord),
+			options,
+			dialecteConfig: this.dialecteConfig,
+		})
 	}
 
 	//== Attribute queries
