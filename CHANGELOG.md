@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-## [0.1.20] - 2026-05-04
+## [0.1.21] - 2026-05-04
+
+### Added
+
+- `query.any` namespace (`AnyQuery`): full read surface without `ElementsOf`/`ChildrenOf` constraints - for custom/private elements (`xs:any`), dynamic tag names, or call sites where the element type is unknown
+  - mirrors all public `Query` methods: `getRecord`, `getRecords`, `getChild`, `getChildren`, `getRecordsByTagName`, `getAttribute`, `getAttributes`, `getTree`, `findAncestors`, `findDescendants`, `findByAttributes`
+  - accepts `string` for tag names, `Record<string, string>` for attributes
+  - accessible via `doc.query.any`
+- `transaction.any` namespace (`AnyTransaction`): extends `query.any` with untyped mutation methods
+  - `addChild`, `ensureChild`, `update`, `delete`, `deepClone`
+  - accessible via `tx.any` inside `doc.transaction()`
+
+### Changed
+
+- `query.getAnyAttribute`, `query.getAnyAttributes`, `query.getAnyChild`, `query.getAnyChildren` removed - replaced by `query.any.getAttribute`, `query.any.getAttributes`, `query.any.getChild`, `query.any.getChildren`
+
+## [0.1.20] - 2026-04-30
 
 ### Changed
 

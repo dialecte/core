@@ -1,4 +1,5 @@
 import { Query } from '../query'
+import { AnyTransaction } from './any'
 import { stageDeepClone } from './clone'
 import { commitTransaction } from './commit'
 import { stageAddChild } from './create'
@@ -48,6 +49,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	protected recordCache = new Map<string, AnyRawRecord>()
 	protected hooks: TransactionHooks<GenericConfig> | undefined
 	protected cumulativeCloneMappings: CloneMapping<GenericConfig>[] = []
+	private _anyTx?: AnyTransaction<GenericConfig>
 
 	constructor(
 		store: Store,
@@ -58,6 +60,17 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		super(store, dialecteConfig)
 		this.documentState = documentState
 		this.hooks = hooks
+	}
+
+	//== Untyped namespace
+
+	override get any(): AnyTransaction<GenericConfig> {
+		return (this._anyTx ??= new AnyTransaction(
+			() => this.context,
+			this.dialecteConfig,
+			this.hooks,
+			this,
+		))
 	}
 
 	//== Mutations (sync — stage operations, return Refs)

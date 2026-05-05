@@ -143,6 +143,61 @@ type CloneMapping<Config> = {
 
 `mappings` in `CloneResult` are scoped to the current `deepClone` call. The `afterDeepClone` hook receives `cumulativeCloneMappings` -- all mappings accumulated across the entire transaction. See [Hooks -- afterDeepClone](/api/hooks#afterdeepclone).
 
+## Untyped namespace — `tx.any`
+
+`tx.any` extends `query.any` with mutation methods. It provides the full read+write surface without type constraints - useful for custom/private elements or dynamic tag names.
+
+See [Query — any namespace](/api/query#untyped-namespace-query-any) for the complete read-side reference.
+
+```ts
+await doc.transaction(async (tx) => {
+	// Create a custom element
+	const child = await tx.any.addChild(parentRef, {
+		tagName: 'Private',
+		attributes: { type: 'custom', xmlns: 'http://example.com/private' },
+	})
+
+	// Update it
+	await tx.any.update(child, {
+		attributes: { type: 'updated' },
+	})
+
+	// Clone a subtree
+	const tree = await tx.any.getTree(child)
+	const { record, mappings } = await tx.any.deepClone(otherParent, tree)
+
+	// Delete
+	await tx.any.delete(child)
+})
+```
+
+### Mutation methods
+
+| Method        | Params                              | Return                             |
+| ------------- | ----------------------------------- | ---------------------------------- |
+| `addChild`    | `AnyRefOrRecord, AnyAddChildParams` | `AnyRawRecord`                     |
+| `ensureChild` | `AnyRefOrRecord, AnyAddChildParams` | `AnyTrackedRecord \| AnyRawRecord` |
+| `update`      | `AnyRefOrRecord, AnyUpdateParams`   | `AnyRawRecord`                     |
+| `delete`      | `AnyRefOrRecord`                    | `AnyRawRecord`                     |
+| `deepClone`   | `AnyRefOrRecord, AnyTreeRecord`     | `CloneResult`                      |
+
+#### AnyAddChildParams
+
+| Field        | Type                                       | Description                      |
+| ------------ | ------------------------------------------ | -------------------------------- |
+| `tagName`    | `string`                                   | Tag name of the child to create  |
+| `attributes` | `Record<string, string> \| AnyAttribute[]` | Attributes for the new element   |
+| `namespace`  | `Namespace`                                | Override the element's namespace |
+| `value`      | `string`                                   | Text content                     |
+| `id`         | `string`                                   | Explicit ID (testing only)       |
+
+#### AnyUpdateParams
+
+| Field        | Type                                       | Description                                      |
+| ------------ | ------------------------------------------ | ------------------------------------------------ |
+| `attributes` | `Record<string, string> \| AnyAttribute[]` | Attributes to update; missing keys are unchanged |
+| `value`      | `string`                                   | New text content                                 |
+
 ## Reading inside a transaction
 
 Since `Transaction` extends `Query`, all query methods are available and **see staged changes**:

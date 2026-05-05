@@ -283,49 +283,50 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 // → FullAttributeObject[]
 ```
 
-## Any-typed companions
+## Untyped namespace — `query.any`
 
-Loose-typed versions of core query methods for call sites where the element type is a union or unknown. Accept `AnyRefOrRecord` instead of `RefOrRecord<Config, Element>`.
+The `any` namespace exposes the full Query surface without `ElementsOf` / `ChildrenOf` type constraints. Use it for custom/private elements (xs:any), dynamic contexts, or call sites where the element type is a union or unknown.
 
-```ts
-type AnyRefOrRecord = AnyRef | AnyDialecteRecord
-```
+Access via `doc.query.any` (read-only) or `tx.any` (read + write inside a transaction - see [Transaction — any namespace](/api/transaction#untyped-namespace-tx-any)).
 
-### getAnyAttribute
-
-Returns a single attribute value without element-type constraint. Returns `''` if absent.
+All methods accept plain strings for tag names and `Record<string, string>` for attributes instead of config-narrowed types.
 
 ```ts
-const value = await doc.query.getAnyAttribute(ref, 'name')
-// string
+// Read
+const record = await doc.query.any.getRecord({ tagName: 'Private', id })
+const attr = await doc.query.any.getAttribute(record, { name: 'customAttr' })
+const attrs = await doc.query.any.getAttributes(record)
+const children = await doc.query.any.getChildren(record, 'PrivateChild')
+const child = await doc.query.any.getChild(record, 'PrivateChild')
+const records = await doc.query.any.getRecordsByTagName('Private')
+const tree = await doc.query.any.getTree(record)
+const ancestors = await doc.query.any.findAncestors(record)
+const descendants = await doc.query.any.findDescendants(record)
+const matches = await doc.query.any.findByAttributes({
+	tagName: 'Private',
+	attributes: { name: 'target' },
+})
 ```
 
-### getAnyAttributes
+### Type signatures
 
-Returns all attributes as a plain `Record<string, string>` without element-type constraint.
+| Method                | Params                                                                | Return                                     |
+| --------------------- | --------------------------------------------------------------------- | ------------------------------------------ |
+| `getRecord`           | `AnyRef`                                                              | `AnyTrackedRecord \| undefined`            |
+| `getRecords`          | `AnyRef[]`                                                            | `(AnyTrackedRecord \| undefined)[]`        |
+| `getChild`            | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord \| undefined`            |
+| `getChildren`         | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord[]`                       |
+| `getRecordsByTagName` | `tagName: string`                                                     | `AnyTrackedRecord[]`                       |
+| `getAttribute`        | `AnyRefOrRecord, { name, fullObject? }`                               | `string \| AnyAttribute \| undefined`      |
+| `getAttributes`       | `AnyRefOrRecord, { fullObject? }`                                     | `Record<string, string> \| AnyAttribute[]` |
+| `getTree`             | `AnyRefOrRecord`                                                      | `AnyTreeRecord \| undefined`               |
+| `findAncestors`       | `AnyRefOrRecord`                                                      | `AnyTrackedRecord[]`                       |
+| `findDescendants`     | `AnyRefOrRecord`                                                      | `Record<string, AnyTrackedRecord[]>`       |
+| `findByAttributes`    | `{ tagName: string, attributes: Record<string, string \| string[]> }` | `AnyTrackedRecord[]`                       |
 
-```ts
-const attrs = await doc.query.getAnyAttributes(ref)
-// Record<string, string>
-```
-
-### getAnyChild
-
-Returns the first direct child matching a tag name without element-type constraint.
-
-```ts
-const child = await doc.query.getAnyChild(ref, 'AA_1')
-// AnyTrackedRecord | undefined
-```
-
-### getAnyChildren
-
-Returns all direct children matching a tag name without element-type constraint.
-
-```ts
-const children = await doc.query.getAnyChildren(ref, 'AA_1')
-// AnyTrackedRecord[]
-```
+::: tip
+`query.any` mirrors every public Query method except `getRoot` (always typed), `getFilename` (no element typing involved), and `findByAttributes` filter type narrowing (accepts `Record<string, string | string[]>` instead of `FilterAttributes`).
+:::
 
 ## RefOrRecord
 

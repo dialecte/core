@@ -1,3 +1,4 @@
+import { AnyQuery } from './any'
 import { findAncestors, findByAttributes, findDescendants } from './find'
 import { getTree } from './get'
 import {
@@ -22,10 +23,7 @@ import type {
 import type { GetTreeParams } from './get'
 import type { Store } from '@/store'
 import type {
-	AnyAttribute,
 	AnyDialecteConfig,
-	AnyTrackedRecord,
-	AnyRefOrRecord,
 	AttributesOf,
 	AttributesValueObjectOf,
 	DescendantsOf,
@@ -52,10 +50,17 @@ import type {
 export class Query<GenericConfig extends AnyDialecteConfig> {
 	protected store: Store
 	protected dialecteConfig: GenericConfig
+	private _any?: AnyQuery<GenericConfig>
 
 	constructor(store: Store, dialecteConfig: GenericConfig) {
 		this.store = store
 		this.dialecteConfig = dialecteConfig
+	}
+
+	//== Untyped namespace
+
+	get any(): AnyQuery<GenericConfig> {
+		return (this._any ??= new AnyQuery(() => this.context, this.dialecteConfig))
 	}
 
 	//== Context
@@ -408,81 +413,6 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		if (fullObject)
 			return getAttributesFullObject({ context: this.context, ref: resolvedRef, ...params })
 		return getAttributes({ context: this.context, ref: resolvedRef, ...params })
-	}
-
-	//== Any-typed companions (for union-element / untyped-ref call sites)
-
-	/**
-	 * Get a single attribute value without element-type constraint.
-	 * Use when the element type is a union or unknown at the call site.
-	 * Returns `''` if the attribute is absent.
-	 */
-	async getAnyAttribute(
-		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; fullObject?: false },
-	): Promise<string>
-	async getAnyAttribute(
-		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; fullObject: true },
-	): Promise<AnyAttribute | undefined>
-	async getAnyAttribute(
-		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; fullObject?: boolean },
-	): Promise<string | AnyAttribute | undefined> {
-		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
-		const { fullObject } = params
-		if (fullObject) return getAttributeFullObject({ context: this.context, ref, ...params })
-		return getAttribute({ context: this.context, ref, ...params })
-	}
-
-	/**
-	 * Get all attributes without element-type constraint.
-	 * Use when the element type is a union or unknown at the call site.
-	 */
-	async getAnyAttributes(
-		refOrRecord: AnyRefOrRecord | undefined,
-		params?: { fullObject?: false },
-	): Promise<Record<string, string>>
-	async getAnyAttributes(
-		refOrRecord: AnyRefOrRecord | undefined,
-		params: { fullObject: true },
-	): Promise<AnyAttribute[]>
-	async getAnyAttributes(
-		refOrRecord: AnyRefOrRecord | undefined,
-		params?: { fullObject?: boolean },
-	): Promise<Record<string, string> | AnyAttribute[]> {
-		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
-		const { fullObject } = params || {}
-		if (fullObject) return getAttributesFullObject({ context: this.context, ref, ...params })
-		return getAttributes({ context: this.context, ref, ...params })
-	}
-
-	/**
-	 * Get the first direct child matching a tag name without element-type constraint.
-	 * Use when the parent or child element type is a union or unknown at the call site.
-	 */
-	async getAnyChild(
-		refOrRecord: AnyRefOrRecord | undefined,
-		tagName: string,
-	): Promise<AnyTrackedRecord<GenericConfig> | undefined> {
-		return this.getChild(
-			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
-			tagName as ChildrenOf<GenericConfig, ElementsOf<GenericConfig>>,
-		)
-	}
-
-	/**
-	 * Get all direct children matching a tag name without element-type constraint.
-	 * Use when the parent or child element type is a union or unknown at the call site.
-	 */
-	async getAnyChildren(
-		refOrRecord: AnyRefOrRecord | undefined,
-		tagName: string,
-	): Promise<AnyTrackedRecord<GenericConfig>[]> {
-		return this.getChildren(
-			refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>,
-			tagName as ChildrenOf<GenericConfig, ElementsOf<GenericConfig>>,
-		)
 	}
 
 	//== Find queries
