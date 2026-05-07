@@ -81,6 +81,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	protected get context(): Context<GenericConfig> {
 		return {
 			store: this.store,
+			dialecteConfig: this.dialecteConfig,
 			recordCache: undefined,
 			stagedOperations: this.getOperations(),
 		}

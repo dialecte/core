@@ -6,6 +6,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	createTestDialecte,
 	runTestCases,
+	TEST_DIALECTE_CONFIG,
 } from '@/test'
 
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -142,5 +143,129 @@ describe('getChild', () => {
 				await cleanup()
 			}
 		})
+	})
+
+	describe('transparent elements', () => {
+		const configWithTransparent = {
+			...TEST_DIALECTE_CONFIG,
+			transparentElements: ['AA_1'] as const,
+		}
+
+		type TestCase = {
+			description: string
+			sourceXml: string
+			parentRef: { tagName: string; id: string }
+			childTagName: string
+			expectedId?: string
+			expectUndefined?: true
+			useTransparentConfig?: boolean
+		}
+
+		const testCases: TestCase[] = [
+			{
+				description: 'finds child through a transparent wrapper element',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="wrapper">
+								<AAA_1 ${customId}="aaa1" aAAA_1="deep" />
+							</AA_1>
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectedId: 'aaa1',
+				useTransparentConfig: true,
+			},
+			{
+				description: 'returns direct child preferentially over transparent lookup',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="direct" />
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AA_1',
+				expectedId: 'aa1',
+				useTransparentConfig: true,
+			},
+			{
+				description: 'returns first match from first transparent wrapper',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="wrapper1">
+								<AAA_1 ${customId}="aaa1" aAAA_1="first" />
+							</AA_1>
+							<AA_1 ${customId}="aa2" aAA_1="wrapper2">
+								<AAA_1 ${customId}="aaa2" aAAA_1="second" />
+							</AA_1>
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectedId: 'aaa1',
+				useTransparentConfig: true,
+			},
+			{
+				description: 'returns undefined when transparent wrapper has no matching child',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="empty-wrapper" />
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectUndefined: true,
+				useTransparentConfig: true,
+			},
+			{
+				description: 'does not look through elements when config has no transparentElements',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="wrapper">
+								<AAA_1 ${customId}="aaa1" aAAA_1="hidden" />
+							</AA_1>
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectUndefined: true,
+				useTransparentConfig: false,
+			},
+		]
+
+		for (const testCase of testCases) {
+			it(testCase.description, async () => {
+				const { document, cleanup } = await createTestDialecte({
+					xmlString: testCase.sourceXml,
+					dialecteConfig: testCase.useTransparentConfig
+						? configWithTransparent
+						: TEST_DIALECTE_CONFIG,
+				})
+
+				try {
+					const child = await document.query.any.getChild(testCase.parentRef, testCase.childTagName)
+
+					if (testCase.expectUndefined) {
+						expect(child).toBeUndefined()
+					} else {
+						expect(child).toBeDefined()
+						expect(child?.id).toBe(testCase.expectedId)
+						expect(child?.tagName).toBe(testCase.childTagName)
+					}
+				} finally {
+					await cleanup()
+				}
+			})
+		}
 	})
 })

@@ -6,6 +6,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	createTestDialecte,
 	runTestCases,
+	TEST_DIALECTE_CONFIG,
 } from '@/test'
 
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
@@ -146,5 +147,136 @@ describe('getChildren', () => {
 				await cleanup()
 			}
 		})
+	})
+
+	describe('transparent elements', () => {
+		const configWithTransparent = {
+			...TEST_DIALECTE_CONFIG,
+			transparentElements: ['AA_1'] as const,
+		}
+
+		type TestCase = {
+			description: string
+			sourceXml: string
+			parentRef: { tagName: string; id: string }
+			childTagName: string
+			expectedCount: number
+			expectedIds?: string[]
+			useTransparentConfig?: boolean
+		}
+
+		const testCases: TestCase[] = [
+			{
+				description: 'finds children through a transparent wrapper element',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="wrapper">
+								<AAA_1 ${customId}="aaa1" aAAA_1="deep1" />
+								<AAA_1 ${customId}="aaa2" aAAA_1="deep2" />
+							</AA_1>
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectedCount: 2,
+				expectedIds: ['aaa1', 'aaa2'],
+				useTransparentConfig: true,
+			},
+			{
+				description: 'returns direct children preferentially over transparent lookup',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="direct" />
+							<AA_2 ${customId}="aa2" aAA_2="other" />
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AA_1',
+				expectedCount: 1,
+				expectedIds: ['aa1'],
+				useTransparentConfig: true,
+			},
+			{
+				description: 'returns empty when transparent wrapper has no matching children',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="empty-wrapper" />
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectedCount: 0,
+				useTransparentConfig: true,
+			},
+			{
+				description: 'collects children from multiple transparent wrappers',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="wrapper1">
+								<AAA_1 ${customId}="aaa1" aAAA_1="from-first" />
+							</AA_1>
+							<AA_1 ${customId}="aa2" aAA_1="wrapper2">
+								<AAA_1 ${customId}="aaa2" aAAA_1="from-second" />
+							</AA_1>
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectedCount: 2,
+				expectedIds: ['aaa1', 'aaa2'],
+				useTransparentConfig: true,
+			},
+			{
+				description: 'does not look through elements when config has no transparentElements',
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="wrapper">
+								<AAA_1 ${customId}="aaa1" aAAA_1="hidden" />
+							</AA_1>
+						</A>
+					</Root>
+				`,
+				parentRef: { tagName: 'A', id: 'a1' },
+				childTagName: 'AAA_1',
+				expectedCount: 0,
+				useTransparentConfig: false,
+			},
+		]
+
+		for (const testCase of testCases) {
+			it(testCase.description, async () => {
+				const { document, cleanup } = await createTestDialecte({
+					xmlString: testCase.sourceXml,
+					dialecteConfig: testCase.useTransparentConfig
+						? configWithTransparent
+						: TEST_DIALECTE_CONFIG,
+				})
+
+				try {
+					const children = await document.query.any.getChildren(
+						testCase.parentRef,
+						testCase.childTagName,
+					)
+
+					expect(children).toHaveLength(testCase.expectedCount)
+
+					if (testCase.expectedIds) {
+						const ids = children.map((c) => c.id)
+						for (const id of testCase.expectedIds) expect(ids).toContain(id)
+					}
+				} finally {
+					await cleanup()
+				}
+			})
+		}
 	})
 })

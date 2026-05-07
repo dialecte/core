@@ -90,6 +90,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	protected override get context(): Context<GenericConfig> {
 		return {
 			store: this.store,
+			dialecteConfig: this.dialecteConfig,
 			recordCache: this.recordCache,
 			stagedOperations: this.stagedOperations,
 		}

@@ -15,6 +15,7 @@ export type RawDialecteConfig<
 > = {
 	rootElementName: GenericRootElement
 	singletonElements?: readonly GenericElementNames[number][]
+	transparentElements?: readonly GenericElementNames[number][]
 	namespaces: Record<'default', Namespace> & Record<string, Namespace>
 	elements: GenericElementNames
 	attributes: GenericAttributes

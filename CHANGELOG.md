@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.1.22] - 2026-05-07
+
+### Added
+
+- `transparentElements` config field: list of element names treated as transparent wrappers during read operations
+  - `getChild` and `getChildren` automatically look through transparent elements when no direct match is found
+  - direct children always win (fast path); transparent lookup only triggers on miss
+  - `Context` now carries `dialecteConfig` to make this available to FP query functions
+
 ## [0.1.21] - 2026-05-04
 
 ### Added

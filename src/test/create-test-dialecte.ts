@@ -97,6 +97,7 @@ export function createTestContext<GenericConfig extends AnyDialecteConfig>(param
 	const { databaseName, dialecteConfig } = params
 	return {
 		store: new DexieStore(databaseName, dialecteConfig),
+		dialecteConfig,
 		recordCache: new Map(),
 		stagedOperations: [],
 	}

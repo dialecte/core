@@ -11,6 +11,7 @@ import type { AnyDialecteConfig, Operation, AnyRawRecord } from '@/types'
  */
 export type Context<GenericConfig extends AnyDialecteConfig> = {
 	readonly store: Store
+	readonly dialecteConfig: GenericConfig
 	readonly recordCache: Map<string, AnyRawRecord> | undefined
 	stagedOperations: Operation<GenericConfig>[]
 }
