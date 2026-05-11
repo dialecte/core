@@ -9,15 +9,15 @@ import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
-export type TestFile<GenericConfig extends AnyDialecteConfig> = {
+export type TestDocument<GenericConfig extends AnyDialecteConfig> = {
 	documentId: string
 	document: Document<GenericConfig>
 }
 
 export type TestProjectResult<GenericConfig extends AnyDialecteConfig> = {
 	project: Project<GenericConfig>
-	source: TestFile<GenericConfig>
-	target?: TestFile<GenericConfig>
+	source: TestDocument<GenericConfig>
+	target?: TestDocument<GenericConfig>
 }
 
 /**
@@ -57,12 +57,12 @@ export async function createTestProject<
 		new File([sourceXml], 'source.xml', { type: 'text/xml' }),
 		{ useCustomRecordsIds: true },
 	)
-	const source: TestFile<GenericConfig> = {
+	const source: TestDocument<GenericConfig> = {
 		documentId: sourceImport.documentId,
 		document: project.openDocument(sourceImport.documentId),
 	}
 
-	let target: TestFile<GenericConfig> | undefined
+	let target: TestDocument<GenericConfig> | undefined
 	if (targetXml) {
 		const targetImport = await project.import(
 			new File([targetXml], 'target.xml', { type: 'text/xml' }),

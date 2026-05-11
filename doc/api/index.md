@@ -1,84 +1,75 @@
 ---
-description: Overview of the @dialecte/core public API — importXmlFiles for streaming XML into IndexedDB, Document for lifecycle management, and the Query/Transaction interfaces for reading and mutating records.
+description: Overview of the @dialecte/core public API - Project for multi-document lifecycle management, Document for per-file query/transaction access, and Query/Transaction interfaces for reading and mutating records.
 ---
 
 # API Overview
 
 The `@dialecte/core` API is organised around three concepts:
 
-1. **I/O** — import XML files into IndexedDB, export them back to XML
-2. **Document** — open a database, query records, run transactions, undo/redo
-3. **Query / Transaction** — the read and write interfaces exposed by a Document
+1. **Project** - multi-document container; owns the store, config registry, undo/redo, and IO lifecycle
+2. **Document** - per-file entry point for querying records and running transactions
+3. **Query / Transaction** - the read and write interfaces exposed by a Document
 
-## importXmlFiles
+## Project
 
-Streams one or more XML files through a SAX parser and persists each element tree to IndexedDB. Returns the database name created for each file.
+`Project` is the top-level container. Construct it sync, then call `.open(name)` async to connect the store.
 
 ```ts
-import { importXmlFiles, TEST_DIALECTE_CONFIG } from '@dialecte/core'
+import { Project, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
-const [databaseName] = await importXmlFiles({
-	files: [xmlFile],
-	dialecteConfig: TEST_DIALECTE_CONFIG,
+const project = await new Project({
+	configs: { test: TEST_DIALECTE_CONFIG },
+	storage: { type: 'local' },
+}).open('my-project')
+```
+
+Key methods:
+
+| Method                        | Description                                             |
+| ----------------------------- | ------------------------------------------------------- |
+| `project.open(name)`          | Async: connects store, hydrates state, returns `this`   |
+| `project.import(file)`        | Streams XML → IndexedDB partition; returns `documentId` |
+| `project.export(documentId)`  | Serializes IndexedDB partition → `XMLDocument`          |
+| `project.initEmptyDocument()` | Creates an empty document from config root element      |
+| `project.openDocument(id)`    | Returns a file-scoped `Document`                        |
+| `project.getDocuments()`      | List all registered document metadata                   |
+| `project.undo(documentId)`    | Undoes the last transaction for a document              |
+| `project.redo(documentId)`    | Redoes the last undone transaction for a document       |
+| `project.destroy()`           | Drops the entire store and closes the channel           |
+
+See [Project reference](/api/project) for the full API.
+
+## Document
+
+`Document` is the per-file entry point. Obtained via `project.openDocument(documentId)`.
+
+```ts
+const doc = project.openDocument(documentId)
+
+// Read
+const root = await doc.query.getRoot()
+
+// Write
+await doc.transaction(async (tx) => {
+	await tx.update(root, { attributes: { name: 'new-value' } })
 })
 ```
 
-| Parameter             | Type                | Default | Description                                                               |
-| --------------------- | ------------------- | ------- | ------------------------------------------------------------------------- |
-| `files`               | `File[]`            | —       | Files to import; must match `io.supportedFileExtensions`                  |
-| `dialecteConfig`      | `AnyDialecteConfig` | —       | Schema config                                                             |
-| `useCustomRecordsIds` | `boolean`           | `false` | When `true`, reads `dev:db-id` attributes as record IDs (useful in tests) |
+See [Document reference](/api/document) for the full API.
 
-Returns `Promise<string[]>` — one database name per successfully imported file.
-
-## openDialecteDocument
-
-Connects to an existing IndexedDB database and returns a `Document` instance.
+## StorageParam
 
 ```ts
-import { openDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
-
-const doc = openDialecteDocument({
-	config: TEST_DIALECTE_CONFIG,
-	storage: { type: 'local', databaseName },
-})
-```
-
-| Parameter    | Type                 | Description                                                                                                                                          |
-| ------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `config`     | `AnyDialecteConfig`  | The config describing your XML schema                                                                                                                |
-| `storage`    | `StorageOptions`     | `{ type: 'local', databaseName }` or `{ type: 'custom', store }`                                                                                     |
-| `extensions` | `{ base?, custom? }` | Extension modules to bind onto `query` and `tx`. `base` holds the dialecte's built-ins; `custom` holds consumer-supplied modules. Both are optional. |
-
-Returns `Document<Config>`. See [Document](/api/document) for the full interface.
-
-### StorageOptions
-
-```ts
-type StorageOptions =
-	| { type: 'local'; databaseName: string } // uses built-in DexieStore
+type StorageParam =
+	| { type: 'local' } // built-in DexieStore (IndexedDB)
 	| { type: 'custom'; store: Store } // bring your own Store implementation
 ```
 
-### Extensions
+## Extensions
 
-`base` and `custom` both accept an `ExtensionModules` record — a map of module names to `{ query?, transaction? }` objects. Core merges them before opening and throws a `DialecteError` (D6001) if the same method name appears in both. See [Writing Extensions](/guide/extensions/) for the full authoring guide.
-const { xmlDocument, filename } = await exportXmlFile({
-databaseName,
-extension: '.xml',
-withDownload: true,
-dialecteConfig: TEST_DIALECTE_CONFIG,
-})
+`extensionsRegistry` accepts an `ExtensionModules` record - a map of module names to `{ query?, transaction? }` objects. Core merges them and throws `DialecteError` (D6001) on method name collisions. See [Writing Extensions](/guide/extensions/) for the authoring guide.
 
-```
-
-| Parameter         | Type                 | Default | Description                                             |
-| ----------------- | -------------------- | ------- | ------------------------------------------------------- |
-| `databaseName`    | `string`             | —       | Database to export                                      |
-| `extension`       | `SupportedExtension` | —       | File extension; must be in `io.supportedFileExtensions` |
-| `withDownload`    | `boolean`            | `false` | Triggers a browser `<a download>` after export          |
-| `withDatabaseIds` | `boolean`            | `false` | Include `dev:db-id` attributes in the output            |
-| `dialecteConfig`  | `AnyDialecteConfig`  | —       | Schema config                                           |
+| `dialecteConfig` | `AnyDialecteConfig` | — | Schema config |
 
 Returns `Promise<{ xmlDocument: XMLDocument; filename: string }>`.
 
@@ -89,4 +80,7 @@ Returns `Promise<{ xmlDocument: XMLDocument; filename: string }>`.
 - [Transaction](/api/transaction) — addChild, update, delete, deepClone
 - [Hooks](/api/hooks) — transaction lifecycle hooks
 - [IO](/io/) — importXmlFiles, exportXmlFile, IOConfig, IO hooks
+
+```
+
 ```

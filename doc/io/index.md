@@ -31,12 +31,11 @@ IO is stateless - it reads/writes the store directly without going through trans
 ```ts
 import { Project } from '@dialecte/core'
 
-// 1. Open project
-const project = await Project.open({
-	name: 'my-project',
+// 1. Create and open project
+const project = await new Project({
 	configs: { scl: sclConfig },
 	storage: { type: 'local' },
-})
+}).open('my-project')
 
 // 2. Import
 const { documentId } = await project.import(xmlFile, { configKey: 'scl' })

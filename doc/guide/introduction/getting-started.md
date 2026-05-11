@@ -44,16 +44,15 @@ import { TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
 ## Step 2 - Open a Project
 
-`Project.open` creates a multi-document container backed by a single IndexedDB database.
+`Project` is a multi-document container backed by a single IndexedDB store. Construction is split into two steps: a sync constructor that wires up config, then `.open(name)` that connects the store.
 
 ```ts
 import { Project, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
-const project = await Project.open({
-	name: 'my-project',
+const project = await new Project({
 	configs: { test: TEST_DIALECTE_CONFIG },
 	storage: { type: 'local' },
-})
+}).open('my-project')
 ```
 
 ## Step 3 - Import an XML file

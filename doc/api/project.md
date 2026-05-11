@@ -6,32 +6,38 @@ description: API reference for the Project class - multi-document container mana
 
 `Project` is the top-level container that manages multiple documents backed by a single store. It owns the config registry, the shared `BroadcastChannel`, and per-document lifecycle.
 
-## Opening a Project
+## Creating and opening a Project
+
+`Project` construction is split into two steps: a sync constructor that wires up config, then an async `open(name)` call that connects the store.
 
 ```ts
 import { Project } from '@dialecte/core'
 
-const project = await Project.open({
-	name: 'my-project',
+const project = await new Project({
 	configs: { scl: sclConfig },
 	storage: { type: 'local' },
-	extensions: { base: sclExtensions },
+	extensionsRegistry: { ...sclExtensions },
 	hooks: sclHooks,
-})
+}).open('my-project')
 ```
 
-**ProjectOpenParams**
+**Constructor - `ProjectParams`**
 
-| Param              | Type                                | Description                                              |
-| ------------------ | ----------------------------------- | -------------------------------------------------------- |
-| `name`             | `string`                            | Project name - used as the database/store name           |
-| `configs`          | `Record<string, AnyDialecteConfig>` | Config registry keyed by label                           |
-| `defaultConfigKey` | `string`                            | Used when `configKey` is omitted. Defaults to first key. |
-| `storage`          | `StorageParam`                      | `{ type: 'local' }` or `{ type: 'custom', store }`       |
-| `extensions`       | `{ base?, custom? }`                | Extensions applied to all Documents                      |
-| `hooks`            | `TransactionHooks`                  | Transaction hooks applied to all Documents               |
+| Param                | Type                                | Description                                              |
+| -------------------- | ----------------------------------- | -------------------------------------------------------- |
+| `configs`            | `Record<string, AnyDialecteConfig>` | Config registry keyed by label                           |
+| `defaultConfigKey`   | `string`                            | Used when `configKey` is omitted. Defaults to first key. |
+| `storage`            | `StorageParam`                      | `{ type: 'local' }` or `{ type: 'custom', store }`       |
+| `extensionsRegistry` | `ExtensionModules`                  | Extensions applied to all Documents                      |
+| `hooks`              | `TransactionHooks`                  | Transaction hooks applied to all Documents               |
 
-On open, the store is connected and existing file registrations are hydrated into `project.state.documents`.
+**`project.open(name: string): Promise<this>`**
+
+Connects the store, hydrates existing file registrations into `project.state.documents`, and returns `this` for chaining. Accessing `project.name`, `project.store`, or `project.channel` before calling `open` throws `PROJECT_NOT_OPENED` (D7003).
+
+::: tip Dialecte packages
+Higher-level dialecte packages (e.g. `@dialecte/scl`) expose a factory function (`createSclProject`) that pre-configures the `Project` constructor. Consumer code only calls `.open(name)`.
+:::
 
 ## initEmptyDocument
 
