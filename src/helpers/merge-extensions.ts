@@ -1,6 +1,6 @@
 import { invariant } from '@/utils'
 
-import type { ExtensionModules, MergedExtensions } from '@/types/extensions'
+import type { ExtensionModules, MergedExtensions } from '@/document'
 
 function assertNoGroupCollision(
 	a: Record<string, unknown> | undefined,
@@ -18,7 +18,6 @@ function assertNoGroupCollision(
 
 /**
  * Merges named extension modules into the flat { query, transaction } registry
- * expected by openDialecteDocument.
  *
  * When two module sets share the same module key (e.g. base and custom both define
  * "history"), their query and transaction groups are merged at the method level.

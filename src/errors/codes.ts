@@ -91,10 +91,28 @@ export const ERROR_CATALOG = {
 	},
 
 	// D5xxx — Import/Export
+	EXPORT_ROOT_NOT_FOUND: {
+		code: 'D5001',
+		message: 'Root element not found in records during export',
+	},
+	EXPORT_ORPHAN_CHILD_REF: {
+		code: 'D5002',
+		message: 'Parent references non-existent child record',
+	},
 
 	// D6xxx — Config
 	EXTENSION_METHOD_COLLISION: {
 		code: 'D6001',
 		message: 'Extension method name collision detected',
+	},
+
+	// D7xxx — Project
+	UNKNOWN_CONFIG_KEY: {
+		code: 'D7001',
+		message: 'Unknown config key',
+	},
+	DOCUMENT_NOT_REGISTERED: {
+		code: 'D7002',
+		message: 'Document not registered in project',
 	},
 } as const
