@@ -3,13 +3,12 @@ import { stageAddChild } from '../create'
 import { toRef } from '@/helpers'
 
 import type { CloneResult, CloneMapping } from './clone.types'
-import type { Context, Query } from '@/document'
+import type { Context, Query, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
 	ChildrenOf,
 	TreeRecord,
-	Ref,
 	RawRecord,
 	TransactionHooks,
 } from '@/types'

@@ -4,14 +4,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createTestRecord } from '@/test'
 
-import type { DocumentState } from '@/document'
+import type { DocumentActivity } from '@/document'
 import type { Store } from '@/store'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyRawRecord, Operation } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeState(): DocumentState {
+function makeState(): DocumentActivity {
 	return {
 		loading: false,
 		error: null,
@@ -34,10 +34,16 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 	const store: Store = {
 		name: 'test-store',
 		get: vi.fn(),
-		getByTagName: vi.fn(),
-		clear: vi.fn(),
+		getByDocumentId: vi.fn(),
+		getByTagNameInDocument: vi.fn(),
 		open: vi.fn(),
 		close: vi.fn(),
+		registerDocument: vi.fn(),
+		getDocument: vi.fn(),
+		getDocuments: vi.fn(),
+		updateDocument: vi.fn(),
+		removeDocument: vi.fn(),
+		bulkWrite: vi.fn(),
 		commit: vi.fn(async ({ creates, updates, deletes, onProgress }) => {
 			if (options?.shouldThrow) throw options.shouldThrow
 			calls.creates = creates
@@ -69,11 +75,17 @@ describe('commitTransaction', () => {
 		const store: Store = {
 			name: 'test-store',
 			get: vi.fn(),
-			getByTagName: vi.fn(),
-			clear: vi.fn(),
+			getByDocumentId: vi.fn(),
+			getByTagNameInDocument: vi.fn(),
 			open: vi.fn(),
 			close: vi.fn(),
 			destroy: vi.fn(),
+			registerDocument: vi.fn(),
+			getDocument: vi.fn(),
+			getDocuments: vi.fn(),
+			updateDocument: vi.fn(),
+			removeDocument: vi.fn(),
+			bulkWrite: vi.fn(),
 			undo: vi.fn(),
 			redo: vi.fn(),
 			getChangeLog: vi.fn().mockResolvedValue([]),
@@ -88,7 +100,12 @@ describe('commitTransaction', () => {
 			oldRecord: undefined,
 			newRecord: createTestRecord({ record: { tagName: 'A', id: 'r1' } }),
 		}
-		await commitTransaction({ stagedOperations: [op], store, documentState: state })
+		await commitTransaction({
+			stagedOperations: [op],
+			store,
+			documentId: 'f1',
+			documentState: state,
+		})
 
 		expect(loadingSnapshot[0]).toBe(true)
 		expect(progressSnapshot[0]).toEqual({ message: 'Committing changes...', current: 0, total: 1 })
@@ -99,7 +116,7 @@ describe('commitTransaction', () => {
 		const { store } = makeStore()
 		const before = Date.now()
 
-		await commitTransaction({ stagedOperations: [], store, documentState: state })
+		await commitTransaction({ stagedOperations: [], store, documentId: 'f1', documentState: state })
 
 		expect(state.lastUpdate).toBeGreaterThanOrEqual(before)
 		expect(state.lastUpdate).toBeLessThanOrEqual(Date.now())
@@ -128,6 +145,7 @@ describe('commitTransaction', () => {
 		await commitTransaction({
 			stagedOperations: [created, updated, deleted],
 			store,
+			documentId: 'f1',
 			documentState: state,
 		})
 
@@ -154,6 +172,7 @@ describe('commitTransaction', () => {
 		await commitTransaction({
 			stagedOperations: [created, deleted],
 			store,
+			documentId: 'f1',
 			documentState: state,
 		})
 
@@ -179,7 +198,12 @@ describe('commitTransaction', () => {
 			},
 		]
 
-		await commitTransaction({ stagedOperations: ops, store, documentState: state })
+		await commitTransaction({
+			stagedOperations: ops,
+			store,
+			documentId: 'f1',
+			documentState: state,
+		})
 
 		expect(calls.progressCalls).toEqual([
 			{ current: 1, total: 2 },
@@ -199,7 +223,7 @@ describe('commitTransaction', () => {
 		}
 
 		await expect(
-			commitTransaction({ stagedOperations: [op], store, documentState: state }),
+			commitTransaction({ stagedOperations: [op], store, documentId: 'f1', documentState: state }),
 		).rejects.toThrow('DB exploded')
 
 		expect(state.loading).toBe(false)
@@ -217,7 +241,7 @@ describe('commitTransaction', () => {
 		}
 
 		await expect(
-			commitTransaction({ stagedOperations: [op], store, documentState: state }),
+			commitTransaction({ stagedOperations: [op], store, documentId: 'f1', documentState: state }),
 		).rejects.toThrow()
 
 		expect(state.lastUpdate).toBeNull()

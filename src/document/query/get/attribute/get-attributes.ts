@@ -1,12 +1,11 @@
 import { getRecord } from '@/document'
 
-import type { Context } from '@/document'
+import type { Context, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
 	AttributesValueObjectOf,
 	ElementsOf,
 	FullAttributeObjectOf,
-	Ref,
 } from '@/types'
 
 /**

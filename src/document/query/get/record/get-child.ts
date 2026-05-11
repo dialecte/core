@@ -1,7 +1,7 @@
 import { getRecord } from './get-record'
 
-import type { Context } from '@/document'
-import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord, RefOrRecord } from '@/types'
+import type { Context, RefOrRecord } from '@/document'
+import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@/types'
 
 /**
  * Fetch the first direct child of a parent matching a given tag name.

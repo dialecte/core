@@ -3,8 +3,8 @@ import { toRef, toTreeRecord } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { GetTreeParams, TreeSelect, OmitEntry } from './get-tree.types'
-import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, TrackedRecord, TreeRecord, Ref } from '@/types'
+import type { Context, Ref } from '@/document'
+import type { AnyDialecteConfig, ElementsOf, TrackedRecord, TreeRecord } from '@/types'
 
 //== Main export
 

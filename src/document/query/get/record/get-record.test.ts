@@ -8,12 +8,13 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	TEST_DIALECTE_CONFIG,
 	createTestContext,
-	createTestDialecte,
+	createTestProject,
 	runTestCases,
 } from '@/test'
 
+import type { Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { ElementsOf, Ref } from '@/types'
+import type { ElementsOf } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
@@ -76,7 +77,7 @@ describe('getRecord', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const record = await source.document.query.getRecord(testCase.ref)
+			const record = await source.query.getRecord(testCase.ref)
 
 			if (testCase.expectUndefined) {
 				expect(record).toBeUndefined()
@@ -100,7 +101,8 @@ describe('getRecord', () => {
 	describe('staged operation visibility', () => {
 		it('returns staged created record within transaction', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="p" /></Root>`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -116,7 +118,7 @@ describe('getRecord', () => {
 					expect(record?.status).toBe('created')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
@@ -128,7 +130,8 @@ describe('getRecord', () => {
 					</A>
 				</Root>
 			`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -139,13 +142,14 @@ describe('getRecord', () => {
 					expect(record).toBeUndefined()
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
 		it('returns staged updated attributes within transaction', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="old" /></Root>`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -156,7 +160,7 @@ describe('getRecord', () => {
 					expect(record?.status).toBe('updated')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})
@@ -164,10 +168,14 @@ describe('getRecord', () => {
 	describe('record cache', () => {
 		it('populates cache on store hit by id', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
-			const { databaseName, cleanup } = await createTestDialecte({ xmlString })
+			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {
-				const context = createTestContext({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG })
+				const context = await createTestContext({
+					databaseName: project.name,
+					dialecteConfig: TEST_DIALECTE_CONFIG,
+					documentId: source.documentId,
+				})
 
 				expect(context.recordCache!.has('a1')).toBe(false)
 
@@ -176,16 +184,20 @@ describe('getRecord', () => {
 				expect(context.recordCache!.has('a1')).toBe(true)
 				expect(context.recordCache!.get('a1')).toMatchObject({ id: 'a1', tagName: 'A' })
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
 		it('returns cache entry on second call by id', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
-			const { databaseName, cleanup } = await createTestDialecte({ xmlString })
+			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {
-				const context = createTestContext({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG })
+				const context = await createTestContext({
+					databaseName: project.name,
+					dialecteConfig: TEST_DIALECTE_CONFIG,
+					documentId: source.documentId,
+				})
 
 				await getRecord({ context, ref: { tagName: 'A', id: 'a1' } })
 
@@ -196,16 +208,20 @@ describe('getRecord', () => {
 				// The raw in the cache is the same object used for the second result
 				expect(second).toMatchObject(cachedRaw!)
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
 		it('populates both id and singleton cache keys for tagName lookup', async () => {
 			const xmlString = /* xml */ `<Root ${ns} />`
-			const { databaseName, cleanup } = await createTestDialecte({ xmlString })
+			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {
-				const context = createTestContext({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG })
+				const context = await createTestContext({
+					databaseName: project.name,
+					dialecteConfig: TEST_DIALECTE_CONFIG,
+					documentId: source.documentId,
+				})
 
 				const root = await getRecord({
 					context,
@@ -218,18 +234,22 @@ describe('getRecord', () => {
 				expect(context.recordCache!.has('__singleton_Root')).toBe(true)
 				expect(context.recordCache!.get(rootId)).toBe(context.recordCache!.get('__singleton_Root'))
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
 		it('does not populate cache outside of transaction context', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
-			const { databaseName, cleanup } = await createTestDialecte({ xmlString })
+			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {
 				// A query context has recordCache: undefined
 				const context = {
-					...createTestContext({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG }),
+					...(await createTestContext({
+						databaseName: project.name,
+						dialecteConfig: TEST_DIALECTE_CONFIG,
+						documentId: source.documentId,
+					})),
 					recordCache: undefined,
 				}
 
@@ -238,7 +258,7 @@ describe('getRecord', () => {
 				expect(record).toBeDefined()
 				expect(record?.id).toBe('a1')
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})

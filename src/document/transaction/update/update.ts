@@ -5,8 +5,8 @@ import { toFullAttributeArray } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { UpdateParams } from './update.types'
-import type { Context, Query } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, RawRecord, Ref, TransactionHooks } from '@/types'
+import type { Context, Query, Ref } from '@/document'
+import type { AnyDialecteConfig, ElementsOf, RawRecord, TransactionHooks } from '@/types'
 
 /**
  * Merges attribute/value changes onto an existing record.

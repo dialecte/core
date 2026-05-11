@@ -5,14 +5,15 @@ import {
 	DIALECTE_NAMESPACES,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	createTestDialecte,
+	createTestProject,
 	runTestCases,
 } from '@/test'
 import { invariant } from '@/utils'
 
 import type { Transaction } from '@/document'
+import type { Ref } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { Operation, Ref, TransactionHooks } from '@/types'
+import type { Operation, TransactionHooks } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -189,8 +190,8 @@ describe('stageDeepClone', () => {
 		source,
 		testCase,
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		const treeRecord = await source.document.query.getTree(testCase.sourceRef)
-		await source.document.transaction(async (tx) => {
+		const treeRecord = await source.query.getTree(testCase.sourceRef)
+		await source.transaction(async (tx) => {
 			invariant(treeRecord, {
 				key: 'ELEMENT_NOT_FOUND',
 				detail: 'getTree returned undefined for sourceRef',
@@ -198,7 +199,7 @@ describe('stageDeepClone', () => {
 			})
 			await tx.deepClone(testCase.parentRef, treeRecord)
 		})
-		return { assertDatabaseName: source.databaseName, withDatabaseIds: true }
+		return { withDatabaseIds: true }
 	}
 
 	runTestCases.withExport({ testCases, hooks: makeCloneHooks(), act })
@@ -289,10 +290,11 @@ describe('stageDeepClone', () => {
 		}
 
 		it.each(Object.entries(returnValueCases))('%s', async (_, tc) => {
-			const { document, cleanup } = await createTestDialecte({
-				xmlString: tc.sourceXml,
+			const { source, project } = await createTestProject({
+				sourceXml: tc.sourceXml,
 				hooks: makeCloneHooks(),
 			})
+			const document = source.document
 
 			try {
 				const treeRecord = await document.query.getTree(tc.sourceRef)
@@ -309,7 +311,7 @@ describe('stageDeepClone', () => {
 				expect(result.record.tagName).toBe(tc.expectedRecordTagName)
 				expect(result.mappings).toHaveLength(tc.expectedMappingsCount)
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})

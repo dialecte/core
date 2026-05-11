@@ -1,4 +1,5 @@
-import type { AnyAttribute, AnyDialecteConfig, ElementsOf, RawRecord, Ref } from '@/types'
+import type { Ref } from '@/document'
+import type { AnyAttribute, AnyDialecteConfig, ElementsOf, RawRecord } from '@/types'
 
 /**
  * Mapping of source to target refs during cloning operations.

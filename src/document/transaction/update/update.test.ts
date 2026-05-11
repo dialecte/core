@@ -111,10 +111,10 @@ describe('stageUpdate', () => {
 		source,
 		testCase,
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		await source.document.transaction(async (tx) => {
+		await source.transaction(async (tx) => {
 			await tx.update(testCase.targetRef, testCase.updateParams)
 		})
-		return { assertDatabaseName: source.databaseName }
+		return {}
 	}
 
 	runTestCases.withExport({ testCases, act })
@@ -157,7 +157,7 @@ describe('stageUpdate hooks — spy behavior', () => {
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
 		afterUpdated.mockClear()
-		const transaction = source.document.transaction(async (tx) => {
+		const transaction = source.transaction(async (tx) => {
 			await tx.update(testCase.updateRef, { attributes: { aA: testCase.expectedNewValue } })
 		})
 
@@ -224,10 +224,10 @@ describe('stageUpdate hooks — returned operations applied', () => {
 	}
 
 	async function act({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		await source.document.transaction(async (tx) => {
+		await source.transaction(async (tx) => {
 			await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'new' } })
 		})
-		return { assertDatabaseName: source.databaseName }
+		return {}
 	}
 
 	runTestCases.withExport({ testCases, act, hooks })

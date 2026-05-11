@@ -21,6 +21,7 @@ import type {
 	FindDescendantsReturn,
 } from './find'
 import type { GetTreeParams } from './get'
+import type { Ref, RefOrRecord } from '@/document'
 import type { Store } from '@/store'
 import type {
 	AnyDialecteConfig,
@@ -33,8 +34,6 @@ import type {
 	TrackedRecord,
 	TreeRecord,
 	Operation,
-	Ref,
-	RefOrRecord,
 	RootElementOf,
 } from '@/types'
 
@@ -50,11 +49,13 @@ import type {
 export class Query<GenericConfig extends AnyDialecteConfig> {
 	protected store: Store
 	protected dialecteConfig: GenericConfig
+	protected documentId: string
 	private _any?: AnyQuery<GenericConfig>
 
-	constructor(store: Store, dialecteConfig: GenericConfig) {
+	constructor(store: Store, dialecteConfig: GenericConfig, documentId: string) {
 		this.store = store
 		this.dialecteConfig = dialecteConfig
+		this.documentId = documentId
 	}
 
 	//== Untyped namespace
@@ -82,6 +83,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		return {
 			store: this.store,
 			dialecteConfig: this.dialecteConfig,
+			documentId: this.documentId,
 			recordCache: undefined,
 			stagedOperations: this.getOperations(),
 		}

@@ -4,7 +4,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	createTestDialecte,
+	createTestProject,
 	runTestCases,
 	TEST_DIALECTE_CONFIG,
 } from '@/test'
@@ -83,7 +83,7 @@ describe('getChild', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const child = await source.document.query.getChild(testCase.parentRef, testCase.childTagName)
+			const child = await source.query.getChild(testCase.parentRef, testCase.childTagName)
 
 			if (testCase.expectUndefined) {
 				expect(child).toBeUndefined()
@@ -101,7 +101,8 @@ describe('getChild', () => {
 	describe('staged operation visibility', () => {
 		it('returns staged created child within transaction', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -117,7 +118,7 @@ describe('getChild', () => {
 					expect(child?.status).toBe('created')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
@@ -129,7 +130,8 @@ describe('getChild', () => {
 					</A>
 				</Root>
 			`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -140,7 +142,7 @@ describe('getChild', () => {
 					expect(child).toBeUndefined()
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})
@@ -245,15 +247,18 @@ describe('getChild', () => {
 
 		for (const testCase of testCases) {
 			it(testCase.description, async () => {
-				const { document, cleanup } = await createTestDialecte({
-					xmlString: testCase.sourceXml,
+				const { source, project } = await createTestProject({
+					sourceXml: testCase.sourceXml,
 					dialecteConfig: testCase.useTransparentConfig
 						? configWithTransparent
 						: TEST_DIALECTE_CONFIG,
 				})
 
 				try {
-					const child = await document.query.any.getChild(testCase.parentRef, testCase.childTagName)
+					const child = await source.document.query.any.getChild(
+						testCase.parentRef,
+						testCase.childTagName,
+					)
 
 					if (testCase.expectUndefined) {
 						expect(child).toBeUndefined()
@@ -263,7 +268,7 @@ describe('getChild', () => {
 						expect(child?.tagName).toBe(testCase.childTagName)
 					}
 				} finally {
-					await cleanup()
+					await project.destroy()
 				}
 			})
 		}

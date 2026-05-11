@@ -4,12 +4,13 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	createTestDialecte,
+	createTestProject,
 	runTestCases,
 } from '@/test'
 
+import type { Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { ElementsOf, Ref } from '@/types'
+import type { ElementsOf } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
@@ -94,7 +95,7 @@ describe('getRecords', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const results = await source.document.query.getRecords(testCase.refs)
+			const results = await source.query.getRecords(testCase.refs)
 
 			expect(results).toHaveLength(testCase.expectedResults.length)
 
@@ -114,7 +115,8 @@ describe('getRecords', () => {
 	describe('staged operation visibility', () => {
 		it('sees staged created record in batch', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="p" /></Root>`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -132,7 +134,7 @@ describe('getRecords', () => {
 					expect(created?.status).toBe('created')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
@@ -144,7 +146,8 @@ describe('getRecords', () => {
 					</A>
 				</Root>
 			`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -155,7 +158,7 @@ describe('getRecords', () => {
 					expect(deleted).toBeUndefined()
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})

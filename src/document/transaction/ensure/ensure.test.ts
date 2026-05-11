@@ -84,13 +84,13 @@ describe('ensureChild', () => {
 		source,
 		testCase,
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		await source.document.transaction(async (tx) => {
+		await source.transaction(async (tx) => {
 			await tx.ensureChild(testCase.parentRef, {
 				tagName: testCase.childTagName,
 				attributes: testCase.childAttributes as never,
 			})
 		})
-		return { assertDatabaseName: source.databaseName }
+		return {}
 	}
 
 	runTestCases.withExport({ testCases, act })

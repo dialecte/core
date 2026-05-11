@@ -9,12 +9,13 @@ import { stageUpdate } from './update'
 
 import { toRef } from '@/helpers'
 
-import type { DocumentState } from '../types'
+import type { DocumentActivity } from '../types'
 import type { Context } from '../types'
 import type { CloneResult } from './clone'
 import type { CloneMapping } from './clone'
 import type { AddChildParams } from './create'
 import type { UpdateParams } from './update'
+import type { RefOrRecord } from '@/document'
 import type { Store } from '@/store'
 import type {
 	AnyDialecteConfig,
@@ -24,7 +25,6 @@ import type {
 	Operation,
 	ParentsOf,
 	RawRecord,
-	RefOrRecord,
 	TreeRecord,
 	TransactionHooks,
 } from '@/types'
@@ -45,7 +45,7 @@ import type {
  */
 export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<GenericConfig> {
 	protected stagedOperations: Operation<GenericConfig>[] = []
-	protected documentState: DocumentState
+	protected documentActivity: DocumentActivity
 	protected recordCache = new Map<string, AnyRawRecord>()
 	protected hooks: TransactionHooks<GenericConfig> | undefined
 	protected cumulativeCloneMappings: CloneMapping<GenericConfig>[] = []
@@ -54,11 +54,12 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	constructor(
 		store: Store,
 		dialecteConfig: GenericConfig,
-		documentState: DocumentState,
+		documentId: string,
+		documentActivity: DocumentActivity,
 		hooks?: TransactionHooks<GenericConfig>,
 	) {
-		super(store, dialecteConfig)
-		this.documentState = documentState
+		super(store, dialecteConfig, documentId)
+		this.documentActivity = documentActivity
 		this.hooks = hooks
 	}
 
@@ -91,6 +92,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		return {
 			store: this.store,
 			dialecteConfig: this.dialecteConfig,
+			documentId: this.documentId,
 			recordCache: this.recordCache,
 			stagedOperations: this.stagedOperations,
 		}
@@ -282,7 +284,8 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		await commitTransaction({
 			stagedOperations: this.stagedOperations,
 			store: this.store,
-			documentState: this.documentState,
+			documentId: this.documentId,
+			documentState: this.documentActivity,
 		})
 	}
 }

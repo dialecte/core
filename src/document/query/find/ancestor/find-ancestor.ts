@@ -1,8 +1,8 @@
 import { getRecord } from '../../get/record'
 
 import type { FindAncestorsOptions } from './find-ancestor.types'
-import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, TrackedRecord, Ref } from '@/types'
+import type { Context, Ref } from '@/document'
+import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 /**
  * Walk the parent chain from a record upward.
  *

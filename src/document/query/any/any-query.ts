@@ -11,15 +11,13 @@ import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } fro
 import { toRef } from '@/helpers'
 
 import type { Context } from '../../types'
+import type { AnyRef, AnyRefOrRecord, Ref } from '@/document'
 import type {
 	AnyAttribute,
 	AnyDialecteConfig,
-	AnyRef,
-	AnyRefOrRecord,
 	AnyTrackedRecord,
 	AnyTreeRecord,
 	ElementsOf,
-	Ref,
 } from '@/types'
 
 /**

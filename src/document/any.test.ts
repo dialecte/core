@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestDialecte } from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestProject } from '@/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
@@ -42,9 +42,10 @@ function getPublicMethods(proto: object): string[] {
 
 describe('any namespace - API parity', () => {
 	it('AnyQuery mirrors all expected Query public methods', async () => {
-		const { document, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${ns}><A ${customId}="a1" /></Root>`,
+		const { project, source } = await createTestProject({
+			sourceXml: /* xml */ `<Root ${ns}><A ${customId}="a1" /></Root>`,
 		})
+		const document = source.document
 
 		try {
 			const queryProto = Object.getPrototypeOf(document.query)
@@ -63,14 +64,15 @@ describe('any namespace - API parity', () => {
 
 			expect(missing, `AnyQuery is missing methods: ${missing.join(', ')}`).toHaveLength(0)
 		} finally {
-			await cleanup()
+			await project.destroy()
 		}
 	})
 
 	it('AnyTransaction mirrors all expected Transaction mutation methods', async () => {
-		const { document, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `<Root ${ns}><A ${customId}="a1" /></Root>`,
+		const { project, source } = await createTestProject({
+			sourceXml: /* xml */ `<Root ${ns}><A ${customId}="a1" /></Root>`,
 		})
+		const document = source.document
 
 		try {
 			await document.transaction(async (tx) => {
@@ -98,20 +100,21 @@ describe('any namespace - API parity', () => {
 				expect(missing, `AnyTransaction is missing methods: ${missing.join(', ')}`).toHaveLength(0)
 			})
 		} finally {
-			await cleanup()
+			await project.destroy()
 		}
 	})
 })
 
 describe('any namespace - runtime smoke test', () => {
 	it('CRUD cycle through any.*', async () => {
-		const { document, cleanup } = await createTestDialecte({
-			xmlString: /* xml */ `
+		const { project, source } = await createTestProject({
+			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" aA="parent" />
 				</Root>
 			`,
 		})
+		const document = source.document
 
 		try {
 			// Read via query.any
@@ -155,7 +158,7 @@ describe('any namespace - runtime smoke test', () => {
 				expect(afterDelete).toHaveLength(0)
 			})
 		} finally {
-			await cleanup()
+			await project.destroy()
 		}
 	})
 })

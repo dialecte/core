@@ -124,7 +124,7 @@ describe('findByAttributes', () => {
 		source,
 		testCase,
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		const result = await source.document.query.findByAttributes({
+		const result = await source.query.findByAttributes({
 			tagName: testCase.tagName,
 			attributes: testCase.attributes as FilterAttributes<
 				TestDialecteConfig,
@@ -134,7 +134,7 @@ describe('findByAttributes', () => {
 
 		expect(result).toHaveLength(testCase.expectedCount)
 
-		return { assertDatabaseName: source.databaseName }
+		return {}
 	}
 
 	runTestCases.withExport({ testCases, act })

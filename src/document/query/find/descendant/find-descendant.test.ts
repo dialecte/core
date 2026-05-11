@@ -83,7 +83,7 @@ describe('findDescendants - collect string', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.findDescendants(testCase.ref, testCase.options)
+		const result = await source.query.findDescendants(testCase.ref, testCase.options)
 		for (const [tagName, count] of Object.entries(testCase.expectedCounts)) {
 			expect(
 				(result as Record<string, unknown[]>)[tagName] ?? [],
@@ -166,7 +166,7 @@ describe('findDescendants - collect array', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.findDescendants(testCase.ref, testCase.options)
+		const result = await source.query.findDescendants(testCase.ref, testCase.options)
 		for (const [tagName, count] of Object.entries(testCase.expectedCounts)) {
 			expect(
 				(result as Record<string, unknown[]>)[tagName] ?? [],
@@ -284,7 +284,7 @@ describe('findDescendants - collect path (object)', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.findDescendants(testCase.ref, testCase.options)
+		const result = await source.query.findDescendants(testCase.ref, testCase.options)
 		for (const [tagName, count] of Object.entries(testCase.expectedCounts)) {
 			expect(
 				(result as Record<string, unknown[]>)[tagName] ?? [],
@@ -376,7 +376,7 @@ describe('findDescendants - omit', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.findDescendants(testCase.ref, testCase.options)
+		const result = await source.query.findDescendants(testCase.ref, testCase.options)
 		for (const [tagName, count] of Object.entries(testCase.expectedCounts)) {
 			expect(
 				(result as Record<string, unknown[]>)[tagName] ?? [],

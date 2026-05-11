@@ -1,7 +1,7 @@
 import { getRecord } from './get-record'
 
-import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, TrackedRecord, RefOrRecord } from '@/types'
+import type { Context, RefOrRecord } from '@/document'
+import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 
 /**
  * Batch lookup — resolve multiple refs in parallel.

@@ -8,7 +8,7 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	createTestContext,
-	createTestDialecte,
+	createTestProject,
 	runTestCases,
 } from '@/test'
 
@@ -79,7 +79,7 @@ describe('getRecordsByTagName', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const records = await source.document.query.getRecordsByTagName(testCase.tagName)
+			const records = await source.query.getRecordsByTagName(testCase.tagName)
 
 			expect(records).toHaveLength(testCase.expectedCount)
 
@@ -101,7 +101,8 @@ describe('getRecordsByTagName', () => {
 	describe('staged operation visibility', () => {
 		it('includes staged created record in results', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="p" /></Root>`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -117,7 +118,7 @@ describe('getRecordsByTagName', () => {
 					expect(records[0].status).toBe('created')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
@@ -130,7 +131,8 @@ describe('getRecordsByTagName', () => {
 					</A>
 				</Root>
 			`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -142,13 +144,14 @@ describe('getRecordsByTagName', () => {
 					expect(records[0].id).toBe('aa2')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
 		it('reflects staged updated attributes in results', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="old" /></Root>`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -160,7 +163,7 @@ describe('getRecordsByTagName', () => {
 					expect(records[0].status).toBe('updated')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})
@@ -173,10 +176,14 @@ describe('getRecordsByTagName', () => {
 					<A ${customId}="a2" aA="v2" />
 				</Root>
 			`
-			const { databaseName, cleanup } = await createTestDialecte({ xmlString })
+			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {
-				const context = createTestContext({ databaseName, dialecteConfig: TEST_DIALECTE_CONFIG })
+				const context = await createTestContext({
+					databaseName: project.name,
+					dialecteConfig: TEST_DIALECTE_CONFIG,
+					documentId: source.documentId,
+				})
 
 				expect(context.recordCache!.has('a1')).toBe(false)
 				expect(context.recordCache!.has('a2')).toBe(false)
@@ -186,7 +193,7 @@ describe('getRecordsByTagName', () => {
 				expect(context.recordCache!.has('a1')).toBe(true)
 				expect(context.recordCache!.has('a2')).toBe(true)
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})

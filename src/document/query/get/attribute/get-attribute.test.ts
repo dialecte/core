@@ -56,7 +56,7 @@ describe('getAttribute', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.getAttribute(testCase.ref, {
+		const result = await source.query.getAttribute(testCase.ref, {
 			name: testCase.attributeName as 'aA',
 		})
 		expect(result).toBe(testCase.expected)
@@ -102,7 +102,7 @@ describe('getAttributeFullObject', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.getAttribute(testCase.ref, {
+		const result = await source.query.getAttribute(testCase.ref, {
 			name: testCase.attributeName as 'aA',
 			fullObject: true,
 		})

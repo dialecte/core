@@ -108,7 +108,7 @@ describe('stageAddChild', () => {
 		source,
 		testCase,
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		const transaction = source.document.transaction(async (tx) => {
+		const transaction = source.transaction(async (tx) => {
 			await tx.addChild(testCase.parentRef, testCase.childPayload)
 		})
 		if (testCase.expectThrow) {
@@ -116,7 +116,7 @@ describe('stageAddChild', () => {
 		} else {
 			await transaction
 		}
-		return { assertDatabaseName: source.databaseName }
+		return {}
 	}
 
 	runTestCases.withExport({ testCases, act })

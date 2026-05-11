@@ -4,13 +4,13 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	createTestDialecte,
+	createTestProject,
 	runTestCases,
 } from '@/test'
 
 import type { FindAncestorsOptions } from './find-ancestor.types'
+import type { Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { Ref } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
@@ -75,7 +75,7 @@ describe('findAncestors', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const ancestors = await source.document.query.findAncestors(testCase.ref, testCase.options)
+			const ancestors = await source.query.findAncestors(testCase.ref, testCase.options)
 
 			expect(ancestors.map((a) => a.tagName)).toEqual(testCase.expectedTagNames)
 		}
@@ -92,7 +92,8 @@ describe('findAncestors', () => {
 					</A>
 				</Root>
 			`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -107,7 +108,7 @@ describe('findAncestors', () => {
 					expect(aAttr?.value).toBe('new')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
@@ -117,7 +118,8 @@ describe('findAncestors', () => {
 					<A ${customId}="a1" aA="v" />
 				</Root>
 			`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project: project2 } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -131,7 +133,7 @@ describe('findAncestors', () => {
 					expect(ancestors.map((a) => a.tagName)).toEqual(['A', 'Root'])
 				})
 			} finally {
-				await cleanup()
+				await project2.destroy()
 			}
 		})
 	})

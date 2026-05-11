@@ -3,14 +3,13 @@ import { stageAddChild } from '../create/create'
 import { findByAttributes, getRecord } from '@/document'
 
 import type { AddChildParams } from '../create/create.types'
-import type { Context, FilterAttributes, Query } from '@/document'
+import type { Context, FilterAttributes, Query, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
 	ChildrenOf,
 	RawRecord,
 	TrackedRecord,
-	Ref,
 	TransactionHooks,
 } from '@/types'
 

@@ -4,7 +4,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
-	createTestDialecte,
+	createTestProject,
 	runTestCases,
 	TEST_DIALECTE_CONFIG,
 } from '@/test'
@@ -75,10 +75,7 @@ describe('getChildren', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const children = await source.document.query.getChildren(
-				testCase.parentRef,
-				testCase.childTagName,
-			)
+			const children = await source.query.getChildren(testCase.parentRef, testCase.childTagName)
 
 			expect(children).toHaveLength(testCase.expectedCount)
 
@@ -99,7 +96,8 @@ describe('getChildren', () => {
 	describe('staged operation visibility', () => {
 		it('includes staged created children', async () => {
 			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -119,7 +117,7 @@ describe('getChildren', () => {
 					expect(children.map((c) => c.id)).toContain('0-0-0-0-2')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 
@@ -132,7 +130,8 @@ describe('getChildren', () => {
 					</A>
 				</Root>
 			`
-			const { document, cleanup } = await createTestDialecte({ xmlString })
+			const { source, project } = await createTestProject({ sourceXml: xmlString })
+			const document = source.document
 
 			try {
 				await document.transaction(async (tx) => {
@@ -144,7 +143,7 @@ describe('getChildren', () => {
 					expect(children[0].id).toBe('aa2')
 				})
 			} finally {
-				await cleanup()
+				await project.destroy()
 			}
 		})
 	})
@@ -254,15 +253,15 @@ describe('getChildren', () => {
 
 		for (const testCase of testCases) {
 			it(testCase.description, async () => {
-				const { document, cleanup } = await createTestDialecte({
-					xmlString: testCase.sourceXml,
+				const { source, project } = await createTestProject({
+					sourceXml: testCase.sourceXml,
 					dialecteConfig: testCase.useTransparentConfig
 						? configWithTransparent
 						: TEST_DIALECTE_CONFIG,
 				})
 
 				try {
-					const children = await document.query.any.getChildren(
+					const children = await source.document.query.any.getChildren(
 						testCase.parentRef,
 						testCase.childTagName,
 					)
@@ -274,7 +273,7 @@ describe('getChildren', () => {
 						for (const id of testCase.expectedIds) expect(ids).toContain(id)
 					}
 				} finally {
-					await cleanup()
+					await project.destroy()
 				}
 			})
 		}

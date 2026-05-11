@@ -364,7 +364,7 @@ describe('getTree', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.getTree(testCase.ref, testCase.options)
+		const result = await source.query.getTree(testCase.ref, testCase.options)
 		expect(result).toBeDefined()
 		expect(toShape(result as AnyTreeRecord)).toEqual(testCase.expectedShape)
 	}
@@ -390,7 +390,7 @@ describe('getTree - error handling', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		await expect(source.document.query.getTree(testCase.ref, testCase.options)).rejects.toThrow()
+		await expect(source.query.getTree(testCase.ref, testCase.options)).rejects.toThrow()
 	}
 
 	runTestCases.withoutExport({ testCases, act })
@@ -588,7 +588,7 @@ describe('getTree - auto-recursion', () => {
 		source,
 		testCase,
 	}: ActParams<RecursiveTestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.document.query.getTree(testCase.ref, testCase.options)
+		const result = await source.query.getTree(testCase.ref, testCase.options)
 		expect(result).toBeDefined()
 		expect(toShape(result as AnyTreeRecord)).toEqual(testCase.expectedShape)
 	}

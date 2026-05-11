@@ -3,7 +3,8 @@ import { getLatestStagedRecord } from './staged-lookup'
 import { isTransactionContext } from '@/document'
 
 import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord, RefOrRecord } from '@/types'
+import type { RefOrRecord } from '@/document'
+import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord } from '@/types'
 
 /**
  * Fetch a single record by ref.
@@ -43,10 +44,10 @@ export async function getRecord<
 		if (cached) {
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
-			const records = (await context.store.getByTagName(ref.tagName)) as RawRecord<
-				GenericConfig,
-				GenericElement
-			>[]
+			const records = (await context.store.getByTagNameInDocument(
+				ref.tagName,
+				context.documentId,
+			)) as RawRecord<GenericConfig, GenericElement>[]
 			raw = records[0]
 			if (raw && isTransactionContext(context)) {
 				context.recordCache.set(raw.id, raw)
@@ -59,7 +60,7 @@ export async function getRecord<
 		if (cached) {
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
-			raw = (await context.store.get(ref.id)) as
+			raw = (await context.store.get(ref.id, context.documentId)) as
 				| RawRecord<GenericConfig, GenericElement>
 				| undefined
 			if (raw && isTransactionContext(context)) context.recordCache.set(ref.id, raw)

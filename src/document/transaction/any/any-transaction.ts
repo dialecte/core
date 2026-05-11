@@ -10,16 +10,13 @@ import { toRef } from '@/helpers'
 import type { AddChildParams } from '../create'
 import type { UpdateParams } from '../update'
 import type { AnyAddChildParams, AnyUpdateParams } from './any.types'
-import type { Query } from '@/document/query/main'
-import type { Context } from '@/document/types'
+import type { Query, Context, AnyRefOrRecord, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
 	AnyRawRecord,
-	AnyRefOrRecord,
 	AnyTrackedRecord,
 	AnyTreeRecord,
 	ElementsOf,
-	Ref,
 	TreeRecord,
 	TransactionHooks,
 } from '@/types'

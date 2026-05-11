@@ -1,15 +1,16 @@
 import { mergeOperations } from './merge-operations'
 
-import type { DocumentState } from '@/document/types'
+import type { DocumentActivity } from '@/document/types'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, Operation } from '@/types'
 
 export async function commitTransaction<GenericConfig extends AnyDialecteConfig>(params: {
 	stagedOperations: Operation<GenericConfig>[]
 	store: Store
-	documentState: DocumentState
+	documentId: string
+	documentState: DocumentActivity
 }): Promise<void> {
-	const { stagedOperations, store, documentState } = params
+	const { stagedOperations, store, documentId, documentState } = params
 
 	const { creates, updates, deletes } = mergeOperations(stagedOperations)
 
@@ -20,6 +21,7 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 
 	try {
 		await store.commit({
+			documentId,
 			creates: creates.map((op) => op.newRecord),
 			updates: updates.map((op) => op.newRecord),
 			deletes: deletes.map((op) => op.oldRecord.id),

@@ -1,13 +1,7 @@
 import { getRecord } from '@/document'
 
-import type { Context } from '@/document'
-import type {
-	AnyDialecteConfig,
-	AttributesOf,
-	ElementsOf,
-	FullAttributeObjectOf,
-	Ref,
-} from '@/types'
+import type { Context, Ref } from '@/document'
+import type { AnyDialecteConfig, AttributesOf, ElementsOf, FullAttributeObjectOf } from '@/types'
 
 /**
  * Fetch a single attribute for the given ref.

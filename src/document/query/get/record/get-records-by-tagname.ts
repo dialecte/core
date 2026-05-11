@@ -21,10 +21,10 @@ export async function getRecordsByTagName<
 	tagName: GenericElement
 }): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
 	const { context, tagName } = params
-	const rawRecords = (await context.store.getByTagName(tagName)) as RawRecord<
-		GenericConfig,
-		GenericElement
-	>[]
+	const rawRecords = (await context.store.getByTagNameInDocument(
+		tagName,
+		context.documentId,
+	)) as RawRecord<GenericConfig, GenericElement>[]
 
 	for (const record of rawRecords) {
 		if (isTransactionContext(context)) context.recordCache.set(record.id, record)

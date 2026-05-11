@@ -4,13 +4,12 @@ import { getRecord } from '@/document'
 import { toRef } from '@/helpers'
 import { invariant } from '@/utils'
 
-import type { Context, Query } from '@/document'
+import type { Context, Query, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
 	ParentsOf,
 	TrackedRecord,
-	Ref,
 	RawRecord,
 	TransactionHooks,
 } from '@/types'

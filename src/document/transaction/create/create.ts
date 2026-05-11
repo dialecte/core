@@ -5,13 +5,12 @@ import { standardizeRecord } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { AddChildParams } from './create.types'
-import type { Context, Query } from '@/document'
+import type { Context, Query, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
 	ChildrenOf,
 	RawRecord,
-	Ref,
 	TransactionHooks,
 } from '@/types'
 

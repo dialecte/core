@@ -2,9 +2,8 @@ import { matchesAttributeFilter, getRecord, getRecordsByTagName } from '@/docume
 import { toRef } from '@/helpers'
 
 import type { Collect, FindDescendantsParams, FindDescendantsReturn } from './find-descendant.types'
-import type { Context } from '@/document'
-import type { OmitEntry } from '@/document/query/get/tree/get-tree.types'
-import type { AnyDialecteConfig, ElementsOf, TrackedRecord, Ref } from '@/types'
+import type { Context, Ref, OmitEntry } from '@/document'
+import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 
 // ============================================================================
 // Main export

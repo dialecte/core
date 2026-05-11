@@ -92,17 +92,17 @@ describe('stageDelete', () => {
 		testCase,
 	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
 		if (testCase.expectThrow) {
-			const transaction = source.document.transaction(async (tx) => {
-				const [root] = await source.document.query.getRecordsByTagName('Root')
+			const transaction = source.transaction(async (tx) => {
+				const [root] = await source.query.getRecordsByTagName('Root')
 				await tx.delete({ tagName: 'Root', id: root.id } as any)
 			})
 			await expect(transaction).rejects.toThrow()
 		} else {
-			await source.document.transaction(async (tx) => {
+			await source.transaction(async (tx) => {
 				await tx.delete(testCase.deleteRef as any)
 			})
 		}
-		return { assertDatabaseName: source.databaseName }
+		return {}
 	}
 
 	runTestCases.withExport({ testCases, act })
@@ -148,7 +148,7 @@ describe('stageDelete hooks — spy behavior', () => {
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
 		beforeDelete.mockClear()
-		await source.document.transaction(async (tx) => {
+		await source.transaction(async (tx) => {
 			await tx.delete(testCase.deleteRef as any)
 		})
 		expect(beforeDelete).toHaveBeenCalledOnce()
@@ -204,10 +204,10 @@ describe('stageDelete hooks — returned operations applied', () => {
 	}
 
 	async function act({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-		await source.document.transaction(async (tx) => {
+		await source.transaction(async (tx) => {
 			await tx.delete({ tagName: 'A', id: 'a1' })
 		})
-		return { assertDatabaseName: source.databaseName }
+		return {}
 	}
 
 	runTestCases.withExport({ testCases, act, hooks })
