@@ -14,29 +14,24 @@ export type BaseXmlTestCase = BaseTestCase & {
 
 export type TestCases<GenericTestCase extends BaseXmlTestCase> = Record<string, GenericTestCase>
 
-export type TestContext<GenericConfig extends AnyDialecteConfig> = {
-	document: Document<GenericConfig>
-	databaseName: string
-}
-
 export type ActParams<
 	GenericConfig extends AnyDialecteConfig,
 	GenericTestCase extends BaseXmlTestCase,
 > = {
 	testCase: GenericTestCase
-	source: TestContext<GenericConfig>
-	target?: TestContext<GenericConfig>
+	source: Document<GenericConfig>
+	target?: Document<GenericConfig>
 }
 
 export type ActResult = {
-	assertDatabaseName: string
+	assertOn?: 'source' | 'target'
 	withDatabaseIds?: boolean
 }
 
 export type TestRunner<GenericConfig extends AnyDialecteConfig> = {
 	withExport<GenericTestCase extends BaseXmlTestCase>(params: {
 		testCases: TestCases<GenericTestCase>
-		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
+		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult | void>
 		dialecteConfig?: GenericConfig
 		hooks?: TransactionHooks<GenericConfig>
 	}): void

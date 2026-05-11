@@ -35,8 +35,8 @@ describe('runTestCases', () => {
 
 		runTestCases.withExport<TestCase>({
 			testCases,
-			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
-				return { assertDatabaseName: source.databaseName }
+			act: async (): Promise<ActResult> => {
+				return {}
 			},
 		})
 	})
@@ -56,7 +56,7 @@ describe('runTestCases', () => {
 			testCases,
 			act: async ({ target }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
 				expect(target, 'target context must be provided when targetXml is set').toBeDefined()
-				return { assertDatabaseName: target!.databaseName }
+				return { assertOn: 'target' }
 			},
 		})
 	})
@@ -74,9 +74,9 @@ describe('runTestCases', () => {
 		runTestCases.withExport<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
-				const records = await source.document.query.getRecordsByTagName('A')
+				const records = await source.query.getRecordsByTagName('A')
 				expect(records).toHaveLength(2)
-				return { assertDatabaseName: source.databaseName }
+				return {}
 			},
 		})
 	})
@@ -97,14 +97,14 @@ describe('runTestCases', () => {
 		runTestCases.withExport<TestCase>({
 			testCases,
 			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
-				const [recordA] = await source.document.query.getRecordsByTagName('A')
-				await source.document.transaction(async (tx) => {
+				const [recordA] = await source.query.getRecordsByTagName('A')
+				await source.transaction(async (tx) => {
 					await tx.addChild(
 						{ tagName: 'A', id: recordA.id },
 						{ tagName: 'AA_1', attributes: { aAA_1: 'added' } },
 					)
 				})
-				return { assertDatabaseName: source.databaseName }
+				return {}
 			},
 		})
 	})
@@ -122,8 +122,8 @@ describe('runTestCases', () => {
 		// Here we just confirm the round-trip works even with a minimal empty-root document.
 		runTestCases.withExport<TestCase>({
 			testCases,
-			act: async ({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> => {
-				return { assertDatabaseName: source.databaseName }
+			act: async (): Promise<ActResult> => {
+				return {}
 			},
 		})
 	})

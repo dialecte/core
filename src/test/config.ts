@@ -20,6 +20,13 @@ export const IO_CONFIG = {
 
 // SCL database configuration
 export const DATABASE_CONFIG = {
+	recordSchema: {
+		primaryKey: 'id',
+		indexes: ['tagName', 'parent.id', 'parent.tagName'],
+		compoundIndexes: [['id', 'tagName']],
+		arrayIndexes: ['children.id', 'children.tagName'],
+	},
+	/** @deprecated - kept for old io/ pipeline until Phase 5 removes it */
 	tables: {
 		xmlElements: {
 			name: 'xmlElements',

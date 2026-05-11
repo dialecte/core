@@ -1,10 +1,8 @@
 import { createXmlAssertions } from './assert-xml'
 import { TEST_DIALECTE_CONFIG } from './config'
-import { createTestDialecte } from './create-test-dialecte'
+import { createTestProject } from './create-test-dialecte'
 
 import { it } from 'vitest'
-
-import { exportXmlFile } from '@/io'
 
 import type {
 	BaseTestCase,
@@ -36,7 +34,7 @@ function xmlWithExport<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
 >(params: {
 	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult>
+	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult | void>
 	dialecteConfig?: GenericConfig
 	hooks?: TransactionHooks<GenericConfig>
 }): void {
@@ -57,32 +55,23 @@ function xmlWithExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const source = await createTestDialecte({
-				xmlString: testCase.sourceXml,
+			const { project, source, target } = await createTestProject({
+				sourceXml: testCase.sourceXml,
+				targetXml: testCase.targetXml,
 				dialecteConfig,
 				hooks,
 			})
-			const target = testCase.targetXml
-				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig, hooks })
-				: undefined
 
 			try {
 				crypto.randomUUID = createMockRandomUUID()
 
-				const { assertDatabaseName, withDatabaseIds } = await act({
-					testCase,
-					source: { document: source.document, databaseName: source.databaseName },
-					target: target
-						? { document: target.document, databaseName: target.databaseName }
-						: undefined,
-				})
+				const result = await act({ testCase, source: source.document, target: target?.document })
 
-				const { xmlDocument } = await exportXmlFile({
-					dialecteConfig,
-					databaseName: assertDatabaseName,
-					extension: dialecteConfig.io.supportedFileExtensions[0],
-					withDatabaseIds: withDatabaseIds ?? true,
-				})
+				const assertOn = result?.assertOn ?? 'source'
+				const withDatabaseIds = result?.withDatabaseIds ?? true
+				const exportFileId = assertOn === 'target' ? target!.documentId : source.documentId
+
+				const { xmlDocument } = await project.export(exportFileId, { withDatabaseIds })
 
 				if (testCase.expectedQueries?.length) {
 					assertExpectedElementQueries({ xmlDocument, queries: testCase.expectedQueries })
@@ -92,8 +81,7 @@ function xmlWithExport<
 					assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
 				}
 			} finally {
-				await source.cleanup()
-				await target?.cleanup()
+				await project.destroy()
 			}
 		})
 	}
@@ -121,28 +109,19 @@ function xmlWithoutExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const source = await createTestDialecte({
-				xmlString: testCase.sourceXml,
+			const { project, source, target } = await createTestProject({
+				sourceXml: testCase.sourceXml,
+				targetXml: testCase.targetXml,
 				dialecteConfig,
 				hooks,
 			})
-			const target = testCase.targetXml
-				? await createTestDialecte({ xmlString: testCase.targetXml, dialecteConfig, hooks })
-				: undefined
 
 			try {
 				crypto.randomUUID = createMockRandomUUID()
 
-				await act({
-					testCase,
-					source: { document: source.document, databaseName: source.databaseName },
-					target: target
-						? { document: target.document, databaseName: target.databaseName }
-						: undefined,
-				})
+				await act({ testCase, source: source.document, target: target?.document })
 			} finally {
-				await source.cleanup()
-				await target?.cleanup()
+				await project.destroy()
 			}
 		})
 	}

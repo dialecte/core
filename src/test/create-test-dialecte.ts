@@ -1,103 +1,101 @@
 import { TEST_DIALECTE_CONFIG } from './config'
 
-import { openDialecteDocument } from '@/dialecte'
-import { importXmlFiles, exportXmlFile } from '@/io'
+import { Project } from '@/project'
 import { DexieStore } from '@/store'
 
-import type { Context } from '@/document'
 import type { Document } from '@/document'
+import type { Context } from '@/document'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
+export type TestFile<GenericConfig extends AnyDialecteConfig> = {
+	documentId: string
+	document: Document<GenericConfig>
+}
+
+export type TestProjectResult<GenericConfig extends AnyDialecteConfig> = {
+	project: Project<GenericConfig>
+	source: TestFile<GenericConfig>
+	target?: TestFile<GenericConfig>
+}
+
 /**
- * Create a Document instance from an XML string for testing.
- * Imports the XML into an IndexedDB database and returns a configured Document.
+ * Spin up a Project with source (and optionally target) file imported.
+ * Returns project + pre-opened documents. Caller owns lifecycle via project.destroy().
  */
-export async function createTestDialecte<
+export async function createTestProject<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
 >(params: {
-	xmlString: string
+	sourceXml: string
+	targetXml?: string
 	dialecteConfig?: GenericConfig
 	hooks?: TransactionHooks<GenericConfig>
-}): Promise<{
-	document: Document<GenericConfig>
-	databaseName: string
-	cleanup: () => Promise<void>
-	exportCurrentTest: (params?: {
-		extension?: GenericConfig['io']['supportedFileExtensions'][number]
-		withDatabaseIds?: boolean
-	}) => Promise<{ xmlDocument: XMLDocument; filename: string }>
-}> {
+}): Promise<TestProjectResult<GenericConfig>> {
 	const {
-		xmlString,
+		sourceXml,
+		targetXml,
 		dialecteConfig = TEST_DIALECTE_CONFIG,
 		hooks,
 	} = params as {
-		xmlString: string
+		sourceXml: string
+		targetXml?: string
 		dialecteConfig: GenericConfig
 		hooks?: TransactionHooks<GenericConfig>
 	}
 
-	const filename = `test-${crypto.randomUUID()}.xml`
-	const file = new File([xmlString], filename, { type: 'text/xml' })
+	const projectName = `test-${crypto.randomUUID()}`
 
-	const databaseNames = await importXmlFiles({
-		files: [file],
-		dialecteConfig,
-		useCustomRecordsIds: true,
+	const project = await Project.open<GenericConfig>({
+		name: projectName,
+		configs: { default: dialecteConfig } as Record<string, GenericConfig>,
+		defaultConfigKey: 'default',
+		storage: { type: 'local' },
+		hooks: hooks as TransactionHooks<GenericConfig>,
 	})
 
-	const databaseName = databaseNames[0]
-
-	const document = openDialecteDocument({
-		config: dialecteConfig as GenericConfig,
-		storage: { type: 'local', databaseName },
-		hooks,
-	})
-
-	//== Callbacks
-
-	const exportCurrentTest = async (params?: {
-		extension?: GenericConfig['io']['supportedFileExtensions'][number]
-		withDatabaseIds?: boolean
-	}) => {
-		const { extension = dialecteConfig.io.supportedFileExtensions[0], withDatabaseIds = false } =
-			params || {}
-
-		return exportXmlFile({
-			dialecteConfig: dialecteConfig as GenericConfig,
-			databaseName,
-			extension,
-			withDatabaseIds,
-		})
+	const sourceImport = await project.import(
+		new File([sourceXml], 'source.xml', { type: 'text/xml' }),
+		{ useCustomRecordsIds: true },
+	)
+	const source: TestFile<GenericConfig> = {
+		documentId: sourceImport.documentId,
+		document: project.openDocument(sourceImport.documentId),
 	}
 
-	const cleanup = async () => {
-		document.destroy()
+	let target: TestFile<GenericConfig> | undefined
+	if (targetXml) {
+		const targetImport = await project.import(
+			new File([targetXml], 'target.xml', { type: 'text/xml' }),
+			{ useCustomRecordsIds: true },
+		)
+		target = {
+			documentId: targetImport.documentId,
+			document: project.openDocument(targetImport.documentId),
+		}
 	}
 
-	return {
-		document,
-		databaseName,
-		exportCurrentTest,
-		cleanup,
-	}
+	return { project, source, target }
 }
 
 /**
  * Create a Context directly from a databaseName for testing FP query functions.
- * The store is not pre-opened — call store.open() before use if needed,
- * or use DexieStore which opens lazily on first query.
+ * Opens the store to discover existing tables.
  */
-export function createTestContext<GenericConfig extends AnyDialecteConfig>(params: {
+export async function createTestContext<GenericConfig extends AnyDialecteConfig>(params: {
 	databaseName: string
 	dialecteConfig: GenericConfig
-}): Context<GenericConfig> {
-	const { databaseName, dialecteConfig } = params
+	documentId: string
+}): Promise<Context<GenericConfig>> {
+	const { databaseName, dialecteConfig, documentId } = params
+	const store = new DexieStore(databaseName, {
+		recordSchema: dialecteConfig.database.recordSchema,
+	})
+	await store.open()
 	return {
-		store: new DexieStore(databaseName, dialecteConfig),
 		dialecteConfig,
+		store,
+		documentId,
 		recordCache: new Map(),
 		stagedOperations: [],
 	}
