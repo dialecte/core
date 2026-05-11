@@ -2,6 +2,7 @@ import { isFullAttributeArray } from './guard'
 
 import { invariant } from '@/utils'
 
+import type { Ref, RefOrRecord } from '@/document'
 import type {
 	RawRecord,
 	TrackedRecord,
@@ -13,8 +14,6 @@ import type {
 	OperationStatus,
 	ParentRelationship,
 	ChildRelationship,
-	Ref,
-	RefOrRecord,
 } from '@/types'
 
 /**

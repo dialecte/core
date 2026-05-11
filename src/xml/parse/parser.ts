@@ -1,5 +1,5 @@
 import { isSaxQualifiedTag } from './guards'
-import { registerPendingChildrenRelationship } from './relationships'
+import { ParseSession } from './parse-session'
 
 import * as sax from 'sax'
 
@@ -28,8 +28,9 @@ import type {
 export function setSaxParser(params: {
 	dialecteConfig: AnyDialecteConfig
 	useCustomRecordsIds: boolean
+	session: ParseSession
 }): ParserInstance {
-	const { dialecteConfig, useCustomRecordsIds } = params
+	const { dialecteConfig, useCustomRecordsIds, session } = params
 	const ioHooks = dialecteConfig.io.hooks
 
 	const initialState: ParserState = {
@@ -65,6 +66,7 @@ export function setSaxParser(params: {
 		({ updatedState } = handleCloseTag({
 			state: updatedState,
 			ioHooks,
+			session,
 		}))
 
 	parser.onerror = handleError
@@ -157,16 +159,15 @@ function handleText(params: { text: string; state: ParserState }): ParserState {
 
 /**
  * Handles the closing tag event.
- * @param tagName Name of the closing tag
  * @param state Current state
- * @param databaseInstance Dexie database instance
- * @param options Parser options
+ * @param session Parse session
+ * @param ioHooks IO hooks
  * @returns Updated state
  */
-function handleCloseTag(params: { state: ParserState; ioHooks?: IOHooks }): {
+function handleCloseTag(params: { state: ParserState; session: ParseSession; ioHooks?: IOHooks }): {
 	updatedState: ParserState
 } {
-	const { state, ioHooks } = params
+	const { state, ioHooks, session } = params
 
 	const currentRecord = state.stack.at(-1)
 	// removing the last record from the stack and current parent elements
@@ -197,9 +198,9 @@ function handleCloseTag(params: { state: ParserState; ioHooks?: IOHooks }): {
 					: item,
 			)
 		} else if (currentRecord.parent) {
-			registerPendingChildrenRelationship({
-				parentId: currentRecord.parent.id,
-				child: { id: currentRecord.id, tagName: currentRecord.tagName },
+			session.registerPendingChild(currentRecord.parent.id, {
+				id: currentRecord.id,
+				tagName: currentRecord.tagName,
 			})
 		}
 
