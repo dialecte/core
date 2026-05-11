@@ -1,4 +1,4 @@
-import type { ExtensionMap, QueryExtensionFn, TransactionExtensionFn } from '@/types'
+import type { ExtensionMap, QueryExtensionFn, TransactionExtensionFn } from './types.extensions'
 
 /**
  * Binds an extension map to an instance (Query or Transaction).

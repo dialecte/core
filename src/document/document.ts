@@ -4,10 +4,10 @@ import { Transaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
 
-import type { PreparedTransaction, DocumentState } from './types'
+import type { PreparedTransaction, DocumentActivity } from './types'
+import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { Store } from '@/store'
-import type { AnyDialecteConfig, TransactionHooks } from '@/types/dialecte-config'
-import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from '@/types/extensions'
+import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 /**
  * Document — the public entry point for querying and mutating a dialecte.
@@ -28,9 +28,10 @@ export class Document<
 	protected store: Store
 	protected config: GenericConfig
 	protected hooks: TransactionHooks<GenericConfig> | undefined
+	readonly documentId: string
 	private extensionsRegistry?: GenericExtension
 
-	readonly state: DocumentState = {
+	readonly state: DocumentActivity = {
 		loading: false,
 		error: null,
 		progress: null,
@@ -54,16 +55,24 @@ export class Document<
 	constructor(
 		store: Store,
 		config: GenericConfig,
-		extensions?: GenericExtension,
-		hooks?: TransactionHooks<GenericConfig>,
+		documentId: string,
+		extensions: GenericExtension | undefined,
+		hooks: TransactionHooks<GenericConfig> | undefined,
+		channel: BroadcastChannel,
 	) {
 		this.store = store
 		this.config = config
+		this.documentId = documentId
 		this.hooks = hooks
 		this.extensionsRegistry = extensions
-		this.channel = new BroadcastChannel(`core::${store.name}`)
-		this.channel.onmessage = (event: MessageEvent<number>) => {
-			this.state.lastUpdate = event.data
+		this.channel = channel
+
+		this.channel.onmessage = (
+			event: MessageEvent<{ type: string; documentId?: string; timestamp?: number }>,
+		) => {
+			if (event.data?.type === 'commit' && event.data.documentId === this.documentId) {
+				this.state.lastUpdate = event.data.timestamp ?? Date.now()
+			}
 		}
 	}
 
@@ -89,7 +98,7 @@ export class Document<
 	 * Override in dialecte subclass to return a domain-specific Query.
 	 */
 	protected createQuery(): Query<GenericConfig> {
-		return new Query(this.store, this.config)
+		return new Query(this.store, this.config, this.documentId)
 	}
 
 	get query(): Query<GenericConfig> & QueryExtensions<GenericExtension> {
@@ -103,7 +112,7 @@ export class Document<
 	 * e.g. SclDocument overrides this to return new SclTransaction(...)
 	 */
 	protected createTransaction(): Transaction<GenericConfig> {
-		return new Transaction(this.store, this.config, this.state, this.hooks)
+		return new Transaction(this.store, this.config, this.documentId, this.state, this.hooks)
 	}
 
 	async transaction<T>(
@@ -126,7 +135,11 @@ export class Document<
 			const result = await fn(tx)
 
 			await tx.commit()
-			this.channel.postMessage(this.state.lastUpdate)
+			this.channel.postMessage({
+				type: 'commit',
+				documentId: this.documentId,
+				timestamp: Date.now(),
+			})
 			tx.clearStagedOperations()
 			tx.clearRecordCache()
 			tx.clearCumulativeCloneMappings()
@@ -224,7 +237,11 @@ export class Document<
 
 				try {
 					await tx.commit()
-					this.channel.postMessage(this.state.lastUpdate)
+					this.channel.postMessage({
+						type: 'commit',
+						documentId: this.documentId,
+						timestamp: Date.now(),
+					})
 
 					tx.clearStagedOperations()
 					tx.clearRecordCache()
@@ -262,48 +279,6 @@ export class Document<
 
 	//== Lifecycle
 
-	async undo(): Promise<void> {
-		this.state.loading = true
-		this.state.error = null
-
-		try {
-			await this.store.undo()
-			this.channel.postMessage(Date.now())
-			this.state.history.push({ method: 'undo', message: 'Undo', timestamp: Date.now() })
-		} catch (error) {
-			throw (
-				this.state.error ??
-				throwDialecteError('UNKNOWN', {
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error instanceof Error ? error : undefined,
-				})
-			)
-		} finally {
-			this.state.loading = false
-		}
-	}
-
-	async redo(): Promise<void> {
-		this.state.loading = true
-		this.state.error = null
-
-		try {
-			await this.store.redo()
-			this.channel.postMessage(Date.now())
-			this.state.history.push({ method: 'redo', message: 'Redo', timestamp: Date.now() })
-		} catch (error) {
-			throw (
-				this.state.error ??
-				throwDialecteError('UNKNOWN', {
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error instanceof Error ? error : undefined,
-				})
-			)
-		} finally {
-			this.state.loading = false
-		}
-	}
-
 	/** Close the store connection */
 	close(): void {
 		this.store.close()
@@ -311,7 +286,6 @@ export class Document<
 
 	/** Close connection and delete the database entirely */
 	async destroy(): Promise<void> {
-		this.channel.close()
 		await this.store.destroy()
 	}
 }

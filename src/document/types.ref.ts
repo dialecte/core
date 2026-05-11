@@ -1,10 +1,12 @@
-import type { AnyDialecteConfig, ElementsOf, SingletonElementsOf } from './dialecte-config'
 import type {
+	AnyDialecteConfig,
+	ElementsOf,
+	SingletonElementsOf,
 	DialecteRecord,
 	AnyDialecteRecord,
 	ParentRelationship,
 	ChildRelationship,
-} from './records'
+} from '@/types'
 
 /**
  * A Ref is a typed pointer to a record in the document tree.

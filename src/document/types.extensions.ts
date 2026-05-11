@@ -1,5 +1,5 @@
-import type { Query } from '@/document/query'
-import type { Transaction } from '@/document/transaction'
+import type { Query } from './query'
+import type { Transaction } from './transaction'
 
 //== Extension function signatures ================================
 

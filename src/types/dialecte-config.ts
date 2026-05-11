@@ -3,6 +3,7 @@ import type { ImportOptions, ExportOptions, IOHooks } from './io'
 import type { Operation } from './operations'
 import type { Namespace, RawRecord, TreeRecord } from './records'
 import type { CloneMapping, Query } from '@/document'
+import type { RecordSchema } from '@/store'
 
 export type RawDialecteConfig<
 	GenericElementNames extends readonly string[],
@@ -98,11 +99,14 @@ export type TransactionHooks<GenericConfig extends AnyDialecteConfig> = {
 }
 
 export type DatabaseConfig = Readonly<{
-	tables: {
-		xmlElements: {
-			name: string
-			schema: string
-		}
+	/** Backend-agnostic index schema for per-file record tables */
+	recordSchema: RecordSchema
+	/**
+	 * @deprecated Legacy table config. Removed in Project-driven rewrite (Phase 5).
+	 * Only kept for backward compat with old io/ pipeline until it's replaced.
+	 */
+	tables?: {
+		xmlElements: { name: string; schema: string }
 		additionalTables?: Record<string, { schema: string }>
 	}
 }>

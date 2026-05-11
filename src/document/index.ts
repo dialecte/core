@@ -6,6 +6,9 @@ export type {
 	Context,
 	CachedContext,
 	PreparedTransaction,
-	DocumentState,
+	DocumentActivity,
 	TransactionEntry,
 } from './types'
+
+export type * from './types.extensions'
+export type * from './types.ref'

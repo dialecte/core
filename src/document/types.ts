@@ -12,6 +12,7 @@ import type { AnyDialecteConfig, Operation, AnyRawRecord } from '@/types'
 export type Context<GenericConfig extends AnyDialecteConfig> = {
 	readonly store: Store
 	readonly dialecteConfig: GenericConfig
+	readonly documentId: string
 	readonly recordCache: Map<string, AnyRawRecord> | undefined
 	stagedOperations: Operation<GenericConfig>[]
 }
@@ -48,7 +49,7 @@ export type TransactionEntry = {
  *
  * Usage: const { loading, error, progress } = doc.state
  */
-export type DocumentState = {
+export type DocumentActivity = {
 	loading: boolean
 	error: DialecteError | null
 
