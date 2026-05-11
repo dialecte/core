@@ -141,6 +141,8 @@ export type ExportDocumentParams = {
 export type ExportDocumentOptions = {
 	/** Include internal database IDs in exported XML */
 	withDatabaseIds?: boolean
+	/** Trigger a browser file download after export */
+	withDownload?: boolean
 }
 
 export type ExportDocumentResult = {

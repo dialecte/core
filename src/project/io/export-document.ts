@@ -1,5 +1,5 @@
 import { invariant } from '@/utils'
-import { buildXmlDocument } from '@/xml'
+import { buildXmlDocument, downloadFile } from '@/xml'
 
 import type { ExportDocumentParams, ExportDocumentResult } from '../types'
 
@@ -27,5 +27,14 @@ export async function exportDocument(params: ExportDocumentParams): Promise<Expo
 	})
 
 	const filename = `${documentState.document.name}${documentState.document.extension}`
+
+	if (options?.withDownload) {
+		await downloadFile({
+			extension: documentState.document.extension as string,
+			xmlDocument,
+			filename,
+		})
+	}
+
 	return { xmlDocument, filename }
 }
