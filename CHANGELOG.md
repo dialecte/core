@@ -7,28 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-## [0.2.1] - 2026-05-11
-
-- `Store.getDatabaseInstance(): unknown` - exposes the native database instance; return type cast at call site (e.g. `as Dexie` for DexieStore)
-
-## [0.2.0] - 2026-05-10
+## [0.2.2] - 2026-05-11
 
 ### Added
 
-- `Project` class: multi-document container with config registry, BroadcastChannel, file-scoped undo/redo
-  - `open`, `import`, `export`, `initEmptyDocument`, `openDocument`, `getDocument`, `undo`, `redo`
+- `Project` class: multi-document container owning the store, config registry, and BroadcastChannel
+  - `new Project({ configs, storage, defaultConfigKey?, extensionsRegistry?, hooks? })` - sync constructor, config only
+  - `project.open(name)` - async, opens DB connection, hydrates state; returns `this` for chaining
+  - `project.import(file)`, `project.export(documentId)`, `project.initEmptyDocument()`
+  - `project.openDocument(documentId)` - returns a file-scoped `Document`
+  - `project.getDocument(documentId)`, `project.getDocuments()`
+  - `project.undo(documentId)`, `project.redo(documentId)`
+  - `project.close()`, `project.destroy()`
+  - `project.getDatabaseInstance()` - exposes the native DB instance; return type inferred from store generic
 - `Store` interface: file-partitioned operations with file registry, bulk writes, file-scoped history
-- `DexieStore`: partitioned tables (`xel_{fileId}`) with dynamic schema versioning
+- `DexieStore`: partitioned tables (`xel_{fileId}`) with dynamic schema versioning; implements `getDatabaseInstance(): Dexie`
 - `RecordSchema` type: backend-agnostic index declaration
 - `Document.fileId` / `Context.fileId`: all operations scoped to a file partition
 - `DocumentRecord`, `DocumentState`, `ProjectState` types
-- `exportDocument`, `importDocument`, `initEmptyDocument` - pure IO functions extracted from Project
+- `exportDocument`, `importDocument`, `initEmptyDocument` - pure IO functions usable outside Project
 - `ParseSession` class: parent-child tracking during SAX parsing
-- Error codes: D5001, D5002, D7001, D7002
-- Test infrastructure: `createTestProject` replaces `createTestDialecte`
+- Error codes: `D5001`, `D5002`, `D7001 UNKNOWN_CONFIG_KEY`, `D7002 DOCUMENT_NOT_REGISTERED`, `D7003 PROJECT_NOT_OPENED`
+- Test infrastructure: `createTestProject` - spins up a Project with source/target files imported
 
 ### Changed
 
+- `ProjectParams` replaces `ProjectOpenParams` - `name` removed from constructor, moved to `open(name)`
+- Pre-open fields (`name`, `store`, `channel`) guarded by getters; throw `PROJECT_NOT_OPENED` if accessed before `open()`
 - `Document`, `Query`, `Transaction` constructors require `fileId`; BroadcastChannel messages filtered per file
 - `DatabaseConfig.recordSchema` replaces `tables`
 - `DocumentState` renamed to `DocumentActivity` (document-internal); `DocumentState` reused at project level as `DocumentActivity & { document, canUndo, canRedo }`
@@ -40,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `openDialecteDocument`, `createDialecteDocument` - replaced by `Project`
 - `importXmlFiles`, `exportXmlFile` - replaced by `project.import` / `project.export`
-- `Document.undo()` / `Document.redo()` - moved to `Project.undo(fileId)` / `Project.redo(fileId)`
+- `Document.undo()` / `Document.redo()` - moved to `Project.undo(documentId)` / `Project.redo(documentId)`
 - `database-helpers.ts`, `relationships.ts` - absorbed into `ParseSession` and `DexieStore`
 
 ## [0.1.22] - 2026-05-07

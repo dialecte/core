@@ -5,7 +5,7 @@ export { initEmptyDocument } from './io/init-empty-document'
 export { importDocument } from './io/import-document'
 export { resolveStore } from '../store/resolve-store'
 export type {
-	ProjectOpenParams,
+	ProjectParams,
 	InitEmptyDocumentOptions,
 	ImportDocumentOptions,
 	ExportDocumentOptions,

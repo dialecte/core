@@ -69,8 +69,9 @@ function xmlWithExport<
 
 				const assertOn = result?.assertOn ?? 'source'
 				const withDatabaseIds = result?.withDatabaseIds ?? true
-				const exportFileId = assertOn === 'target' ? target!.documentId : source.documentId
+				const exportFileId = assertOn === 'target' ? target?.documentId : source.documentId
 
+				if (!exportFileId) throw new Error('documentId required for export')
 				const { xmlDocument } = await project.export(exportFileId, { withDatabaseIds })
 
 				if (testCase.expectedQueries?.length) {

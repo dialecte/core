@@ -115,4 +115,8 @@ export const ERROR_CATALOG = {
 		code: 'D7002',
 		message: 'Document not registered in project',
 	},
+	PROJECT_NOT_OPENED: {
+		code: 'D7003',
+		message: 'Project not opened',
+	},
 } as const

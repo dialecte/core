@@ -15,7 +15,7 @@ function projectName(): string {
 }
 
 function openProject(name: string) {
-	return Project.open({ name, configs: { default: CONFIG }, storage: { type: 'local' } })
+	return new Project({ configs: { default: CONFIG }, storage: { type: 'local' } }).open(name)
 }
 
 function minimalXml(): string {
@@ -32,7 +32,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.length = 0
 	})
 
-	it('posts document-created message on initEmptyDocument', async () => {
+	it('posts init-empty-document message on initEmptyDocument', async () => {
 		const name = projectName()
 		const project = await openProject(name)
 		cleanups.push(() => project.destroy())
@@ -47,7 +47,7 @@ describe('Project BroadcastChannel', () => {
 		// BroadcastChannel delivers asynchronously - wait one microtask tick
 		await new Promise((r) => setTimeout(r, 10))
 
-		expect(messages).toContainEqual(expect.objectContaining({ type: 'document-created' }))
+		expect(messages).toContainEqual(expect.objectContaining({ type: 'init-empty-document' }))
 	})
 
 	it('posts document-removed message on removeDocument', async () => {

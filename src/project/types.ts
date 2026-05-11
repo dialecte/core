@@ -50,15 +50,13 @@ export type ProjectState = {
 
 export type StorageParam = { type: 'local' } | { type: 'custom'; store: Store }
 
-// ── Project.open() ───────────────────────────────────────────────────────────
+// ── Project constructor ──────────────────────────────────────────────────────
 
-export type ProjectOpenParams<
+export type ProjectParams<
 	GenericConfig extends AnyDialecteConfig,
 	BaseExtensions extends ExtensionModules = Record<never, never>,
 	CustomExtensions extends ExtensionModules = Record<never, never>,
 > = {
-	/** Project name - used as the database/store name */
-	name: string
 	/**
 	 * Config registry keyed by label.
 	 * Single-dialect: { scl: sclConfig }

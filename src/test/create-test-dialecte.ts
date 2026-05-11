@@ -46,13 +46,12 @@ export async function createTestProject<
 
 	const projectName = `test-${crypto.randomUUID()}`
 
-	const project = await Project.open<GenericConfig>({
-		name: projectName,
+	const project = await new Project<GenericConfig>({
 		configs: { default: dialecteConfig } as Record<string, GenericConfig>,
 		defaultConfigKey: 'default',
 		storage: { type: 'local' },
 		hooks: hooks as TransactionHooks<GenericConfig>,
-	})
+	}).open(projectName)
 
 	const sourceImport = await project.import(
 		new File([sourceXml], 'source.xml', { type: 'text/xml' }),

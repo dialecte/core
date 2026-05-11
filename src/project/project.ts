@@ -3,20 +3,18 @@ import { exportDocument, importDocument, initEmptyDocument } from './io'
 import { buildDocumentState, reconcileDocumentState } from './state'
 
 import { Document } from '@/document'
-import { mergeExtensions } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type {
 	InitEmptyDocumentOptions,
 	ImportDocumentOptions,
 	ExportDocumentOptions,
-	ProjectOpenParams,
+	ProjectParams,
 	ProjectState,
 	DocumentRecord,
 } from './types'
-import type { ExtensionModules, ExtensionsRegistry, MergedExtensions } from '@/document'
+import type { ExtensionsRegistry } from '@/document'
 import type { Store } from '@/store'
-import type { DexieStore } from '@/store/local'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
@@ -32,102 +30,107 @@ export class Project<
 	GenericExtension extends ExtensionsRegistry = {},
 	GenericStore extends Store = Store,
 > {
-	readonly name: string
-	private store: GenericStore
+	private _name?: string
+	private _store?: GenericStore
+	private _channel?: BroadcastChannel
+	private readonly storage: ProjectParams<GenericConfig>['storage']
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private extensionsRegistry?: GenericExtension
 	private hooks?: TransactionHooks<GenericConfig>
-	private channel: BroadcastChannel
+
+	get name(): string {
+		invariant(this._name !== undefined, {
+			key: 'PROJECT_NOT_OPENED',
+			detail: 'Call project.open(name) before accessing project properties.',
+		})
+		return this._name
+	}
+
+	private get store(): GenericStore {
+		invariant(this._store !== undefined, {
+			key: 'PROJECT_NOT_OPENED',
+			detail: 'Call project.open(name) before accessing project properties.',
+		})
+		return this._store
+	}
+
+	private get channel(): BroadcastChannel {
+		invariant(this._channel !== undefined, {
+			key: 'PROJECT_NOT_OPENED',
+			detail: 'Call project.open(name) before accessing project properties.',
+		})
+		return this._channel
+	}
 
 	readonly state: ProjectState = {
 		documents: new Map(),
 		activeTransactions: 0,
 	}
 
-	private constructor(
-		name: string,
-		store: GenericStore,
-		configs: Record<string, GenericConfig>,
-		defaultConfigKey: string,
-		extensionsRegistry?: GenericExtension,
-		hooks?: TransactionHooks<GenericConfig>,
-	) {
-		this.name = name
-		this.store = store
-		this.configs = configs
-		this.defaultConfigKey = defaultConfigKey
-		this.extensionsRegistry = extensionsRegistry
-		this.hooks = hooks
-		this.channel = new BroadcastChannel(`dialecte::project::${name}`)
-		this.channel.onmessage = (event: MessageEvent<{ type: string }>) => {
+	constructor(params: {
+		configs: Record<string, GenericConfig>
+		defaultConfigKey?: string
+		storage: ProjectParams<GenericConfig>['storage']
+		extensionsRegistry?: GenericExtension
+		hooks?: TransactionHooks<GenericConfig>
+	}) {
+		const configKeys = Object.keys(params.configs)
+
+		this.storage = params.storage
+		this.configs = params.configs
+		this.defaultConfigKey = params.defaultConfigKey ?? configKeys[0]
+		this.extensionsRegistry = params.extensionsRegistry
+		this.hooks = params.hooks
+	}
+
+	// ── Lifecycle ────────────────────────────────────────────────────────────
+
+	/**
+	 * Open a named project: resolve store, open DB connection, hydrate state.
+	 * Must be called before import/export/openDocument.
+	 */
+	async open(name: string): Promise<this> {
+		this._name = name
+		this._channel = new BroadcastChannel(`dialecte::project::${name}`)
+		this._channel.onmessage = (event: MessageEvent<{ type: string }>) => {
 			const { type } = event.data ?? {}
 			if (
-				type === 'document-created' ||
+				type === 'init-empty-document' ||
 				type === 'document-removed' ||
 				type === 'document-imported'
 			) {
 				this.refreshState()
 			}
 		}
-	}
 
-	// ── Factory ──────────────────────────────────────────────────────────────
-
-	static open<
-		GenericConfig extends AnyDialecteConfig,
-		BaseExtensions extends ExtensionModules = Record<never, never>,
-		CustomExtensions extends ExtensionModules = Record<never, never>,
-	>(
-		params: ProjectOpenParams<GenericConfig, BaseExtensions, CustomExtensions> & {
-			storage: { type: 'local' }
-		},
-	): Promise<
-		Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>, DexieStore>
-	>
-
-	static open<
-		GenericConfig extends AnyDialecteConfig,
-		BaseExtensions extends ExtensionModules = Record<never, never>,
-		CustomExtensions extends ExtensionModules = Record<never, never>,
-		GenericStore extends Store = Store,
-	>(
-		params: Omit<ProjectOpenParams<GenericConfig, BaseExtensions, CustomExtensions>, 'storage'> & {
-			storage: { type: 'custom'; store: GenericStore }
-		},
-	): Promise<
-		Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>, GenericStore>
-	>
-
-	static async open<
-		GenericConfig extends AnyDialecteConfig,
-		BaseExtensions extends ExtensionModules = Record<never, never>,
-		CustomExtensions extends ExtensionModules = Record<never, never>,
-	>(
-		params: ProjectOpenParams<GenericConfig, BaseExtensions, CustomExtensions>,
-	): Promise<Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>, Store>> {
-		const { name, configs, storage, extensions, hooks, defaultConfigKey } = params
-		const merged = mergeExtensions({ base: extensions?.base, custom: extensions?.custom })
-
-		const configKeys = Object.keys(configs)
-		const resolvedDefaultKey = defaultConfigKey ?? configKeys[0]
-
-		const store = resolveStore(name, storage, configs[resolvedDefaultKey])
+		const store = resolveStore(name, this.storage, this.configs[this.defaultConfigKey])
 		await store.open()
+		this._store = store as GenericStore
 
-		const project = new Project<
-			GenericConfig,
-			MergedExtensions<BaseExtensions & CustomExtensions>,
-			Store
-		>(name, store, configs, resolvedDefaultKey, merged, hooks)
-
-		// Hydrate state from existing files in store
 		const files = await store.getDocuments()
 		for (const file of files) {
-			project.state.documents.set(file.id, buildDocumentState(file))
+			this.state.documents.set(file.id, buildDocumentState(file))
 		}
 
-		return project
+		return this
+	}
+
+	/**
+	 * Close the store and release resources.
+	 */
+	close(): void {
+		this.channel.close()
+		this.store.close()
+	}
+
+	/**
+	 * Destroy the project - deletes the database entirely.
+	 */
+	async destroy(): Promise<void> {
+		this.channel.close()
+		await this.store.destroy()
+		this.state.documents.clear()
 	}
 
 	// ── File management ──────────────────────────────────────────────────────
@@ -145,7 +148,7 @@ export class Project<
 		})
 
 		this.state.documents.set(result.documentId, result.documentState)
-		this.channel.postMessage({ type: 'document-created', documentId: result.documentId })
+		this.channel.postMessage({ type: 'init-empty-document', documentId: result.documentId })
 
 		return result.documentId
 	}
@@ -266,25 +269,6 @@ export class Project<
 
 		await this.store.redo(documentId)
 		this.channel.postMessage({ type: 'commit', documentId, timestamp: Date.now() })
-	}
-
-	// ── Lifecycle ────────────────────────────────────────────────────────────
-
-	/**
-	 * Close the store and release resources.
-	 */
-	close(): void {
-		this.channel.close()
-		this.store.close()
-	}
-
-	/**
-	 * Destroy the project - deletes the database entirely.
-	 */
-	async destroy(): Promise<void> {
-		this.channel.close()
-		await this.store.destroy()
-		this.state.documents.clear()
 	}
 
 	// ── Internal ─────────────────────────────────────────────────────────────
