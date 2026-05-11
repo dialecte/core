@@ -12,7 +12,7 @@ Dialecte core provides test helpers and a pre-built test definition to make writ
 
 | Method                       | Use when                                                                    |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| `runTestCases.generic`       | Sync, pure-function tests — no XML, no async setup                          |
+| `runTestCases.generic`       | Sync, pure-function tests - no XML, no async setup                          |
 | `runTestCases.withoutExport` | Async tests with direct query assertions (`act` returns `Promise<void>`)    |
 | `runTestCases.withExport`    | Async tests with XML export assertions (`act` returns `Promise<ActResult>`) |
 
@@ -44,8 +44,8 @@ type TestCase = BaseTestCase & {
 }
 
 const testCases: Record<string, TestCase> = {
-	'non-empty string → true': { input: 'hello', expected: true },
-	'empty string → false': { input: '', expected: false },
+	'non-empty string -> true': { input: 'hello', expected: true },
+	'empty string -> false': { input: '', expected: false },
 }
 
 function act(tc: TestCase) {
@@ -82,7 +82,7 @@ type TestCase = BaseXmlTestCase & {
 }
 
 const testCases: TestCases<TestCase> = {
-	'attribute present → returns value': {
+	'attribute present -> returns value': {
 		sourceXml: `<Root ${ns}><A dev:db-id="a1" aA="hello"/></Root>`,
 		ref: { tagName: 'A', id: 'a1' },
 		expected: 'hello',
@@ -90,7 +90,7 @@ const testCases: TestCases<TestCase> = {
 }
 
 async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-	const result = await source.document.query.getAttribute(testCase.ref, { name: 'aA' })
+	const result = await source.query.getAttribute(testCase.ref, { name: 'aA' })
 	expect(result).toBe(testCase.expected)
 }
 
@@ -101,7 +101,7 @@ describe('getAttribute', () => {
 
 ### Scenario 2 - XML export assertions (act returns ActResult)
 
-Use when `act` performs transactions and assertions must run on the exported XML via XPath. `assertDatabaseName` is **required** in the returned `ActResult`.
+Use when `act` performs transactions and assertions must run on the exported XML via XPath.
 
 ```ts
 import { describe } from 'vitest'
@@ -121,7 +121,7 @@ type TestCase = BaseXmlTestCase & {
 }
 
 const testCases: TestCases<TestCase> = {
-	'update aA → reflected in export': {
+	'update aA -> reflected in export': {
 		sourceXml: `<Root ${ns}><A dev:db-id="a1" aA="old"/></Root>`,
 		newValue: 'new',
 		expectedQueries: ['//default:A[@aA="new"]'],
@@ -133,10 +133,10 @@ async function act({
 	source,
 	testCase,
 }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
-	await source.document.transaction(async (tx) => {
+	await source.transaction(async (tx) => {
 		await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: testCase.newValue } })
 	})
-	return { assertDatabaseName: source.databaseName }
+	return { assertOn: 'source' }
 }
 
 describe('update', () => {
@@ -144,9 +144,18 @@ describe('update', () => {
 })
 ```
 
-After `act` returns, `runTestCases.withExport` exports the database identified by `assertDatabaseName` and runs XPath assertions from `expectedQueries` / `unexpectedQueries`.
+After `act` returns, `runTestCases.withExport` exports the document identified by `assertOn` (`'source'` by default, or `'target'` for cross-document operations) and runs XPath assertions from `expectedQueries` / `unexpectedQueries`.
 
-Use `runTestCases.withoutExport` when no export is needed — `act` returns `Promise<void>`, XPath assertions are skipped.
+Use `runTestCases.withoutExport` when no export is needed - `act` returns `Promise<void>`, XPath assertions are skipped.
+
+### ActResult
+
+```ts
+type ActResult = {
+	assertOn?: 'source' | 'target' // default: 'source'
+	withDatabaseIds?: boolean // default: true
+}
+```
 
 ### BaseXmlTestCase shape
 
@@ -162,14 +171,14 @@ type BaseXmlTestCase = {
 
 ### What runTestCases does per test
 
-1. Imports `sourceXml` (and `targetXml` if present) into isolated in-memory databases
-2. Calls `act` with the mounted document contexts
-3. If `act` returns `ActResult`: exports the named database and runs XPath assertions
-4. Cleans up all databases
+1. Creates an isolated `Project` with source (and optionally target) XML imported via `createTestProject`
+2. Calls `act` with the mounted `Document` instances
+3. If `act` returns `ActResult`: exports the source or target document and runs XPath assertions
+4. Destroys the project (cleans up all databases)
 
 ### Stable record IDs with dev:db-id
 
-During import, `createTestDialecte` always sets `useCustomRecordsIds: true`. Any `dev:db-id` attribute in the XML becomes the actual database record ID — no random UUIDs, no lookups required in `act`.
+During import, `createTestProject` always sets `useCustomRecordsIds: true`. Any `dev:db-id` attribute in the XML becomes the actual database record ID - no random UUIDs, no lookups required in `act`.
 
 ```xml
 <!-- In source XML: assign a predictable ID -->
@@ -206,7 +215,7 @@ crypto.randomUUID = createMockRandomUUID()
 // IDs from here: "0", "1", "2", ...
 ```
 
-Prefer `dev:db-id` over mock UUIDs when possible — more explicit, decoupled from creation order.
+Prefer `dev:db-id` over mock UUIDs when possible - more explicit, decoupled from creation order.
 
 ### XPath namespace prefixes
 
@@ -249,7 +258,7 @@ Element not found in XML.
   <A aA="parent" ...>...</A>
 ```
 
-This makes it cheap to write chained paths like `//default:A/default:AA_1/default:AAA_1[...]` — if the `AAA_1` is missing you see immediately whether `A` or `AA_1` was the problem.
+This makes it cheap to write chained paths like `//default:A/default:AA_1/default:AAA_1[...]` - if the `AAA_1` is missing you see immediately whether `A` or `AA_1` was the problem.
 
 ### assertUnexpectedElementQueries
 
@@ -263,26 +272,26 @@ unexpectedQueries: ['//default:A[@aA="parent"]/default:AA_1[@aAA_1="deleted"]']
 ### Usage
 
 ```ts
-import { createTestDialecte, createXmlAssertions } from '@dialecte/core/test'
+import { createTestProject, createXmlAssertions } from '@dialecte/core/test'
 
 const { assertExpectedElementQueries } = createXmlAssertions({
 	namespaces: MY_DIALECTE_CONFIG.namespaces,
 })
 
-const { exportCurrentTest, cleanup } = await createTestDialecte({
-	xmlString,
+const { project, source } = await createTestProject({
+	sourceXml: xmlString,
 	dialecteConfig: MY_DIALECTE_CONFIG,
 })
 
 try {
-	// ...transactions...
-	const { xmlDocument } = await exportCurrentTest({ withDatabaseIds: true })
+	// ...transactions on source.document...
+	const { xmlDocument } = await project.export(source.documentId, { withDatabaseIds: true })
 	assertExpectedElementQueries({
 		xmlDocument,
 		queries: ['//default:A[@aA="parent"]/default:AA_1[@aAA_1="updated"]'],
 	})
 } finally {
-	await cleanup()
+	await project.destroy()
 }
 ```
 
@@ -290,24 +299,22 @@ In dialecte packages, instantiate once and re-export (see [Adapting to your dial
 
 ---
 
-## createTestDialecte
+## createTestProject
 
-Lower-level helper for tests that need manual control over export, intermediate assertions, or multi-step verification.
+Lower-level helper for tests that need manual control over export, intermediate assertions, or multi-step verification. Spins up a `Project` with source (and optionally target) XML imported.
 
 ### Signature
 
 ```ts
-async function createTestDialecte(params: {
-	xmlString: string
-	dialecteConfig?: AnyDialecteConfig // defaults to TEST_DIALECTE_CONFIG
+async function createTestProject<Config extends AnyDialecteConfig>(params: {
+	sourceXml: string
+	targetXml?: string
+	dialecteConfig?: Config // defaults to TEST_DIALECTE_CONFIG
+	hooks?: TransactionHooks<Config>
 }): Promise<{
-	document: Document<Config>
-	databaseName: string
-	cleanup: () => Promise<void>
-	exportCurrentTest: (params?: {
-		extension?: string
-		withDatabaseIds?: boolean
-	}) => Promise<{ xmlDocument: XMLDocument; filename: string }>
+	project: Project<Config>
+	source: { documentId: string; document: Document<Config> }
+	target?: { documentId: string; document: Document<Config> }
 }>
 ```
 
@@ -315,18 +322,14 @@ async function createTestDialecte(params: {
 
 ```ts
 import {
-	createTestDialecte,
+	createTestProject,
 	XMLNS_DEFAULT_NAMESPACE,
 	CUSTOM_RECORD_ID_ATTRIBUTE,
 	XMLNS_DEV_NAMESPACE,
 } from '@dialecte/core/test'
 
-const {
-	document: doc,
-	cleanup,
-	exportCurrentTest,
-} = await createTestDialecte({
-	xmlString: `
+const { project, source } = await createTestProject({
+	sourceXml: `
     <Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
       <A aA="value" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
     </Root>
@@ -334,14 +337,14 @@ const {
 })
 
 try {
-	await doc.transaction(async (tx) => {
+	await source.document.transaction(async (tx) => {
 		await tx.update({ tagName: 'A', id: '2' }, { attributes: { aA: 'updated' } })
 	})
 
-	const { xmlDocument } = await exportCurrentTest({ withDatabaseIds: true })
+	const { xmlDocument } = await project.export(source.documentId, { withDatabaseIds: true })
 	// assert manually on xmlDocument...
 } finally {
-	await cleanup()
+	await project.destroy()
 }
 ```
 
@@ -349,7 +352,7 @@ try {
 
 - Asserting intermediate states between transactions
 - Tests that need multiple exports at different stages
-- Lifecycle that doesn't fit the standard source → act → assert → cleanup shape
+- Lifecycle that doesn't fit the standard source -> act -> assert -> cleanup shape
 
 ---
 
@@ -407,7 +410,7 @@ Create a single `test.ts` file in your dialecte package that wraps all core help
 // src/test/test.ts
 import { CUSTOM_RECORD_ID_ATTRIBUTE, CUSTOM_RECORD_ID_ATTRIBUTE_NAME } from '@dialecte/core/helpers'
 import {
-	createTestDialecte,
+	createTestProject,
 	createTestRecordFactory,
 	createXmlAssertions,
 	createTestRunner,
@@ -422,15 +425,15 @@ export const XMLNS_DEFAULT_NAMESPACE = `xmlns="http://dialecte.dev/XML/DEFAULT"`
 export const ALL_XMLNS_NAMESPACES = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 export { CUSTOM_RECORD_ID_ATTRIBUTE, CUSTOM_RECORD_ID_ATTRIBUTE_NAME }
 
-// Pre-bound runner — same shape as runTestCases but for this dialecte config
+// Pre-bound runner - same shape as runTestCases but for this dialecte config
 export const runDialecteTestCases = createTestRunner(MY_DIALECTE_CONFIG)
 
-// Wrap createTestDialecte with the dialecte config
-export async function createDialecteTestDialecte(params: { xmlString: string }) {
-	return createTestDialecte({ xmlString: params.xmlString, dialecteConfig: MY_DIALECTE_CONFIG })
+// Wrap createTestProject with the dialecte config
+export async function createDialecteTestProject(params: { sourceXml: string; targetXml?: string }) {
+	return createTestProject({ ...params, dialecteConfig: MY_DIALECTE_CONFIG })
 }
 
-// Typed record factory — createDialecteTestRecord({ record: { tagName: 'A', ... } })
+// Typed record factory - createDialecteTestRecord({ record: { tagName: 'A', ... } })
 export const createDialecteTestRecord = createTestRecordFactory(MY_DIALECTE_CONFIG)
 
 // Namespace-aware XPath assertion helpers
@@ -444,8 +447,8 @@ export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = 
 | Export                                                            | Purpose                                                                                   |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `runDialecteTestCases`                                            | Pre-bound runner: `.withExport`, `.withoutExport`, `.generic`                             |
-| `createDialecteTestDialecte`                                      | Manual test setup pre-bound to the dialecte config                                        |
-| `createDialecteTestRecord`                                        | Typed record factory — `tagName` narrowed to the dialecte's elements                      |
+| `createDialecteTestProject`                                       | Manual test setup pre-bound to the dialecte config                                        |
+| `createDialecteTestRecord`                                        | Typed record factory - `tagName` narrowed to the dialecte's elements                      |
 | `assertExpectedElementQueries` / `assertUnexpectedElementQueries` | XPath assertions with namespace prefix resolution pre-configured                          |
 | Namespace constants                                               | `XMLNS_*` strings for XML template literals; `CUSTOM_RECORD_ID_ATTRIBUTE` for `dev:db-id` |
 
@@ -456,7 +459,7 @@ import { runDialecteTestCases, ALL_XMLNS_NAMESPACES, CUSTOM_RECORD_ID_ATTRIBUTE 
 
 runDialecteTestCases.withExport({
 	testCases: {
-		'element A updated → attribute aA has new value': {
+		'element A updated -> attribute aA has new value': {
 			sourceXml: `
 				<Root ${ALL_XMLNS_NAMESPACES}>
 					<A aA="old" ${CUSTOM_RECORD_ID_ATTRIBUTE}="a1"/>
@@ -467,10 +470,10 @@ runDialecteTestCases.withExport({
 		},
 	},
 	act: async ({ source }) => {
-		await source.document.transaction(async (tx) => {
+		await source.transaction(async (tx) => {
 			await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'new' } })
 		})
-		return { assertDatabaseName: source.databaseName }
+		return { assertOn: 'source' }
 	},
 })
 ```
@@ -479,7 +482,7 @@ runDialecteTestCases.withExport({
 
 ## Test definition
 
-The test definition follows a **Rule of 3** pattern — a deterministic, predictable tree structure designed for comprehensive testing.
+The test definition follows a **Rule of 3** pattern - a deterministic, predictable tree structure designed for comprehensive testing.
 
 ### Tree structure
 
@@ -495,8 +498,8 @@ Root
 │   │   └── AAA_3       (ext namespace)
 │   ├── AA_2
 │   └── AA_3             (ext namespace)
-├── B                     (same pattern: BB → BBB → BBBB)
-└── C                     (same pattern: CC → CCC → CCCC)
+├── B                     (same pattern: BB -> BBB -> BBBB)
+└── C                     (same pattern: CC -> CCC -> CCCC)
 ```
 
 **121 elements** total: 1 Root + 3 branches × (1 + 3 + 9 + 27) per branch.

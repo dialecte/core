@@ -1,5 +1,5 @@
 ---
-description: Step-by-step guide to installing @dialecte/core, importing an XML file, opening a Document, querying records, and running your first transaction.
+description: Step-by-step guide to installing @dialecte/core, opening a Project, importing an XML file, querying records, and running your first transaction.
 ---
 
 # Getting Started
@@ -24,11 +24,11 @@ $ pnpm add @dialecte/core
 
 :::
 
-## Step 1 — The config
+## Step 1 - The config
 
-A dialecte config describes the shape of your XML: its element names, allowed children, parent relationships, attributes, namespaces, and the database schema for storing them. Configs are typically generated from an XSD schema.
+A dialecte config describes the shape of your XML: its element names, allowed children, parent relationships, attributes, namespaces, and the record schema for storing them. Configs are typically generated from an XSD schema.
 
-`@dialecte/core` exports `TEST_DIALECTE_CONFIG` — a pre-built config you can use to explore the API without writing any boilerplate:
+`@dialecte/core` exports `TEST_DIALECTE_CONFIG` - a pre-built config you can use to explore the API without writing any boilerplate:
 
 ```ts
 import { TEST_DIALECTE_CONFIG } from '@dialecte/core'
@@ -42,13 +42,25 @@ import { TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
 > In practice you won't write this by hand. The definition generator (in progress) reads an XSD file and emits the full config automatically. `@dialecte/scl` is a real-world example.
 
-## Step 2 — Import an XML file
+## Step 2 - Open a Project
 
-`importXmlFiles` streams the file through a SAX parser and persists each element to IndexedDB. It returns the database names that were created — one per file.
+`Project.open` creates a multi-document container backed by a single IndexedDB database.
 
 ```ts
-import { importXmlFiles, TEST_DIALECTE_CONFIG } from '@dialecte/core'
+import { Project, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
+const project = await Project.open({
+	name: 'my-project',
+	configs: { test: TEST_DIALECTE_CONFIG },
+	storage: { type: 'local' },
+})
+```
+
+## Step 3 - Import an XML file
+
+`project.import` streams the file through a SAX parser and persists each element into its own store partition.
+
+```ts
 // An XML file matching TEST_DIALECTE_CONFIG:
 // <Root xmlns="http://dialecte.dev/XML/DEFAULT"
 //       xmlns:ext="http://dialecte.dev/XML/DEV-EXT"
@@ -58,31 +70,23 @@ import { importXmlFiles, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 //   </A>
 // </Root>
 
-const [databaseName] = await importXmlFiles({
-	files: [xmlFile],
-	dialecteConfig: TEST_DIALECTE_CONFIG,
-})
+const { documentId } = await project.import(xmlFile, { configKey: 'test' })
 ```
 
-## Step 3 — Open a document
+## Step 4 - Access the Document
 
-`openDialecteDocument` connects to an existing IndexedDB database and returns a `Document` ready to use.
+`project.openDocument(id)` returns a `Document` scoped to the imported file.
 
 ```ts
-import { openDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
-
-const doc = openDialecteDocument({
-	config: TEST_DIALECTE_CONFIG,
-	storage: { type: 'local', databaseName },
-})
+const doc = project.openDocument(documentId)
 ```
 
 The returned `Document` exposes two access paths:
 
-- `doc.query` — read-only queries
-- `doc.transaction(async (tx) => { ... })` — scoped writes
+- `doc.query` - read-only queries
+- `doc.transaction(async (tx) => { ... })` - scoped writes
 
-## Step 4 — Query the tree
+## Step 5 - Query the tree
 
 Use `doc.query` to read records, find descendants, and inspect attributes:
 
@@ -105,7 +109,7 @@ const record = await doc.query.getRecord({ tagName: 'A', id: 'some-id' })
 console.log(record?.attributes) // { aA: 'hello', bA: 'world' }
 ```
 
-## Step 5 — Mutate the tree
+## Step 6 - Mutate the tree
 
 Mutations happen inside a `transaction`. All operations are staged, then committed atomically when the callback returns.
 
@@ -123,7 +127,7 @@ await doc.transaction(async (tx) => {
 })
 ```
 
-Inside a transaction, you can also query records — reads inside a transaction see staged (not-yet-committed) changes:
+Inside a transaction, you can also query records - reads inside a transaction see staged (not-yet-committed) changes:
 
 ```ts
 await doc.transaction(async (tx) => {
@@ -137,31 +141,26 @@ await doc.transaction(async (tx) => {
 })
 ```
 
-## Step 6 — Export to XML
+## Step 7 - Export to XML
 
 ```ts
-import { exportXmlFile, TEST_DIALECTE_CONFIG } from '@dialecte/core'
-
-const { xmlDocument } = await exportXmlFile({
-	databaseName,
-	extension: '.xml',
-	withDownload: true,
-	dialecteConfig: TEST_DIALECTE_CONFIG,
+const { xmlDocument, filename } = await project.export(documentId, {
+	withDatabaseIds: false,
 })
 ```
 
-## Step 7 — Undo / Redo
+## Step 8 - Undo / Redo
 
-The store keeps a changelog. Call `undo()` and `redo()` on the document:
+The store keeps a per-file changelog. Undo/redo is managed at the Project level:
 
 ```ts
-await doc.undo()
-await doc.redo()
+await project.undo(documentId)
+await project.redo(documentId)
 ```
 
 ## Next steps
 
-- [API — Document](/api/document) — lifecycle, transactions, undo/redo
-- [API — Query](/api/query) — full reference for all read methods
-- [API — Transaction](/api/transaction) — full reference for all mutation methods
-- [API — I/O](/api/) — import and export functions
+- [API - Document & Project](/api/document) - lifecycle, transactions, undo/redo
+- [API - Query](/api/query) - full reference for all read methods
+- [API - Transaction](/api/transaction) - full reference for all mutation methods
+- [IO](/io/) - import and export pipeline

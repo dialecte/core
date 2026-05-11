@@ -75,6 +75,40 @@ const children = await doc.query.getChildren(a, 'AA_1')
 
 Both methods are type-safe: the child tag name is constrained to valid children of the parent element type by `ChildrenOf<Config, ParentElement>`.
 
+#### Transparent elements
+
+When the dialecte config defines `transparentElements`, `getChild` and `getChildren` automatically look through those wrapper elements if no direct match is found.
+
+**Fast path:** if a direct child matches the requested tag name, it is returned immediately - no transparent lookup occurs.
+
+**Fallback:** if no direct match exists, both methods iterate over children of transparent wrapper types and collect matching children from inside them. Single-level only - the wrappers are not recursed.
+
+```ts
+// Config: transparentElements: ['AA_1']
+//
+// XML:
+// <A>
+//   <AA_1>
+//     <AAA_1 id="aaa1" />
+//     <AAA_1 id="aaa2" />
+//   </AA_1>
+// </A>
+
+// getChild looks through AA_1 automatically:
+const child = await doc.query.getChild(a, 'AAA_1')
+// TrackedRecord for AAA_1 (first match inside AA_1)
+
+// getChildren collects from all AA_1 wrappers:
+const children = await doc.query.getChildren(a, 'AAA_1')
+// TrackedRecord[] — all AAA_1 elements across all AA_1 children
+```
+
+For dynamic or untyped contexts, use [`query.any`](#untyped-namespace-query-any):
+
+```ts
+const child = await doc.query.any.getChild(a, 'AAA_1')
+```
+
 ## Finding ancestors
 
 ### findAncestors

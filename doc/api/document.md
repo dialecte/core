@@ -1,39 +1,12 @@
 ---
-description: API reference for the Document class -- the main entry point for a dialecte. Covers openDialecteDocument, createDialecteDocument, the query accessor, transaction(), prepare(), undo/redo, and the observable DocumentState.
+description: API reference for the Document class - per-file entry point for query, transaction, prepare, DocumentActivity, cross-tab sync, and subclassing.
 ---
 
 # Document
 
-`Document` is the public entry point for interacting with a dialecte database. It owns the store connection and exposes read access via `query` and write access via `transaction()`.
+`Document` is the per-file entry point. It owns the query and transaction surface for a single file's records. Within a [Project](/api/project), documents are obtained via `project.openDocument(id)`.
 
-## Creating a Document
-
-### openDialecteDocument
-
-Opens a connection to an existing database. Does not create a root element.
-
-```ts
-import { openDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
-
-const doc = openDialecteDocument({
-	config: TEST_DIALECTE_CONFIG,
-	storage: { type: 'local', databaseName },
-})
-```
-
-### createDialecteDocument
-
-Creates a new database with a root element pre-populated from the config's definition. Required attributes are initialized with their `fixed`, `default`, or empty-string value.
-
-```ts
-import { createDialecteDocument, TEST_DIALECTE_CONFIG } from '@dialecte/core'
-
-const doc = await createDialecteDocument({
-	config: TEST_DIALECTE_CONFIG,
-	storage: { type: 'local', databaseName },
-})
-// Root element already committed -- ready for queries and transactions
-```
+Each `Document` carries a `fileId` that scopes all store operations to its partition.
 
 ## query
 
@@ -44,11 +17,11 @@ const root = await doc.query.getRoot()
 const record = await doc.query.getRecord(ref)
 ```
 
-A new `Query` is created on each access — no stale state.
+A new `Query` is created on each access - no stale state.
 
 ## transaction
 
-Scoped unit of work. The callback receives a [Transaction](/api/transaction) — a `Query` subclass that also exposes mutation methods. All staged operations are committed atomically when the callback returns.
+Scoped unit of work. The callback receives a [Transaction](/api/transaction) - a `Query` subclass that also exposes mutation methods. All staged operations are committed atomically when the callback returns.
 
 ```ts
 await doc.transaction(async (tx) => {
@@ -60,7 +33,7 @@ await doc.transaction(async (tx) => {
 })
 ```
 
-Concurrent transactions are **not allowed** — starting a second transaction while one is active throws `CONCURRENT_TRANSACTION`.
+Concurrent transactions are **not allowed** - starting a second transaction while one is active throws `CONCURRENT_TRANSACTION`.
 
 ### Options
 
@@ -107,33 +80,22 @@ await prepared.commit()
 | `commit()`   | `() => Promise<void>`           | Apply all staged operations      |
 | `discard()`  | `() => void`                    | Throw away all staged operations |
 
-## undo / redo
+## state (DocumentActivity)
 
-The store keeps a changelog of committed transactions. Navigate history with:
-
-```ts
-await doc.undo()
-await doc.redo()
-```
-
-Each call updates `state.history` and broadcasts the change to other `Document` instances connected to the same database (via `BroadcastChannel`).
-
-## state
-
-A single observable object that tracks the document lifecycle. In a reactive framework (Vue, etc.), wrap it with `reactive()` to drive the UI.
+Each `Document` exposes a reactive `state` object of type `DocumentActivity`:
 
 ```ts
-doc.state.loading // boolean — true while busy
+doc.state.loading // boolean - true while busy
 doc.state.error // DialecteError | null
-doc.state.progress // { message, current, total } | null — drives progress bars and status messages
-doc.state.history // TransactionEntry[] — breadcrumb trail
-doc.state.lastUpdate // number | null — timestamp of last commit (local or remote)
+doc.state.progress // { message, current, total } | null
+doc.state.history // TransactionEntry[] - breadcrumb trail
+doc.state.lastUpdate // number | null - timestamp of last commit
 ```
 
-### DocumentState
+### DocumentActivity
 
 ```ts
-type DocumentState = {
+type DocumentActivity = {
 	loading: boolean
 	error: DialecteError | null
 	progress: { message: string; current: number; total: number } | null
@@ -149,15 +111,27 @@ type TransactionEntry = {
 }
 ```
 
+### DocumentState (Project-level)
+
+At the Project level, `DocumentState` extends `DocumentActivity` with project-specific fields:
+
+```ts
+type DocumentState = DocumentActivity & {
+	document: DocumentRecord
+	canUndo: boolean
+	canRedo: boolean
+}
+```
+
 ### Cross-tab sync
 
-When a transaction commits, the document broadcasts `lastUpdate` via a `BroadcastChannel` scoped to the database name. Other `Document` instances (e.g. in other browser extensions targeting the same database) receive the update and can refetch data.
+When a transaction commits, the document broadcasts `{ type: 'commit', fileId, timestamp }` via a `BroadcastChannel` scoped to the project name. Other `Document` instances (e.g. in other browser extensions targeting the same store) receive the update and can refetch data. Messages are filtered by `fileId` so each document only reacts to its own commits.
 
 ## close / destroy
 
 ```ts
-doc.close() // close the store connection
-await doc.destroy() // close connection and delete the database
+doc.close() // close the BroadcastChannel listener
+await doc.destroy() // delete the database entirely
 ```
 
 ## Subclassing
@@ -167,13 +141,13 @@ A dialecte package typically subclasses `Document` to wire domain-specific `Quer
 ```ts
 class SclDocument extends Document<SclConfig> {
 	protected override createQuery() {
-		return new SclQuery(this.store, this.config)
+		return new SclQuery(this.store, this.config, this.fileId)
 	}
 
 	protected override createTransaction() {
-		return new SclTransaction(this.store, this.config, this.state)
+		return new SclTransaction(this.store, this.config, this.fileId, this.state, this.hooks)
 	}
 }
 ```
 
-This makes `doc.query` return an `SclQuery` and `doc.transaction()` provide an `SclTransaction` — with all domain-specific methods available.
+This makes `doc.query` return an `SclQuery` and `doc.transaction()` provide an `SclTransaction` - with all domain-specific methods available.

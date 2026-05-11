@@ -1,20 +1,22 @@
 ---
-description: How to use Document state for UI feedback (loading, error, progress, history) and how to create structured errors via throwDialecteError and the invariant utility.
+description: How to use DocumentActivity and DocumentState for UI feedback (loading, error, progress, history) and how to create structured errors via throwDialecteError and the invariant utility.
 ---
 
 # State & Errors
 
 ## Document state
 
-Every `Document` exposes a single `state` object that drives UI feedback. In Vue, wrap it with `reactive()` to trigger re-renders automatically.
+### DocumentActivity
+
+Every `Document` exposes a single `state` object of type `DocumentActivity` that drives UI feedback. In Vue, wrap it with `reactive()` to trigger re-renders automatically.
 
 ```ts
-const doc = openSclDocument(storage)
+const doc = project.openDocument(documentId)
 
 const { loading, error, progress, history, lastUpdate } = doc.state
 ```
 
-### Fields
+#### Fields
 
 | Field        | Type                                  | Purpose                                                      |
 | ------------ | ------------------------------------- | ------------------------------------------------------------ |
@@ -34,36 +36,50 @@ v-if="doc.state.progress"
 {{ doc.state.progress.current }} / {{ doc.state.progress.total }}
 ```
 
+### DocumentState (Project-level)
+
+At the Project level, `DocumentState` extends `DocumentActivity` with project-specific fields:
+
+```ts
+type DocumentState = DocumentActivity & {
+	document: DocumentRecord
+	canUndo: boolean
+	canRedo: boolean
+}
+```
+
+`ProjectState.documents` is a `Map<string, DocumentState>`.
+
 ### Lifecycle during a transaction
 
 ```
-transaction start → loading=true, error=null
-  ↓
-callback runs    → (loading stays true)
-  ↓
-commit           → progress={ message: 'Committing changes...', current: 0, total }
-  ↓
-success          → loading=false, progress=null, history entry added, lastUpdate set
-  ↓ (or)
-failure          → error=DialecteError, loading=false, progress=null
+transaction start -> loading=true, error=null
+  |
+callback runs    -> (loading stays true)
+  |
+commit           -> progress={ message: 'Committing changes...', current: 0, total }
+  |
+success          -> loading=false, progress=null, history entry added, lastUpdate set
+  | (or)
+failure          -> error=DialecteError, loading=false, progress=null
 ```
 
 ### Cross-tab sync
 
-`lastUpdate` is kept in sync across tabs via `BroadcastChannel`. When another Document instance (e.g. a different extension) commits to the same database, `lastUpdate` fires so watchers can refetch:
+`lastUpdate` is kept in sync across tabs via `BroadcastChannel`. The channel is scoped to the project name and messages are filtered by `fileId`, so each document only reacts to its own commits.
 
 ```ts
 watch(
 	() => doc.state.lastUpdate,
 	() => {
-		// data changed — refetch your view
+		// data changed - refetch your view
 	},
 )
 ```
 
 ## DialecteError
 
-Errors are structured, serializable objects — not raw `Error` instances. They carry enough context for UI display **and** developer debugging.
+Errors are structured, serializable objects - not raw `Error` instances. They carry enough context for UI display **and** developer debugging.
 
 ```ts
 type DialecteError = {
@@ -88,6 +104,9 @@ Errors use a typed catalog organized by domain:
 | `D2xxx` | Element lookup        | `ELEMENT_NOT_FOUND`, `ROOT_NOT_FOUND`, `DUPLICATE_ID` |
 | `D3xxx` | Constraint violations | `INVALID_PARENT_CHILD`, `PROTECTED_ROOT`              |
 | `D4xxx` | Transaction lifecycle | `ALREADY_COMMITTED`, `CONCURRENT_TRANSACTION`         |
+| `D5xxx` | Import/Export         | `EXPORT_ROOT_NOT_FOUND`, `EXPORT_ORPHAN_CHILD_REF`    |
+| `D6xxx` | Config                | `EXTENSION_METHOD_COLLISION`                          |
+| `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `FILE_NOT_REGISTERED`           |
 
 The full catalog is in `core/src/errors/codes.ts`.
 
@@ -95,7 +114,7 @@ The full catalog is in `core/src/errors/codes.ts`.
 
 ### throwDialecteError
 
-Throws a structured `DialecteError` wrapped in a real `Error` (for stack traces). The `method` field is auto-resolved from the call stack — you never need to pass it.
+Throws a structured `DialecteError` wrapped in a real `Error` (for stack traces). The `method` field is auto-resolved from the call stack - you never need to pass it.
 
 ```ts
 import { throwDialecteError } from '@dialecte/core'
@@ -140,10 +159,10 @@ invariant(record.parentRef, {
 
 | Param       | Required | Default              | Description                       |
 | ----------- | -------- | -------------------- | --------------------------------- |
-| `condition` | yes      | —                    | Value to check — if falsy, throws |
-| `detail`    | yes      | —                    | Developer-facing error message    |
+| `condition` | yes      | -                    | Value to check - if falsy, throws |
+| `detail`    | yes      | -                    | Developer-facing error message    |
 | `key`       | no       | `'ASSERTION_FAILED'` | Error key from the catalog        |
-| `ref`       | no       | —                    | Element reference for context     |
+| `ref`       | no       | -                    | Element reference for context     |
 
 ### Stack trace resolution
 

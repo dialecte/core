@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Added
+
+- `Project` class: multi-document container with config registry, BroadcastChannel, file-scoped undo/redo
+  - `open`, `import`, `export`, `initEmptyDocument`, `openDocument`, `getDocument`, `undo`, `redo`
+- `Store` interface: file-partitioned operations with file registry, bulk writes, file-scoped history
+- `DexieStore`: partitioned tables (`xel_{fileId}`) with dynamic schema versioning
+- `RecordSchema` type: backend-agnostic index declaration
+- `Document.fileId` / `Context.fileId`: all operations scoped to a file partition
+- `DocumentRecord`, `DocumentState`, `ProjectState` types
+- `exportDocument`, `importDocument`, `initEmptyDocument` - pure IO functions extracted from Project
+- `ParseSession` class: parent-child tracking during SAX parsing
+- Error codes: D5001, D5002, D7001, D7002
+- Test infrastructure: `createTestProject` replaces `createTestDialecte`
+
+### Changed
+
+- `Document`, `Query`, `Transaction` constructors require `fileId`; BroadcastChannel messages filtered per file
+- `DatabaseConfig.recordSchema` replaces `tables`
+- `DocumentState` renamed to `DocumentActivity` (document-internal); `DocumentState` reused at project level as `DocumentActivity & { document, canUndo, canRedo }`
+- IO exports split: `buildXmlDocument`, `downloadFile`, `parseXmlFile`, `ParseSession` exported individually
+- Test helpers: `ActResult.assertOn` replaces `assertDatabaseName`; `ActParams.source`/`target` are `Document` instances
+- Type files redistributed by DDD boundary
+
+### Removed
+
+- `openDialecteDocument`, `createDialecteDocument` - replaced by `Project`
+- `importXmlFiles`, `exportXmlFile` - replaced by `project.import` / `project.export`
+- `Document.undo()` / `Document.redo()` - moved to `Project.undo(fileId)` / `Project.redo(fileId)`
+- `database-helpers.ts`, `relationships.ts` - absorbed into `ParseSession` and `DexieStore`
+
+## [0.2.0] - 2026-05-07
+
 ## [0.1.22] - 2026-05-07
 
 ### Added

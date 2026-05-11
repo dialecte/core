@@ -1,6 +1,6 @@
 {
 	"name": "@dialecte/core",
-	"version": "0.1.22",
+	"version": "0.2.0",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"repository": {
@@ -17,10 +17,6 @@
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
 		},
-		"./io": {
-			"types": "./dist/io/index.d.ts",
-			"default": "./dist/io/index.js"
-		},
 		"./test": {
 			"types": "./dist/test.d.ts",
 			"default": "./dist/test.js"
@@ -35,11 +31,6 @@
 		}
 	},
 	"scripts": {
-		"//====== SCRIPT ======//": "",
-		"schema:parse-xsd": "node --import=tsx src/script/test-pyodide.ts --xsd src/script/xsd/IEC61850-6-100.xsd --out src/generated/IEC.generated.json",
-		"schema:generate": "node --import=tsx src/script/generate-definition.ts --in src/generated/IEC.generated.json --out src/generated",
-		"schema:full": "npm run schema:parse-xsd && npm run schema:generate",
-		"fixtures:generate": "node --import=tsx src/script/generate-test-fixtures.ts",
 		"//====== BUILD ======//": "",
 		"build": "run-p type-check \"build-only {@}\" --",
 		"build-only": "tsc -p tsconfig.json && vite build",
