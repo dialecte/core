@@ -16,6 +16,7 @@ import type {
 } from './types'
 import type { ExtensionModules, ExtensionsRegistry, MergedExtensions } from '@/document'
 import type { Store } from '@/store'
+import type { DexieStore } from '@/store/local'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
@@ -29,9 +30,10 @@ import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 export class Project<
 	GenericConfig extends AnyDialecteConfig,
 	GenericExtension extends ExtensionsRegistry = {},
+	GenericStore extends Store = Store,
 > {
 	readonly name: string
-	private store: Store
+	private store: GenericStore
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private extensionsRegistry?: GenericExtension
@@ -45,7 +47,7 @@ export class Project<
 
 	private constructor(
 		name: string,
-		store: Store,
+		store: GenericStore,
 		configs: Record<string, GenericConfig>,
 		defaultConfigKey: string,
 		extensionsRegistry?: GenericExtension,
@@ -72,13 +74,38 @@ export class Project<
 
 	// ── Factory ──────────────────────────────────────────────────────────────
 
+	static open<
+		GenericConfig extends AnyDialecteConfig,
+		BaseExtensions extends ExtensionModules = Record<never, never>,
+		CustomExtensions extends ExtensionModules = Record<never, never>,
+	>(
+		params: ProjectOpenParams<GenericConfig, BaseExtensions, CustomExtensions> & {
+			storage: { type: 'local' }
+		},
+	): Promise<
+		Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>, DexieStore>
+	>
+
+	static open<
+		GenericConfig extends AnyDialecteConfig,
+		BaseExtensions extends ExtensionModules = Record<never, never>,
+		CustomExtensions extends ExtensionModules = Record<never, never>,
+		GenericStore extends Store = Store,
+	>(
+		params: Omit<ProjectOpenParams<GenericConfig, BaseExtensions, CustomExtensions>, 'storage'> & {
+			storage: { type: 'custom'; store: GenericStore }
+		},
+	): Promise<
+		Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>, GenericStore>
+	>
+
 	static async open<
 		GenericConfig extends AnyDialecteConfig,
 		BaseExtensions extends ExtensionModules = Record<never, never>,
 		CustomExtensions extends ExtensionModules = Record<never, never>,
 	>(
 		params: ProjectOpenParams<GenericConfig, BaseExtensions, CustomExtensions>,
-	): Promise<Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>>> {
+	): Promise<Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>, Store>> {
 		const { name, configs, storage, extensions, hooks, defaultConfigKey } = params
 		const merged = mergeExtensions({ base: extensions?.base, custom: extensions?.custom })
 
@@ -88,14 +115,11 @@ export class Project<
 		const store = resolveStore(name, storage, configs[resolvedDefaultKey])
 		await store.open()
 
-		const project = new Project<GenericConfig, MergedExtensions<BaseExtensions & CustomExtensions>>(
-			name,
-			store,
-			configs,
-			resolvedDefaultKey,
-			merged,
-			hooks,
-		)
+		const project = new Project<
+			GenericConfig,
+			MergedExtensions<BaseExtensions & CustomExtensions>,
+			Store
+		>(name, store, configs, resolvedDefaultKey, merged, hooks)
 
 		// Hydrate state from existing files in store
 		const files = await store.getDocuments()
@@ -265,9 +289,9 @@ export class Project<
 
 	// ── Internal ─────────────────────────────────────────────────────────────
 
-	/** Access the underlying store (for import pipelines, testing) */
-	getStore(): Store {
-		return this.store
+	/** Expose the underlying database instance. Return type is inferred from the store (Dexie for local storage). */
+	getDatabaseInstance(): ReturnType<GenericStore['getDatabaseInstance']> {
+		return this.store.getDatabaseInstance() as ReturnType<GenericStore['getDatabaseInstance']>
 	}
 
 	private async refreshState(): Promise<void> {

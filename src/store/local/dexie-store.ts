@@ -399,10 +399,10 @@ export class DexieStore implements Store {
 				await table.bulkAdd(creates)
 			}
 			if (updates.length > 0) {
-				await table.bulkPut(updates.map((u) => u.after))
+				await table.bulkPut(updates.map((update) => update.after))
 			}
 			if (deletes.length > 0) {
-				await table.bulkDelete(deletes.map((r) => r.id))
+				await table.bulkDelete(deletes.map((record) => record.id))
 			}
 
 			await this.setHead(documentId, next)
@@ -414,6 +414,14 @@ export class DexieStore implements Store {
 			.table<ChangeLogEntry>(TABLE_CHANGELOG)
 			.where({ documentId })
 			.sortBy('sequenceNumber')
+	}
+
+	/**
+	 * Expose the underlying Dexie instance.
+	 * Useful for legacy compatibility layers and advanced testing.
+	 */
+	getDatabaseInstance(): Dexie {
+		return this.db
 	}
 
 	// --- Private helpers ---

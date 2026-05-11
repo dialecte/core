@@ -103,6 +103,13 @@ export interface Store {
 
 	/** Return changelog entries for a document in ascending sequenceNumber order */
 	getChangeLog(documentId: string): Promise<ChangeLogEntry[]>
+
+	/**
+	 * Expose the underlying database instance.
+	 * Type depends on the implementation (e.g. Dexie for DexieStore).
+	 * Cast at the call site when the concrete store type is known.
+	 */
+	getDatabaseInstance(): unknown
 }
 
 export type ChangeLogEntry = {

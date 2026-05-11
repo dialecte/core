@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.1] - 2026-05-11
+
+- `Store.getDatabaseInstance(): unknown` - exposes the native database instance; return type cast at call site (e.g. `as Dexie` for DexieStore)
+
+## [0.2.0] - 2026-05-10
+
 ### Added
 
 - `Project` class: multi-document container with config registry, BroadcastChannel, file-scoped undo/redo
@@ -36,8 +42,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `importXmlFiles`, `exportXmlFile` - replaced by `project.import` / `project.export`
 - `Document.undo()` / `Document.redo()` - moved to `Project.undo(fileId)` / `Project.redo(fileId)`
 - `database-helpers.ts`, `relationships.ts` - absorbed into `ParseSession` and `DexieStore`
-
-## [0.2.0] - 2026-05-07
 
 ## [0.1.22] - 2026-05-07
 

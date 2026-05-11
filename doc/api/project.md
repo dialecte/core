@@ -155,6 +155,12 @@ await project.destroy() // delete the database entirely and clear state
 
 ## Internal
 
+`getDatabaseInstance()` exposes the native database instance. Return type is inferred from the storage choice - no cast needed for the default `local` storage:
+
 ```ts
-project.getStore() // access the underlying Store (for import pipelines, testing)
+// storage: { type: 'local' } -> return type is Dexie, inferred
+const db = project.getDatabaseInstance()
+
+// storage: { type: 'custom', store: myStore } -> return type is ReturnType<typeof myStore.getDatabaseInstance>
+const db = project.getDatabaseInstance()
 ```
