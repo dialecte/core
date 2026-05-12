@@ -73,7 +73,7 @@ export class Project<
 		configs: Record<string, GenericConfig>
 		defaultConfigKey?: string
 		storage: ProjectParams<GenericConfig>['storage']
-		extensions?: { base?: GenericModules; custom?: GenericModules }
+		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 		hooks?: TransactionHooks<GenericConfig>
 	}) {
 		const configKeys = Object.keys(params.configs)
