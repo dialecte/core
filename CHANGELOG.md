@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.5] - 2026-05-12
+
+### Added
+
+- `project.queryFirst(fn)` - cross-document query; iterates documents sequentially, returns first non-undefined result
+- `project.queryAll(fn)` - cross-document query; iterates all documents, returns flattened results
+
+### Changed
+
+- `project.import(file)` now accepts `files: File[]` for batch import; returns `Array<{ documentId, recordCount }>`
+
 ## [0.2.4] - 2026-05-11
 
 ### Added

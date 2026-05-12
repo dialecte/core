@@ -81,7 +81,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(async () => listener.close())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		await project.import(file)
+		await project.import([file])
 		await new Promise((r) => setTimeout(r, 10))
 
 		expect(messages).toContainEqual(expect.objectContaining({ type: 'document-imported' }))
@@ -93,7 +93,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const { documentId } = await project.import(file)
+		const [{ documentId }] = await project.import([file])
 		const doc = project.openDocument(documentId)
 
 		const messages: unknown[] = []
@@ -117,7 +117,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const { documentId } = await project.import(file)
+		const [{ documentId }] = await project.import([file])
 
 		// Simulate another tab's document by creating a second BroadcastChannel
 		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
@@ -140,7 +140,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const { documentId } = await project.import(file)
+		const [{ documentId }] = await project.import([file])
 
 		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
 		cleanups.push(async () => otherTabChannel.close())

@@ -53,8 +53,8 @@ export async function createTestProject<
 		hooks: hooks as TransactionHooks<GenericConfig>,
 	}).open(projectName)
 
-	const sourceImport = await project.import(
-		new File([sourceXml], 'source.xml', { type: 'text/xml' }),
+	const [sourceImport] = await project.import(
+		[new File([sourceXml], 'source.xml', { type: 'text/xml' })],
 		{ useCustomRecordsIds: true },
 	)
 	const source: TestDocument<GenericConfig> = {
@@ -64,8 +64,8 @@ export async function createTestProject<
 
 	let target: TestDocument<GenericConfig> | undefined
 	if (targetXml) {
-		const targetImport = await project.import(
-			new File([targetXml], 'target.xml', { type: 'text/xml' }),
+		const [targetImport] = await project.import(
+			[new File([targetXml], 'target.xml', { type: 'text/xml' })],
 			{ useCustomRecordsIds: true },
 		)
 		target = {

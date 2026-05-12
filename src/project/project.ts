@@ -3,6 +3,7 @@ import { exportDocument, importDocument, initEmptyDocument } from './io'
 import { buildDocumentState, reconcileDocumentState } from './state'
 
 import { Document } from '@/document'
+import { mergeExtensions } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type {
@@ -13,7 +14,7 @@ import type {
 	ProjectState,
 	DocumentRecord,
 } from './types'
-import type { ExtensionsRegistry } from '@/document'
+import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
@@ -27,7 +28,7 @@ import type { AnyDialecteConfig, TransactionHooks } from '@/types'
  */
 export class Project<
 	GenericConfig extends AnyDialecteConfig,
-	GenericExtension extends ExtensionsRegistry = {},
+	GenericModules extends ExtensionModules = Record<never, never>,
 	GenericStore extends Store = Store,
 > {
 	private _name?: string
@@ -36,7 +37,7 @@ export class Project<
 	private readonly storage: ProjectParams<GenericConfig>['storage']
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
-	private extensionsRegistry?: GenericExtension
+	private mergedExtensions?: MergedExtensions<GenericModules>
 	private hooks?: TransactionHooks<GenericConfig>
 
 	get name(): string {
@@ -72,7 +73,7 @@ export class Project<
 		configs: Record<string, GenericConfig>
 		defaultConfigKey?: string
 		storage: ProjectParams<GenericConfig>['storage']
-		extensionsRegistry?: GenericExtension
+		extensions?: { base?: GenericModules; custom?: GenericModules }
 		hooks?: TransactionHooks<GenericConfig>
 	}) {
 		const configKeys = Object.keys(params.configs)
@@ -80,7 +81,12 @@ export class Project<
 		this.storage = params.storage
 		this.configs = params.configs
 		this.defaultConfigKey = params.defaultConfigKey ?? configKeys[0]
-		this.extensionsRegistry = params.extensionsRegistry
+		this.mergedExtensions = params.extensions
+			? (mergeExtensions({
+					base: params.extensions.base,
+					custom: params.extensions.custom,
+				}) as MergedExtensions<GenericModules>)
+			: undefined
 		this.hooks = params.hooks
 	}
 
@@ -165,24 +171,30 @@ export class Project<
 	// ── Import / Export ──────────────────────────────────────────────────────
 
 	/**
-	 * Import a File into the project: register, parse XML, persist records.
+	 * Import one or more Files into the project: register, parse XML, persist records.
 	 */
 	async import(
-		file: File,
+		files: File[],
 		options?: ImportDocumentOptions,
-	): Promise<{ documentId: string; recordCount: number }> {
-		const result = await importDocument({
-			file,
-			store: this.store,
-			configs: this.configs,
-			defaultConfigKey: this.defaultConfigKey,
-			options,
-		})
+	): Promise<Array<{ documentId: string; recordCount: number }>> {
+		const results = await Promise.all(
+			files.map((file) =>
+				importDocument({
+					file,
+					store: this.store,
+					configs: this.configs,
+					defaultConfigKey: this.defaultConfigKey,
+					options,
+				}),
+			),
+		)
 
-		this.state.documents.set(result.documentId, result.documentState)
-		this.channel.postMessage({ type: 'document-imported', documentId: result.documentId })
+		for (const result of results) {
+			this.state.documents.set(result.documentId, result.documentState)
+			this.channel.postMessage({ type: 'document-imported', documentId: result.documentId })
+		}
 
-		return { documentId: result.documentId, recordCount: result.recordCount }
+		return results.map(({ documentId, recordCount }) => ({ documentId, recordCount }))
 	}
 
 	/**
@@ -217,7 +229,7 @@ export class Project<
 	/**
 	 * Open a file-scoped Document for querying and mutating a specific file.
 	 */
-	openDocument(documentId: string): Document<GenericConfig, GenericExtension> {
+	openDocument(documentId: string): Document<GenericConfig, MergedExtensions<GenericModules>> {
 		const documentState = this.state.documents.get(documentId)
 
 		invariant(documentState, {
@@ -230,7 +242,7 @@ export class Project<
 			this.store,
 			config,
 			documentId,
-			this.extensionsRegistry,
+			this.mergedExtensions,
 			this.hooks,
 			this.channel,
 		)
@@ -269,6 +281,43 @@ export class Project<
 
 		await this.store.redo(documentId)
 		this.channel.postMessage({ type: 'commit', documentId, timestamp: Date.now() })
+	}
+
+	// ── Cross-document queries ───────────────────────────────────────────────
+
+	/**
+	 * Run a query function across all documents, return the first non-undefined result.
+	 * Iterates documents sequentially; stops at the first match.
+	 */
+	async queryFirst<Result>(
+		queryFunction: (
+			query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>,
+		) => Promise<Result | undefined>,
+	): Promise<Result | undefined> {
+		for (const documentId of this.state.documents.keys()) {
+			const doc = this.openDocument(documentId)
+			const result = await queryFunction(doc.query)
+			if (result !== undefined) return result
+		}
+		return undefined
+	}
+
+	/**
+	 * Run a query function across all documents, collect and flatten results.
+	 * Iterates documents sequentially; merges all non-empty arrays.
+	 */
+	async queryAll<Result>(
+		queryFunction: (
+			query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>,
+		) => Promise<Result[]>,
+	): Promise<Result[]> {
+		const results: Result[] = []
+		for (const documentId of this.state.documents.keys()) {
+			const doc = this.openDocument(documentId)
+			const result = await queryFunction(doc.query)
+			results.push(...result)
+		}
+		return results
 	}
 
 	// ── Internal ─────────────────────────────────────────────────────────────
