@@ -16,20 +16,20 @@ import { Project } from '@dialecte/core'
 const project = await new Project({
 	configs: { scl: sclConfig },
 	storage: { type: 'local' },
-	extensionsRegistry: { ...sclExtensions },
+	extensions: { base: sclExtensions, custom: myExtensions },
 	hooks: sclHooks,
 }).open('my-project')
 ```
 
 **Constructor - `ProjectParams`**
 
-| Param                | Type                                | Description                                              |
-| -------------------- | ----------------------------------- | -------------------------------------------------------- |
-| `configs`            | `Record<string, AnyDialecteConfig>` | Config registry keyed by label                           |
-| `defaultConfigKey`   | `string`                            | Used when `configKey` is omitted. Defaults to first key. |
-| `storage`            | `StorageParam`                      | `{ type: 'local' }` or `{ type: 'custom', store }`       |
-| `extensionsRegistry` | `ExtensionModules`                  | Extensions applied to all Documents                      |
-| `hooks`              | `TransactionHooks`                  | Transaction hooks applied to all Documents               |
+| Param              | Type                                                     | Description                                                               |
+| ------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                            |
+| `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                  |
+| `storage`          | `StorageParam`                                           | `{ type: 'local' }` or `{ type: 'custom', store }`                        |
+| `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions` |
+| `hooks`            | `TransactionHooks`                                       | Transaction hooks applied to all Documents                                |
 
 **`project.open(name: string): Promise<this>`**
 
@@ -64,13 +64,14 @@ const documentId = await project.initEmptyDocument({
 
 ## import
 
-Imports an XML file, streams it through SAX, and registers it as a document.
+Imports one or more XML files, streams each through SAX, and registers them as documents.
 
 ```ts
-const { documentId, recordCount } = await project.import(file, {
+const results = await project.import([file1, file2], {
 	configKey: 'scl',
 	chunkOptions: { batchSize: 5000 },
 })
+// results: Array<{ documentId: string; recordCount: number }>
 ```
 
 **ImportDocumentOptions**
@@ -82,7 +83,7 @@ const { documentId, recordCount } = await project.import(file, {
 | `chunkOptions`        | `Partial<ChunkOptions>`   | -                  | Override chunking defaults for SAX streaming            |
 | `useCustomRecordsIds` | `boolean`                 | `false`            | Use IDs from XML attributes instead of generating UUIDs |
 
-**Returns** `Promise<{ documentId: string; recordCount: number }>`
+**Returns** `Promise<Array<{ documentId: string; recordCount: number }>>`
 
 ## export
 
@@ -129,6 +130,24 @@ const root = await doc.query.getRoot()
 ```ts
 const config = project.getDocumentConfig(documentId)
 ```
+
+## Cross-document queries
+
+`queryFirst` and `queryAll` run a query function across all registered documents.
+
+```ts
+// Stop at first match
+const result = await project.queryFirst(async (query) => {
+	return query.findOne({ tagName: 'Substation', attributes: { name: 'HV' } })
+})
+
+// Collect from all documents
+const allRoots = await project.queryAll(async (query) => {
+	return [await query.getRoot()]
+})
+```
+
+Both methods iterate documents sequentially and expose the full typed query surface including extension methods.
 
 ## Undo / Redo
 

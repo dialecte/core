@@ -62,6 +62,9 @@ export function setSaxParser(params: {
 
 	parser.ontext = (text: string) => (updatedState = handleText({ text, state: updatedState }))
 
+	parser.oncdata = (cdata: string) =>
+		(updatedState = handleText({ text: cdata, state: updatedState }))
+
 	parser.onclosetag = () =>
 		({ updatedState } = handleCloseTag({
 			state: updatedState,
