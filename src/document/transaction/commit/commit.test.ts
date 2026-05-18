@@ -4,14 +4,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createTestRecord } from '@/test'
 
-import type { DocumentActivity } from '@/document'
+import type { DocumentState } from '@/document'
 import type { Store } from '@/store'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyRawRecord, Operation } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeState(): DocumentActivity {
+function makeState(): DocumentState {
 	return {
 		loading: false,
 		error: null,
@@ -58,6 +58,7 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 		undo: vi.fn(),
 		redo: vi.fn(),
 		getChangeLog: vi.fn().mockResolvedValue([]),
+		getDatabaseInstance: vi.fn(),
 		destroy: vi.fn(),
 	}
 
@@ -89,6 +90,7 @@ describe('commitTransaction', () => {
 			undo: vi.fn(),
 			redo: vi.fn(),
 			getChangeLog: vi.fn().mockResolvedValue([]),
+			getDatabaseInstance: vi.fn(),
 			commit: vi.fn(async () => {
 				loadingSnapshot.push(state.loading)
 				progressSnapshot.push(state.progress)

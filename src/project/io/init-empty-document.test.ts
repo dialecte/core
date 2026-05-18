@@ -78,13 +78,13 @@ describe('initEmptyDocument', () => {
 			options: tc.options,
 		})
 
-		expect(result.document.name).toBe(tc.expectedName)
-		expect(result.document.extension).toBe(tc.expectedExtension)
-		expect(result.document.configKey).toBe(tc.expectedConfigKey)
-		expect(result.document.id).toBeTruthy()
-		expect(result.documentId).toBe(result.document.id)
-		expect(result.documentState.document).toBe(result.document)
-		expect(store.registerDocument).toHaveBeenCalledWith(result.document)
+		expect(result.record.name).toBe(tc.expectedName)
+		expect(result.record.extension).toBe(tc.expectedExtension)
+		expect(result.record.configKey).toBe(tc.expectedConfigKey)
+		expect(result.record.id).toBeTruthy()
+		expect(result.documentId).toBe(result.record.id)
+		expect(result.documentState.record).toBe(result.record)
+		expect(store.registerDocument).toHaveBeenCalledWith(result.record)
 	})
 
 	it('metadata preserved in DocumentRecord', async () => {
@@ -96,7 +96,7 @@ describe('initEmptyDocument', () => {
 			options: { metadata: { source: 'import', version: 2 } },
 		})
 
-		expect(result.document.metadata).toEqual({ source: 'import', version: 2 })
+		expect(result.record.metadata).toEqual({ source: 'import', version: 2 })
 	})
 
 	it('unknown configKey -> throws UNKNOWN_CONFIG_KEY', async () => {

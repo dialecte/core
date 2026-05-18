@@ -1,14 +1,14 @@
 ---
-description: How to use DocumentActivity and DocumentState for UI feedback (loading, error, progress, history) and how to create structured errors via throwDialecteError and the invariant utility.
+description: How to use DocumentState and DocumentEntry for UI feedback (loading, error, progress, history) and how to create structured errors via throwDialecteError and the invariant utility.
 ---
 
 # State & Errors
 
 ## Document state
 
-### DocumentActivity
+### DocumentState
 
-Every `Document` exposes a single `state` object of type `DocumentActivity` that drives UI feedback. In Vue, wrap it with `reactive()` to trigger re-renders automatically.
+Every `Document` exposes a single `state` object of type `DocumentState` that drives UI feedback. In Vue, wrap it with `reactive()` to trigger re-renders automatically.
 
 ```ts
 const doc = project.openDocument(documentId)
@@ -36,19 +36,19 @@ v-if="doc.state.progress"
 {{ doc.state.progress.current }} / {{ doc.state.progress.total }}
 ```
 
-### DocumentState (Project-level)
+### DocumentEntry (Project-level)
 
-At the Project level, `DocumentState` extends `DocumentActivity` with project-specific fields:
+At the Project level, `DocumentEntry` extends `DocumentState` with project-specific fields:
 
 ```ts
-type DocumentState = DocumentActivity & {
-	document: DocumentRecord
+type DocumentEntry = DocumentState & {
+	record: DocumentRecord
 	canUndo: boolean
 	canRedo: boolean
 }
 ```
 
-`ProjectState.documents` is a `Map<string, DocumentState>`.
+`ProjectState.documents` is a `Map<string, DocumentEntry>`.
 
 ### Lifecycle during a transaction
 

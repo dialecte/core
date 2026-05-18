@@ -9,7 +9,7 @@ import { stageUpdate } from './update'
 
 import { toRef } from '@/helpers'
 
-import type { DocumentActivity } from '../types'
+import type { DocumentState } from '../types'
 import type { Context } from '../types'
 import type { CloneResult } from './clone'
 import type { CloneMapping } from './clone'
@@ -45,7 +45,7 @@ import type {
  */
 export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<GenericConfig> {
 	protected stagedOperations: Operation<GenericConfig>[] = []
-	protected documentActivity: DocumentActivity
+	protected documentActivity: DocumentState
 	protected recordCache = new Map<string, AnyRawRecord>()
 	protected hooks: TransactionHooks<GenericConfig> | undefined
 	protected cumulativeCloneMappings: CloneMapping<GenericConfig>[] = []
@@ -55,7 +55,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		store: Store,
 		dialecteConfig: GenericConfig,
 		documentId: string,
-		documentActivity: DocumentActivity,
+		documentActivity: DocumentState,
 		hooks?: TransactionHooks<GenericConfig>,
 	) {
 		super(store, dialecteConfig, documentId)

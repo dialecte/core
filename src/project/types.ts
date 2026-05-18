@@ -1,4 +1,4 @@
-import type { DocumentActivity, ExtensionModules } from '@/document'
+import type { DocumentState, ExtensionModules } from '@/document'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, ChunkOptions, TransactionHooks } from '@/types'
 
@@ -29,10 +29,10 @@ export type DocumentRecord = {
 
 /**
  * DocumentState - observable state for a single document within a Project.
- * Extends DocumentActivity with project-level fields.
+ * Extends DocumentState with project-level fields.
  */
-export type DocumentState = DocumentActivity & {
-	document: DocumentRecord
+export type DocumentEntry = DocumentState & {
+	record: DocumentRecord
 	canUndo: boolean
 	canRedo: boolean
 }
@@ -42,7 +42,7 @@ export type DocumentState = DocumentActivity & {
  * In Vue: reactive(project.state) makes all fields trigger re-renders.
  */
 export type ProjectState = {
-	documents: Map<string, DocumentState>
+	documents: Map<string, DocumentEntry>
 	activeTransactions: number
 }
 
@@ -95,8 +95,8 @@ export type InitEmptyDocumentParams = {
 
 export type InitEmptyDocumentResult = {
 	documentId: string
-	document: DocumentRecord
-	documentState: DocumentState
+	record: DocumentRecord
+	documentState: DocumentEntry
 }
 
 // ── importDocument ───────────────────────────────────────────────────────────────
@@ -122,8 +122,8 @@ export type ImportDocumentParams = {
 
 export type ImportDocumentResult = {
 	documentId: string
-	document: DocumentRecord
-	documentState: DocumentState
+	record: DocumentRecord
+	documentState: DocumentEntry
 	recordCount: number
 }
 

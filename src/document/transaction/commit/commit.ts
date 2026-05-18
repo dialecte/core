@@ -1,6 +1,6 @@
 import { mergeOperations } from './merge-operations'
 
-import type { DocumentActivity } from '@/document/types'
+import type { DocumentState } from '@/document/types'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, Operation } from '@/types'
 
@@ -8,7 +8,7 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	stagedOperations: Operation<GenericConfig>[]
 	store: Store
 	documentId: string
-	documentState: DocumentActivity
+	documentState: DocumentState
 }): Promise<void> {
 	const { stagedOperations, store, documentId, documentState } = params
 

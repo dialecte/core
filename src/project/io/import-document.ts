@@ -49,7 +49,7 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 
 	return {
 		documentId,
-		document: documentRecord,
+		record: documentRecord,
 		documentState: buildDocumentState(documentRecord),
 		recordCount,
 	}

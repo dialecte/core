@@ -1,11 +1,11 @@
-import type { DocumentState, DocumentRecord } from '@/project'
+import type { DocumentEntry, DocumentRecord } from '@/project'
 
 /**
  * Build the initial DocumentState for a newly registered document.
  */
-export function buildDocumentState(document: DocumentRecord): DocumentState {
+export function buildDocumentState(document: DocumentRecord): DocumentEntry {
 	return {
-		document,
+		record: document,
 		loading: false,
 		error: null,
 		progress: null,
@@ -21,9 +21,9 @@ export function buildDocumentState(document: DocumentRecord): DocumentState {
  * Adds new documents, removes stale ones. Returns the mutated map for convenience.
  */
 export function reconcileDocumentState(
-	state: Map<string, DocumentState>,
+	state: Map<string, DocumentEntry>,
 	storeDocuments: DocumentRecord[],
-): Map<string, DocumentState> {
+): Map<string, DocumentEntry> {
 	const existingIds = new Set(storeDocuments.map((document) => document.id))
 
 	for (const document of storeDocuments) {

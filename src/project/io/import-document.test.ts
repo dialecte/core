@@ -75,8 +75,8 @@ describe('importDocument', () => {
 				defaultConfigKey: 'default',
 			})
 
-			expect(result.document.name).toBe(tc.expectedName)
-			expect(result.document.extension).toBe(tc.expectedExtension)
+			expect(result.record.name).toBe(tc.expectedName)
+			expect(result.record.extension).toBe(tc.expectedExtension)
 		})
 	})
 
@@ -92,9 +92,9 @@ describe('importDocument', () => {
 				defaultConfigKey: 'default',
 			})
 
-			expect(store.registerDocument).toHaveBeenCalledWith(result.document)
-			expect(result.document.configKey).toBe('default')
-			expect(result.documentId).toBe(result.document.id)
+			expect(store.registerDocument).toHaveBeenCalledWith(result.record)
+			expect(result.record.configKey).toBe('default')
+			expect(result.documentId).toBe(result.record.id)
 		})
 
 		it('metadata passed through to DocumentRecord', async () => {
@@ -109,7 +109,7 @@ describe('importDocument', () => {
 				options: { metadata: { source: 'upload', version: 3 } },
 			})
 
-			expect(result.document.metadata).toEqual({ source: 'upload', version: 3 })
+			expect(result.record.metadata).toEqual({ source: 'upload', version: 3 })
 		})
 	})
 
@@ -133,7 +133,7 @@ describe('importDocument', () => {
 				options: { configKey: 'alt' },
 			})
 
-			expect(result.document.configKey).toBe('alt')
+			expect(result.record.configKey).toBe('alt')
 		})
 
 		it('unknown configKey -> throws UNKNOWN_CONFIG_KEY', async () => {
@@ -224,7 +224,7 @@ describe('importDocument', () => {
 			defaultConfigKey: 'default',
 		})
 
-		expect(result.documentState.document).toBe(result.document)
+		expect(result.documentState.record).toBe(result.record)
 		expect(result.documentState.loading).toBe(false)
 		expect(result.documentState.lastUpdate).toBeNull()
 	})

@@ -17,7 +17,7 @@ export async function exportDocument(params: ExportDocumentParams): Promise<Expo
 		detail: `Document "${documentId}" not registered in project "${projectName}"`,
 	})
 
-	const config = configs[documentState.document.configKey]
+	const config = configs[documentState.record.configKey]
 	const records = await store.getByDocumentId(documentId)
 
 	const xmlDocument = buildXmlDocument({
@@ -26,11 +26,11 @@ export async function exportDocument(params: ExportDocumentParams): Promise<Expo
 		withDatabaseIds: options?.withDatabaseIds,
 	})
 
-	const filename = `${documentState.document.name}${documentState.document.extension}`
+	const filename = `${documentState.record.name}${documentState.record.extension}`
 
 	if (options?.withDownload) {
 		await downloadFile({
-			extension: documentState.document.extension as string,
+			extension: documentState.record.extension as string,
 			xmlDocument,
 			filename,
 		})

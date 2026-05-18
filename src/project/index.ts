@@ -11,7 +11,7 @@ export type {
 	ExportDocumentOptions,
 	StorageParam,
 	DocumentRecord,
-	DocumentState,
+	DocumentEntry,
 	ProjectState,
 } from './types'
 export type {

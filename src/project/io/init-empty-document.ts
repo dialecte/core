@@ -60,5 +60,5 @@ export async function initEmptyDocument(
 
 	await store.bulkWrite(documentId, { creates: [rootRecord] })
 
-	return { documentId, document: doc, documentState: buildDocumentState(doc) }
+	return { documentId, record: doc, documentState: buildDocumentState(doc) }
 }

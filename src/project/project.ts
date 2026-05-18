@@ -237,7 +237,7 @@ export class Project<
 			detail: `Document "${documentId}" not registered in project "${this.name}"`,
 		})
 
-		const config = this.configs[documentState.document.configKey]
+		const config = this.configs[documentState.record.configKey]
 		return new Document(
 			this.store,
 			config,
@@ -254,7 +254,7 @@ export class Project<
 	getDocumentConfig(documentId: string): GenericConfig | undefined {
 		const documentState = this.state.documents.get(documentId)
 		if (!documentState) return undefined
-		return this.configs[documentState.document.configKey]
+		return this.configs[documentState.record.configKey]
 	}
 
 	// ── Undo / Redo ──────────────────────────────────────────────────────────

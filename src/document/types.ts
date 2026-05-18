@@ -49,7 +49,7 @@ export type TransactionEntry = {
  *
  * Usage: const { loading, error, progress } = doc.state
  */
-export type DocumentActivity = {
+export type DocumentState = {
 	loading: boolean
 	error: DialecteError | null
 

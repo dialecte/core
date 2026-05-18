@@ -46,7 +46,7 @@ describe('buildDocumentState', () => {
 	it.each(Object.entries(cases))('%s', (_label, { input, expected }) => {
 		const result = buildDocumentState(input)
 
-		expect(result.document).toBe(input)
+		expect(result.record).toBe(input)
 		expect(result).toMatchObject(expected)
 	})
 })

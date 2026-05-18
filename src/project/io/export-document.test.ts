@@ -39,7 +39,7 @@ function makeState(documentId: string, doc: DocumentRecord): ProjectState {
 			[
 				documentId,
 				{
-					document: doc,
+					record: doc,
 					loading: false,
 					error: null,
 					progress: null,

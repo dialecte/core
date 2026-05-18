@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-## [0.2.6] - 2026-05-13
+## [0.2.8] - 2026-05-18
+
+### Changed
+
+- `DocumentActivity` renamed to `DocumentState` (document-internal; lives on `doc.state`)
+- `DocumentState` (project-level) renamed to `DocumentEntry` (`DocumentState & { record, canUndo, canRedo }`)
+- `DocumentEntry.document` renamed to `DocumentEntry.record`
+
+## [0.2.7] - 2026-05-13
 
 ### Added
 

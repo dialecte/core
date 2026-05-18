@@ -1,5 +1,5 @@
 ---
-description: API reference for the Document class - per-file entry point for query, transaction, prepare, DocumentActivity, cross-tab sync, and subclassing.
+description: API reference for the Document class - per-file entry point for query, transaction, prepare, DocumentState, cross-tab sync, and subclassing.
 ---
 
 # Document
@@ -80,9 +80,9 @@ await prepared.commit()
 | `commit()`   | `() => Promise<void>`           | Apply all staged operations      |
 | `discard()`  | `() => void`                    | Throw away all staged operations |
 
-## state (DocumentActivity)
+## state (DocumentState)
 
-Each `Document` exposes a reactive `state` object of type `DocumentActivity`:
+Each `Document` exposes a reactive `state` object of type `DocumentState`:
 
 ```ts
 doc.state.loading // boolean - true while busy
@@ -92,10 +92,10 @@ doc.state.history // TransactionEntry[] - breadcrumb trail
 doc.state.lastUpdate // number | null - timestamp of last commit
 ```
 
-### DocumentActivity
+### DocumentState
 
 ```ts
-type DocumentActivity = {
+type DocumentState = {
 	loading: boolean
 	error: DialecteError | null
 	progress: { message: string; current: number; total: number } | null
@@ -111,13 +111,13 @@ type TransactionEntry = {
 }
 ```
 
-### DocumentState (Project-level)
+### DocumentEntry (Project-level)
 
-At the Project level, `DocumentState` extends `DocumentActivity` with project-specific fields:
+At the Project level, `DocumentEntry` extends `DocumentState` with project-specific fields:
 
 ```ts
-type DocumentState = DocumentActivity & {
-	document: DocumentRecord
+type DocumentEntry = DocumentState & {
+	record: DocumentRecord
 	canUndo: boolean
 	canRedo: boolean
 }

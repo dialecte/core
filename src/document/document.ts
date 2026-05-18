@@ -4,7 +4,7 @@ import { Transaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
 
-import type { PreparedTransaction, DocumentActivity } from './types'
+import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
@@ -31,7 +31,7 @@ export class Document<
 	readonly documentId: string
 	private extensionsRegistry?: GenericExtension
 
-	readonly state: DocumentActivity = {
+	readonly state: DocumentState = {
 		loading: false,
 		error: null,
 		progress: null,
