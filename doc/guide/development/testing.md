@@ -94,6 +94,9 @@ async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>
 	expect(result).toBe(testCase.expected)
 }
 
+// project is also available in ActParams for multi-document operations:
+// async function act({ project, source, testCase }: ActParams<...>) { ... }
+
 describe('getAttribute', () => {
 	runTestCases.withoutExport({ testCases, act })
 })
@@ -130,6 +133,7 @@ const testCases: TestCases<TestCase> = {
 }
 
 async function act({
+	project,
 	source,
 	testCase,
 }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
@@ -172,9 +176,11 @@ type BaseXmlTestCase = {
 ### What runTestCases does per test
 
 1. Creates an isolated `Project` with source (and optionally target) XML imported via `createTestProject`
-2. Calls `act` with the mounted `Document` instances
+2. Calls `act` with `{ project, source, target?, testCase }` - the project instance and mounted documents
 3. If `act` returns `ActResult`: exports the source or target document and runs XPath assertions
 4. Destroys the project (cleans up all databases)
+
+The `project` instance is useful for multi-document operations (e.g. importing additional files, calling `project.getDatabaseInstance()`, or exporting intermediate states).
 
 ### Stable record IDs with dev:db-id
 

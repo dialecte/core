@@ -65,7 +65,12 @@ function xmlWithExport<
 			try {
 				crypto.randomUUID = createMockRandomUUID()
 
-				const result = await act({ testCase, source: source.document, target: target?.document })
+				const result = await act({
+					testCase,
+					project,
+					source: source.document,
+					target: target?.document,
+				})
 
 				const assertOn = result?.assertOn ?? 'source'
 				const withDatabaseIds = result?.withDatabaseIds ?? true
@@ -120,7 +125,7 @@ function xmlWithoutExport<
 			try {
 				crypto.randomUUID = createMockRandomUUID()
 
-				await act({ testCase, source: source.document, target: target?.document })
+				await act({ testCase, project, source: source.document, target: target?.document })
 			} finally {
 				await project.destroy()
 			}

@@ -1,4 +1,5 @@
 import type { Document } from '@/document'
+import type { Project } from '@/project'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 export type BaseTestCase = {
@@ -19,6 +20,7 @@ export type ActParams<
 	GenericTestCase extends BaseXmlTestCase,
 > = {
 	testCase: GenericTestCase
+	project: Project<GenericConfig>
 	source: Document<GenericConfig>
 	target?: Document<GenericConfig>
 }

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.9] - 2026-05-19
+
+### Changed
+
+- `ActParams` now includes `project` - the `Project` instance is passed to `act` callbacks in `runTestCases.withExport` and `runTestCases.withoutExport`s `act` callbakc has now
+
 ## [0.2.8] - 2026-05-18
 
 ### Changed
