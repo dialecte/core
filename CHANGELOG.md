@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.10] - 2026-05-19
+
+### Changed
+
+- `createTestRunner` now accepts a single object param: `{ dialecteConfig, hooks?, extensions? }`
+- `createTestProject` accepts `extensions?: { base?, custom? }` to produce fully-hydrated projects with extension modules
+- `TestProjectResult`, `ActParams`, and `TestRunner` carry a `GenericModules` generic - project type flows through to `act` callbacks
+
 ## [0.2.9] - 2026-05-19
 
 ### Changed

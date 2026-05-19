@@ -1,4 +1,4 @@
-import type { Document } from '@/document'
+import type { Document, ExtensionModules } from '@/document'
 import type { Project } from '@/project'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
@@ -18,9 +18,10 @@ export type TestCases<GenericTestCase extends BaseXmlTestCase> = Record<string, 
 export type ActParams<
 	GenericConfig extends AnyDialecteConfig,
 	GenericTestCase extends BaseXmlTestCase,
+	GenericModules extends ExtensionModules = Record<never, never>,
 > = {
 	testCase: GenericTestCase
-	project: Project<GenericConfig>
+	project: Project<GenericConfig, GenericModules>
 	source: Document<GenericConfig>
 	target?: Document<GenericConfig>
 }
@@ -30,16 +31,21 @@ export type ActResult = {
 	withDatabaseIds?: boolean
 }
 
-export type TestRunner<GenericConfig extends AnyDialecteConfig> = {
+export type TestRunner<
+	GenericConfig extends AnyDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
+> = {
 	withExport<GenericTestCase extends BaseXmlTestCase>(params: {
 		testCases: TestCases<GenericTestCase>
-		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult | void>
+		act: (
+			params: ActParams<GenericConfig, GenericTestCase, GenericModules>,
+		) => Promise<ActResult | void>
 		dialecteConfig?: GenericConfig
 		hooks?: TransactionHooks<GenericConfig>
 	}): void
 	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
 		testCases: TestCases<GenericTestCase>
-		act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
+		act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
 		dialecteConfig?: GenericConfig
 		hooks?: TransactionHooks<GenericConfig>
 	}): void

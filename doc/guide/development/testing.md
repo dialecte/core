@@ -312,15 +312,19 @@ Lower-level helper for tests that need manual control over export, intermediate 
 ### Signature
 
 ```ts
-async function createTestProject<Config extends AnyDialecteConfig>(params: {
+async function createTestProject<
+	GenericConfig extends AnyDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
+>(params: {
 	sourceXml: string
 	targetXml?: string
-	dialecteConfig?: Config // defaults to TEST_DIALECTE_CONFIG
-	hooks?: TransactionHooks<Config>
+	dialecteConfig?: GenericConfig // defaults to TEST_DIALECTE_CONFIG
+	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
+	hooks?: TransactionHooks<GenericConfig>
 }): Promise<{
-	project: Project<Config>
-	source: { documentId: string; document: Document<Config> }
-	target?: { documentId: string; document: Document<Config> }
+	project: Project<GenericConfig, GenericModules>
+	source: { documentId: string; document: Document<GenericConfig> }
+	target?: { documentId: string; document: Document<GenericConfig> }
 }>
 ```
 
@@ -432,11 +436,19 @@ export const ALL_XMLNS_NAMESPACES = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAME
 export { CUSTOM_RECORD_ID_ATTRIBUTE, CUSTOM_RECORD_ID_ATTRIBUTE_NAME }
 
 // Pre-bound runner - same shape as runTestCases but for this dialecte config
-export const runDialecteTestCases = createTestRunner(MY_DIALECTE_CONFIG)
+// Pass extensions to get a fully-hydrated project with extension modules
+export const runDialecteTestCases = createTestRunner({
+	dialecteConfig: MY_DIALECTE_CONFIG,
+	extensions: { base: MY_EXTENSION_MODULES },
+})
 
-// Wrap createTestProject with the dialecte config
+// Wrap createTestProject with the dialecte config and extensions
 export async function createDialecteTestProject(params: { sourceXml: string; targetXml?: string }) {
-	return createTestProject({ ...params, dialecteConfig: MY_DIALECTE_CONFIG })
+	return createTestProject({
+		...params,
+		dialecteConfig: MY_DIALECTE_CONFIG,
+		extensions: { base: MY_EXTENSION_MODULES },
+	})
 }
 
 // Typed record factory - createDialecteTestRecord({ record: { tagName: 'A', ... } })
@@ -452,7 +464,7 @@ export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = 
 
 | Export                                                            | Purpose                                                                                   |
 | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `runDialecteTestCases`                                            | Pre-bound runner: `.withExport`, `.withoutExport`, `.generic`                             |
+| `runDialecteTestCases`                                            | Pre-bound runner: `.withExport`, `.withoutExport`, `.generic` (with extension modules)    |
 | `createDialecteTestProject`                                       | Manual test setup pre-bound to the dialecte config                                        |
 | `createDialecteTestRecord`                                        | Typed record factory - `tagName` narrowed to the dialecte's elements                      |
 | `assertExpectedElementQueries` / `assertUnexpectedElementQueries` | XPath assertions with namespace prefix resolution pre-configured                          |

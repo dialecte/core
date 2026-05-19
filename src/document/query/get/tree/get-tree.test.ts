@@ -10,8 +10,9 @@ import {
 } from '@/test'
 
 import type { GetTreeParams } from '@/document'
+import type { Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
-import type { AnyTreeRecord, ElementsOf, Ref } from '@/types'
+import type { AnyTreeRecord, ElementsOf } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
@@ -413,7 +414,7 @@ const RECURSIVE_CONFIG = {
 	},
 } as unknown as RecursiveTestDialecteConfig
 
-const recursiveRunner = createTestRunner(RECURSIVE_CONFIG)
+const recursiveRunner = createTestRunner({ dialecteConfig: RECURSIVE_CONFIG })
 
 describe('getTree - auto-recursion', () => {
 	type TestCase = BaseXmlTestCase & {

@@ -12,6 +12,7 @@ import type {
 	ActResult,
 	TestRunner,
 } from './run-test-cases.type'
+import type { ExtensionModules } from '@/document'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
@@ -32,15 +33,20 @@ export function createMockRandomUUID(): () => `${string}-${string}-${string}-${s
 function xmlWithExport<
 	GenericTestCase extends BaseXmlTestCase,
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
 >(params: {
 	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<ActResult | void>
+	act: (
+		params: ActParams<GenericConfig, GenericTestCase, GenericModules>,
+	) => Promise<ActResult | void>
 	dialecteConfig?: GenericConfig
+	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 	hooks?: TransactionHooks<GenericConfig>
 }): void {
 	const {
 		testCases,
 		act,
+		extensions,
 		hooks,
 		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
 	} = params
@@ -55,10 +61,11 @@ function xmlWithExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const { project, source, target } = await createTestProject({
+			const { project, source, target } = await createTestProject<GenericConfig, GenericModules>({
 				sourceXml: testCase.sourceXml,
 				targetXml: testCase.targetXml,
 				dialecteConfig,
+				extensions,
 				hooks,
 			})
 
@@ -96,15 +103,18 @@ function xmlWithExport<
 function xmlWithoutExport<
 	GenericTestCase extends BaseXmlTestCase,
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
 >(params: {
 	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericConfig, GenericTestCase>) => Promise<void>
+	act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
 	dialecteConfig?: GenericConfig
+	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 	hooks?: TransactionHooks<GenericConfig>
 }): void {
 	const {
 		testCases,
 		act,
+		extensions,
 		hooks,
 		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
 	} = params
@@ -115,10 +125,11 @@ function xmlWithoutExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const { project, source, target } = await createTestProject({
+			const { project, source, target } = await createTestProject<GenericConfig, GenericModules>({
 				sourceXml: testCase.sourceXml,
 				targetXml: testCase.targetXml,
 				dialecteConfig,
+				extensions,
 				hooks,
 			})
 
@@ -143,15 +154,20 @@ function genericTestCases<GenericTestCase extends BaseTestCase>(
 	}
 }
 
-export const runTestCases = createTestRunner(TEST_DIALECTE_CONFIG)
+export const runTestCases = createTestRunner({ dialecteConfig: TEST_DIALECTE_CONFIG })
 
-export function createTestRunner<GenericConfig extends AnyDialecteConfig>(
-	dialecteConfig: GenericConfig,
-	hooks?: TransactionHooks<GenericConfig>,
-): TestRunner<GenericConfig> {
+export function createTestRunner<
+	GenericConfig extends AnyDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
+>(params: {
+	dialecteConfig: GenericConfig
+	hooks?: TransactionHooks<GenericConfig>
+	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
+}): TestRunner<GenericConfig, GenericModules> {
+	const { dialecteConfig, hooks, extensions } = params
 	return {
-		withExport: (params) => xmlWithExport({ dialecteConfig, hooks, ...params }),
-		withoutExport: (params) => xmlWithoutExport({ dialecteConfig, hooks, ...params }),
+		withExport: (params) => xmlWithExport({ dialecteConfig, extensions, hooks, ...params }),
+		withoutExport: (params) => xmlWithoutExport({ dialecteConfig, extensions, hooks, ...params }),
 		generic: genericTestCases,
 	}
 }

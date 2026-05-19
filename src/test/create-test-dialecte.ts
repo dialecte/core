@@ -4,7 +4,7 @@ import { Project } from '@/project'
 import { DexieStore } from '@/store'
 
 import type { Document } from '@/document'
-import type { Context } from '@/document'
+import type { Context, ExtensionModules } from '@/document'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
@@ -14,8 +14,11 @@ export type TestDocument<GenericConfig extends AnyDialecteConfig> = {
 	document: Document<GenericConfig>
 }
 
-export type TestProjectResult<GenericConfig extends AnyDialecteConfig> = {
-	project: Project<GenericConfig>
+export type TestProjectResult<
+	GenericConfig extends AnyDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
+> = {
+	project: Project<GenericConfig, GenericModules>
 	source: TestDocument<GenericConfig>
 	target?: TestDocument<GenericConfig>
 }
@@ -26,30 +29,35 @@ export type TestProjectResult<GenericConfig extends AnyDialecteConfig> = {
  */
 export async function createTestProject<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
 >(params: {
 	sourceXml: string
 	targetXml?: string
 	dialecteConfig?: GenericConfig
+	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 	hooks?: TransactionHooks<GenericConfig>
-}): Promise<TestProjectResult<GenericConfig>> {
+}): Promise<TestProjectResult<GenericConfig, GenericModules>> {
 	const {
 		sourceXml,
 		targetXml,
 		dialecteConfig = TEST_DIALECTE_CONFIG,
+		extensions,
 		hooks,
 	} = params as {
 		sourceXml: string
 		targetXml?: string
 		dialecteConfig: GenericConfig
+		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 		hooks?: TransactionHooks<GenericConfig>
 	}
 
 	const projectName = `test-${crypto.randomUUID()}`
 
-	const project = await new Project<GenericConfig>({
+	const project = await new Project<GenericConfig, GenericModules>({
 		configs: { default: dialecteConfig } as Record<string, GenericConfig>,
 		defaultConfigKey: 'default',
 		storage: { type: 'local' },
+		extensions,
 		hooks: hooks as TransactionHooks<GenericConfig>,
 	}).open(projectName)
 
