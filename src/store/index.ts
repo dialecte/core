@@ -1,5 +1,6 @@
 export type { Store, ChangeLogEntry, ChangeLogMeta, RecordSchema } from './store.types'
 export * from './local'
+export * from './in-memory'
 export {
 	TABLE_DOCUMENTS,
 	TABLE_CHANGELOG,

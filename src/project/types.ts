@@ -48,7 +48,10 @@ export type ProjectState = {
 
 // ── Storage ──────────────────────────────────────────────────────────────────
 
-export type StorageParam = { type: 'local' } | { type: 'custom'; store: Store }
+export type StorageParam =
+	| { type: 'local' }
+	| { type: 'custom'; store: Store }
+	| { type: 'inMemory'; writable?: boolean }
 
 // ── Project constructor ──────────────────────────────────────────────────────
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Added
+
+- `InMemoryStore`: Map-backed `Store` implementation with `{ type: 'inMemory', writable?: boolean }` storage param
+- `STORE_NOT_WRITABLE` error code (D1007): thrown when mutating a non-writable in-memory store
+
+## [0.2.12] - 2026-05-22
+
+### Added
+
 ## [0.2.11] - 2026-05-21
 
 ### Fixed
