@@ -185,7 +185,10 @@ function addAttributesToElement(params: {
 
 	for (const attribute of attributes) {
 		if (isNamespaceDeclaration(attribute)) continue
-		if (!isRoot && shouldSkipDefaultAttribute({ config, tagName, attribute })) continue
+		const isAttributeSet = attribute.value
+		if (!isRoot && !isAttributeSet && shouldSkipDefaultAttribute({ config, tagName, attribute })) {
+			continue
+		}
 
 		if (!isQualifiedAttribute(attribute) || !attribute.namespace.prefix) {
 			element.setAttribute(attribute.name, String(attribute.value))
@@ -343,8 +346,6 @@ function shouldSkipDefaultAttribute(params: {
 
 	const details = definition.attributes.details[attribute.name]
 	if (!details || details.required) return false
-	if (details.default === undefined) return false
-	if (String(attribute.value) !== details.default) return false
 
 	const identityFields = definition.attributes.identityFields
 	if (identityFields?.includes(attribute.name)) return false

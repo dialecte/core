@@ -51,27 +51,24 @@ describe('standardizeRecord', () => {
 				expectedAttributes: [{ name: 'aAA_1', value: 'required' }],
 			},
 			'preserves optional attribute with empty-string default when provided': {
-				input: { tagName: 'BB_1', attributes: { aBB_1: 'req', dBB_1: '' } },
+				input: { tagName: 'BB_1', attributes: { aBB_1: 'req', bBB_1: '' } },
 				expectedAttributes: [
 					{ name: 'aBB_1', value: 'req' },
-					{ name: 'dBB_1', value: '' },
-					{ name: 'eBB_1', value: '' },
+					{ name: 'bBB_1', value: '' },
 				],
 			},
 			'includes optional attribute with empty-string default when provided with value': {
-				input: { tagName: 'BB_1', attributes: { aBB_1: 'req', dBB_1: 'val' } },
+				input: { tagName: 'BB_1', attributes: { aBB_1: 'req', bBB_1: 'val' } },
 				expectedAttributes: [
 					{ name: 'aBB_1', value: 'req' },
-					{ name: 'dBB_1', value: 'val' },
-					{ name: 'eBB_1', value: '' },
+					{ name: 'bBB_1', value: 'val' },
 				],
 			},
 			'uses schema default for optional attribute when not provided': {
 				input: { tagName: 'BB_1', attributes: { aBB_1: 'req' } },
 				expectedAttributes: [
 					{ name: 'aBB_1', value: 'req' },
-					{ name: 'dBB_1', value: '' },
-					{ name: 'eBB_1', value: '' },
+					{ name: 'bBB_1', value: '' },
 				],
 			},
 			'includes all provided optional attributes alongside required': {

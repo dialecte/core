@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.11] - 2026-05-21
+
+### Fixed
+
+- export: only strip empty + optional + non-identity attributes (previously stripped all attributes matching schema default)
+
+### Changed
+
+- test XSD: removed non-conventional `dBB_1`/`eBB_1`/`fBB_1` attributes; distributed defaults across `bBB_1`, `bBB_2`, `bBBB_1` per a/b/c naming convention
+
 ## [0.2.10] - 2026-05-19
 
 ### Changed

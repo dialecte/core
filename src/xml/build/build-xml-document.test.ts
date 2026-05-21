@@ -429,15 +429,45 @@ describe('buildXmlDocument', () => {
 		})
 	})
 
-	describe('default attribute stripping', () => {
+	describe('empty attribute stripping', () => {
 		type TestCase = BaseTestCase & {
 			records: AnyRawRecord[]
 			assertions: (xmlDocument: XMLDocument) => void
 		}
 
 		const testCases: Record<string, TestCase> = {
-			'non-identity attribute matching default -> stripped': {
-				// BB_1.eBB_1 has default '' and is NOT in identityFields
+			'non-identity empty attribute -> stripped': {
+				// BB_2.bBB_2 has default '' and is NOT in identityFields
+				records: [
+					record({
+						id: 'root-1',
+						tagName: 'Root',
+						children: [{ id: 'b-1', tagName: 'B' }],
+					}),
+					record({
+						id: 'b-1',
+						tagName: 'B',
+						parent: { id: 'root-1', tagName: 'Root' },
+						attributes: [{ name: 'aB', value: 'x' }],
+						children: [{ id: 'bb2-1', tagName: 'BB_2' }],
+					}),
+					record({
+						id: 'bb2-1',
+						tagName: 'BB_2',
+						parent: { id: 'b-1', tagName: 'B' },
+						attributes: [
+							{ name: 'aBB_2', value: 'required-val' },
+							{ name: 'bBB_2', value: '' }, // empty, not identity -> stripped
+						],
+					}),
+				],
+				assertions: (doc) => {
+					const bb2 = doc.querySelector('BB_2')
+					expect(bb2!.hasAttribute('bBB_2')).toBe(false)
+				},
+			},
+			'identity-field empty attribute -> preserved': {
+				// BB_1.bBB_1 has default '' and IS in identityFields
 				records: [
 					record({
 						id: 'root-1',
@@ -457,17 +487,47 @@ describe('buildXmlDocument', () => {
 						parent: { id: 'b-1', tagName: 'B' },
 						attributes: [
 							{ name: 'aBB_1', value: 'required-val' },
-							{ name: 'eBB_1', value: '' }, // matches default, not identity -> stripped
+							{ name: 'bBB_1', value: '' }, // empty, but identity -> kept
 						],
 					}),
 				],
 				assertions: (doc) => {
 					const bb1 = doc.querySelector('BB_1')
-					expect(bb1!.hasAttribute('eBB_1')).toBe(false)
+					expect(bb1!.hasAttribute('bBB_1')).toBe(true)
+					expect(bb1!.getAttribute('bBB_1')).toBe('')
 				},
 			},
-			'identity-field attribute matching default -> preserved': {
-				// BB_1.dBB_1 has default '' and IS in identityFields
+			'non-empty attribute -> always preserved': {
+				records: [
+					record({
+						id: 'root-1',
+						tagName: 'Root',
+						children: [{ id: 'b-1', tagName: 'B' }],
+					}),
+					record({
+						id: 'b-1',
+						tagName: 'B',
+						parent: { id: 'root-1', tagName: 'Root' },
+						attributes: [{ name: 'aB', value: 'x' }],
+						children: [{ id: 'bb2-1', tagName: 'BB_2' }],
+					}),
+					record({
+						id: 'bb2-1',
+						tagName: 'BB_2',
+						parent: { id: 'b-1', tagName: 'B' },
+						attributes: [
+							{ name: 'aBB_2', value: 'req' },
+							{ name: 'bBB_2', value: 'non-default-value' },
+						],
+					}),
+				],
+				assertions: (doc) => {
+					const bb2 = doc.querySelector('BB_2')
+					expect(bb2!.getAttribute('bBB_2')).toBe('non-default-value')
+				},
+			},
+			'non-empty attribute matching schema default -> preserved': {
+				// BBB_1.bBBB_1 has default 'false' - setting it to 'false' should still preserve it
 				records: [
 					record({
 						id: 'root-1',
@@ -485,45 +545,23 @@ describe('buildXmlDocument', () => {
 						id: 'bb1-1',
 						tagName: 'BB_1',
 						parent: { id: 'b-1', tagName: 'B' },
+						attributes: [{ name: 'aBB_1', value: 'req' }],
+						children: [{ id: 'bbb1-1', tagName: 'BBB_1' }],
+					}),
+					record({
+						id: 'bbb1-1',
+						tagName: 'BBB_1',
+						parent: { id: 'bb1-1', tagName: 'BB_1' },
 						attributes: [
-							{ name: 'aBB_1', value: 'required-val' },
-							{ name: 'dBB_1', value: '' }, // matches default, but identity -> kept
+							{ name: 'aBBB_1', value: 'req' },
+							{ name: 'bBBB_1', value: 'false' },
 						],
 					}),
 				],
 				assertions: (doc) => {
-					const bb1 = doc.querySelector('BB_1')
-					expect(bb1!.hasAttribute('dBB_1')).toBe(true)
-					expect(bb1!.getAttribute('dBB_1')).toBe('')
-				},
-			},
-			'attribute not matching default -> always preserved': {
-				records: [
-					record({
-						id: 'root-1',
-						tagName: 'Root',
-						children: [{ id: 'b-1', tagName: 'B' }],
-					}),
-					record({
-						id: 'b-1',
-						tagName: 'B',
-						parent: { id: 'root-1', tagName: 'Root' },
-						attributes: [{ name: 'aB', value: 'x' }],
-						children: [{ id: 'bb1-1', tagName: 'BB_1' }],
-					}),
-					record({
-						id: 'bb1-1',
-						tagName: 'BB_1',
-						parent: { id: 'b-1', tagName: 'B' },
-						attributes: [
-							{ name: 'aBB_1', value: 'req' },
-							{ name: 'eBB_1', value: 'non-default-value' },
-						],
-					}),
-				],
-				assertions: (doc) => {
-					const bb1 = doc.querySelector('BB_1')
-					expect(bb1!.getAttribute('eBB_1')).toBe('non-default-value')
+					const bbb1 = doc.querySelector('BBB_1')
+					expect(bbb1!.hasAttribute('bBBB_1')).toBe(true)
+					expect(bbb1!.getAttribute('bBBB_1')).toBe('false')
 				},
 			},
 		}

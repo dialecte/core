@@ -227,7 +227,7 @@ selector)
 		<xs:key name="keyBB">
 			<xs:selector xpath="BB_1" />
 			<xs:field xpath="@aBB_1" />
-			<xs:field xpath="@dBB_1" />
+			<xs:field xpath="@bBB_1" />
 		</xs:key>
 		<xs:keyref name="refBB" refer="keyBB">
 			<xs:selector xpath="ext:BB_3" />
@@ -245,9 +245,7 @@ selector)
 				<xs:element ref="ext:BBB_3" minOccurs="0" maxOccurs="3" />
 			</xs:sequence>
 			<xs:attribute name="aBB_1" type="xs:string" use="required" />
-			<xs:attribute name="bBB_1" type="xs:string" />
-			<xs:attribute name="dBB_1" type="xs:string" default="" />
-			<xs:attribute name="eBB_1" type="xs:string" default="" />
+			<xs:attribute name="bBB_1" type="xs:string" default="" />
 			<xs:attribute ref="ext:cBB_1" />
 		</xs:complexType>
 		<xs:unique name="uniqueBBB_multiStep">
@@ -265,7 +263,7 @@ selector)
 				<xs:element ref="ext:BBB_3" minOccurs="0" maxOccurs="3" />
 			</xs:sequence>
 			<xs:attribute name="aBB_2" type="xs:string" use="required" />
-			<xs:attribute name="bBB_2" type="xs:string" />
+			<xs:attribute name="bBB_2" type="xs:string" default="" />
 			<xs:attribute ref="ext:cBB_2" />
 		</xs:complexType>
 		<xs:unique name="deepUniqueBBB">
@@ -283,7 +281,7 @@ selector)
 				<xs:element ref="ext:BBBB_3" minOccurs="0" maxOccurs="3" />
 			</xs:sequence>
 			<xs:attribute name="aBBB_1" type="xs:string" use="required" />
-			<xs:attribute name="bBBB_1" type="xs:string" />
+			<xs:attribute name="bBBB_1" type="xs:string" default="false" />
 			<xs:attribute ref="ext:cBBB_1" />
 		</xs:complexType>
 		<xs:unique name="uniqueBBBB_multiField">

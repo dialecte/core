@@ -332,7 +332,7 @@ export const DEFINITION = {
 				selector: [{ steps: [{ kind: 'name', value: 'BB_1' }] }],
 				fields: [
 					{ target: { kind: 'attribute', value: 'aBB_1', isAttribute: true } },
-					{ target: { kind: 'attribute', value: 'dBB_1', isAttribute: true } },
+					{ target: { kind: 'attribute', value: 'bBB_1', isAttribute: true } },
 				],
 			},
 			{
@@ -424,7 +424,7 @@ export const DEFINITION = {
 			sequence: ['aBBB_1', 'bBBB_1', 'ext:cBBB_1'],
 			details: {
 				aBBB_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBBB_1: { facets: { whiteSpace: 'preserve' } },
+				bBBB_1: { default: 'false', facets: { whiteSpace: 'preserve' } },
 				'ext:cBBB_1': {
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
 					facets: { whiteSpace: 'preserve' },
@@ -512,18 +512,16 @@ export const DEFINITION = {
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
 		parents: ['B'],
 		attributes: {
-			sequence: ['aBB_1', 'bBB_1', 'dBB_1', 'eBB_1', 'ext:cBB_1'],
+			sequence: ['aBB_1', 'bBB_1', 'ext:cBB_1'],
 			details: {
 				aBB_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBB_1: { facets: { whiteSpace: 'preserve' } },
-				dBB_1: { default: '', facets: { whiteSpace: 'preserve' } },
-				eBB_1: { default: '', facets: { whiteSpace: 'preserve' } },
+				bBB_1: { default: '', facets: { whiteSpace: 'preserve' } },
 				'ext:cBB_1': {
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
 					facets: { whiteSpace: 'preserve' },
 				},
 			},
-			identityFields: ['aBB_1', 'dBB_1'],
+			identityFields: ['aBB_1', 'bBB_1'],
 		},
 		children: {
 			sequence: ['BBB_1', 'BBB_2', 'BBB_3'],
@@ -572,7 +570,7 @@ export const DEFINITION = {
 			sequence: ['aBB_2', 'bBB_2', 'ext:cBB_2'],
 			details: {
 				aBB_2: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBB_2: { facets: { whiteSpace: 'preserve' } },
+				bBB_2: { default: '', facets: { whiteSpace: 'preserve' } },
 				'ext:cBB_2': {
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
 					facets: { whiteSpace: 'preserve' },
@@ -984,7 +982,7 @@ export const DEFINITION = {
 							selector: [{ steps: [{ kind: 'name', value: 'BB_1' }] }],
 							fields: [
 								{ target: { kind: 'attribute', value: 'aBB_1', isAttribute: true } },
-								{ target: { kind: 'attribute', value: 'dBB_1', isAttribute: true } },
+								{ target: { kind: 'attribute', value: 'bBB_1', isAttribute: true } },
 							],
 						},
 						{

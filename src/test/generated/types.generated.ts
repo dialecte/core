@@ -109,8 +109,6 @@ export type AttributesBBB_3 = {
 export type AttributesBB_1 = {
 	aBB_1: string
 	bBB_1?: string
-	dBB_1?: string
-	eBB_1?: string
 	'ext:cBB_1'?: string
 }
 
