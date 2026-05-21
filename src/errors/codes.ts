@@ -34,6 +34,10 @@ export const ERROR_CATALOG = {
 		code: 'D1006',
 		message: 'Failed to delete records from database',
 	},
+	STORE_NOT_WRITABLE: {
+		code: 'D1007',
+		message: 'Store is not writable',
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {

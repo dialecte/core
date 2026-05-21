@@ -589,3 +589,43 @@ const DIALECTE_NAMESPACES = {
   </A>
 </Root>
 ```
+
+---
+
+## In-Memory Store for tests
+
+For tests that don't need XML import/export but do need a working `Document` instance, use `{ type: 'inMemory' }` storage. This avoids IndexedDB entirely and runs synchronously in-memory.
+
+```ts
+import { Project, TEST_DIALECTE_CONFIG } from '@dialecte/core'
+
+const project = await new Project({
+	configs: { test: TEST_DIALECTE_CONFIG },
+	storage: { type: 'inMemory' },
+}).open('test')
+
+const docId = await project.initEmptyDocument({ name: 'fixture' })
+const doc = project.openDocument(docId)
+
+// Full Document API works - queries, transactions, extensions
+await doc.transaction(async (tx) => {
+	await tx.addChild({ tagName: 'Root' }, { tagName: 'A', attributes: { aA: 'value' } })
+})
+
+await project.destroy() // instant cleanup, no IndexedDB teardown
+```
+
+### Non-writable placeholder
+
+Use `{ type: 'inMemory', writable: false }` to create a Document that throws on any mutation. Useful for testing UI components that receive a `Document` but should not write during a specific phase:
+
+```ts
+const project = await new Project({
+	configs: { test: TEST_DIALECTE_CONFIG },
+	storage: { type: 'inMemory', writable: false },
+}).open('placeholder')
+
+const doc = project.openDocument(docId)
+await doc.query.getRoot() // undefined (empty)
+await doc.transaction(async (tx) => { ... }) // throws STORE_NOT_WRITABLE (D1007)
+```

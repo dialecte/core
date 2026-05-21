@@ -23,13 +23,13 @@ const project = await new Project({
 
 **Constructor - `ProjectParams`**
 
-| Param              | Type                                                     | Description                                                               |
-| ------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                            |
-| `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                  |
-| `storage`          | `StorageParam`                                           | `{ type: 'local' }` or `{ type: 'custom', store }`                        |
-| `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions` |
-| `hooks`            | `TransactionHooks`                                       | Transaction hooks applied to all Documents                                |
+| Param              | Type                                                     | Description                                                                            |
+| ------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                                         |
+| `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                               |
+| `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }` |
+| `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions`              |
+| `hooks`            | `TransactionHooks`                                       | Transaction hooks applied to all Documents                                             |
 
 **`project.open(name: string): Promise<this>`**
 
@@ -176,6 +176,37 @@ type ProjectState = {
 ```ts
 project.close() // close store connection and BroadcastChannel
 await project.destroy() // delete the database entirely and clear state
+```
+
+## In-Memory Storage
+
+Use `{ type: 'inMemory' }` for tests, demos, or UI placeholder documents that need a valid `Document` instance without IndexedDB.
+
+```ts
+const project = await new Project({
+	configs: { scl: sclConfig },
+	storage: { type: 'inMemory' },
+}).open('test-project')
+```
+
+**Options**
+
+| Param      | Type      | Default | Description                                                |
+| ---------- | --------- | ------- | ---------------------------------------------------------- |
+| `writable` | `boolean` | `true`  | When `false`, mutations throw `STORE_NOT_WRITABLE` (D1007) |
+
+A non-writable in-memory store is useful as a **null-object placeholder** in UI frameworks: reads return empty results, writes throw loudly. This prevents silent failures when code accidentally mutates before a real document is loaded.
+
+```ts
+// Read-only placeholder for UI boot phase
+const project = await new Project({
+	configs: { scl: sclConfig },
+	storage: { type: 'inMemory', writable: false },
+}).open('placeholder')
+
+const doc = project.openDocument(docId)
+await doc.query.getRoot() // returns undefined (empty store)
+await doc.transaction(async (tx) => { ... }) // throws STORE_NOT_WRITABLE
 ```
 
 ## Internal

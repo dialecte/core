@@ -2,7 +2,7 @@ import { resolveStore } from './resolve-store'
 
 import { describe, it, expect, vi } from 'vitest'
 
-import { DexieStore } from '@/store'
+import { DexieStore, InMemoryStore } from '@/store'
 
 import type { StorageParam } from '../project/types'
 import type { Store } from '@/store'
@@ -60,5 +60,15 @@ describe('resolveStore', () => {
 
 		// DexieStore was constructed with the name and options
 		expect(store).toBeInstanceOf(DexieStore)
+	})
+
+	it('inMemory storage -> returns InMemoryStore', () => {
+		const result = resolveStore('test-mem', { type: 'inMemory' }, config)
+		expect(result).toBeInstanceOf(InMemoryStore)
+	})
+
+	it('inMemory storage respects writable option', () => {
+		const store = resolveStore('test-ro', { type: 'inMemory', writable: false }, config)
+		expect(store).toBeInstanceOf(InMemoryStore)
 	})
 })

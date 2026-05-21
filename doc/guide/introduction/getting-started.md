@@ -44,7 +44,7 @@ import { TEST_DIALECTE_CONFIG } from '@dialecte/core'
 
 ## Step 2 - Open a Project
 
-`Project` is a multi-document container backed by a single IndexedDB store. Construction is split into two steps: a sync constructor that wires up config, then `.open(name)` that connects the store.
+`Project` is a multi-document container backed by a single store. Construction is split into two steps: a sync constructor that wires up config, then `.open(name)` that connects the store.
 
 ```ts
 import { Project, TEST_DIALECTE_CONFIG } from '@dialecte/core'
@@ -54,6 +54,10 @@ const project = await new Project({
 	storage: { type: 'local' },
 }).open('my-project')
 ```
+
+::: tip In-memory mode
+Replace `{ type: 'local' }` with `{ type: 'inMemory' }` for tests or demos that don't need IndexedDB persistence. Add `writable: false` for a read-only placeholder that throws on mutations.
+:::
 
 ## Step 3 - Import an XML file
 
