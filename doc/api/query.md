@@ -271,6 +271,54 @@ AAA_1: {
 AAA_1: { recursive: false, AAAA_1: true }
 ```
 
+#### Transparent elements in getTree
+
+When the config defines `transparentElements`, `getTree` handles them automatically:
+
+1. **Select pass-through:** transparent elements are always fetched, even when not listed in select keys. Their children are matched against the parent's select - as if the wrapper didn't exist.
+
+2. **Auto-unwrap:** transparent elements are removed from the result tree by default (their children are promoted). No need to pass `unwrap`.
+
+```ts
+// Config: transparentElements: ['AA_1']
+//
+// XML:
+// <A aA="v">
+//   <AA_1 aAA_1="wrapper">
+//     <AAA_1 aAAA_1="v" />
+//     <AAA_2 aAAA_2="v" />
+//   </AA_1>
+// </A>
+
+// Select without mentioning AA_1 - core looks through it:
+const tree = await doc.query.getTree(ref, {
+	select: {
+		AAA_1: true,
+		AAA_2: true,
+	},
+})
+// Result: AA_1 is unwrapped, AAA_1/AAA_2 appear as direct children of A
+```
+
+**Backward compatible:** if the transparent element IS explicitly listed in select, normal resolution applies (no pass-through, no auto-unwrap unless `unwrap` is also specified).
+
+```ts
+// Explicit AA_1 in select - behaves like any other element:
+select: {
+	AA_1: {
+		AAA_1: true
+	}
+}
+// Requires unwrap: ['AA_1'] to flatten
+```
+
+**Opt-out of auto-unwrap:** pass an explicit `unwrap` (even empty) to override:
+
+```ts
+// Keep transparent wrapper nodes in the tree:
+const tree = await doc.query.getTree(ref, { unwrap: [] })
+```
+
 #### OmitEntry
 
 Key-based format consistent with `collect` entries:

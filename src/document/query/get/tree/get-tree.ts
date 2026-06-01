@@ -27,6 +27,9 @@ export async function getTree<
 	})
 
 	const compiledOmit = parseOmit(omit)
+	const transparentElements = context.dialecteConfig.transparentElements as
+		| readonly string[]
+		| undefined
 
 	const tree = await buildNode({
 		context,
@@ -34,16 +37,21 @@ export async function getTree<
 		select: select as TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined,
 		compiledOmit,
 		dialecteConfig,
+		transparentElements,
 	})
 
 	if (!tree) {
 		return toTreeRecord({ record: root })
 	}
 
-	return (unwrap ? applyUnwrap({ tree, unwrapTagNames: unwrap }) : tree) as TreeRecord<
-		GenericConfig,
-		GenericElement
-	>
+	// Auto-unwrap transparent elements when unwrap is not explicitly provided
+	const unwrapTagNames = unwrap ?? (transparentElements?.length ? transparentElements : undefined)
+
+	return (
+		unwrapTagNames
+			? applyUnwrap({ tree, unwrapTagNames: unwrapTagNames as ElementsOf<GenericConfig>[] })
+			: tree
+	) as TreeRecord<GenericConfig, GenericElement>
 }
 
 //== Omit specification
@@ -105,8 +113,9 @@ async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	compiledOmit: OmitSpecification<GenericConfig>
 	dialecteConfig?: GenericConfig
+	transparentElements?: readonly string[]
 }): Promise<TreeRecord<GenericConfig, ElementsOf<GenericConfig>> | null> {
-	const { context, record, select, compiledOmit, dialecteConfig } = params
+	const { context, record, select, compiledOmit, dialecteConfig, transparentElements } = params
 
 	// Stop traversal if omit scope=children matches
 	if (shouldStopTraversal({ record, compiledOmit })) {
@@ -119,11 +128,19 @@ async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 		select,
 		compiledOmit,
 		dialecteConfig,
+		transparentElements,
 	})
 
 	const childTrees = await Promise.all(
 		childrenToProcess.map(({ record: child, select: childSelect }) =>
-			buildNode({ context, record: child, select: childSelect, compiledOmit, dialecteConfig }),
+			buildNode({
+				context,
+				record: child,
+				select: childSelect,
+				compiledOmit,
+				dialecteConfig,
+				transparentElements,
+			}),
 		),
 	)
 
@@ -184,13 +201,14 @@ async function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(p
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	compiledOmit: OmitSpecification<GenericConfig>
 	dialecteConfig?: GenericConfig
+	transparentElements?: readonly string[]
 }): Promise<
 	Array<{
 		record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 		select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	}>
 > {
-	const { context, record, select, compiledOmit, dialecteConfig } = params
+	const { context, record, select, compiledOmit, dialecteConfig, transparentElements } = params
 
 	if (!record.children?.length) return []
 
@@ -210,7 +228,12 @@ async function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(p
 
 	// Pre-filter child refs by tagName before fetching records
 	const relevantRefs = record.children.filter((childRef) =>
-		shouldFetchChildRef({ tagName: childRef.tagName, compiledOmit, selectKeys }),
+		shouldFetchChildRef({
+			tagName: childRef.tagName,
+			compiledOmit,
+			selectKeys,
+			transparentElements,
+		}),
 	)
 
 	if (!relevantRefs.length) return []
@@ -233,7 +256,13 @@ async function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(p
 	const nonOmitted = children.filter((child) => !isOmitted({ record: child, compiledOmit }))
 
 	// Apply where filter from select and resolve child select
-	return resolveChildSelect({ children: nonOmitted, select, record, dialecteConfig })
+	return resolveChildSelect({
+		children: nonOmitted,
+		select,
+		record,
+		dialecteConfig,
+		transparentElements,
+	})
 }
 
 //== Select resolution
@@ -242,10 +271,15 @@ function shouldFetchChildRef<GenericConfig extends AnyDialecteConfig>(params: {
 	tagName: string
 	compiledOmit: OmitSpecification<GenericConfig>
 	selectKeys: Set<string> | undefined
+	transparentElements?: readonly string[]
 }): boolean {
-	const { tagName, compiledOmit, selectKeys } = params
+	const { tagName, compiledOmit, selectKeys, transparentElements } = params
 	if (compiledOmit.unconditional.has(tagName)) return false
-	if (selectKeys && !selectKeys.has(tagName)) return false
+	if (selectKeys && !selectKeys.has(tagName)) {
+		// Always fetch transparent elements so their children can be matched
+		if (transparentElements?.includes(tagName)) return true
+		return false
+	}
 	return true
 }
 
@@ -266,11 +300,12 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	dialecteConfig?: GenericConfig
+	transparentElements?: readonly string[]
 }): Array<{
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 }> {
-	const { children, select, record, dialecteConfig } = params
+	const { children, select, record, dialecteConfig, transparentElements } = params
 
 	// No select = include all descendants
 	if (!select) {
@@ -284,6 +319,12 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 
 	for (const child of children) {
 		const entry = (select as Record<string, unknown>)[child.tagName]
+
+		// Transparent element without explicit select entry: pass parent select through
+		if (entry === undefined && transparentElements?.includes(child.tagName)) {
+			result.push({ record: child, select })
+			continue
+		}
 
 		// Auto-recursion: child has same tagName as parent and is self-recursive per config
 		if (entry === undefined && child.tagName === record.tagName) {

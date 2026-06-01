@@ -7,14 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-### Added
+## [0.2.13] - 2026-06-01
 
-- `InMemoryStore`: Map-backed `Store` implementation with `{ type: 'inMemory', writable?: boolean }` storage param
-- `STORE_NOT_WRITABLE` error code (D1007): thrown when mutating a non-writable in-memory store
+### Changed
+
+- `getTree`: transparent elements (from `transparentElements` config) are now handled automatically - fetched through any `select` filter and auto-unwrapped from the result; explicit entry in `select` or `unwrap: []` overrides this behavior
 
 ## [0.2.12] - 2026-05-22
 
 ### Added
+
+- `InMemoryStore`: Map-backed `Store` implementation with `{ type: 'inMemory', writable?: boolean }` storage param
+- `STORE_NOT_WRITABLE` error code (D1007): thrown when mutating a non-writable in-memory store
 
 ## [0.2.11] - 2026-05-21
 

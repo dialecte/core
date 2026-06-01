@@ -596,3 +596,134 @@ describe('getTree - auto-recursion', () => {
 
 	recursiveRunner.withoutExport({ testCases, act })
 })
+
+//== Transparent elements tests
+
+// Config with transparent element: AA_1 is transparent (like Private in SCL)
+type TransparentTestDialecteConfig = TestDialecteConfig & {
+	readonly transparentElements: readonly ['AA_1']
+}
+
+const TRANSPARENT_CONFIG = {
+	...TEST_DIALECTE_CONFIG,
+	transparentElements: ['AA_1'] as const,
+} as unknown as TransparentTestDialecteConfig
+
+const transparentRunner = createTestRunner({ dialecteConfig: TRANSPARENT_CONFIG })
+
+describe('getTree - transparent elements', () => {
+	type TestCase = BaseXmlTestCase & {
+		ref: Ref<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
+		options?: GetTreeParams<
+			TransparentTestDialecteConfig,
+			ElementsOf<TransparentTestDialecteConfig>
+		>
+		expectedShape: TreeShape
+	}
+
+	const testCases: Record<string, TestCase> = {
+		'select looks through transparent element to find children': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_1 ${customId}="aa1" aAA_1="wrapper">
+							<AAA_1 ${customId}="aaa1" aAAA_1="v" />
+							<AAA_2 ${customId}="aaa2" aAAA_2="v" />
+						</AA_1>
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			options: { select: { AAA_1: true } },
+			expectedShape: {
+				tagName: 'A',
+				tree: [{ tagName: 'AAA_1', tree: [] }],
+			},
+		},
+		'transparent element is auto-unwrapped from result': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_1 ${customId}="aa1" aAA_1="wrapper">
+							<AAA_1 ${customId}="aaa1" aAAA_1="v" />
+						</AA_1>
+						<AA_2 ${customId}="aa2" aAA_2="v" />
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			expectedShape: {
+				tagName: 'A',
+				tree: [
+					{ tagName: 'AAA_1', tree: [] },
+					{ tagName: 'AA_2', tree: [] },
+				],
+			},
+		},
+		'nested select passes through transparent element': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_1 ${customId}="aa1" aAA_1="wrapper">
+							<AAA_1 ${customId}="aaa1" aAAA_1="v">
+								<AAAA_1 ${customId}="aaaa1" aAAAA_1="v" />
+							</AAA_1>
+						</AA_1>
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			options: { select: { AAA_1: { AAAA_1: true } } },
+			expectedShape: {
+				tagName: 'A',
+				tree: [{ tagName: 'AAA_1', tree: [{ tagName: 'AAAA_1', tree: [] }] }],
+			},
+		},
+		'explicit unwrap overrides auto-unwrap': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_1 ${customId}="aa1" aAA_1="wrapper">
+							<AAA_1 ${customId}="aaa1" aAAA_1="v" />
+						</AA_1>
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			options: { unwrap: [] },
+			expectedShape: {
+				tagName: 'A',
+				tree: [{ tagName: 'AA_1', tree: [{ tagName: 'AAA_1', tree: [] }] }],
+			},
+		},
+		'explicit transparent element in select - backward compatible': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_1 ${customId}="aa1" aAA_1="wrapper">
+							<AAA_1 ${customId}="aaa1" aAAA_1="v" />
+							<AAA_2 ${customId}="aaa2" aAAA_2="v" />
+						</AA_1>
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			options: { select: { AA_1: { AAA_1: true } } },
+			expectedShape: {
+				tagName: 'A',
+				tree: [{ tagName: 'AAA_1', tree: [] }],
+			},
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TransparentTestDialecteConfig, TestCase>): Promise<void> {
+		const result = await source.query.getTree(testCase.ref, testCase.options)
+		expect(result).toBeDefined()
+		expect(toShape(result as AnyTreeRecord)).toEqual(testCase.expectedShape)
+	}
+
+	transparentRunner.withoutExport({ testCases, act })
+})
