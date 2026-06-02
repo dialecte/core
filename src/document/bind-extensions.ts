@@ -1,4 +1,9 @@
-import type { ExtensionMap, QueryExtensionFn, TransactionExtensionFn } from './types.extensions'
+import type {
+	BoundExtensionMap,
+	ExtensionMap,
+	QueryExtensionFn,
+	TransactionExtensionFn,
+} from './types.extensions'
 
 /**
  * Binds an extension map to an instance (Query or Transaction).
@@ -12,8 +17,8 @@ export function bindExtensions<
 >(
 	extensionMap: GenericExtensionsMap | undefined,
 	instance: unknown,
-): Record<string, Record<string, (...args: unknown[]) => unknown>> {
-	if (!extensionMap) return {}
+): BoundExtensionMap<GenericExtensionsMap> {
+	if (!extensionMap) return {} as BoundExtensionMap<GenericExtensionsMap>
 
 	const bound: Record<string, Record<string, (...args: unknown[]) => unknown>> = {}
 
@@ -27,5 +32,5 @@ export function bindExtensions<
 		bound[groupName] = boundGroup
 	}
 
-	return bound
+	return bound as BoundExtensionMap<GenericExtensionsMap>
 }

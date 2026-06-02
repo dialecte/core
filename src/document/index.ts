@@ -1,4 +1,5 @@
 export { Document } from './document'
+export { bindExtensions } from './bind-extensions'
 export * from './query'
 export * from './transaction'
 

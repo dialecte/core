@@ -38,6 +38,10 @@ export const ERROR_CATALOG = {
 		code: 'D1007',
 		message: 'Store is not writable',
 	},
+	STORE_BLOB_NOT_FOUND: {
+		code: 'D1008',
+		message: 'Blob not found',
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {
@@ -73,6 +77,10 @@ export const ERROR_CATALOG = {
 	REQUIRED_ATTRIBUTE_MISSING: {
 		code: 'D3004',
 		message: 'Required attribute is missing',
+	},
+	UNIQUE_CONSTRAINT_VIOLATION: {
+		code: 'D3005',
+		message: 'Value is already used within its scope',
 	},
 
 	// D4xxx — Transaction lifecycle
@@ -122,5 +130,9 @@ export const ERROR_CATALOG = {
 	PROJECT_NOT_OPENED: {
 		code: 'D7003',
 		message: 'Project not opened',
+	},
+	BLOB_NOT_FOUND: {
+		code: 'D7004',
+		message: 'Blob not found in store',
 	},
 } as const

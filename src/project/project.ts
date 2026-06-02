@@ -1,5 +1,5 @@
 import { resolveStore } from '../store/resolve-store'
-import { exportDocument, importDocument, initEmptyDocument } from './io'
+import { exportBlob, exportDocument, importDocument, initEmptyDocument } from './io'
 import { buildDocumentState, reconcileDocumentState } from './state'
 
 import { Document } from '@/document'
@@ -10,13 +10,15 @@ import type {
 	InitEmptyDocumentOptions,
 	ImportDocumentOptions,
 	ExportDocumentOptions,
+	ExportBlobOptions,
+	ExportBlobResult,
 	ProjectParams,
 	ProjectState,
 	DocumentRecord,
 } from './types'
 import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
 import type { Store } from '@/store'
-import type { AnyDialecteConfig, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, BlobAttachment, BlobRecord, TransactionHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
 
@@ -109,7 +111,6 @@ export class Project<
 				this.refreshState()
 			}
 		}
-
 		const store = resolveStore(name, this.storage, this.configs[this.defaultConfigKey])
 		await store.open()
 		this._store = store as GenericStore
@@ -281,6 +282,71 @@ export class Project<
 
 		await this.store.redo(documentId)
 		this.channel.postMessage({ type: 'commit', documentId, timestamp: Date.now() })
+	}
+
+	// ── Blobs ────────────────────────────────────────────────────────────────
+
+	/**
+	 * Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`.
+	 * Returns the generated blob id.
+	 */
+	async addBlob(
+		documentId: string,
+		file: File,
+		attachedTo: BlobAttachment[] = [],
+	): Promise<string> {
+		const entry: BlobRecord = {
+			id: crypto.randomUUID(),
+			documentId,
+			name: file.name,
+			mimeType: file.type || undefined,
+			size: file.size,
+			createdAt: Date.now(),
+			attachedTo,
+		}
+		await this.store.addBlob(entry, file)
+		this.channel.postMessage({ type: 'blob-added', blobId: entry.id, documentId })
+		return entry.id
+	}
+
+	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
+		return this.store.getBlob(blobId)
+	}
+
+	/**
+	 * Export a blob from the store. Mirrors `export(documentId)` for blobs:
+	 * returns `{ entry, data, filename }` and optionally triggers a download via
+	 * `options.withDownload`.
+	 */
+	async exportBlob(blobId: string, options?: ExportBlobOptions): Promise<ExportBlobResult> {
+		return exportBlob({ blobId, store: this.store, options })
+	}
+
+	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
+		return this.store.getBlobsByDocument(documentId)
+	}
+
+	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
+		return this.store.getBlobsByRecord(documentId, recordRef)
+	}
+
+	async getStandaloneBlobs(): Promise<BlobRecord[]> {
+		return this.store.getStandaloneBlobs()
+	}
+
+	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
+		await this.store.attachBlob(blobId, ref)
+		this.channel.postMessage({ type: 'blob-attached', blobId, ref })
+	}
+
+	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
+		await this.store.detachBlob(blobId, ref)
+		this.channel.postMessage({ type: 'blob-detached', blobId, ref })
+	}
+
+	async removeBlob(blobId: string): Promise<void> {
+		await this.store.removeBlob(blobId)
+		this.channel.postMessage({ type: 'blob-removed', blobId })
 	}
 
 	// ── Cross-document queries ───────────────────────────────────────────────

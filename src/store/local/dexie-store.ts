@@ -2,10 +2,14 @@ import {
 	TABLE_DOCUMENTS,
 	TABLE_CHANGELOG,
 	TABLE_META,
+	TABLE_BLOBS,
 	recordTableName,
+	blobTableName,
 	DOCUMENTS_SCHEMA,
 	CHANGELOG_SCHEMA,
 	META_SCHEMA,
+	BLOBS_SCHEMA,
+	BLOB_DATA_SCHEMA,
 } from '../store.constants'
 
 import Dexie from 'dexie'
@@ -15,7 +19,7 @@ import { throwDialecteError } from '@/errors'
 import type { Store, ChangeLogEntry, ChangeLogMeta, RecordSchema } from '../store.types'
 import type { DexieStoreOptions } from './types'
 import type { DocumentRecord } from '@/project'
-import type { AnyRawRecord, RecordPatch } from '@/types'
+import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
  * Translate a backend-agnostic RecordSchema into Dexie's schema DSL string.
@@ -80,6 +84,7 @@ export class DexieStore implements Store {
 			[TABLE_DOCUMENTS]: buildDexieSchema(DOCUMENTS_SCHEMA),
 			[TABLE_CHANGELOG]: buildDexieSchema(CHANGELOG_SCHEMA),
 			[TABLE_META]: buildDexieSchema(META_SCHEMA),
+			[TABLE_BLOBS]: buildDexieSchema(BLOBS_SCHEMA),
 		})
 
 		try {
@@ -153,6 +158,15 @@ export class DexieStore implements Store {
 			if (this.db.tables.some((t) => t.name === tableName)) {
 				await this.db.table(tableName).clear()
 			}
+
+			// Clear blob data table owned by this document
+			const blobTable = blobTableName(documentId)
+			if (this.db.tables.some((t) => t.name === blobTable)) {
+				await this.db.table(blobTable).clear()
+			}
+
+			// Remove blob registry entries owned by this document
+			await this.db.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
 
 			// Remove changelog entries for this file
 			await this.db.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
@@ -416,6 +430,81 @@ export class DexieStore implements Store {
 			.sortBy('sequenceNumber')
 	}
 
+	// --- Blob storage ---
+
+	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
+		invariantBlobOwnerKnown(this.knownDocuments, entry.documentId)
+		const blobTable = this.db.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
+		await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
+			await this.db.table<BlobRecord>(TABLE_BLOBS).put(entry)
+			await blobTable.put({ id: entry.id, data })
+		})
+	}
+
+	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
+		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+		if (!entry) return undefined
+		const row = await this.db
+			.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
+			.get(blobId)
+		if (!row) return undefined
+		return { entry, data: row.data }
+	}
+
+	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
+		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
+		return all.filter((b) => b.attachedTo.some((a) => a.documentId === documentId))
+	}
+
+	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
+		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
+		return all.filter((b) =>
+			b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
+		)
+	}
+
+	async getStandaloneBlobs(): Promise<BlobRecord[]> {
+		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
+		return all.filter((b) => b.attachedTo.length === 0)
+	}
+
+	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
+		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+		if (!entry) {
+			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+		}
+		const exists = entry.attachedTo.some(
+			(a) =>
+				a.documentId === ref.documentId &&
+				a.recordRef === ref.recordRef &&
+				a.attribute === ref.attribute,
+		)
+		if (exists) return
+		const attachedTo = [...entry.attachedTo, ref]
+		await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
+	}
+
+	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
+		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+		if (!entry) {
+			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+		}
+		const attachedTo = entry.attachedTo.filter(
+			(a) => !(a.documentId === ref.documentId && a.recordRef === ref.recordRef),
+		)
+		await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
+	}
+
+	async removeBlob(blobId: string): Promise<void> {
+		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+		if (!entry) return
+		const blobTable = this.db.table<{ id: string }>(blobTableName(entry.documentId))
+		await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
+			await blobTable.delete(blobId)
+			await this.db.table(TABLE_BLOBS).delete(blobId)
+		})
+	}
+
 	/**
 	 * Expose the underlying Dexie instance.
 	 * Useful for legacy compatibility layers and advanced testing.
@@ -441,13 +530,17 @@ export class DexieStore implements Store {
 			[TABLE_DOCUMENTS]: buildDexieSchema(DOCUMENTS_SCHEMA),
 			[TABLE_CHANGELOG]: buildDexieSchema(CHANGELOG_SCHEMA),
 			[TABLE_META]: buildDexieSchema(META_SCHEMA),
+			[TABLE_BLOBS]: buildDexieSchema(BLOBS_SCHEMA),
 		}
+		const blobDataSchema = buildDexieSchema(BLOB_DATA_SCHEMA)
 		for (const fId of this.knownDocuments.keys()) {
 			stores[this.resolveTableName(fId)] = this.dexieRecordSchema
+			stores[blobTableName(fId)] = blobDataSchema
 		}
 		// Null out a dropped table (Dexie convention for table removal)
 		if (options?.drop) {
 			stores[this.resolveTableName(options.drop)] = null
+			stores[blobTableName(options.drop)] = null
 		}
 		return stores
 	}
@@ -481,4 +574,12 @@ export class DexieStore implements Store {
 /** Yield one microtask to let IndexedDB release connections */
 function tick(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+function invariantBlobOwnerKnown(known: Map<string, DocumentRecord>, documentId: string): void {
+	if (!known.has(documentId)) {
+		throwDialecteError('DOCUMENT_NOT_REGISTERED', {
+			detail: `Cannot add blob: owner document "${documentId}" is not registered`,
+		})
+	}
 }

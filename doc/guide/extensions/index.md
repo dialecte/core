@@ -156,3 +156,23 @@ TypeScript infers the full extension shape from the extension modules object:
 - Unknown group names and invalid argument types are caught at compile time
 
 **Collision rule** — when `base` and `custom` share the same module key, their methods are merged at the function level. If the same function name appears in both, a `DialecteError` (`EXTENSION_METHOD_COLLISION`) is thrown immediately at document open time. Collision is never silently ignored.
+
+## Testing extension functions in isolation
+
+Use `bindExtensions` to apply a module map onto a raw `Query` or `Transaction` instance without going through `Document`. Useful for unit tests that target a single extension function.
+
+```ts
+import { bindExtensions } from '@dialecte/core'
+
+const bound = bindExtensions({ a: aQueries }, query)
+await bound.a.getAaItems()
+```
+
+The bound shape strips the first `query`/`tx` argument from each function. The exposed signature is described by the `OmitFirstArg<F>` helper:
+
+```ts
+import type { OmitFirstArg } from '@dialecte/core'
+
+type PublicSignature = OmitFirstArg<typeof getAaItems>
+// (...args: []) => Promise<void>
+```

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.14] - 2026-06-02
+
+### Added
+
+- Blob storage: attach binary files (PDFs, images, etc.) to a project, document, or specific record
+  - `Project` API: `addBlob`, `getBlob`, `getBlobsByDocument`, `getBlobsByRecord`, `getStandaloneBlobs`, `attachBlob`, `detachBlob`, `removeBlob`
+  - `Store` API: matching low-level methods on the `Store` interface
+  - Storage layout: shared `_blobs` registry table + per-document `blob_{documentId}` data tables (mirrors `record_{documentId}` partitioning); cleaned up with the owning document
+  - Types: `BlobRecord`, `BlobAttachment` (logical refs via `attachedTo: { documentId, recordRef, attribute? }[]`; empty array = standalone project blob)
+  - BroadcastChannel events: `blob-added`, `blob-attached`, `blob-detached`, `blob-removed`
+- `Project.exportBlob(blobId, { withDownload? })`: fetch a blob and optionally trigger a browser download. Mirrors `export(documentId, { withDownload })` for binary attachments. Returns `{ entry, data, filename }`.
+- `exportBlob` standalone function exported from `@dialecte/core` with `ExportBlobParams` / `ExportBlobOptions` / `ExportBlobResult` types.
+- `saveToDisk` utility (`@/utils`): browser-only blob-to-disk helper (File System Access API with anchor download fallback). Extracted from `downloadFile` and reused by both `exportDocument` and `exportBlob` download paths.
+- Public export: `bindExtensions` (binds an extension map to a `Query`/`Transaction` instance)
+- Error codes: `STORE_BLOB_NOT_FOUND` (D1008), `UNIQUE_CONSTRAINT_VIOLATION` (D3005), `BLOB_NOT_FOUND` (D7004)
+
+### Changed
+
+- `downloadFile` (XML download path) now delegates the picker / anchor logic to the shared `saveToDisk` utility. Behavior unchanged.
+- `QueryExtensionFn` / `TransactionExtensionFn` are now generic over their first argument (defaulting to `any`) to handle TypeScript parameter contravariance when extension authors annotate the concrete `Query`/`Transaction` type. Type safety at the call boundary is recovered via `BoundExtensionMap` + new exported `OmitFirstArg` helper.
+
 ## [0.2.13] - 2026-06-01
 
 ### Changed

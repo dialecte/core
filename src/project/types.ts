@@ -1,6 +1,6 @@
 import type { DocumentState, ExtensionModules } from '@/document'
 import type { Store } from '@/store/store.types'
-import type { AnyDialecteConfig, ChunkOptions, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, BlobRecord, ChunkOptions, TransactionHooks } from '@/types'
 
 // ── DocumentRecord ───────────────────────────────────────────────────────────
 
@@ -150,5 +150,24 @@ export type ExportDocumentOptions = {
 
 export type ExportDocumentResult = {
 	xmlDocument: XMLDocument
+	filename: string
+}
+
+// ── exportBlob ───────────────────────────────────────────────────────────────
+
+export type ExportBlobParams = {
+	blobId: string
+	store: Store
+	options?: ExportBlobOptions
+}
+
+export type ExportBlobOptions = {
+	/** Trigger a browser file download after fetching the blob */
+	withDownload?: boolean
+}
+
+export type ExportBlobResult = {
+	entry: BlobRecord
+	data: Blob
 	filename: string
 }

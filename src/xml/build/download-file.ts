@@ -1,5 +1,7 @@
 import { formatXml } from './formatter'
 
+import { saveToDisk } from '@/utils'
+
 import type { AnyDialecteConfig } from '@/types'
 
 export async function downloadFile<GenericConfig extends AnyDialecteConfig>(params: {
@@ -16,38 +18,14 @@ export async function downloadFile<GenericConfig extends AnyDialecteConfig>(para
 
 	const formattedXmlString = formatXml(xmlWithDeclaration)
 
-	const fileAsBlob = new Blob([formattedXmlString], { type: 'application/xml' })
+	const data = new Blob([formattedXmlString], { type: 'application/xml' })
 
-	// Native saveAs Api (Chrome/Edge)
-	if ('showSaveFilePicker' in window) {
-		try {
-			const handle = await (window as any).showSaveFilePicker({
-				suggestedName: filename,
-				types: [
-					{
-						description: `${extension.replace(/^\./, '').toUpperCase()} Files`,
-						accept: { 'application/xml': [extension] },
-					},
-				],
-			})
-			const writable = await handle.createWritable()
-			await writable.write(fileAsBlob)
-			await writable.close()
-		} catch (err) {
-			// User cancelled or error - don't show error for cancellation
-			if ((err as Error).name !== 'AbortError') {
-				console.error('Save failed:', err)
-			}
-		}
-	} else {
-		// Fallback for Safari/Firefox - auto-downloads (saveAs Api not supported)
-		const url = URL.createObjectURL(fileAsBlob)
-		const downloadElement = document.createElement('a')
-		downloadElement.href = url
-		downloadElement.download = filename
-		document.body.appendChild(downloadElement)
-		downloadElement.click()
-		downloadElement.remove()
-		URL.revokeObjectURL(url)
-	}
+	await saveToDisk({
+		data,
+		filename,
+		pickerType: {
+			description: `${extension.replace(/^\./, '').toUpperCase()} Files`,
+			accept: { 'application/xml': [extension] },
+		},
+	})
 }

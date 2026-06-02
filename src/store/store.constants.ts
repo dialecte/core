@@ -26,6 +26,17 @@ export function recordTableName(documentId: string): string {
 	return `${TABLE_RECORD_PREFIX}${documentId}`
 }
 
+/** System table: blob metadata registry */
+export const TABLE_BLOBS = '_blobs'
+
+/** Prefix for per-document blob data tables */
+export const TABLE_BLOB_PREFIX = 'blob_'
+
+/** Derive the blob data table name for a given documentId */
+export function blobTableName(documentId: string): string {
+	return `${TABLE_BLOB_PREFIX}${documentId}`
+}
+
 // --- System table schemas (backend-agnostic) ---
 
 /** Schema for the _files registry table */
@@ -48,6 +59,22 @@ export const CHANGELOG_SCHEMA: RecordSchema = {
 /** Schema for the _meta table */
 export const META_SCHEMA: RecordSchema = {
 	primaryKey: 'key',
+	indexes: [],
+	compoundIndexes: [],
+	arrayIndexes: [],
+}
+
+/** Schema for the _blobs registry table. `documentId` indexed for cascade cleanup. */
+export const BLOBS_SCHEMA: RecordSchema = {
+	primaryKey: 'id',
+	indexes: ['documentId'],
+	compoundIndexes: [],
+	arrayIndexes: [],
+}
+
+/** Schema for the per-document blob data tables (`blob_{documentId}`). */
+export const BLOB_DATA_SCHEMA: RecordSchema = {
+	primaryKey: 'id',
 	indexes: [],
 	compoundIndexes: [],
 	arrayIndexes: [],

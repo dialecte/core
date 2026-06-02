@@ -1,21 +1,29 @@
-import type { Query } from './query'
-import type { Transaction } from './transaction'
-
 //== Extension function signatures ================================
 
 /**
  * A query extension: a function whose first argument is the Query instance.
  * The remaining arguments become the public signature after binding.
+ *
+ * The first arg defaults to `any` because of TypeScript parameter
+ * contravariance: extension authors typically write
+ * `(q: **.Query, ...) => ...` where `**.Query` is narrower than
+ * `Query<Config>`. A function requiring a narrower param cannot be
+ * assigned to one requiring a wider one, so the registration slot must
+ * stay wide. Authors annotate the concrete query type themselves; type
+ * safety at the call boundary is recovered via `BoundExtensionMap`.
  */
-// oxlint-disable-next-line - any is required here
-export type QueryExtensionFn = (query: Query<any>, ...args: any[]) => any
+// oxlint-disable-next-line - any required for variance
+export type QueryExtensionFn<GenericQuery = any> = (query: GenericQuery, ...args: any[]) => any
 
 /**
  * A transaction extension: a function whose first argument is the Transaction instance.
- * The remaining arguments become the public signature after binding.
+ * Same variance considerations as `QueryExtensionFn`.
  */
-// oxlint-disable-next-line - any is required here
-export type TransactionExtensionFn = (tx: Transaction<any>, ...args: any[]) => any
+// oxlint-disable-next-line - any required for variance
+export type TransactionExtensionFn<GenericTransaction = any> = (
+	tx: GenericTransaction,
+	...args: any[]
+) => any
 
 //== Extension groups =============================================
 
@@ -65,20 +73,26 @@ export type AssertNoCollision<
 
 //== Bound extensions (strips first arg from each function) ======
 
+/** Strips the first argument from a function signature. */
+// oxlint-disable-next-line - any required for variance
+export type OmitFirstArg<GenericFn extends (...args: any[]) => any> = GenericFn extends (
+	first: any,
+	...rest: infer Rest
+) => infer Return
+	? (...args: Rest) => Return
+	: never
+
 /**
  * Given a map of extension groups, produces the same structure
  * but with the first argument (query/tx) stripped from each function.
  */
 export type BoundExtensionMap<
-	GenericExtensionMap extends ExtensionMap<QueryExtensionFn | TransactionExtensionFn>,
+	GenericExtensionsMap extends ExtensionMap<QueryExtensionFn | TransactionExtensionFn>,
 > = {
-	[Group in keyof GenericExtensionMap]: {
-		[Method in keyof GenericExtensionMap[Group]]: GenericExtensionMap[Group][Method] extends (
-			first: any,
-			...rest: infer Rest
-		) => infer InferredRest
-			? (...args: Rest) => InferredRest
-			: never
+	[GroupName in keyof GenericExtensionsMap]: {
+		[MethodName in keyof GenericExtensionsMap[GroupName]]: OmitFirstArg<
+			GenericExtensionsMap[GroupName][MethodName]
+		>
 	}
 }
 

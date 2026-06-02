@@ -92,14 +92,16 @@ Serializes a document's records back to XML.
 ```ts
 const { xmlDocument, filename } = await project.export(documentId, {
 	withDatabaseIds: false,
+	withDownload: false,
 })
 ```
 
 **ExportDocumentOptions**
 
-| Param             | Type      | Default | Description                                   |
-| ----------------- | --------- | ------- | --------------------------------------------- |
-| `withDatabaseIds` | `boolean` | `false` | Include internal database IDs in exported XML |
+| Param             | Type      | Default | Description                                                                           |
+| ----------------- | --------- | ------- | ------------------------------------------------------------------------------------- |
+| `withDatabaseIds` | `boolean` | `false` | Include internal database IDs in exported XML                                         |
+| `withDownload`    | `boolean` | `false` | Trigger a browser file download via the File System Access API (with anchor fallback) |
 
 **Returns** `Promise<{ xmlDocument: XMLDocument; filename: string }>`
 
@@ -148,6 +150,79 @@ const allRoots = await project.queryAll(async (query) => {
 ```
 
 Both methods iterate documents sequentially and expose the full typed query surface including extension methods.
+
+## Blobs
+
+Attach binary files (PDFs, images, etc.) to a project, document, or specific record. Blob metadata lives in a shared `_blobs` registry table; binary data is partitioned per document in `blob_{documentId}` tables (mirrors record partitioning) and is cleaned up when the owning document is removed.
+
+```ts
+// Add a blob owned by a document, optionally attached to specific records
+const blobId = await project.addBlob(documentId, file, [
+	{ documentId, recordRef: bay.id, attribute: 'docRef' },
+])
+
+// Standalone project blob (not linked to any record)
+const standaloneId = await project.addBlob(documentId, file)
+```
+
+**`BlobRecord`**
+
+| Field        | Type               | Description                                         |
+| ------------ | ------------------ | --------------------------------------------------- |
+| `id`         | `string`           | Blob identifier (UUID)                              |
+| `documentId` | `string`           | Storage owner; binary lives in `blob_{documentId}`  |
+| `name`       | `string`           | Original filename                                   |
+| `mimeType`   | `string?`          | MIME type                                           |
+| `size`       | `number?`          | Size in bytes (for UI display without loading data) |
+| `createdAt`  | `number`           | Creation timestamp (ms since epoch)                 |
+| `attachedTo` | `BlobAttachment[]` | Logical refs from XML records; empty = standalone   |
+
+**`BlobAttachment`**
+
+```ts
+type BlobAttachment = {
+	documentId: string // document the blob is referenced from
+	recordRef: string // record id (e.g. element uuid) inside that document
+	attribute?: string // optional attribute name carrying the filename
+}
+```
+
+**Methods**
+
+| Method                                          | Description                                                 |
+| ----------------------------------------------- | ----------------------------------------------------------- |
+| `addBlob(documentId, file, attachedTo?)`        | Add a blob; returns the generated `blobId`                  |
+| `getBlob(blobId)`                               | Returns `{ entry, data } \| undefined`                      |
+| `getBlobsByDocument(documentId)`                | Metadata of every blob referenced by a document (no binary) |
+| `getBlobsByRecord(documentId, recordRef)`       | Metadata of every blob referenced by a specific record      |
+| `getStandaloneBlobs()`                          | Metadata of project-level blobs (empty `attachedTo`)        |
+| `attachBlob(blobId, ref)`                       | Append an `attachedTo` reference (no-op if already present) |
+| `detachBlob(blobId, { documentId, recordRef })` | Remove all matching references from `attachedTo`            |
+| `removeBlob(blobId)`                            | Hard-delete: removes from `_blobs` and `blob_{documentId}`  |
+
+Each mutation broadcasts a corresponding `blob-added` / `blob-attached` / `blob-detached` / `blob-removed` event over the project's `BroadcastChannel` for cross-tab sync.
+
+`getBlob` throws `STORE_BLOB_NOT_FOUND` (D1008) if the blob id is unknown.
+
+## exportBlob
+
+Fetch a blob from the store and optionally trigger a browser download. Mirrors `export(documentId)` for binary attachments.
+
+```ts
+const { entry, data, filename } = await project.exportBlob(blobId, {
+	withDownload: true,
+})
+```
+
+**ExportBlobOptions**
+
+| Param          | Type      | Default | Description                                                                           |
+| -------------- | --------- | ------- | ------------------------------------------------------------------------------------- |
+| `withDownload` | `boolean` | `false` | Trigger a browser file download via the File System Access API (with anchor fallback) |
+
+**Returns** `Promise<{ entry: BlobRecord; data: Blob; filename: string }>`
+
+Throws `BLOB_NOT_FOUND` (D7004) if the blob id is unknown.
 
 ## Undo / Redo
 

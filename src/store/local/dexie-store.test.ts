@@ -4,7 +4,7 @@ import Dexie from 'dexie'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
 import type { RecordSchema } from '../store.types'
-import type { DocumentRecord } from '@/types/document-record'
+import type { DocumentRecord } from '@/project'
 import type { AnyRawRecord } from '@/types/records'
 
 describe('buildDexieSchema', () => {

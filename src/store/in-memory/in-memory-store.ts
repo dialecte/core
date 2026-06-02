@@ -2,10 +2,10 @@ import { recordTableName } from '../store.constants'
 
 import { throwDialecteError } from '@/errors'
 
-import type { Store, ChangeLogEntry, ChangeLogMeta } from '../store.types'
+import type { Store, ChangeLogEntry } from '../store.types'
 import type { InMemoryStoreOptions } from './types'
 import type { DocumentRecord } from '@/project/types'
-import type { AnyRawRecord, RecordPatch } from '@/types'
+import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
  * InMemoryStore - Map-backed Store implementation with no persistence.
@@ -26,6 +26,8 @@ export class InMemoryStore implements Store {
 	private records = new Map<string, Map<string, AnyRawRecord>>()
 	private changelog = new Map<string, ChangeLogEntry[]>()
 	private heads = new Map<string, number>()
+	private blobs = new Map<string, BlobRecord>()
+	private blobData = new Map<string, Map<string, Blob>>()
 
 	constructor(name: string, options?: InMemoryStoreOptions) {
 		this.name = name
@@ -43,6 +45,8 @@ export class InMemoryStore implements Store {
 		this.records.clear()
 		this.changelog.clear()
 		this.heads.clear()
+		this.blobs.clear()
+		this.blobData.clear()
 	}
 
 	// --- File registry ---
@@ -51,6 +55,7 @@ export class InMemoryStore implements Store {
 		this.guardWritable()
 		this.documents.set(file.id, file)
 		this.records.set(recordTableName(file.id), new Map())
+		this.blobData.set(file.id, new Map())
 	}
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
@@ -78,6 +83,12 @@ export class InMemoryStore implements Store {
 		this.records.delete(recordTableName(documentId))
 		this.changelog.delete(documentId)
 		this.heads.delete(documentId)
+		this.blobData.delete(documentId)
+		for (const [blobId, entry] of this.blobs) {
+			if (entry.documentId === documentId) {
+				this.blobs.delete(blobId)
+			}
+		}
 	}
 
 	// --- Record access ---
@@ -280,7 +291,89 @@ export class InMemoryStore implements Store {
 		return null
 	}
 
+	// --- Blob storage ---
+
+	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
+		this.guardWritable()
+		if (!this.documents.has(entry.documentId)) {
+			throwDialecteError('DOCUMENT_NOT_REGISTERED', {
+				detail: `Cannot add blob: owner document "${entry.documentId}" is not registered`,
+			})
+		}
+		this.blobs.set(entry.id, entry)
+		this.getBlobTable(entry.documentId).set(entry.id, data)
+	}
+
+	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
+		const entry = this.blobs.get(blobId)
+		if (!entry) return undefined
+		const data = this.getBlobTable(entry.documentId).get(blobId)
+		if (!data) return undefined
+		return { entry, data }
+	}
+
+	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
+		return [...this.blobs.values()].filter((b) =>
+			b.attachedTo.some((a) => a.documentId === documentId),
+		)
+	}
+
+	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
+		return [...this.blobs.values()].filter((b) =>
+			b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
+		)
+	}
+
+	async getStandaloneBlobs(): Promise<BlobRecord[]> {
+		return [...this.blobs.values()].filter((b) => b.attachedTo.length === 0)
+	}
+
+	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
+		this.guardWritable()
+		const entry = this.blobs.get(blobId)
+		if (!entry) {
+			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+		}
+		const exists = entry.attachedTo.some(
+			(a) =>
+				a.documentId === ref.documentId &&
+				a.recordRef === ref.recordRef &&
+				a.attribute === ref.attribute,
+		)
+		if (exists) return
+		this.blobs.set(blobId, { ...entry, attachedTo: [...entry.attachedTo, ref] })
+	}
+
+	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
+		this.guardWritable()
+		const entry = this.blobs.get(blobId)
+		if (!entry) {
+			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+		}
+		const attachedTo = entry.attachedTo.filter(
+			(a) => !(a.documentId === ref.documentId && a.recordRef === ref.recordRef),
+		)
+		this.blobs.set(blobId, { ...entry, attachedTo })
+	}
+
+	async removeBlob(blobId: string): Promise<void> {
+		this.guardWritable()
+		const entry = this.blobs.get(blobId)
+		if (!entry) return
+		this.blobs.delete(blobId)
+		this.getBlobTable(entry.documentId).delete(blobId)
+	}
+
 	// --- Private ---
+
+	private getBlobTable(documentId: string): Map<string, Blob> {
+		let table = this.blobData.get(documentId)
+		if (!table) {
+			table = new Map()
+			this.blobData.set(documentId, table)
+		}
+		return table
+	}
 
 	private getTable(documentId: string): Map<string, AnyRawRecord> {
 		const tableName = recordTableName(documentId)

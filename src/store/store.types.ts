@@ -1,5 +1,5 @@
 import type { DocumentRecord } from '@/project/types'
-import type { AnyRawRecord, RecordPatch } from '@/types'
+import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
  * RecordSchema — backend-agnostic index declaration for record tables.
@@ -103,6 +103,35 @@ export interface Store {
 
 	/** Return changelog entries for a document in ascending sequenceNumber order */
 	getChangeLog(documentId: string): Promise<ChangeLogEntry[]>
+
+	// --- Blob storage ---
+
+	/**
+	 * Add a blob: writes the entry to `_blobs` and the binary to `blob_{entry.documentId}`.
+	 * The owning document must already be registered.
+	 */
+	addBlob(entry: BlobRecord, data: Blob): Promise<void>
+
+	/** Get a blob entry + binary data by blob id. */
+	getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined>
+
+	/** List blob metadata referenced by a document (via `attachedTo`). No binary data loaded. */
+	getBlobsByDocument(documentId: string): Promise<BlobRecord[]>
+
+	/** List blob metadata referenced by a specific record (via `attachedTo`). */
+	getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]>
+
+	/** List blob metadata with no `attachedTo` references (standalone project blobs). */
+	getStandaloneBlobs(): Promise<BlobRecord[]>
+
+	/** Append a reference to `attachedTo`. No-op if the reference already exists. */
+	attachBlob(blobId: string, ref: BlobAttachment): Promise<void>
+
+	/** Remove all references matching `{ documentId, recordRef }` from `attachedTo`. */
+	detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void>
+
+	/** Hard-delete a blob: removes from `_blobs` and `blob_{entry.documentId}`. */
+	removeBlob(blobId: string): Promise<void>
 
 	/**
 	 * Expose the underlying database instance.
