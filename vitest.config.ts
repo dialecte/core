@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 
 import viteConfig from './vite.config'
 
+import { playwright } from '@vitest/browser-playwright'
 import { mergeConfig, defineConfig, configDefaults } from 'vitest/config'
 
 export default mergeConfig(
@@ -17,7 +18,7 @@ export default mergeConfig(
 					test: {
 						name: 'unit',
 						browser: {
-							provider: 'playwright',
+							provider: playwright(),
 							enabled: true,
 							headless: true,
 							instances: [{ browser: 'chromium' }],
