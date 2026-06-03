@@ -1,4 +1,4 @@
-import type { Document, ExtensionModules } from '@/document'
+import type { Document, ExtensionModules, MergedExtensions } from '@/document'
 import type { Project } from '@/project'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
@@ -22,8 +22,8 @@ export type ActParams<
 > = {
 	testCase: GenericTestCase
 	project: Project<GenericConfig, GenericModules>
-	source: Document<GenericConfig>
-	target?: Document<GenericConfig>
+	source: Document<GenericConfig, MergedExtensions<GenericModules>>
+	target?: Document<GenericConfig, MergedExtensions<GenericModules>>
 }
 
 export type ActResult = {

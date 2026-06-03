@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.16] - 2026-06-03
+
+### Fixed
+
+- Test helpers: `TestDocument`, `TestProjectResult` and `ActParams` now propagate the `GenericModules` generic so `source.query` / `target.query` expose bound extension namespaces (e.g. `source.query.dataModel.*`) in dialecte test suites.
+
 ## [0.2.15] - 2026-06-03
 
 - packages major version update

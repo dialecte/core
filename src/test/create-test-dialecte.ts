@@ -4,14 +4,17 @@ import { Project } from '@/project'
 import { DexieStore } from '@/store'
 
 import type { Document } from '@/document'
-import type { Context, ExtensionModules } from '@/document'
+import type { Context, ExtensionModules, MergedExtensions } from '@/document'
 import type { AnyDialecteConfig, TransactionHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
-export type TestDocument<GenericConfig extends AnyDialecteConfig> = {
+export type TestDocument<
+	GenericConfig extends AnyDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
+> = {
 	documentId: string
-	document: Document<GenericConfig>
+	document: Document<GenericConfig, MergedExtensions<GenericModules>>
 }
 
 export type TestProjectResult<
@@ -19,8 +22,8 @@ export type TestProjectResult<
 	GenericModules extends ExtensionModules = Record<never, never>,
 > = {
 	project: Project<GenericConfig, GenericModules>
-	source: TestDocument<GenericConfig>
-	target?: TestDocument<GenericConfig>
+	source: TestDocument<GenericConfig, GenericModules>
+	target?: TestDocument<GenericConfig, GenericModules>
 }
 
 /**
@@ -65,12 +68,12 @@ export async function createTestProject<
 		[new File([sourceXml], 'source.xml', { type: 'text/xml' })],
 		{ useCustomRecordsIds: true },
 	)
-	const source: TestDocument<GenericConfig> = {
+	const source: TestDocument<GenericConfig, GenericModules> = {
 		documentId: sourceImport.documentId,
 		document: project.openDocument(sourceImport.documentId),
 	}
 
-	let target: TestDocument<GenericConfig> | undefined
+	let target: TestDocument<GenericConfig, GenericModules> | undefined
 	if (targetXml) {
 		const [targetImport] = await project.import(
 			[new File([targetXml], 'target.xml', { type: 'text/xml' })],
