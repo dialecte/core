@@ -25,17 +25,17 @@ const project = await new Project({
 
 Key methods:
 
-| Method                        | Description                                                          |
-| ----------------------------- | -------------------------------------------------------------------- |
-| `project.open(name)`          | Async: connects store, hydrates state, returns `this`                |
+| Method                        | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `project.open(name)`          | Async: connects store, hydrates state, returns `this`                       |
 | `project.import(files)`       | Streams XML → IndexedDB partitions; returns `{ documentId, recordCount }[]` |
-| `project.export(documentId)`  | Serializes IndexedDB partition → `XMLDocument`                       |
-| `project.initEmptyDocument()` | Creates an empty document from config root element                   |
-| `project.openDocument(id)`    | Returns a file-scoped `Document`                                     |
-| `project.getDocuments()`      | List all registered document metadata                                |
-| `project.undo(documentId)`    | Undoes the last transaction for a document                           |
-| `project.redo(documentId)`    | Redoes the last undone transaction for a document                    |
-| `project.destroy()`           | Drops the entire store and closes the channel                        |
+| `project.export(documentId)`  | Serializes IndexedDB partition → `XMLDocument`                              |
+| `project.initEmptyDocument()` | Creates an empty document from config root element                          |
+| `project.openDocument(id)`    | Returns a file-scoped `Document`                                            |
+| `project.getDocuments()`      | List all registered document metadata                                       |
+| `project.undo(documentId)`    | Undoes the last transaction for a document                                  |
+| `project.redo(documentId)`    | Redoes the last undone transaction for a document                           |
+| `project.destroy()`           | Drops the entire store and closes the channel                               |
 
 See [Project reference](/api/project) for the full API.
 
