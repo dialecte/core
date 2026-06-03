@@ -66,6 +66,7 @@ export default defineConfig({
 					text: 'API Reference',
 					items: [
 						{ text: 'Document', link: '/api/document' },
+						{ text: 'Project', link: '/api/project' },
 						{ text: 'Query', link: '/api/query' },
 						{ text: 'Transaction', link: '/api/transaction' },
 						{ text: 'Hooks', link: '/api/hooks' },
@@ -78,6 +79,7 @@ export default defineConfig({
 					items: [
 						{ text: 'Overview', link: '/io/' },
 						{ text: 'Reference', link: '/io/io' },
+						{ text: 'XML', link: '/io/xml' },
 						{ text: 'Hooks', link: '/io/hooks' },
 					],
 				},
