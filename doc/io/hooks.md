@@ -1,10 +1,10 @@
 ---
-description: IO lifecycle hooks for @dialecte/core — beforeImportRecord (per-record SAX pass) and afterImport (post-store resolution). Fires during importXmlFiles, outside the transaction system.
+description: IO lifecycle hooks for @dialecte/core — beforeImportRecord (per-record SAX pass) and afterImport (post-store resolution). Fires during project.import, outside the transaction system.
 ---
 
 # IO Hooks
 
-Registered under `dialecteConfig.io.hooks`. Fires during `importXmlFiles` — not during transactions.
+Registered under `dialecteConfig.io.hooks`. Fires during `project.import` — not during transactions.
 
 ::: warning No store access
 IO hooks run outside the transaction store. Do not call `getRecord` or any store API inside IO hooks. Accumulate state in closure variables during `beforeImportRecord`, then flush in `afterImport`.

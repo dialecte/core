@@ -201,7 +201,7 @@ beforeDelete           (once, on root — descendants still live)
 [subtree cascade]
 ```
 
-For `importXmlFiles` (see [IO hooks](/io/hooks)):
+For `project.import` (see [IO hooks](/io/hooks)):
 
 ```
 beforeImportRecord     (per record, document order)

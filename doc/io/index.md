@@ -38,7 +38,7 @@ const project = await new Project({
 }).open('my-project')
 
 // 2. Import
-const { documentId } = await project.import(xmlFile, { configKey: 'scl' })
+const [{ documentId }] = await project.import([xmlFile], { configKey: 'scl' })
 
 // 3. Work
 const doc = project.openDocument(documentId)

@@ -25,17 +25,17 @@ const project = await new Project({
 
 Key methods:
 
-| Method                        | Description                                             |
-| ----------------------------- | ------------------------------------------------------- |
-| `project.open(name)`          | Async: connects store, hydrates state, returns `this`   |
-| `project.import(file)`        | Streams XML → IndexedDB partition; returns `documentId` |
-| `project.export(documentId)`  | Serializes IndexedDB partition → `XMLDocument`          |
-| `project.initEmptyDocument()` | Creates an empty document from config root element      |
-| `project.openDocument(id)`    | Returns a file-scoped `Document`                        |
-| `project.getDocuments()`      | List all registered document metadata                   |
-| `project.undo(documentId)`    | Undoes the last transaction for a document              |
-| `project.redo(documentId)`    | Redoes the last undone transaction for a document       |
-| `project.destroy()`           | Drops the entire store and closes the channel           |
+| Method                        | Description                                                          |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `project.open(name)`          | Async: connects store, hydrates state, returns `this`                |
+| `project.import(files)`       | Streams XML → IndexedDB partitions; returns `{ documentId, recordCount }[]` |
+| `project.export(documentId)`  | Serializes IndexedDB partition → `XMLDocument`                       |
+| `project.initEmptyDocument()` | Creates an empty document from config root element                   |
+| `project.openDocument(id)`    | Returns a file-scoped `Document`                                     |
+| `project.getDocuments()`      | List all registered document metadata                                |
+| `project.undo(documentId)`    | Undoes the last transaction for a document                           |
+| `project.redo(documentId)`    | Redoes the last undone transaction for a document                    |
+| `project.destroy()`           | Drops the entire store and closes the channel                        |
 
 See [Project reference](/api/project) for the full API.
 
@@ -62,25 +62,19 @@ See [Document reference](/api/document) for the full API.
 ```ts
 type StorageParam =
 	| { type: 'local' } // built-in DexieStore (IndexedDB)
+	| { type: 'inMemory'; writable?: boolean } // in-memory store (tests, demos, placeholders)
 	| { type: 'custom'; store: Store } // bring your own Store implementation
 ```
 
 ## Extensions
 
-`extensionsRegistry` accepts an `ExtensionModules` record - a map of module names to `{ query?, transaction? }` objects. Core merges them and throws `DialecteError` (D6001) on method name collisions. See [Writing Extensions](/guide/extensions/) for the authoring guide.
-
-| `dialecteConfig` | `AnyDialecteConfig` | — | Schema config |
-
-Returns `Promise<{ xmlDocument: XMLDocument; filename: string }>`.
+The `extensions` constructor param accepts `{ base?, custom? }` — each is an `ExtensionModules` record mapping module names to `{ query?, transaction? }` objects. Core merges them and throws `DialecteError` (D6001) on method name collisions. See [Writing Extensions](/guide/extensions/) for the authoring guide.
 
 ## Further reading
 
-- [Document](/api/document) — lifecycle, state, transactions, undo/redo
+- [Project](/api/project) — multi-document container, import/export, undo/redo, blobs
+- [Document](/api/document) — lifecycle, state, transactions, prepare
 - [Query](/api/query) — record lookup, descendants, attributes
 - [Transaction](/api/transaction) — addChild, update, delete, deepClone
 - [Hooks](/api/hooks) — transaction lifecycle hooks
-- [IO](/io/) — importXmlFiles, exportXmlFile, IOConfig, IO hooks
-
-```
-
-```
+- [IO](/io/) — low-level XML utilities and IO hooks

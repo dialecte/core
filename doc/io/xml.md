@@ -8,15 +8,14 @@ Low-level IO utilities for streaming XML in/out of the store. In most cases, use
 
 ## `buildXmlDocument`
 
-Serializes raw records from a store partition into an `XMLDocument`.
+Serializes an array of raw records into an `XMLDocument`.
 
 ```ts
 import { buildXmlDocument } from '@dialecte/core'
 
-const { xmlDocument } = await buildXmlDocument({
-	store,
-	fileId: documentId,
-	dialecteConfig,
+const xmlDocument = buildXmlDocument({
+	records,
+	config: dialecteConfig,
 	withDatabaseIds: false,
 })
 ```
@@ -25,29 +24,31 @@ const { xmlDocument } = await buildXmlDocument({
 
 | Param             | Type                | Description                                                     |
 | ----------------- | ------------------- | --------------------------------------------------------------- |
-| `store`           | `Store`             | Store instance to read records from                             |
-| `fileId`          | `string`            | File partition to export                                        |
-| `dialecteConfig`  | `AnyDialecteConfig` | Dialecte config - determines namespaces and element definitions |
+| `records`         | `AnyRawRecord[]`    | Raw records to serialize                                        |
+| `config`          | `AnyDialecteConfig` | Dialecte config — determines namespaces and element definitions |
 | `withDatabaseIds` | `boolean`           | Include internal database IDs in the output. Default: `false`   |
 
-**Returns** `Promise<{ xmlDocument: XMLDocument }>`
+**Returns** `XMLDocument`
 
 ---
 
 ## `parseXmlFile`
 
-SAX-based streaming parser that converts an XML file into raw records.
+SAX-based streaming parser that converts an XML file into raw records persisted to a `Store`.
 
 ```ts
 import { parseXmlFile } from '@dialecte/core'
 
-const { records, rootId } = await parseXmlFile({
+const { documentId, recordCount } = await parseXmlFile({
 	file,
 	documentId: 'file-1',
 	store,
 	config: dialecteConfig,
+	useCustomRecordsIds: false,
 })
 ```
+
+**Returns** `Promise<{ documentId: string; recordCount: number }>`
 
 ---
 

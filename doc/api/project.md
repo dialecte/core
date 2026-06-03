@@ -239,12 +239,12 @@ Each call broadcasts the change to other Document instances via `BroadcastChanne
 
 ```ts
 type ProjectState = {
-	documents: Map<string, DocumentState>
+	documents: Map<string, DocumentEntry>
 	activeTransactions: number
 }
 ```
 
-`documents` maps each registered file's ID to its [DocumentState](/api/document#documentstate-project-level). The map is kept in sync with the store's file registry.
+`documents` maps each registered file's ID to its [DocumentEntry](/api/document#documententry-project-level). The map is kept in sync with the store's file registry.
 
 ## Lifecycle
 

@@ -78,7 +78,6 @@ export default defineConfig({
 					text: 'IO',
 					items: [
 						{ text: 'Overview', link: '/io/' },
-						{ text: 'Reference', link: '/io/io' },
 						{ text: 'XML', link: '/io/xml' },
 						{ text: 'Hooks', link: '/io/hooks' },
 					],

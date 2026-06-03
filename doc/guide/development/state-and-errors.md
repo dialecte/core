@@ -66,7 +66,7 @@ failure          -> error=DialecteError, loading=false, progress=null
 
 ### Cross-tab sync
 
-`lastUpdate` is kept in sync across tabs via `BroadcastChannel`. The channel is scoped to the project name and messages are filtered by `fileId`, so each document only reacts to its own commits.
+`lastUpdate` is kept in sync across tabs via `BroadcastChannel`. The channel is scoped to the project name and messages are filtered by `documentId`, so each document only reacts to its own commits.
 
 ```ts
 watch(

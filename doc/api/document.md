@@ -6,7 +6,7 @@ description: API reference for the Document class - per-file entry point for que
 
 `Document` is the per-file entry point. It owns the query and transaction surface for a single file's records. Within a [Project](/api/project), documents are obtained via `project.openDocument(id)`.
 
-Each `Document` carries a `fileId` that scopes all store operations to its partition.
+Each `Document` carries a `documentId` that scopes all store operations to its partition.
 
 ## query
 
@@ -125,7 +125,7 @@ type DocumentEntry = DocumentState & {
 
 ### Cross-tab sync
 
-When a transaction commits, the document broadcasts `{ type: 'commit', fileId, timestamp }` via a `BroadcastChannel` scoped to the project name. Other `Document` instances (e.g. in other browser extensions targeting the same store) receive the update and can refetch data. Messages are filtered by `fileId` so each document only reacts to its own commits.
+When a transaction commits, the document broadcasts `{ type: 'commit', documentId, timestamp }` via a `BroadcastChannel` scoped to the project name. Other `Document` instances (e.g. in other browser extensions targeting the same store) receive the update and can refetch data. Messages are filtered by `documentId` so each document only reacts to its own commits.
 
 ## close / destroy
 
@@ -141,11 +141,11 @@ A dialecte package typically subclasses `Document` to wire domain-specific `Quer
 ```ts
 class SclDocument extends Document<SclConfig> {
 	protected override createQuery() {
-		return new SclQuery(this.store, this.config, this.fileId)
+		return new SclQuery(this.store, this.config, this.documentId)
 	}
 
 	protected override createTransaction() {
-		return new SclTransaction(this.store, this.config, this.fileId, this.state, this.hooks)
+		return new SclTransaction(this.store, this.config, this.documentId, this.state, this.hooks)
 	}
 }
 ```
