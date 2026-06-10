@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.19] - 2026-06-10
+
+### Fixed
+
+- add `xmlns` key name on xmlns attribute (was empty before)
+
 ## [0.2.18] - 2026-06-10
 
 ### Added

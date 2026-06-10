@@ -23,6 +23,8 @@ export type InspectedElement<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 > = {
+	/** Namespace URI of this element (from its default or prefixed xmlns declaration). */
+	namespace: string
 	/** All attributes found on the opening tag, keyed by local name. */
 	attributes: Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
 	/** Names of child elements found directly under this element. */
@@ -75,11 +77,18 @@ export function inspectXml<
 
 		const attributes: Record<string, string> = {}
 		for (const attribute of Object.values(tag.attributes) as sax.QualifiedAttribute[]) {
-			const name = attribute.prefix ? attribute.local : attribute.name
+			// xmlns="..." has prefix='xmlns' and local='': use 'xmlns' as key instead of ''
+			const name =
+				attribute.prefix === 'xmlns' && attribute.local === ''
+					? 'xmlns'
+					: attribute.prefix
+						? attribute.local
+						: attribute.name
 			attributes[name] = attribute.value
 		}
 
 		report[localName] = {
+			namespace: tag.uri,
 			attributes: attributes as Partial<
 				AttributesValueObjectOf<GenericConfig, GenericElements[number]>
 			>,

@@ -281,8 +281,13 @@ function getElementAttributes(
 					}
 				: undefined
 
-		// We always use the name value without prefix for storage
-		const attributeName = namespace ? attribute.local : attribute.name
+		// xmlns="..." has prefix='xmlns' and local='': use 'xmlns' as key instead of ''
+		const attributeName =
+			attribute.prefix === 'xmlns' && attribute.local === ''
+				? 'xmlns'
+				: namespace
+					? attribute.local
+					: attribute.name
 
 		return {
 			name: attributeName,
