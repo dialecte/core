@@ -2,7 +2,7 @@ import { stripAttributes } from './strip-attributes'
 
 import { describe, expect, it } from 'vitest'
 
-import { DIALECTE_NAMESPACES, runTestCases } from '@/test'
+import { DIALECTE_TEST_NAMESPACES, runTestCases } from '@/test'
 
 import type { BaseTestCase } from '@/test'
 import type { TestDialecteConfig } from '@/test'
@@ -10,7 +10,7 @@ import type { RawRecord, TrackedRecord, TreeRecord, ChildrenOf } from '@/types'
 
 type TestConfig = TestDialecteConfig
 
-const ns = DIALECTE_NAMESPACES.default
+const ns = DIALECTE_TEST_NAMESPACES.default
 
 const baseRecord = {
 	id: '1',

@@ -3,7 +3,7 @@ import { isRawRecord, isTrackedRecord, isTreeRecord } from './guard'
 
 import { describe, expect } from 'vitest'
 
-import { TEST_DIALECTE_CONFIG, DIALECTE_NAMESPACES, runTestCases } from '@/test'
+import { TEST_DIALECTE_CONFIG, DIALECTE_TEST_NAMESPACES, runTestCases } from '@/test'
 
 import type { BaseTestCase } from '@/test'
 import type {
@@ -33,7 +33,7 @@ describe('Record Converter', () => {
 				input: {
 					id: '1',
 					tagName: 'A',
-					namespace: DIALECTE_NAMESPACES.default,
+					namespace: DIALECTE_TEST_NAMESPACES.default,
 					attributes: [],
 					children: [],
 					parent: null,
@@ -46,7 +46,7 @@ describe('Record Converter', () => {
 				input: {
 					id: '2',
 					tagName: 'A',
-					namespace: DIALECTE_NAMESPACES.default,
+					namespace: DIALECTE_TEST_NAMESPACES.default,
 					attributes: [],
 					children: [],
 					parent: null,
@@ -60,7 +60,7 @@ describe('Record Converter', () => {
 				input: {
 					id: '3',
 					tagName: 'A',
-					namespace: DIALECTE_NAMESPACES.default,
+					namespace: DIALECTE_TEST_NAMESPACES.default,
 					attributes: [],
 					children: [],
 					parent: null,
@@ -96,7 +96,7 @@ describe('Record Converter', () => {
 		const rawRecord: RawRecord<TestConfig, 'A'> = {
 			id: '1',
 			tagName: 'A',
-			namespace: DIALECTE_NAMESPACES.default,
+			namespace: DIALECTE_TEST_NAMESPACES.default,
 			attributes: [],
 			children: [],
 			parent: null,
@@ -161,7 +161,7 @@ describe('Record Converter', () => {
 		const rawRecord: RawRecord<TestConfig, 'A'> = {
 			id: '1',
 			tagName: 'A',
-			namespace: DIALECTE_NAMESPACES.default,
+			namespace: DIALECTE_TEST_NAMESPACES.default,
 			attributes: [],
 			children: [],
 			parent: null,
@@ -171,7 +171,7 @@ describe('Record Converter', () => {
 		const childTree: TreeRecord<TestConfig, 'AA_1'> = {
 			id: '2',
 			tagName: 'AA_1',
-			namespace: DIALECTE_NAMESPACES.default,
+			namespace: DIALECTE_TEST_NAMESPACES.default,
 			attributes: [],
 			children: [],
 			parent: null,
@@ -279,8 +279,8 @@ describe('Record Converter', () => {
 				input: {
 					tagName: 'A',
 					attributes: [
-						{ name: 'aA', value: 'val1', namespace: DIALECTE_NAMESPACES.default },
-						{ name: 'bA', value: 'val2', namespace: DIALECTE_NAMESPACES.default },
+						{ name: 'aA', value: 'val1', namespace: DIALECTE_TEST_NAMESPACES.default },
+						{ name: 'bA', value: 'val2', namespace: DIALECTE_TEST_NAMESPACES.default },
 					],
 					dialecteConfig: TEST_DIALECTE_CONFIG,
 				},

@@ -2,7 +2,7 @@ import { parseXmlFile } from './parse-xml-document'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { DIALECTE_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
+import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { Store } from '@/store/store.types'
 import type { BaseTestCase } from '@/test'
@@ -10,7 +10,7 @@ import type { AnyDialecteConfig, AnyRawRecord, RecordPatch } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const NS = DIALECTE_NAMESPACES
+const NS = DIALECTE_TEST_NAMESPACES
 const CONFIG = TEST_DIALECTE_CONFIG
 
 function createMockStore(): Store & { bulkWriteCalls: Array<Parameters<Store['bulkWrite']>> } {

@@ -25,7 +25,8 @@ const DEFAULT_BATCH_SIZE = 2000
  * - Database-agnostic: only calls Store.bulkWrite(documentId, ops)
  */
 export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXmlFileResult> {
-	const { file, documentId, store, config, useCustomRecordsIds = false, chunkOptions } = params
+	const { documentId, store, config, useCustomRecordsIds = false, chunkOptions } = params
+	let { file } = params
 
 	const { supportedFileExtensions } = config.io
 
@@ -36,6 +37,13 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 
 	if (file.size === 0) {
 		return { documentId, recordCount: 0 }
+	}
+
+	const beforeImport = config.io.hooks?.beforeImport
+	if (beforeImport) {
+		const rawXml = await file.text()
+		const transformed = beforeImport(rawXml)
+		file = new File([transformed], file.name, { type: file.type })
 	}
 
 	const chunkSize = chunkOptions?.chunkSize ?? DEFAULT_CHUNK_SIZE

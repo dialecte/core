@@ -1,4 +1,4 @@
-import { DIALECTE_NAMESPACES } from './constant'
+import { DIALECTE_TEST_NAMESPACES } from './constant'
 import {
 	DEFINITION,
 	ROOT_ELEMENT,
@@ -40,7 +40,7 @@ export const TEST_DIALECTE_CONFIG = {
 	rootElementName: ROOT_ELEMENT,
 	singletonElements: SINGLETON_ELEMENTS,
 	elements: ELEMENT_NAMES,
-	namespaces: DIALECTE_NAMESPACES,
+	namespaces: DIALECTE_TEST_NAMESPACES,
 	attributes: ATTRIBUTES,
 	children: CHILDREN,
 	parents: PARENTS,

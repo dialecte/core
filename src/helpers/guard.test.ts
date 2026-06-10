@@ -8,7 +8,7 @@ import {
 
 import { describe, expect } from 'vitest'
 
-import { DIALECTE_NAMESPACES, runTestCases } from '@/test'
+import { DIALECTE_TEST_NAMESPACES, runTestCases } from '@/test'
 import { TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { BaseTestCase } from '@/test'
@@ -35,7 +35,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				children: [],
 				parent: null,
@@ -47,7 +47,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				children: [],
 				status: 'unchanged',
@@ -60,7 +60,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				children: [],
 				parent: null,
@@ -73,7 +73,7 @@ describe('isRawRecord', () => {
 		'rejects object missing id': {
 			record: {
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				children: [],
 				parent: null,
@@ -84,7 +84,7 @@ describe('isRawRecord', () => {
 		'rejects object missing tagName': {
 			record: {
 				id: '1',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				children: [],
 				parent: null,
@@ -107,7 +107,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				children: [],
 				parent: null,
 				value: '',
@@ -118,7 +118,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				parent: null,
 				value: '',
@@ -129,7 +129,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				children: [],
 				value: '',
@@ -140,7 +140,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: [],
 				children: [],
 				parent: null,
@@ -151,7 +151,7 @@ describe('isRawRecord', () => {
 			record: {
 				id: '1',
 				tagName: 'Root',
-				namespace: DIALECTE_NAMESPACES.default,
+				namespace: DIALECTE_TEST_NAMESPACES.default,
 				attributes: {},
 				children: [],
 				extra: 'property',
@@ -176,7 +176,7 @@ describe('isTrackedRecord', () => {
 	const rawRecord: RawRecord<TestConfig, 'Root'> = {
 		id: '1',
 		tagName: 'Root',
-		namespace: DIALECTE_NAMESPACES.default,
+		namespace: DIALECTE_TEST_NAMESPACES.default,
 		attributes: [],
 		children: [],
 		parent: null,
@@ -186,7 +186,7 @@ describe('isTrackedRecord', () => {
 	const trackedRecord: TrackedRecord<TestConfig, 'Root'> = {
 		id: '1',
 		tagName: 'Root',
-		namespace: DIALECTE_NAMESPACES.default,
+		namespace: DIALECTE_TEST_NAMESPACES.default,
 		attributes: [],
 		children: [],
 		status: 'unchanged',
@@ -232,7 +232,7 @@ describe('isTreeRecord', () => {
 	const rawRecord: RawRecord<TestConfig, 'Root'> = {
 		id: '1',
 		tagName: 'Root',
-		namespace: DIALECTE_NAMESPACES.default,
+		namespace: DIALECTE_TEST_NAMESPACES.default,
 		attributes: [],
 		children: [],
 		parent: null,
@@ -253,7 +253,7 @@ describe('isTreeRecord', () => {
 		{
 			id: '2',
 			tagName: 'A',
-			namespace: DIALECTE_NAMESPACES.default,
+			namespace: DIALECTE_TEST_NAMESPACES.default,
 			attributes: [],
 			children: [],
 			parent: { id: '1', tagName: 'Root' },
@@ -298,8 +298,8 @@ describe('isFullAttributeArray', () => {
 	const testCases: Record<string, TestCase> = {
 		'array with FullAttributeObjects': {
 			attributes: [
-				{ name: 'aAA_1', value: 'value1', namespace: DIALECTE_NAMESPACES.default },
-				{ name: 'bAA_1', value: 'value2', namespace: DIALECTE_NAMESPACES.default },
+				{ name: 'aAA_1', value: 'value1', namespace: DIALECTE_TEST_NAMESPACES.default },
+				{ name: 'bAA_1', value: 'value2', namespace: DIALECTE_TEST_NAMESPACES.default },
 			],
 			expected: true,
 		},
@@ -336,7 +336,7 @@ describe('isRecordOf', () => {
 
 	const base = {
 		id: '1',
-		namespace: DIALECTE_NAMESPACES.default,
+		namespace: DIALECTE_TEST_NAMESPACES.default,
 		attributes: [],
 		children: [],
 		parent: null,

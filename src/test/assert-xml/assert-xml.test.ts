@@ -1,11 +1,11 @@
-import { DIALECTE_NAMESPACES } from '../constant'
+import { DIALECTE_TEST_NAMESPACES } from '../constant'
 import { createXmlAssertions } from './assert-xml'
 
 import { describe, it, expect } from 'vitest'
 
-const DEFAULT_NS_URI = DIALECTE_NAMESPACES.default.uri
-const EXT_NS_URI = DIALECTE_NAMESPACES.ext.uri
-const EXT_PREFIX = DIALECTE_NAMESPACES.ext.prefix
+const DEFAULT_NS_URI = DIALECTE_TEST_NAMESPACES.default.uri
+const EXT_NS_URI = DIALECTE_TEST_NAMESPACES.ext.uri
+const EXT_PREFIX = DIALECTE_TEST_NAMESPACES.ext.prefix
 
 function parseXml(xml: string): XMLDocument {
 	const parser = new DOMParser()
@@ -37,7 +37,7 @@ const sampleXml = /* xml */ `
 `
 
 const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
-	namespaces: DIALECTE_NAMESPACES,
+	namespaces: DIALECTE_TEST_NAMESPACES,
 })
 
 describe('assertXml', () => {

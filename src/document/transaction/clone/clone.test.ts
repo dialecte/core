@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
-	DIALECTE_NAMESPACES,
+	DIALECTE_TEST_NAMESPACES,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	createTestProject,
@@ -35,7 +35,7 @@ function makeCloneHooks(): TransactionHooks<TestDialecteConfig> {
 					{
 						name: 'clone-index',
 						value: `clone:${record.id}`,
-						namespace: DIALECTE_NAMESPACES.dev,
+						namespace: DIALECTE_TEST_NAMESPACES.dev,
 					},
 				],
 			} as typeof record,
@@ -77,7 +77,7 @@ function makeAfterDeepCloneHooks(): TransactionHooks<TestDialecteConfig> {
 						{
 							name: 'post-clone',
 							value: `mapped:${String(mapping.source.id)}`,
-							namespace: DIALECTE_NAMESPACES.dev,
+							namespace: DIALECTE_TEST_NAMESPACES.dev,
 						},
 					],
 				} as typeof currentRecord

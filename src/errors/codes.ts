@@ -111,6 +111,10 @@ export const ERROR_CATALOG = {
 		code: 'D5002',
 		message: 'Parent references non-existent child record',
 	},
+	PARSE_ERROR: {
+		code: 'D5003',
+		message: 'Failed to parse XML',
+	},
 
 	// D6xxx — Config
 	EXTENSION_METHOD_COLLISION: {

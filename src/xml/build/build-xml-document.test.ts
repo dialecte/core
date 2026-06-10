@@ -3,14 +3,14 @@ import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
 import { describe, expect } from 'vitest'
 
-import { DIALECTE_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
+import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { BaseTestCase } from '@/test'
 import type { AnyRawRecord } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const NS = DIALECTE_NAMESPACES
+const NS = DIALECTE_TEST_NAMESPACES
 const CONFIG = TEST_DIALECTE_CONFIG
 
 function record(

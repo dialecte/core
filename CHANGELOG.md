@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.17] - 2026-06-03
+
+### Added
+
+- `XSI_NAMESPACE` constant (`{ uri: 'http://www.w3.org/2001/XMLSchema-instance', prefix: 'xsi' }`) exported from `@dialecte/core/helpers`
+- `inspectXml`: lightweight SAX-based XML inspector; stops early once all requested elements are found; returns typed report of attributes, children, and text value per element
+
 ## [0.2.16] - 2026-06-03
 
 ### Fixed

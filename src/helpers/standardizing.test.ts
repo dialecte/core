@@ -2,14 +2,19 @@ import { standardizeRecord } from './standardizing'
 
 import { describe, expect, it } from 'vitest'
 
-import { DIALECTE_NAMESPACES, TEST_DIALECTE_CONFIG, TestDialecteConfig, runTestCases } from '@/test'
+import {
+	DIALECTE_TEST_NAMESPACES,
+	TEST_DIALECTE_CONFIG,
+	TestDialecteConfig,
+	runTestCases,
+} from '@/test'
 
 import type { BaseTestCase } from '@/test'
 import type { AnyDialecteConfig, ElementsOf, FullAttributeObjectOf, RawRecord } from '@/types'
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-const ns = DIALECTE_NAMESPACES
+const ns = DIALECTE_TEST_NAMESPACES
 const config = TEST_DIALECTE_CONFIG
 
 // ── Attributes handling ───────────────────────────────────────────────────────

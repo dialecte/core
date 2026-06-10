@@ -2,7 +2,7 @@ import { exportDocument } from './export-document'
 
 import { describe, it, expect, vi } from 'vitest'
 
-import { runTestCases, DIALECTE_NAMESPACES, TEST_DIALECTE_CONFIG } from '@/test'
+import { runTestCases, DIALECTE_TEST_NAMESPACES, TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { DocumentRecord, ProjectState } from '../types'
 import type { Store } from '@/store/store.types'
@@ -11,7 +11,7 @@ import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const NS = DIALECTE_NAMESPACES
+const NS = DIALECTE_TEST_NAMESPACES
 const CONFIG = TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig
 
 function mockStore(records: AnyRawRecord[]): Store {

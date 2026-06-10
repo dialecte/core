@@ -58,6 +58,12 @@ export type AfterImportResult = {
  * IO hooks for import/export lifecycle.
  */
 export type IOHooks = {
+	/**
+	 * Called once with the raw XML string before any parsing begins.
+	 * Return a (possibly modified) XML string. Useful for pre-parse normalization,
+	 * e.g. transforming a legacy schema to the canonical form expected by this config.
+	 */
+	beforeImport?: (xml: string) => string
 	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void
 	/** Returns records to create/update/delete after all records are stored. */
 	afterImport?: () => Promise<AfterImportResult>
