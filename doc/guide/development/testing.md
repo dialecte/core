@@ -75,6 +75,7 @@ import { runTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dia
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@dialecte/core/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+// DIALECTE_TEST_NAMESPACES is also available: { default, dev, xsi, ext }
 
 type TestCase = BaseXmlTestCase & {
 	ref: Ref<TestDialecteConfig, 'A'>

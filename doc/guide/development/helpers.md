@@ -196,8 +196,52 @@ See [Writing Extensions](/guide/extensions/) for the full authoring guide.
 
 ## Constants
 
-| Export                            | Value                           | Description                                      |
-| --------------------------------- | ------------------------------- | ------------------------------------------------ |
-| `CUSTOM_RECORD_ID_ATTRIBUTE_NAME` | `'db-id'`                       | Attribute local name for pinned record IDs       |
-| `CUSTOM_RECORD_ID_ATTRIBUTE`      | `'dev:db-id'`                   | Qualified attribute name (`prefix:local`)        |
-| `DIALECTE_DEV_NAMESPACE`          | `{ prefix: 'dev', uri: '...' }` | The `dev` XML namespace used for tool attributes |
+| Export                            | Value                           | Description                                                             |
+| --------------------------------- | ------------------------------- | ----------------------------------------------------------------------- |
+| `CUSTOM_RECORD_ID_ATTRIBUTE_NAME` | `'db-id'`                       | Attribute local name for pinned record IDs                              |
+| `CUSTOM_RECORD_ID_ATTRIBUTE`      | `'dev:db-id'`                   | Qualified attribute name (`prefix:local`)                               |
+| `DIALECTE_DEV_NAMESPACE`          | `{ prefix: 'dev', uri: '...' }` | The `dev` XML namespace used for tool attributes                        |
+| `XSI_NAMESPACE`                   | `{ prefix: 'xsi', uri: '...' }` | W3C XML Schema-instance namespace descriptor                            |
+| `DIALECTE_NAMESPACES`             | `{ dev: ..., xsi: ... }`        | Grouped framework namespaces - spread into dialecte `namespaces` config |
+
+---
+
+## XML inspection
+
+### `inspectXml`
+
+Lightweight SAX-based inspector. Streams an XML string, collects the first occurrence of each requested element, then stops early. No DOM construction.
+
+Use this in `beforeImport` hooks to detect XML dialect versions without a full parse.
+
+```ts
+import { inspectXml } from '@dialecte/core'
+
+const report = inspectXml(xml, { elements: ['Project', 'project'] as const })
+// report.Project?.attributes   → Partial<AttributesValueObject>
+// report.Project?.children     → string[]
+// report.Project?.value        → string (inner text)
+```
+
+**Type-safe with a config:**
+
+```ts
+import { inspectXml } from '@dialecte/core'
+import { MY_DIALECTE_CONFIG } from './config'
+
+const report = inspectXml(xml, {
+	config: MY_DIALECTE_CONFIG,
+	elements: ['Root'] as const,
+})
+// report.Root?.attributes → typed to the Root element's attribute map
+```
+
+**Params**
+
+| Param             | Type                       | Description                                                    |
+| ----------------- | -------------------------- | -------------------------------------------------------------- |
+| `xml`             | `string`                   | Raw XML string to inspect                                      |
+| `params.elements` | `readonly string[]`        | Element local names to search for (case-sensitive)             |
+| `params.config`   | `AnyDialecteConfig` (opt.) | Dialecte config - enables typed attribute access on the report |
+
+**Returns** A `Record<ElementName, InspectedElement | undefined>`. Keys are the requested element names; `undefined` when not found in the input.

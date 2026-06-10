@@ -7,12 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-## [0.2.17] - 2026-06-03
+## [0.2.17] - 2026-06-10
 
 ### Added
 
 - `XSI_NAMESPACE` constant (`{ uri: 'http://www.w3.org/2001/XMLSchema-instance', prefix: 'xsi' }`) exported from `@dialecte/core/helpers`
 - `inspectXml`: lightweight SAX-based XML inspector; stops early once all requested elements are found; returns typed report of attributes, children, and text value per element
+- `DIALECTE_NAMESPACES` (`{ dev, xsi }`) exported from `@dialecte/core/helpers` - groups the two framework-level namespace descriptors as a ready-to-spread base for dialecte config `namespaces` objects
+- `IOHooks` type and `IO_HOOKS` export pattern: dialecte packages expose a named `IO_HOOKS` constant (conforming to `IOHooks`) that is passed as `io.hooks` in their dialecte config; currently supports `beforeImport` for normalizing raw XML before parsing
+
+### Changed
+
+- `DIALECTE_NAMESPACES` in `@dialecte/core/test` renamed to `DIALECTE_TEST_NAMESPACES`; derives from `DIALECTE_NAMESPACES` (helpers) and adds `default` + `ext` test-only namespaces. Import path unchanged (`@dialecte/core/test`).
 
 ## [0.2.16] - 2026-06-03
 
