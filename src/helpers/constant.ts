@@ -12,6 +12,8 @@ export const XSI_NAMESPACE = {
 	prefix: 'xsi',
 }
 
+export const XMLNS_XSI_NAMESPACE = `xmlns:${XSI_NAMESPACE.prefix}="${XSI_NAMESPACE.uri}"`
+
 export const DIALECTE_NAMESPACES = {
 	dev: DIALECTE_DEV_NAMESPACE,
 	xsi: XSI_NAMESPACE,
