@@ -34,6 +34,11 @@ jobs:
     needs: install
     uses: ./.github/workflows/_lint.yml
 
+  type-perf:
+    name: Type Performance Gate
+    needs: install
+    uses: ./.github/workflows/_type-perf.yml
+
   deploy:
     name: Publish to NPM
     if: needs.version.outputs.version_changed == 'true'
@@ -42,6 +47,7 @@ jobs:
       - test
       - version
       - lint
+      - type-perf
     uses: ./.github/workflows/_publish.yml
 
   create-release-tag:

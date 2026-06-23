@@ -43,3 +43,9 @@ AGENTS.md
 
 .vitepress/dist
 .vitepress/cache
+
+# type-benchmark throwaways (script + committed baseline.json are kept)
+.bench-dts
+.bench-trace
+.bench-*.tsconfig.json
+benchmarks/types/generated/

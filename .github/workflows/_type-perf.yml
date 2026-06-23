@@ -1,0 +1,35 @@
+name: _type-perf
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  type-perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+          cache: 'npm'
+
+      - name: Restore node_modules cache
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+
+      # Fails if @dialecte/core's generic-machinery instantiation counts regress > 5%
+      # vs benchmarks/types/baseline.json. Catches core-internal regressions at the
+      # source — before a release propagates them to dialects (scl, …).
+      - name: Type-performance regression gate
+        run: npm run type-bench:check
+
+      # Fails if a schema-derived narrowing assertion no longer holds (IntelliSense safety net).
+      - name: Type-narrowing gate
+        run: npm run type-narrowing
