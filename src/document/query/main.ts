@@ -8,6 +8,7 @@ import {
 	getAttributesFullObject,
 } from './get/attribute'
 import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } from './get/record'
+import { getSnapshot } from './snapshot'
 
 import { toRef } from '@/helpers'
 import { invariant } from '@/utils'
@@ -21,10 +22,12 @@ import type {
 	FindDescendantsReturn,
 } from './find'
 import type { GetTreeParams } from './get'
+import type { GetSnapshotOptions, SnapshotResult } from './snapshot'
 import type { Ref, RefOrRecord } from '@/document'
 import type { Store } from '@/store'
 import type {
 	AnyDialecteConfig,
+	AnyTreeRecord,
 	AttributesOf,
 	AttributesValueObjectOf,
 	DescendantsOf,
@@ -333,6 +336,34 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			options,
 			dialecteConfig: this.dialecteConfig,
 		})
+	}
+
+	/**
+	 * Snapshot the (uncommitted) document state as a tree, XML string, or both.
+	 *
+	 * Reads overlay staged operations, so calling this on a live transaction or a
+	 * prepared transaction's `query` reflects exactly what `commit()` would write.
+	 * Scope is controlled by `ref`/`ancestors`/`siblings`/`depth`; output by `as`.
+	 *
+	 * @example
+	 * ```ts
+	 * const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))
+	 * const { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })
+	 * ```
+	 */
+	async getSnapshot<GenericElement extends ElementsOf<GenericConfig>>(
+		options?: GetSnapshotOptions<GenericConfig, GenericElement> & { as?: 'tree' },
+	): Promise<AnyTreeRecord>
+	async getSnapshot<GenericElement extends ElementsOf<GenericConfig>>(
+		options: GetSnapshotOptions<GenericConfig, GenericElement> & { as: 'xml' },
+	): Promise<string>
+	async getSnapshot<GenericElement extends ElementsOf<GenericConfig>>(
+		options: GetSnapshotOptions<GenericConfig, GenericElement> & { as: 'both' },
+	): Promise<SnapshotResult>
+	async getSnapshot<GenericElement extends ElementsOf<GenericConfig>>(
+		options?: GetSnapshotOptions<GenericConfig, GenericElement>,
+	): Promise<AnyTreeRecord | string | SnapshotResult> {
+		return getSnapshot({ context: this.context, options })
 	}
 
 	//== Attribute queries

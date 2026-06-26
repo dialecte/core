@@ -7,11 +7,14 @@ import {
 	getAttributesFullObject,
 } from '../get/attribute'
 import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } from '../get/record'
+import { getSnapshot } from '../snapshot'
 
 import { toRef } from '@/helpers'
 
 import type { Context } from '../../types'
-import type { AnyRef, AnyRefOrRecord, Ref } from '@/document'
+import type { GetTreeParams } from '../get'
+import type { GetSnapshotOptions, SnapshotResult } from '../snapshot'
+import type { AnyRef, AnyRefOrRecord, FilterAttributes, Ref } from '@/document'
 import type {
 	AnyAttribute,
 	AnyDialecteConfig,
@@ -105,12 +108,32 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		return getAttributes({ context: this.getContext(), ref, ...params })
 	}
 
-	async getTree(refOrRecord: AnyRefOrRecord | undefined): Promise<AnyTreeRecord | undefined> {
+	async getTree(
+		refOrRecord: AnyRefOrRecord | undefined,
+		options?: GetTreeParams<AnyDialecteConfig, ElementsOf<AnyDialecteConfig>>,
+	): Promise<AnyTreeRecord | undefined> {
 		return getTree({
 			context: this.getContext(),
 			ref: toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
+			options: options as GetTreeParams<GenericConfig, ElementsOf<GenericConfig>>,
 			dialecteConfig: this.dialecteConfig,
 		}) as Promise<AnyTreeRecord | undefined>
+	}
+
+	async getSnapshot(
+		options?: GetSnapshotOptions<AnyDialecteConfig> & { as?: 'tree' },
+	): Promise<AnyTreeRecord>
+	async getSnapshot(options: GetSnapshotOptions<AnyDialecteConfig> & { as: 'xml' }): Promise<string>
+	async getSnapshot(
+		options: GetSnapshotOptions<AnyDialecteConfig> & { as: 'both' },
+	): Promise<SnapshotResult>
+	async getSnapshot(
+		options?: GetSnapshotOptions<AnyDialecteConfig>,
+	): Promise<AnyTreeRecord | string | SnapshotResult> {
+		return getSnapshot({
+			context: this.getContext(),
+			options: options as GetSnapshotOptions<GenericConfig>,
+		})
 	}
 
 	async findDescendants(
@@ -140,7 +163,7 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		return findByAttributes({
 			context: this.getContext(),
 			tagName: params.tagName as ElementsOf<GenericConfig>,
-			attributes: params.attributes as any,
+			attributes: params.attributes as FilterAttributes<GenericConfig, ElementsOf<GenericConfig>>,
 		}) as Promise<AnyTrackedRecord[]>
 	}
 }
