@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.21] - 2026-06-26
+
+### Added
+
+- `Query.getSnapshot(options?)`: render the current document state — including a transaction's uncommitted changes — as a tree, XML string, or both (`as: 'tree' | 'xml' | 'both'`). Scope with `ref`/`ancestors`/`siblings`/`depth`; shape the tree with `omit`/`unwrap`/`includeDeleted`. `siblings` includes each ancestor-spine node's siblings — `true` for shallow context, `{ expand: true }` for full subtrees. `depth` is honored even without a `ref` (e.g. `{ depth: 1 }` is the root plus its direct children). The XML always reflects the full document (what `commit()` writes); a scoped non-root `ref` yields an XML fragment. Reachable on a live transaction and on `PreparedTransaction.query`.
+- `PreparedTransaction.query`: read-only `Query` view of the in-progress transaction, for previewing staged changes (e.g. `getSnapshot`) before `commit()`.
+- `buildXmlDocument` accepts `rootId` to build a fragment rooted at a non-root element (document-root attribute enforcement is skipped for fragments); `xmlDocumentToString` exported from `@dialecte/core` xml build.
+- Test runner (`@dialecte/core/test`): `ActResult` supports `assertOn: 'custom'` with an `xmlString`, running `expectedQueries`/`unexpectedQueries` against XML produced inside the act (e.g. a `getSnapshot` output) instead of the stored export.
+
+### Changed
+
+- `getTree` and `getSnapshot` now return children in **config order** (`config.children[parent]` sequence, unknown tags last) instead of stored/document order, so a tree matches its XML serialization. The ordering comparator (`orderByConfigSequence`) is shared with `buildXmlDocument` as the single source of truth.
+- `getTree`'s `omit`/`unwrap` logic moved to a shared tree-filter module now also used by `getSnapshot` (no behavior change for `getTree`).
+
 ## [0.2.20] - 2026-06-26
 
 ### Added
