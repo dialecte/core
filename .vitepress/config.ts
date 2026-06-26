@@ -50,6 +50,7 @@ export default defineConfig({
 						{ text: 'State & Errors', link: '/guide/development/state-and-errors' },
 						{ text: 'Testing', link: '/guide/development/testing' },
 						{ text: 'Helpers', link: '/guide/development/helpers' },
+						{ text: 'Type Performance', link: '/guide/development/type-performance' },
 					],
 				},
 				{
