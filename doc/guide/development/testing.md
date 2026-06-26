@@ -151,15 +151,30 @@ describe('update', () => {
 
 After `act` returns, `runTestCases.withExport` exports the document identified by `assertOn` (`'source'` by default, or `'target'` for cross-document operations) and runs XPath assertions from `expectedQueries` / `unexpectedQueries`.
 
+To assert against XML produced **inside** the act — for example `getSnapshot({ as: 'xml' })` — return `{ assertOn: 'custom', xmlString }`. The runner parses that string and runs the same `expectedQueries` / `unexpectedQueries` matcher against it, instead of exporting the stored document:
+
+```ts
+async function act({ source, testCase }): Promise<ActResult> {
+	const { tree, xmlString } = await source.query.getSnapshot({ ref, as: 'both' })
+	// ...assert tree shape inline...
+	return { assertOn: 'custom', xmlString }
+}
+```
+
 Use `runTestCases.withoutExport` when no export is needed - `act` returns `Promise<void>`, XPath assertions are skipped.
 
 ### ActResult
 
 ```ts
-type ActResult = {
-	assertOn?: 'source' | 'target' // default: 'source'
-	withDatabaseIds?: boolean // default: true
-}
+type ActResult =
+	| {
+			assertOn?: 'source' | 'target' // default: 'source'
+			withDatabaseIds?: boolean // default: true
+	  }
+	| {
+			assertOn: 'custom' // assert queries against `xmlString`
+			xmlString: string // XML produced in the act, e.g. a getSnapshot output
+	  }
 ```
 
 ### BaseXmlTestCase shape

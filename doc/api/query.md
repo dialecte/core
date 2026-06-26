@@ -1,5 +1,5 @@
 ---
-description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, findAncestors, getTree, and filtering utilities.
+description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, findAncestors, getTree, getSnapshot, and filtering utilities.
 ---
 
 # Query
@@ -204,6 +204,8 @@ const results = await doc.query.findByAttributes({
 
 Returns a tree-shaped record (with nested `tree[]` instead of flat `children[]`).
 
+Children are returned in **config order** (`config.children[parent]` sequence, unknown tags last) — the same ordering `buildXmlDocument` applies, so a tree matches its XML serialization. Ordering is the final step, after `omit`/`unwrap`.
+
 ```ts
 const tree = await doc.query.getTree(ref)
 // TreeRecord<Config, Element> | undefined
@@ -335,6 +337,42 @@ omit: [
 
 - `'self'` (default) — prune the entire branch
 - `'children'` — keep the element but stop traversal
+
+## Snapshots
+
+### getSnapshot
+
+Renders the current document state — including a transaction's **uncommitted** changes — as a tree, an XML string, or both. Reads overlay staged operations, so calling it on a live transaction or a prepared transaction's `query` shows exactly what `commit()` would write.
+
+```ts
+// Whole document, as a tree
+const tree = await doc.query.getSnapshot()
+
+// A bounded scope, as XML
+const xml = await doc.query.getSnapshot({ ref, depth: 2, as: 'xml' })
+
+// Preview uncommitted changes (see Document.prepare)
+const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))
+const { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })
+```
+
+#### GetSnapshotOptions
+
+| Option            | Type                              | Description                                                                                                                                                                                                                                      |
+| ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ref`             | `RefOrRecord`                     | Scope root. Omit to start from the document root (`config.rootElementName`).                                                                                                                                                                     |
+| `ancestors`       | `number`                          | Include this many ancestor levels above `ref` (spine).                                                                                                                                                                                           |
+| `siblings`        | `boolean \| { expand?: boolean }` | At every ancestor-spine level, include the spine node's siblings (shows `ref` in context up the spine; implies at least `ancestors: 1`). `true` → shallow siblings; `{ expand: true }` → keep the siblings' subtrees (still bounded by `depth`). |
+| `depth`           | `number`                          | Descend this many levels below the scope root (default: whole subtree). Honored even without `ref` — e.g. `{ depth: 1 }` is the root plus its direct children.                                                                                   |
+| `includeDeleted`  | `boolean`                         | Re-attach staged-deleted nodes as `status: 'deleted'` tombstones (tree only).                                                                                                                                                                    |
+| `omit` / `unwrap` | see [getTree](#gettree)           | Tree-shape filters, applied to the tree output only.                                                                                                                                                                                             |
+| `as`              | `'tree' \| 'xml' \| 'both'`       | Output format. Default `'tree'`; `'both'` → `{ tree, xmlString }`.                                                                                                                                                                               |
+
+**Tree vs XML:** `omit`, `unwrap` and `includeDeleted` shape the **tree** only. The **XML** always reflects the full, unfiltered document — it is what `commit()` will write. When `unwrap` is omitted, the config's transparent elements are unwrapped (as in `getTree`), so the tree matches what the UI shows.
+
+**Ordering:** children are returned in config order (same as `getTree` and the XML), so the snapshot tree and its `xmlString` share one element order.
+
+A scoped `ref` whose element is not the document root produces an XML **fragment** rooted at that element (no document-root attributes are stamped).
 
 ## Attribute queries
 

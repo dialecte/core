@@ -73,12 +73,13 @@ await prepared.commit()
 
 ### PreparedTransaction
 
-| Field        | Type                            | Description                      |
-| ------------ | ------------------------------- | -------------------------------- |
-| `operations` | `ReadonlyArray<Operation>`      | Staged operations for preview    |
-| `summary`    | `{ creates, updates, deletes }` | Counts by operation type         |
-| `commit()`   | `() => Promise<void>`           | Apply all staged operations      |
-| `discard()`  | `() => void`                    | Throw away all staged operations |
+| Field        | Type                            | Description                                                                                                          |
+| ------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `operations` | `ReadonlyArray<Operation>`      | Staged operations for preview                                                                                        |
+| `summary`    | `{ creates, updates, deletes }` | Counts by operation type                                                                                             |
+| `query`      | `Query`                         | Read-only view of the uncommitted state — use `query.getSnapshot()` to preview the staged tree/XML before committing |
+| `commit()`   | `() => Promise<void>`           | Apply all staged operations                                                                                          |
+| `discard()`  | `() => void`                    | Throw away all staged operations                                                                                     |
 
 ## state (DocumentState)
 
