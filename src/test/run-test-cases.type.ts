@@ -26,10 +26,20 @@ export type ActParams<
 	target?: Document<GenericConfig, MergedExtensions<GenericModules>>
 }
 
-export type ActResult = {
-	assertOn?: 'source' | 'target'
-	withDatabaseIds?: boolean
-}
+export type ActResult =
+	| {
+			assertOn?: 'source' | 'target'
+			withDatabaseIds?: boolean
+	  }
+	| {
+			assertOn: 'custom'
+			/**
+			 * XML produced inside the act (e.g. `getSnapshot({ as: 'xml' })`) to assert
+			 * `expectedQueries`/`unexpectedQueries` against, instead of exporting the
+			 * stored document.
+			 */
+			xmlString: string
+	  }
 
 export type TestRunner<
 	GenericConfig extends AnyDialecteConfig,
