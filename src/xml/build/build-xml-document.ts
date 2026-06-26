@@ -1,6 +1,6 @@
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
-import { invariant } from '@/utils'
+import { invariant, orderByConfigSequence } from '@/utils'
 
 import type { BuildXmlDocumentParams } from './build-xml-document.types'
 import type {
@@ -21,22 +21,30 @@ import type {
  * Respects config.children ordering for element sequence.
  */
 export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
-	const { records, config, withDatabaseIds = false } = params
+	const { records, config, withDatabaseIds = false, rootId } = params
 
 	const index = new Map<string, AnyRawRecord>()
-	let rootRecord: AnyRawRecord | undefined
+	let documentRootRecord: AnyRawRecord | undefined
 
 	for (const record of records) {
 		index.set(record.id, record)
 		if (record.tagName === config.rootElementName) {
-			rootRecord = record
+			documentRootRecord = record
 		}
 	}
 
+	const rootRecord = rootId ? index.get(rootId) : documentRootRecord
+
 	invariant(rootRecord, {
-		detail: `No ${config.rootElementName} root element found in records`,
+		detail: rootId
+			? `No record found for rootId "${rootId}"`
+			: `No ${config.rootElementName} root element found in records`,
 		key: 'EXPORT_ROOT_NOT_FOUND',
 	})
+
+	// A fragment is any build whose root is not the document root element.
+	// Root-only attribute enforcement is skipped for fragments.
+	const isFragment = rootRecord.tagName !== config.rootElementName
 
 	const defaultNamespace = config.namespaces.default
 
@@ -54,10 +62,13 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 			attributes: rootRecord.attributes,
 			tagName: rootRecord.tagName,
 			isRoot: true,
+			isFragment,
 		})
 	}
 
-	enforceRootAttributes({ config, rootElement, namespace: rootRecord.namespace })
+	if (!isFragment) {
+		enforceRootAttributes({ config, rootElement, namespace: rootRecord.namespace })
+	}
 
 	if (rootRecord.value) rootElement.textContent = rootRecord.value.trim()
 	if (withDatabaseIds) rootElement.setAttribute(TEMP_IDB_ID_ATTRIBUTE_NAME, rootRecord.id)
@@ -72,6 +83,7 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 		xmlDocument,
 		parentRecord: rootRecord,
 		parentElement: rootElement,
+		isFragment,
 	})
 
 	return xmlDocument
@@ -86,8 +98,10 @@ function buildChildren(params: {
 	xmlDocument: XMLDocument
 	parentRecord: AnyRawRecord
 	parentElement: Element
+	isFragment: boolean
 }): void {
-	const { index, config, withDatabaseIds, xmlDocument, parentRecord, parentElement } = params
+	const { index, config, withDatabaseIds, xmlDocument, parentRecord, parentElement, isFragment } =
+		params
 
 	if (!parentRecord.children || parentRecord.children.length === 0) return
 
@@ -102,10 +116,10 @@ function buildChildren(params: {
 		childRecords.push(record)
 	}
 
-	const orderedChildren = orderRecordsPerSpecifiedSequence({
+	const orderedChildren = orderByConfigSequence({
 		parentTagName: parentRecord.tagName,
-		availableChildren: config.children,
-		childrenRecords: childRecords,
+		children: childRecords,
+		childrenConfig: config.children,
 	})
 
 	for (const childRecord of orderedChildren) {
@@ -115,6 +129,7 @@ function buildChildren(params: {
 			record: childRecord,
 			defaultNamespace: config.namespaces.default,
 			withDatabaseIds,
+			isFragment,
 		})
 
 		parentElement.appendChild(childElement)
@@ -126,6 +141,7 @@ function buildChildren(params: {
 			xmlDocument,
 			parentRecord: childRecord,
 			parentElement: childElement,
+			isFragment,
 		})
 	}
 }
@@ -138,14 +154,20 @@ function createElementWithAttributesAndText(params: {
 	record: AnyRawRecord
 	defaultNamespace: Namespace
 	withDatabaseIds: boolean
+	isFragment: boolean
 }): Element {
-	const { config, document: doc, record, defaultNamespace, withDatabaseIds } = params
+	const { config, document: doc, record, defaultNamespace, withDatabaseIds, isFragment } = params
 
 	const isDefaultNamespace = record.namespace.uri === defaultNamespace.uri
 	let element: Element
 
 	if (!isDefaultNamespace && record.namespace.prefix && record.namespace.prefix !== 'xmlns') {
-		addNamespaceToRootElementIfNeeded({ config, document: doc, namespace: record.namespace })
+		addNamespaceToRootElementIfNeeded({
+			config,
+			document: doc,
+			namespace: record.namespace,
+			isFragment,
+		})
 		element = doc.createElementNS(
 			record.namespace.uri,
 			`${record.namespace.prefix}:${record.tagName}`,
@@ -162,6 +184,7 @@ function createElementWithAttributesAndText(params: {
 			attributes: record.attributes,
 			tagName: record.tagName,
 			isRoot: false,
+			isFragment,
 		})
 	}
 
@@ -180,8 +203,9 @@ function addAttributesToElement(params: {
 	attributes: AnyAttribute[]
 	tagName: string
 	isRoot: boolean
+	isFragment: boolean
 }): void {
-	const { config, document: doc, element, attributes, tagName, isRoot } = params
+	const { config, document: doc, element, attributes, tagName, isRoot, isFragment } = params
 
 	for (const attribute of attributes) {
 		if (isNamespaceDeclaration(attribute)) continue
@@ -196,7 +220,12 @@ function addAttributesToElement(params: {
 		}
 
 		if (!isRoot) {
-			addNamespaceToRootElementIfNeeded({ config, document: doc, namespace: attribute.namespace })
+			addNamespaceToRootElementIfNeeded({
+				config,
+				document: doc,
+				namespace: attribute.namespace,
+				isFragment,
+			})
 		}
 
 		const localName = extractLocalName(attribute.name)
@@ -214,8 +243,9 @@ function addNamespaceToRootElementIfNeeded(params: {
 	config: AnyDialecteConfig
 	document: XMLDocument
 	namespace: { prefix: string; uri: string }
+	isFragment: boolean
 }): void {
-	const { config, document: doc, namespace } = params
+	const { config, document: doc, namespace, isFragment } = params
 	const rootElement = doc.documentElement
 	if (!rootElement) return
 	if (!namespace.prefix) return
@@ -225,7 +255,9 @@ function addNamespaceToRootElementIfNeeded(params: {
 	const existing = rootElement.getAttributeNS(XMLNS_NS, namespace.prefix)
 	if (existing === null) {
 		rootElement.setAttributeNS(XMLNS_NS, `xmlns:${namespace.prefix}`, namespace.uri)
-		enforceRootAttributes({ config, rootElement, namespace })
+		if (!isFragment) {
+			enforceRootAttributes({ config, rootElement, namespace })
+		}
 	}
 }
 
@@ -266,43 +298,6 @@ function enforceRootAttributes(params: {
 			rootElement.setAttribute(localName, attribute.default || '')
 		}
 	}
-}
-
-// ── Ordering ─────────────────────────────────────────────────────────────────
-
-function orderRecordsPerSpecifiedSequence(params: {
-	parentTagName: string
-	availableChildren: AnyDialecteConfig['children']
-	childrenRecords: AnyRawRecord[]
-}): AnyRawRecord[] {
-	const { parentTagName, availableChildren, childrenRecords } = params
-	const childrenOrder = new Set<string>(availableChildren[parentTagName])
-
-	if (!childrenOrder.size) return childrenRecords
-
-	const childrenPerTagName = new Map<string, AnyRawRecord[]>()
-	const unknowns: AnyRawRecord[] = []
-
-	for (const tag of childrenOrder) {
-		childrenPerTagName.set(tag, [])
-	}
-
-	for (const childRecord of childrenRecords) {
-		if (childrenOrder.has(childRecord.tagName)) {
-			childrenPerTagName.get(childRecord.tagName)?.push(childRecord)
-		} else {
-			unknowns.push(childRecord)
-		}
-	}
-
-	const ordered: AnyRawRecord[] = []
-	for (const tag of childrenOrder) {
-		const children = childrenPerTagName.get(tag)
-		if (children && children.length) ordered.push(...children)
-	}
-
-	ordered.push(...unknowns)
-	return ordered
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

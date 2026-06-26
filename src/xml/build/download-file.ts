@@ -1,4 +1,4 @@
-import { formatXml } from './formatter'
+import { xmlDocumentToString } from './serialize'
 
 import { saveToDisk } from '@/utils'
 
@@ -11,12 +11,7 @@ export async function downloadFile<GenericConfig extends AnyDialecteConfig>(para
 }) {
 	const { extension, xmlDocument, filename } = params
 
-	const serializer = new XMLSerializer()
-	const xmlString = serializer.serializeToString(xmlDocument)
-	const xmlDeclaration = '<?xml version="1.0" encoding="UTF-8"?>\n'
-	const xmlWithDeclaration = xmlDeclaration + xmlString
-
-	const formattedXmlString = formatXml(xmlWithDeclaration)
+	const formattedXmlString = xmlDocumentToString(xmlDocument)
 
 	const data = new Blob([formattedXmlString], { type: 'application/xml' })
 

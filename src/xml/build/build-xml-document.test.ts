@@ -1,7 +1,7 @@
 import { buildXmlDocument } from './build-xml-document'
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
-import { describe, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
@@ -615,6 +615,78 @@ describe('buildXmlDocument', () => {
 			expect(() => buildXmlDocument({ records: tc.records, config: CONFIG })).toThrowError(
 				tc.expectedError,
 			)
+		})
+	})
+
+	describe('rootId (fragment mode)', () => {
+		const fragmentRecords: AnyRawRecord[] = [
+			record({
+				id: 'root-1',
+				tagName: 'Root',
+				children: [{ id: 'a-1', tagName: 'A' }],
+			}),
+			record({
+				id: 'a-1',
+				tagName: 'A',
+				parent: { id: 'root-1', tagName: 'Root' },
+				attributes: [{ name: 'aA', value: 'val' }],
+				children: [{ id: 'aa1-1', tagName: 'AA_1' }],
+			}),
+			record({
+				id: 'aa1-1',
+				tagName: 'AA_1',
+				parent: { id: 'a-1', tagName: 'A' },
+				attributes: [{ name: 'aAA_1', value: 'deep' }],
+			}),
+		]
+
+		type TestCase = BaseTestCase & {
+			rootId: string
+			assertions: (xmlDocument: XMLDocument) => void
+		}
+
+		const testCases: Record<string, TestCase> = {
+			'rootId on a non-root element -> fragment rooted at that element': {
+				rootId: 'a-1',
+				assertions: (doc) => {
+					const root = doc.documentElement
+					expect(root.tagName).toBe('A')
+					expect(root.getAttribute('aA')).toBe('val')
+					expect(root.children[0]?.tagName).toBe('AA_1')
+				},
+			},
+			'fragment root NOT stamped with document-root default attributes': {
+				rootId: 'a-1',
+				assertions: (doc) => {
+					const root = doc.documentElement
+					// 'root' (default '1') and ext:root (default '2') belong to Root only
+					expect(root.hasAttribute('root')).toBe(false)
+					expect(root.getAttributeNS(NS.ext.uri, 'root')).toBeNull()
+				},
+			},
+			'rootId on the document root -> behaves like full export with root attributes': {
+				rootId: 'root-1',
+				assertions: (doc) => {
+					const root = doc.documentElement
+					expect(root.tagName).toBe('Root')
+					expect(root.getAttribute('root')).toBe('1')
+				},
+			},
+		}
+
+		runTestCases.generic(testCases, (tc) => {
+			const xmlDocument = buildXmlDocument({
+				records: fragmentRecords,
+				config: CONFIG,
+				rootId: tc.rootId,
+			})
+			tc.assertions(xmlDocument)
+		})
+
+		it('throws when rootId is not found', () => {
+			expect(() =>
+				buildXmlDocument({ records: fragmentRecords, config: CONFIG, rootId: 'nope' }),
+			).toThrow('No record found for rootId "nope"')
 		})
 	})
 })
