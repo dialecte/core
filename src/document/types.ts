@@ -1,3 +1,5 @@
+import type { Query } from './query'
+import type { ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { DialecteError } from '@/errors'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, Operation, AnyRawRecord } from '@/types'
@@ -27,9 +29,25 @@ export type CachedContext<GenericConfig extends AnyDialecteConfig> = Context<Gen
 
 //== Document types
 
-export type PreparedTransaction<GenericConfig extends AnyDialecteConfig> = {
+export type PreparedTransaction<
+	GenericConfig extends AnyDialecteConfig,
+	GenericExtension extends ExtensionsRegistry = {},
+> = {
 	readonly operations: ReadonlyArray<Operation<GenericConfig>>
 	readonly summary: { creates: number; updates: number; deletes: number }
+	/**
+	 * Read-only view of the in-progress transaction.
+	 *
+	 * Typed as `Query` plus the dialecte's **query** extensions, so domain query
+	 * methods (e.g. an `SclQuery`'s) appear in intellisense, while transaction
+	 * mutations stay hidden by the type (they exist at runtime). Reads overlay
+	 * staged ops automatically, so this reflects the hooks-applied, uncommitted
+	 * state.
+	 *
+	 * Valid only BEFORE `commit()`/`discard()` — both clear the staged ops and
+	 * record cache, after which the query reads the bare store.
+	 */
+	readonly query: Query<GenericConfig> & QueryExtensions<GenericExtension>
 	commit(): Promise<void>
 	discard(): void
 }

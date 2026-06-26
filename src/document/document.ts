@@ -188,7 +188,7 @@ export class Document<
 	async prepare(
 		fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<void>,
 		options?: { label?: string },
-	): Promise<PreparedTransaction<GenericConfig>> {
+	): Promise<PreparedTransaction<GenericConfig, GenericExtension>> {
 		this.activeTransactions++
 		this.state.loading = true
 		this.state.error = null
@@ -225,6 +225,11 @@ export class Document<
 		return {
 			operations,
 			summary,
+
+			// `tx` was extension-bound in place by withAllExtensions above and is
+			// alive in this closure. Exposed as Query (+ query extensions) so only
+			// reads are visible.
+			query: tx as unknown as Query<GenericConfig> & QueryExtensions<GenericExtension>,
 
 			commit: async () => {
 				if (settled) {
