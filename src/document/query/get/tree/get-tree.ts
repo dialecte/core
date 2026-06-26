@@ -1,8 +1,17 @@
+import {
+	applyUnwrap,
+	applyOrder,
+	parseOmit,
+	isOmitted,
+	shouldStopTraversal,
+} from '../../tree-filter'
+
 import { matchesAttributeFilter, getRecord } from '@/document'
 import { toRef, toTreeRecord } from '@/helpers'
 import { invariant } from '@/utils'
 
-import type { GetTreeParams, TreeSelect, OmitEntry } from './get-tree.types'
+import type { OmitSpecification } from '../../tree-filter'
+import type { GetTreeParams, TreeSelect } from './get-tree.types'
 import type { Context, Ref } from '@/document'
 import type { AnyDialecteConfig, ElementsOf, TrackedRecord, TreeRecord } from '@/types'
 
@@ -47,62 +56,15 @@ export async function getTree<
 	// Auto-unwrap transparent elements when unwrap is not explicitly provided
 	const unwrapTagNames = unwrap ?? (transparentElements?.length ? transparentElements : undefined)
 
-	return (
-		unwrapTagNames
-			? applyUnwrap({ tree, unwrapTagNames: unwrapTagNames as ElementsOf<GenericConfig>[] })
-			: tree
-	) as TreeRecord<GenericConfig, GenericElement>
-}
+	const unwrapped = unwrapTagNames
+		? applyUnwrap({ tree, unwrapTagNames: unwrapTagNames as ElementsOf<GenericConfig>[] })
+		: tree
 
-//== Omit specification
-
-type OmitSpecification<GenericConfig extends AnyDialecteConfig> = {
-	unconditional: Set<string>
-	conditional: Array<{
-		tagName: ElementsOf<GenericConfig>
-		where: Record<string, unknown>
-		scope: 'self' | 'children'
-	}>
-}
-
-/**
- * Converts the user-facing `omit` array into a split structure for efficient traversal checks.
- *
- * Simple string entries go into `unconditional` (O(1) Set lookup).
- * Object entries with `where` conditions go into `conditional` (checked against record attributes).
- * This avoids re-parsing the omit array on every node visit.
- */
-function parseOmit<GenericConfig extends AnyDialecteConfig>(
-	omit: OmitEntry<GenericConfig>[] | undefined,
-): OmitSpecification<GenericConfig> {
-	const unconditional = new Set<string>()
-	const conditional: OmitSpecification<GenericConfig>['conditional'] = []
-
-	if (!omit) return { unconditional, conditional }
-
-	for (const entry of omit) {
-		if (typeof entry === 'string') {
-			unconditional.add(entry)
-			continue
-		}
-
-		const tagName = Object.keys(entry)[0] as ElementsOf<GenericConfig>
-		const config = (
-			entry as Record<string, { where?: Record<string, unknown>; scope?: 'self' | 'children' }>
-		)[tagName]
-
-		if (!config?.where) {
-			unconditional.add(tagName)
-			continue
-		}
-
-		conditional.push({
-			tagName,
-			where: config.where as Record<string, unknown>,
-			scope: config.scope ?? 'self',
-		})
-	}
-	return { unconditional, conditional }
+	// Final post-pass: order children by the config sequence (matches XML order).
+	return applyOrder({
+		tree: unwrapped,
+		childrenConfig: context.dialecteConfig.children,
+	}) as TreeRecord<GenericConfig, GenericElement>
 }
 
 //== Node builder
@@ -149,48 +111,6 @@ async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 	)
 
 	return toTreeRecord({ record, tree: validChildren })
-}
-
-//== Traversal guards
-
-function shouldStopTraversal<GenericConfig extends AnyDialecteConfig>(params: {
-	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
-	compiledOmit: OmitSpecification<GenericConfig>
-}): boolean {
-	const { record, compiledOmit } = params
-
-	return compiledOmit.conditional.some(
-		(entry) =>
-			entry.scope === 'children' &&
-			entry.tagName === record.tagName &&
-			matchesAttributeFilter({
-				record,
-				attributeFilter: entry.where as Parameters<
-					typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
-				>[0]['attributeFilter'],
-			}),
-	)
-}
-
-function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
-	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
-	compiledOmit: OmitSpecification<GenericConfig>
-}): boolean {
-	const { record, compiledOmit } = params
-
-	if (compiledOmit.unconditional.has(record.tagName)) return true
-
-	return compiledOmit.conditional.some(
-		(entry) =>
-			entry.scope === 'self' &&
-			entry.tagName === record.tagName &&
-			matchesAttributeFilter({
-				record,
-				attributeFilter: entry.where as Parameters<
-					typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
-				>[0]['attributeFilter'],
-			}),
-	)
 }
 
 //== Children fetching with pre-filtering
@@ -439,29 +359,4 @@ function injectRecursive<GenericConfig extends AnyDialecteConfig>(
 
 	// The self-entry has recursive flag - it will be re-applied at the next level
 	return select
-}
-
-//== Unwrap
-
-function applyUnwrap<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
->(params: {
-	tree: TreeRecord<GenericConfig, GenericElement>
-	unwrapTagNames: ElementsOf<GenericConfig>[]
-}): TreeRecord<GenericConfig, GenericElement> {
-	const { tree, unwrapTagNames } = params
-
-	function processChildren(
-		children: TreeRecord<GenericConfig, ElementsOf<GenericConfig>>[],
-	): TreeRecord<GenericConfig, ElementsOf<GenericConfig>>[] {
-		return children.flatMap((child) => {
-			if (unwrapTagNames.includes(child.tagName)) {
-				return processChildren(child.tree)
-			}
-			return [{ ...child, tree: processChildren(child.tree) }]
-		})
-	}
-
-	return { ...tree, tree: processChildren(tree.tree) }
 }

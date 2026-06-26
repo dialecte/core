@@ -61,6 +61,25 @@ describe('getTree', () => {
 			ref: { tagName: 'AA_1', id: 'aa1' },
 			expectedShape: { tagName: 'AA_1', tree: [] },
 		},
+		'no options - children returned in config order': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_2 ${customId}="aa2" aAA_2="v" />
+						<AA_1 ${customId}="aa1" aAA_1="v" />
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			// source order is AA_2, AA_1; config A → [AA_1, AA_2, AA_3]
+			expectedShape: {
+				tagName: 'A',
+				tree: [
+					{ tagName: 'AA_1', tree: [] },
+					{ tagName: 'AA_2', tree: [] },
+				],
+			},
+		},
 		'select - only matching tagName children included': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
@@ -449,12 +468,13 @@ describe('getTree - auto-recursion', () => {
 						tree: [
 							{
 								tagName: 'AAA_1',
+								// config order for AAA_1 children: AAAA_1… before the self-recursive AAA_1
 								tree: [
+									{ tagName: 'AAAA_1', tree: [] },
 									{
 										tagName: 'AAA_1',
 										tree: [{ tagName: 'AAAA_1', tree: [] }],
 									},
-									{ tagName: 'AAAA_1', tree: [] },
 								],
 							},
 						],
@@ -654,9 +674,10 @@ describe('getTree - transparent elements', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expectedShape: {
 				tagName: 'A',
+				// config order: AA_2 is a declared child of A, the promoted AAA_1 is not → last
 				tree: [
-					{ tagName: 'AAA_1', tree: [] },
 					{ tagName: 'AA_2', tree: [] },
+					{ tagName: 'AAA_1', tree: [] },
 				],
 			},
 		},

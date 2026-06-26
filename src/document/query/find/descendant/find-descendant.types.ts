@@ -1,5 +1,5 @@
 import type { FilterAttributes } from '@/document/query/find/by-attribute/find-by-attributes.types'
-import type { OmitEntry } from '@/document/query/get/tree/get-tree.types'
+import type { OmitEntry } from '@/document/query/tree-filter'
 import type { AnyDialecteConfig, DescendantsOf, ElementsOf, TrackedRecord } from '@/types'
 
 // ============================================================================
