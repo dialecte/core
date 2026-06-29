@@ -20,14 +20,14 @@ jobs:
       - name: Extract Current Version
         id: current_version
         run: |
-          CURRENT_VERSION=$(grep version package.json | sed 's/.*"version": "\(.*\)".*/\1/')
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
           echo "Current version: $CURRENT_VERSION"
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
       - name: Fetch NPM Version
         id: npm_version
         run: |
-          PACKAGE_NAME=$(grep '"name"' package.json | sed 's/.*"name": "\(.*\)".*/\1/')
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
           PUBLISHED_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || echo "0.0.0")
           echo "Latest published version: $PUBLISHED_VERSION"
           echo "npm_version=$PUBLISHED_VERSION" >> $GITHUB_OUTPUT

@@ -22,7 +22,9 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git tag core@v${{ inputs.version }}
-          git push origin core@v${{ inputs.version }}
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          TAG_PREFIX=$(echo "$PACKAGE_NAME" | sed 's/.*\///')
+          git tag "${TAG_PREFIX}@v${{ inputs.version }}"
+          git push origin "${TAG_PREFIX}@v${{ inputs.version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.github-token }}

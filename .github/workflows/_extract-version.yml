@@ -20,5 +20,5 @@ jobs:
       - name: Extract Version
         id: extract-version
         run: |
-          VERSION=$(grep version package.json | sed 's/.*"version": "\(.*\)".*/\1/')
+          VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
