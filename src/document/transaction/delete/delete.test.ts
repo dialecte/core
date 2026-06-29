@@ -4,8 +4,9 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { Transaction } from '@/document'
+import type { Ref } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { Ref, ElementsOf, RawRecord } from '@/types'
+import type { ElementsOf, RawRecord } from '@/types'
 
 describe('stageDelete', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`

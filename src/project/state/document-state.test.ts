@@ -2,8 +2,7 @@ import { buildDocumentState, reconcileDocumentState } from './document-state'
 
 import { describe, it, expect } from 'vitest'
 
-import type { DocumentRecord } from '@/types'
-import type { DocumentState } from '@/types'
+import type { DocumentEntry, DocumentRecord } from '@/project'
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -21,7 +20,7 @@ function makeFile(overrides: Partial<DocumentRecord> = {}): DocumentRecord {
 // ── buildDocumentState ───────────────────────────────────────────────────────────
 
 describe('buildDocumentState', () => {
-	const cases: Record<string, { input: DocumentRecord; expected: Partial<DocumentState> }> = {
+	const cases: Record<string, { input: DocumentRecord; expected: Partial<DocumentEntry> }> = {
 		'minimal file -> default state': {
 			input: makeFile({ id: 'file-1', name: 'test' }),
 			expected: {
@@ -94,7 +93,7 @@ describe('reconcileDocumentState', () => {
 	}
 
 	it.each(Object.entries(cases))('%s', (_label, { initial, storeDocuments, expectedIds }) => {
-		const state = new Map<string, DocumentState>()
+		const state = new Map<string, DocumentEntry>()
 		for (const file of initial) {
 			state.set(file.id, buildDocumentState(file))
 		}
@@ -105,7 +104,7 @@ describe('reconcileDocumentState', () => {
 	})
 
 	it('preserves existing DocumentState references for unchanged files', () => {
-		const state = new Map<string, DocumentState>()
+		const state = new Map<string, DocumentEntry>()
 		const existingState = buildDocumentState(fileA)
 		state.set('a', existingState)
 

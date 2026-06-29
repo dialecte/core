@@ -9,7 +9,7 @@ import {
 	TEST_DIALECTE_CONFIG,
 } from '@/test'
 
-import type { GetSnapshotOptions, OmitEntry, RefOrRecord } from '@/document'
+import type { Document, GetSnapshotOptions, OmitEntry, RefOrRecord } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { AnyTreeRecord, ElementsOf } from '@/types'
 
@@ -48,9 +48,7 @@ type StageTx = Parameters<
 
 async function withProject(
 	sourceXml: string,
-	run: (
-		source: Awaited<ReturnType<typeof createTestProject>>['source']['document'],
-	) => Promise<void>,
+	run: (source: Document<TestDialecteConfig>) => Promise<void>,
 ): Promise<void> {
 	const { project, source } = await createTestProject({
 		sourceXml,
@@ -276,7 +274,7 @@ describe('getSnapshot — staged reads', () => {
 			const prepared = await source.prepare(async (tx) => {
 				await tx.addChild(
 					{ tagName: 'A', id: 'a1' },
-					{ tagName: 'AA_2', id: 'aa2', attributes: { aAA_2: 'staged' } },
+					{ tagName: 'AA_2', attributes: { aAA_2: 'staged' } },
 				)
 			})
 
@@ -298,7 +296,7 @@ describe('getSnapshot — reachable mid-transaction', () => {
 			await source.transaction(async (tx) => {
 				await tx.addChild(
 					{ tagName: 'A', id: 'a1' },
-					{ tagName: 'AA_2', id: 'aa2', attributes: { aAA_2: 'mid' } },
+					{ tagName: 'AA_2', attributes: { aAA_2: 'mid' } },
 				)
 				const tree = (await tx.getSnapshot()) as AnyTreeRecord
 				expect(tagNames(tree)).toContain('AA_2')
@@ -332,7 +330,7 @@ describe('getSnapshot — xml output (table)', () => {
 			stage: async (tx) => {
 				await tx.addChild(
 					{ tagName: 'A', id: 'a1' },
-					{ tagName: 'AA_2', id: 'aa2', attributes: { aAA_2: 'staged' } },
+					{ tagName: 'AA_2', attributes: { aAA_2: 'staged' } },
 				)
 			},
 			expectTreeIncludes: ['AA_2'],
@@ -381,9 +379,9 @@ describe('getSnapshot — xml output (table)', () => {
 			stage: async (tx) => {
 				await tx.addChild(
 					{ tagName: 'A', id: 'a1' },
-					{ tagName: 'AA_2', id: 'aa2', attributes: { aAA_2: 'temp' } },
+					{ tagName: 'AA_2', id: '0-0-0-0-2', attributes: { aAA_2: 'temp' } },
 				)
-				await tx.delete({ tagName: 'AA_2', id: 'aa2' })
+				await tx.delete({ tagName: 'AA_2', id: '0-0-0-0-2' })
 			},
 			includeDeleted: true,
 			expectTreeExcludes: ['AA_2'],

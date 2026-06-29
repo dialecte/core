@@ -5,8 +5,9 @@ import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/te
 
 import type { UpdateParams } from './update.types'
 import type { Transaction } from '@/document'
+import type { Ref } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { Ref, RawRecord, ElementsOf } from '@/types'
+import type { RawRecord, ElementsOf } from '@/types'
 
 describe('stageUpdate', () => {
 	type TestCase = BaseXmlTestCase & {

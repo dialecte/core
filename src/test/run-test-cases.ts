@@ -83,7 +83,7 @@ function xmlWithExport<
 				// the act (e.g. a getSnapshot xml output), instead of exporting the
 				// stored document — lets custom XML be tested with the same matcher.
 				let xmlDocument: XMLDocument
-				if (result?.assertOn === 'custom') {
+				if (result && result.assertOn === 'custom') {
 					xmlDocument = new DOMParser().parseFromString(result.xmlString, 'application/xml')
 				} else {
 					const assertOn = result?.assertOn ?? 'source'

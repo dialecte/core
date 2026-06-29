@@ -12,7 +12,7 @@ import type { AnyTreeRecord, ElementsOf, TreeRecord } from '@/types'
 type Tree = TreeRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 
 function node(record: TestRecord<TestDialecteConfig>, tree: Tree[] = []): Tree {
-	return { ...createTestRecord({ type: 'tree', record }), tree }
+	return { ...createTestRecord({ type: 'tree', record }), tree } as Tree
 }
 
 type Shape = { tagName: string; tree: Shape[] }

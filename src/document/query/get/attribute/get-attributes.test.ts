@@ -3,8 +3,9 @@ import { describe, expect } from 'vitest'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
+import type { Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
-import type { ElementsOf, Ref } from '@/types'
+import type { ElementsOf } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE

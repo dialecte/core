@@ -6,6 +6,6 @@
 		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo",
 
 		"lib": ["ESNext", "DOM"],
-		"types": ["node", "@vitest/browser/providers/playwright"]
+		"types": ["node", "@vitest/browser-playwright"]
 	}
 }

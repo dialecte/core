@@ -14,28 +14,25 @@ import type { ElementsOf, Operation, RawRecord } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-type Rec = RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+type TestRecord = RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
 
-function raw<
-	GenericConfig extends TestDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
->(tagName: GenericElement, id: string, parentId?: string): Rec {
-	const record = createTestRecord({ record: { tagName, id } })
+function raw(tagName: ElementsOf<TestDialecteConfig>, id: string, parentId?: string): TestRecord {
+	const record = createTestRecord({ record: { tagName: tagName as 'A', id } })
 	if (parentId) {
 		return { ...record, parent: { tagName: 'Root', id: parentId } }
 	}
 	return record
 }
 
-function created(record: Rec): Operation<TestDialecteConfig> {
+function created(record: TestRecord): Operation<TestDialecteConfig> {
 	return { status: 'created', oldRecord: undefined, newRecord: record }
 }
 
-function updated(oldRecord: Rec, newRecord: Rec): Operation<TestDialecteConfig> {
+function updated(oldRecord: TestRecord, newRecord: TestRecord): Operation<TestDialecteConfig> {
 	return { status: 'updated', oldRecord, newRecord }
 }
 
-function deleted(record: Rec): Operation<TestDialecteConfig> {
+function deleted(record: TestRecord): Operation<TestDialecteConfig> {
 	return { status: 'deleted', oldRecord: record, newRecord: undefined }
 }
 
