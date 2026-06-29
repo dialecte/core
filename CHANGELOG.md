@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.2.22] - 2026-06-26
+
+### Fixed
+
+- `withAllExtensions`: deep-merge extension groups instead of shallow `Object.assign`, so a namespace registered in both `query` and `transaction` no longer loses its query methods when the transaction group is applied.
+
 ## [0.2.21] - 2026-06-26
 
 ### Added

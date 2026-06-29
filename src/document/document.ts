@@ -90,8 +90,18 @@ export class Document<
 	): Transaction<GenericConfig> & AllExtensions<GenericExtension> {
 		const queryBound = bindExtensions(this.extensionsRegistry?.query, tx)
 		const txBound = bindExtensions(this.extensionsRegistry?.transaction, tx)
-		return Object.assign(tx, queryBound, txBound) as Transaction<GenericConfig> &
-			AllExtensions<GenericExtension>
+		// Deep-merge per group so that a module with both query and transaction
+		// methods does not have its query methods overwritten
+		// by the transaction group when Object.assign processes the same key.
+		const merged: Record<string, Record<string, unknown>> = {}
+
+		for (const [k, v] of Object.entries(queryBound as Record<string, object>))
+			merged[k] = { ...(merged[k] ?? {}), ...v }
+
+		for (const [k, v] of Object.entries(txBound as Record<string, object>))
+			merged[k] = { ...(merged[k] ?? {}), ...v }
+
+		return Object.assign(tx, merged) as Transaction<GenericConfig> & AllExtensions<GenericExtension>
 	}
 
 	/**
