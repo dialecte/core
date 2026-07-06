@@ -1,6 +1,6 @@
 import type { Document, ExtensionModules, MergedExtensions } from '@/document'
 import type { Project } from '@/project'
-import type { AnyDialecteConfig, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 export type BaseTestCase = {
 	only?: boolean
@@ -51,13 +51,13 @@ export type TestRunner<
 			params: ActParams<GenericConfig, GenericTestCase, GenericModules>,
 		) => Promise<ActResult | void>
 		dialecteConfig?: GenericConfig
-		hooks?: TransactionHooks<GenericConfig>
+		hooks?: DialecteHooks<GenericConfig>
 	}): void
 	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
 		testCases: TestCases<GenericTestCase>
 		act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
 		dialecteConfig?: GenericConfig
-		hooks?: TransactionHooks<GenericConfig>
+		hooks?: DialecteHooks<GenericConfig>
 	}): void
 	generic<GenericTestCase extends BaseTestCase>(
 		testCases: Record<string, GenericTestCase>,

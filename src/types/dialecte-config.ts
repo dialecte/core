@@ -29,11 +29,18 @@ export type RawDialecteConfig<
 	definition: AnyDefinition
 }
 
+/**
+ * All lifecycle hooks a dialecte can provide, applied to every Document opened
+ * from a Project. One flat object spanning both lifecycles: IO hooks (import
+ * pipeline) and record hooks (standardization + create/clone/update/delete).
+ */
+export type DialecteHooks<GenericConfig extends AnyDialecteConfig> = IOHooks &
+	TransactionHooks<GenericConfig>
+
 export type IOConfig = {
 	supportedFileExtensions: readonly string[]
 	importOptions?: Partial<ImportOptions>
 	exportOptions?: Partial<ExportOptions>
-	hooks?: IOHooks
 }
 
 export type TransactionHooks<GenericConfig extends AnyDialecteConfig> = {

@@ -64,6 +64,13 @@ export type IOHooks = {
 	 * e.g. transforming a legacy schema to the canonical form expected by this config.
 	 */
 	beforeImport?: (xml: string) => string
+	/**
+	 * Called once per record as its closing tag is parsed, AFTER the record has
+	 * been standardized (attributes canonicalized, `afterStandardizedRecord`
+	 * applied). The record is finalized so this hook can index it or collect
+	 * reference resolutions without re-implementing standardization. `ancestry`
+	 * are the still-open parent records (not yet closed, hence not yet standardized).
+	 */
 	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void
 	/** Returns records to create/update/delete after all records are stored. */
 	afterImport?: () => Promise<AfterImportResult>

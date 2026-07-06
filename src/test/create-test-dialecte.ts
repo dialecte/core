@@ -5,7 +5,7 @@ import { DexieStore } from '@/store'
 
 import type { Document } from '@/document'
 import type { Context, ExtensionModules, MergedExtensions } from '@/document'
-import type { AnyDialecteConfig, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
@@ -38,7 +38,7 @@ export async function createTestProject<
 	targetXml?: string
 	dialecteConfig?: GenericConfig
 	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-	hooks?: TransactionHooks<GenericConfig>
+	hooks?: DialecteHooks<GenericConfig>
 }): Promise<TestProjectResult<GenericConfig, GenericModules>> {
 	const {
 		sourceXml,
@@ -51,17 +51,18 @@ export async function createTestProject<
 		targetXml?: string
 		dialecteConfig: GenericConfig
 		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-		hooks?: TransactionHooks<GenericConfig>
+		hooks?: DialecteHooks<GenericConfig>
 	}
 
 	const projectName = `test-${crypto.randomUUID()}`
 
+	// Hooks are provided on the Project instance (single provenance).
 	const project = await new Project<GenericConfig, GenericModules>({
 		configs: { default: dialecteConfig } as Record<string, GenericConfig>,
 		defaultConfigKey: 'default',
 		storage: { type: 'local' },
 		extensions,
-		hooks: hooks as TransactionHooks<GenericConfig>,
+		hooks,
 	}).open(projectName)
 
 	const [sourceImport] = await project.import(

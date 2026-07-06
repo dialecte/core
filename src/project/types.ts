@@ -1,6 +1,6 @@
 import type { DocumentState, ExtensionModules } from '@/document'
 import type { Store } from '@/store/store.types'
-import type { AnyDialecteConfig, BlobRecord, ChunkOptions, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, BlobRecord, ChunkOptions, DialecteHooks } from '@/types'
 
 // ── DocumentRecord ───────────────────────────────────────────────────────────
 
@@ -72,8 +72,8 @@ export type ProjectParams<
 	storage: StorageParam
 	/** Extensions applied to all Documents opened from this Project */
 	extensions?: { base?: BaseExtensions; custom?: CustomExtensions }
-	/** Transaction hooks applied to all Documents */
-	hooks?: TransactionHooks<GenericConfig>
+	/** All lifecycle hooks (IO + record), applied to every Document opened from this Project */
+	hooks?: DialecteHooks<GenericConfig>
 }
 
 // ── createDocument ───────────────────────────────────────────────────────────────
@@ -94,6 +94,8 @@ export type InitEmptyDocumentParams = {
 	configs: Record<string, AnyDialecteConfig>
 	defaultConfigKey: string
 	options?: InitEmptyDocumentOptions
+	/** Hooks from the Project instance (erased); standardizes the root record */
+	hooks?: DialecteHooks<AnyDialecteConfig>
 }
 
 export type InitEmptyDocumentResult = {
@@ -121,6 +123,8 @@ export type ImportDocumentParams = {
 	configs: Record<string, AnyDialecteConfig>
 	defaultConfigKey: string
 	options?: ImportDocumentOptions
+	/** Hooks from the Project instance (erased); io hooks + standardization at import */
+	hooks?: DialecteHooks<AnyDialecteConfig>
 }
 
 export type ImportDocumentResult = {

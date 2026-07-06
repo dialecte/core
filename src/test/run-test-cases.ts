@@ -13,7 +13,7 @@ import type {
 	TestRunner,
 } from './run-test-cases.type'
 import type { ExtensionModules } from '@/document'
-import type { AnyDialecteConfig, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
 
@@ -41,7 +41,7 @@ function xmlWithExport<
 	) => Promise<ActResult | void>
 	dialecteConfig?: GenericConfig
 	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-	hooks?: TransactionHooks<GenericConfig>
+	hooks?: DialecteHooks<GenericConfig>
 }): void {
 	const {
 		testCases,
@@ -117,7 +117,7 @@ function xmlWithoutExport<
 	act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
 	dialecteConfig?: GenericConfig
 	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-	hooks?: TransactionHooks<GenericConfig>
+	hooks?: DialecteHooks<GenericConfig>
 }): void {
 	const {
 		testCases,
@@ -169,7 +169,7 @@ export function createTestRunner<
 	GenericModules extends ExtensionModules = Record<never, never>,
 >(params: {
 	dialecteConfig: GenericConfig
-	hooks?: TransactionHooks<GenericConfig>
+	hooks?: DialecteHooks<GenericConfig>
 	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 }): TestRunner<GenericConfig, GenericModules> {
 	const { dialecteConfig, hooks, extensions } = params

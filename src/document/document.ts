@@ -7,7 +7,7 @@ import { throwDialecteError } from '@/errors'
 import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { Store } from '@/store'
-import type { AnyDialecteConfig, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 /**
  * Document — the public entry point for querying and mutating a dialecte.
@@ -27,7 +27,7 @@ export class Document<
 > {
 	protected store: Store
 	protected config: GenericConfig
-	protected hooks: TransactionHooks<GenericConfig> | undefined
+	protected hooks: DialecteHooks<GenericConfig> | undefined
 	readonly documentId: string
 	private extensionsRegistry?: GenericExtension
 
@@ -57,7 +57,7 @@ export class Document<
 		config: GenericConfig,
 		documentId: string,
 		extensions: GenericExtension | undefined,
-		hooks: TransactionHooks<GenericConfig> | undefined,
+		hooks: DialecteHooks<GenericConfig> | undefined,
 		channel: BroadcastChannel,
 	) {
 		this.store = store

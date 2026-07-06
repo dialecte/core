@@ -18,7 +18,7 @@ import type {
 } from './types'
 import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
 import type { Store } from '@/store'
-import type { AnyDialecteConfig, BlobAttachment, BlobRecord, TransactionHooks } from '@/types'
+import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ export class Project<
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private mergedExtensions?: MergedExtensions<GenericModules>
-	private hooks?: TransactionHooks<GenericConfig>
+	private hooks?: DialecteHooks<GenericConfig>
 
 	get name(): string {
 		invariant(this._name !== undefined, {
@@ -76,20 +76,20 @@ export class Project<
 		defaultConfigKey?: string
 		storage: ProjectParams<GenericConfig>['storage']
 		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-		hooks?: TransactionHooks<GenericConfig>
+		hooks?: DialecteHooks<GenericConfig>
 	}) {
 		const configKeys = Object.keys(params.configs)
 
 		this.storage = params.storage
 		this.configs = params.configs
 		this.defaultConfigKey = params.defaultConfigKey ?? configKeys[0]
+		this.hooks = params.hooks
 		this.mergedExtensions = params.extensions
 			? (mergeExtensions({
 					base: params.extensions.base,
 					custom: params.extensions.custom,
 				}) as MergedExtensions<GenericModules>)
 			: undefined
-		this.hooks = params.hooks
 	}
 
 	// ── Lifecycle ────────────────────────────────────────────────────────────
@@ -152,6 +152,9 @@ export class Project<
 			configs: this.configs,
 			defaultConfigKey: this.defaultConfigKey,
 			options,
+			// Erase to the config-agnostic pipeline shape at this single core-internal
+			// boundary (the IO/init pipeline is config-registry-driven).
+			hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
 		})
 
 		this.state.documents.set(result.documentId, result.documentState)
@@ -186,6 +189,9 @@ export class Project<
 					configs: this.configs,
 					defaultConfigKey: this.defaultConfigKey,
 					options,
+					// Erase to the config-agnostic pipeline shape at this single
+					// core-internal boundary (the import pipeline is registry-driven).
+					hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
 				}),
 			),
 		)
