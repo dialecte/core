@@ -5,7 +5,7 @@ import { invariant } from '@/utils'
 
 import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
 import type { Store } from '@/store/store.types'
-import type { AnyDialecteConfig } from '@/types'
+import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
 
@@ -25,7 +25,7 @@ const DEFAULT_BATCH_SIZE = 2000
  * - Database-agnostic: only calls Store.bulkWrite(documentId, ops)
  */
 export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXmlFileResult> {
-	const { documentId, store, config, useCustomRecordsIds = false, chunkOptions } = params
+	const { documentId, store, config, useCustomRecordsIds = false, chunkOptions, hooks } = params
 	let { file } = params
 
 	const { supportedFileExtensions } = config.io
@@ -39,7 +39,7 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 		return { documentId, recordCount: 0 }
 	}
 
-	const beforeImport = config.io.hooks?.beforeImport
+	const beforeImport = hooks?.beforeImport
 	if (beforeImport) {
 		const rawXml = await file.text()
 		const transformed = beforeImport(rawXml)
@@ -50,7 +50,7 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 	const batchSize = chunkOptions?.batchSize ?? DEFAULT_BATCH_SIZE
 
 	const session = new ParseSession()
-	const sax = setSaxParser({ dialecteConfig: config, useCustomRecordsIds, session })
+	const sax = setSaxParser({ dialecteConfig: config, useCustomRecordsIds, session, hooks })
 
 	const parsedCount = await streamFileInChunks({
 		file,
@@ -62,7 +62,7 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 		batchSize,
 	})
 
-	const hookDelta = await runAfterImportHook({ config, store, documentId })
+	const hookDelta = await runAfterImportHook({ hooks, store, documentId })
 
 	return { documentId, recordCount: parsedCount + hookDelta }
 }
@@ -118,15 +118,15 @@ async function streamFileInChunks(params: {
 // ── After-import hook ────────────────────────────────────────────────────────
 
 async function runAfterImportHook(params: {
-	config: AnyDialecteConfig
+	hooks?: DialecteHooks<AnyDialecteConfig>
 	store: Store
 	documentId: string
 }): Promise<number> {
-	const { config, store, documentId } = params
+	const { hooks, store, documentId } = params
 
-	if (!config.io.hooks?.afterImport) return 0
+	if (!hooks?.afterImport) return 0
 
-	const { creates, updates, deletes } = await config.io.hooks.afterImport()
+	const { creates, updates, deletes } = await hooks.afterImport()
 	const hasOps = creates?.length || updates?.length || deletes?.length
 	if (!hasOps) return 0
 

@@ -1,5 +1,5 @@
 import type { Store } from '@/store/store.types'
-import type { AnyDialecteConfig, ChunkOptions } from '@/types'
+import type { AnyDialecteConfig, ChunkOptions, DialecteHooks } from '@/types'
 
 export type ParseXmlFileParams = {
 	file: File
@@ -10,6 +10,8 @@ export type ParseXmlFileParams = {
 	useCustomRecordsIds?: boolean
 	/** Override chunking defaults */
 	chunkOptions?: Partial<ChunkOptions>
+	/** Project hooks (erased): io hooks + afterStandardizedRecord for import */
+	hooks?: DialecteHooks<AnyDialecteConfig>
 }
 
 export type ParseXmlFileResult = {

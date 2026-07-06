@@ -3,7 +3,7 @@ import { ParseSession } from './parse-session'
 
 import * as sax from 'sax'
 
-import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import { CUSTOM_RECORD_ID_ATTRIBUTE, standardizeRecord } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { ParserInstance, ParserState } from './types'
@@ -14,7 +14,7 @@ import type {
 	AnyQualifiedAttribute,
 	AnyAttribute,
 	AnyRelationship,
-	IOHooks,
+	DialecteHooks,
 } from '@/types'
 
 //====== PUBLIC FUNCTIONS ======//
@@ -29,9 +29,9 @@ export function setSaxParser(params: {
 	dialecteConfig: AnyDialecteConfig
 	useCustomRecordsIds: boolean
 	session: ParseSession
+	hooks?: DialecteHooks<AnyDialecteConfig>
 }): ParserInstance {
-	const { dialecteConfig, useCustomRecordsIds, session } = params
-	const ioHooks = dialecteConfig.io.hooks
+	const { dialecteConfig, useCustomRecordsIds, session, hooks } = params
 
 	const initialState: ParserState = {
 		defaultNamespace: null,
@@ -68,8 +68,9 @@ export function setSaxParser(params: {
 	parser.onclosetag = () =>
 		({ updatedState } = handleCloseTag({
 			state: updatedState,
-			ioHooks,
+			hooks,
 			session,
+			dialecteConfig,
 		}))
 
 	parser.onerror = handleError
@@ -164,22 +165,43 @@ function handleText(params: { text: string; state: ParserState }): ParserState {
  * Handles the closing tag event.
  * @param state Current state
  * @param session Parse session
- * @param ioHooks IO hooks
+ * @param hooks Dialecte hooks (io + record lifecycle), from the Project instance
  * @returns Updated state
  */
-function handleCloseTag(params: { state: ParserState; session: ParseSession; ioHooks?: IOHooks }): {
+function handleCloseTag(params: {
+	state: ParserState
+	session: ParseSession
+	hooks?: DialecteHooks<AnyDialecteConfig>
+	dialecteConfig: AnyDialecteConfig
+}): {
 	updatedState: ParserState
 } {
-	const { state, ioHooks, session } = params
+	const { state, hooks, session, dialecteConfig } = params
 
-	const currentRecord = state.stack.at(-1)
+	const rawRecord = state.stack.at(-1)
 	// removing the last record from the stack and current parent elements
 	let updatedStack = state.stack.slice(0, -1)
 	const updatedRecordsBatch = [...state.recordsBatch]
 
-	if (currentRecord) {
-		if (ioHooks?.beforeImportRecord) {
-			ioHooks.beforeImportRecord({
+	if (rawRecord) {
+		// Standardize the parsed record to the same canonical form produced by
+		// create/clone (schema attribute order + defaults + namespace +
+		// afterStandardizedRecord hook). Keeps the store's canonical form
+		// consistent across entry points so record comparison (e.g. the merging
+		// editor) doesn't flag standardization artifacts as changes. id/tagName/
+		// parent/children are preserved, so parent→child references stay valid.
+		//
+		// Runs BEFORE beforeImportRecord so that hook receives the finalized record
+		// (canonical attributes + any hook-enforced uuid already present), letting
+		// it index / resolve references without re-implementing standardization.
+		const currentRecord = standardizeRecord({
+			dialecteConfig,
+			hooks,
+			record: rawRecord,
+		})
+
+		if (hooks?.beforeImportRecord) {
+			hooks.beforeImportRecord({
 				record: currentRecord,
 				ancestry: updatedStack,
 			})

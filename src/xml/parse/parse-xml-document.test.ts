@@ -6,7 +6,7 @@ import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/
 
 import type { Store } from '@/store/store.types'
 import type { BaseTestCase } from '@/test'
-import type { AnyDialecteConfig, AnyRawRecord, RecordPatch } from '@/types'
+import type { AnyRawRecord, RecordPatch } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,6 +109,49 @@ describe('parseXmlFile', () => {
 				const allRecords = store.bulkWriteCalls.flatMap(([, ops]) => ops.creates ?? [])
 				testCase.assertRecords(allRecords)
 			}
+		})
+	})
+
+	describe('standardization on import', () => {
+		type TestCase = BaseTestCase & {
+			file: File
+			assertRecords: (records: AnyRawRecord[]) => void
+		}
+
+		const testCases: Record<string, TestCase> = {
+			'attributes are reordered to schema sequence and required defaults filled': {
+				// provided out of order and missing the required aA
+				file: xmlFile(`<Root xmlns="${NS.default.uri}"><A bA="y" /></Root>`),
+				assertRecords: (records) => {
+					const a = records.find((r) => r.tagName === 'A')!
+					// aA (required) filled with '', ordered before bA per schema sequence
+					expect(a.attributes.map((attr) => attr.name)).toEqual(['aA', 'bA'])
+					expect(a.attributes.find((attr) => attr.name === 'aA')?.value).toBe('')
+				},
+			},
+			'xmlns declarations survive standardization on the root record': {
+				file: xmlFile(
+					`<Root xmlns="${NS.default.uri}" xmlns:ext="${NS.ext.uri}"><A aA="x" /></Root>`,
+				),
+				assertRecords: (records) => {
+					const root = records.find((r) => r.tagName === 'Root')!
+					const xmlnsDefault = root.attributes.find((attr) => attr.name === 'xmlns')
+					const xmlnsExt = root.attributes.find(
+						(attr) => attr.namespace?.prefix === 'xmlns' && attr.name === 'ext',
+					)
+					// Both declarations are qualified attributes and must be preserved so
+					// extensions (e.g. openscd) can still resolve namespace prefixes.
+					expect(xmlnsDefault?.namespace?.uri).toBe('http://www.w3.org/2000/xmlns/')
+					expect(xmlnsExt?.namespace?.uri).toBe('http://www.w3.org/2000/xmlns/')
+				},
+			},
+		}
+
+		runTestCases.generic(testCases, async (testCase) => {
+			const store = createMockStore()
+			await parseXmlFile({ file: testCase.file, documentId: 'f1', store, config: CONFIG })
+			const allRecords = store.bulkWriteCalls.flatMap(([, ops]) => ops.creates ?? [])
+			testCase.assertRecords(allRecords)
 		})
 	})
 
@@ -287,21 +330,13 @@ describe('parseXmlFile', () => {
 
 		runTestCases.generic(testCases, async (testCase) => {
 			const store = createMockStore()
-			const configWithHook: AnyDialecteConfig = {
-				...CONFIG,
-				io: {
-					...CONFIG.io,
-					hooks: {
-						afterImport: async () => testCase.hookResult,
-					},
-				},
-			}
 
 			const result = await parseXmlFile({
 				file: xmlFile(minimalXml()),
 				documentId: 'f1',
 				store,
-				config: configWithHook,
+				config: CONFIG,
+				hooks: { afterImport: async () => testCase.hookResult },
 			})
 
 			expect(result.recordCount).toBe(testCase.expectedRecordCount)
