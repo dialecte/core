@@ -72,6 +72,14 @@ export type ChildDefinition = {
 	readonly minOccurs?: number
 	readonly maxOccurs?: number
 	readonly constraints?: readonly IdentityConstraint[]
+	/**
+	 * Per parent→child edge namespace override, present only when the child's
+	 * declaring-schema namespace differs from the child element's canonical
+	 * `ElementDefinition.namespace` (the same local name declared in another
+	 * namespace under this parent). Consumed by `standardizeRecord`, which stamps
+	 * it onto the record; absent ⇒ the element's own namespace applies.
+	 */
+	readonly namespace?: Namespace
 }
 
 export type ChoiceGroup = {
