@@ -26,14 +26,14 @@ describe('getAttributes', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: { aA: 'hello' },
 		},
-		'returns empty object when record has no attributes': {
+		'fills required attribute with empty default when none provided': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
 				</Root>
 			`,
 			ref: { tagName: 'A', id: 'a1' },
-			expected: {},
+			expected: { aA: '' },
 		},
 		'returns empty object when ref does not exist': {
 			sourceXml: /* xml */ `<Root ${ns} />`,
@@ -76,14 +76,14 @@ describe('getAttributesFullObject', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: [{ name: 'aA', value: 'world' }],
 		},
-		'returns empty array when record has no attributes': {
+		'fills required attribute with empty default when none provided': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
 				</Root>
 			`,
 			ref: { tagName: 'A', id: 'a1' },
-			expected: [],
+			expected: [{ name: 'aA', value: '' }],
 		},
 		'returns empty array when ref does not exist': {
 			sourceXml: /* xml */ `<Root ${ns} />`,

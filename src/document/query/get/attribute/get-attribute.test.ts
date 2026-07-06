@@ -87,11 +87,11 @@ describe('getAttributeFullObject', () => {
 		'returns undefined when attribute does not exist on the record': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<A ${customId}="a1" />
+					<A ${customId}="a1" aA="present" />
 				</Root>
 			`,
 			ref: { tagName: 'A', id: 'a1' },
-			attributeName: 'aA',
+			attributeName: 'bA',
 			expected: undefined,
 		},
 		'returns undefined when the ref does not exist': {
