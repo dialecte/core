@@ -7,13 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-## [0.2.22] - 2026-06-26
+## [0.3.0] - 2026-07-02
+
+### Added
+
+- Standardization now runs at **every** record entry point — `project.import` (per parsed element), `initEmptyDocument`, and `update`, not just `addChild`/`deepClone` — so the store holds one canonical form regardless of how a record was produced. It fills required / `fixed` / `default` attributes, applies a deterministic attribute order (re-applied after the `afterStandardizedRecord` hook), and skips no-op updates. Removes false "updated" diffs from standardization-only differences.
+- `DialecteHooks<Config>` (`IOHooks & TransactionHooks<Config>`): every lifecycle hook as one flat, fully-typed object on the `Project` instance (`new Project({ hooks })`) — no cast, no `any`.
+- Canonical namespaced-attribute naming across all entry points: a default-namespace attribute is keyed by its bare local name (`aA`, `root`); any non-default one by `prefix:local` (`ext:root`). Collision-safe — a prefixed name never clashes with a bare one (`root` and `ext:root` coexist on one element) — so a namespaced attribute reads and writes under a single name.
+- Per-parent-context element namespaces: the generated definition carries a namespace on the parent→child edge (`ChildDefinition.namespace`), so a local name declared in more than one namespace serializes correctly under each parent (falling back to the element's own namespace).
+- `UNKNOWN_NAMESPACE_PREFIX` (`D3006`): thrown when writing an attribute in a namespace the config does not declare — pass it explicitly as `{ name, namespace: { prefix, uri } }`.
+- `@dialecte/core/utils`: `getAttributeRules`, `orderAttributesBySequence`, `compareQualifiedAttributes`, `extractLocalName`, `resolveNamespaceByPrefix` — the shared attribute/namespace foundation reused by both `standardizeRecord` and XML export.
+
+### Changed
+
+- **Breaking:** lifecycle hooks are provided on the `Project` instance instead of the config. `beforeImportRecord` now runs **after** standardization and receives the finalized record (canonical attributes + any hook-enforced `uuid`).
+- **Breaking:** imported non-default-namespace attributes are stored under their `prefix:local` name (previously the bare local name), matching created records and the generated schema keys — fixes value corruption when standardizing such attributes on import.
+
+### Removed
+
+- **Breaking:** `config.hooks` and `config.io.hooks` — hooks moved to the `Project` instance.
+
+## [0.2.22] - 2026-06-29
 
 ### Fixed
 
 - `withAllExtensions`: deep-merge extension groups instead of shallow `Object.assign`, so a namespace registered in both `query` and `transaction` no longer loses its query methods when the transaction group is applied.
 
-## [0.2.21] - 2026-06-26
+## [0.2.21] - 2026-06-29
 
 ### Added
 

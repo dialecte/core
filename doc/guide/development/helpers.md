@@ -132,7 +132,7 @@ const ref = toRef(childRelationship)
 
 ### `toFullAttributeArray`
 
-Converts attributes from object format (`{ aA: 'val' }`) to the internal array format (`[{ name: 'aA', value: 'val', namespace }]`). No-op if already an array.
+Converts attributes from object format (`{ aA: 'val' }`) to the internal array format (`[{ name: 'aA', value: 'val', namespace }]`), resolving each attribute's namespace and **canonicalizing its name** to the two naming rules (see [Attribute namespaces](#attribute-namespaces) below). Accepts either format as input.
 
 ```ts
 import { toFullAttributeArray } from '@dialecte/core/helpers'
@@ -143,6 +143,8 @@ const attrs = toFullAttributeArray({
 	attributes: { aA: 'hello' },
 })
 ```
+
+An attribute whose name carries a prefix that the config's `namespaces` cannot resolve (and that isn't given an explicit `namespace`) throws `DialecteError` (`UNKNOWN_NAMESPACE_PREFIX`).
 
 ### `stripAttributes`
 
@@ -161,17 +163,52 @@ const clean = stripAttributes(record, ['aA_1', 'aA_2'])
 
 ### `standardizeRecord`
 
-Builds a complete `RawRecord` from a partial input. Assigns `crypto.randomUUID()` when no `id` is provided. Normalizes attributes to array format.
+Builds a complete, **canonical** `RawRecord` from a partial input — the single form every record-entry point produces (`addChild`/`deepClone`, `update`, `project.import`, `initEmptyDocument`), so records compare cleanly regardless of how they were created. It:
+
+- assigns `crypto.randomUUID()` when no `id` is given, and normalizes attributes to array form with **canonical names** (see [Attribute namespaces](#attribute-namespaces));
+- fills schema attributes in **definition-`sequence` order**, resolving each value as `provided ?? fixed ?? default` (required attributes fall back to `''`);
+- drops unnamespaced attributes not in the schema; keeps namespaced/`xmlns` ones, **deterministically ordered** after the schema attributes (`orderAttributesBySequence`);
+- sets the element's namespace, resolved **per parent→child context** (see [Element namespaces](#element-namespaces));
+- runs the `afterStandardizedRecord` hook (if provided), then re-applies canonical ordering so hook additions stay ordered.
+
+The per-attribute schema facts come from the shared [`getAttributeRules`](/guide/development/utils#getattributerules), which XML export reuses so the two never drift.
 
 ```ts
 import { standardizeRecord } from '@dialecte/core/helpers'
 
 const record = standardizeRecord({
 	dialecteConfig,
+	hooks, // optional — supplies afterStandardizedRecord
 	record: { tagName: 'A', attributes: { aA: 'val' } },
 })
-// → RawRecord<Config, 'A'> with id, namespace, parent, children filled
+// → canonical RawRecord<Config, 'A'> with id, namespace, ordered attributes, parent, children
 ```
+
+#### Attribute namespaces
+
+Every attribute is stored under one predictable name, whether it arrived from a parsed document, `addChild`, or `update`:
+
+- **Default namespace → bare local name**, no `namespace` object: `aA`, `aAA_1`, `root`.
+- **Any non-default namespace → `prefix:local`**, with a `namespace` object: `ext:cA`, `ext:cAA_1`, `ext:root`.
+
+A prefixed name is used only when a namespace applies, so a non-default attribute never collides with a bare default one (e.g. `root` and `ext:root` coexist on the `Root` element). This matches the generated schema keys and XML export, so read/write by the same name regardless of how the record was produced.
+
+To write an attribute in a namespace the config does not declare, pass the explicit form (a bare `prefix:local` with an unknown prefix throws `UNKNOWN_NAMESPACE_PREFIX`):
+
+```ts
+await tx.addChild(parent, {
+	tagName: 'A',
+	attributes: [
+		{ name: 'note', value: 'v', namespace: { prefix: 'x', uri: 'http://example.com/x' } },
+	],
+})
+```
+
+#### Element namespaces
+
+An element's namespace can depend on its **parent context**: the same local name may be declared in different namespaces under different parents. The generated definition carries this on the parent→child edge (`ChildDefinition.namespace`), and `standardizeRecord` stamps the edge namespace onto the record, falling back to the element's own namespace when the edge omits one (or the record is a root).
+
+For example, an element declared in the default namespace under one parent but in the `ext` namespace under another serializes as bare `A` under the first parent and `ext:A` under the second — driven entirely by the definition, with no per-element special-casing.
 
 ---
 

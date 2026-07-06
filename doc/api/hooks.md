@@ -1,16 +1,22 @@
 ---
-description: Reference for all TransactionHooks extension points in @dialecte/core. Covers beforeClone, afterStandardizedRecord, afterCreated, afterDeepClone, afterUpdated, and beforeDelete. For IO hooks, see the IO section.
+description: Reference for all DialecteHooks extension points in @dialecte/core. Covers the record hooks (beforeClone, afterStandardizedRecord, afterCreated, afterDeepClone, afterUpdated, beforeDelete) and links to the IO hooks. All hooks are provided on the Project instance.
 ---
 
 # Hooks
 
-Dialecte exposes two hook surfaces for extending behavior without modifying core: **Transaction hooks** (fired during mutations) and **[IO hooks](/io/hooks)** (fired during XML import).
+Dialecte exposes lifecycle hooks for extending behavior without modifying core: **record hooks** (fired during mutations) and **[IO hooks](/io/hooks)** (fired during XML import). Because standardization now runs on both paths, they are provided together as one flat `DialecteHooks` object — **on the `Project` instance, not on the config**:
 
-Hooks are defined on the `dialecteConfig` object and are called automatically by the engine. Each hook returns additional `Operation[]` to stage (or `void` for read-only hooks), keeping the extension model composable.
+```ts
+export type DialecteHooks<Config> = IOHooks & TransactionHooks<Config>
+
+const project = await new Project({ configs, storage, hooks }).open(name)
+```
+
+Providing hooks on the instance keeps them fully typed against the dialecte's concrete config (no cast). Each hook returns additional `Operation[]` to stage (or `void` for read-only hooks), keeping the extension model composable.
 
 ## Transaction hooks
 
-Registered under `dialecteConfig.hooks`. All async hooks receive `query` — a read-only `Query` instance scoped to the current transaction state. Use it to call `query.getRecord`, `query.findAncestors`, `query.getRecordsByTagName`, etc. Staged ops from earlier in the same transaction are visible.
+Provided via `new Project({ hooks })` (see [Project](/api/project)). All async hooks receive `query` — a read-only `Query` instance scoped to the current transaction state. Use it to call `query.getRecord`, `query.findAncestors`, `query.getRecordsByTagName`, etc. Staged ops from earlier in the same transaction are visible.
 
 ### `beforeClone`
 
@@ -44,7 +50,9 @@ hooks: {
 
 ### `afterStandardizedRecord`
 
-Fires **per record** after `standardizeRecord` applies definition defaults. Use it to enrich newly created records before they are staged (e.g., auto-generate a required attribute for elements that need one).
+Fires **per record** wherever `standardizeRecord` runs — which is now every record entry point: `addChild`/`deepClone`, **`update`**, **`project.import`** (per parsed element), and **`initEmptyDocument`** (the root). Use it to enrich a record after core applies definition defaults (e.g., auto-generate a required attribute such as a `uuid`).
+
+Because it fires at every entry point, keep it **idempotent** — running it again on an already-enriched record must be a no-op (e.g. only fill a `uuid` when missing, never regenerate). Core **re-applies canonical attribute ordering after the hook**, so a hook may append or move attributes and the stored record stays order-canonical.
 
 **Signature**
 
@@ -188,11 +196,13 @@ afterCreated           (per element, insertion order)
 afterDeepClone         (once, after full tree staged -- receives cumulativeCloneMappings)
 ```
 
-For `update`:
+For `update` (the merged record is re-standardized, so the hook fires here too):
 
 ```
-afterUpdated
+afterStandardizedRecord → afterUpdated
 ```
+
+A `update` whose canonical result is identical to the stored record is a **no-op**: it stages nothing and `afterUpdated` does not fire.
 
 For `delete`:
 
@@ -201,10 +211,18 @@ beforeDelete           (once, on root — descendants still live)
 [subtree cascade]
 ```
 
-For `project.import` (see [IO hooks](/io/hooks)):
+For `project.import` (see [IO hooks](/io/hooks)) — standardization runs **before** `beforeImportRecord`, so that hook receives the finalized, canonical record:
 
 ```
-beforeImportRecord     (per record, document order)
+beforeImport            (once, whole XML string)
+afterStandardizedRecord (per record, as each element closes)
+beforeImportRecord      (per record, document order)
 [records stored]
-afterImport            (once)
+afterImport             (once)
+```
+
+For `initEmptyDocument`:
+
+```
+afterStandardizedRecord (once, on the root)
 ```

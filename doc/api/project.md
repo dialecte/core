@@ -29,7 +29,7 @@ const project = await new Project({
 | `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                               |
 | `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }` |
 | `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions`              |
-| `hooks`            | `TransactionHooks`                                       | Transaction hooks applied to all Documents                                             |
+| `hooks`            | `DialecteHooks`                                          | All lifecycle hooks (IO + record) applied to every Document — see [Hooks](/api/hooks)  |
 
 **`project.open(name: string): Promise<this>`**
 

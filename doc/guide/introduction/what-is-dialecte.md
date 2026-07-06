@@ -114,12 +114,12 @@ class SclTransaction extends Transaction<SclConfig> {
 
 ### Hooks — lifecycle control
 
-Hooks run at import and export. A `beforeImportRecord` hook, for example, can auto-assign identifiers or validate structure before an element reaches the database:
+Hooks are provided on the `Project` instance and run across the record lifecycle (create, clone, update, import). An `afterStandardizedRecord` hook, for example, can auto-assign identifiers on any element that needs one — at every entry point, so the invariant holds no matter how the record was produced:
 
 ```ts
-beforeImportRecord(record) {
-	ensureUuid(record)
-	return record
+afterStandardizedRecord({ record }) {
+	// fill a uuid only if the element supports one and lacks it
+	return withUuidIfMissing(record)
 }
 ```
 

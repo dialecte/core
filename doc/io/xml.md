@@ -64,16 +64,26 @@ downloadFile({ xmlDocument, filename: 'export.xml' })
 
 ---
 
+## Namespaces
+
+Import and export use one consistent namespace form (the same records serialize identically no matter how they were produced):
+
+- **Attributes** — a default-namespace attribute is stored and serialized by its bare local name (`aA`, `root`); any non-default-namespace attribute uses `prefix:local` (`ext:cA`, `ext:root`). See [Attribute namespaces](/guide/development/helpers#attribute-namespaces).
+- **Elements** — an element's namespace is resolved per parent→child context, so a local name declared in more than one namespace (bare `A` under one parent, `ext:A` under another) serializes correctly under each parent. See [Element namespaces](/guide/development/helpers#element-namespaces).
+
+`xmlns` / `xmlns:*` declarations are hoisted to the root element automatically during export.
+
+---
+
 ## `IOConfig`
 
-Registered under `dialecteConfig.io`. Controls file format, chunking, and import/export lifecycle hooks.
+Registered under `dialecteConfig.io`. Controls file format and chunking. (Lifecycle hooks are no longer here — they are provided on the `Project` instance; see [Hooks](/api/hooks).)
 
 ```ts
 type IOConfig = {
 	supportedFileExtensions: readonly string[]
 	importOptions?: Partial<ImportOptions>
 	exportOptions?: Partial<ExportOptions>
-	hooks?: IOHooks
 }
 ```
 

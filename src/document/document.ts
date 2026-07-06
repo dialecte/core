@@ -96,10 +96,10 @@ export class Document<
 		const merged: Record<string, Record<string, unknown>> = {}
 
 		for (const [k, v] of Object.entries(queryBound as Record<string, object>))
-			merged[k] = { ...(merged[k] ?? {}), ...v }
+			merged[k] = { ...merged[k], ...v }
 
 		for (const [k, v] of Object.entries(txBound as Record<string, object>))
-			merged[k] = { ...(merged[k] ?? {}), ...v }
+			merged[k] = { ...merged[k], ...v }
 
 		return Object.assign(tx, merged) as Transaction<GenericConfig> & AllExtensions<GenericExtension>
 	}

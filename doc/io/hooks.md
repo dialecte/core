@@ -4,7 +4,7 @@ description: IO lifecycle hooks for @dialecte/core — beforeImport (whole-XML n
 
 # IO Hooks
 
-Registered under `dialecteConfig.io.hooks`. Fires during `project.import` — not during transactions.
+Provided on the `Project` instance alongside the record hooks — one flat [`DialecteHooks`](/api/hooks) object passed to `new Project({ hooks })`, not on the config. Fires during `project.import` — not during transactions.
 
 ::: warning No store access
 IO hooks run outside the transaction store. Do not call `getRecord` or any store API inside IO hooks. Accumulate state in closure variables during `beforeImportRecord`, then flush in `afterImport`.
@@ -42,25 +42,31 @@ const hooks: IOHooks = {
 
 ---
 
-## `IO_HOOKS` pattern
+## Providing IO hooks
 
-Dialecte packages expose their hooks as a named `IO_HOOKS` constant conforming to `IOHooks`. This keeps the config file clean and the hooks independently testable.
+Dialecte packages author their IO hooks independently, then merge them with the record hooks into the single `DialecteHooks` object handed to the `Project`. Stateful IO hooks (e.g. a per-import index) are best built by a factory so each `Project` gets fresh state.
 
 ```ts
 // hooks/io/io-hooks.ts
 import type { IOHooks } from '@dialecte/core'
 
-export const IO_HOOKS: IOHooks = {
-	beforeImport: (xml) => normalize(xml),
+export function createMyIoHooks(): IOHooks {
+	const indexByName = new Map<string, string>()
+	return {
+		beforeImportRecord: ({ record }) => {
+			/* accumulate into indexByName */
+		},
+		afterImport: async () => ({ updates: [] }),
+	}
 }
 
-// config/dialecte.config.ts
-import { IO_HOOKS } from '../hooks'
-
-export const MY_DIALECTE_CONFIG = {
-	io: { hooks: IO_HOOKS, supportedFileExtensions: ['.xml'] },
-	// ...
-} satisfies AnyDialecteConfig
+// factory that builds the Project
+new Project({
+	configs,
+	storage,
+	// io hooks (fresh per project) + record hooks, one flat object
+	hooks: { ...createMyIoHooks(), ...RECORD_HOOKS },
+})
 ```
 
 ---
@@ -69,6 +75,8 @@ export const MY_DIALECTE_CONFIG = {
 
 Fires **per record**, in document order, synchronously during the SAX pass. Use it to index elements by attribute value for later resolution.
 
+The record is passed **after standardization** (canonical attribute order + defaults + `afterStandardizedRecord`), so any hook-enforced attribute — e.g. a generated `uuid` — is already present. Read it directly rather than re-deriving it.
+
 ```ts
 beforeImportRecord?: (params: {
   record: AnyRawRecord
@@ -76,27 +84,26 @@ beforeImportRecord?: (params: {
 }) => void
 ```
 
-`ancestry` is top-down: `[root, ..., parent]`. No return value — use closure state.
+`ancestry` is top-down: `[root, ..., parent]` (still-open parents, not yet standardized). No return value — use closure state.
 
 **Example**
 
 ```ts
-const indexByName = new Map<string, string>() // name → record id
-
-const config = {
-	io: {
-		hooks: {
-			beforeImportRecord: ({ record }) => {
-				const name = record.attributes.find((a) => a.name === 'name')?.value
-				if (name) indexByName.set(name, record.id)
-			},
-			afterImport: async () => {
-				// resolve pending references using indexByName
-				return { updates: [] }
-			},
+function createIoHooks(): IOHooks {
+	const indexByName = new Map<string, string>() // name → record id
+	return {
+		beforeImportRecord: ({ record }) => {
+			const name = record.attributes.find((a) => a.name === 'name')?.value
+			if (name) indexByName.set(name, record.id)
 		},
-	},
+		afterImport: async () => {
+			// resolve pending references using indexByName
+			return { updates: [] }
+		},
+	}
 }
+
+// merged into the Project hooks: new Project({ hooks: { ...createIoHooks(), ...RECORD_HOOKS } })
 ```
 
 ---
@@ -131,11 +138,12 @@ Use `warnings` to surface unresolved references, unknown paths, or any other dia
 ## Firing order
 
 ```
-beforeImport           (once - whole XML string)
+beforeImport            (once - whole XML string)
 [SAX parse begins]
-beforeImportRecord     (per record, document order)
+afterStandardizedRecord (per record - standardization runs first)
+beforeImportRecord      (per record, document order - receives the standardized record)
 [records stored to IndexedDB]
-afterImport            (once)
+afterImport             (once)
 ```
 
 See [IO overview](/io/) for how this fits into the full import → API → export pipeline.

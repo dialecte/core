@@ -390,6 +390,8 @@ const attr = await doc.query.getAttribute(ref, { name: 'aAA_1', fullObject: true
 // → FullAttributeObject | undefined
 ```
 
+Attributes are keyed by their canonical name: bare local for the default namespace (`aA`, `root`), `prefix:local` for any other (`ext:cA`, `ext:root`). Read a namespaced attribute by its prefixed name — see [Attribute namespaces](/guide/development/helpers#attribute-namespaces).
+
 ### getAttributes
 
 Returns all attributes as a destructurable value object, or as an array of full attribute objects.
