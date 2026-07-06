@@ -1,6 +1,6 @@
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
-import { invariant, orderByConfigSequence } from '@/utils'
+import { extractLocalName, getAttributeRules, invariant, orderByConfigSequence } from '@/utils'
 
 import type { BuildXmlDocumentParams } from './build-xml-document.types'
 import type {
@@ -300,13 +300,6 @@ function enforceRootAttributes(params: {
 	}
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-function extractLocalName(name: string): string {
-	const colonIndex = name.lastIndexOf(':')
-	return colonIndex === -1 ? name : name.slice(colonIndex + 1)
-}
-
 // ── Type guards ──────────────────────────────────────────────────────────────
 
 function isQualifiedAttribute(
@@ -327,6 +320,12 @@ function isNamespaceDeclaration(attribute: AnyAttribute | AnyQualifiedAttribute)
 	return false
 }
 
+/**
+ * Output-only delta over the canonical form: strip an empty **optional,
+ * non-identity** attribute of a known element from serialized XML. Schema facts
+ * come from the shared `getAttributeRules` so this stays in lockstep with
+ * `standardizeRecord`; only the "skip when empty for output" decision lives here.
+ */
 function shouldSkipDefaultAttribute(params: {
 	config: AnyDialecteConfig
 	tagName: string
@@ -334,16 +333,15 @@ function shouldSkipDefaultAttribute(params: {
 }): boolean {
 	const { config, tagName, attribute } = params
 
-	if (!config.elements.includes(tagName)) return false
+	const rules = getAttributeRules({
+		dialecteConfig: config,
+		tagName,
+		attributeName: attribute.name,
+	})
 
-	const definition = config.definition[tagName]
-	if (!definition) return false
-
-	const details = definition.attributes.details[attribute.name]
-	if (!details || details.required) return false
-
-	const identityFields = definition.attributes.identityFields
-	if (identityFields?.includes(attribute.name)) return false
+	if (!rules.isKnownElement || !rules.isDefined) return false
+	if (rules.isRequired) return false
+	if (rules.isIdentityField) return false
 
 	return true
 }
