@@ -1,5 +1,7 @@
 import { toFullAttributeArray } from './converter'
 
+import { getAttributeRules, orderAttributesBySequence } from '@/utils'
+
 import type {
 	AnyDialecteConfig,
 	ElementsOf,
@@ -49,18 +51,16 @@ export function standardizeRecord<
 	if (!isDialecteElement) return inputRecord
 
 	const standardAttributeNames = dialecteConfig.definition[tagName].attributes.sequence
-	const details = dialecteConfig.definition[tagName].attributes.details
 
 	const standardizedAttributes = standardAttributeNames.flatMap((attributeName) => {
-		const attributeIsRequired = details[attributeName].required
-		const attributeNamespace = details[attributeName]?.namespace || undefined
+		const rules = getAttributeRules({ dialecteConfig, tagName, attributeName })
 
+		// Fixed values take precedence over defaults (XSD `fixed`); required
+		// attributes fall back to '' so they are always present.
+		const schemaValue = rules.fixed ?? rules.default
 		const foundAttribute = attributesArray.find((attribute) => attribute.name === attributeName)
 		const attributeValue =
-			foundAttribute?.value ??
-			(attributeIsRequired
-				? (details[attributeName]?.default ?? '')
-				: details[attributeName]?.default)
+			foundAttribute?.value ?? (rules.isRequired ? (schemaValue ?? '') : schemaValue)
 
 		if (attributeValue === undefined) return []
 
@@ -68,11 +68,14 @@ export function standardizeRecord<
 			{
 				name: attributeName,
 				value: attributeValue,
-				namespace: attributeNamespace,
+				namespace: rules.namespace,
 			},
 		]
 	})
 
+	// Attributes outside the schema sequence (foreign-namespace attrs and
+	// xmlns/xmlns:* declarations) are kept; unqualified non-schema attributes are
+	// dropped. Ordering is applied below so the full array is order-canonical.
 	const extraQualifiedAttributes = attributesArray.filter(
 		(attribute) =>
 			'namespace' in attribute &&
@@ -80,16 +83,36 @@ export function standardizeRecord<
 			!standardAttributeNames.includes(attribute.name),
 	)
 
+	// An element's namespace can depend on its parent context: the same local name
+	// may be declared in different namespaces under different parents (e.g. SCL
+	// `Labels` under `Substation` vs `eIEC61850-6-100:Labels` under `DAS`). The
+	// generated definition carries that override on the parent→child edge; fall back
+	// to the element's own namespace when the edge omits one (or the record is a root).
+	const parentTagName = record.parent?.tagName as ElementsOf<GenericConfig> | undefined
+	const edgeNamespace = parentTagName
+		? dialecteConfig.definition[parentTagName]?.children?.details?.[tagName]?.namespace
+		: undefined
+
 	let standardizedRecord: RawRecord<GenericConfig, GenericElement> = {
 		...inputRecord,
-		namespace: dialecteConfig.definition[tagName].namespace,
-		attributes: [...standardizedAttributes, ...extraQualifiedAttributes],
+		namespace: edgeNamespace ?? dialecteConfig.definition[tagName].namespace,
+		attributes: orderAttributesBySequence(
+			[...standardizedAttributes, ...extraQualifiedAttributes],
+			standardAttributeNames,
+		),
 	}
 
 	if (hooks?.afterStandardizedRecord) {
 		standardizedRecord = hooks.afterStandardizedRecord({
 			record: standardizedRecord,
 		})
+		// The hook may append or move attributes (e.g. enforce a `uuid`), so
+		// re-apply canonical ordering to keep records order-comparable regardless
+		// of where the hook placed things. See [[attribute-rules]].
+		standardizedRecord = {
+			...standardizedRecord,
+			attributes: orderAttributesBySequence(standardizedRecord.attributes, standardAttributeNames),
+		}
 	}
 
 	return standardizedRecord

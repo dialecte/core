@@ -115,7 +115,9 @@ describe('standardizeRecord', () => {
 			expect(c?.namespace).toEqual(ns.ext)
 		})
 
-		it('appends extra qualified attributes not in schema sequence', () => {
+		it('appends extra qualified attributes not in schema sequence, keyed by prefix', () => {
+			// A non-default-namespace attribute is stored under its prefixed name even when
+			// it is not in the schema sequence (dev is non-default) — the two-rule convention.
 			const extra = { name: 'clone-index', value: 'aa1-0', namespace: ns.dev }
 
 			const result = standardizeRecord({
@@ -130,7 +132,7 @@ describe('standardizeRecord', () => {
 				expect.objectContaining({ name: 'aAA_1', value: 'v' }),
 			)
 			expect(result.attributes).toContainEqual(
-				expect.objectContaining({ name: 'clone-index', value: 'aa1-0', namespace: ns.dev }),
+				expect.objectContaining({ name: 'dev:clone-index', value: 'aa1-0', namespace: ns.dev }),
 			)
 		})
 
@@ -149,6 +151,109 @@ describe('standardizeRecord', () => {
 			expect(
 				result.attributes.find((attribute) => attribute.name === ('unknown-attr' as any)),
 			).toBeUndefined()
+		})
+
+		it('stores a parsed non-default attribute (local name + namespace) under its prefixed key', () => {
+			// The SAX parser yields a non-default attribute by local name + namespace; it must
+			// land on the prefixed schema key `ext:cAA_1` with its value preserved (not defaulted).
+			const result = standardizeRecord({
+				record: {
+					tagName: 'AA_1',
+					attributes: [
+						{ name: 'aAA_1', value: 'v', namespace: ns.default },
+						{ name: 'cAA_1', value: 'kept', namespace: ns.ext },
+					] as any,
+				},
+				dialecteConfig: config,
+			})
+
+			expect(result.attributes).toContainEqual(
+				expect.objectContaining({ name: 'ext:cAA_1', value: 'kept', namespace: ns.ext }),
+			)
+			expect(
+				result.attributes.find((attribute) => attribute.name === ('cAA_1' as any)),
+			).toBeUndefined()
+		})
+
+		it('canonicalizes created (prefixed key) and imported (local + namespace) forms identically', () => {
+			const created = standardizeRecord({
+				record: { tagName: 'AA_1', attributes: { aAA_1: 'v', 'ext:cAA_1': 'X' } as any },
+				dialecteConfig: config,
+			})
+			const imported = standardizeRecord({
+				record: {
+					tagName: 'AA_1',
+					attributes: [
+						{ name: 'aAA_1', value: 'v', namespace: ns.default },
+						{ name: 'cAA_1', value: 'X', namespace: ns.ext },
+					] as any,
+				},
+				dialecteConfig: config,
+			})
+
+			expect(imported.attributes).toEqual(created.attributes)
+		})
+
+		it('resolves a same-local-name collision by namespace (ext:root vs root)', () => {
+			// A parsed document yields both `ext:root` and `root` by local name `root`; the
+			// non-default one must be keyed `ext:root` and neither value corrupts the other.
+			const result = standardizeRecord({
+				record: {
+					tagName: 'Root',
+					attributes: [
+						{ name: 'root', value: 'EXT', namespace: ns.ext },
+						{ name: 'root', value: 'DEF', namespace: ns.default },
+					] as any,
+				},
+				dialecteConfig: config,
+			})
+
+			expect(result.attributes).toContainEqual(
+				expect.objectContaining({ name: 'ext:root', value: 'EXT' }),
+			)
+			expect(result.attributes).toContainEqual(
+				expect.objectContaining({ name: 'root', value: 'DEF' }),
+			)
+		})
+
+		it('throws on a prefixed attribute name with an unresolvable namespace prefix', () => {
+			expect(() =>
+				standardizeRecord({
+					record: { tagName: 'AA_1', attributes: { 'foo:bar': 'x' } as any },
+					dialecteConfig: config,
+				}),
+			).toThrow(/foo/)
+		})
+
+		it('orders extra qualified attributes deterministically regardless of input order', () => {
+			const extExt = { name: 'alpha', value: '1', namespace: ns.ext }
+			const extDev = { name: 'beta', value: '2', namespace: ns.dev }
+
+			const forward = standardizeRecord({
+				record: {
+					tagName: 'AA_1',
+					attributes: [{ name: 'aAA_1', value: 'v', namespace: ns.default }, extExt, extDev] as any,
+				},
+				dialecteConfig: config,
+			})
+			const reverse = standardizeRecord({
+				record: {
+					tagName: 'AA_1',
+					attributes: [{ name: 'aAA_1', value: 'v', namespace: ns.default }, extDev, extExt] as any,
+				},
+				dialecteConfig: config,
+			})
+
+			// Same attribute set fed in different orders → identical canonical array.
+			expect(forward.attributes).toEqual(reverse.attributes)
+		})
+
+		it('uses the fixed value for a required attribute when not provided', () => {
+			const result = standardizeRecord({ record: { tagName: 'CC_1' }, dialecteConfig: config })
+
+			expect(
+				result.attributes.find((attribute) => attribute.name === ('aCC_1' as any))?.value,
+			).toBe('fixed_val')
 		})
 	})
 
@@ -270,6 +375,70 @@ describe('standardizeRecord', () => {
 
 			expect(hookCalled).toBe(true)
 			expect(result.value).toBe('from hook')
+		})
+
+		it('re-applies canonical attribute order after the hook', () => {
+			// A hook that moves a schema-sequence attribute to the end (mirrors the
+			// SCL uuid hook, which appends a generated uuid). Standardization must
+			// re-order so the result stays order-canonical for comparison.
+			const hooks = {
+				afterStandardizedRecord: <C extends AnyDialecteConfig, E extends ElementsOf<C>>({
+					record,
+				}: {
+					record: RawRecord<C, E>
+				}): RawRecord<C, E> => ({
+					...record,
+					attributes: [
+						...record.attributes.filter((attribute) => attribute.name !== 'aAA_1'),
+						...record.attributes.filter((attribute) => attribute.name === 'aAA_1'),
+					],
+				}),
+			}
+
+			const result = standardizeRecord({
+				record: { tagName: 'AA_1', attributes: { aAA_1: 'v', bAA_1: 'w' } },
+				dialecteConfig: config,
+				hooks,
+			})
+
+			expect(result.attributes.map((attribute) => attribute.name)).toEqual(['aAA_1', 'bAA_1'])
+		})
+	})
+
+	describe('element namespace by parent context', () => {
+		it('stamps the parent→child edge namespace override, else the element namespace', () => {
+			// Give the Root→A edge an ext-namespace override; A's own namespace is default.
+			const configWithEdge = structuredClone(config) as any
+			configWithEdge.definition.Root.children.details.A.namespace = ns.ext
+
+			const overridden = standardizeRecord({
+				record: {
+					tagName: 'A',
+					parent: { id: 'root-id', tagName: 'Root' },
+					attributes: { aA: 'X' },
+				},
+				dialecteConfig: configWithEdge,
+			})
+			expect(overridden.namespace).toEqual(ns.ext)
+
+			// Same element, no edge override → the element's own canonical namespace.
+			const canonical = standardizeRecord({
+				record: {
+					tagName: 'A',
+					parent: { id: 'root-id', tagName: 'Root' },
+					attributes: { aA: 'X' },
+				},
+				dialecteConfig: config,
+			})
+			expect(canonical.namespace).toEqual(config.definition.A.namespace)
+		})
+
+		it('falls back to the element namespace for a root record with no parent', () => {
+			const result = standardizeRecord({
+				record: { tagName: 'Root', attributes: {} as any },
+				dialecteConfig: config,
+			})
+			expect(result.namespace).toEqual(config.definition.Root.namespace)
 		})
 	})
 })

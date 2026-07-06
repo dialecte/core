@@ -1,6 +1,7 @@
 import { isFullAttributeArray } from './guard'
 
-import { invariant } from '@/utils'
+import { throwDialecteError } from '@/errors'
+import { extractLocalName, invariant, resolveNamespaceByPrefix } from '@/utils'
 
 import type { Ref, RefOrRecord } from '@/document'
 import type {
@@ -11,6 +12,7 @@ import type {
 	ElementsOf,
 	FullAttributeObjectOf,
 	AttributesValueObjectOf,
+	Namespace,
 	OperationStatus,
 	ParentRelationship,
 	ChildRelationship,
@@ -89,9 +91,9 @@ export function toTreeRecord<
 }
 
 /**
- * Converts attributes to FullAttributeObject array format.
- * If already an array, returns as-is.
- * If object format, converts to array (without namespace since not available in object format).
+ * Converts attributes to FullAttributeObject array format and canonicalizes each
+ * attribute name to the two naming rules (see `canonicalizeAttributeName`), so
+ * records from import, create, and update share one stored name per attribute.
  */
 export function toFullAttributeArray<
 	GenericConfig extends AnyDialecteConfig,
@@ -104,17 +106,66 @@ export function toFullAttributeArray<
 		| Partial<FullAttributeObjectOf<GenericConfig, GenericElement>>[]
 }): FullAttributeObjectOf<GenericConfig, GenericElement>[] {
 	const { dialecteConfig, tagName, attributes } = params
-	if (isFullAttributeArray(attributes)) return attributes
 
-	return Object.entries(attributes).map(
-		([name, value]) =>
-			({
+	const rawArray = isFullAttributeArray(attributes)
+		? attributes
+		: Object.entries(attributes).map(([name, value]) => ({
 				name,
 				value,
 				namespace:
 					dialecteConfig.definition[tagName]?.attributes.details[name]?.namespace || undefined,
-			}) as FullAttributeObjectOf<GenericConfig, GenericElement>,
-	)
+			}))
+
+	return rawArray.map((attribute) =>
+		canonicalizeAttributeName({ attribute, dialecteConfig, tagName }),
+	) as FullAttributeObjectOf<GenericConfig, GenericElement>[]
+}
+
+/**
+ * Canonicalize an attribute's stored name to two predictable rules:
+ *   - default namespace / unprefixed → bare local name (`version`);
+ *   - any non-default namespace → `prefix:local` (`eIEC61850-6-100:version`, `xsi:type`).
+ *
+ * This mirrors the generated schema keys and XML export, so a namespaced attribute
+ * read from a parsed document (stored by local name + namespace) ends up under the
+ * same name it would have when created in-session. `xmlns`/`xmlns:*` declarations are
+ * left verbatim. A prefixed name lacking a resolvable namespace throws.
+ */
+function canonicalizeAttributeName(params: {
+	attribute: { name: string; value: unknown; namespace?: Namespace }
+	dialecteConfig: AnyDialecteConfig
+	tagName: string
+}): { name: string; value: unknown; namespace?: Namespace } {
+	const { attribute, dialecteConfig, tagName } = params
+
+	// Resolve the namespace: carried on the attribute, else inferred from a prefixed
+	// name via the config's declared namespaces (consumers can't extend that config,
+	// so an unresolvable prefix is a caller error, not a silent drop).
+	let { namespace } = attribute
+	const colonIndex = attribute.name.indexOf(':')
+	if (!namespace && colonIndex !== -1) {
+		const prefix = attribute.name.slice(0, colonIndex)
+		if (prefix !== 'xmlns') {
+			namespace = resolveNamespaceByPrefix(dialecteConfig, prefix)
+			if (!namespace) {
+				throwDialecteError('UNKNOWN_NAMESPACE_PREFIX', {
+					detail: `Unknown namespace prefix '${prefix}' on attribute '${attribute.name}' — pass it explicitly as { name, namespace: { prefix, uri } }.`,
+					ref: { tagName },
+				})
+			}
+		}
+	}
+
+	// Non-default namespace → always prefixed. Default/unprefixed and xmlns declarations
+	// keep their name verbatim.
+	if (namespace && namespace.prefix && namespace.prefix !== 'xmlns') {
+		return {
+			...attribute,
+			name: `${namespace.prefix}:${extractLocalName(attribute.name)}`,
+			namespace,
+		}
+	}
+	return namespace === attribute.namespace ? attribute : { ...attribute, namespace }
 }
 
 /**
