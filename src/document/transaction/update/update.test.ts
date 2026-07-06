@@ -41,27 +41,27 @@ describe('stageUpdate', () => {
 			expectedQueries: ['//default:A[@aA="a"][@bA="b"]'],
 			unexpectedQueries: ['//default:A[@aA="x"]', '//default:A[@bA="y"]'],
 		},
-		'attribute set to null → attribute removed': {
+		'optional attribute set to null → attribute removed': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<A ${customId}="element-a" aA="value" bA="keep" />
+					<A ${customId}="element-a" aA="keep" bA="remove" />
 				</Root>
 			`,
 			targetRef: { tagName: 'A', id: 'element-a' },
-			updateParams: { attributes: { aA: null as any, bA: 'keep' } },
-			expectedQueries: ['//default:A[@bA="keep"]'],
-			unexpectedQueries: ['//default:A[@aA]'],
+			updateParams: { attributes: { bA: null as any } },
+			expectedQueries: ['//default:A[@aA="keep"]'],
+			unexpectedQueries: ['//default:A[@bA]'],
 		},
-		'attribute set to undefined → attribute removed': {
+		'optional attribute set to undefined → attribute removed': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<A ${customId}="element-a" aA="value" bA="keep" />
+					<A ${customId}="element-a" aA="keep" bA="remove" />
 				</Root>
 			`,
 			targetRef: { tagName: 'A', id: 'element-a' },
-			updateParams: { attributes: { aA: undefined, bA: 'keep' } },
-			expectedQueries: ['//default:A[@bA="keep"]'],
-			unexpectedQueries: ['//default:A[@aA]'],
+			updateParams: { attributes: { bA: undefined } },
+			expectedQueries: ['//default:A[@aA="keep"]'],
+			unexpectedQueries: ['//default:A[@bA]'],
 		},
 		'text content updated → new value present, old value absent': {
 			sourceXml: /* xml */ `
@@ -98,12 +98,12 @@ describe('stageUpdate', () => {
 		'update one attribute → unchanged attributes unaffected': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<A ${customId}="element-a" aA="keep" bA="change" cA="keep" />
+					<A ${customId}="element-a" aA="keep" bA="change" />
 				</Root>
 			`,
 			targetRef: { tagName: 'A', id: 'element-a' },
 			updateParams: { attributes: { bA: 'changed' } },
-			expectedQueries: ['//default:A[@aA="keep"][@bA="changed"][@cA="keep"]'],
+			expectedQueries: ['//default:A[@aA="keep"][@bA="changed"]'],
 			unexpectedQueries: ['//default:A[@bA="change"]'],
 		},
 	}
@@ -176,6 +176,37 @@ describe('stageUpdate hooks — spy behavior', () => {
 				testCase.expectedNewValue,
 			)
 		}
+	}
+
+	runTestCases.withoutExport({ testCases, act, hooks })
+})
+
+describe('stageUpdate no-op guard', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	const afterUpdated = vi.fn().mockResolvedValue([])
+	const hooks = { afterUpdated }
+
+	type TestCase = BaseXmlTestCase
+	const testCases: TestCases<TestCase> = {
+		're-applying the same attribute value → no update staged': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="same" />
+				</Root>
+			`,
+		},
+	}
+
+	async function act({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		afterUpdated.mockClear()
+		await source.transaction(async (tx) => {
+			await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'same' } })
+		})
+		// The canonical record is unchanged, so no 'updated' operation is staged and
+		// the afterUpdated side-effect hook must not fire.
+		expect(afterUpdated).not.toHaveBeenCalled()
 	}
 
 	runTestCases.withoutExport({ testCases, act, hooks })

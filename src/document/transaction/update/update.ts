@@ -1,12 +1,19 @@
 import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
-import { toFullAttributeArray } from '@/helpers'
+import { standardizeRecord, toFullAttributeArray } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { UpdateParams } from './update.types'
 import type { Context, Query, Ref } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, RawRecord, TransactionHooks } from '@/types'
+import type {
+	AnyDialecteConfig,
+	AnyAttribute,
+	AnyRawRecord,
+	ElementsOf,
+	RawRecord,
+	TransactionHooks,
+} from '@/types'
 
 /**
  * Merges attribute/value changes onto an existing record.
@@ -51,11 +58,23 @@ export async function stageUpdate<
 		)
 	}
 
-	const updatedRecord = {
-		...record,
-		attributes: updatedAttributes,
-		value: value !== undefined ? value : record.value,
-	}
+	// Re-standardize so the updated record keeps the same canonical form as
+	// create/clone/import (schema attribute order + defaults + deterministic
+	// extra-qualified ordering). See [[standardizing]].
+	const updatedRecord = standardizeRecord({
+		dialecteConfig,
+		hooks,
+		record: {
+			...record,
+			attributes: updatedAttributes,
+			value: value !== undefined ? value : record.value,
+		},
+	})
+
+	// Skip staging a no-op: if the canonical updated record is identical to the
+	// stored one, there is no real change — avoids false "updated" flags (e.g.
+	// re-applying the same value) and their downstream afterUpdated side effects.
+	if (recordsEqual(record, updatedRecord)) return updatedRecord
 
 	stageOperation({ context, status: 'updated', oldRecord: record, newRecord: updatedRecord })
 
@@ -69,4 +88,21 @@ export async function stageUpdate<
 	}
 
 	return updatedRecord
+}
+
+/** Content equality of two records: same text value and same attribute set. */
+function recordsEqual(a: AnyRawRecord, b: AnyRawRecord): boolean {
+	if (a.value !== b.value) return false
+	if (a.attributes.length !== b.attributes.length) return false
+
+	return a.attributes.every((attr, index) => attributesEqual(attr, b.attributes[index]))
+}
+
+function attributesEqual(a: AnyAttribute, b: AnyAttribute): boolean {
+	return (
+		a.name === b.name &&
+		a.value === b.value &&
+		a.namespace?.uri === b.namespace?.uri &&
+		a.namespace?.prefix === b.namespace?.prefix
+	)
 }
