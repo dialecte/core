@@ -82,6 +82,11 @@ export const ERROR_CATALOG = {
 		code: 'D3005',
 		message: 'Value is already used within its scope',
 	},
+	UNKNOWN_NAMESPACE_PREFIX: {
+		code: 'D3006',
+		message:
+			'Unknown namespace prefix on attribute — pass it explicitly as { name, namespace: { prefix, uri } }',
+	},
 
 	// D4xxx — Transaction lifecycle
 	ALREADY_COMMITTED: {
