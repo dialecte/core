@@ -1,9 +1,10 @@
 import { buildDocumentState } from '../state/document-state'
 
+import { standardizeRecord } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { InitEmptyDocumentParams, InitEmptyDocumentResult, DocumentRecord } from '../types'
-import type { AnyAttribute, AnyRawRecord } from '@/types'
+import type { AnyRawRecord } from '@/types'
 
 /**
  * Build a DocumentRecord, persist it, and create a root record in the store.
@@ -12,7 +13,7 @@ import type { AnyAttribute, AnyRawRecord } from '@/types'
 export async function initEmptyDocument(
 	params: InitEmptyDocumentParams,
 ): Promise<InitEmptyDocumentResult> {
-	const { store, configs, defaultConfigKey, options } = params
+	const { store, configs, defaultConfigKey, options, hooks } = params
 
 	const configKey = options?.configKey ?? defaultConfigKey
 	const config = configs[configKey]
@@ -37,26 +38,20 @@ export async function initEmptyDocument(
 
 	await store.registerDocument(doc)
 
-	const rootDefinition = config.definition[config.rootElementName]
-
-	const attributes: AnyAttribute[] = (rootDefinition?.attributes.sequence ?? [])
-		.map((name) => ({ name, ...rootDefinition!.attributes.details[name] }))
-		.filter((document) => document.required && (document.fixed ?? document.default) !== undefined)
-		.map(({ name, fixed, default: def, namespace }) => {
-			const attribute: AnyAttribute = { name, value: (fixed ?? def)! }
-			if (namespace) attribute.namespace = namespace
-			return attribute
-		})
-
-	const rootRecord: AnyRawRecord = {
-		id: crypto.randomUUID(),
-		tagName: config.rootElementName,
-		namespace: config.namespaces.default,
-		attributes,
-		value: '',
-		parent: null,
-		children: [],
-	}
+	// Build the root record through the same standardization as create/clone/import
+	// so a freshly-created empty document shares one canonical form with every other
+	// entry point. See [[standardizing]].
+	const rootRecord: AnyRawRecord = standardizeRecord({
+		dialecteConfig: config,
+		hooks,
+		record: {
+			id: crypto.randomUUID(),
+			tagName: config.rootElementName,
+			namespace: config.namespaces.default,
+			parent: null,
+			children: [],
+		},
+	})
 
 	await store.bulkWrite(documentId, { creates: [rootRecord] })
 
