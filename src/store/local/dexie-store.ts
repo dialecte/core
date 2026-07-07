@@ -423,6 +423,15 @@ export class DexieStore implements Store {
 		})
 	}
 
+	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
+		const head = await this.getHead(documentId)
+		const next = await this.db
+			.table<ChangeLogEntry>(TABLE_CHANGELOG)
+			.where({ documentId, sequenceNumber: head + 1 })
+			.first()
+		return { canUndo: head > 0, canRedo: next !== undefined }
+	}
+
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
 		return this.db
 			.table<ChangeLogEntry>(TABLE_CHANGELOG)

@@ -101,6 +101,9 @@ export interface Store {
 	/** Redo the next change for a document. No-op at end of history. */
 	redo(documentId: string): Promise<void>
 
+	/** Whether undo/redo are currently available for a document */
+	getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }>
+
 	/** Return changelog entries for a document in ascending sequenceNumber order */
 	getChangeLog(documentId: string): Promise<ChangeLogEntry[]>
 

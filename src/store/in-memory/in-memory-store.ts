@@ -283,6 +283,15 @@ export class InMemoryStore implements Store {
 		this.heads.set(documentId, next)
 	}
 
+	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
+		const head = this.heads.get(documentId) ?? 0
+		const entries = this.changelog.get(documentId) ?? []
+		return {
+			canUndo: head > 0,
+			canRedo: entries.some((entry) => entry.sequenceNumber === head + 1),
+		}
+	}
+
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
 		return this.changelog.get(documentId) ?? []
 	}

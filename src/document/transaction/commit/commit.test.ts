@@ -65,6 +65,7 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 		}),
 		undo: vi.fn(),
 		redo: vi.fn(),
+		getHistoryStatus: vi.fn().mockResolvedValue({ canUndo: false, canRedo: false }),
 		getChangeLog: vi.fn().mockResolvedValue([]),
 		getDatabaseInstance: vi.fn(),
 		destroy: vi.fn(),
@@ -105,6 +106,7 @@ describe('commitTransaction', () => {
 			removeBlob: vi.fn(),
 			undo: vi.fn(),
 			redo: vi.fn(),
+			getHistoryStatus: vi.fn().mockResolvedValue({ canUndo: false, canRedo: false }),
 			getChangeLog: vi.fn().mockResolvedValue([]),
 			getDatabaseInstance: vi.fn(),
 			commit: vi.fn(async () => {
