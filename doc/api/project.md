@@ -4,7 +4,7 @@ description: API reference for the Project class - multi-document container mana
 
 # Project
 
-`Project` is the top-level container that manages multiple documents backed by a single store. It owns the config registry, the shared `BroadcastChannel`, and per-document lifecycle.
+`Project` is the top-level container that manages multiple documents backed by a single store. It owns the config registry, the project `BroadcastChannel` (see [Project channel & events](#project-channel-events)), and per-document lifecycle.
 
 ## Creating and opening a Project
 
@@ -33,7 +33,7 @@ const project = await new Project({
 
 **`project.open(name: string): Promise<this>`**
 
-Connects the store, hydrates existing file registrations into `project.state.documents`, and returns `this` for chaining. Accessing `project.name`, `project.store`, or `project.channel` before calling `open` throws `PROJECT_NOT_OPENED` (D7003).
+Connects the store, hydrates existing file registrations into `project.state.documents` (including each document's `canUndo`/`canRedo` from persisted history), and returns `this` for chaining. Accessing `project.name`, `project.store`, or `project.channelName` before calling `open` throws `PROJECT_NOT_OPENED` (D7003).
 
 ::: tip Dialecte packages
 Higher-level dialecte packages (e.g. `@dialecte/scl`) expose a factory function (`createSclProject`) that pre-configures the `Project` constructor. Consumer code only calls `.open(name)`.
@@ -200,7 +200,7 @@ type BlobAttachment = {
 | `detachBlob(blobId, { documentId, recordRef })` | Remove all matching references from `attachedTo`            |
 | `removeBlob(blobId)`                            | Hard-delete: removes from `_blobs` and `blob_{documentId}`  |
 
-Each mutation broadcasts a corresponding `blob-added` / `blob-attached` / `blob-detached` / `blob-removed` event over the project's `BroadcastChannel` for cross-tab sync.
+Each mutation broadcasts a corresponding `blob-added` / `blob-attached` / `blob-detached` / `blob-removed` event (each carrying a `timestamp`) over the project's `BroadcastChannel` for cross-tab sync.
 
 `getBlob` throws `STORE_BLOB_NOT_FOUND` (D1008) if the blob id is unknown.
 
@@ -233,7 +233,45 @@ await project.undo(documentId)
 await project.redo(documentId)
 ```
 
-Each call broadcasts the change to other Document instances via `BroadcastChannel`.
+Each call updates the document's shared `DocumentEntry` deterministically — `lastUpdate` plus `canUndo`/`canRedo` recomputed from the store's history — then broadcasts a `commit` message so other tabs converge.
+
+## Project channel & events
+
+Every mutation a Project or one of its Documents performs is announced on a `BroadcastChannel`. The channel is the project's public event contract.
+
+```ts
+project.channelName // `dialecte::project::${name}`
+
+const channel = project.createChannel() // fresh BroadcastChannel on channelName; caller owns it
+channel.addEventListener('message', (e) => {
+	const message = e.data // ProjectChannelMessage
+})
+// ...
+channel.close()
+```
+
+Internally the Project keeps two instances: a posting channel and a separate listening channel. The spec withholds a message only from the exact instance that posted it, so the listening instance also receives this tab's own posts (echo) — one handler folds every mutation source, local and cross-tab, into project state.
+
+**ProjectChannelMessage**
+
+Discriminated union; every payload carries a `timestamp`. Changing a member is a breaking API change.
+
+```ts
+type ProjectChannelMessage =
+	| { type: 'commit'; documentId: string; timestamp: number }
+	| { type: 'init-empty-document'; documentId: string; timestamp: number }
+	| { type: 'document-removed'; documentId: string; timestamp: number }
+	| { type: 'document-imported'; documentId: string; timestamp: number }
+	| { type: 'blob-added'; blobId: string; documentId: string; timestamp: number }
+	| { type: 'blob-attached'; blobId: string; ref: BlobAttachment; timestamp: number }
+	| {
+			type: 'blob-detached'
+			blobId: string
+			ref: { documentId: string; recordRef: string }
+			timestamp: number
+	  }
+	| { type: 'blob-removed'; blobId: string; timestamp: number }
+```
 
 ## state (ProjectState)
 

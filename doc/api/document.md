@@ -81,9 +81,20 @@ await prepared.commit()
 | `commit()`   | `() => Promise<void>`           | Apply all staged operations                                                                                          |
 | `discard()`  | `() => void`                    | Throw away all staged operations                                                                                     |
 
+## channelName
+
+`doc.channelName` is the name of the owning project's `BroadcastChannel`. Open your own instance to receive every [ProjectChannelMessage](/api/project#project-channel-events) for this project, same-tab and cross-tab:
+
+```ts
+const channel = new BroadcastChannel(doc.channelName)
+channel.addEventListener('message', (e) => {
+	// e.data is a ProjectChannelMessage
+})
+```
+
 ## state (DocumentState)
 
-Each `Document` exposes a reactive `state` object of type `DocumentState`:
+Each `Document` exposes a reactive `state` object of type `DocumentState`. This is the **same object** as the owning Project's [DocumentEntry](/api/document#documententry-project-level) for this `documentId` — every `Document` opened for the same file (e.g. across extensions) and `project.state.documents.get(documentId)` all share it. A commit is therefore visible everywhere synchronously, without any messaging:
 
 ```ts
 doc.state.loading // boolean - true while busy
@@ -126,12 +137,12 @@ type DocumentEntry = DocumentState & {
 
 ### Cross-tab sync
 
-When a transaction commits, the document broadcasts `{ type: 'commit', documentId, timestamp }` via a `BroadcastChannel` scoped to the project name. Other `Document` instances (e.g. in other browser extensions targeting the same store) receive the update and can refetch data. Messages are filtered by `documentId` so each document only reacts to its own commits.
+A `Document` does not own a channel. When a transaction commits, it announces `{ type: 'commit', documentId, timestamp }` through the owning Project (via an injected `notify`), which posts it on the project's `BroadcastChannel`. The Project folds every such message — this tab's own commits and other tabs' commits alike — back into the shared `DocumentEntry`, keeping `lastUpdate` and `canUndo`/`canRedo` current. Open `doc.channelName` yourself to react to updates (e.g. refetch a view).
 
 ## close / destroy
 
 ```ts
-doc.close() // close the BroadcastChannel listener
+doc.close() // close the store connection
 await doc.destroy() // delete the database entirely
 ```
 
