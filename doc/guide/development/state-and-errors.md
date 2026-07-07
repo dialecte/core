@@ -66,7 +66,7 @@ failure          -> error=DialecteError, loading=false, progress=null
 
 ### Cross-tab sync
 
-`lastUpdate` is kept in sync across tabs via `BroadcastChannel`. The channel is scoped to the project name and messages are filtered by `documentId`, so each document only reacts to its own commits.
+`lastUpdate`, `canUndo`, and `canRedo` live on the shared `DocumentEntry` (one object per `documentId`, common to every `Document` and to `project.state.documents`). Every mutation source — a local commit, an other-tab commit, an `undo`/`redo` — converges through a single project channel handler that folds each message back into that entry. The channel is scoped to the project name; open `doc.channelName` to react to updates.
 
 ```ts
 watch(

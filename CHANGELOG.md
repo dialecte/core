@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.0] - 2026-07-07
+
+Reworks core reactivity around the project `BroadcastChannel`: one shared per-document state, one channel fold for every mutation source (local, cross-tab, undo/redo), and maintained `canUndo`/`canRedo` flags.
+
+### Added
+
+- `ProjectChannelMessage`: exported discriminated union typing every message on the project channel (`commit`, `init-empty-document`, `document-removed`, `document-imported`, `blob-*`) — the public event contract. Every payload now carries a `timestamp`.
+- `project.channelName` / `document.channelName` + `project.createChannel()`: open your own channel instance to receive every project event, same-tab and cross-tab.
+- `Store.getHistoryStatus(documentId)`: reports `{ canUndo, canRedo }` from the changelog head (implemented by `DexieStore` and `InMemoryStore`). `DocumentEntry.canUndo`/`canRedo` are now maintained from it — on `open()`, after `undo()`/`redo()`, and on every commit (local or cross-tab).
+
+### Changed
+
+- Shared reactive state: `Document.state` is the Project's `DocumentEntry` for that documentId, shared by every Document of the same file and by `project.state.documents`. Commits (and `undo()`/`redo()`, which previously updated nothing locally) are visible in project state synchronously.
+- Single channel fold: a dedicated listening channel subscribed via `addEventListener` receives every message — including this tab's own posts — and folds it into project state. Replaces the shared-instance `onmessage =` assignment, where each `openDocument()` silently clobbered the Project's and other Documents' handlers and same-tab delivery never worked.
+- **Breaking:** `Document` constructor — the trailing `channel: BroadcastChannel` parameter is replaced by `{ state, channelName, notify }`, provided by `Project.openDocument()` (its only call site; no known subclasses).
+- **Breaking:** `Store` implementations must add `getHistoryStatus(documentId)`.
+
 ## [0.3.0] - 2026-07-02
 
 ### Added
