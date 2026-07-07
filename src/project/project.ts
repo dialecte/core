@@ -12,6 +12,7 @@ import type {
 	ExportDocumentOptions,
 	ExportBlobOptions,
 	ExportBlobResult,
+	ProjectChannelMessage,
 	ProjectParams,
 	ProjectState,
 	DocumentRecord,
@@ -35,7 +36,16 @@ export class Project<
 > {
 	private _name?: string
 	private _store?: GenericStore
-	private _channel?: BroadcastChannel
+	/** Posting side of the project channel. Never listened to. */
+	private _postChannel?: BroadcastChannel
+	/**
+	 * Listening side of the project channel. A separate instance from
+	 * _postChannel on purpose: BroadcastChannel withholds a message only from
+	 * the exact instance that posted it, so this instance also receives this
+	 * tab's own posts (echo) — one code path folds every mutation source,
+	 * local and cross-tab, into project state.
+	 */
+	private _listenChannel?: BroadcastChannel
 	private readonly storage: ProjectParams<GenericConfig>['storage']
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
@@ -58,12 +68,34 @@ export class Project<
 		return this._store
 	}
 
-	private get channel(): BroadcastChannel {
-		invariant(this._channel !== undefined, {
+	private get postChannel(): BroadcastChannel {
+		invariant(this._postChannel !== undefined, {
 			key: 'PROJECT_NOT_OPENED',
 			detail: 'Call project.open(name) before accessing project properties.',
 		})
-		return this._channel
+		return this._postChannel
+	}
+
+	/**
+	 * Name of this project's BroadcastChannel — the public event contract.
+	 * Open your own instance (see createChannel) to receive every
+	 * ProjectChannelMessage, same-tab and cross-tab.
+	 */
+	get channelName(): string {
+		return `dialecte::project::${this.name}`
+	}
+
+	/**
+	 * Convenience: a fresh BroadcastChannel on this project's channel.
+	 * The caller owns it — call channel.close() when done listening.
+	 */
+	createChannel(): BroadcastChannel {
+		return new BroadcastChannel(this.channelName)
+	}
+
+	/** Post a message on the project channel. */
+	private notify(message: ProjectChannelMessage): void {
+		this.postChannel.postMessage(message)
 	}
 
 	readonly state: ProjectState = {
@@ -100,17 +132,15 @@ export class Project<
 	 */
 	async open(name: string): Promise<this> {
 		this._name = name
-		this._channel = new BroadcastChannel(`dialecte::project::${name}`)
-		this._channel.onmessage = (event: MessageEvent<{ type: string }>) => {
-			const { type } = event.data ?? {}
-			if (
-				type === 'init-empty-document' ||
-				type === 'document-removed' ||
-				type === 'document-imported'
-			) {
-				this.refreshState()
-			}
-		}
+		this._postChannel = new BroadcastChannel(this.channelName)
+		this._listenChannel = new BroadcastChannel(this.channelName)
+		this._listenChannel.addEventListener(
+			'message',
+			(event: MessageEvent<ProjectChannelMessage>) => {
+				this.onChannelMessage(event.data)
+			},
+		)
+
 		const store = resolveStore(name, this.storage, this.configs[this.defaultConfigKey])
 		await store.open()
 		this._store = store as GenericStore
@@ -119,15 +149,53 @@ export class Project<
 		for (const file of files) {
 			this.state.documents.set(file.id, buildDocumentState(file))
 		}
+		await Promise.all(files.map((file) => this.refreshHistoryStatus(file.id)))
 
 		return this
+	}
+
+	/**
+	 * Fold an incoming channel message into project state. Receives this tab's
+	 * own posts too (see _listenChannel), so every mutation source — local
+	 * commit, other-tab commit, undo/redo — converges through this one handler.
+	 */
+	private onChannelMessage(message: ProjectChannelMessage | undefined): void {
+		switch (message?.type) {
+			case 'init-empty-document':
+			case 'document-removed':
+			case 'document-imported':
+				// Fire-and-forget: the store may already be closing when a
+				// late message arrives.
+				this.refreshState().catch(() => {})
+				break
+			case 'commit': {
+				const entry = this.state.documents.get(message.documentId)
+				if (entry) {
+					entry.lastUpdate = message.timestamp ?? Date.now()
+				}
+				// Fire-and-forget: the store may already be closing when a
+				// late message arrives — stale flags are acceptable then.
+				this.refreshHistoryStatus(message.documentId).catch(() => {})
+				break
+			}
+		}
+	}
+
+	/** Recompute canUndo/canRedo for a document from the store's history. */
+	private async refreshHistoryStatus(documentId: string): Promise<void> {
+		const entry = this.state.documents.get(documentId)
+		if (!entry) return
+		const { canUndo, canRedo } = await this.store.getHistoryStatus(documentId)
+		entry.canUndo = canUndo
+		entry.canRedo = canRedo
 	}
 
 	/**
 	 * Close the store and release resources.
 	 */
 	close(): void {
-		this.channel.close()
+		this.postChannel.close()
+		this._listenChannel?.close()
 		this.store.close()
 	}
 
@@ -135,7 +203,8 @@ export class Project<
 	 * Destroy the project - deletes the database entirely.
 	 */
 	async destroy(): Promise<void> {
-		this.channel.close()
+		this.postChannel.close()
+		this._listenChannel?.close()
 		await this.store.destroy()
 		this.state.documents.clear()
 	}
@@ -158,7 +227,11 @@ export class Project<
 		})
 
 		this.state.documents.set(result.documentId, result.documentState)
-		this.channel.postMessage({ type: 'init-empty-document', documentId: result.documentId })
+		this.notify({
+			type: 'init-empty-document',
+			documentId: result.documentId,
+			timestamp: Date.now(),
+		})
 
 		return result.documentId
 	}
@@ -169,7 +242,7 @@ export class Project<
 	async removeDocument(documentId: string): Promise<void> {
 		await this.store.removeDocument(documentId)
 		this.state.documents.delete(documentId)
-		this.channel.postMessage({ type: 'document-removed', documentId })
+		this.notify({ type: 'document-removed', documentId, timestamp: Date.now() })
 	}
 
 	// ── Import / Export ──────────────────────────────────────────────────────
@@ -198,7 +271,11 @@ export class Project<
 
 		for (const result of results) {
 			this.state.documents.set(result.documentId, result.documentState)
-			this.channel.postMessage({ type: 'document-imported', documentId: result.documentId })
+			this.notify({
+				type: 'document-imported',
+				documentId: result.documentId,
+				timestamp: Date.now(),
+			})
 		}
 
 		return results.map(({ documentId, recordCount }) => ({ documentId, recordCount }))
@@ -245,14 +322,14 @@ export class Project<
 		})
 
 		const config = this.configs[documentState.record.configKey]
-		return new Document(
-			this.store,
-			config,
-			documentId,
-			this.mergedExtensions,
-			this.hooks,
-			this.channel,
-		)
+		return new Document(this.store, config, documentId, this.mergedExtensions, this.hooks, {
+			// Shared with project state: every Document instance for this
+			// documentId mutates the same entry the Project (and its channel
+			// fold) maintains.
+			state: documentState,
+			channelName: this.channelName,
+			notify: (message) => this.notify(message),
+		})
 	}
 
 	/**
@@ -275,7 +352,12 @@ export class Project<
 		})
 
 		await this.store.undo(documentId)
-		this.channel.postMessage({ type: 'commit', documentId, timestamp: Date.now() })
+		// Update local state deterministically (the channel echo would do this
+		// too, but asynchronously) before announcing.
+		const timestamp = Date.now()
+		documentState.lastUpdate = timestamp
+		await this.refreshHistoryStatus(documentId)
+		this.notify({ type: 'commit', documentId, timestamp })
 	}
 
 	async redo(documentId: string): Promise<void> {
@@ -287,7 +369,10 @@ export class Project<
 		})
 
 		await this.store.redo(documentId)
-		this.channel.postMessage({ type: 'commit', documentId, timestamp: Date.now() })
+		const timestamp = Date.now()
+		documentState.lastUpdate = timestamp
+		await this.refreshHistoryStatus(documentId)
+		this.notify({ type: 'commit', documentId, timestamp })
 	}
 
 	// ── Blobs ────────────────────────────────────────────────────────────────
@@ -311,7 +396,7 @@ export class Project<
 			attachedTo,
 		}
 		await this.store.addBlob(entry, file)
-		this.channel.postMessage({ type: 'blob-added', blobId: entry.id, documentId })
+		this.notify({ type: 'blob-added', blobId: entry.id, documentId, timestamp: Date.now() })
 		return entry.id
 	}
 
@@ -342,17 +427,17 @@ export class Project<
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
 		await this.store.attachBlob(blobId, ref)
-		this.channel.postMessage({ type: 'blob-attached', blobId, ref })
+		this.notify({ type: 'blob-attached', blobId, ref, timestamp: Date.now() })
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
 		await this.store.detachBlob(blobId, ref)
-		this.channel.postMessage({ type: 'blob-detached', blobId, ref })
+		this.notify({ type: 'blob-detached', blobId, ref, timestamp: Date.now() })
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
 		await this.store.removeBlob(blobId)
-		this.channel.postMessage({ type: 'blob-removed', blobId })
+		this.notify({ type: 'blob-removed', blobId, timestamp: Date.now() })
 	}
 
 	// ── Cross-document queries ───────────────────────────────────────────────

@@ -153,4 +153,113 @@ describe('Project BroadcastChannel', () => {
 
 		expect(doc.state.lastUpdate).toBeNull()
 	})
+
+	it('exposes channelName and guards it behind open()', async () => {
+		const unopened = new Project({ configs: { default: CONFIG }, storage: { type: 'local' } })
+		expect(() => unopened.channelName).toThrow()
+
+		const name = projectName()
+		const project = await openProject(name)
+		cleanups.push(() => project.destroy())
+
+		expect(project.channelName).toBe(`dialecte::project::${name}`)
+
+		const doc = project.openDocument(await project.initEmptyDocument())
+		expect(doc.channelName).toBe(project.channelName)
+	})
+
+	it('project.createChannel() receives same-tab commit posts (public contract)', async () => {
+		const name = projectName()
+		const project = await openProject(name)
+		cleanups.push(() => project.destroy())
+
+		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
+		const [{ documentId }] = await project.import([file])
+		const doc = project.openDocument(documentId)
+
+		const listener = project.createChannel()
+		const messages: unknown[] = []
+		listener.addEventListener('message', (e) => messages.push(e.data))
+		cleanups.push(async () => listener.close())
+
+		await doc.transaction(async (tx) => {
+			const root = await tx.getRoot()
+			tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
+		await new Promise((r) => setTimeout(r, 10))
+
+		expect(messages).toContainEqual(
+			expect.objectContaining({ type: 'commit', documentId, timestamp: doc.state.lastUpdate }),
+		)
+	})
+
+	it('commit updates the shared project entry synchronously', async () => {
+		const name = projectName()
+		const project = await openProject(name)
+		cleanups.push(() => project.destroy())
+
+		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
+		const [{ documentId }] = await project.import([file])
+		const doc = project.openDocument(documentId)
+
+		// Document state IS the project entry
+		expect(doc.state).toBe(project.state.documents.get(documentId))
+
+		await doc.transaction(async (tx) => {
+			const root = await tx.getRoot()
+			tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
+
+		// No channel round-trip needed: visible the moment the transaction resolves
+		expect(project.state.documents.get(documentId)?.lastUpdate).not.toBeNull()
+		expect(project.state.documents.get(documentId)?.lastUpdate).toBe(doc.state.lastUpdate)
+	})
+
+	it('two Documents for the same file share state', async () => {
+		const name = projectName()
+		const project = await openProject(name)
+		cleanups.push(() => project.destroy())
+
+		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
+		const [{ documentId }] = await project.import([file])
+		const docA = project.openDocument(documentId)
+		const docB = project.openDocument(documentId)
+
+		await docA.transaction(async (tx) => {
+			const root = await tx.getRoot()
+			tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
+
+		expect(docB.state.lastUpdate).toBe(docA.state.lastUpdate)
+		expect(docB.state.lastUpdate).not.toBeNull()
+	})
+
+	it('keeps folding cross-tab messages after many openDocument calls (clobbering regression)', async () => {
+		const name = projectName()
+		const project = await openProject(name)
+		cleanups.push(() => project.destroy())
+
+		const files = [
+			new File([minimalXml()], 'one.xml', { type: 'application/xml' }),
+			new File([minimalXml()], 'two.xml', { type: 'application/xml' }),
+		]
+		const [{ documentId: firstId }, { documentId: secondId }] = await project.import(files)
+
+		// Historically, each openDocument() overwrote the single shared
+		// channel's onmessage handler — opening more documents killed
+		// delivery to the earlier ones and to the Project itself.
+		const firstDoc = project.openDocument(firstId)
+		project.openDocument(secondId)
+		project.openDocument(firstId)
+		project.openDocument(secondId)
+
+		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
+		cleanups.push(async () => otherTabChannel.close())
+
+		otherTabChannel.postMessage({ type: 'commit', documentId: firstId, timestamp: 4242 })
+		await new Promise((r) => setTimeout(r, 10))
+
+		expect(firstDoc.state.lastUpdate).toBe(4242)
+		expect(project.state.documents.get(firstId)?.lastUpdate).toBe(4242)
+	})
 })

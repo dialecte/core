@@ -15,6 +15,7 @@ export type {
 	DocumentRecord,
 	DocumentEntry,
 	ProjectState,
+	ProjectChannelMessage,
 } from './types'
 export type {
 	InitEmptyDocumentParams,

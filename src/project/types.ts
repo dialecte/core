@@ -1,6 +1,12 @@
 import type { DocumentState, ExtensionModules } from '@/document'
 import type { Store } from '@/store/store.types'
-import type { AnyDialecteConfig, BlobRecord, ChunkOptions, DialecteHooks } from '@/types'
+import type {
+	AnyDialecteConfig,
+	BlobAttachment,
+	BlobRecord,
+	ChunkOptions,
+	DialecteHooks,
+} from '@/types'
 
 // ── DocumentRecord ───────────────────────────────────────────────────────────
 
@@ -45,6 +51,34 @@ export type ProjectState = {
 	documents: Map<string, DocumentEntry>
 	activeTransactions: number
 }
+
+// ── Channel messages ─────────────────────────────────────────────────────────
+
+/**
+ * ProjectChannelMessage - the public event contract of a Project.
+ *
+ * Every mutation a Project or one of its Documents performs is announced on a
+ * BroadcastChannel named `project.channelName`. Open your own channel instance
+ * (`project.createChannel()`) to receive every message, same-tab and cross-tab
+ * (the spec only withholds a message from the exact instance that posted it).
+ *
+ * Payloads are structured-cloneable by construction — they cross the channel.
+ * Changing a member of this union is a breaking API change.
+ */
+export type ProjectChannelMessage =
+	| { type: 'commit'; documentId: string; timestamp: number }
+	| { type: 'init-empty-document'; documentId: string; timestamp: number }
+	| { type: 'document-removed'; documentId: string; timestamp: number }
+	| { type: 'document-imported'; documentId: string; timestamp: number }
+	| { type: 'blob-added'; blobId: string; documentId: string; timestamp: number }
+	| { type: 'blob-attached'; blobId: string; ref: BlobAttachment; timestamp: number }
+	| {
+			type: 'blob-detached'
+			blobId: string
+			ref: { documentId: string; recordRef: string }
+			timestamp: number
+	  }
+	| { type: 'blob-removed'; blobId: string; timestamp: number }
 
 // ── Storage ──────────────────────────────────────────────────────────────────
 

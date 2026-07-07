@@ -6,6 +6,7 @@ import { throwDialecteError } from '@/errors'
 
 import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
+import type { ProjectChannelMessage } from '@/project/types'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
@@ -31,26 +32,26 @@ export class Document<
 	readonly documentId: string
 	private extensionsRegistry?: GenericExtension
 
-	readonly state: DocumentState = {
-		loading: false,
-		error: null,
-		progress: null,
-		history: [],
-		lastUpdate: null,
-	}
+	/**
+	 * Observable state, shared with the owning Project's DocumentEntry.
+	 * Every Document instance opened for the same documentId mutates the same
+	 * object, so commits (local or folded in from other tabs by the Project)
+	 * are visible to all of them without any same-tab messaging.
+	 */
+	readonly state: DocumentState
+
+	/**
+	 * Name of the project's BroadcastChannel. Open your own instance
+	 * (`new BroadcastChannel(doc.channelName)`) to receive ProjectChannelMessage
+	 * events for this project, same-tab and cross-tab.
+	 */
+	readonly channelName: string
+
+	/** Announce a mutation on the project channel (provided by the owning Project) */
+	private notify: (message: ProjectChannelMessage) => void
 
 	/** Track concurrent transactions to manage loading flag */
 	private activeTransactions = 0
-
-	/**
-	 * BroadcastChannel scoped to this database.
-	 * Receives update events from other Document instances (other extensions)
-	 * targeting the same database, keeping state.lastUpdate in sync.
-	 *
-	 * BroadcastChannel does not deliver messages back to the sender,
-	 * so no self-filter is needed.
-	 */
-	private channel: BroadcastChannel
 
 	constructor(
 		store: Store,
@@ -58,22 +59,20 @@ export class Document<
 		documentId: string,
 		extensions: GenericExtension | undefined,
 		hooks: DialecteHooks<GenericConfig> | undefined,
-		channel: BroadcastChannel,
+		project: {
+			state: DocumentState
+			channelName: string
+			notify: (message: ProjectChannelMessage) => void
+		},
 	) {
 		this.store = store
 		this.config = config
 		this.documentId = documentId
 		this.hooks = hooks
 		this.extensionsRegistry = extensions
-		this.channel = channel
-
-		this.channel.onmessage = (
-			event: MessageEvent<{ type: string; documentId?: string; timestamp?: number }>,
-		) => {
-			if (event.data?.type === 'commit' && event.data.documentId === this.documentId) {
-				this.state.lastUpdate = event.data.timestamp ?? Date.now()
-			}
-		}
+		this.state = project.state
+		this.channelName = project.channelName
+		this.notify = project.notify
 	}
 
 	//== Query access (read-only, no mutations exposed)
@@ -145,10 +144,10 @@ export class Document<
 			const result = await fn(tx)
 
 			await tx.commit()
-			this.channel.postMessage({
+			this.notify({
 				type: 'commit',
 				documentId: this.documentId,
-				timestamp: Date.now(),
+				timestamp: this.state.lastUpdate ?? Date.now(),
 			})
 			tx.clearStagedOperations()
 			tx.clearRecordCache()
@@ -252,10 +251,10 @@ export class Document<
 
 				try {
 					await tx.commit()
-					this.channel.postMessage({
+					this.notify({
 						type: 'commit',
 						documentId: this.documentId,
-						timestamp: Date.now(),
+						timestamp: this.state.lastUpdate ?? Date.now(),
 					})
 
 					tx.clearStagedOperations()
