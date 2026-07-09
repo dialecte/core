@@ -1,6 +1,6 @@
 {
 	"name": "@dialecte/core",
-	"version": "0.4.1",
+	"version": "0.4.2",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"repository": {
@@ -66,6 +66,7 @@
 		"@tsconfig/node24": "^24.0.4",
 		"@types/node": "^24.12.4",
 		"@types/sax": "^1.2.7",
+		"@typescript/native": "npm:typescript@^7.0.2",
 		"@vitest/browser-playwright": "^4.1.8",
 		"@xmldom/xmldom": "^0.8.11",
 		"husky": "^9.1.7",
