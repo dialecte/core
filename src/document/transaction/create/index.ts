@@ -1,2 +1,2 @@
 export { stageAddChild } from './create'
-export type { AddChildParams } from './create.types'
+export type { AddChildParams, ChildAttributesOf } from './create.types'

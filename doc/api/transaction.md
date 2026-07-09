@@ -18,7 +18,6 @@ Gets an existing child record or creates it if absent. Idempotent — safe to ca
 await doc.transaction(async (tx) => {
 	const a = await tx.ensureChild(root, {
 		tagName: 'A',
-		attributes: {},
 	})
 
 	const aa = await tx.ensureChild(a, {
@@ -28,11 +27,12 @@ await doc.transaction(async (tx) => {
 })
 ```
 
-Lookup strategy (in order):
+The lookup is always scoped to `parentRef`'s own direct children — it never matches an element elsewhere in the document. Lookup strategy (in order):
 
-1. **Non-empty attributes** → `findByAttributes`, returns first match.
-2. **No attributes** → `getRecord` by id (if provided) or by tagName alone for singletons.
-3. **No match** → creates via `addChild`.
+1. **Non-empty attributes** → first direct child matching the attribute filter.
+2. **No attributes, id present** → first direct child with that id.
+3. **No attributes, no id (singleton)** → first existing direct child with that tag name.
+4. **No match** → creates via `addChild`.
 
 Returns `Promise<TrackedRecord<Config, ChildElement> | RawRecord<Config, ChildElement>>`.
 
@@ -54,13 +54,13 @@ await doc.transaction(async (tx) => {
 
 #### AddChildParams
 
-| Field        | Type                                             | Description                              |
-| ------------ | ------------------------------------------------ | ---------------------------------------- |
-| `tagName`    | `ChildElement`                                   | Tag name of the child to create          |
-| `attributes` | `AttributesValueObject \| FullAttributeObject[]` | Attributes for the new element           |
-| `namespace`  | `Namespace`                                      | Override the element's namespace         |
-| `value`      | `string`                                         | Text content of the element              |
-| `id`         | `UUID`                                           | Explicit ID (for tests with `dev:db-id`) |
+| Field        | Type                                             | Description                                                                                                     |
+| ------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `tagName`    | `ChildElement`                                   | Tag name of the child to create                                                                                 |
+| `attributes` | `AttributesValueObject \| FullAttributeObject[]` | Attributes for the new element — optional when the child element has no required attributes, required otherwise |
+| `namespace`  | `Namespace`                                      | Override the element's namespace                                                                                |
+| `value`      | `string`                                         | Text content of the element                                                                                     |
+| `id`         | `UUID`                                           | Explicit ID (for tests with `dev:db-id`)                                                                        |
 
 Returns `Promise<RawRecord<Config, ChildElement>>` — the full record of the newly created element.
 

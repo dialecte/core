@@ -1,6 +1,6 @@
 {
 	"name": "@dialecte/core",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"repository": {
@@ -76,7 +76,7 @@
 		"oxlint-tsgolint": "^0.23.0",
 		"playwright": "^1.60.0",
 		"tsx": "^4.22.4",
-		"typescript": "^6.0.3",
+		"typescript": "npm:@typescript/typescript6@^6.0.2",
 		"vite": "^8.0.16",
 		"vite-plugin-dts": "^5.0.2",
 		"vitepress": "^2.0.0-alpha.17",

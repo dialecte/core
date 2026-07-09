@@ -11,8 +11,8 @@ describe('ensureChild', () => {
 	const id = CUSTOM_RECORD_ID_ATTRIBUTE
 
 	type TestCase = BaseXmlTestCase & {
-		parentRef: Ref<TestDialecteConfig, 'Root' | 'A'>
-		childTagName: 'A' | 'AA_2'
+		parentRef: Ref<TestDialecteConfig, 'Root' | 'A' | 'AA_2'>
+		childTagName: 'A' | 'AA_2' | 'AAA_1'
 		childAttributes: Record<string, string>
 	}
 
@@ -78,6 +78,30 @@ describe('ensureChild', () => {
 			childAttributes: { aAA_2: 'fresh' },
 			expectedQueries: ['//default:AA_2[@aAA_2="fresh"]'],
 		},
+
+		// Regression test: a sibling under a *different* parent has a singleton child with the
+		// same tag name. The lookup must stay scoped to `parentRef`'s own children and must not
+		// return that unrelated sibling's child
+		'singleton — same tag name exists under a different parent → not reused, created under target parent':
+			{
+				sourceXml: `
+				<Root ${ns}>
+					<A ${id}="a1" aA="parent">
+						<AA_2 ${id}="aa2-1" aAA_2="10">
+							<AAA_1 ${id}="aaa1-1" aAAA_1="abc" />
+						</AA_2>
+						<AA_2 ${id}="aa2-2" aAA_2="20" />
+					</A>
+				</Root>
+			`,
+				parentRef: { tagName: 'AA_2', id: 'aa2-2' },
+				childTagName: 'AAA_1',
+				childAttributes: {},
+				expectedQueries: [
+					'//default:AA_2[@aAA_2="10"]/default:AAA_1[@aAAA_1="abc"]',
+					'//default:AA_2[@aAA_2="20"]/default:AAA_1',
+				],
+			},
 	}
 
 	async function act({

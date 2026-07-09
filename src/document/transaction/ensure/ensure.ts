@@ -1,8 +1,8 @@
 import { stageAddChild } from '../create/create'
 
-import { findByAttributes, getRecord } from '@/document'
+import { getChildren, matchesAttributeFilter } from '@/document'
 
-import type { AddChildParams } from '../create/create.types'
+import type { AddChildParams, ChildAttributesOf } from '../create/create.types'
 import type { Context, FilterAttributes, Query, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
@@ -16,10 +16,12 @@ import type {
 /**
  * Get an existing child record or create it under the given parent.
  *
- * Lookup strategy (in order):
- * 1. Non-empty attributes → findByAttributes, returns first match.
- * 2. No attributes → getRecord (by id if present, by tagName alone for singletons).
- * 3. No match → creates.
+ * Lookup is always scoped to the direct children of `parentRef` (never document-wide),
+ * in this order:
+ * 1. Non-empty attributes → first sibling matching the attribute filter.
+ * 2. No attributes, id present → first sibling with that id.
+ * 3. No attributes, no id (singleton) → first existing sibling with that tag name.
+ * 4. No match → creates.
  *
  * @example
  * // singleton
@@ -45,21 +47,21 @@ export async function stageEnsureChild<
 
 	const filter = toFilterAttributes<GenericConfig, GenericChildElement>(childParams.attributes)
 
-	if (filter) {
-		const [found] = await findByAttributes({
-			context,
-			tagName: childParams.tagName,
-			attributes: filter,
-		})
-		if (found) return found
-	} else {
-		const ref = { tagName: childParams.tagName, id: childParams.id } as Ref<
-			GenericConfig,
-			GenericChildElement
-		>
-		const existing = await getRecord({ context, ref })
-		if (existing) return existing
-	}
+	const siblings = await getChildren({
+		context,
+		ref: parentRef,
+		tagName: childParams.tagName,
+	})
+
+	const existing = filter
+		? siblings.find((sibling) =>
+				matchesAttributeFilter({ record: sibling, attributeFilter: filter }),
+			)
+		: childParams.id !== undefined
+			? siblings.find((sibling) => sibling.id === childParams.id)
+			: siblings[0]
+
+	if (existing) return existing
 
 	return stageAddChild({
 		dialecteConfig,
@@ -79,12 +81,10 @@ function toFilterAttributes<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 >(
-	attributes: AddChildParams<
-		GenericConfig,
-		ElementsOf<GenericConfig>,
-		GenericElement
-	>['attributes'],
+	attributes: ChildAttributesOf<GenericConfig, GenericElement> | undefined,
 ): FilterAttributes<GenericConfig, GenericElement> | undefined {
+	if (!attributes) return undefined
+
 	const valueObject = Array.isArray(attributes)
 		? Object.fromEntries(attributes.map((attribute) => [attribute.name, attribute.value]))
 		: attributes

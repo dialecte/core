@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.1] - 2026-07-09
+
+### Fixed
+
+- `stageEnsureChild`/`ensureChild`: lookup is now always scoped to `parentRef` via `getChildren`.
+
+### Changed
+
+- `AddChildParams.attributes` (used by `addChild`/`ensureChild`) now optional if there is no required attributes
+
 ## [0.4.0] - 2026-07-07
 
 Reworks core reactivity around the project `BroadcastChannel`: one shared per-document state, one channel fold for every mutation source (local, cross-tab, undo/redo), and maintained `canUndo`/`canRedo` flags.
