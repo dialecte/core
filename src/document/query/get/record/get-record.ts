@@ -1,6 +1,7 @@
 import { getLatestStagedRecord } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
+import { throwDialecteError } from '@/errors'
 
 import type { Context } from '@/document'
 import type { RefOrRecord } from '@/document'
@@ -14,6 +15,9 @@ import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord } from '@/
  * Always returns a TrackedRecord — 'unchanged' for clean store reads.
  *
  * Side effect: populates context.recordCache on store hits.
+ *
+ * @throws {@link DialecteError} `ELEMENT_TAGNAME_MISMATCH` when a record is found by id
+ * but its tagName differs from `ref.tagName` (mirrors the staged-lookup path).
  */
 export async function getRecord<
 	GenericConfig extends AnyDialecteConfig,
@@ -68,5 +72,13 @@ export async function getRecord<
 	}
 
 	if (!raw) return undefined
+
+	if (raw.tagName !== ref.tagName) {
+		throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
+			detail: `Expected tagName '${ref.tagName}', got '${raw.tagName}' for id '${ref.id}'`,
+			ref,
+		})
+	}
+
 	return { ...raw, status: 'unchanged' } as TrackedRecord<GenericConfig, GenericElement>
 }

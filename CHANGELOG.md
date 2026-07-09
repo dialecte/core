@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update to typescript 7
 
+### Fixed
+
+- `getRecord`: throws `ELEMENT_TAGNAME_MISMATCH` when a record found by id has a different tagName than the ref (previously only id was validated). Consistent with the staged-lookup path.
+
 ## [0.4.1] - 2026-07-09
 
 ### Fixed

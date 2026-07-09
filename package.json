@@ -62,7 +62,7 @@
 		"xml-formatter": "^3.6.7"
 	},
 	"devDependencies": {
-		"@dialecte/cli": "0.0.1",
+		"@dialecte/cli": "0.0.2",
 		"@tsconfig/node24": "^24.0.4",
 		"@types/node": "^24.12.4",
 		"@types/sax": "^1.2.7",
@@ -76,7 +76,7 @@
 		"oxlint": "^1.68.0",
 		"oxlint-tsgolint": "^0.23.0",
 		"playwright": "^1.60.0",
-		"tsx": "^4.22.4",
+		"tsx": "^4.23.0",
 		"typescript": "npm:@typescript/typescript6@^6.0.2",
 		"vite": "^8.0.16",
 		"vite-plugin-dts": "^5.0.2",
