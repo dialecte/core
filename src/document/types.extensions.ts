@@ -27,10 +27,15 @@ export type TransactionExtensionFn<GenericTransaction = any> = (
 
 //== Extension groups =============================================
 
-/** A group of extension functions keyed by method name. */
-export type ExtensionGroup<Fn> = Record<string, Fn>
+/**
+ * A group of extension methods keyed by name. A value is either an extension
+ * function (a leaf) or a **nested group** (arbitrary depth), so an author can
+ * structure a module's API however they like, e.g. a module `a` exposing
+ * `{ aa: { getItems }, aaa: { getItems } }` -> `query.a.aa.getItems`.
+ */
+export type ExtensionGroup<Fn> = { [key: string]: Fn | ExtensionGroup<Fn> }
 
-/** A map of PascalCase group names → extension groups. */
+/** A map of group names -> extension groups (the per-side registry). */
 export type ExtensionMap<Fn> = Record<string, ExtensionGroup<Fn>>
 
 //== Extension module (per-element shape) =========================
@@ -82,18 +87,30 @@ export type OmitFirstArg<GenericFn extends (...args: any[]) => any> = GenericFn 
 	? (...args: Rest) => Return
 	: never
 
+/** Any extension function shape (leaf of an extension group). */
+// oxlint-disable-next-line - any required for variance
+type AnyExtensionFn = (...args: any[]) => any
+
 /**
- * Given a map of extension groups, produces the same structure
- * but with the first argument (query/tx) stripped from each function.
+ * Recursively strips the first argument (query/tx) from every function in a
+ * (possibly nested) extension group, preserving the nesting shape.
+ */
+export type BoundGroup<GenericGroup> = {
+	[Key in keyof GenericGroup]: GenericGroup[Key] extends AnyExtensionFn
+		? OmitFirstArg<GenericGroup[Key]>
+		: GenericGroup[Key] extends ExtensionGroup<QueryExtensionFn | TransactionExtensionFn>
+			? BoundGroup<GenericGroup[Key]>
+			: never
+}
+
+/**
+ * Given a map of extension groups, produces the same structure with the first
+ * argument stripped from each (possibly nested) function.
  */
 export type BoundExtensionMap<
 	GenericExtensionsMap extends ExtensionMap<QueryExtensionFn | TransactionExtensionFn>,
 > = {
-	[GroupName in keyof GenericExtensionsMap]: {
-		[MethodName in keyof GenericExtensionsMap[GroupName]]: OmitFirstArg<
-			GenericExtensionsMap[GroupName][MethodName]
-		>
-	}
+	[GroupName in keyof GenericExtensionsMap]: BoundGroup<GenericExtensionsMap[GroupName]>
 }
 
 //== Extension accessor type ======================================

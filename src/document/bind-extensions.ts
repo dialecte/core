@@ -10,7 +10,11 @@ import type {
  * Each function in the map gets `instance` prepended as its first argument,
  * so the public API signature has that argument stripped.
  *
- * Returns a frozen object of { GroupName: { methodName: boundFn } }.
+ * Groups may be nested to arbitrary depth: a value is either an extension
+ * function (a leaf, bound to the instance) or a nested group (recursed into).
+ * So `{ a: { aa: { getItems } } }` yields `instance.a.aa.getItems`.
+ *
+ * Returns an object mirroring the map's shape with each function bound.
  */
 export function bindExtensions<
 	GenericExtensionsMap extends ExtensionMap<QueryExtensionFn | TransactionExtensionFn>,
@@ -20,17 +24,21 @@ export function bindExtensions<
 ): BoundExtensionMap<GenericExtensionsMap> {
 	if (!extensionMap) return {} as BoundExtensionMap<GenericExtensionsMap>
 
-	const bound: Record<string, Record<string, (...args: unknown[]) => unknown>> = {}
+	return bindGroup(extensionMap, instance) as BoundExtensionMap<GenericExtensionsMap>
+}
 
-	for (const groupName of Object.keys(extensionMap)) {
-		const group = extensionMap[groupName]
-		const boundGroup: Record<string, (...args: unknown[]) => unknown> = {}
-		for (const methodName of Object.keys(group)) {
-			const fn = group[methodName]
-			boundGroup[methodName] = (...args: unknown[]) => fn(instance as never, ...args)
-		}
-		bound[groupName] = boundGroup
+type UnknownGroup = { [key: string]: ((...args: unknown[]) => unknown) | UnknownGroup }
+
+function bindGroup(group: Record<string, unknown>, instance: unknown): UnknownGroup {
+	const bound: UnknownGroup = {}
+
+	for (const key of Object.keys(group)) {
+		const value = group[key]
+		bound[key] =
+			typeof value === 'function'
+				? (...args: unknown[]) => (value as (...a: unknown[]) => unknown)(instance, ...args)
+				: bindGroup(value as Record<string, unknown>, instance)
 	}
 
-	return bound as BoundExtensionMap<GenericExtensionsMap>
+	return bound
 }

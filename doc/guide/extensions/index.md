@@ -80,6 +80,34 @@ export const a = {
 }
 ```
 
+## Nesting methods into sub-groups
+
+A module's `query`/`transaction` group can nest **arbitrarily deep**: a value is either an extension function (a leaf) or another group. This lets you organise a large module's API by sub-concept instead of flattening every method onto one level. The author decides the shape.
+
+```ts
+// a/index.ts — group methods under `aa` and `aaa`
+import * as aaQueries from './aa/query'
+import * as aaaQueries from './aaa/query'
+
+export const a = {
+	query: {
+		aa: aaQueries, // → doc.query.a.aa.getItems()
+		aaa: aaaQueries, // → doc.query.a.aaa.getItems()
+	},
+}
+```
+
+Nesting is preserved end to end — binding, types, and intellisense all mirror the shape you register:
+
+```ts
+await doc.query.a.aa.getItems('id') // fully typed, first-arg stripped
+await doc.transaction(async (tx) => {
+	await tx.a.aa.addItem({ aAA_1: 'value' })
+})
+```
+
+Only the **first argument** (`query`/`tx`) is stripped, at every depth. A flat group (`{ query: aQueries }`) is just the depth-1 case of the same mechanism, so existing modules keep working unchanged.
+
 ## Registering extensions
 
 Collect all modules into a plain object and export it:
@@ -152,7 +180,8 @@ TypeScript infers the full extension shape from the extension modules object:
 
 - `doc.query.a` is typed with the exact functions in `aQueries`
 - `tx.a` adds transaction methods on top
-- The `query` first-arg is stripped from each function's public signature
+- Nested sub-groups are preserved: `doc.query.a.aa.getItems` is typed with the exact function registered at that path
+- The `query` first-arg is stripped from each function's public signature, at every depth
 - Unknown group names and invalid argument types are caught at compile time
 
 **Collision rule** — when `base` and `custom` share the same module key, their methods are merged at the function level. If the same function name appears in both, a `DialecteError` (`EXTENSION_METHOD_COLLISION`) is thrown immediately at document open time. Collision is never silently ignored.
