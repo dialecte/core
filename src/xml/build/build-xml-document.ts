@@ -21,7 +21,7 @@ import type {
  * Respects config.children ordering for element sequence.
  */
 export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
-	const { records, config, withDatabaseIds = false, rootId } = params
+	const { records, config, withDatabaseIds = false, rootId, declareNamespaces = true } = params
 
 	const index = new Map<string, AnyRawRecord>()
 	let documentRootRecord: AnyRawRecord | undefined
@@ -51,8 +51,13 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 	const xmlDocument = document.implementation.createDocument(defaultNamespace.uri, null, null)
 
 	// Build root element
-	const rootElement = xmlDocument.createElementNS(rootRecord.namespace.uri, rootRecord.tagName)
-	rootElement.setAttribute('xmlns', rootRecord.namespace.uri)
+	const rootElement = createRecordElement({
+		document: xmlDocument,
+		record: rootRecord,
+		defaultNamespace,
+		declareNamespaces,
+	})
+	if (declareNamespaces) rootElement.setAttribute('xmlns', rootRecord.namespace.uri)
 
 	if (rootRecord.attributes) {
 		addAttributesToElement({
@@ -63,6 +68,7 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 			tagName: rootRecord.tagName,
 			isRoot: true,
 			isFragment,
+			declareNamespaces,
 		})
 	}
 
@@ -84,6 +90,7 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 		parentRecord: rootRecord,
 		parentElement: rootElement,
 		isFragment,
+		declareNamespaces,
 	})
 
 	return xmlDocument
@@ -99,9 +106,18 @@ function buildChildren(params: {
 	parentRecord: AnyRawRecord
 	parentElement: Element
 	isFragment: boolean
+	declareNamespaces: boolean
 }): void {
-	const { index, config, withDatabaseIds, xmlDocument, parentRecord, parentElement, isFragment } =
-		params
+	const {
+		index,
+		config,
+		withDatabaseIds,
+		xmlDocument,
+		parentRecord,
+		parentElement,
+		isFragment,
+		declareNamespaces,
+	} = params
 
 	if (!parentRecord.children || parentRecord.children.length === 0) return
 
@@ -130,6 +146,7 @@ function buildChildren(params: {
 			defaultNamespace: config.namespaces.default,
 			withDatabaseIds,
 			isFragment,
+			declareNamespaces,
 		})
 
 		parentElement.appendChild(childElement)
@@ -142,11 +159,35 @@ function buildChildren(params: {
 			parentRecord: childRecord,
 			parentElement: childElement,
 			isFragment,
+			declareNamespaces,
 		})
 	}
 }
 
 // ── Element creation ─────────────────────────────────────────────────────────
+
+/**
+ * Create an element for a record. With `declareNamespaces` (default), namespaced
+ * elements are created NS-aware (`createElementNS`) so the serializer emits the
+ * matching `xmlns`/`xmlns:*` on the root. Without it, the element is created with
+ * its literal (possibly prefixed) tag name in no namespace, so the serializer
+ * emits no namespace declarations — yielding a bare fragment.
+ */
+function createRecordElement(params: {
+	document: XMLDocument
+	record: AnyRawRecord
+	defaultNamespace: Namespace
+	declareNamespaces: boolean
+}): Element {
+	const { document: doc, record, defaultNamespace, declareNamespaces } = params
+	const isDefaultNamespace = record.namespace.uri === defaultNamespace.uri
+	const isPrefixed =
+		!isDefaultNamespace && !!record.namespace.prefix && record.namespace.prefix !== 'xmlns'
+	const qualifiedName = isPrefixed ? `${record.namespace.prefix}:${record.tagName}` : record.tagName
+
+	if (!declareNamespaces) return doc.createElement(qualifiedName)
+	return doc.createElementNS(record.namespace.uri, qualifiedName)
+}
 
 function createElementWithAttributesAndText(params: {
 	config: AnyDialecteConfig
@@ -155,25 +196,38 @@ function createElementWithAttributesAndText(params: {
 	defaultNamespace: Namespace
 	withDatabaseIds: boolean
 	isFragment: boolean
+	declareNamespaces: boolean
 }): Element {
-	const { config, document: doc, record, defaultNamespace, withDatabaseIds, isFragment } = params
+	const {
+		config,
+		document: doc,
+		record,
+		defaultNamespace,
+		withDatabaseIds,
+		isFragment,
+		declareNamespaces,
+	} = params
 
 	const isDefaultNamespace = record.namespace.uri === defaultNamespace.uri
-	let element: Element
+	const element = createRecordElement({
+		document: doc,
+		record,
+		defaultNamespace,
+		declareNamespaces,
+	})
 
-	if (!isDefaultNamespace && record.namespace.prefix && record.namespace.prefix !== 'xmlns') {
+	if (
+		declareNamespaces &&
+		!isDefaultNamespace &&
+		record.namespace.prefix &&
+		record.namespace.prefix !== 'xmlns'
+	) {
 		addNamespaceToRootElementIfNeeded({
 			config,
 			document: doc,
 			namespace: record.namespace,
 			isFragment,
 		})
-		element = doc.createElementNS(
-			record.namespace.uri,
-			`${record.namespace.prefix}:${record.tagName}`,
-		)
-	} else {
-		element = doc.createElementNS(record.namespace.uri, record.tagName)
 	}
 
 	if (record.attributes) {
@@ -185,6 +239,7 @@ function createElementWithAttributesAndText(params: {
 			tagName: record.tagName,
 			isRoot: false,
 			isFragment,
+			declareNamespaces,
 		})
 	}
 
@@ -204,8 +259,18 @@ function addAttributesToElement(params: {
 	tagName: string
 	isRoot: boolean
 	isFragment: boolean
+	declareNamespaces: boolean
 }): void {
-	const { config, document: doc, element, attributes, tagName, isRoot, isFragment } = params
+	const {
+		config,
+		document: doc,
+		element,
+		attributes,
+		tagName,
+		isRoot,
+		isFragment,
+		declareNamespaces,
+	} = params
 
 	for (const attribute of attributes) {
 		if (isNamespaceDeclaration(attribute)) continue
@@ -219,6 +284,14 @@ function addAttributesToElement(params: {
 			continue
 		}
 
+		const localName = extractLocalName(attribute.name)
+
+		// Bare-fragment mode: write the prefixed name literally, no xmlns declaration.
+		if (!declareNamespaces) {
+			element.setAttribute(`${attribute.namespace.prefix}:${localName}`, String(attribute.value))
+			continue
+		}
+
 		if (!isRoot) {
 			addNamespaceToRootElementIfNeeded({
 				config,
@@ -228,7 +301,6 @@ function addAttributesToElement(params: {
 			})
 		}
 
-		const localName = extractLocalName(attribute.name)
 		element.setAttributeNS(
 			attribute.namespace.uri,
 			`${attribute.namespace.prefix}:${localName}`,

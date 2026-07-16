@@ -34,6 +34,7 @@
 		"//====== BUILD ======//": "",
 		"build": "run-p type-check \"build-only {@}\" --",
 		"build-only": "tsc -p tsconfig.json && vite build",
+		"build:watch": "vite build --watch",
 		"//====== VITEPRESS ======//": "",
 		"doc:dev": "vitepress dev",
 		"doc:build": "vitepress build",

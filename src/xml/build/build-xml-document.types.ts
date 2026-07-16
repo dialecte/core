@@ -11,4 +11,12 @@ export type BuildXmlDocumentParams = {
 	 * (e.g. a lone `LN`) is not stamped with document-root attributes.
 	 */
 	rootId?: string
+	/**
+	 * Emit namespace declarations (`xmlns` / `xmlns:*`). Defaults to `true`.
+	 * Set `false` to render a bare fragment whose elements keep their literal
+	 * (possibly prefixed) tag names but carry no namespace declarations — so a
+	 * scoped snapshot reads like an excerpt nested in its file rather than a
+	 * standalone document.
+	 */
+	declareNamespaces?: boolean
 }

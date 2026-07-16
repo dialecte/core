@@ -364,6 +364,42 @@ describe('buildXmlDocument', () => {
 		})
 	})
 
+	describe('declareNamespaces: false (bare fragment)', () => {
+		it('emits no namespace declarations, keeping literal (prefixed) names', () => {
+			const xmlDocument = buildXmlDocument({
+				config: CONFIG,
+				rootId: 'a-1',
+				declareNamespaces: false,
+				records: [
+					record({
+						id: 'a-1',
+						tagName: 'A',
+						attributes: [
+							{ name: 'aA', value: 'val' },
+							{ name: 'cA', value: 'ext-val', namespace: NS.ext },
+						],
+						children: [{ id: 'aa3-1', tagName: 'AA_3' }],
+					}),
+					record({
+						id: 'aa3-1',
+						tagName: 'AA_3',
+						namespace: NS.ext,
+						parent: { id: 'a-1', tagName: 'A' },
+						attributes: [{ name: 'aAA_3', value: 'x' }],
+					}),
+				],
+			})
+
+			const xml = serialize(xmlDocument)
+			// no namespace declarations anywhere in the fragment
+			expect(xml).not.toMatch(/xmlns/)
+			// prefixed element + attribute names are kept literally
+			expect(xml).toContain('<ext:AA_3')
+			expect(xml).toContain('ext:cA="ext-val"')
+			expect(xml).toContain('aA="val"')
+		})
+	})
+
 	describe('enforceRootAttributes', () => {
 		type TestCase = BaseTestCase & {
 			records: AnyRawRecord[]

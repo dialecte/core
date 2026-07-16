@@ -38,6 +38,13 @@ export type GetSnapshotOptions<
 	omit?: OmitEntry<GenericConfig>[]
 	unwrap?: ElementsOf<GenericConfig>[]
 	as?: SnapshotFormat
+	/**
+	 * For `as: 'xml'` / `'both'`: emit namespace declarations (`xmlns` / `xmlns:*`).
+	 * Defaults to `true`. Set `false` to render a bare fragment (literal, possibly
+	 * prefixed tag names, no namespace declarations) that reads like an excerpt
+	 * nested in its file rather than a standalone document.
+	 */
+	declareNamespaces?: boolean
 }
 
 export type SnapshotResult = {
