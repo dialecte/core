@@ -11,7 +11,7 @@ import type {
 	TrackedRecord,
 	TreeRecord,
 	ElementsOf,
-	FullAttributeObjectOf,
+	AttributeInputOf,
 	AttributesValueObjectOf,
 } from '@/types'
 
@@ -229,9 +229,7 @@ describe('Record Converter', () => {
 		type TestCase = BaseTestCase & {
 			input: {
 				tagName: 'A'
-				attributes:
-					| AttributesValueObjectOf<TestConfig, 'A'>
-					| FullAttributeObjectOf<TestConfig, 'A'>[]
+				attributes: AttributesValueObjectOf<TestConfig, 'A'> | AttributeInputOf<TestConfig, 'A'>[]
 				dialecteConfig: TestConfig
 			}
 			expectedLength: number
@@ -260,7 +258,7 @@ describe('Record Converter', () => {
 			'handles empty array': {
 				input: {
 					tagName: 'A',
-					attributes: [] as FullAttributeObjectOf<TestConfig, 'A'>[],
+					attributes: [] as AttributeInputOf<TestConfig, 'A'>[],
 					dialecteConfig: TEST_DIALECTE_CONFIG,
 				},
 				expectedLength: 0,

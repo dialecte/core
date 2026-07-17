@@ -4,8 +4,8 @@ import { getAttributeRules, orderAttributesBySequence } from '@/utils'
 
 import type {
 	AnyDialecteConfig,
+	AttributeInputOf,
 	ElementsOf,
-	FullAttributeObjectOf,
 	RawRecord,
 	AttributesValueObjectOf,
 	TransactionHooks,
@@ -20,8 +20,8 @@ export function standardizeRecord<
 	record: {
 		tagName: GenericElement
 		attributes?:
-			| AttributesValueObjectOf<GenericConfig, GenericElement>
-			| FullAttributeObjectOf<GenericConfig, GenericElement>[]
+			| Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
+			| AttributeInputOf<GenericConfig, GenericElement>[]
 	} & Omit<Partial<RawRecord<GenericConfig, GenericElement>>, 'attributes'>
 }): RawRecord<GenericConfig, GenericElement> {
 	const { dialecteConfig, hooks, record } = params

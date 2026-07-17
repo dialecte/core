@@ -87,6 +87,11 @@ export const ERROR_CATALOG = {
 		message:
 			'Unknown namespace prefix on attribute — pass it explicitly as { name, namespace: { prefix, uri } }',
 	},
+	PREFIXED_ATTRIBUTE_NAME: {
+		code: 'D3007',
+		message:
+			'Authored attribute name must be a local name — pass the namespace separately as { name, namespace }, not a prefixed name',
+	},
 
 	// D4xxx — Transaction lifecycle
 	ALREADY_COMMITTED: {

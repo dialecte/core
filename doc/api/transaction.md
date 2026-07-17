@@ -52,15 +52,29 @@ await doc.transaction(async (tx) => {
 })
 ```
 
+The value-object `attributes` form is for **default-namespace** attributes. Author namespaced attributes with the array form — a **local** `name` plus a `namespace` (a registered namespace **key** string or a `{ prefix, uri }` object); dialecte derives the stored `prefix:local` name:
+
+```ts
+await tx.addChild(parentRef, {
+	tagName: 'AA_1',
+	attributes: [
+		{ name: 'aAA_1', value: 'foo' },
+		{ name: 'cAA_1', value: 'q', namespace: 'ext' },
+	],
+})
+```
+
+A prefixed authored `name` (e.g. `ext:cAA_1`) throws `PREFIXED_ATTRIBUTE_NAME`. See [Attribute namespaces](/guide/development/helpers#attribute-namespaces).
+
 #### AddChildParams
 
-| Field        | Type                                             | Description                                                                                                     |
-| ------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `tagName`    | `ChildElement`                                   | Tag name of the child to create                                                                                 |
-| `attributes` | `AttributesValueObject \| FullAttributeObject[]` | Attributes for the new element — optional when the child element has no required attributes, required otherwise |
-| `namespace`  | `Namespace`                                      | Override the element's namespace                                                                                |
-| `value`      | `string`                                         | Text content of the element                                                                                     |
-| `id`         | `UUID`                                           | Explicit ID (for tests with `dev:db-id`)                                                                        |
+| Field        | Type                                                  | Description                                                                                                                                                                   |
+| ------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tagName`    | `ChildElement`                                        | Tag name of the child to create                                                                                                                                               |
+| `attributes` | `DefaultAttributesValueObject \| AuthoredAttribute[]` | Default-namespace attributes via the value-object form; namespaced ones via the array form (`{ name, value, namespace }`). Optional when the child has no required attributes |
+| `namespace`  | `Namespace`                                           | Override the element's namespace                                                                                                                                              |
+| `value`      | `string`                                              | Text content of the element                                                                                                                                                   |
+| `id`         | `UUID`                                                | Explicit ID (for tests with `dev:db-id`)                                                                                                                                      |
 
 Returns `Promise<RawRecord<Config, ChildElement>>` — the full record of the newly created element.
 

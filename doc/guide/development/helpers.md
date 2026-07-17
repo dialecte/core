@@ -193,16 +193,19 @@ Every attribute is stored under one predictable name, whether it arrived from a 
 
 A prefixed name is used only when a namespace applies, so a non-default attribute never collides with a bare default one (e.g. `root` and `ext:root` coexist on the `Root` element). This matches the generated schema keys and XML export, so read/write by the same name regardless of how the record was produced.
 
-To write an attribute in a namespace the config does not declare, pass the explicit form (a bare `prefix:local` with an unknown prefix throws `UNKNOWN_NAMESPACE_PREFIX`):
+**Authoring.** The value-object form (`{ attributes: { aA: 'v' } }`) is for default-namespace attributes only. Author a namespaced attribute with the array form — a **local** `name` plus a `namespace`, given as a registered namespace **key** string or a full `{ prefix, uri }` object. Dialecte derives the stored `prefix:local` name:
 
 ```ts
 await tx.addChild(parent, {
 	tagName: 'A',
 	attributes: [
-		{ name: 'note', value: 'v', namespace: { prefix: 'x', uri: 'http://example.com/x' } },
+		{ name: 'cA', value: 'v', namespace: 'ext' }, // registered key
+		{ name: 'note', value: 'v', namespace: { prefix: 'x', uri: 'http://example.com/x' } }, // custom
 	],
 })
 ```
+
+A prefixed authored `name` throws `PREFIXED_ATTRIBUTE_NAME`; an unknown namespace key/prefix throws `UNKNOWN_NAMESPACE_PREFIX`.
 
 #### Element namespaces
 

@@ -1,7 +1,10 @@
-import { isFullAttributeArray } from './guard'
-
 import { throwDialecteError } from '@/errors'
-import { extractLocalName, invariant, resolveNamespaceByPrefix } from '@/utils'
+import {
+	extractLocalName,
+	invariant,
+	resolveNamespaceByPrefix,
+	resolveNamespaceByScope,
+} from '@/utils'
 
 import type { Ref, RefOrRecord } from '@/document'
 import type {
@@ -9,6 +12,7 @@ import type {
 	TrackedRecord,
 	TreeRecord,
 	AnyDialecteConfig,
+	AttributeInputOf,
 	ElementsOf,
 	FullAttributeObjectOf,
 	AttributesValueObjectOf,
@@ -103,11 +107,11 @@ export function toFullAttributeArray<
 	tagName: GenericElement
 	attributes:
 		| Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
-		| Partial<FullAttributeObjectOf<GenericConfig, GenericElement>>[]
+		| AttributeInputOf<GenericConfig, GenericElement>[]
 }): FullAttributeObjectOf<GenericConfig, GenericElement>[] {
 	const { dialecteConfig, tagName, attributes } = params
 
-	const rawArray = isFullAttributeArray(attributes)
+	const rawArray = Array.isArray(attributes)
 		? attributes
 		: Object.entries(attributes).map(([name, value]) => ({
 				name,
@@ -123,25 +127,41 @@ export function toFullAttributeArray<
 
 /**
  * Canonicalize an attribute's stored name to two predictable rules:
- *   - default namespace / unprefixed → bare local name (`version`);
- *   - any non-default namespace → `prefix:local` (`eIEC61850-6-100:version`, `xsi:type`).
+ *   - default namespace / unprefixed → bare local name (`aA`);
+ *   - any non-default namespace → `prefix:local` (`ext:cA`, `dev:clone-index`).
  *
  * This mirrors the generated schema keys and XML export, so a namespaced attribute
  * read from a parsed document (stored by local name + namespace) ends up under the
  * same name it would have when created in-session. `xmlns`/`xmlns:*` declarations are
- * left verbatim. A prefixed name lacking a resolvable namespace throws.
+ * left verbatim. A namespace given as a registered *scope* string (a config key such
+ * as `ext`) is resolved to its full `Namespace`. A prefixed name or an unresolvable
+ * scope throws.
  */
 function canonicalizeAttributeName(params: {
-	attribute: { name: string; value: unknown; namespace?: Namespace }
+	attribute: { name: string; value: unknown; namespace?: Namespace | string }
 	dialecteConfig: AnyDialecteConfig
 	tagName: string
 }): { name: string; value: unknown; namespace?: Namespace } {
 	const { attribute, dialecteConfig, tagName } = params
 
+	// A namespace supplied as a registered-scope string (config key or prefix) is
+	// resolved to its full Namespace; an unknown scope is an authoring error.
+	let namespace: Namespace | undefined
+	if (typeof attribute.namespace === 'string') {
+		namespace = resolveNamespaceByScope(dialecteConfig, attribute.namespace)
+		if (!namespace) {
+			throwDialecteError('UNKNOWN_NAMESPACE_PREFIX', {
+				detail: `Unknown namespace '${attribute.namespace}' on attribute '${attribute.name}' — use a registered namespace key or pass a full { name, namespace: { prefix, uri } }.`,
+				ref: { tagName },
+			})
+		}
+	} else {
+		namespace = attribute.namespace
+	}
+
 	// Resolve the namespace: carried on the attribute, else inferred from a prefixed
 	// name via the config's declared namespaces (consumers can't extend that config,
 	// so an unresolvable prefix is a caller error, not a silent drop).
-	let { namespace } = attribute
 	const colonIndex = attribute.name.indexOf(':')
 	if (!namespace && colonIndex !== -1) {
 		const prefix = attribute.name.slice(0, colonIndex)
@@ -165,7 +185,9 @@ function canonicalizeAttributeName(params: {
 			namespace,
 		}
 	}
-	return namespace === attribute.namespace ? attribute : { ...attribute, namespace }
+	return namespace === attribute.namespace
+		? { ...attribute, namespace }
+		: { ...attribute, namespace }
 }
 
 /**

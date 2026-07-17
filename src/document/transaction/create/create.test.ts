@@ -1,7 +1,13 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
+import {
+	DIALECTE_TEST_NAMESPACES,
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+	XMLNS_EXT_NAMESPACE,
+	runTestCases,
+} from '@/test'
 
 import type { AddChildParams } from './create.types'
 import type { Ref } from '@/document'
@@ -10,6 +16,7 @@ import type { ElementsOf, ChildrenOf } from '@/types'
 
 describe('stageAddChild', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const nsExt = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE}`
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 	type TestCase = BaseXmlTestCase & {
@@ -101,6 +108,76 @@ describe('stageAddChild', () => {
 			sourceXml: /* xml */ `<Root ${ns} />`,
 			parentRef: { tagName: 'A', id: 'non-existent' },
 			childPayload: { tagName: 'AA_1', attributes: { aAA_1: 'child' } },
+			expectThrow: true,
+		},
+		'full-object attr with local name + namespace → stored as prefixed attribute': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			childPayload: {
+				tagName: 'AA_1',
+				attributes: [
+					{ name: 'aAA_1', value: 'req' },
+					{ name: 'cAA_1', value: 'qualified', namespace: DIALECTE_TEST_NAMESPACES.ext },
+				],
+			},
+			expectedQueries: [
+				'//default:A/default:AA_1[@aAA_1="req"]',
+				'//default:A/default:AA_1[@ext:cAA_1="qualified"]',
+			],
+		},
+		'full-object attr with a prefixed name → throws loudly': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			childPayload: {
+				tagName: 'AA_1',
+				attributes: [
+					{ name: 'aAA_1', value: 'req' },
+					{ name: 'ext:cAA_1', value: 'qualified' },
+				],
+			},
+			expectThrow: true,
+		},
+		'full-object attr with a registered namespace key string → stored as prefixed': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			childPayload: {
+				tagName: 'AA_1',
+				attributes: [
+					{ name: 'aAA_1', value: 'req' },
+					{ name: 'cAA_1', value: 'qualified', namespace: 'ext' },
+				],
+			},
+			expectedQueries: [
+				'//default:A/default:AA_1[@aAA_1="req"]',
+				'//default:A/default:AA_1[@ext:cAA_1="qualified"]',
+			],
+		},
+		'full-object attr with an unknown namespace key string → throws loudly': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			childPayload: {
+				tagName: 'AA_1',
+				attributes: [
+					{ name: 'aAA_1', value: 'req' },
+					{ name: 'cAA_1', value: 'qualified', namespace: 'nope' },
+				],
+			},
 			expectThrow: true,
 		},
 	}
