@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.4] - 2026-07-17
+
+### Added
+
+- `getAttribute` / `getAttributes`: optional `namespace` scope (registered key or raw prefix) to read namespaced attributes by local name — `getAttributes(ref, { namespace: 'ext' })` returns local-keyed values. Unscoped `getAttributes(ref)` now returns default-namespace attributes only (`{ fullObject: true }` for the full set). Per-element IntelliSense.
+- `addChild` / `ensureChild`: author namespaced attributes via `{ name: <local>, value, namespace }` (`namespace` = registered key string or `{ prefix, uri }`); the value-object form is for default-namespace attributes.
+- `PREFIXED_ATTRIBUTE_NAME` (`D3007`): thrown when an authored attribute name carries a prefix.
+- Helper types: `AttributeInputOf`, `NamespaceKeysOf`, `NamespaceKeysUsedByElement`, `DefaultAttributesValueObjectOf`, `NamespacedAttributesValueObjectOf`, `LocalAttributeNamesInNamespace`, `DefaultAttributeNamesOf`, `PrefixOfNamespaceKey`.
+- `@dialecte/core/utils`: `resolveNamespaceByScope`, `resolvePrefixByNamespaceScope`.
+
+### Changed
+
+- `query.getFilename()` → `query.getDocumentInfo()`: now returns the full document metadata record (`id`, `name`, `extension`, `configKey`, `createdAt`, `metadata`) instead of only the filename. Async; throws `DOCUMENT_NOT_REGISTERED` if the document is not registered.
+
 ## [0.4.3] - 2026-07-17
 
 ### Added
