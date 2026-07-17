@@ -55,8 +55,8 @@ export function extractLocalName(name: string): string {
 }
 
 /**
- * Resolve a namespace declared in the config by its prefix (e.g. `xsi`,
- * `eIEC61850-6-100`). Returns `undefined` for an empty prefix or an unknown one —
+ * Resolve a namespace declared in the config by its prefix (e.g. `ext`,
+ * `dev`). Returns `undefined` for an empty prefix or an unknown one —
  * consumers cannot extend `config.namespaces`, so an unknown prefix is a caller error.
  */
 export function resolveNamespaceByPrefix(
@@ -66,6 +66,34 @@ export function resolveNamespaceByPrefix(
 	if (!prefix) return undefined
 	const namespaces = Object.values(dialecteConfig.namespaces) as Namespace[]
 	return namespaces.find((namespace) => namespace.prefix === prefix)
+}
+
+/**
+ * Resolve a namespace *scope* string to its full `Namespace`. A scope is normally a
+ * `config.namespaces` key (e.g. `ext`, `dev`); as a fallback it is matched
+ * against declared prefixes. Returns `undefined` when the scope is neither a known
+ * key nor a known prefix — an authoring error, since a registered namespace must be
+ * referenced by key (use a full `{ prefix, uri }` object for custom namespaces).
+ */
+export function resolveNamespaceByScope(
+	dialecteConfig: AnyDialecteConfig,
+	scope: string,
+): Namespace | undefined {
+	const namespaces = dialecteConfig.namespaces as Record<string, Namespace | undefined>
+	return namespaces[scope] ?? resolveNamespaceByPrefix(dialecteConfig, scope)
+}
+
+/**
+ * Resolve the XML prefix to store attributes under for a namespace *scope*.
+ * The scope is normally a config namespace **key** (e.g. `ext`, `dev`), which we map
+ * to its declared prefix. If the scope is not a declared key it is treated as a raw
+ * prefix, so callers can still target custom namespaces the config is unaware of.
+ */
+export function resolvePrefixByNamespaceScope(
+	dialecteConfig: AnyDialecteConfig,
+	namespaceScope: string,
+): string {
+	return dialecteConfig.namespaces[namespaceScope]?.prefix ?? namespaceScope
 }
 
 /**

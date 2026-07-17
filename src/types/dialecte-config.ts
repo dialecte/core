@@ -139,38 +139,6 @@ export type ElementsOf<GenericConfig extends AnyDialecteConfig> = GenericConfig[
 export type AnyElement = string
 
 /**
- * Get attributes type for a specific element from dialecte config
- */
-export type AttributesValueObjectOf<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-> = GenericConfig['attributes'][GenericElement]
-export type AnyAttributesValueObject = Record<string, string>
-
-/**
- * Get attribute name union for a specific element from dialecte config
- */
-export type AttributesOf<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-> = keyof AttributesValueObjectOf<GenericConfig, GenericElement> & string
-export type AnyAttributeName = string
-
-/**
- * Get attribute object type for a specific element from dialecte config
- */
-export type FullAttributeObjectOf<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-> = {
-	[K in AttributesOf<GenericConfig, GenericElement>]: {
-		name: K
-		value: AttributesValueObjectOf<GenericConfig, GenericElement>[K]
-		namespace?: Namespace
-	}
-}[AttributesOf<GenericConfig, GenericElement>]
-
-/**
  * Get valid children elements for a specific element from dialecte config
  */
 export type ChildrenOf<
@@ -218,3 +186,144 @@ export type RootElementOf<GenericConfig extends AnyDialecteConfig> =
 export type SingletonElementsOf<GenericConfig extends AnyDialecteConfig> =
 	| GenericConfig['rootElementName']
 	| (GenericConfig['singletonElements'] extends readonly (infer E)[] ? E : never)
+
+/**
+ * Get attributes type for a specific element from dialecte config
+ */
+export type AttributesValueObjectOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = GenericConfig['attributes'][GenericElement]
+export type AnyAttributesValueObject = Record<string, string>
+
+/**
+ * Get attribute name union for a specific element from dialecte config
+ */
+export type AttributesOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = keyof AttributesValueObjectOf<GenericConfig, GenericElement> & string
+export type AnyAttributeName = string
+
+/**
+ * Get attribute object type for a specific element from dialecte config
+ */
+export type FullAttributeObjectOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = {
+	[K in AttributesOf<GenericConfig, GenericElement>]: {
+		name: K
+		value: AttributesValueObjectOf<GenericConfig, GenericElement>[K]
+		namespace?: Namespace
+	}
+}[AttributesOf<GenericConfig, GenericElement>]
+
+//== Namespace-scoped attribute helpers
+
+/**
+ * A loose attribute shape accepted when authoring or converting attributes: a
+ * local (or canonical) `name`, a string `value`, and an optional namespace given
+ * either as a full `{ prefix, uri }` object (for custom namespaces) or a registered
+ * namespace *scope* string — a `config.namespaces` key such as `'ext'`. The stored
+ * name is derived from the resolved namespace.
+ */
+export type AttributeInputOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = {
+	name: AttributesOf<GenericConfig, GenericElement> | (string & {})
+	value: string
+	namespace?: Namespace | string
+}
+
+/**
+ * The namespace map keys an author can scope by, excluding the implicit `default`
+ * namespace (which is the unscoped case). For the test dialecte this is e.g.
+ * `'dev' | 'ext'`.
+ */
+export type NamespaceKeysOf<GenericConfig extends AnyDialecteConfig> = Exclude<
+	keyof GenericConfig['namespaces'],
+	'default'
+> &
+	string
+
+/** The XML prefix declared for a namespace key (the `prefix` on `config.namespaces[key]`). */
+export type PrefixOfNamespaceKey<
+	GenericConfig extends AnyDialecteConfig,
+	GenericNamespaceKey extends keyof GenericConfig['namespaces'],
+> = GenericConfig['namespaces'][GenericNamespaceKey] extends { prefix: infer GenericPrefix }
+	? GenericPrefix & string
+	: never
+
+/** The set of prefixes actually used by an element's namespaced attributes. */
+type PrefixesUsedByElement<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = {
+	[K in AttributesOf<GenericConfig, GenericElement>]: K extends `${infer GenericPrefix}:${string}`
+		? GenericPrefix
+		: never
+}[AttributesOf<GenericConfig, GenericElement>]
+
+/**
+ * The namespace keys an element actually carries attributes for, so a scoping
+ * option only suggests namespaces that make sense for that element. A raw string
+ * is still accepted (via `(string & {})` at the call site) for custom namespaces.
+ */
+export type NamespaceKeysUsedByElement<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = {
+	[K in NamespaceKeysOf<GenericConfig>]: PrefixOfNamespaceKey<
+		GenericConfig,
+		K
+	> extends PrefixesUsedByElement<GenericConfig, GenericElement>
+		? K
+		: never
+}[NamespaceKeysOf<GenericConfig>]
+
+/** Value object of an element's default-namespace (unprefixed) attributes only. */
+export type DefaultAttributesValueObjectOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = {
+	[K in keyof AttributesValueObjectOf<
+		GenericConfig,
+		GenericElement
+	> as K extends `${string}:${string}` ? never : K]: AttributesValueObjectOf<
+		GenericConfig,
+		GenericElement
+	>[K]
+}
+
+/**
+ * Value object of an element's attributes within a given namespace key, re-keyed
+ * by **local** name (the prefix is stripped since the scope already fixes it).
+ */
+export type NamespacedAttributesValueObjectOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+	GenericNamespaceKey extends NamespaceKeysOf<GenericConfig>,
+> = {
+	[K in keyof AttributesValueObjectOf<
+		GenericConfig,
+		GenericElement
+	> as K extends `${PrefixOfNamespaceKey<GenericConfig, GenericNamespaceKey>}:${infer GenericLocal}`
+		? GenericLocal
+		: never]: AttributesValueObjectOf<GenericConfig, GenericElement>[K]
+}
+
+/** Local attribute names available under a namespace key for an element. */
+export type LocalAttributeNamesInNamespace<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+	GenericNamespaceKey extends NamespaceKeysOf<GenericConfig>,
+> = keyof NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey> &
+	string
+
+/** Default-namespace (unprefixed) attribute names for an element. */
+export type DefaultAttributeNamesOf<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+> = keyof DefaultAttributesValueObjectOf<GenericConfig, GenericElement> & string

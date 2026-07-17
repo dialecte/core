@@ -11,6 +11,8 @@ import {
 	getAttributeRules,
 	extractLocalName,
 	resolveNamespaceByPrefix,
+	resolveNamespaceByScope,
+	resolvePrefixByNamespaceScope,
 	compareQualifiedAttributes,
 	orderAttributesBySequence,
 	orderByConfigSequence,
@@ -85,6 +87,27 @@ resolveNamespaceByPrefix(dialecteConfig, 'ext')
 // → { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' }
 resolveNamespaceByPrefix(dialecteConfig, 'unknown')
 // → undefined
+```
+
+### `resolveNamespaceByScope`
+
+Resolves a namespace **scope** string to its full `Namespace`. A scope is normally a `config.namespaces` **key** (e.g. `ext`); as a fallback it is matched against declared prefixes. This is what lets an authored attribute's `namespace` be a scope string instead of a `{ prefix, uri }` object.
+
+```ts
+import { resolveNamespaceByScope } from '@dialecte/core/utils'
+
+resolveNamespaceByScope(dialecteConfig, 'ext')
+// → { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' }
+```
+
+### `resolvePrefixByNamespaceScope`
+
+Resolves a namespace scope string to its XML **prefix**. A config key maps to its declared prefix; an unknown string is treated as a raw prefix, so callers can target custom namespaces. Backs the `namespace` scoping on `getAttribute` / `getAttributes`.
+
+```ts
+import { resolvePrefixByNamespaceScope } from '@dialecte/core/utils'
+
+resolvePrefixByNamespaceScope(dialecteConfig, 'ext') // → 'ext'
 ```
 
 ### `compareQualifiedAttributes`
