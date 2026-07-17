@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.3] - 2026-07-17
+
+### Added
+
+- `getSnapshot`: `declareNamespaces` option (default `true`) — set `false` for a bare XML fragment (no `xmlns` declarations).
+- Extension groups (`query`/`transaction`) can now nest to arbitrary depth (e.g. `a.aa.getItems`), with binding/types/intellisense preserved; flat modules keep working unchanged.
+
 ## [0.4.2] - 2026-07-09
 
 ### Changed
