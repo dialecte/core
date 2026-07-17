@@ -1,13 +1,19 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
+import {
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+	XMLNS_EXT_NAMESPACE,
+	runTestCases,
+} from '@/test'
 
 import type { Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { ElementsOf } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+const nsExt = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getAttributes', () => {
@@ -54,6 +60,56 @@ describe('getAttributes', () => {
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
 		const result = await source.query.getAttributes(testCase.ref)
+		expect(result).toEqual(testCase.expected)
+	}
+
+	runTestCases.withoutExport({ testCases, act })
+})
+
+describe('getAttributes (namespace scoping)', () => {
+	type TestCase = BaseXmlTestCase & {
+		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+		namespace?: string
+		expected: Record<string, string>
+	}
+
+	const testCases: Record<string, TestCase> = {
+		'no namespace option → returns only default-namespace attributes (local keys)': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="hi" ext:cA="qualified" />
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			expected: { aA: 'hi' },
+		},
+		'scoped by namespace key → returns only that namespace, keyed by local name': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="hi" ext:cA="qualified" />
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			namespace: 'ext',
+			expected: { cA: 'qualified' },
+		},
+		'scoped by namespace with no matching attribute → empty object': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="hi" />
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			namespace: 'ext',
+			expected: {},
+		},
+	}
+
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const result = await source.query.getAttributes(
+			testCase.ref,
+			(testCase.namespace ? { namespace: testCase.namespace } : undefined) as never,
+		)
 		expect(result).toEqual(testCase.expected)
 	}
 

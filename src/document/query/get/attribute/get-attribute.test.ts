@@ -1,13 +1,19 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
+import {
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+	XMLNS_EXT_NAMESPACE,
+	runTestCases,
+} from '@/test'
 
 import type { Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { AttributesOf } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+const nsExt = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 describe('getAttribute', () => {
@@ -112,6 +118,60 @@ describe('getAttributeFullObject', () => {
 		} else {
 			expect(result).toMatchObject(testCase.expected)
 		}
+	}
+
+	runTestCases.withoutExport({ testCases, act })
+})
+
+describe('getAttribute (namespace scoping)', () => {
+	type TestCase = BaseXmlTestCase & {
+		ref: Ref<TestDialecteConfig, 'A'>
+		name: string
+		namespace?: string
+		expected: string
+	}
+
+	const testCases: Record<string, TestCase> = {
+		'scoped by namespace key → resolves the prefixed attribute': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="hi" ext:cA="qualified" />
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			name: 'cA',
+			namespace: 'ext',
+			expected: 'qualified',
+		},
+		'no namespace option + local name → reads the default-namespace attribute': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="hi" ext:cA="qualified" />
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			name: 'aA',
+			expected: 'hi',
+		},
+		'scoped by namespace + local name absent → empty string': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="hi" />
+				</Root>
+			`,
+			ref: { tagName: 'A', id: 'a1' },
+			name: 'cA',
+			namespace: 'ext',
+			expected: '',
+		},
+	}
+
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const result = await source.query.getAttribute(testCase.ref, {
+			name: testCase.name,
+			namespace: testCase.namespace,
+		})
+		expect(result).toBe(testCase.expected)
 	}
 
 	runTestCases.withoutExport({ testCases, act })

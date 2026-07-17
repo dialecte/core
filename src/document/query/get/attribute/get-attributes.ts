@@ -1,4 +1,5 @@
 import { getRecord } from '@/document'
+import { resolvePrefixByNamespaceScope } from '@/utils'
 
 import type { Context, Ref } from '@/document'
 import type {
@@ -9,13 +10,17 @@ import type {
 } from '@/types'
 
 /**
- * Fetch all attributes for the given ref.
+ * Fetch attributes for the given ref as a destructurable value object, scoped to a
+ * single namespace and re-keyed by **local** name.
  *
- * Resolves the record via context (staged → cache → store),
- * then returns attributes as a value object (destructurable).
+ * Without `namespace`, only default-namespace (unprefixed) attributes are returned.
+ * With a `namespace` key, only that namespace's attributes are returned, with the
+ * prefix stripped from the keys (`ext:cA` → `cA`). `xmlns` declarations are
+ * always excluded. Use `getAttributesFullObject` for the complete, prefixed set.
  *
  * @example
- * getAttributes({ context, ref })                      // → { name: '', desc: '', ... }
+ * getAttributes({ context, ref })                       // → { aA: '', bA: '', ... }
+ * getAttributes({ context, ref, namespace: 'ext' })     // → { cA: '...' }
  */
 
 export async function getAttributes<
@@ -25,18 +30,24 @@ export async function getAttributes<
 >(params: {
 	context: Context<GenericConfig>
 	ref: Ref<GenericConfig, GenericElement>
+	namespace?: string
 }): Promise<AttributesValueObjectOf<GenericConfig, GenericElement>> {
-	const { context, ref } = params
+	const { context, ref, namespace } = params
 	const record = await getRecord({ context, ref })
 	const attributes = (record?.attributes ?? []) as GenericAttribute[]
 
+	const targetPrefix =
+		namespace === undefined ? '' : resolvePrefixByNamespaceScope(context.dialecteConfig, namespace)
+
 	return attributes.reduce(
 		(acc, attr) => {
-			acc[attr.name] = attr.value ?? ''
+			const { prefix, local, isXmlns } = splitAttributeName(attr.name)
+			if (isXmlns || prefix !== targetPrefix) return acc
+			acc[local] = attr.value ?? ''
 			return acc
 		},
-		{} as AttributesValueObjectOf<GenericConfig, GenericElement>,
-	)
+		{} as Record<string, string>,
+	) as AttributesValueObjectOf<GenericConfig, GenericElement>
 }
 
 /**
@@ -62,4 +73,18 @@ export async function getAttributesFullObject<
 	const attributes = (record?.attributes ?? []) as GenericAttribute[]
 
 	return attributes
+}
+
+/**
+ * Split a stored attribute name into its XML prefix and local part. Default
+ * (unprefixed) attributes report an empty prefix; `xmlns`/`xmlns:*` declarations
+ * are flagged so callers can skip them.
+ */
+function splitAttributeName(name: string): { prefix: string; local: string; isXmlns: boolean } {
+	if (name === 'xmlns' || name.startsWith('xmlns:')) {
+		return { prefix: '', local: name, isXmlns: true }
+	}
+	const colonIndex = name.indexOf(':')
+	if (colonIndex === -1) return { prefix: '', local: name, isXmlns: false }
+	return { prefix: name.slice(0, colonIndex), local: name.slice(colonIndex + 1), isXmlns: false }
 }

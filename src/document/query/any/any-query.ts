@@ -74,15 +74,15 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 
 	async getAttribute(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; fullObject?: false },
+		params: { name: string; namespace?: string; fullObject?: false },
 	): Promise<string>
 	async getAttribute(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; fullObject: true },
+		params: { name: string; namespace?: string; fullObject: true },
 	): Promise<AnyAttribute | undefined>
 	async getAttribute(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; fullObject?: boolean },
+		params: { name: string; namespace?: string; fullObject?: boolean },
 	): Promise<string | AnyAttribute | undefined> {
 		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
 		const { fullObject } = params
@@ -92,15 +92,15 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 
 	async getAttributes(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params?: { fullObject?: false },
+		params?: { namespace?: string; fullObject?: false },
 	): Promise<Record<string, string>>
 	async getAttributes(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { fullObject: true },
+		params: { namespace?: string; fullObject: true },
 	): Promise<AnyAttribute[]>
 	async getAttributes(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params?: { fullObject?: boolean },
+		params?: { namespace?: string; fullObject?: boolean },
 	): Promise<Record<string, string> | AnyAttribute[]> {
 		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
 		const { fullObject } = params || {}

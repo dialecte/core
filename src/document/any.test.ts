@@ -9,11 +9,11 @@ const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 /**
  * Methods on Query/Transaction that intentionally have NO any counterpart.
  * - getRoot: always typed (root element is config-defined)
- * - getFilename: returns string, no element typing involved
+ * - getDocumentInfo: returns document metadata, no element typing involved
  * - getStagedOperations / clearStagedOperations / clearRecordCache: internal lifecycle
  * - getOperations / context: protected, not public API
  */
-const QUERY_EXCLUDED = new Set(['getRoot', 'getFilename', 'getOperations', 'constructor'])
+const QUERY_EXCLUDED = new Set(['getRoot', 'getDocumentInfo', 'getOperations', 'constructor'])
 
 const TRANSACTION_EXCLUDED = new Set([
 	'getStagedOperations',

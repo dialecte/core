@@ -6,13 +6,13 @@ description: API reference for the Query class — read-only access to a dialect
 
 `Query` provides read-only access to a dialecte's store. It is accessed via `doc.query` and is also the base class for `Transaction` — so all query methods are available inside a transaction too.
 
-## getFilename
+## getDocumentInfo
 
-Returns the filename (store name) of the document.
+Returns the document's metadata record: `id`, `name`, `extension`, `configKey`, `createdAt`, and optional `metadata`. Throws a `DOCUMENT_NOT_REGISTERED` error if the document is not registered.
 
 ```ts
-const filename = doc.query.getFilename()
-// string
+const { name, extension } = await doc.query.getDocumentInfo()
+// DocumentRecord
 ```
 
 ## Record lookup
@@ -394,22 +394,30 @@ const value = await doc.query.getAttribute(ref, { name: 'aAA_1' })
 // Full object with namespace, qualifiedName, etc.
 const attr = await doc.query.getAttribute(ref, { name: 'aAA_1', fullObject: true })
 // → FullAttributeObject | undefined
+
+// Scope by namespace: read a namespaced attribute by its local name
+const cA = await doc.query.getAttribute(ref, { name: 'cA', namespace: 'ext' })
 ```
 
-Attributes are keyed by their canonical name: bare local for the default namespace (`aA`, `root`), `prefix:local` for any other (`ext:cA`, `ext:root`). Read a namespaced attribute by its prefixed name — see [Attribute namespaces](/guide/development/helpers#attribute-namespaces).
+Without `namespace`, `name` is the attribute's canonical name (bare local for the default namespace, `prefix:local` for any other). With a `namespace` key (or raw prefix for a custom namespace), `name` is the **local** name within that namespace. The `namespace` and local names are IntelliSense-scoped per element. See [Attribute namespaces](/guide/development/helpers#attribute-namespaces).
 
 ### getAttributes
 
-Returns all attributes as a destructurable value object, or as an array of full attribute objects.
+Returns a destructurable value object, or an array of full attribute objects.
 
 ```ts
-// Value object
+// Default-namespace attributes only, keyed by local name
 const { aA, bA } = await doc.query.getAttributes(ref)
 
-// Full objects
+// A namespace's attributes, keyed by local name (prefix stripped)
+const { cA } = await doc.query.getAttributes(ref, { namespace: 'ext' })
+
+// Every attribute, prefixed names included
 const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 // → FullAttributeObject[]
 ```
+
+Unscoped, `getAttributes(ref)` returns **default-namespace** attributes only. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the complete, prefixed set.
 
 ## Untyped namespace — `query.any`
 
@@ -445,15 +453,15 @@ const matches = await doc.query.any.findByAttributes({
 | `getChild`            | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord \| undefined`            |
 | `getChildren`         | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord[]`                       |
 | `getRecordsByTagName` | `tagName: string`                                                     | `AnyTrackedRecord[]`                       |
-| `getAttribute`        | `AnyRefOrRecord, { name, fullObject? }`                               | `string \| AnyAttribute \| undefined`      |
-| `getAttributes`       | `AnyRefOrRecord, { fullObject? }`                                     | `Record<string, string> \| AnyAttribute[]` |
+| `getAttribute`        | `AnyRefOrRecord, { name, namespace?, fullObject? }`                   | `string \| AnyAttribute \| undefined`      |
+| `getAttributes`       | `AnyRefOrRecord, { namespace?, fullObject? }`                         | `Record<string, string> \| AnyAttribute[]` |
 | `getTree`             | `AnyRefOrRecord`                                                      | `AnyTreeRecord \| undefined`               |
 | `findAncestors`       | `AnyRefOrRecord`                                                      | `AnyTrackedRecord[]`                       |
 | `findDescendants`     | `AnyRefOrRecord`                                                      | `Record<string, AnyTrackedRecord[]>`       |
 | `findByAttributes`    | `{ tagName: string, attributes: Record<string, string \| string[]> }` | `AnyTrackedRecord[]`                       |
 
 ::: tip
-`query.any` mirrors every public Query method except `getRoot` (always typed), `getFilename` (no element typing involved), and `findByAttributes` filter type narrowing (accepts `Record<string, string | string[]>` instead of `FilterAttributes`).
+`query.any` mirrors every public Query method except `getRoot` (always typed), `getDocumentInfo` (no element typing involved), and `findByAttributes` filter type narrowing (accepts `Record<string, string | string[]>` instead of `FilterAttributes`).
 :::
 
 ## RefOrRecord
