@@ -180,6 +180,18 @@ describe('stageAddChild', () => {
 			},
 			expectThrow: true,
 		},
+		'addChild with a fixed attribute set to a wrong value → throws': {
+			sourceXml: /* xml */ `<Root ${ns}><C ${customId}="c1" /></Root>`,
+			parentRef: { tagName: 'C', id: 'c1' },
+			childPayload: { tagName: 'CC_1', attributes: { aCC_1: 'wrong' } },
+			expectThrow: true,
+		},
+		'addChild with a fixed attribute set to its fixed value → allowed': {
+			sourceXml: /* xml */ `<Root ${ns}><C ${customId}="c1" /></Root>`,
+			parentRef: { tagName: 'C', id: 'c1' },
+			childPayload: { tagName: 'CC_1', attributes: { aCC_1: 'fixed_val' } },
+			expectedQueries: ['//default:C/default:CC_1[@aCC_1="fixed_val"]'],
+		},
 	}
 
 	async function act({

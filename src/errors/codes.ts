@@ -92,6 +92,10 @@ export const ERROR_CATALOG = {
 		message:
 			'Authored attribute name must be a local name — pass the namespace separately as { name, namespace }, not a prefixed name',
 	},
+	FIXED_VALUE_VIOLATION: {
+		code: 'D3008',
+		message: 'Attribute value differs from the schema-fixed value',
+	},
 
 	// D4xxx — Transaction lifecycle
 	ALREADY_COMMITTED: {

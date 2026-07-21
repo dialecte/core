@@ -2,7 +2,7 @@ import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
 import { throwDialecteError } from '@/errors'
-import { standardizeRecord } from '@/helpers'
+import { assertNoFixedViolation, standardizeRecord } from '@/helpers'
 import { extractLocalName, invariant } from '@/utils'
 
 import type { AddChildParams, ChildAttributesOf } from './create.types'
@@ -63,6 +63,13 @@ export async function stageAddChild<
 			parent: { id: parentRecord.id, tagName: parentRecord.tagName },
 			children: [],
 		},
+	})
+
+	// Write-path guard: reject an authored value that violates a schema `fixed`.
+	assertNoFixedViolation({
+		dialecteConfig,
+		tagName: childRecord.tagName,
+		attributes: childRecord.attributes,
 	})
 
 	stageOperation({

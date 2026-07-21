@@ -121,6 +121,48 @@ describe('stageUpdate', () => {
 	runTestCases.withExport({ testCases, act })
 })
 
+describe('stageUpdate — fixed attribute guard', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase & {
+		targetRef: Ref<TestDialecteConfig, 'CC_1'>
+		updateParams: UpdateParams<TestDialecteConfig, 'CC_1'>
+		expectThrow: boolean
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'update a fixed attribute to a wrong value → throws': {
+			sourceXml: /* xml */ `<Root ${ns}><C ${customId}="c1"><CC_1 ${customId}="cc1" aCC_1="fixed_val" /></C></Root>`,
+			targetRef: { tagName: 'CC_1', id: 'cc1' },
+			// @ts-expect-error the fixed attribute type only permits 'fixed_val'; this
+			// exercises the RUNTIME guard for untyped/JS callers passing a wrong value.
+			updateParams: { attributes: { aCC_1: 'wrong' } },
+			expectThrow: true,
+		},
+		'update a fixed attribute to its fixed value → allowed': {
+			sourceXml: /* xml */ `<Root ${ns}><C ${customId}="c1"><CC_1 ${customId}="cc1" aCC_1="fixed_val" /></C></Root>`,
+			targetRef: { tagName: 'CC_1', id: 'cc1' },
+			updateParams: { attributes: { aCC_1: 'fixed_val' } },
+			expectThrow: false,
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		const transaction = source.transaction(async (tx) => {
+			await tx.update(testCase.targetRef, testCase.updateParams)
+		})
+		if (testCase.expectThrow) await expect(transaction).rejects.toThrow()
+		else await transaction
+		return {}
+	}
+
+	runTestCases.withExport({ testCases, act })
+})
+
 describe('stageUpdate hooks — spy behavior', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE

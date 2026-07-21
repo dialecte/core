@@ -1,7 +1,7 @@
 import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
-import { standardizeRecord, toFullAttributeArray } from '@/helpers'
+import { assertNoFixedViolation, standardizeRecord, toFullAttributeArray } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { UpdateParams } from './update.types'
@@ -48,6 +48,9 @@ export async function stageUpdate<
 			tagName: record.tagName,
 			attributes,
 		})
+
+		// Write-path guard: reject an authored value that violates a schema `fixed`.
+		assertNoFixedViolation({ dialecteConfig, tagName: record.tagName, attributes: newAttributes })
 
 		const unchangedAttributes = record.attributes.filter(
 			(old) => !newAttributes.some((next) => next.name === old.name),
