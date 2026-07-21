@@ -154,6 +154,35 @@ describe('Project BroadcastChannel', () => {
 		expect(doc.state.lastUpdate).toBeNull()
 	})
 
+	it('getDocumentStatus reports live+ready for a document imported by another realm', async () => {
+		const name = projectName()
+		const shell = await openProject(name)
+		const iframe = await openProject(name)
+		cleanups.push(async () => iframe.close())
+		cleanups.push(() => shell.destroy())
+
+		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
+		const [{ documentId }] = await shell.import([file])
+
+		const status = await iframe.getDocumentStatus(documentId)
+		expect(status).toEqual({ live: true, ready: true })
+
+		// The other realm can now open + export the document without throwing
+		// (export reads the xel_<id> table — the Failure B path).
+		iframe.openDocument(documentId)
+		const { xmlDocument } = await iframe.export(documentId)
+		expect(xmlDocument.documentElement).toBeTruthy()
+	})
+
+	it('getDocumentStatus returns not-live for an unknown document without throwing', async () => {
+		const name = projectName()
+		const project = await openProject(name)
+		cleanups.push(() => project.destroy())
+
+		const status = await project.getDocumentStatus(crypto.randomUUID())
+		expect(status).toEqual({ live: false, ready: false })
+	})
+
 	it('exposes channelName and guards it behind open()', async () => {
 		const unopened = new Project({ configs: { default: CONFIG }, storage: { type: 'local' } })
 		expect(() => unopened.channelName).toThrow()

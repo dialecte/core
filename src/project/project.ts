@@ -165,8 +165,9 @@ export class Project<
 			case 'document-removed':
 			case 'document-imported':
 				// Fire-and-forget: the store may already be closing when a
-				// late message arrives.
-				this.refreshState().catch(() => {})
+				// late message arrives. Reconcile the store schema before the
+				// registry so both converge together for this realm.
+				this.reconcileFromBroadcast(message.documentId).catch(() => {})
 				break
 			case 'commit': {
 				const entry = this.state.documents.get(message.documentId)
@@ -333,6 +334,27 @@ export class Project<
 	}
 
 	/**
+	 * Reconcile this realm's store against persisted state, then report the
+	 * document's liveness and readiness:
+	 * - `live`  — the document is registered in this realm's registry (so
+	 *   `openDocument` will not throw DOCUMENT_NOT_REGISTERED).
+	 * - `ready` — the store can serve the document's records (so reads / export
+	 *   will not throw, e.g. a missing per-document table).
+	 *
+	 * Ordering-independent: safe to call as soon as an active-document signal
+	 * arrives in another realm, even before the import broadcast has been folded
+	 * in. Returns `{ live: false, ready: false }` for an unknown document rather
+	 * than throwing.
+	 */
+	async getDocumentStatus(documentId: string): Promise<{ live: boolean; ready: boolean }> {
+		await this.store.reconcile(documentId)
+		await this.refreshState()
+		const live = this.state.documents.has(documentId)
+		const ready = live && (await this.store.isDocumentReadable(documentId))
+		return { live, ready }
+	}
+
+	/**
 	 * Get the config for a specific file.
 	 */
 	getDocumentConfig(documentId: string): GenericConfig | undefined {
@@ -487,5 +509,16 @@ export class Project<
 	private async refreshState(): Promise<void> {
 		const files = await this.store.getDocuments()
 		reconcileDocumentState(this.state.documents, files)
+	}
+
+	/**
+	 * Fold a cross-realm import/removal into this realm: first reconcile the
+	 * store schema (so a newly-imported document's backing table exists here),
+	 * then refresh the in-memory registry. Ordered so liveness and readiness
+	 * converge together.
+	 */
+	private async reconcileFromBroadcast(documentId?: string): Promise<void> {
+		await this.store.reconcile(documentId)
+		await this.refreshState()
 	}
 }
