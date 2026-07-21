@@ -97,16 +97,16 @@ type DialecteError = {
 
 Errors use a typed catalog organized by domain:
 
-| Range   | Domain                | Examples                                                                                        |
-| ------- | --------------------- | ----------------------------------------------------------------------------------------------- |
-| `D0xxx` | Generic               | `UNKNOWN`, `ASSERTION_FAILED`                                                                   |
-| `D1xxx` | Store/persistence     | `STORE_COMMIT_FAILED`, `STORE_RECORD_NOT_FOUND`                                                 |
-| `D2xxx` | Element lookup        | `ELEMENT_NOT_FOUND`, `ROOT_NOT_FOUND`, `DUPLICATE_ID`                                           |
-| `D3xxx` | Constraint violations | `INVALID_PARENT_CHILD`, `PROTECTED_ROOT`, `UNKNOWN_NAMESPACE_PREFIX`, `PREFIXED_ATTRIBUTE_NAME` |
-| `D4xxx` | Transaction lifecycle | `ALREADY_COMMITTED`, `CONCURRENT_TRANSACTION`                                                   |
-| `D5xxx` | Import/Export         | `EXPORT_ROOT_NOT_FOUND`, `EXPORT_ORPHAN_CHILD_REF`                                              |
-| `D6xxx` | Config                | `EXTENSION_METHOD_COLLISION`                                                                    |
-| `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `FILE_NOT_REGISTERED`                                                     |
+| Range   | Domain                | Examples                                                                                                                 |
+| ------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `D0xxx` | Generic               | `UNKNOWN`, `ASSERTION_FAILED`                                                                                            |
+| `D1xxx` | Store/persistence     | `STORE_COMMIT_FAILED`, `STORE_RECORD_NOT_FOUND`                                                                          |
+| `D2xxx` | Element lookup        | `ELEMENT_NOT_FOUND`, `ROOT_NOT_FOUND`, `DUPLICATE_ID`                                                                    |
+| `D3xxx` | Constraint violations | `INVALID_PARENT_CHILD`, `PROTECTED_ROOT`, `UNKNOWN_NAMESPACE_PREFIX`, `PREFIXED_ATTRIBUTE_NAME`, `FIXED_VALUE_VIOLATION` |
+| `D4xxx` | Transaction lifecycle | `ALREADY_COMMITTED`, `CONCURRENT_TRANSACTION`                                                                            |
+| `D5xxx` | Import/Export         | `EXPORT_ROOT_NOT_FOUND`, `EXPORT_ORPHAN_CHILD_REF`                                                                       |
+| `D6xxx` | Config                | `EXTENSION_METHOD_COLLISION`                                                                                             |
+| `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `FILE_NOT_REGISTERED`                                                                              |
 
 The full catalog is in `core/src/errors/codes.ts`.
 

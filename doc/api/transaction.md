@@ -94,14 +94,14 @@ await doc.transaction(async (tx) => {
 
 #### UpdateParams
 
-| Field        | Type                             | Description                                      |
-| ------------ | -------------------------------- | ------------------------------------------------ |
-| `attributes` | `Partial<AttributesValueObject>` | Attributes to update; `undefined`/`null` removes |
-| `value`      | `string`                         | New text content                                 |
+| Field        | Type                             | Description                                               |
+| ------------ | -------------------------------- | --------------------------------------------------------- |
+| `attributes` | `Partial<AttributesValueObject>` | Attributes to update; `undefined` / `null` / `''` removes |
+| `value`      | `string`                         | New text content                                          |
 
 Returns `Promise<RawRecord<Config, Element>>`.
 
-Setting an attribute to `undefined` or `null` removes it from the record — it will no longer appear in the XML output.
+Setting a schema attribute to `undefined`, `null`, or an empty string `''` removes it from the record — it will no longer appear in the XML output. An empty carries no information over the schema (a `required` / `fixed` value is re-materialized on export and a `default` — including `''` — is re-applied on read), so it is normalized away rather than stored. This applies to every write path (`addChild` / `ensureChild` / `update`) and to import.
 
 `update` fires `hooks.afterUpdated` with the old and new record. See [Hooks — afterUpdated](/api/hooks#afterupdated) for the full reference.
 

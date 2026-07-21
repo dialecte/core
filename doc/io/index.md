@@ -50,6 +50,17 @@ await doc.transaction(async (tx) => {
 const { xmlDocument } = await project.export(documentId, { withDatabaseIds: false })
 ```
 
+## Schema-value materialization
+
+The store is **faithful**: `standardizeRecord` canonicalizes attribute names, ordering, and namespaces on import, but it never fills in schema `required` / `fixed` / `default` **values**. An attribute the author omitted stays absent in storage, so `import` → `export` round-trips without injecting attributes that were never written. An attribute supplied with an empty (`''`) or `undefined` value is dropped at this boundary — an empty carries no information over the schema, so it is normalized away rather than stored.
+
+Schema values are resolved only at the edges, from one source of truth ([`resolveSchemaAttributeValue`](/guide/development/utils#resolveschemaattributevalue)):
+
+- **Read** — `getAttribute` / `getAttributes` surface an absent attribute's `fixed` or non-empty `default` (the `'optional'` [`defaults`](/api/query#schema-defaults-the-defaults-option) view). Pass `{ defaults: 'none' }` for the stored-only set.
+- **Export** — `buildXmlDocument` materializes `required` (as `""` when no value) and `fixed` attributes on every element for XSD validity; optional `default`-only attributes are not reintroduced.
+
+A write that sets an attribute to a value differing from its schema `fixed` is rejected with `FIXED_VALUE_VIOLATION` (`D3008`); import is unaffected, so an existing document that already violates a fixed value still loads.
+
 ## Low-level IO utilities
 
 The lower-level building blocks are still exported for advanced use cases:

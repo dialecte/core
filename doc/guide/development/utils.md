@@ -9,6 +9,8 @@ Utilities exported from `@dialecte/core/utils`. These are the shared, framework-
 ```ts
 import {
 	getAttributeRules,
+	resolveSchemaAttributeValue,
+	isSchemaDefaultValue,
 	extractLocalName,
 	resolveNamespaceByPrefix,
 	resolveNamespaceByScope,
@@ -63,6 +65,53 @@ Note that the `attributeName` is the **canonical** name — bare local for a def
 | `namespace`       | `Namespace \| undefined` | Declared namespace — absent for a default-namespace attribute      |
 
 An unknown element or attribute returns the type with the booleans `false` and the value fields `undefined`, so callers can branch without extra guards.
+
+### `resolveSchemaAttributeValue`
+
+The schema value to inject for an **absent** attribute, per the requested view. Derived entirely from `getAttributeRules`, so read, export, and compare share one source of truth. The store is [faithful](/io/#schema-value-materialization) — it never fills defaults — so this resolver is what turns the stored form into an effective or export view. A stored value always wins and is handled by the caller before this is consulted.
+
+The `defaults` mode selects the view (`AttributeDefaults = 'none' | 'optional' | 'required'`):
+
+| `defaults`   | Returns for an absent attribute                                                   | View                   |
+| ------------ | --------------------------------------------------------------------------------- | ---------------------- |
+| `'none'`     | `undefined` — inject nothing                                                      | faithful / stored-only |
+| `'optional'` | `fixed`, else a non-empty `default`, else `undefined`                             | read (effective) view  |
+| `'required'` | for a `required` or `fixed` attribute: `fixed ?? default ?? ''`; else `undefined` | XSD / export view      |
+
+```ts
+import { resolveSchemaAttributeValue } from '@dialecte/core/utils'
+
+// A required attribute with no schema default:
+resolveSchemaAttributeValue({
+	dialecteConfig,
+	tagName: 'AA_1',
+	attributeName: 'aAA_1',
+	defaults: 'optional',
+})
+// → undefined  (read view does not fabricate it)
+resolveSchemaAttributeValue({
+	dialecteConfig,
+	tagName: 'AA_1',
+	attributeName: 'aAA_1',
+	defaults: 'required',
+})
+// → ''         (export view materializes it for XSD validity)
+```
+
+This resolver backs the [`defaults` option](/api/query#schema-defaults-the-defaults-option) on `getAttribute` / `getAttributes` (read, default `'optional'`) and the export serializer (`'required'`).
+
+### `isSchemaDefaultValue`
+
+Whether a value equals the attribute's schema default, for **compare**: matches the `fixed` value if any, else the `default` (an empty-string default included). Compare sites drop attributes for which this is true, so an authored default-equal value and an absent attribute fold to the same thing.
+
+```ts
+import { isSchemaDefaultValue } from '@dialecte/core/utils'
+
+isSchemaDefaultValue({ dialecteConfig, tagName: 'BBB_1', attributeName: 'bBBB_1', value: 'false' })
+// → true   ('false' is the schema default)
+isSchemaDefaultValue({ dialecteConfig, tagName: 'BBB_1', attributeName: 'bBBB_1', value: 'true' })
+// → false
+```
 
 ### `extractLocalName`
 

@@ -7,25 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
-## [0.5.1] - 2026-07-21
+## [0.4.5] - 2026-07-21
 
 ### Added
 
-- `Project.getDocumentStatus(documentId)`: reconciles this realm against persisted storage and returns `{ live, ready }`, so a document imported in another JS realm (e.g. an iframe running its own `Project`) can be opened without racing the cross-realm registry broadcast. Returns `{ live: false, ready: false }` for unknown documents instead of throwing.
-- `Store.reconcile(documentId?)` and `Store.isDocumentReadable(documentId)` port methods. `DexieStore` self-heals foreign schema bumps (IndexedDB `versionchange` + schema rebuild) so reads no longer throw `InvalidTableError` after an import in another realm; `InMemoryStore` no-ops. **Breaking for `{ type: 'custom' }` stores: both methods are now required.**
+- **Attributes rework — one `defaults` option: `none | optional | required`.** Every read (`getAttribute` / `getAttributes`, including `{ fullObject: true }`) takes it, so you pick the view you need: `none` = exactly what's stored, `optional` = schema `fixed` / `default` filled in (the default), `required` = the XSD/export view (required + fixed). Backed by `resolveSchemaAttributeValue` in `@dialecte/core/utils`. Note: `{ fullObject: true }` now returns the `optional` view — pass `defaults: 'none'` for the stored-only set.
+- **Cross-realm document readiness.** `Project.getDocumentStatus()` plus `Store.reconcile` / `Store.isDocumentReadable` let a document imported in another JS realm (e.g. an iframe) open without a broadcast race. **Breaking for custom stores: both `Store` methods are now required.**
+- **`FIXED_VALUE_VIOLATION` (`D3008`).** Writing a value that contradicts a schema `fixed` now throws; import stays lenient.
 
 ### Changed
 
-- **Faithful store.** `standardizeRecord` no longer materializes schema attribute values. It keeps the source's attributes verbatim (name canonicalization, schema ordering, and namespace resolution unchanged) and no longer synthesizes missing `required` / `fixed` / `default` values. Import → export now round-trips without injecting attributes the author omitted.
-- **Effective read.** `getAttribute` / `getAttributes` (value-object form) now return the effective view: an absent schema attribute is surfaced with its `fixed` or non-empty `default` value (an empty-string default is not injected; a `required`-without-default attribute stays absent). `getAttributesFullObject` still returns the faithful stored-only set.
-- **Export materialization.** Serialization now materializes `required` (as `""` when no value) and `fixed` attributes on every element for XSD validity; optional `default`-only attributes are not reintroduced.
-
-### Added
-
-- `@dialecte/core/utils`: `getEffectiveAttributeValue` (read fallback) and `isSchemaDefaultValue` (compare/normalization) — the shared schema-value helpers built on `getAttributeRules`.
-- `FIXED_VALUE_VIOLATION` (`D3008`): thrown on write (`addChild` / `ensureChild` / `update`) when an authored value differs from an attribute's schema `fixed` value. Import is unaffected — an existing document that already violates a fixed value still loads.
-
-## [0.4.5] - 2026-07-21
+- **Faithful store** — supersedes the earlier "fill on import, strip on export" model (see 0.1.16 / 0.2.11 / 0.3.0). The store now holds exactly what the author wrote: import keeps attributes verbatim and drops empty (`''` / `undefined`) values; schema `required` / `fixed` / `default` are no longer baked into storage. They reappear where they belong — filled on read (`optional`) and materialized on export (`required` + `fixed`) — so import → export round-trips without inventing attributes.
 
 ### Fixed
 

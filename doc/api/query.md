@@ -419,6 +419,29 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 
 Unscoped, `getAttributes(ref)` returns **default-namespace** attributes only. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the complete, prefixed set.
 
+### Schema defaults — the `defaults` option
+
+Every read (`getAttribute`, `getAttributes`, and their `{ fullObject: true }` forms) accepts a `defaults` option controlling how an **absent** schema attribute is filled. A stored value always wins; `defaults` only governs attributes the author omitted.
+
+| `defaults`   | Absent attribute is filled with…                             | Use for                         |
+| ------------ | ------------------------------------------------------------ | ------------------------------- |
+| `'none'`     | nothing — the faithful stored-only set                       | round-trip / write ground truth |
+| `'optional'` | its `fixed` value, or a non-empty `default` (default)        | reading effective values        |
+| `'required'` | `'optional'` plus `required` attributes materialized as `''` | XSD-valid / export view         |
+
+```ts
+// Faithful: exactly what was authored / will be written
+const stored = await doc.query.getAttributes(ref, { defaults: 'none' })
+
+// Read view (default): fixed / non-empty default surfaced
+const effective = await doc.query.getAttributes(ref)
+
+// Export view: required attributes present (as '') for schema validity
+const forExport = await doc.query.getAttributes(ref, { defaults: 'required' })
+```
+
+`getAttributes(ref, { fullObject: true })` defaults to `'optional'` too, synthesizing absent schema attributes with their schema-derived namespace. Pass `{ fullObject: true, defaults: 'none' }` for the stored-only array.
+
 ## Untyped namespace — `query.any`
 
 The `any` namespace exposes the full Query surface without `ElementsOf` / `ChildrenOf` type constraints. Use it for custom/private elements (xs:any), dynamic contexts, or call sites where the element type is a union or unknown.
