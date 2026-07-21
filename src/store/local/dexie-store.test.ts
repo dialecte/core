@@ -399,3 +399,67 @@ describe('DexieStore', () => {
 		})
 	})
 })
+
+describe('DexieStore cross-instance reconciliation', () => {
+	const cleanups: Array<() => Promise<void>> = []
+
+	afterEach(async () => {
+		for (const fn of cleanups) {
+			try {
+				await fn()
+			} catch {
+				// best-effort cleanup
+			}
+		}
+		cleanups.length = 0
+	})
+
+	// Two connections to the same database name, both open concurrently, model
+	// the iframe/shell cross-realm setup: realm B is already open when realm A
+	// imports a new document (schema bump adds the xel_<id> table).
+	async function openPair(): Promise<{ a: DexieStore; b: DexieStore; name: string }> {
+		const name = uniqueName()
+		const a = new DexieStore(name)
+		const b = new DexieStore(name)
+		await a.open()
+		await b.open()
+		cleanups.push(async () => a.close())
+		cleanups.push(async () => b.destroy())
+		return { a, b, name }
+	}
+
+	it('self-heals reads when another open connection imports a document', async () => {
+		const { a, b } = await openPair()
+
+		const file = makeFile()
+		const rec = makeRecord()
+		await a.registerDocument(file)
+		await a.bulkWrite(file.id, { creates: [rec] })
+
+		// Without the fix, b's Dexie connection still lacks xel_<id> and throws
+		// InvalidTableError here.
+		const records = await b.getByDocumentId(file.id)
+		expect(records).toHaveLength(1)
+		expect(records[0].id).toBe(rec.id)
+	})
+
+	it('reconcile() adopts the schema of a foreign import', async () => {
+		const { a, b } = await openPair()
+
+		const file = makeFile()
+		await a.registerDocument(file)
+
+		expect(await b.isDocumentReadable(file.id)).toBe(false)
+
+		await b.reconcile()
+
+		expect(await b.isDocumentReadable(file.id)).toBe(true)
+		const docs = await b.getDocuments()
+		expect(docs.map((d) => d.id)).toContain(file.id)
+	})
+
+	it('isDocumentReadable is false for an unknown document', async () => {
+		const { b } = await openPair()
+		expect(await b.isDocumentReadable(crypto.randomUUID())).toBe(false)
+	})
+})

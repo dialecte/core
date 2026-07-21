@@ -22,6 +22,9 @@ export class InMemoryStore implements Store {
 	readonly name: string
 	private readonly writable: boolean
 
+	/** Guard so the cross-realm no-op warning is emitted at most once per session. */
+	private static reconcileWarned = false
+
 	private documents = new Map<string, DocumentRecord>()
 	private records = new Map<string, Map<string, AnyRawRecord>>()
 	private changelog = new Map<string, ChangeLogEntry[]>()
@@ -47,6 +50,28 @@ export class InMemoryStore implements Store {
 		this.heads.clear()
 		this.blobs.clear()
 		this.blobData.clear()
+	}
+
+	// --- Cross-realm reconciliation ---
+
+	/**
+	 * No-op: in-memory data is not shared across realms/tabs, so there is nothing
+	 * to reconcile. Warns once to flag that a cross-realm setup (e.g. iframe
+	 * extensions) will not see documents imported in another realm with this store.
+	 */
+	async reconcile(): Promise<void> {
+		if (!InMemoryStore.reconcileWarned) {
+			InMemoryStore.reconcileWarned = true
+			console.warn(
+				'[dialecte] InMemoryStore.reconcile() is a no-op: in-memory documents are not ' +
+					'shared across realms/tabs. Use the local (IndexedDB) store for cross-realm sync.',
+			)
+		}
+	}
+
+	/** Readiness reduces to liveness for in-memory: readable iff registered. */
+	async isDocumentReadable(documentId: string): Promise<boolean> {
+		return this.documents.has(documentId)
 	}
 
 	// --- File registry ---

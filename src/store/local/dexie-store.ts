@@ -68,6 +68,12 @@ export class DexieStore implements Store {
 	private knownDocuments: Map<string, DocumentRecord> = new Map()
 	/** Serialization lock for schema-changing operations */
 	private schemaLock: Promise<void> = Promise.resolve()
+	/**
+	 * Set when another connection/realm upgraded the shared schema (an import
+	 * elsewhere added an xel_<id> table) and IndexedDB closed our connection via
+	 * `versionchange`. The next data access self-heals through ensureCurrentSchema.
+	 */
+	private stale = false
 
 	constructor(projectName: string, options?: DexieStoreOptions) {
 		this.name = projectName
@@ -78,35 +84,7 @@ export class DexieStore implements Store {
 	// --- Lifecycle ---
 
 	async open(): Promise<void> {
-		// Bootstrap: open with system tables only to read existing state
-		const bootstrap = new Dexie(this.name)
-		bootstrap.version(1).stores({
-			[TABLE_DOCUMENTS]: buildDexieSchema(DOCUMENTS_SCHEMA),
-			[TABLE_CHANGELOG]: buildDexieSchema(CHANGELOG_SCHEMA),
-			[TABLE_META]: buildDexieSchema(META_SCHEMA),
-			[TABLE_BLOBS]: buildDexieSchema(BLOBS_SCHEMA),
-		})
-
-		try {
-			await bootstrap.open()
-			const files: DocumentRecord[] = await bootstrap.table(TABLE_DOCUMENTS).toArray()
-			const meta = await bootstrap.table(TABLE_META).get('schemaVersion')
-			bootstrap.close()
-
-			// Populate in-memory registry
-			for (const f of files) {
-				this.knownDocuments.set(f.id, f)
-			}
-			this.schemaVersion = meta?.value ?? 1
-		} catch {
-			// Fresh DB - no existing data
-			bootstrap.close()
-		}
-
-		// Open with full schema (all known file tables)
-		this.db = new Dexie(this.name)
-		this.db.version(this.schemaVersion).stores(this.buildStores())
-		await this.db.open()
+		await this.reloadFromPersisted()
 	}
 
 	close(): void {
@@ -122,10 +100,33 @@ export class DexieStore implements Store {
 		this.knownDocuments.clear()
 	}
 
+	// --- Cross-realm reconciliation ---
+
+	/**
+	 * Bring this connection in sync with the shared persisted state (document
+	 * registry + schema). Used by the owning Project when a cross-realm import /
+	 * removal broadcast arrives, so a subsequent read sees the new partition.
+	 */
+	async reconcile(): Promise<void> {
+		await this.ensureCurrentSchema()
+	}
+
+	/**
+	 * Read-only probe: can this connection serve the document's records right now?
+	 * True only when the document is registered here and its backing table exists
+	 * in the current schema. Does not mutate - call reconcile() first to self-heal.
+	 */
+	async isDocumentReadable(documentId: string): Promise<boolean> {
+		if (!this.knownDocuments.has(documentId)) return false
+		const tableName = this.resolveTableName(documentId)
+		return this.db.isOpen() && this.db.tables.some((t) => t.name === tableName)
+	}
+
 	// --- File registry ---
 
 	async registerDocument(file: DocumentRecord): Promise<void> {
 		await this.withSchemaLock(async () => {
+			if (this.stale) await this.reloadFromPersisted()
 			this.knownDocuments.set(file.id, file)
 			await this.reopenWithNewSchema()
 			await this.db.table(TABLE_DOCUMENTS).add(file)
@@ -133,10 +134,12 @@ export class DexieStore implements Store {
 	}
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
+		await this.ensureCurrentSchema()
 		return this.db.table<DocumentRecord>(TABLE_DOCUMENTS).get(documentId)
 	}
 
 	async getDocuments(): Promise<DocumentRecord[]> {
+		await this.ensureCurrentSchema()
 		return this.db.table<DocumentRecord>(TABLE_DOCUMENTS).toArray()
 	}
 
@@ -144,6 +147,7 @@ export class DexieStore implements Store {
 		documentId: string,
 		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata'>>,
 	): Promise<void> {
+		await this.ensureCurrentSchema()
 		await this.db.table(TABLE_DOCUMENTS).update(documentId, updates)
 		const existing = this.knownDocuments.get(documentId)
 		if (existing) {
@@ -153,6 +157,7 @@ export class DexieStore implements Store {
 
 	async removeDocument(documentId: string): Promise<void> {
 		await this.withSchemaLock(async () => {
+			if (this.stale) await this.reloadFromPersisted()
 			// Clear records first (O(1) table clear)
 			const tableName = this.resolveTableName(documentId)
 			if (this.db.tables.some((t) => t.name === tableName)) {
@@ -186,6 +191,7 @@ export class DexieStore implements Store {
 	// --- Record access ---
 
 	async get(id: string, documentId?: string): Promise<AnyRawRecord | undefined> {
+		await this.ensureCurrentSchema()
 		if (documentId) {
 			return this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).get(id)
 		}
@@ -198,10 +204,12 @@ export class DexieStore implements Store {
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
+		await this.ensureCurrentSchema()
 		return this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).toArray()
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
+		await this.ensureCurrentSchema()
 		return this.db
 			.table<AnyRawRecord>(this.resolveTableName(documentId))
 			.where({ tagName })
@@ -214,6 +222,7 @@ export class DexieStore implements Store {
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
+		await this.ensureCurrentSchema()
 		const { creates, updates, deletes } = ops
 		const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 
@@ -266,6 +275,7 @@ export class DexieStore implements Store {
 		deletes: string[]
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
+		await this.ensureCurrentSchema()
 		const { documentId, creates, updates, deletes, onProgress } = params
 		const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 		const total = creates.length + updates.length + deletes.length
@@ -366,6 +376,7 @@ export class DexieStore implements Store {
 	// --- History ---
 
 	async undo(documentId: string): Promise<void> {
+		await this.ensureCurrentSchema()
 		const head = await this.getHead(documentId)
 		if (head === 0) return
 
@@ -395,6 +406,7 @@ export class DexieStore implements Store {
 	}
 
 	async redo(documentId: string): Promise<void> {
+		await this.ensureCurrentSchema()
 		const head = await this.getHead(documentId)
 		const next = head + 1
 
@@ -424,6 +436,7 @@ export class DexieStore implements Store {
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
+		await this.ensureCurrentSchema()
 		const head = await this.getHead(documentId)
 		const next = await this.db
 			.table<ChangeLogEntry>(TABLE_CHANGELOG)
@@ -433,6 +446,7 @@ export class DexieStore implements Store {
 	}
 
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
+		await this.ensureCurrentSchema()
 		return this.db
 			.table<ChangeLogEntry>(TABLE_CHANGELOG)
 			.where({ documentId })
@@ -442,6 +456,7 @@ export class DexieStore implements Store {
 	// --- Blob storage ---
 
 	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
+		await this.ensureCurrentSchema()
 		invariantBlobOwnerKnown(this.knownDocuments, entry.documentId)
 		const blobTable = this.db.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
 		await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
@@ -451,6 +466,7 @@ export class DexieStore implements Store {
 	}
 
 	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
+		await this.ensureCurrentSchema()
 		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
 		if (!entry) return undefined
 		const row = await this.db
@@ -461,11 +477,13 @@ export class DexieStore implements Store {
 	}
 
 	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
+		await this.ensureCurrentSchema()
 		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
 		return all.filter((b) => b.attachedTo.some((a) => a.documentId === documentId))
 	}
 
 	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
+		await this.ensureCurrentSchema()
 		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
 		return all.filter((b) =>
 			b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
@@ -473,11 +491,13 @@ export class DexieStore implements Store {
 	}
 
 	async getStandaloneBlobs(): Promise<BlobRecord[]> {
+		await this.ensureCurrentSchema()
 		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
 		return all.filter((b) => b.attachedTo.length === 0)
 	}
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
+		await this.ensureCurrentSchema()
 		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
 		if (!entry) {
 			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
@@ -494,6 +514,7 @@ export class DexieStore implements Store {
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
+		await this.ensureCurrentSchema()
 		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
 		if (!entry) {
 			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
@@ -505,6 +526,7 @@ export class DexieStore implements Store {
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
+		await this.ensureCurrentSchema()
 		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
 		if (!entry) return
 		const blobTable = this.db.table<{ id: string }>(blobTableName(entry.documentId))
@@ -561,9 +583,80 @@ export class DexieStore implements Store {
 		this.schemaVersion++
 		this.db = new Dexie(this.name)
 		this.db.version(this.schemaVersion).stores(this.buildStores(options))
+		this.attachVersionChangeHandler()
 		await this.db.open()
 		// Persist schema version
 		await this.db.table(TABLE_META).put({ key: 'schemaVersion', value: this.schemaVersion })
+		this.stale = false
+	}
+
+	/**
+	 * (Re)build this connection from persisted state: read the document registry
+	 * and schema version written by any realm, then open the main connection with
+	 * the full set of per-document tables. Used on open() and to self-heal after a
+	 * foreign schema change (see attachVersionChangeHandler / ensureCurrentSchema).
+	 */
+	private async reloadFromPersisted(): Promise<void> {
+		if (this.db.isOpen()) {
+			this.db.close()
+			await tick()
+		}
+
+		// Bootstrap: open with system tables only to read existing state
+		const bootstrap = new Dexie(this.name)
+		bootstrap.version(1).stores({
+			[TABLE_DOCUMENTS]: buildDexieSchema(DOCUMENTS_SCHEMA),
+			[TABLE_CHANGELOG]: buildDexieSchema(CHANGELOG_SCHEMA),
+			[TABLE_META]: buildDexieSchema(META_SCHEMA),
+			[TABLE_BLOBS]: buildDexieSchema(BLOBS_SCHEMA),
+		})
+
+		try {
+			await bootstrap.open()
+			const files: DocumentRecord[] = await bootstrap.table(TABLE_DOCUMENTS).toArray()
+			const meta = await bootstrap.table(TABLE_META).get('schemaVersion')
+			bootstrap.close()
+
+			// Persisted registry is the source of truth - replace, don't merge, so a
+			// removal in another realm is reflected here too.
+			this.knownDocuments = new Map(files.map((f) => [f.id, f]))
+			this.schemaVersion = meta?.value ?? 1
+		} catch {
+			// Fresh DB - no existing data
+			bootstrap.close()
+		}
+
+		// Open with full schema (all known file tables)
+		this.db = new Dexie(this.name)
+		this.db.version(this.schemaVersion).stores(this.buildStores())
+		this.attachVersionChangeHandler()
+		await this.db.open()
+		this.stale = false
+	}
+
+	/**
+	 * Release this connection when another realm/connection upgrades the shared
+	 * schema (e.g. a document imported elsewhere adds an xel_<id> table). Closing
+	 * unblocks the other connection's upgrade; the stale flag makes the next data
+	 * access self-heal via ensureCurrentSchema.
+	 */
+	private attachVersionChangeHandler(): void {
+		this.db.on('versionchange', () => {
+			this.db.close()
+			this.stale = true
+		})
+	}
+
+	/**
+	 * Guard run before every data access. Cheap no-op unless a foreign schema
+	 * change flagged this connection stale, in which case it rebuilds the
+	 * connection from persisted state before the access proceeds.
+	 */
+	private async ensureCurrentSchema(): Promise<void> {
+		if (!this.stale) return
+		await this.withSchemaLock(async () => {
+			if (this.stale) await this.reloadFromPersisted()
+		})
 	}
 
 	/** Serialize schema-changing operations */

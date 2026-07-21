@@ -45,6 +45,27 @@ export interface Store {
 	/** Delete the database entirely (not just clear — remove from browser) */
 	destroy(): Promise<void>
 
+	// --- Cross-realm reconciliation ---
+
+	/**
+	 * Bring this connection in sync with the shared persisted state (document
+	 * registry + schema) so a subsequent read sees documents imported/removed by
+	 * another realm or tab.
+	 *
+	 * Backend semantics: DexieStore adopts the persisted schema version and
+	 * reopens with the full set of per-document tables; a server-backed store
+	 * would invalidate its cache / refetch metadata; InMemoryStore is a no-op
+	 * (its data is not shared across realms).
+	 */
+	reconcile(documentId?: string): Promise<void>
+
+	/**
+	 * Read-only probe: can this connection serve the document's records right
+	 * now? Does not mutate — call reconcile() first to self-heal a stale
+	 * connection.
+	 */
+	isDocumentReadable(documentId: string): Promise<boolean>
+
 	// --- File registry ---
 
 	/** Register a new document — creates its backing storage partition */
