@@ -145,6 +145,26 @@ describe('parseXmlFile', () => {
 					expect(xmlnsExt?.namespace?.uri).toBe('http://www.w3.org/2000/xmlns/')
 				},
 			},
+			'foreign-namespace element whose local name matches a schema element is not standardized': {
+				// `foreign:A` shares the local name `A` with a schema element but lives in a
+				// namespace the config does not declare, so it must pass through unchanged: the
+				// namespace is kept and the required `aA` is NOT auto-filled.
+				file: xmlFile(
+					`<Root xmlns="${NS.default.uri}" xmlns:foreign="http://foreign.example/ns"><foreign:A bA="kept"/></Root>`,
+				),
+				assertRecords: (records) => {
+					const foreign = records.find(
+						(r) => r.tagName === 'A' && r.namespace?.prefix === 'foreign',
+					)!
+					expect(foreign).toBeDefined()
+					expect(foreign.namespace?.uri).toBe('http://foreign.example/ns')
+					expect(foreign.attributes).toHaveLength(1)
+					expect(foreign.attributes).toContainEqual(
+						expect.objectContaining({ name: 'bA', value: 'kept' }),
+					)
+					expect(foreign.attributes.find((attr) => attr.name === 'aA')).toBeUndefined()
+				},
+			},
 		}
 
 		runTestCases.generic(testCases, async (testCase) => {

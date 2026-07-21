@@ -165,6 +165,7 @@ const clean = stripAttributes(record, ['aA_1', 'aA_2'])
 
 Builds a complete, **canonical** `RawRecord` from a partial input — the single form every record-entry point produces (`addChild`/`deepClone`, `update`, `project.import`, `initEmptyDocument`), so records compare cleanly regardless of how they were created. It:
 
+- standardizes only elements in a **declared namespace** (default or a registered one). An element whose local name matches a schema element but lives in a namespace the config does not declare is treated as foreign and returned **verbatim** — namespace and attributes untouched (see [Element namespaces](#element-namespaces));
 - assigns `crypto.randomUUID()` when no `id` is given, and normalizes attributes to array form with **canonical names** (see [Attribute namespaces](#attribute-namespaces));
 - fills schema attributes in **definition-`sequence` order**, resolving each value as `provided ?? fixed ?? default` (required attributes fall back to `''`);
 - drops unnamespaced attributes not in the schema; keeps namespaced/`xmlns` ones, **deterministically ordered** after the schema attributes (`orderAttributesBySequence`);
@@ -212,6 +213,8 @@ A prefixed authored `name` throws `PREFIXED_ATTRIBUTE_NAME`; an unknown namespac
 An element's namespace can depend on its **parent context**: the same local name may be declared in different namespaces under different parents. The generated definition carries this on the parent→child edge (`ChildDefinition.namespace`), and `standardizeRecord` stamps the edge namespace onto the record, falling back to the element's own namespace when the edge omits one (or the record is a root).
 
 For example, an element declared in the default namespace under one parent but in the `ext` namespace under another serializes as bare `A` under the first parent and `ext:A` under the second — driven entirely by the definition, with no per-element special-casing.
+
+This parent-context resolution applies only to elements in a **declared** namespace. An element whose local name matches a schema element but carries a namespace the config does not declare (a private/vendor element) is **not** standardized: its namespace and attributes are kept verbatim, so an import→export round-trip preserves it unchanged.
 
 ---
 

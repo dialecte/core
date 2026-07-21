@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.5] - 2026-07-21
+
+### Fixed
+
+- Import no longer standardizes an element whose local name matches a schema element but whose namespace the config does not declare. Such foreign-namespace records now pass through verbatim (namespace + attributes kept) instead of being coerced to the schema namespace. Standardization is gated on the namespace uri.
+
 ## [0.4.4] - 2026-07-17
 
 ### Added

@@ -350,6 +350,50 @@ describe('standardizeRecord', () => {
 		})
 	})
 
+	// ── Foreign-namespace element with a colliding local name ──────────────────
+
+	describe('foreign-namespace element colliding with a schema local name', () => {
+		// A record whose local name matches a schema element (`AA_1`) but whose namespace is
+		// not one the config declares must NOT be standardized against that schema:
+		// standardization would overwrite its namespace with the schema one and reorder,
+		// default, or drop its attributes. Such a record must pass through untouched.
+		const foreign = { prefix: 'foreign', uri: 'http://foreign.example/ns' }
+
+		it('preserves the foreign namespace instead of overwriting it with the schema one', () => {
+			const result = standardizeRecord({
+				record: {
+					tagName: 'AA_1',
+					namespace: foreign,
+					attributes: [{ name: 'aAA_1', value: 'v' }],
+				},
+				dialecteConfig: config,
+			})
+
+			expect(result.namespace).toEqual(foreign)
+		})
+
+		it('keeps attributes verbatim, without schema ordering or required defaults', () => {
+			// Only the optional `bAA_1` is provided; the required `aAA_1` must NOT be
+			// auto-filled, proving the record skipped schema standardization.
+			const result = standardizeRecord({
+				record: {
+					tagName: 'AA_1',
+					namespace: foreign,
+					attributes: [{ name: 'bAA_1', value: 'kept' }],
+				},
+				dialecteConfig: config,
+			})
+
+			expect(result.attributes).toHaveLength(1)
+			expect(result.attributes).toContainEqual(
+				expect.objectContaining({ name: 'bAA_1', value: 'kept' }),
+			)
+			expect(
+				result.attributes.find((attribute) => attribute.name === ('aAA_1' as any)),
+			).toBeUndefined()
+		})
+	})
+
 	// ── Hook integration ──────────────────────────────────────────────────────
 
 	describe('afterStandardizedRecord hook', () => {

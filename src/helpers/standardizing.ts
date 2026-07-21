@@ -46,7 +46,15 @@ export function standardizeRecord<
 		children: record.children ?? [],
 	}
 
-	const isDialecteElement = dialecteConfig.elements.includes(tagName)
+	// Standardize only schema elements that live in a namespace the config declares.
+	// An element whose local name collides with a schema element but lives in a foreign
+	// namespace parses to the same `tagName`; matching on local name alone would overwrite
+	// its namespace with the schema one and fill/drop its attributes. Guarding on the
+	// namespace uri keeps such foreign records verbatim. Records with no namespace
+	// (created/cloned) or in the default/registered namespaces still standardize.
+	const knownNamespaceUris = Object.values(dialecteConfig.namespaces).map(({ uri }) => uri)
+	const isForeignNamespace = namespace?.uri != null && !knownNamespaceUris.includes(namespace.uri)
+	const isDialecteElement = dialecteConfig.elements.includes(tagName) && !isForeignNamespace
 
 	if (!isDialecteElement) return inputRecord
 

@@ -70,6 +70,7 @@ Import and export use one consistent namespace form (the same records serialize 
 
 - **Attributes** — a default-namespace attribute is stored and serialized by its bare local name (`aA`, `root`); any non-default-namespace attribute uses `prefix:local` (`ext:cA`, `ext:root`). See [Attribute namespaces](/guide/development/helpers#attribute-namespaces).
 - **Elements** — an element's namespace is resolved per parent→child context, so a local name declared in more than one namespace (bare `A` under one parent, `ext:A` under another) serializes correctly under each parent. See [Element namespaces](/guide/development/helpers#element-namespaces).
+- **Foreign elements** — an element whose local name matches a schema element but carries a namespace the config does not declare (a private/vendor element) is kept verbatim on import: its namespace and attributes survive the round-trip untouched.
 
 `xmlns` / `xmlns:*` declarations are hoisted to the root element automatically during export.
 
