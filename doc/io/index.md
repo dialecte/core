@@ -64,6 +64,28 @@ IO hooks let you run logic during the import pipeline without touching transacti
 
 See [IO hooks](/io/hooks) for the full reference.
 
+## Cross-realm reconciliation
+
+A `Project` can be instantiated in more than one JS realm over the same persisted storage (e.g. an `iframe` running its own `Project`). Importing a document in one realm adds a per-document partition and bumps the store schema; other realms must catch up before they can read it.
+
+The `Store` port carries this concern:
+
+| Method                           | Purpose                                                                          |
+| -------------------------------- | -------------------------------------------------------------------------------- |
+| `reconcile(documentId?)`         | Bring this connection in sync with persisted state (document registry + schema). |
+| `isDocumentReadable(documentId)` | Read-only probe: can this connection serve the document's records right now?     |
+
+Backend behaviour:
+
+- **`DexieStore`** self-heals transparently: it listens for IndexedDB `versionchange` (fired when another connection upgrades the schema), releases its connection, and rebuilds it from the persisted schema version on the next access — so reads never throw a missing-partition error because of an import in another realm. `reconcile` performs this catch-up on demand.
+- **`InMemoryStore`** is a no-op (its data is not shared across realms); readiness reduces to liveness. It warns once if `reconcile` is called.
+
+`Project.getDocumentStatus` builds on these to report a document's [`live` / `ready`](/api/project#getdocumentstatus) status regardless of cross-realm signal ordering.
+
+::: warning Custom stores
+`reconcile` and `isDocumentReadable` are **required** members of the `Store` interface. A `{ type: 'custom' }` store must implement both — return a resolved no-op / liveness check when the backend has no cross-realm concern.
+:::
+
 ## Further reading
 
 - [IO reference](/io/xml) - `buildXmlDocument`, `parseXmlFile`, `IOConfig`

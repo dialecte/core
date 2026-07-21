@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.5.1] - 2026-07-21
+
+### Added
+
+- `Project.getDocumentStatus(documentId)`: reconciles this realm against persisted storage and returns `{ live, ready }`, so a document imported in another JS realm (e.g. an iframe running its own `Project`) can be opened without racing the cross-realm registry broadcast. Returns `{ live: false, ready: false }` for unknown documents instead of throwing.
+- `Store.reconcile(documentId?)` and `Store.isDocumentReadable(documentId)` port methods. `DexieStore` self-heals foreign schema bumps (IndexedDB `versionchange` + schema rebuild) so reads no longer throw `InvalidTableError` after an import in another realm; `InMemoryStore` no-ops. **Breaking for `{ type: 'custom' }` stores: both methods are now required.**
+
+### Changed
+
+- **Faithful store.** `standardizeRecord` no longer materializes schema attribute values. It keeps the source's attributes verbatim (name canonicalization, schema ordering, and namespace resolution unchanged) and no longer synthesizes missing `required` / `fixed` / `default` values. Import → export now round-trips without injecting attributes the author omitted.
+- **Effective read.** `getAttribute` / `getAttributes` (value-object form) now return the effective view: an absent schema attribute is surfaced with its `fixed` or non-empty `default` value (an empty-string default is not injected; a `required`-without-default attribute stays absent). `getAttributesFullObject` still returns the faithful stored-only set.
+- **Export materialization.** Serialization now materializes `required` (as `""` when no value) and `fixed` attributes on every element for XSD validity; optional `default`-only attributes are not reintroduced.
+
+### Added
+
+- `@dialecte/core/utils`: `getEffectiveAttributeValue` (read fallback) and `isSchemaDefaultValue` (compare/normalization) — the shared schema-value helpers built on `getAttributeRules`.
+- `FIXED_VALUE_VIOLATION` (`D3008`): thrown on write (`addChild` / `ensureChild` / `update`) when an authored value differs from an attribute's schema `fixed` value. Import is unaffected — an existing document that already violates a fixed value still loads.
+
 ## [0.4.5] - 2026-07-21
 
 ### Fixed

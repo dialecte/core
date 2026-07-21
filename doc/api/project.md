@@ -133,6 +133,38 @@ const root = await doc.query.getRoot()
 const config = project.getDocumentConfig(documentId)
 ```
 
+## getDocumentStatus
+
+`getDocumentStatus` reports whether a document is usable in **this** realm, reconciling the local store against persisted state first. It is the safe way to open a document whose id may have arrived out of band — before the document was registered in this realm — for example an `iframe`-hosted consumer that runs its own `Project` instance in a separate JS realm from the window that performed the import.
+
+```ts
+const { live, ready } = await project.getDocumentStatus(documentId)
+if (ready) {
+	const doc = project.openDocument(documentId)
+	const { xmlDocument } = await project.export(documentId) // safe
+}
+```
+
+**Returns** `Promise<{ live: boolean; ready: boolean }>`
+
+| Field   | Meaning                                                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------- |
+| `live`  | Registered in this realm — `openDocument` will not throw `DOCUMENT_NOT_REGISTERED` (D7002).             |
+| `ready` | The store can serve the document's records — reads / `export` will not throw a missing-partition error. |
+
+An unknown document returns `{ live: false, ready: false }` rather than throwing.
+
+### Why this exists — cross-realm ordering
+
+When a `Project` is instantiated in more than one JS realm over the same persisted storage, the realms coordinate through two independent, **unordered** signals:
+
+- the **document registry**, synced over the project [`BroadcastChannel`](#project-channel-events) (`document-imported` / `document-removed`);
+- the **active-document id**, synced by the host application out of band (e.g. a `storage` event).
+
+Because they are not ordered, the active-document id can reach the other realm _before_ the import broadcast registered the document (`openDocument` throws `DOCUMENT_NOT_REGISTERED`); and even once the registry catches up, that realm's connection may predate the schema that added the document's partition, so a read throws a missing-partition error.
+
+`getDocumentStatus` removes the dependency on signal ordering: it reconciles this realm against the **persisted** storage — the authoritative source, written before either signal fires (see [Cross-realm reconciliation](/io/#cross-realm-reconciliation)) — then reports `live` / `ready`. Callers branch on the result instead of catching; no retries, no reopening the project.
+
 ## Cross-document queries
 
 `queryFirst` and `queryAll` run a query function across all registered documents.
