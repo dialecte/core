@@ -1,30 +1,7 @@
+import type { AttributeDefaults, AttributeRules } from './attribute-rules.types'
 import type { AnyDialecteConfig, Namespace } from '@/types'
 
-/**
- * Schema-derived facts about a single attribute of an element.
- *
- * Single source of truth shared by `standardizeRecord` (which builds the
- * canonical stored form) and export's `shouldSkipDefaultAttribute` (which
- * shapes output). Centralizing the schema reads here keeps the two paths from
- * silently drifting apart — the analog of `orderByConfigSequence` for the
- * "which attributes belong, in what shape" question.
- */
-export type AttributeRules = {
-	/** The tag is a known dialecte element with a definition. */
-	isKnownElement: boolean
-	/** The attribute is declared in the element's schema. */
-	isDefined: boolean
-	/** The attribute is required by the schema. */
-	isRequired: boolean
-	/** The attribute is part of the element's identity (key/unique) fields. */
-	isIdentityField: boolean
-	/** Schema fixed value, if any (takes precedence over default). */
-	fixed: string | undefined
-	/** Schema default value, if any. */
-	default: string | undefined
-	/** Schema-declared namespace for the attribute, if any. */
-	namespace: Namespace | undefined
-}
+export type { AttributeDefaults, AttributeRules } from './attribute-rules.types'
 
 export function getAttributeRules(params: {
 	dialecteConfig: AnyDialecteConfig
@@ -46,6 +23,52 @@ export function getAttributeRules(params: {
 		default: details?.default,
 		namespace: details?.namespace || undefined,
 	}
+}
+
+/**
+ * The schema value to inject for an **absent** attribute, per the requested view.
+ * Derived entirely from {@link getAttributeRules}, so read, compare, and export share
+ * one source of truth. Returns `undefined` when nothing should be injected. A stored
+ * value always wins and is handled by the caller before this is consulted.
+ */
+export function resolveSchemaAttributeValue(params: {
+	dialecteConfig: AnyDialecteConfig
+	tagName: string
+	attributeName: string
+	defaults: AttributeDefaults
+}): string | undefined {
+	const { dialecteConfig, tagName, attributeName, defaults } = params
+	if (defaults === 'none') return undefined
+
+	const rules = getAttributeRules({ dialecteConfig, tagName, attributeName })
+
+	if (defaults === 'required') {
+		if (rules.isRequired || rules.fixed !== undefined) return rules.fixed ?? rules.default ?? ''
+		return undefined
+	}
+
+	// 'optional' (read view)
+	if (rules.fixed !== undefined) return rules.fixed
+	if (rules.default) return rules.default
+	return undefined
+}
+
+/**
+ * Whether a value equals the attribute's schema default for COMPARE: matches the
+ * `fixed` value if any, else the `default` (including an empty-string default).
+ * Compare sites drop attributes for which this is true so that an authored
+ * default-equal value and an absent attribute fold to the same thing.
+ */
+export function isSchemaDefaultValue(params: {
+	dialecteConfig: AnyDialecteConfig
+	tagName: string
+	attributeName: string
+	value: string
+}): boolean {
+	const { dialecteConfig, tagName, attributeName, value } = params
+	const rules = getAttributeRules({ dialecteConfig, tagName, attributeName })
+	const schemaValue = rules.fixed ?? rules.default
+	return schemaValue !== undefined && value === schemaValue
 }
 
 /** Local part of an attribute name — strips a namespace prefix if present (`a:b` → `b`). */
