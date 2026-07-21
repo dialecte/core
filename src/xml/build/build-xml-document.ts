@@ -1,6 +1,11 @@
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
-import { extractLocalName, getAttributeRules, invariant, orderByConfigSequence } from '@/utils'
+import {
+	extractLocalName,
+	invariant,
+	orderByConfigSequence,
+	resolveSchemaAttributeValue,
+} from '@/utils'
 
 import type { BuildXmlDocumentParams } from './build-xml-document.types'
 import type {
@@ -65,7 +70,6 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 			document: xmlDocument,
 			element: rootElement,
 			attributes: rootRecord.attributes,
-			tagName: rootRecord.tagName,
 			isRoot: true,
 			isFragment,
 			declareNamespaces,
@@ -236,12 +240,20 @@ function createElementWithAttributesAndText(params: {
 			document: doc,
 			element,
 			attributes: record.attributes,
-			tagName: record.tagName,
 			isRoot: false,
 			isFragment,
 			declareNamespaces,
 		})
 	}
+
+	materializeRequiredAndFixedAttributes({
+		config,
+		document: doc,
+		element,
+		tagName: record.tagName,
+		isFragment,
+		declareNamespaces,
+	})
 
 	if (record.value) element.textContent = record.value.trim()
 	if (withDatabaseIds) element.setAttribute(TEMP_IDB_ID_ATTRIBUTE_NAME, record.id)
@@ -256,7 +268,6 @@ function addAttributesToElement(params: {
 	document: XMLDocument
 	element: Element
 	attributes: AnyAttribute[]
-	tagName: string
 	isRoot: boolean
 	isFragment: boolean
 	declareNamespaces: boolean
@@ -266,7 +277,6 @@ function addAttributesToElement(params: {
 		document: doc,
 		element,
 		attributes,
-		tagName,
 		isRoot,
 		isFragment,
 		declareNamespaces,
@@ -274,10 +284,6 @@ function addAttributesToElement(params: {
 
 	for (const attribute of attributes) {
 		if (isNamespaceDeclaration(attribute)) continue
-		const isAttributeSet = attribute.value
-		if (!isRoot && !isAttributeSet && shouldSkipDefaultAttribute({ config, tagName, attribute })) {
-			continue
-		}
 
 		if (!isQualifiedAttribute(attribute) || !attribute.namespace.prefix) {
 			element.setAttribute(attribute.name, String(attribute.value))
@@ -310,7 +316,6 @@ function addAttributesToElement(params: {
 }
 
 // ── Namespace helpers ────────────────────────────────────────────────────────
-
 function addNamespaceToRootElementIfNeeded(params: {
 	config: AnyDialecteConfig
 	document: XMLDocument
@@ -342,7 +347,17 @@ function enforceRootAttributes(params: {
 
 	const matchingRootAttributes = Object.entries(
 		config.definition[config.rootElementName].attributes.details,
-	).filter(([_, attribute]) => {
+	).filter(([attributeName, attribute]) => {
+		// Materialize only the `required` view (required + fixed); optional default-only
+		// attributes are not reintroduced, keeping the store faithful.
+		const value = resolveSchemaAttributeValue({
+			dialecteConfig: config,
+			tagName: config.rootElementName,
+			attributeName,
+			defaults: 'required',
+		})
+		if (value === undefined) return false
+
 		const isDefaultNamespace = namespace.uri === config.namespaces.default.uri
 		if (isDefaultNamespace) return !attribute.namespace
 
@@ -356,6 +371,13 @@ function enforceRootAttributes(params: {
 
 	for (const [attributeName, attribute] of matchingRootAttributes) {
 		const localName = extractLocalName(attributeName)
+		const value =
+			resolveSchemaAttributeValue({
+				dialecteConfig: config,
+				tagName: config.rootElementName,
+				attributeName,
+				defaults: 'required',
+			}) ?? ''
 
 		const attributeExists = attribute.namespace
 			? rootElement.hasAttributeNS(attribute.namespace.uri, localName)
@@ -365,9 +387,74 @@ function enforceRootAttributes(params: {
 
 		if (attribute.namespace) {
 			const qualifiedName = `${attribute.namespace.prefix}:${localName}`
-			rootElement.setAttributeNS(attribute.namespace.uri, qualifiedName, attribute.default || '')
+			rootElement.setAttributeNS(attribute.namespace.uri, qualifiedName, value)
 		} else {
-			rootElement.setAttribute(localName, attribute.default || '')
+			rootElement.setAttribute(localName, value)
+		}
+	}
+}
+
+// ── Schema materialization ───────────────────────────────────────────────────
+
+/**
+ * Materialize the `required` schema view (required + fixed attributes) that is absent
+ * from a non-root element, for XSD validity against a faithful store. Values come from
+ * the shared `resolveSchemaAttributeValue`, so export stays in lockstep with the read
+ * `defaults: 'required'` view. Optional default-only attributes are NOT materialized —
+ * the store stays faithful and export does not reintroduce omitted defaults.
+ */
+function materializeRequiredAndFixedAttributes(params: {
+	config: AnyDialecteConfig
+	document: XMLDocument
+	element: Element
+	tagName: string
+	isFragment: boolean
+	declareNamespaces: boolean
+}): void {
+	const { config, document: doc, element, tagName, isFragment, declareNamespaces } = params
+
+	// Bare-fragment mode (no namespace declarations) is a minimal literal snippet
+	// view, not a schema-valid document — skip materialization there.
+	if (!declareNamespaces) return
+
+	const details = config.definition[tagName]?.attributes.details
+	if (!details) return
+
+	for (const [attributeName, attribute] of Object.entries(details)) {
+		const value = resolveSchemaAttributeValue({
+			dialecteConfig: config,
+			tagName,
+			attributeName,
+			defaults: 'required',
+		})
+		if (value === undefined) continue
+
+		const localName = extractLocalName(attributeName)
+		const exists = attribute.namespace
+			? element.hasAttributeNS(attribute.namespace.uri, localName)
+			: element.hasAttribute(localName)
+		if (exists) continue
+
+		if (
+			attribute.namespace &&
+			attribute.namespace.prefix &&
+			attribute.namespace.prefix !== 'xmlns'
+		) {
+			if (declareNamespaces) {
+				addNamespaceToRootElementIfNeeded({
+					config,
+					document: doc,
+					namespace: attribute.namespace,
+					isFragment,
+				})
+			}
+			element.setAttributeNS(
+				attribute.namespace.uri,
+				`${attribute.namespace.prefix}:${localName}`,
+				value,
+			)
+		} else {
+			element.setAttribute(localName, value)
 		}
 	}
 }
@@ -390,30 +477,4 @@ function isNamespaceDeclaration(attribute: AnyAttribute | AnyQualifiedAttribute)
 	if (attribute.name.startsWith('xmlns:')) return true
 	if (isQualifiedAttribute(attribute) && attribute.namespace?.prefix === 'xmlns') return true
 	return false
-}
-
-/**
- * Output-only delta over the canonical form: strip an empty **optional,
- * non-identity** attribute of a known element from serialized XML. Schema facts
- * come from the shared `getAttributeRules` so this stays in lockstep with
- * `standardizeRecord`; only the "skip when empty for output" decision lives here.
- */
-function shouldSkipDefaultAttribute(params: {
-	config: AnyDialecteConfig
-	tagName: string
-	attribute: AnyAttribute | AnyQualifiedAttribute
-}): boolean {
-	const { config, tagName, attribute } = params
-
-	const rules = getAttributeRules({
-		dialecteConfig: config,
-		tagName,
-		attributeName: attribute.name,
-	})
-
-	if (!rules.isKnownElement || !rules.isDefined) return false
-	if (rules.isRequired) return false
-	if (rules.isIdentityField) return false
-
-	return true
 }

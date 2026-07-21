@@ -1,6 +1,6 @@
 import { toFullAttributeArray } from './converter'
 
-import { getAttributeRules, orderAttributesBySequence } from '@/utils'
+import { orderAttributesBySequence } from '@/utils'
 
 import type {
 	AnyDialecteConfig,
@@ -60,36 +60,40 @@ export function standardizeRecord<
 
 	const standardAttributeNames = dialecteConfig.definition[tagName].attributes.sequence
 
-	const standardizedAttributes = standardAttributeNames.flatMap((attributeName) => {
-		const rules = getAttributeRules({ dialecteConfig, tagName, attributeName })
+	// Keep provided attributes only — the store stays faithful to the source, with one
+	// normalization: an empty ('') or undefined value on a schema-managed attribute is
+	// dropped. An empty carries no authored information — a `required` / `fixed` value is
+	// re-materialized on export and a schema `default` (including '') is re-applied on
+	// read/validation — so storing '' would be redundant and misread as a real value.
+	// Schema-sequence attributes that are present with a value, plus any qualified
+	// attribute (foreign-namespace or xmlns/xmlns:*), are retained; unqualified
+	// non-schema attributes are dropped. Missing required/fixed/default attributes are
+	// NOT synthesized here: schema values are materialized on export (required + fixed)
+	// and surfaced on read (getAttribute/getAttributes effective view).
+	const keptAttributes = attributesArray.filter((attribute) => {
+		const isSchemaAttribute = standardAttributeNames.includes(attribute.name)
+		const isQualifiedExtra = 'namespace' in attribute && attribute.namespace != null
+		if (!isSchemaAttribute && !isQualifiedExtra) return false
 
-		// Fixed values take precedence over defaults (XSD `fixed`); required
-		// attributes fall back to '' so they are always present.
-		const schemaValue = rules.fixed ?? rules.default
-		const foundAttribute = attributesArray.find((attribute) => attribute.name === attributeName)
-		const attributeValue =
-			foundAttribute?.value ?? (rules.isRequired ? (schemaValue ?? '') : schemaValue)
+		const isEmptyValue =
+			attribute.value === undefined || attribute.value === null || attribute.value === ''
+		if (isSchemaAttribute && isEmptyValue) return false
 
-		if (attributeValue === undefined) return []
-
-		return [
-			{
-				name: attributeName,
-				value: attributeValue,
-				namespace: rules.namespace,
-			},
-		]
+		return true
 	})
 
-	// Attributes outside the schema sequence (foreign-namespace attrs and
-	// xmlns/xmlns:* declarations) are kept; unqualified non-schema attributes are
-	// dropped. Ordering is applied below so the full array is order-canonical.
-	const extraQualifiedAttributes = attributesArray.filter(
-		(attribute) =>
-			'namespace' in attribute &&
-			attribute.namespace != null &&
-			!standardAttributeNames.includes(attribute.name),
-	)
+	// Two-rule convention: a default-namespace attribute is stored bare (no
+	// namespace object). A caller may pass the default namespace explicitly (e.g.
+	// a parsed record keyed by local name + default namespace); drop it so created
+	// and imported forms of the same attribute are byte-identical.
+	const defaultNamespaceUri = dialecteConfig.namespaces.default.uri
+	const canonicalAttributes = keptAttributes.map((attribute) => {
+		if ('namespace' in attribute && attribute.namespace?.uri === defaultNamespaceUri) {
+			const { namespace: _defaultNamespace, ...bare } = attribute
+			return bare as typeof attribute
+		}
+		return attribute
+	})
 
 	// An element's namespace can depend on its parent context: the same local name
 	// may be declared in different namespaces under different parents (e.g. SCL
@@ -104,10 +108,7 @@ export function standardizeRecord<
 	let standardizedRecord: RawRecord<GenericConfig, GenericElement> = {
 		...inputRecord,
 		namespace: edgeNamespace ?? dialecteConfig.definition[tagName].namespace,
-		attributes: orderAttributesBySequence(
-			[...standardizedAttributes, ...extraQualifiedAttributes],
-			standardAttributeNames,
-		),
+		attributes: orderAttributesBySequence(canonicalAttributes, standardAttributeNames),
 	}
 
 	if (hooks?.afterStandardizedRecord) {

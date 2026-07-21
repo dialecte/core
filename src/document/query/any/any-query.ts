@@ -22,6 +22,7 @@ import type {
 	AnyTreeRecord,
 	ElementsOf,
 } from '@/types'
+import type { AttributeDefaults } from '@/utils'
 
 /**
  * Untyped query namespace - bypasses ElementsOf/ChildrenOf constraints.
@@ -74,15 +75,20 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 
 	async getAttribute(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; namespace?: string; fullObject?: false },
+		params: { name: string; namespace?: string; fullObject?: false; defaults?: AttributeDefaults },
 	): Promise<string>
 	async getAttribute(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; namespace?: string; fullObject: true },
+		params: { name: string; namespace?: string; fullObject: true; defaults?: AttributeDefaults },
 	): Promise<AnyAttribute | undefined>
 	async getAttribute(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { name: string; namespace?: string; fullObject?: boolean },
+		params: {
+			name: string
+			namespace?: string
+			fullObject?: boolean
+			defaults?: AttributeDefaults
+		},
 	): Promise<string | AnyAttribute | undefined> {
 		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
 		const { fullObject } = params
@@ -92,15 +98,15 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 
 	async getAttributes(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params?: { namespace?: string; fullObject?: false },
+		params?: { namespace?: string; fullObject?: false; defaults?: AttributeDefaults },
 	): Promise<Record<string, string>>
 	async getAttributes(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params: { namespace?: string; fullObject: true },
+		params: { namespace?: string; fullObject: true; defaults?: AttributeDefaults },
 	): Promise<AnyAttribute[]>
 	async getAttributes(
 		refOrRecord: AnyRefOrRecord | undefined,
-		params?: { namespace?: string; fullObject?: boolean },
+		params?: { namespace?: string; fullObject?: boolean; defaults?: AttributeDefaults },
 	): Promise<Record<string, string> | AnyAttribute[]> {
 		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
 		const { fullObject } = params || {}

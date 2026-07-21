@@ -119,14 +119,13 @@ describe('parseXmlFile', () => {
 		}
 
 		const testCases: Record<string, TestCase> = {
-			'attributes are reordered to schema sequence and required defaults filled': {
+			'provided attributes are reordered to schema sequence; missing ones are not filled': {
 				// provided out of order and missing the required aA
 				file: xmlFile(`<Root xmlns="${NS.default.uri}"><A bA="y" /></Root>`),
 				assertRecords: (records) => {
 					const a = records.find((r) => r.tagName === 'A')!
-					// aA (required) filled with '', ordered before bA per schema sequence
-					expect(a.attributes.map((attr) => attr.name)).toEqual(['aA', 'bA'])
-					expect(a.attributes.find((attr) => attr.name === 'aA')?.value).toBe('')
+					// Faithful store: the omitted required aA is NOT synthesized; only bA is kept.
+					expect(a.attributes.map((attr) => attr.name)).toEqual(['bA'])
 				},
 			},
 			'xmlns declarations survive standardization on the root record': {

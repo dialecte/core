@@ -42,6 +42,7 @@ import type {
 	Operation,
 	RootElementOf,
 } from '@/types'
+import type { AttributeDefaults } from '@/utils'
 
 /**
  * Query — query-only access to a dialecte's store.
@@ -399,6 +400,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			name: AttributesOf<GenericConfig, GenericElement> | (string & {})
 			namespace?: NamespaceKeysUsedByElement<GenericConfig, GenericElement> | (string & {})
 			fullObject?: false
+			defaults?: AttributeDefaults
 		},
 	): Promise<FullAttributeObjectOf<GenericConfig, GenericElement>['value'] | ''>
 	async getAttribute<GenericElement extends ElementsOf<GenericConfig>>(
@@ -407,6 +409,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			name: AttributesOf<GenericConfig, GenericElement> | (string & {})
 			namespace?: NamespaceKeysUsedByElement<GenericConfig, GenericElement> | (string & {})
 			fullObject: true
+			defaults?: AttributeDefaults
 		},
 	): Promise<FullAttributeObjectOf<GenericConfig, GenericElement> | undefined>
 	async getAttribute<
@@ -418,6 +421,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			name: string
 			namespace?: string
 			fullObject?: boolean
+			defaults?: AttributeDefaults
 		},
 	): Promise<GenericAttribute | undefined | GenericAttribute['value'] | ''> {
 		const resolvedRef = toRef(refOrRecord)
@@ -440,7 +444,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 */
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-		params?: { namespace?: undefined; fullObject?: false },
+		params?: { namespace?: undefined; fullObject?: false; defaults?: AttributeDefaults },
 	): Promise<DefaultAttributesValueObjectOf<GenericConfig, GenericElement>>
 	/**
 	 * Get a record's attributes for a namespace scope, keyed by **local** name.
@@ -459,7 +463,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		GenericNamespaceKey extends NamespaceKeysUsedByElement<GenericConfig, GenericElement>,
 	>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-		params: { namespace: GenericNamespaceKey; fullObject?: false },
+		params: { namespace: GenericNamespaceKey; fullObject?: false; defaults?: AttributeDefaults },
 	): Promise<NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey>>
 	/**
 	 * Get a record's attributes for a custom namespace scope not declared in the
@@ -467,7 +471,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 */
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-		params: { namespace: string; fullObject?: false },
+		params: { namespace: string; fullObject?: false; defaults?: AttributeDefaults },
 	): Promise<Record<string, string>>
 	/**
 	 * Get all attributes of a record as an array of full attribute objects.
@@ -482,11 +486,11 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 */
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-		params: { fullObject: true },
+		params: { fullObject: true; defaults?: AttributeDefaults },
 	): Promise<FullAttributeObjectOf<GenericConfig, GenericElement>[]>
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-		params?: { namespace?: string; fullObject?: boolean },
+		params?: { namespace?: string; fullObject?: boolean; defaults?: AttributeDefaults },
 	): Promise<Record<string, string> | FullAttributeObjectOf<GenericConfig, GenericElement>[]> {
 		const resolvedRef = toRef(refOrRecord)
 		const { fullObject } = params || {}

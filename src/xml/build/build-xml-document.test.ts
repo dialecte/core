@@ -283,6 +283,72 @@ describe('buildXmlDocument', () => {
 		})
 	})
 
+	describe('schema materialization on export', () => {
+		it('materializes a missing required attribute on a non-root element as an empty value', () => {
+			const doc = buildXmlDocument({
+				records: [
+					record({ id: 'root-1', tagName: 'Root', children: [{ id: 'a-1', tagName: 'A' }] }),
+					record({
+						id: 'a-1',
+						tagName: 'A',
+						parent: { id: 'root-1', tagName: 'Root' },
+						attributes: [],
+					}),
+				],
+				config: CONFIG,
+			})
+
+			expect(serialize(doc)).toContain('aA=""')
+		})
+
+		it('materializes a missing fixed attribute with its fixed value', () => {
+			const doc = buildXmlDocument({
+				records: [
+					record({ id: 'root-1', tagName: 'Root', children: [{ id: 'c-1', tagName: 'C' }] }),
+					record({
+						id: 'c-1',
+						tagName: 'C',
+						parent: { id: 'root-1', tagName: 'Root' },
+						children: [{ id: 'cc-1', tagName: 'CC_1' }],
+					}),
+					record({
+						id: 'cc-1',
+						tagName: 'CC_1',
+						parent: { id: 'c-1', tagName: 'C' },
+						attributes: [],
+					}),
+				],
+				config: CONFIG,
+			})
+
+			expect(serialize(doc)).toContain('aCC_1="fixed_val"')
+		})
+
+		it('does not materialize an absent optional default attribute', () => {
+			const doc = buildXmlDocument({
+				records: [
+					record({ id: 'root-1', tagName: 'Root', children: [{ id: 'b-1', tagName: 'B' }] }),
+					record({
+						id: 'b-1',
+						tagName: 'B',
+						parent: { id: 'root-1', tagName: 'Root' },
+						children: [{ id: 'bb-1', tagName: 'BB_1' }],
+					}),
+					record({
+						id: 'bb-1',
+						tagName: 'BB_1',
+						parent: { id: 'b-1', tagName: 'B' },
+						attributes: [{ name: 'aBB_1', value: 'req' }],
+					}),
+				],
+				config: CONFIG,
+			})
+
+			// bBB_1 is optional with default '' — must NOT be materialized on export.
+			expect(serialize(doc)).not.toContain('bBB_1')
+		})
+	})
+
 	describe('namespaced elements and attributes', () => {
 		type TestCase = BaseTestCase & {
 			records: AnyRawRecord[]
@@ -407,22 +473,21 @@ describe('buildXmlDocument', () => {
 		}
 
 		const testCases: Record<string, TestCase> = {
-			'root default attributes enforced when not provided': {
+			'root optional default attributes are NOT materialized on export': {
 				records: [
 					record({
 						id: 'root-1',
 						tagName: 'Root',
-						// No attributes provided - enforceRootAttributes should add defaults
+						// root/ext:root are optional defaults — export must not reintroduce them
 						attributes: [],
 					}),
 				],
 				assertions: (doc) => {
 					const root = doc.documentElement
-					// config defines root attr with default '1'
-					expect(root.getAttribute('root')).toBe('1')
+					expect(root.hasAttribute('root')).toBe(false)
 				},
 			},
-			'root qualified attributes enforced when ext namespace encountered': {
+			'root optional qualified default is NOT materialized when ext namespace encountered': {
 				records: [
 					record({
 						id: 'root-1',
@@ -440,8 +505,8 @@ describe('buildXmlDocument', () => {
 				],
 				assertions: (doc) => {
 					const root = doc.documentElement
-					// ext:root default is '2'
-					expect(root.getAttributeNS(NS.ext.uri, 'root')).toBe('2')
+					// ext:root is an optional default → not materialized
+					expect(root.hasAttributeNS(NS.ext.uri, 'root')).toBe(false)
 				},
 			},
 			'existing root attribute not overwritten by default': {
@@ -465,74 +530,46 @@ describe('buildXmlDocument', () => {
 		})
 	})
 
-	describe('empty attribute stripping', () => {
+	describe('attribute emission (normalization is a write-boundary concern)', () => {
 		type TestCase = BaseTestCase & {
 			records: AnyRawRecord[]
 			assertions: (xmlDocument: XMLDocument) => void
 		}
 
 		const testCases: Record<string, TestCase> = {
-			'non-identity empty attribute -> stripped': {
-				// BB_2.bBB_2 has default '' and is NOT in identityFields
-				records: [
-					record({
-						id: 'root-1',
-						tagName: 'Root',
-						children: [{ id: 'b-1', tagName: 'B' }],
-					}),
-					record({
-						id: 'b-1',
-						tagName: 'B',
-						parent: { id: 'root-1', tagName: 'Root' },
-						attributes: [{ name: 'aB', value: 'x' }],
-						children: [{ id: 'bb2-1', tagName: 'BB_2' }],
-					}),
-					record({
-						id: 'bb2-1',
-						tagName: 'BB_2',
-						parent: { id: 'b-1', tagName: 'B' },
-						attributes: [
-							{ name: 'aBB_2', value: 'required-val' },
-							{ name: 'bBB_2', value: '' }, // empty, not identity -> stripped
-						],
-					}),
-				],
-				assertions: (doc) => {
-					const bb2 = doc.querySelector('BB_2')
-					expect(bb2!.hasAttribute('bBB_2')).toBe(false)
+			'empty attribute is emitted verbatim (buildXmlDocument is faithful; standardizeRecord drops empties)':
+				{
+					// The store never holds an empty schema attribute (standardizeRecord drops it),
+					// so export does not re-strip: a record fed an empty value emits it verbatim.
+					records: [
+						record({
+							id: 'root-1',
+							tagName: 'Root',
+							children: [{ id: 'b-1', tagName: 'B' }],
+						}),
+						record({
+							id: 'b-1',
+							tagName: 'B',
+							parent: { id: 'root-1', tagName: 'Root' },
+							attributes: [{ name: 'aB', value: 'x' }],
+							children: [{ id: 'bb2-1', tagName: 'BB_2' }],
+						}),
+						record({
+							id: 'bb2-1',
+							tagName: 'BB_2',
+							parent: { id: 'b-1', tagName: 'B' },
+							attributes: [
+								{ name: 'aBB_2', value: 'required-val' },
+								{ name: 'bBB_2', value: '' },
+							],
+						}),
+					],
+					assertions: (doc) => {
+						const bb2 = doc.querySelector('BB_2')
+						expect(bb2!.hasAttribute('bBB_2')).toBe(true)
+						expect(bb2!.getAttribute('bBB_2')).toBe('')
+					},
 				},
-			},
-			'identity-field empty attribute -> preserved': {
-				// BB_1.bBB_1 has default '' and IS in identityFields
-				records: [
-					record({
-						id: 'root-1',
-						tagName: 'Root',
-						children: [{ id: 'b-1', tagName: 'B' }],
-					}),
-					record({
-						id: 'b-1',
-						tagName: 'B',
-						parent: { id: 'root-1', tagName: 'Root' },
-						attributes: [{ name: 'aB', value: 'x' }],
-						children: [{ id: 'bb1-1', tagName: 'BB_1' }],
-					}),
-					record({
-						id: 'bb1-1',
-						tagName: 'BB_1',
-						parent: { id: 'b-1', tagName: 'B' },
-						attributes: [
-							{ name: 'aBB_1', value: 'required-val' },
-							{ name: 'bBB_1', value: '' }, // empty, but identity -> kept
-						],
-					}),
-				],
-				assertions: (doc) => {
-					const bb1 = doc.querySelector('BB_1')
-					expect(bb1!.hasAttribute('bBB_1')).toBe(true)
-					expect(bb1!.getAttribute('bBB_1')).toBe('')
-				},
-			},
 			'non-empty attribute -> always preserved': {
 				records: [
 					record({
@@ -700,12 +737,12 @@ describe('buildXmlDocument', () => {
 					expect(root.getAttributeNS(NS.ext.uri, 'root')).toBeNull()
 				},
 			},
-			'rootId on the document root -> behaves like full export with root attributes': {
+			'rootId on the document root -> behaves like full export (document root element)': {
 				rootId: 'root-1',
 				assertions: (doc) => {
 					const root = doc.documentElement
 					expect(root.tagName).toBe('Root')
-					expect(root.getAttribute('root')).toBe('1')
+					expect(root.getAttribute('xmlns')).toBe(NS.default.uri)
 				},
 			},
 		}

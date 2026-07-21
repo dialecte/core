@@ -32,14 +32,32 @@ describe('getAttributes', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: { aA: 'hello' },
 		},
-		'fills required attribute with empty default when none provided': {
+		'omits an absent required attribute that has no schema default': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
 				</Root>
 			`,
 			ref: { tagName: 'A', id: 'a1' },
-			expected: { aA: '' },
+			expected: {},
+		},
+		'injects an absent fixed attribute as its fixed value': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C ${customId}="c1"><CC_1 ${customId}="cc1" /></C>
+				</Root>
+			`,
+			ref: { tagName: 'CC_1', id: 'cc1' },
+			expected: { aCC_1: 'fixed_val' },
+		},
+		'injects an absent non-empty default value': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<B ${customId}="b1"><BB_1 ${customId}="bb1"><BBB_1 ${customId}="bbb1" /></BB_1></B>
+				</Root>
+			`,
+			ref: { tagName: 'BBB_1', id: 'bbb1' },
+			expected: { bBBB_1: 'false' },
 		},
 		'returns empty object when ref does not exist': {
 			sourceXml: /* xml */ `<Root ${ns} />`,
@@ -119,6 +137,7 @@ describe('getAttributes (namespace scoping)', () => {
 describe('getAttributesFullObject', () => {
 	type TestCase = BaseXmlTestCase & {
 		ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+		defaults?: 'none' | 'optional' | 'required'
 		expected: { name: string; value: string }[]
 	}
 
@@ -132,14 +151,44 @@ describe('getAttributesFullObject', () => {
 			ref: { tagName: 'A', id: 'a1' },
 			expected: [{ name: 'aA', value: 'world' }],
 		},
-		'fills required attribute with empty default when none provided': {
+		"defaults: 'none' keeps only stored attributes verbatim": {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C ${customId}="c1"><CC_1 ${customId}="cc1" /></C>
+				</Root>
+			`,
+			ref: { tagName: 'CC_1', id: 'cc1' },
+			defaults: 'none',
+			expected: [],
+		},
+		"defaults: 'optional' (default) synthesizes an absent fixed attribute": {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C ${customId}="c1"><CC_1 ${customId}="cc1" /></C>
+				</Root>
+			`,
+			ref: { tagName: 'CC_1', id: 'cc1' },
+			expected: [{ name: 'aCC_1', value: 'fixed_val' }],
+		},
+		"defaults: 'optional' does not fabricate a required-without-default attribute": {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
 					<A ${customId}="a1" />
 				</Root>
 			`,
 			ref: { tagName: 'A', id: 'a1' },
-			expected: [{ name: 'aA', value: '' }],
+			defaults: 'optional',
+			expected: [],
+		},
+		"defaults: 'required' materializes an absent required attribute as ''": {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<AA_1 ${customId}="aa1" />
+				</Root>
+			`,
+			ref: { tagName: 'AA_1', id: 'aa1' },
+			defaults: 'required',
+			expected: [{ name: 'aAA_1', value: '' }],
 		},
 		'returns empty array when ref does not exist': {
 			sourceXml: /* xml */ `<Root ${ns} />`,
@@ -149,7 +198,10 @@ describe('getAttributesFullObject', () => {
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const result = await source.query.getAttributes(testCase.ref, { fullObject: true })
+		const result = await source.query.getAttributes(testCase.ref, {
+			fullObject: true,
+			...(testCase.defaults ? { defaults: testCase.defaults } : {}),
+		})
 		expect(result).toEqual(
 			expect.arrayContaining(testCase.expected.map((e) => expect.objectContaining(e))),
 		)

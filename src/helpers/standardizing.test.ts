@@ -47,21 +47,23 @@ describe('standardizeRecord', () => {
 					{ name: 'bAA_1', value: 'value2' },
 				],
 			},
-			'adds empty default for required attribute when missing': {
+			'does not synthesize a missing required attribute': {
 				input: { tagName: 'AA_1', attributes: {} as { aAA_1: string } },
-				expectedAttributes: [{ name: 'aAA_1', value: '' }],
+				expectedAttributes: [],
 			},
 			'omits optional attributes when not provided': {
 				input: { tagName: 'AA_1', attributes: { aAA_1: 'required' } },
 				expectedAttributes: [{ name: 'aAA_1', value: 'required' }],
 			},
-			'preserves optional attribute with empty-string default when provided': {
+			'drops a schema attribute provided with an empty value': {
 				input: { tagName: 'BB_1', attributes: { aBB_1: 'req', bBB_1: '' } },
-				expectedAttributes: [
-					{ name: 'aBB_1', value: 'req' },
-					{ name: 'bBB_1', value: '' },
-				],
+				expectedAttributes: [{ name: 'aBB_1', value: 'req' }],
 			},
+			'drops a required schema attribute provided with an empty value (re-materialized on export)':
+				{
+					input: { tagName: 'AA_1', attributes: { aAA_1: '' } as { aAA_1: string } },
+					expectedAttributes: [],
+				},
 			'includes optional attribute with empty-string default when provided with value': {
 				input: { tagName: 'BB_1', attributes: { aBB_1: 'req', bBB_1: 'val' } },
 				expectedAttributes: [
@@ -69,12 +71,9 @@ describe('standardizeRecord', () => {
 					{ name: 'bBB_1', value: 'val' },
 				],
 			},
-			'uses schema default for optional attribute when not provided': {
+			'does not synthesize a missing optional default': {
 				input: { tagName: 'BB_1', attributes: { aBB_1: 'req' } },
-				expectedAttributes: [
-					{ name: 'aBB_1', value: 'req' },
-					{ name: 'bBB_1', value: '' },
-				],
+				expectedAttributes: [{ name: 'aBB_1', value: 'req' }],
 			},
 			'includes all provided optional attributes alongside required': {
 				input: {
@@ -248,12 +247,12 @@ describe('standardizeRecord', () => {
 			expect(forward.attributes).toEqual(reverse.attributes)
 		})
 
-		it('uses the fixed value for a required attribute when not provided', () => {
+		it('does not synthesize a missing fixed attribute', () => {
 			const result = standardizeRecord({ record: { tagName: 'CC_1' }, dialecteConfig: config })
 
 			expect(
-				result.attributes.find((attribute) => attribute.name === ('aCC_1' as any))?.value,
-			).toBe('fixed_val')
+				result.attributes.find((attribute) => attribute.name === ('aCC_1' as any)),
+			).toBeUndefined()
 		})
 	})
 
@@ -394,8 +393,40 @@ describe('standardizeRecord', () => {
 		})
 	})
 
-	// ── Hook integration ──────────────────────────────────────────────────────
+	// ── Faithful store (no value materialization) ──────────────────────────────
 
+	describe('faithful store', () => {
+		it('does not synthesize a missing required attribute', () => {
+			const result = standardizeRecord({
+				record: { tagName: 'AA_1', attributes: {} as { aAA_1: string } },
+				dialecteConfig: config,
+			})
+			expect(result.attributes).toEqual([])
+		})
+
+		it('does not synthesize a missing fixed attribute', () => {
+			const result = standardizeRecord({ record: { tagName: 'CC_1' }, dialecteConfig: config })
+			expect(result.attributes).toEqual([])
+		})
+
+		it('does not synthesize a missing optional default', () => {
+			const result = standardizeRecord({
+				record: { tagName: 'BB_1', attributes: { aBB_1: 'req' } },
+				dialecteConfig: config,
+			})
+			expect(result.attributes.map((attribute) => attribute.name)).toEqual(['aBB_1'])
+		})
+
+		it('keeps provided attributes in schema-sequence order', () => {
+			const result = standardizeRecord({
+				record: { tagName: 'AA_1', attributes: { bAA_1: 'b', aAA_1: 'a' } },
+				dialecteConfig: config,
+			})
+			expect(result.attributes.map((attribute) => attribute.name)).toEqual(['aAA_1', 'bAA_1'])
+		})
+	})
+
+	// ── Hook integration ──────────────────────────────────────────────────────
 	describe('afterStandardizedRecord hook', () => {
 		it('calls the hook and applies the returned record', () => {
 			let hookCalled = false
