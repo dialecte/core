@@ -163,3 +163,15 @@ class SclDocument extends Document<SclConfig> {
 ```
 
 This makes `doc.query` return an `SclQuery` and `doc.transaction()` provide an `SclTransaction` - with all domain-specific methods available.
+
+## Typing a document with extensions
+
+When you register [extensions](/guide/extensions/), the returned `Document` carries them on `query.*` and on the `transaction` callback. Name that augmented type with the `ExtendedDocument<Config, Modules>` helper:
+
+```ts
+import type { ExtendedDocument } from '@dialecte/core'
+
+type MyDocument = ExtendedDocument<MyConfig, typeof MY_EXTENSION_MODULES>
+```
+
+It resolves to `Document<Config, MergedExtensions<Modules>>` — the exact type the document factory returns, so it never drifts from the runtime shape. See [Writing Extensions → Naming the augmented document](/guide/extensions/#naming-the-augmented-document) for the full pattern, including how a config package hydrates it into a one-parameter `<Modules>`-only helper.

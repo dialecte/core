@@ -1,8 +1,25 @@
+import type { Document } from './document'
 import type { Query } from './query'
 import type { ExtensionsRegistry, QueryExtensions } from './types.extensions'
+import type { ExtensionModules, MergedExtensions } from './types.extensions'
 import type { DialecteError } from '@/errors'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, Operation, AnyRawRecord } from '@/types'
+
+/**
+ * The document a project configured with `GenericModules` yields — i.e. the
+ * return type of `Project<Config, Modules>['openDocument']`. Both the query
+ * surface and the transaction callback are typed through the extension system.
+ *
+ * This is the single source of truth for "a `Document` augmented with modules".
+ * Config packages hydrate it into a one-parameter helper by fixing the config
+ * and pre-merging their base modules, e.g.
+ * `type ExtendedDocument<Custom> = Core.ExtendedDocument<Config, BaseModules & Custom>`.
+ */
+export type ExtendedDocument<
+	GenericConfig extends AnyDialecteConfig,
+	GenericModules extends ExtensionModules,
+> = Document<GenericConfig, MergedExtensions<GenericModules>>
 
 /**
  * Context passed to methods.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.6] - 2026-07-21
+
+- Add generic `ExtendedDocument` type for local extension
+
 ## [0.4.5] - 2026-07-21
 
 ### Added
