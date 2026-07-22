@@ -1,0 +1,21 @@
+name: PR
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  install:
+    name: Install Dependencies
+    uses: ./.github/workflows/_install.yml
+
+  check:
+    name: Check
+    needs: install
+    uses: ./.github/workflows/_check.yml
+
+  test:
+    name: Run Tests
+    needs: install
+    uses: ./.github/workflows/_test.yml
