@@ -4,6 +4,7 @@ export * from './query'
 export * from './transaction'
 
 export type {
+	ExtendedDocument,
 	Context,
 	CachedContext,
 	PreparedTransaction,
