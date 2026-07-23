@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.6] - 2026-07-23
+
+### Added
+
+- `getSnapshot`: `includeXmlDeclaration` option (default `true`) — set `false` to omit the XML prolog (`<?xml version="1.0" encoding="UTF-8"?>`) from `as: 'xml'` / `'both'` output, e.g. for an excerpt embedded in another document.
+
 ## [0.4.5] - 2026-07-21
 
 ### Added

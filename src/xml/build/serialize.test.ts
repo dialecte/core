@@ -41,4 +41,15 @@ describe('xmlDocumentToString', () => {
 		// declaration on its own line, element below
 		expect(xml.split('\n').length).toBeGreaterThan(1)
 	})
+
+	it('prepends the XML declaration by default (explicit option)', () => {
+		const xml = xmlDocumentToString(rootDoc(), { includeXmlDeclaration: true })
+		expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true)
+	})
+
+	it('omits the XML declaration when includeXmlDeclaration is false', () => {
+		const xml = xmlDocumentToString(rootDoc(), { includeXmlDeclaration: false })
+		expect(xml.startsWith('<?xml')).toBe(false)
+		expect(xml).toContain('<Root')
+	})
 })

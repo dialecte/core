@@ -439,3 +439,30 @@ describe('getSnapshot — xml output (table)', () => {
 
 	runTestCases.withExport({ testCases, act })
 })
+
+describe('getSnapshot — xml declaration toggle', () => {
+	it('includes the XML declaration by default', async () => {
+		await withProject(SIMPLE, async (source) => {
+			const xml = await source.query.getSnapshot({ as: 'xml' })
+			expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true)
+		})
+	})
+
+	it('omits the XML declaration when includeXmlDeclaration is false', async () => {
+		await withProject(SIMPLE, async (source) => {
+			const xml = await source.query.getSnapshot({ as: 'xml', includeXmlDeclaration: false })
+			expect(xml.startsWith('<?xml')).toBe(false)
+			expect(xml).toContain('<Root')
+		})
+	})
+
+	it('applies the toggle to the xml side of as: both', async () => {
+		await withProject(SIMPLE, async (source) => {
+			const { xmlString } = await source.query.getSnapshot({
+				as: 'both',
+				includeXmlDeclaration: false,
+			})
+			expect(xmlString.startsWith('<?xml')).toBe(false)
+		})
+	})
+})

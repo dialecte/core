@@ -358,16 +358,17 @@ const { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })
 
 #### GetSnapshotOptions
 
-| Option              | Type                              | Description                                                                                                                                                                                                                                      |
-| ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ref`               | `RefOrRecord`                     | Scope root. Omit to start from the document root (`config.rootElementName`).                                                                                                                                                                     |
-| `ancestors`         | `number`                          | Include this many ancestor levels above `ref` (spine).                                                                                                                                                                                           |
-| `siblings`          | `boolean \| { expand?: boolean }` | At every ancestor-spine level, include the spine node's siblings (shows `ref` in context up the spine; implies at least `ancestors: 1`). `true` → shallow siblings; `{ expand: true }` → keep the siblings' subtrees (still bounded by `depth`). |
-| `depth`             | `number`                          | Descend this many levels below the scope root (default: whole subtree). Honored even without `ref` — e.g. `{ depth: 1 }` is the root plus its direct children.                                                                                   |
-| `includeDeleted`    | `boolean`                         | Re-attach staged-deleted nodes as `status: 'deleted'` tombstones (tree only).                                                                                                                                                                    |
-| `omit` / `unwrap`   | see [getTree](#gettree)           | Tree-shape filters, applied to the tree output only.                                                                                                                                                                                             |
-| `as`                | `'tree' \| 'xml' \| 'both'`       | Output format. Default `'tree'`; `'both'` → `{ tree, xmlString }`.                                                                                                                                                                               |
-| `declareNamespaces` | `boolean`                         | XML only. Default `true`. `false` → bare fragment (literal/prefixed names, no `xmlns` declarations). See the fragment note below.                                                                                                                |
+| Option                  | Type                              | Description                                                                                                                                                                                                                                      |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ref`                   | `RefOrRecord`                     | Scope root. Omit to start from the document root (`config.rootElementName`).                                                                                                                                                                     |
+| `ancestors`             | `number`                          | Include this many ancestor levels above `ref` (spine).                                                                                                                                                                                           |
+| `siblings`              | `boolean \| { expand?: boolean }` | At every ancestor-spine level, include the spine node's siblings (shows `ref` in context up the spine; implies at least `ancestors: 1`). `true` → shallow siblings; `{ expand: true }` → keep the siblings' subtrees (still bounded by `depth`). |
+| `depth`                 | `number`                          | Descend this many levels below the scope root (default: whole subtree). Honored even without `ref` — e.g. `{ depth: 1 }` is the root plus its direct children.                                                                                   |
+| `includeDeleted`        | `boolean`                         | Re-attach staged-deleted nodes as `status: 'deleted'` tombstones (tree only).                                                                                                                                                                    |
+| `omit` / `unwrap`       | see [getTree](#gettree)           | Tree-shape filters, applied to the tree output only.                                                                                                                                                                                             |
+| `as`                    | `'tree' \| 'xml' \| 'both'`       | Output format. Default `'tree'`; `'both'` → `{ tree, xmlString }`.                                                                                                                                                                               |
+| `declareNamespaces`     | `boolean`                         | XML only. Default `true`. `false` → bare fragment (literal/prefixed names, no `xmlns` declarations). See the fragment note below.                                                                                                                |
+| `includeXmlDeclaration` | `boolean`                         | XML only. Default `true`. `false` → omit the XML prolog (`<?xml version="1.0" encoding="UTF-8"?>`), e.g. for an excerpt embedded in another document.                                                                                            |
 
 **Tree vs XML:** `omit`, `unwrap` and `includeDeleted` shape the **tree** only. The **XML** always reflects the full, unfiltered document — it is what `commit()` will write. When `unwrap` is omitted, the config's transparent elements are unwrapped (as in `getTree`), so the tree matches what the UI shows.
 
@@ -378,6 +379,13 @@ A scoped `ref` whose element is not the document root produces an XML **fragment
 ```ts
 // Bare fragment: <Function name="…">…</Function> with no xmlns noise
 const snippet = await prepared.query.getSnapshot({ ref, as: 'xml', declareNamespaces: false })
+```
+
+Pass `includeXmlDeclaration: false` to drop the XML prolog (`<?xml version="1.0" encoding="UTF-8"?>`) from the XML output, so the snapshot can be embedded as an excerpt inside another document:
+
+```ts
+// No <?xml …?> prolog
+const embedded = await doc.query.getSnapshot({ as: 'xml', includeXmlDeclaration: false })
 ```
 
 ## Attribute queries

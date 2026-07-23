@@ -38,12 +38,21 @@ export async function getSnapshot<GenericConfig extends AnyDialecteConfig>(param
 		includeDeleted,
 	})
 
-	if (as === 'xml') return toXmlString(context, collected, options.declareNamespaces)
+	if (as === 'xml')
+		return toXmlString(context, collected, options.declareNamespaces, options.includeXmlDeclaration)
 
 	const tree = toTree(context, collected, { omit, unwrap })
 	if (as === 'tree') return tree
 
-	return { tree, xmlString: toXmlString(context, collected, options.declareNamespaces) }
+	return {
+		tree,
+		xmlString: toXmlString(
+			context,
+			collected,
+			options.declareNamespaces,
+			options.includeXmlDeclaration,
+		),
+	}
 }
 
 /**
@@ -83,6 +92,7 @@ function toXmlString<GenericConfig extends AnyDialecteConfig>(
 	context: Context<GenericConfig>,
 	collected: CollectedSnapshot,
 	declareNamespaces?: boolean,
+	includeXmlDeclaration?: boolean,
 ): string {
 	const xmlDocument = buildXmlDocument({
 		records: collected.liveRecords,
@@ -90,5 +100,5 @@ function toXmlString<GenericConfig extends AnyDialecteConfig>(
 		rootId: collected.rootId,
 		declareNamespaces,
 	})
-	return xmlDocumentToString(xmlDocument)
+	return xmlDocumentToString(xmlDocument, { includeXmlDeclaration })
 }
