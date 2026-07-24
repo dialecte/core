@@ -130,6 +130,24 @@ const ref = toRef(record) // Ref<Config, Element>
 const ref = toRef(childRelationship)
 ```
 
+### `widen`
+
+Widens a value from a **specific element** to the config's **element union**, cast-free. Accepts a `TreeRecord`, `TrackedRecord`, `RawRecord`, `Ref`, or `Attribute`, and returns the same shape re-typed to `ElementsOf<Config>`. The config is inferred from the argument, so you write `widen(thing)` with no type arguments.
+
+```ts
+import { widen } from '@dialecte/core/helpers'
+
+declare const bay: RawRecord<Config, 'Bay'>
+const record = widen(bay) // RawRecord<Config, ElementsOf<Config>>
+
+declare const ref: Ref<Config, 'LN'>
+const anyRef = widen(ref) // Ref<Config, ElementsOf<Config>>
+```
+
+Purely a type operation — at runtime it returns the argument untouched. It exists for the one upcast TypeScript cannot verify on its own: the element parameter of `RawRecord`/`Ref`/etc. is invariant, so a specific-element value is not directly assignable to the element-union form even though it is structurally valid. `widen` is the single sanctioned place for that widening, keeping call sites free of `as unknown as` casts.
+
+Note this widens only the **element** type parameter. It does not loosen or coerce an attribute's `name` from `string` to the element's attribute union — that is a different, unsound conversion `widen` deliberately does not perform.
+
 ### `toFullAttributeArray`
 
 Converts attributes from object format (`{ aA: 'val' }`) to the internal array format (`[{ name: 'aA', value: 'val', namespace }]`), resolving each attribute's namespace and **canonicalizing its name** to the two naming rules (see [Attribute namespaces](#attribute-namespaces) below). Accepts either format as input.

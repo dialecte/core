@@ -1,4 +1,10 @@
-import { toTrackedRecord, toRawRecord, toTreeRecord, toFullAttributeArray } from './converter'
+import {
+	toTrackedRecord,
+	toRawRecord,
+	toTreeRecord,
+	toFullAttributeArray,
+	widen,
+} from './converter'
 import { isRawRecord, isTrackedRecord, isTreeRecord } from './guard'
 
 import { describe, expect } from 'vitest'
@@ -295,6 +301,32 @@ describe('Record Converter', () => {
 				expect(attr).toHaveProperty('name')
 				expect(attr).toHaveProperty('value')
 			})
+		}
+
+		runTestCases.generic(testCases, act)
+	})
+
+	describe('widen', () => {
+		type TestCase = BaseTestCase & {
+			input: RawRecord<TestConfig, 'A'>
+		}
+
+		const testCases: Record<string, TestCase> = {
+			'returns the same record reference (runtime identity)': {
+				input: {
+					id: '1',
+					tagName: 'A',
+					namespace: DIALECTE_TEST_NAMESPACES.default,
+					attributes: [],
+					children: [],
+					parent: null,
+					value: '',
+				},
+			},
+		}
+
+		function act({ input }: TestCase) {
+			expect(widen(input)).toBe(input)
 		}
 
 		runTestCases.generic(testCases, act)

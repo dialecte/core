@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.8] - 2026-07-24
+
+### Added
+
+- `widen` (`@dialecte/core/helpers`): overloaded, pure-identity widener that upcasts a `TreeRecord` / `TrackedRecord` / `RawRecord` / `Ref` / `Attribute` from a specific element to the config's element union. The config is inferred from the argument, so callers write `widen(thing)` cast-free — a single sanctioned place for the widening TypeScript cannot verify on invariant element params.
+
 ## [0.4.7] - 2026-07-23
 
 ### Added

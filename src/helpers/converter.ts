@@ -12,6 +12,7 @@ import type {
 	TrackedRecord,
 	TreeRecord,
 	AnyDialecteConfig,
+	Attribute,
 	AttributeInputOf,
 	ElementsOf,
 	FullAttributeObjectOf,
@@ -44,6 +45,55 @@ export function toRawRecord<
 		parent: record.parent,
 		children: record.children,
 	}
+}
+
+/**
+ * Widen any per-element dialecte value to its element-union form — the same value,
+ * with its element type parameter widened from a specific `GenericElement` to
+ * `ElementsOf<GenericConfig>`.
+ *
+ * A `RawRecord<Config, GenericElement>` (or `Ref`, `Attribute`, …) is semantically
+ * one of the element union, but these types are invariant in their element
+ * parameter (the attribute `name`/`tagName` narrows per element), so TypeScript
+ * cannot verify the upcast for an unresolved type parameter. `widen` performs it
+ * in one place, behind overloads that keep it a *widening* (not an arbitrary cast):
+ * the config is inferred from the argument, so callers write `widen(record)` with
+ * no type arguments. At runtime it is the identity function.
+ *
+ * Use it wherever a per-element value must flow into an element-union API — e.g.
+ * building an `Operation`, or passing a `Ref<Config, GenericElement>` to a
+ * union-typed method.
+ */
+export function widen<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(
+	thing: TreeRecord<GenericConfig, GenericElement>,
+): TreeRecord<GenericConfig, ElementsOf<GenericConfig>>
+export function widen<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(
+	thing: TrackedRecord<GenericConfig, GenericElement>,
+): TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+export function widen<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(
+	thing: RawRecord<GenericConfig, GenericElement>,
+): RawRecord<GenericConfig, ElementsOf<GenericConfig>>
+export function widen<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(thing: Ref<GenericConfig, GenericElement>): Ref<GenericConfig, ElementsOf<GenericConfig>>
+export function widen<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(
+	thing: Attribute<GenericConfig, GenericElement>,
+): Attribute<GenericConfig, ElementsOf<GenericConfig>>
+export function widen(thing: unknown): unknown {
+	return thing
 }
 
 /**
