@@ -36,16 +36,18 @@ export class Project<
 > {
 	private _name?: string
 	private _store?: GenericStore
-	/** Posting side of the project channel. Never listened to. */
-	private _postChannel?: BroadcastChannel
 	/**
-	 * Listening side of the project channel. A separate instance from
-	 * _postChannel on purpose: BroadcastChannel withholds a message only from
-	 * the exact instance that posted it, so this instance also receives this
-	 * tab's own posts (echo) — one code path folds every mutation source,
-	 * local and cross-tab, into project state.
+	 * The project channel: posts this realm's mutations and listens for other
+	 * realms' (other tab / iframe / second Project instance). BroadcastChannel
+	 * withholds a message from the exact instance that posted it, so this realm
+	 * never receives its own posts — local state is maintained inline by the
+	 * mutation methods, and the listener folds in only foreign messages.
 	 */
-	private _listenChannel?: BroadcastChannel
+	private _channel?: BroadcastChannel
+	/** Set once close()/destroy() begins, to stop new channel-triggered store work. */
+	private closing = false
+	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
+	private readonly pendingBroadcastWork = new Set<Promise<void>>()
 	private readonly storage: ProjectParams<GenericConfig>['storage']
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
@@ -68,12 +70,12 @@ export class Project<
 		return this._store
 	}
 
-	private get postChannel(): BroadcastChannel {
-		invariant(this._postChannel !== undefined, {
+	private get channel(): BroadcastChannel {
+		invariant(this._channel !== undefined, {
 			key: 'PROJECT_NOT_OPENED',
 			detail: 'Call project.open(name) before accessing project properties.',
 		})
-		return this._postChannel
+		return this._channel
 	}
 
 	/**
@@ -95,7 +97,7 @@ export class Project<
 
 	/** Post a message on the project channel. */
 	private notify(message: ProjectChannelMessage): void {
-		this.postChannel.postMessage(message)
+		this.channel.postMessage(message)
 	}
 
 	readonly state: ProjectState = {
@@ -132,14 +134,11 @@ export class Project<
 	 */
 	async open(name: string): Promise<this> {
 		this._name = name
-		this._postChannel = new BroadcastChannel(this.channelName)
-		this._listenChannel = new BroadcastChannel(this.channelName)
-		this._listenChannel.addEventListener(
-			'message',
-			(event: MessageEvent<ProjectChannelMessage>) => {
-				this.onChannelMessage(event.data)
-			},
-		)
+		this.closing = false
+		this._channel = new BroadcastChannel(this.channelName)
+		this._channel.addEventListener('message', (event: MessageEvent<ProjectChannelMessage>) => {
+			this.onChannelMessage(event.data)
+		})
 
 		const store = resolveStore(name, this.storage, this.configs[this.defaultConfigKey])
 		await store.open()
@@ -155,35 +154,55 @@ export class Project<
 	}
 
 	/**
-	 * Fold an incoming channel message into project state. Receives this tab's
-	 * own posts too (see _listenChannel), so every mutation source — local
-	 * commit, other-tab commit, undo/redo — converges through this one handler.
+	 * Fold an incoming channel message into project state. This realm never
+	 * receives its own posts (BroadcastChannel withholds them from the posting
+	 * instance), so this only ever handles foreign messages — another tab, an
+	 * iframe, or a second Project instance. Local mutations maintain state inline.
 	 */
 	private onChannelMessage(message: ProjectChannelMessage | undefined): void {
+		if (this.closing) return
 		switch (message?.type) {
 			case 'init-empty-document':
 			case 'document-removed':
 			case 'document-imported':
-				// Fire-and-forget: the store may already be closing when a
-				// late message arrives. Reconcile the store schema before the
-				// registry so both converge together for this realm.
-				this.reconcileFromBroadcast(message.documentId).catch(() => {})
+				// Reconcile the store schema before the registry so both converge
+				// together for this realm. Tracked so teardown can await it — a late
+				// foreign message must not read/reconcile the store after destroy()
+				// deleted it.
+				this.trackBroadcastWork(this.reconcileFromBroadcast(message.documentId))
 				break
 			case 'commit': {
 				const entry = this.state.documents.get(message.documentId)
 				if (entry) {
 					entry.lastUpdate = message.timestamp ?? Date.now()
 				}
-				// Fire-and-forget: the store may already be closing when a
-				// late message arrives — stale flags are acceptable then.
-				this.refreshHistoryStatus(message.documentId).catch(() => {})
+				// Tracked fire-and-forget: a late foreign message must not refresh
+				// flags on a store that teardown already closed.
+				this.trackBroadcastWork(this.refreshHistoryStatus(message.documentId))
 				break
 			}
 		}
 	}
 
+	/**
+	 * Track channel-triggered fire-and-forget work so `close`/`destroy` can wait for
+	 * it to settle before tearing down the store. A foreign message delivered as the
+	 * project is closing would otherwise read or reconcile the store after it was
+	 * closed/deleted — surfacing as DatabaseClosedError or ConstraintError. The work
+	 * keeps its own error swallowing; here it is only awaited, never rethrown.
+	 */
+	private trackBroadcastWork(work: Promise<void>): void {
+		const tracked = work
+			.catch(() => {})
+			.finally(() => {
+				this.pendingBroadcastWork.delete(tracked)
+			})
+		this.pendingBroadcastWork.add(tracked)
+	}
+
 	/** Recompute canUndo/canRedo for a document from the store's history. */
 	private async refreshHistoryStatus(documentId: string): Promise<void> {
+		if (this.closing) return
 		const entry = this.state.documents.get(documentId)
 		if (!entry) return
 		const { canUndo, canRedo } = await this.store.getHistoryStatus(documentId)
@@ -195,8 +214,8 @@ export class Project<
 	 * Close the store and release resources.
 	 */
 	close(): void {
-		this.postChannel.close()
-		this._listenChannel?.close()
+		this.closing = true
+		this._channel?.close()
 		this.store.close()
 	}
 
@@ -204,8 +223,11 @@ export class Project<
 	 * Destroy the project - deletes the database entirely.
 	 */
 	async destroy(): Promise<void> {
-		this.postChannel.close()
-		this._listenChannel?.close()
+		this.closing = true
+		this._channel?.close()
+		// Wait for any in-flight foreign-message work to settle on the live store
+		// before deleting it, so no read/reconcile outlives the database.
+		await Promise.allSettled(this.pendingBroadcastWork)
 		await this.store.destroy()
 		this.state.documents.clear()
 	}
@@ -330,6 +352,9 @@ export class Project<
 			state: documentState,
 			channelName: this.channelName,
 			notify: (message) => this.notify(message),
+			// Lets a local commit refresh canUndo/canRedo on the shared entry
+			// synchronously, without a channel round-trip.
+			refreshHistoryStatus: () => this.refreshHistoryStatus(documentId),
 		})
 	}
 
@@ -518,6 +543,7 @@ export class Project<
 	 * converge together.
 	 */
 	private async reconcileFromBroadcast(documentId?: string): Promise<void> {
+		if (this.closing) return
 		await this.store.reconcile(documentId)
 		await this.refreshState()
 	}

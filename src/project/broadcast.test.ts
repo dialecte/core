@@ -291,4 +291,23 @@ describe('Project BroadcastChannel', () => {
 		expect(firstDoc.state.lastUpdate).toBe(4242)
 		expect(project.state.documents.get(firstId)?.lastUpdate).toBe(4242)
 	})
+
+	it('destroy() immediately after a commit does not throw (teardown race regression)', async () => {
+		const name = projectName()
+		const project = await openProject(name)
+
+		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
+		const [{ documentId }] = await project.import([file])
+		const doc = project.openDocument(documentId)
+
+		await doc.transaction(async (tx) => {
+			const root = await tx.getRoot()
+			tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
+
+		// A commit no longer schedules fire-and-forget store work via a self-echo,
+		// so tearing down right after must not touch the store post-delete
+		// (previously surfaced as DatabaseClosedError / ConstraintError).
+		await expect(project.destroy()).resolves.toBeUndefined()
+	})
 })

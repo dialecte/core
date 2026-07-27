@@ -50,6 +50,13 @@ export class Document<
 	/** Announce a mutation on the project channel (provided by the owning Project) */
 	private notify: (message: ProjectChannelMessage) => void
 
+	/**
+	 * Recompute this document's canUndo/canRedo on the shared project entry
+	 * (provided by the owning Project). Called locally after a commit so the
+	 * flags are up to date synchronously, without depending on a channel echo.
+	 */
+	private refreshHistoryStatus: () => Promise<void>
+
 	/** Track concurrent transactions to manage loading flag */
 	private activeTransactions = 0
 
@@ -63,6 +70,7 @@ export class Document<
 			state: DocumentState
 			channelName: string
 			notify: (message: ProjectChannelMessage) => void
+			refreshHistoryStatus: () => Promise<void>
 		},
 	) {
 		this.store = store
@@ -73,6 +81,7 @@ export class Document<
 		this.state = project.state
 		this.channelName = project.channelName
 		this.notify = project.notify
+		this.refreshHistoryStatus = project.refreshHistoryStatus
 	}
 
 	//== Query access (read-only, no mutations exposed)
@@ -144,6 +153,10 @@ export class Document<
 			const result = await fn(tx)
 
 			await tx.commit()
+			// Refresh canUndo/canRedo on the shared entry locally (mirrors
+			// Project.undo/redo) so state is correct synchronously — no channel
+			// echo required.
+			await this.refreshHistoryStatus()
 			this.notify({
 				type: 'commit',
 				documentId: this.documentId,
@@ -251,6 +264,9 @@ export class Document<
 
 				try {
 					await tx.commit()
+					// Refresh canUndo/canRedo locally so the shared entry is correct
+					// synchronously — no channel echo required.
+					await this.refreshHistoryStatus()
 					this.notify({
 						type: 'commit',
 						documentId: this.documentId,

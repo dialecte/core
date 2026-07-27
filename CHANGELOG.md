@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.9] - 2026-07-27
+
+### Fixed
+
+- `Project.destroy()` / `close()` no longer race with channel work: a commit could touch the store after teardown, throwing `DatabaseClosedError` / `ConstraintError`. Each project now uses a single BroadcastChannel and never re-derives its own state from a self-echo — local mutations maintain state inline (a commit refreshes `canUndo` / `canRedo` synchronously), and the listener folds in only messages from other tabs / iframes. `destroy()` drains any in-flight foreign-message work before deleting the store. No public API change.
+
 ## [0.4.8] - 2026-07-24
 
 ### Added

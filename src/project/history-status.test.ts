@@ -62,13 +62,14 @@ describe('canUndo/canRedo history status', () => {
 		expect(entry?.canRedo).toBe(false)
 	})
 
-	it('after a commit → canUndo true, canRedo false', async () => {
+	it('after a commit → canUndo true, canRedo false (synchronously, no channel echo)', async () => {
 		const project = await openProject(projectName())
 		cleanups.push(() => project.destroy())
 
 		const documentId = await importOne(project)
 		await commitChild(project, documentId)
-		await settle()
+		// No settle(): a local commit refreshes the flags inline, not via a
+		// channel round-trip.
 
 		const entry = project.state.documents.get(documentId)
 		expect(entry?.canUndo).toBe(true)
