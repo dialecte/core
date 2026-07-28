@@ -36,4 +36,8 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	}
 
 	documentState.lastUpdate = Date.now()
+	// Clear progress once the commit succeeds: progress must be `null` when the document is idle,
+	// otherwise the last "Committing changes..." value lingers globally and any consumer reading
+	// `state.progress` between operations shows a stale, misleading status.
+	documentState.progress = null
 }

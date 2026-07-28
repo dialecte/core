@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.10] - 2026-07-28
+
+### Added
+
+- Type-performance dev guide (`doc/guide/development/type-performance.md`): how to use the `dialecte` CLI (coverage / bench / narrowing / audit), how to read `baseline.json` and `readability-audit.md`, and what the two CI gates catch.
+
+### Fixed
+
+- `state.progress` is now cleared to `null` after a **successful** commit (previously it was reset only on error). It no longer lingers as a stale `Committing changes...` value between operations, so a consumer reading `state.progress` while the document is idle correctly sees `null`.
+
 ## [0.4.10] - 2026-07-27
 
 ### Changed

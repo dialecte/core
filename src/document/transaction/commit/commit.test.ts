@@ -146,6 +146,15 @@ describe('commitTransaction', () => {
 		expect(state.lastUpdate).toBeLessThanOrEqual(Date.now())
 	})
 
+	it('clears progress after a successful commit (idle state has no lingering progress)', async () => {
+		const state = makeState()
+		const { store } = makeStore()
+
+		await commitTransaction({ stagedOperations: [], store, documentId: 'f1', documentState: state })
+
+		expect(state.progress).toBeNull()
+	})
+
 	it('forwards creates, updates and deletes to the store', async () => {
 		const state = makeState()
 		const { store, calls } = makeStore()
