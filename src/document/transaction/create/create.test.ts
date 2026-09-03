@@ -145,6 +145,41 @@ describe('stageAddChild', () => {
 			},
 			expectThrow: true,
 		},
+		'full-object attr with prefixed name matching its namespace → allowed (canonical round-trip)': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			childPayload: {
+				tagName: 'AA_1',
+				attributes: [
+					{ name: 'aAA_1', value: 'req' },
+					{ name: 'ext:cAA_1', value: 'qualified', namespace: DIALECTE_TEST_NAMESPACES.ext },
+				],
+			},
+			expectedQueries: [
+				'//default:A/default:AA_1[@aAA_1="req"]',
+				'//default:A/default:AA_1[@ext:cAA_1="qualified"]',
+			],
+		},
+		'full-object attr with prefixed name conflicting with its namespace → throws loudly': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			childPayload: {
+				tagName: 'AA_1',
+				attributes: [
+					{ name: 'aAA_1', value: 'req' },
+					{ name: 'ext:cAA_1', value: 'qualified', namespace: DIALECTE_TEST_NAMESPACES.dev },
+				],
+			},
+			expectThrow: true,
+		},
 		'full-object attr with a registered namespace key string → stored as prefixed': {
 			sourceXml: /* xml */ `
 				<Root ${nsExt}>

@@ -109,6 +109,11 @@ export async function stageAddChild<
  * so we reject it loudly rather than silently re-deriving. `xmlns`/`xmlns:*`
  * declarations are exempt. The value-object form keeps its canonical (possibly
  * prefixed) keys — those are the generated, discoverable names — so it is not checked.
+ *
+ * Exception: a prefixed name whose `namespace.prefix` already agrees with it is not
+ * ambiguous — it is the canonical stored form (every namespaced attribute is stamped
+ * `prefix:local` at standardize time), so a clone replaying an already-standardized
+ * `RawRecord` through this same param shape must pass unchanged.
  */
 function assertAuthoredAttributeNamesAreLocal<
 	GenericConfig extends AnyDialecteConfig,
@@ -121,13 +126,17 @@ function assertAuthoredAttributeNamesAreLocal<
 	if (!attributes || !Array.isArray(attributes)) return
 
 	for (const attribute of attributes) {
-		const { name } = attribute
+		const { name, namespace } = attribute
 		const isXmlnsDeclaration = name === 'xmlns' || name.startsWith('xmlns:')
-		if (!isXmlnsDeclaration && name.includes(':')) {
-			throwDialecteError('PREFIXED_ATTRIBUTE_NAME', {
-				detail: `Attribute '${name}' on '${tagName}' is prefixed — pass a local name plus its namespace instead: { name: '${extractLocalName(name)}', namespace }.`,
-				ref: { tagName },
-			})
-		}
+		if (isXmlnsDeclaration || !name.includes(':')) continue
+
+		const isConsistentCanonicalForm =
+			typeof namespace === 'object' && namespace?.prefix === name.slice(0, name.indexOf(':'))
+		if (isConsistentCanonicalForm) continue
+
+		throwDialecteError('PREFIXED_ATTRIBUTE_NAME', {
+			detail: `Attribute '${name}' on '${tagName}' is prefixed — pass a local name plus its namespace instead: { name: '${extractLocalName(name)}', namespace }.`,
+			ref: { tagName },
+		})
 	}
 }

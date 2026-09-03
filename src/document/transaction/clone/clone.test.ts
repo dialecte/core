@@ -5,6 +5,7 @@ import {
 	DIALECTE_TEST_NAMESPACES,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
+	XMLNS_EXT_NAMESPACE,
 	createTestProject,
 	runTestCases,
 } from '@/test'
@@ -53,6 +54,7 @@ function makeSkipHooks(skipTagName: string): TransactionHooks<TestDialecteConfig
 
 describe('stageDeepClone', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const nsExt = `${ns} ${XMLNS_EXT_NAMESPACE}`
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 	type TestCase = BaseXmlTestCase & {
@@ -127,6 +129,21 @@ describe('stageDeepClone', () => {
 				'//default:AAA_1[@_temp-idb-id="aaa1"]/default:AAAA_1[@_temp-idb-id="aaaa1"]',
 				'//default:AA_1[@dev:clone-index="clone:aa1"]/default:AAA_1[@dev:clone-index="clone:aaa1"]',
 				'//default:AAA_1[@dev:clone-index="clone:aaa1"]/default:AAAA_1[@dev:clone-index="clone:aaaa1"]',
+			],
+		},
+		'source element already carries a namespaced attribute → clone does not throw': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent">
+						<AA_1 ${customId}="aa1" aAA_1="leaf" ext:cAA_1="vendor" />
+					</A>
+				</Root>
+			`,
+			sourceRef: { tagName: 'AA_1', id: 'aa1' },
+			parentRef: { tagName: 'A', id: 'a1' },
+			expectedQueries: [
+				'//default:AA_1[@_temp-idb-id="aa1"][@ext:cAA_1="vendor"]',
+				'//default:AA_1[@dev:clone-index="clone:aa1"][@ext:cAA_1="vendor"]',
 			],
 		},
 		'sibling elements present → only target is cloned, siblings untouched': {
