@@ -10,10 +10,9 @@ import {
 } from '@/test'
 import { invariant } from '@/utils'
 
-import type { Transaction } from '@/document'
 import type { Ref } from '@/document'
 import type { ActParams, ActResult, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
-import type { Operation, TransactionHooks } from '@/types'
+import type { TransactionHooks } from '@/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,42 +48,6 @@ function makeSkipHooks(skipTagName: string): TransactionHooks<TestDialecteConfig
 			shouldBeCloned: record.tagName !== skipTagName,
 			transformedRecord: record,
 		}),
-	}
-}
-
-/**
- * Composes makeCloneHooks + an afterDeepClone hook that stages an update
- * adding `dev:post-clone="mapped:<source.id>"` to every cloned target.
- * This proves the hook fires after all clones with correct mappings.
- */
-function makeAfterDeepCloneHooks(): TransactionHooks<TestDialecteConfig> {
-	return {
-		...makeCloneHooks(),
-		afterDeepClone: async ({ cumulativeCloneMappings: mappings, query }) => {
-			const operations: Operation<TestDialecteConfig>[] = []
-			for (const mapping of mappings) {
-				const allOps = (query as Transaction<TestDialecteConfig>)
-					.getStagedOperations()
-					.filter((op) => op.status !== 'deleted' && op.newRecord?.id === mapping.target.id)
-				const latestOp = allOps[allOps.length - 1]
-				if (!latestOp || latestOp.status === 'deleted') continue
-
-				const currentRecord = latestOp.newRecord!
-				const newRecord = {
-					...currentRecord,
-					attributes: [
-						...currentRecord.attributes,
-						{
-							name: 'post-clone',
-							value: `mapped:${String(mapping.source.id)}`,
-							namespace: DIALECTE_TEST_NAMESPACES.dev,
-						},
-					],
-				} as typeof currentRecord
-				operations.push({ status: 'updated', oldRecord: currentRecord, newRecord })
-			}
-			return operations
-		},
 	}
 }
 
@@ -314,58 +277,5 @@ describe('stageDeepClone', () => {
 				await project.destroy()
 			}
 		})
-	})
-
-	// ── afterDeepClone hook ──────────────────────────────────────────────────
-
-	const afterDeepCloneTestCases: TestCases<TestCase> = {
-		'leaf clone → hook adds post-clone attr via mapping': {
-			sourceXml: /* xml */ `
-				<Root ${ns}>
-					<A ${customId}="a1" aA="parent">
-						<AA_1 ${customId}="aa1" aAA_1="leaf" />
-					</A>
-				</Root>
-			`,
-			sourceRef: { tagName: 'AA_1', id: 'aa1' },
-			parentRef: { tagName: 'A', id: 'a1' },
-			expectedQueries: ['//default:AA_1[@dev:post-clone="mapped:aa1"]'],
-		},
-		'deep tree → hook adds post-clone to every cloned descendant': {
-			sourceXml: /* xml */ `
-				<Root ${ns}>
-					<A ${customId}="a1" aA="parent">
-						<AA_1 ${customId}="aa1" aAA_1="l1">
-							<AAA_1 ${customId}="aaa1" aAAA_1="l2" />
-						</AA_1>
-					</A>
-				</Root>
-			`,
-			sourceRef: { tagName: 'AA_1', id: 'aa1' },
-			parentRef: { tagName: 'A', id: 'a1' },
-			expectedQueries: [
-				'//default:AA_1[@dev:post-clone="mapped:aa1"]',
-				'//default:AAA_1[@dev:post-clone="mapped:aaa1"]',
-			],
-		},
-		'source elements → no post-clone attr on originals': {
-			sourceXml: /* xml */ `
-				<Root ${ns}>
-					<A ${customId}="a1" aA="parent">
-						<AA_1 ${customId}="aa1" aAA_1="source" />
-					</A>
-				</Root>
-			`,
-			sourceRef: { tagName: 'AA_1', id: 'aa1' },
-			parentRef: { tagName: 'A', id: 'a1' },
-			expectedQueries: ['//default:AA_1[@_temp-idb-id="aa1"][@aAA_1="source"]'],
-			unexpectedQueries: ['//default:AA_1[@_temp-idb-id="aa1"][@dev:post-clone]'],
-		},
-	}
-
-	runTestCases.withExport({
-		testCases: afterDeepCloneTestCases,
-		hooks: makeAfterDeepCloneHooks(),
-		act,
 	})
 })

@@ -121,7 +121,6 @@ export class AnyTransaction<
 			query: this.query,
 			parentRef: toRef(parent) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
 			record: tree as unknown as TreeRecord<GenericConfig, ElementsOf<GenericConfig>>,
-			cumulativeCloneMappings: [],
 		})
 		return result as {
 			record: AnyRawRecord

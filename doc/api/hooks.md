@@ -1,5 +1,5 @@
 ---
-description: Reference for all DialecteHooks extension points in @dialecte/core. Covers the record hooks (beforeClone, afterStandardizedRecord, afterCreated, afterDeepClone, afterUpdated, beforeDelete) and links to the IO hooks. All hooks are provided on the Project instance.
+description: Reference for all DialecteHooks extension points in @dialecte/core. Covers the record hooks (beforeClone, afterStandardizedRecord, afterCreated, afterUpdated, beforeDelete) and links to the IO hooks. All hooks are provided on the Project instance.
 ---
 
 # Hooks
@@ -83,52 +83,8 @@ afterCreated?: (params: {
 **Return** — additional operations to stage. Return `[]` to add nothing.
 
 ::: warning Ordering inside `deepClone`
-During `deepClone`, `afterCreated` fires in insertion order. Elements staged earlier in the same pass are visible via `getRecord`; elements staged later are not. Use `afterDeepClone` as a safety net for cross-element dependencies within a single clone operation.
+During `deepClone`, `afterCreated` fires in insertion order. Elements staged earlier in the same pass are visible via `getRecord`; elements staged later are not.
 :::
-
----
-
-### `afterDeepClone`
-
-Fires **once** after `deepClone` completes the full recursive clone. Receives `cumulativeCloneMappings` -- the complete source->target mappings accumulated across all `deepClone` calls within the current transaction. Use it to remap cross-references after the entire subtree is staged.
-
-**Signature**
-
-```ts
-afterDeepClone?: (params: {
-  cumulativeCloneMappings: CloneMapping<Config>[]
-  query: Query<Config>
-}) => Promise<Operation<Config>[]>
-```
-
-```ts
-type CloneMapping<Config> = {
-	source: Ref<Config, ElementsOf<Config>> & {
-		attributes: readonly AnyAttribute[]
-	}
-	target: Ref<Config, ElementsOf<Config>>
-}
-```
-
-`source` carries the original record's attributes so hooks can recover source-side data without querying across databases.
-
-**Return** -- additional operations to stage.
-
-**Example -- remap cross-references after clone**
-
-```ts
-hooks: {
-  afterDeepClone: async ({ cumulativeCloneMappings, query }) => {
-    const ops: Operation[] = []
-    for (const { source, target } of cumulativeCloneMappings) {
-      const targetRecord = await query.getRecord(target)
-      // source.attributes available for cross-DB lookup
-      // build updates based on the source->target record pairs
-    }
-    return ops
-  },
-}
-```
 
 ---
 
@@ -193,7 +149,6 @@ For a single `deepClone` call (N elements in the tree):
 beforeClone            (per element, depth-first)
 afterStandardizedRecord (per element)
 afterCreated           (per element, insertion order)
-afterDeepClone         (once, after full tree staged -- receives cumulativeCloneMappings)
 ```
 
 For `update` (the merged record is re-standardized, so the hook fires here too):

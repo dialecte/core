@@ -164,7 +164,6 @@ export class Document<
 			})
 			tx.clearStagedOperations()
 			tx.clearRecordCache()
-			tx.clearCumulativeCloneMappings()
 			this.state.history.push({
 				method: 'commit',
 				message: options?.label ?? 'Changes committed',
@@ -275,7 +274,6 @@ export class Document<
 
 					tx.clearStagedOperations()
 					tx.clearRecordCache()
-					tx.clearCumulativeCloneMappings()
 					this.state.history.push({
 						method: 'commit',
 						message: options?.label ?? 'Changes committed',
@@ -302,7 +300,6 @@ export class Document<
 				settled = true
 				tx.clearStagedOperations()
 				tx.clearRecordCache()
-				tx.clearCumulativeCloneMappings()
 			},
 		}
 	}

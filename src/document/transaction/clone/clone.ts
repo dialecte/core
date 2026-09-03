@@ -17,6 +17,9 @@ import type {
  * Recursively stages a deep clone of a TreeRecord under a parent.
  * Returns a CloneResult with the new root ref and a full source→target mapping.
  *
+ * Reference rewiring (e.g. repointing cloned refs onto the clone's identities) is
+ * the dialecte's concern, done by the caller over the returned `mappings` — core
+ * stays agnostic and structural.
  */
 export async function stageDeepClone<
 	GenericConfig extends AnyDialecteConfig,
@@ -29,10 +32,8 @@ export async function stageDeepClone<
 	query: Query<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
 	record: TreeRecord<GenericConfig, GenericChildElement>
-	cumulativeCloneMappings: CloneMapping<GenericConfig>[]
 }): Promise<CloneResult<GenericConfig, GenericChildElement>> {
-	const { dialecteConfig, hooks, context, query, parentRef, record, cumulativeCloneMappings } =
-		params
+	const { dialecteConfig, hooks, context, query, parentRef, record } = params
 
 	const mappings: CloneMapping<GenericConfig>[] = []
 
@@ -45,16 +46,6 @@ export async function stageDeepClone<
 		record,
 		mappings,
 	})
-
-	cumulativeCloneMappings.push(...mappings)
-
-	if (hooks?.afterDeepClone) {
-		const additionalOperations = await hooks.afterDeepClone({
-			cumulativeCloneMappings,
-			query,
-		})
-		context.stagedOperations.push(...additionalOperations)
-	}
 
 	return {
 		record: clonedRecord,

@@ -2,7 +2,7 @@ import type { AnyDefinition } from './definition'
 import type { ImportOptions, ExportOptions, IOHooks } from './io'
 import type { Operation } from './operations'
 import type { Namespace, RawRecord, TreeRecord } from './records'
-import type { CloneMapping, Query } from '@/document'
+import type { Query } from '@/document'
 import type { RecordSchema } from '@/store'
 
 export type RawDialecteConfig<
@@ -70,15 +70,6 @@ export type TransactionHooks<GenericConfig extends AnyDialecteConfig> = {
 	>(params: {
 		childRecord: RawRecord<GenericConfig, GenericElement>
 		parentRecord: RawRecord<GenericConfig, GenericParentElement>
-		query: Query<GenericConfig>
-	}) => Promise<Operation<GenericConfig>[]>
-
-	/**
-	 * Called after deepClone completes all recursive cloning.
-	 * Receives the full source->target mapping. Return additional operations to stage
-	 */
-	afterDeepClone?: (params: {
-		cumulativeCloneMappings: CloneMapping<GenericConfig>[]
 		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
 

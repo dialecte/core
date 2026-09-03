@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.11] - 2026-09-03
+
+### Removed
+
+- **Breaking:** removed the `afterDeepClone` transaction hook. It ran once after each clone with the mappings accumulated across the _entire_ transaction, driving a post-clone pass whose cost grew with the number of cloned elements — a measurable bottleneck on large clones (e.g. importing big type closures). `deepClone` is now purely structural and simply returns the source→target `CloneMapping[]` for that call; staging any follow-up is the dialecte's responsibility, over just the pairs it needs. Nothing is lost — the work moves from a core hook to the caller.
+
 ## [0.4.10] - 2026-07-28
 
 ### Added

@@ -155,7 +155,7 @@ type CloneMapping<Config> = {
 
 `source` carries the original record's attributes so hooks can recover source-side data without querying across databases.
 
-`mappings` in `CloneResult` are scoped to the current `deepClone` call. The `afterDeepClone` hook receives `cumulativeCloneMappings` -- all mappings accumulated across the entire transaction. See [Hooks -- afterDeepClone](/api/hooks#afterdeepclone).
+`mappings` in `CloneResult` are the source->target pairs for every element cloned in the current `deepClone` call. `deepClone` stays purely structural; use these pairs to stage any follow-up work (e.g. re-pointing references) after the subtree is staged.
 
 ## Untyped namespace — `tx.any`
 

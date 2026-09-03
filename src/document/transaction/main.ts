@@ -12,7 +12,6 @@ import { toRef } from '@/helpers'
 import type { DocumentState } from '../types'
 import type { Context } from '../types'
 import type { CloneResult } from './clone'
-import type { CloneMapping } from './clone'
 import type { AddChildParams } from './create'
 import type { UpdateParams } from './update'
 import type { RefOrRecord } from '@/document'
@@ -48,7 +47,6 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	protected documentActivity: DocumentState
 	protected recordCache = new Map<string, AnyRawRecord>()
 	protected hooks: TransactionHooks<GenericConfig> | undefined
-	protected cumulativeCloneMappings: CloneMapping<GenericConfig>[] = []
 	private _anyTx?: AnyTransaction<GenericConfig>
 
 	constructor(
@@ -247,7 +245,6 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			parentRef: toRef(parentRefOrRecord),
 			record,
 			query: this,
-			cumulativeCloneMappings: this.cumulativeCloneMappings,
 		})
 	}
 
@@ -266,11 +263,6 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	/** Free cached records from memory */
 	clearRecordCache(): void {
 		this.recordCache.clear()
-	}
-
-	/** Free cumulative clone mappings from memory */
-	clearCumulativeCloneMappings(): void {
-		this.cumulativeCloneMappings = []
 	}
 
 	/**
