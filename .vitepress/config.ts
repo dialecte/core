@@ -48,6 +48,7 @@ export default defineConfig({
 					items: [
 						{ text: 'Overview', link: '/guide/development/' },
 						{ text: 'State & Errors', link: '/guide/development/state-and-errors' },
+						{ text: 'Dev Perf', link: '/guide/development/dev-perf' },
 						{ text: 'Testing', link: '/guide/development/testing' },
 						{ text: 'Helpers', link: '/guide/development/helpers' },
 						{ text: 'Utils', link: '/guide/development/utils' },

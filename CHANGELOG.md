@@ -7,15 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.12] - 2026-09-07
+
+### Added
+
+- **`tx.progress` — two-level progress via a plan stack.** `plan({ steps, label? })` pushes a level, `nextStep(label?)` advances it (close-previous: `current` = completed steps), `endPlan()` pops. Main plan drives the `current`/`total` bar; the deepest nested plan drives the `step` sub-bar + caption. Balance each `plan()` with `endPlan()` — except the transaction's main plan, which `forceClear()` closes for you. Reads get a no-op reporter.
+- **Dev perf helper** (`createPerf`, only when `dev.perf` is on). User-Timing spans under a `dialecte::` root, read synchronously via `perf.report()` → `{ calls, totalMs, avgMs, count? }`; a frozen no-op with zero prod cost when off. Exposed as `doc.perf` / `tx.perf` / `ctx.perf`. See `doc/guide/development/dev-perf.md`.
+- **`perf.count(name)`** — tally events (round-trips, cache hits/misses) without a span; surfaced as `count` in `report()` and cleared by `reset()`.
+- **Dev instrumentation spans + counters** across the hot paths (all gated by `dev.perf`, no-op when off): import (`core::import`, `::sax`, `::resolveChildren`, `core::store::bulkWrite`), commit (`core::commit`, `::merge`, `core::store::commit`), clone (`core::deepClone`), and query primitives (`core::query::getRecord.cacheHit`/`.miss`, `core::store::get`, `core::store::getByTagName`).
+
+### Fixed
+
+- `addChild`/`deepClone` no longer throw `PREFIXED_ATTRIBUTE_NAME` for a namespaced attribute whose prefixed `name` already agrees with its `namespace` — the canonical form every stored attribute carries. Previously any clone of a subtree containing a namespaced attribute (e.g. a vendor `Private` extension) failed this check, since `deepClone` replays already-standardized attributes through the same param shape as authored input. The guard still rejects a genuinely ambiguous authored name (prefixed with no `namespace`, or a `namespace` whose prefix conflicts with it).
+
 ## [0.4.11] - 2026-09-03
 
 ### Removed
 
 - **Breaking:** removed the `afterDeepClone` transaction hook. It ran once after each clone with the mappings accumulated across the _entire_ transaction, driving a post-clone pass whose cost grew with the number of cloned elements — a measurable bottleneck on large clones (e.g. importing big type closures). `deepClone` is now purely structural and simply returns the source→target `CloneMapping[]` for that call; staging any follow-up is the dialecte's responsibility, over just the pairs it needs. Nothing is lost — the work moves from a core hook to the caller.
-
-### Fixed
-
-- `addChild`/`deepClone` no longer throw `PREFIXED_ATTRIBUTE_NAME` for a namespaced attribute whose prefixed `name` already agrees with its `namespace` — the canonical form every stored attribute carries. Previously any clone of a subtree containing a namespaced attribute (e.g. a vendor `Private` extension) failed this check, since `deepClone` replays already-standardized attributes through the same param shape as authored input. The guard still rejects a genuinely ambiguous authored name (prefixed with no `namespace`, or a `namespace` whose prefix conflicts with it).
 
 ## [0.4.10] - 2026-07-28
 

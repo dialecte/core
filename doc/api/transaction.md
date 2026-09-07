@@ -212,6 +212,29 @@ await doc.transaction(async (tx) => {
 | `attributes` | `Record<string, string> \| AnyAttribute[]` | Attributes to update; missing keys are unchanged |
 | `value`      | `string`                                   | New text content                                 |
 
+## Reporting progress — tx.progress
+
+`tx.progress` is a `ProgressReporter` — the only writer of `doc.state.progress`
+(see [State & Errors](/guide/development/state-and-errors#progress-two-levels-one-bar)
+for the full model). Reads (`doc.query`) get a no-op reporter.
+
+```ts
+await doc.transaction(async (tx) => {
+	tx.progress.plan({ steps: items.length, label: 'Applying…' }) // main bar (transaction closes it)
+	for (const item of items) {
+		tx.progress.nextStep(`Processing ${item.name}`) // caption + advance
+		await doSomething(tx, item)
+	}
+})
+```
+
+| Method                    | Purpose                                                                                             |
+| ------------------------- | --------------------------------------------------------------------------------------------------- |
+| `plan({ steps, label? })` | Push a plan level (child of the current innermost, or the main when none is open)                   |
+| `nextStep(label?)`        | Advance the innermost plan one step (close-previous: `current` = completed steps); optional caption |
+| `endPlan()`               | Pop the innermost plan; balance every `plan()` you open **except** the main (transaction owns it)   |
+| `forceClear()`            | Unconditional clear — called by `Document.transaction`'s outer `finally` regardless of balance      |
+
 ## Reading inside a transaction
 
 Since `Transaction` extends `Query`, all query methods are available and **see staged changes**:

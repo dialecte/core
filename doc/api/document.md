@@ -99,7 +99,7 @@ Each `Document` exposes a reactive `state` object of type `DocumentState`. This 
 ```ts
 doc.state.loading // boolean - true while busy
 doc.state.error // DialecteError | null
-doc.state.progress // { message, current, total } | null
+doc.state.progress // DocumentProgress - { current, total, label, step } | null
 doc.state.history // TransactionEntry[] - breadcrumb trail
 doc.state.lastUpdate // number | null - timestamp of last commit
 ```
@@ -110,10 +110,17 @@ doc.state.lastUpdate // number | null - timestamp of last commit
 type DocumentState = {
 	loading: boolean
 	error: DialecteError | null
-	progress: { message: string; current: number; total: number } | null
+	progress: DocumentProgress
 	history: TransactionEntry[]
 	lastUpdate: number | null
 }
+
+type DocumentProgress = {
+	current: number // completed steps of the main plan (advanced by nextStep)
+	total: number // main plan step count
+	label: string // live caption (deepest plan's, else the main's)
+	step: { current: number; total: number } | null // fine sub-progress of the deepest nested plan, cosmetic
+} | null
 
 type TransactionEntry = {
 	method: string
@@ -137,7 +144,27 @@ type DocumentEntry = DocumentState & {
 
 ### Cross-tab sync
 
-A `Document` does not own a channel. When a transaction commits, it announces `{ type: 'commit', documentId, timestamp }` through the owning Project (via an injected `notify`), which posts it on the project's `BroadcastChannel`. The Project folds every such message — this tab's own commits and other tabs' commits alike — back into the shared `DocumentEntry`, keeping `lastUpdate` and `canUndo`/`canRedo` current. Open `doc.channelName` yourself to react to updates (e.g. refetch a view).
+A `Document` does not own a channel. When a transaction commits, it announces `{ type: 'commit', documentId, timestamp }` through the owning Project (via an injected `broadcast`), which posts it on the project's `BroadcastChannel`. The Project folds every such message — this tab's own commits and other tabs' commits alike — back into the shared `DocumentEntry`, keeping `lastUpdate` and `canUndo`/`canRedo` current. Open `doc.channelName` yourself to react to updates (e.g. refetch a view).
+
+## subscribe
+
+`state` is a plain object — it does not emit change events on its own. `doc.subscribe(cb)` registers a callback fired **synchronously, in this realm** whenever the shared state changes: progress steps and `loading` toggles during a transaction, `undo`/`redo`, and cross-realm commits folded in from the channel. It returns an unsubscribe function.
+
+```ts
+const unsubscribe = doc.subscribe((terminal) => {
+	// read the live doc.state here (loading, progress, lastUpdate, ...)
+	if (terminal) {
+		// final frame of an operation — safe to flush immediately without coalescing
+	}
+})
+
+// later
+unsubscribe()
+```
+
+- **`terminal`** is `true` only for the last frame of an operation (a transaction's end, `undo`/`redo`, a folded commit). Mid-operation frames (progress steps, `loading = true`) pass `false`. A UI layer coalesces non-terminal frames (e.g. one repaint per animation frame) and flushes terminal ones immediately, so the final 100%/cleared state is never dropped.
+- This is distinct from `doc.channelName` / the `BroadcastChannel`: the channel is the **cross-realm transport** (other tabs/iframes), whereas `subscribe` is the **in-realm reactive signal**. Cross-realm commits reach `subscribe` too, because the Project calls the same registry after folding a channel message in. Progress never goes through the channel.
+- The registry lives on the owning `Project` (keyed by `documentId`), so every `Document` opened for the same file shares one subscriber set, and `Project.undo`/`redo` reach it.
 
 ## close / destroy
 

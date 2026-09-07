@@ -16,25 +16,120 @@ const doc = project.openDocument(documentId)
 const { loading, error, progress, history, lastUpdate } = doc.state
 ```
 
+`state` is a plain data object — it does not emit change events itself. To react without polling, use [`doc.subscribe`](#reactivity-doc-subscribe): a synchronous, in-realm callback fired on every state change (progress, `loading`, undo/redo, folded cross-realm commits).
+
 #### Fields
 
-| Field        | Type                                  | Purpose                                                      |
-| ------------ | ------------------------------------- | ------------------------------------------------------------ |
-| `loading`    | `boolean`                             | `true` while a transaction, commit, undo, or redo is running |
-| `error`      | `DialecteError \| null`               | Last error (structured, UI-consumable)                       |
-| `progress`   | `{ message, current, total } \| null` | Drives progress bars and status messages                     |
-| `history`    | `TransactionEntry[]`                  | Breadcrumb trail of committed transactions                   |
-| `lastUpdate` | `number \| null`                      | Timestamp of the last successful commit (local or cross-tab) |
+| Field        | Type                    | Purpose                                                      |
+| ------------ | ----------------------- | ------------------------------------------------------------ |
+| `loading`    | `boolean`               | `true` while a transaction, commit, undo, or redo is running |
+| `error`      | `DialecteError \| null` | Last error (structured, UI-consumable)                       |
+| `progress`   | `DocumentProgress`      | Two-level progress — see below                               |
+| `history`    | `TransactionEntry[]`    | Breadcrumb trail of committed transactions                   |
+| `lastUpdate` | `number \| null`        | Timestamp of the last successful commit (local or cross-tab) |
+
+#### Progress — two levels, one bar
 
 ```ts
-// Show spinner
-v-if="doc.state.loading"
-
-// Show progress bar and message
-v-if="doc.state.progress"
-{{ doc.state.progress.message }}  // "Committing changes..."
-{{ doc.state.progress.current }} / {{ doc.state.progress.total }}
+type DocumentProgress = {
+	current: number // completed steps of the main plan (advanced by nextStep, close-previous)
+	total: number // main plan step count, fixed by its plan({ steps })
+	label: string // live caption (deepest plan's, else the main's)
+	step: { current: number; total: number } | null // fine sub-progress of the deepest nested plan
+} | null
 ```
+
+`current`/`total` are the ONE main bar, projected from the outermost plan
+(`plan()` opened when nothing else is on the stack). `step` is the deepest nested
+plan of whatever long-running core op (`commit`, `deepClone`, `importTypes`, ...)
+is currently running inside that main — purely cosmetic, it never changes
+`current`/`total`. A bare `doc.transaction()` where a lone op opens a `plan()`
+simply makes that op the main bar itself (no `step`).
+
+```ts
+v-if="doc.state.progress"
+{{ doc.state.progress.label }}
+{{ doc.state.progress.current }} / {{ doc.state.progress.total }}
+<template v-if="doc.state.progress.step">
+  ({{ doc.state.progress.step.current }} / {{ doc.state.progress.step.total }})
+</template>
+```
+
+#### Reporting progress — `tx.progress`
+
+Inside a transaction, `tx.progress` (a `ProgressReporter`) is the only writer
+of `state.progress`. `doc.query` (read-only) gets a no-op reporter — reads never
+report progress.
+
+```ts
+await doc.transaction(async (tx) => {
+	tx.progress.plan({ steps: items.length, label: 'Applying…' }) // main bar
+	for (const item of items) {
+		tx.progress.nextStep(`Processing ${item.name}`) // caption + advance, one call
+		await doSomething(tx, item)
+	}
+	// no endPlan(): the main is owned by the transaction (see below)
+})
+```
+
+Progress is a **stack of plans**. `plan({ steps, label? })` pushes a level,
+`nextStep(label?)` advances the innermost level, `endPlan()` pops it. `nextStep`
+is close-previous: it captions the new step **and** advances the bar in one call,
+closing the _previous_ step, so the first `nextStep` opens step 0 without
+advancing and `current` stays = **completed** steps.
+
+**Balancing rule:** every `plan()` you open you close with `endPlan()`, **except**
+the transaction body's main plan — the transaction closes that one for you (its
+`finally` runs `forceClear()`). You never inspect the stack: a nested op writes
+`plan()`/`nextStep()`/`endPlan()` identically whether it runs top-level or inside
+another plan. On a throw you skip `endPlan()` entirely — `forceClear()` unwinds
+the whole stack.
+
+```ts
+async function cloneStuff(tx, nodes) {
+	tx.progress.plan({ steps: nodes.length }) // no label → inherits the main's caption
+	for (const n of nodes) tx.progress.nextStep()
+	tx.progress.endPlan() // balanced close
+}
+```
+
+Nested plans **compose safely**. `plan`/`endPlan` push/pop an internal stack, so
+a nested op (e.g. a `deepClone` called inside an `importTypes` loop) reports into
+its own frame without clobbering its caller's — the caller's frame resurfaces when
+the child pops. The UI surfaces the deepest active plan as `step` (finest movement)
+and its caption, falling back to the main's caption when the deepest has none.
+
+`forceClear()` is called unconditionally by `Document.transaction`'s outer
+`finally`, so `state.progress` is always cleared at the end of a transaction —
+even if the callback left the main plan open (the normal case) or an unbalanced
+`plan()`/`endPlan()` pair.
+
+### Reactivity — doc.subscribe
+
+`state` is a plain object, so a consumer needs a signal to know when it changed.
+`doc.subscribe(cb)` fires `cb(terminal)` **synchronously, in this realm** on
+every state mutation — progress steps, `loading` toggles, `undo`/`redo`, and
+cross-realm commits folded in from the channel. It returns an unsubscribe
+function.
+
+```ts
+const unsubscribe = doc.subscribe((terminal) => {
+	render(doc.state) // read the live state
+})
+onScopeDispose(unsubscribe)
+```
+
+- `terminal` is `true` only for the final frame of an operation. A UI layer
+  coalesces non-terminal frames (e.g. one repaint per animation frame) and
+  flushes terminal ones immediately, so the last 100%/cleared frame is never
+  dropped. Core emits every change; throttling lives in the consumer.
+- `subscribe` is the **in-realm reactive signal**; the `BroadcastChannel`
+  (`doc.channelName`) is the **cross-realm transport**. They are complementary:
+  a folded cross-realm commit also fires `subscribe`. High-frequency progress
+  never touches the channel.
+- The subscriber registry lives on the owning `Project` (keyed by `documentId`),
+  so every `Document` for the same file shares one set and `Project.undo`/`redo`
+  reach it.
 
 ### DocumentEntry (Project-level)
 
@@ -55,13 +150,13 @@ type DocumentEntry = DocumentState & {
 ```
 transaction start -> loading=true, error=null
   |
-callback runs    -> (loading stays true)
+callback runs    -> tx.progress.plan/nextStep/endPlan (state.progress fills in)
   |
-commit           -> progress={ message: 'Committing changes...', current: 0, total }
+commit           -> tx.progress.plan({ steps: totalOps })/nextStep (nested plan only)
   |
-success          -> loading=false, progress=null, history entry added, lastUpdate set
+success          -> loading=false, forceClear() -> progress=null, history entry added, lastUpdate set
   | (or)
-failure          -> error=DialecteError, loading=false, progress=null
+failure          -> error=DialecteError, loading=false, forceClear() -> progress=null
 ```
 
 ### Cross-tab sync
