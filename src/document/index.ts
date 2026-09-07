@@ -3,6 +3,8 @@ export { bindExtensions } from './bind-extensions'
 export * from './query'
 export * from './transaction'
 
+export type { ProgressReporter, DocumentProgress } from './progress'
+
 export type {
 	ExtendedDocument,
 	Context,

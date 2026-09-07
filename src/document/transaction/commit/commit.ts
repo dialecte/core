@@ -1,6 +1,10 @@
 import { mergeOperations } from './merge-operations'
 
+import { NOOP_PERF } from '@/perf'
+
+import type { ProgressReporter } from '@/document/progress'
 import type { DocumentState } from '@/document/types'
+import type { Perf } from '@/perf'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, Operation } from '@/types'
 
@@ -9,35 +13,52 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	store: Store
 	documentId: string
 	documentState: DocumentState
+	progress: ProgressReporter
+	perf?: Perf
 }): Promise<void> {
-	const { stagedOperations, store, documentId, documentState } = params
+	const { stagedOperations, store, documentId, documentState, progress, perf = NOOP_PERF } = params
 
+	perf.start('core::commit')
+	perf.start('core::commit::merge')
 	const { creates, updates, deletes } = mergeOperations(stagedOperations)
+	perf.stop('core::commit::merge')
 
 	const totalOperations = creates.length + updates.length + deletes.length
 
 	documentState.loading = true
-	documentState.progress = { message: 'Committing changes...', current: 0, total: totalOperations }
+	progress.plan({ steps: totalOperations })
+
+	// store.commit reports absolute cumulative progress; convert it to relative
+	// nextStep() calls (robust to batched jumps).
+	let reported = 0
+	const advanceTo = (current: number): void => {
+		while (reported < current) {
+			progress.nextStep()
+			reported++
+		}
+	}
 
 	try {
+		perf.count('core::store::commit')
+		perf.start('core::store::commit')
 		await store.commit({
 			documentId,
 			creates: creates.map((op) => op.newRecord),
 			updates: updates.map((op) => op.newRecord),
 			deletes: deletes.map((op) => op.oldRecord.id),
-			onProgress: (current, total) => {
-				documentState.progress = { message: 'Committing changes...', current, total }
+			onProgress: (current) => {
+				advanceTo(current)
 			},
 		})
+		perf.stop('core::store::commit')
 	} catch (error) {
 		documentState.loading = false
-		documentState.progress = null
+		progress.endPlan()
+		perf.stop('core::commit')
 		throw error
 	}
 
 	documentState.lastUpdate = Date.now()
-	// Clear progress once the commit succeeds: progress must be `null` when the document is idle,
-	// otherwise the last "Committing changes..." value lingers globally and any consumer reading
-	// `state.progress` between operations shows a stale, misleading status.
-	documentState.progress = null
+	progress.endPlan()
+	perf.stop('core::commit')
 }

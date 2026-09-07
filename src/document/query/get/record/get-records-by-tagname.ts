@@ -21,6 +21,7 @@ export async function getRecordsByTagName<
 	tagName: GenericElement
 }): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
 	const { context, tagName } = params
+	context.perf.count('core::store::getByTagName')
 	const rawRecords = (await context.store.getByTagNameInDocument(
 		tagName,
 		context.documentId,

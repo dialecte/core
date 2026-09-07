@@ -1,3 +1,4 @@
+import { createProgressReporter } from '../progress'
 import { Query } from '../query'
 import { AnyTransaction } from './any'
 import { stageDeepClone } from './clone'
@@ -8,13 +9,16 @@ import { stageEnsureChild } from './ensure'
 import { stageUpdate } from './update'
 
 import { toRef } from '@/helpers'
+import { NOOP_PERF } from '@/perf'
 
+import type { ProgressReporter } from '../progress'
 import type { DocumentState } from '../types'
 import type { Context } from '../types'
 import type { CloneResult } from './clone'
 import type { AddChildParams } from './create'
 import type { UpdateParams } from './update'
 import type { RefOrRecord } from '@/document'
+import type { Perf } from '@/perf'
 import type { Store } from '@/store'
 import type {
 	AnyDialecteConfig,
@@ -47,6 +51,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	protected documentActivity: DocumentState
 	protected recordCache = new Map<string, AnyRawRecord>()
 	protected hooks: TransactionHooks<GenericConfig> | undefined
+	protected progressReporter: ProgressReporter
 	private _anyTx?: AnyTransaction<GenericConfig>
 
 	constructor(
@@ -55,10 +60,18 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		documentId: string,
 		documentActivity: DocumentState,
 		hooks?: TransactionHooks<GenericConfig>,
+		perf: Perf = NOOP_PERF,
+		signalStateChange: (terminal: boolean) => void = () => {},
 	) {
-		super(store, dialecteConfig, documentId)
+		super(store, dialecteConfig, documentId, perf)
 		this.documentActivity = documentActivity
 		this.hooks = hooks
+		this.progressReporter = createProgressReporter(documentActivity, signalStateChange)
+	}
+
+	/** Reachable by extensions via `tx.progress` to report coarse progress. */
+	get progress(): ProgressReporter {
+		return this.progressReporter
 	}
 
 	//== Untyped namespace
@@ -93,6 +106,8 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			documentId: this.documentId,
 			recordCache: this.recordCache,
 			stagedOperations: this.stagedOperations,
+			progress: this.progressReporter,
+			perf: this.perf,
 		}
 	}
 
@@ -278,6 +293,8 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			store: this.store,
 			documentId: this.documentId,
 			documentState: this.documentActivity,
+			progress: this.progressReporter,
+			perf: this.perf,
 		})
 	}
 }

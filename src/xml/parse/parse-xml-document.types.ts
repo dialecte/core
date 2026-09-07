@@ -1,3 +1,4 @@
+import type { Perf } from '@/perf'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, ChunkOptions, DialecteHooks } from '@/types'
 
@@ -12,6 +13,8 @@ export type ParseXmlFileParams = {
 	chunkOptions?: Partial<ChunkOptions>
 	/** Project hooks (erased): io hooks + afterStandardizedRecord for import */
 	hooks?: DialecteHooks<AnyDialecteConfig>
+	/** Dev perf helper (shared project instance); defaults to a no-op. */
+	perf?: Perf
 }
 
 export type ParseXmlFileResult = {

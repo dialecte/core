@@ -46,8 +46,11 @@ export async function getRecord<
 		const cacheKey = `__singleton_${ref.tagName}`
 		const cached = isTransactionContext(context) ? context.recordCache.get(cacheKey) : undefined
 		if (cached) {
+			context.perf.count('core::query::getRecord.cacheHit')
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
+			context.perf.count('core::query::getRecord.miss')
+			context.perf.count('core::store::getByTagName')
 			const records = (await context.store.getByTagNameInDocument(
 				ref.tagName,
 				context.documentId,
@@ -62,8 +65,11 @@ export async function getRecord<
 		// Normal path — resolve by id
 		const cached = isTransactionContext(context) ? context.recordCache.get(ref.id) : undefined
 		if (cached) {
+			context.perf.count('core::query::getRecord.cacheHit')
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
+			context.perf.count('core::query::getRecord.miss')
+			context.perf.count('core::store::get')
 			raw = (await context.store.get(ref.id, context.documentId)) as
 				| RawRecord<GenericConfig, GenericElement>
 				| undefined

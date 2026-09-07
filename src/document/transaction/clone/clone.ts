@@ -37,6 +37,15 @@ export async function stageDeepClone<
 
 	const mappings: CloneMapping<GenericConfig>[] = []
 
+	context.perf.start('core::deepClone')
+	// Nested fine plan — no label: inherits the main's current step caption. The
+	// count is a second full (in-memory) tree walk; sub-span it to confirm it stays
+	// negligible vs the per-node staging below.
+	context.perf.start('core::deepClone::countNodes')
+	const totalNodes = countNodes(record)
+	context.perf.stop('core::deepClone::countNodes')
+	context.progress.plan({ steps: totalNodes })
+
 	const clonedRecord = await cloneRecursively({
 		dialecteConfig,
 		hooks,
@@ -47,10 +56,20 @@ export async function stageDeepClone<
 		mappings,
 	})
 
+	context.progress.endPlan()
+	context.perf.stop('core::deepClone')
+
 	return {
 		record: clonedRecord,
 		mappings,
 	}
+}
+
+/** Total nodes in a tree record (self + all descendants) — the deepClone step total. */
+function countNodes(record: { tree: ReadonlyArray<{ tree: ReadonlyArray<unknown> }> }): number {
+	let total = 1
+	for (const child of record.tree) total += countNodes(child as typeof record)
+	return total
 }
 
 async function cloneRecursively<
@@ -99,6 +118,8 @@ async function cloneRecursively<
 		}),
 		target: toRef(childRecord),
 	})
+
+	context.progress.nextStep()
 
 	for (const child of transformedRecord.tree) {
 		await cloneRecursively({

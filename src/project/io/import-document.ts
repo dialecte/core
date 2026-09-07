@@ -11,7 +11,7 @@ import type { DocumentRecord } from '@/project'
  * Pure orchestration - no class state mutation.
  */
 export async function importDocument(params: ImportDocumentParams): Promise<ImportDocumentResult> {
-	const { file, store, configs, defaultConfigKey, options, hooks } = params
+	const { file, store, configs, defaultConfigKey, options, hooks, perf } = params
 
 	const configKey = options?.configKey ?? defaultConfigKey
 	const config = configs[configKey]
@@ -46,6 +46,7 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 		useCustomRecordsIds: options?.useCustomRecordsIds,
 		chunkOptions: options?.chunkOptions,
 		hooks,
+		perf,
 	})
 
 	return {

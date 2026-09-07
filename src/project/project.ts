@@ -4,6 +4,7 @@ import { buildDocumentState, reconcileDocumentState } from './state'
 
 import { Document } from '@/document'
 import { mergeExtensions } from '@/helpers'
+import { createPerf } from '@/perf'
 import { invariant } from '@/utils'
 
 import type {
@@ -18,6 +19,7 @@ import type {
 	DocumentRecord,
 } from './types'
 import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
+import type { Perf } from '@/perf'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
@@ -53,6 +55,8 @@ export class Project<
 	private defaultConfigKey: string
 	private mergedExtensions?: MergedExtensions<GenericModules>
 	private hooks?: DialecteHooks<GenericConfig>
+	/** Single project-lived dev perf helper; frozen no-op unless `dev.perf`. */
+	readonly perf: Perf
 
 	get name(): string {
 		invariant(this._name !== undefined, {
@@ -96,7 +100,7 @@ export class Project<
 	}
 
 	/** Post a message on the project channel. */
-	private notify(message: ProjectChannelMessage): void {
+	private broadcast(message: ProjectChannelMessage): void {
 		this.channel.postMessage(message)
 	}
 
@@ -105,12 +109,38 @@ export class Project<
 		activeTransactions: 0,
 	}
 
+	/**
+	 * In-realm reactive registry, keyed by documentId (parallel to `state.documents`).
+	 * The sole bridge between core state mutations and a Vue-free consumer: a
+	 * Document's progress reporter, a local commit's loading toggles, undo/redo, and
+	 * the foreign-commit channel fold all call `signalStateChange(documentId)`, firing
+	 * every callback a Document registered via `subscribe`. Distinct from the
+	 * BroadcastChannel (cross-realm transport): this is synchronous, same-realm, and
+	 * carries no payload — subscribers read the live shared `state` entry.
+	 */
+	private readonly stateSubscribers = new Map<string, Set<(terminal: boolean) => void>>()
+
+	private subscribeState(documentId: string, callback: (terminal: boolean) => void): () => void {
+		const set =
+			this.stateSubscribers.get(documentId) ??
+			this.stateSubscribers.set(documentId, new Set()).get(documentId)!
+		set.add(callback)
+		return () => set.delete(callback)
+	}
+
+	private signalStateChange(documentId: string, terminal: boolean): void {
+		const set = this.stateSubscribers.get(documentId)
+		if (!set) return
+		for (const callback of set) callback(terminal)
+	}
+
 	constructor(params: {
 		configs: Record<string, GenericConfig>
 		defaultConfigKey?: string
 		storage: ProjectParams<GenericConfig>['storage']
 		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 		hooks?: DialecteHooks<GenericConfig>
+		dev?: { perf?: boolean }
 	}) {
 		const configKeys = Object.keys(params.configs)
 
@@ -118,6 +148,7 @@ export class Project<
 		this.configs = params.configs
 		this.defaultConfigKey = params.defaultConfigKey ?? configKeys[0]
 		this.hooks = params.hooks
+		this.perf = createPerf({ enabled: params.dev?.perf ?? false })
 		this.mergedExtensions = params.extensions
 			? (mergeExtensions({
 					base: params.extensions.base,
@@ -179,6 +210,9 @@ export class Project<
 				// Tracked fire-and-forget: a late foreign message must not refresh
 				// flags on a store that teardown already closed.
 				this.trackBroadcastWork(this.refreshHistoryStatus(message.documentId))
+				// A cross-realm commit changed this document — wake local subscribers so
+				// the UI refetches (the fold above already updated the shared entry).
+				this.signalStateChange(message.documentId, true)
 				break
 			}
 		}
@@ -250,7 +284,7 @@ export class Project<
 		})
 
 		this.state.documents.set(result.documentId, result.documentState)
-		this.notify({
+		this.broadcast({
 			type: 'init-empty-document',
 			documentId: result.documentId,
 			timestamp: Date.now(),
@@ -265,7 +299,7 @@ export class Project<
 	async removeDocument(documentId: string): Promise<void> {
 		await this.store.removeDocument(documentId)
 		this.state.documents.delete(documentId)
-		this.notify({ type: 'document-removed', documentId, timestamp: Date.now() })
+		this.broadcast({ type: 'document-removed', documentId, timestamp: Date.now() })
 	}
 
 	// ── Import / Export ──────────────────────────────────────────────────────
@@ -288,13 +322,14 @@ export class Project<
 					// Erase to the config-agnostic pipeline shape at this single
 					// core-internal boundary (the import pipeline is registry-driven).
 					hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
+					perf: this.perf,
 				}),
 			),
 		)
 
 		for (const result of results) {
 			this.state.documents.set(result.documentId, result.documentState)
-			this.notify({
+			this.broadcast({
 				type: 'document-imported',
 				documentId: result.documentId,
 				timestamp: Date.now(),
@@ -351,10 +386,13 @@ export class Project<
 			// fold) maintains.
 			state: documentState,
 			channelName: this.channelName,
-			notify: (message) => this.notify(message),
+			broadcast: (message) => this.broadcast(message),
 			// Lets a local commit refresh canUndo/canRedo on the shared entry
 			// synchronously, without a channel round-trip.
 			refreshHistoryStatus: () => this.refreshHistoryStatus(documentId),
+			perf: this.perf,
+			subscribeState: (callback) => this.subscribeState(documentId, callback),
+			signalStateChange: (terminal) => this.signalStateChange(documentId, terminal),
 		})
 	}
 
@@ -404,7 +442,8 @@ export class Project<
 		const timestamp = Date.now()
 		documentState.lastUpdate = timestamp
 		await this.refreshHistoryStatus(documentId)
-		this.notify({ type: 'commit', documentId, timestamp })
+		this.signalStateChange(documentId, true)
+		this.broadcast({ type: 'commit', documentId, timestamp })
 	}
 
 	async redo(documentId: string): Promise<void> {
@@ -419,7 +458,8 @@ export class Project<
 		const timestamp = Date.now()
 		documentState.lastUpdate = timestamp
 		await this.refreshHistoryStatus(documentId)
-		this.notify({ type: 'commit', documentId, timestamp })
+		this.signalStateChange(documentId, true)
+		this.broadcast({ type: 'commit', documentId, timestamp })
 	}
 
 	// ── Blobs ────────────────────────────────────────────────────────────────
@@ -443,7 +483,7 @@ export class Project<
 			attachedTo,
 		}
 		await this.store.addBlob(entry, file)
-		this.notify({ type: 'blob-added', blobId: entry.id, documentId, timestamp: Date.now() })
+		this.broadcast({ type: 'blob-added', blobId: entry.id, documentId, timestamp: Date.now() })
 		return entry.id
 	}
 
@@ -474,17 +514,17 @@ export class Project<
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
 		await this.store.attachBlob(blobId, ref)
-		this.notify({ type: 'blob-attached', blobId, ref, timestamp: Date.now() })
+		this.broadcast({ type: 'blob-attached', blobId, ref, timestamp: Date.now() })
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
 		await this.store.detachBlob(blobId, ref)
-		this.notify({ type: 'blob-detached', blobId, ref, timestamp: Date.now() })
+		this.broadcast({ type: 'blob-detached', blobId, ref, timestamp: Date.now() })
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
 		await this.store.removeBlob(blobId)
-		this.notify({ type: 'blob-removed', blobId, timestamp: Date.now() })
+		this.broadcast({ type: 'blob-removed', blobId, timestamp: Date.now() })
 	}
 
 	// ── Cross-document queries ───────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import { TEST_DIALECTE_CONFIG } from './config'
 
+import { createProgressReporter } from '@/document/progress'
+import { NOOP_PERF } from '@/perf'
 import { Project } from '@/project'
 import { DexieStore } from '@/store'
 
@@ -39,6 +41,7 @@ export async function createTestProject<
 	dialecteConfig?: GenericConfig
 	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 	hooks?: DialecteHooks<GenericConfig>
+	dev?: { perf?: boolean }
 }): Promise<TestProjectResult<GenericConfig, GenericModules>> {
 	const {
 		sourceXml,
@@ -46,12 +49,14 @@ export async function createTestProject<
 		dialecteConfig = TEST_DIALECTE_CONFIG,
 		extensions,
 		hooks,
+		dev,
 	} = params as {
 		sourceXml: string
 		targetXml?: string
 		dialecteConfig: GenericConfig
 		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 		hooks?: DialecteHooks<GenericConfig>
+		dev?: { perf?: boolean }
 	}
 
 	const projectName = `test-${crypto.randomUUID()}`
@@ -63,6 +68,7 @@ export async function createTestProject<
 		storage: { type: 'local' },
 		extensions,
 		hooks,
+		dev,
 	}).open(projectName)
 
 	const [sourceImport] = await project.import(
@@ -109,5 +115,13 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 		documentId,
 		recordCache: new Map(),
 		stagedOperations: [],
+		progress: createProgressReporter({
+			loading: false,
+			error: null,
+			progress: null,
+			history: [],
+			lastUpdate: null,
+		}),
+		perf: NOOP_PERF,
 	}
 }

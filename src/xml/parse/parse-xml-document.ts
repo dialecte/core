@@ -1,9 +1,11 @@
 import { ParseSession } from './parse-session'
 import { setSaxParser } from './parser'
 
+import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
 
 import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
+import type { Perf } from '@/perf'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
@@ -25,7 +27,15 @@ const DEFAULT_BATCH_SIZE = 2000
  * - Database-agnostic: only calls Store.bulkWrite(documentId, ops)
  */
 export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXmlFileResult> {
-	const { documentId, store, config, useCustomRecordsIds = false, chunkOptions, hooks } = params
+	const {
+		documentId,
+		store,
+		config,
+		useCustomRecordsIds = false,
+		chunkOptions,
+		hooks,
+		perf = NOOP_PERF,
+	} = params
 	let { file } = params
 
 	const { supportedFileExtensions } = config.io
@@ -52,6 +62,7 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 	const session = new ParseSession()
 	const sax = setSaxParser({ dialecteConfig: config, useCustomRecordsIds, session, hooks })
 
+	perf.start('core::import')
 	const parsedCount = await streamFileInChunks({
 		file,
 		sax,
@@ -60,7 +71,9 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 		documentId,
 		chunkSize,
 		batchSize,
+		perf,
 	})
+	perf.stop('core::import')
 
 	const hookDelta = await runAfterImportHook({ hooks, store, documentId })
 
@@ -77,8 +90,9 @@ async function streamFileInChunks(params: {
 	documentId: string
 	chunkSize: number
 	batchSize: number
+	perf: Perf
 }): Promise<number> {
-	const { file, sax, session, store, documentId, chunkSize, batchSize } = params
+	const { file, sax, session, store, documentId, chunkSize, batchSize, perf } = params
 
 	let totalRecords = 0
 	const reader = file.stream().getReader()
@@ -92,10 +106,12 @@ async function streamFileInChunks(params: {
 
 		if (done) {
 			if (buffer.length > 0) {
+				perf.start('core::import::sax')
 				sax.parser.write(textDecoder.decode(buffer))
+				perf.stop('core::import::sax')
 			}
 			sax.parser.close()
-			totalRecords += await flushBatch({ sax, session, store, documentId, threshold: 0 })
+			totalRecords += await flushBatch({ sax, session, store, documentId, threshold: 0, perf })
 			break
 		}
 
@@ -106,9 +122,18 @@ async function streamFileInChunks(params: {
 		while (buffer.length >= chunkSize) {
 			const chunk = textDecoder.decode(buffer.slice(0, chunkSize), { stream: true })
 			buffer = buffer.slice(chunkSize)
+			perf.start('core::import::sax')
 			sax.parser.write(chunk)
+			perf.stop('core::import::sax')
 
-			totalRecords += await flushBatch({ sax, session, store, documentId, threshold: batchSize })
+			totalRecords += await flushBatch({
+				sax,
+				session,
+				store,
+				documentId,
+				threshold: batchSize,
+				perf,
+			})
 		}
 	}
 
@@ -149,14 +174,20 @@ async function flushBatch(params: {
 	store: Store
 	documentId: string
 	threshold: number
+	perf: Perf
 }): Promise<number> {
-	const { sax, session, store, documentId, threshold } = params
+	const { sax, session, store, documentId, threshold, perf } = params
 
 	if (sax.getSize() < threshold) return 0
 
 	const batch = sax.drainBatch()
+	perf.start('core::import::resolveChildren')
 	const resolved = session.resolveChildrenForBatch(batch)
+	perf.stop('core::import::resolveChildren')
 
+	perf.count('core::store::bulkWrite')
+	perf.start('core::store::bulkWrite')
 	await store.bulkWrite(documentId, { creates: resolved })
+	perf.stop('core::store::bulkWrite')
 	return resolved.length
 }

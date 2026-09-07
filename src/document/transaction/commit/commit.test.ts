@@ -2,6 +2,7 @@ import { commitTransaction } from './commit'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { createProgressReporter } from '@/document/progress'
 import { createTestRecord } from '@/test'
 
 import type { DocumentState } from '@/document'
@@ -79,10 +80,10 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('commitTransaction', () => {
-	it('sets loading and initial progress before writing to store', async () => {
+	it('sets loading and opens the commit plan before writing to store', async () => {
 		const state = makeState()
-		const loadingSnapshot: (typeof state.loading)[] = []
-		const progressSnapshot: (typeof state.progress)[] = []
+		let loadingAtCommit: boolean | undefined
+		let progressAtCommit: DocumentState['progress'] | undefined
 
 		const store: Store = {
 			name: 'test-store',
@@ -114,8 +115,8 @@ describe('commitTransaction', () => {
 			getChangeLog: vi.fn().mockResolvedValue([]),
 			getDatabaseInstance: vi.fn(),
 			commit: vi.fn(async () => {
-				loadingSnapshot.push(state.loading)
-				progressSnapshot.push(state.progress)
+				loadingAtCommit = state.loading
+				progressAtCommit = structuredClone(state.progress)
 			}),
 		}
 
@@ -129,10 +130,16 @@ describe('commitTransaction', () => {
 			store,
 			documentId: 'f1',
 			documentState: state,
+			progress: createProgressReporter(state),
 		})
 
-		expect(loadingSnapshot[0]).toBe(true)
-		expect(progressSnapshot[0]).toEqual({ message: 'Committing changes...', current: 0, total: 1 })
+		expect(loadingAtCommit).toBe(true)
+		expect(progressAtCommit).toEqual({
+			current: 0,
+			total: 1,
+			label: '',
+			step: null,
+		})
 	})
 
 	it('sets lastUpdate after a successful commit', async () => {
@@ -140,17 +147,29 @@ describe('commitTransaction', () => {
 		const { store } = makeStore()
 		const before = Date.now()
 
-		await commitTransaction({ stagedOperations: [], store, documentId: 'f1', documentState: state })
+		await commitTransaction({
+			stagedOperations: [],
+			store,
+			documentId: 'f1',
+			documentState: state,
+			progress: createProgressReporter(state),
+		})
 
 		expect(state.lastUpdate).toBeGreaterThanOrEqual(before)
 		expect(state.lastUpdate).toBeLessThanOrEqual(Date.now())
 	})
 
-	it('clears progress after a successful commit (idle state has no lingering progress)', async () => {
+	it('endPlan() clears the commit plan after a successful commit (no main owner)', async () => {
 		const state = makeState()
 		const { store } = makeStore()
 
-		await commitTransaction({ stagedOperations: [], store, documentId: 'f1', documentState: state })
+		await commitTransaction({
+			stagedOperations: [],
+			store,
+			documentId: 'f1',
+			documentState: state,
+			progress: createProgressReporter(state),
+		})
 
 		expect(state.progress).toBeNull()
 	})
@@ -180,6 +199,7 @@ describe('commitTransaction', () => {
 			store,
 			documentId: 'f1',
 			documentState: state,
+			progress: createProgressReporter(state),
 		})
 
 		expect(calls.creates).toEqual([createTestRecord({ record: { tagName: 'A', id: 'c1' } })])
@@ -207,6 +227,7 @@ describe('commitTransaction', () => {
 			store,
 			documentId: 'f1',
 			documentState: state,
+			progress: createProgressReporter(state),
 		})
 
 		expect(calls.creates).toHaveLength(0)
@@ -236,6 +257,7 @@ describe('commitTransaction', () => {
 			store,
 			documentId: 'f1',
 			documentState: state,
+			progress: createProgressReporter(state),
 		})
 
 		expect(calls.progressCalls).toEqual([
@@ -244,7 +266,7 @@ describe('commitTransaction', () => {
 		])
 	})
 
-	it('resets loading and progress then rethrows on store error', async () => {
+	it('resets loading and ends the commit plan (clearing progress, no main owner) then rethrows on store error', async () => {
 		const state = makeState()
 		const err = new Error('DB exploded')
 		const { store } = makeStore({ shouldThrow: err })
@@ -256,7 +278,13 @@ describe('commitTransaction', () => {
 		}
 
 		await expect(
-			commitTransaction({ stagedOperations: [op], store, documentId: 'f1', documentState: state }),
+			commitTransaction({
+				stagedOperations: [op],
+				store,
+				documentId: 'f1',
+				documentState: state,
+				progress: createProgressReporter(state),
+			}),
 		).rejects.toThrow('DB exploded')
 
 		expect(state.loading).toBe(false)
@@ -274,7 +302,13 @@ describe('commitTransaction', () => {
 		}
 
 		await expect(
-			commitTransaction({ stagedOperations: [op], store, documentId: 'f1', documentState: state }),
+			commitTransaction({
+				stagedOperations: [op],
+				store,
+				documentId: 'f1',
+				documentState: state,
+				progress: createProgressReporter(state),
+			}),
 		).rejects.toThrow()
 
 		expect(state.lastUpdate).toBeNull()

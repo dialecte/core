@@ -1,4 +1,5 @@
 import type { DocumentState, ExtensionModules } from '@/document'
+import type { Perf } from '@/perf'
 import type { Store } from '@/store/store.types'
 import type {
 	AnyDialecteConfig,
@@ -159,6 +160,8 @@ export type ImportDocumentParams = {
 	options?: ImportDocumentOptions
 	/** Hooks from the Project instance (erased); io hooks + standardization at import */
 	hooks?: DialecteHooks<AnyDialecteConfig>
+	/** Dev perf helper (shared project instance); defaults to a no-op. */
+	perf?: Perf
 }
 
 export type ImportDocumentResult = {

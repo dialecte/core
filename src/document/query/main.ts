@@ -1,3 +1,4 @@
+import { NOOP_PROGRESS_REPORTER } from '../progress'
 import { AnyQuery } from './any'
 import { findAncestors, findByAttributes, findDescendants } from './find'
 import { getTree } from './get'
@@ -11,6 +12,7 @@ import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } fro
 import { getSnapshot } from './snapshot'
 
 import { toRef } from '@/helpers'
+import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
 
 import type { Context } from '../types'
@@ -24,6 +26,7 @@ import type {
 import type { GetTreeParams } from './get'
 import type { GetSnapshotOptions, SnapshotResult } from './snapshot'
 import type { Ref, RefOrRecord } from '@/document'
+import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project'
 import type { Store } from '@/store'
 import type {
@@ -57,12 +60,24 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	protected store: Store
 	protected dialecteConfig: GenericConfig
 	protected documentId: string
+	protected _perf: Perf
 	private _any?: AnyQuery<GenericConfig>
 
-	constructor(store: Store, dialecteConfig: GenericConfig, documentId: string) {
+	constructor(
+		store: Store,
+		dialecteConfig: GenericConfig,
+		documentId: string,
+		perf: Perf = NOOP_PERF,
+	) {
 		this.store = store
 		this.dialecteConfig = dialecteConfig
 		this.documentId = documentId
+		this._perf = perf
+	}
+
+	/** Dev-only perf helper (real when `dev.perf` is on, else a frozen no-op). */
+	get perf(): Perf {
+		return this._perf
 	}
 
 	//== Untyped namespace
@@ -93,6 +108,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			documentId: this.documentId,
 			recordCache: undefined,
 			stagedOperations: this.getOperations(),
+			progress: NOOP_PROGRESS_REPORTER,
+			perf: this.perf,
 		}
 	}
 

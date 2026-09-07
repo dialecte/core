@@ -6,6 +6,7 @@ import { throwDialecteError } from '@/errors'
 
 import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
+import type { Perf } from '@/perf'
 import type { ProjectChannelMessage } from '@/project/types'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
@@ -48,7 +49,22 @@ export class Document<
 	readonly channelName: string
 
 	/** Announce a mutation on the project channel (provided by the owning Project) */
-	private notify: (message: ProjectChannelMessage) => void
+	private broadcast: (message: ProjectChannelMessage) => void
+
+	/** Project-lived dev perf helper (shared instance; no-op unless `dev.perf`). */
+	readonly perf: Perf
+
+	/**
+	 * Register a callback fired (synchronously, same-realm) whenever this document's
+	 * shared state changes: progress steps + loading toggles during a transaction,
+	 * undo/redo, and folded-in cross-realm commits. `terminal` is `true` for the
+	 * final frame of an operation, letting a consumer flush it without coalescing.
+	 * Returns an unsubscribe function. Wired from the owning Project's registry.
+	 */
+	readonly subscribe: (callback: (terminal: boolean) => void) => () => void
+
+	/** Wake this document's subscribers (provided by the owning Project). */
+	private signalStateChange: (terminal: boolean) => void
 
 	/**
 	 * Recompute this document's canUndo/canRedo on the shared project entry
@@ -69,8 +85,11 @@ export class Document<
 		project: {
 			state: DocumentState
 			channelName: string
-			notify: (message: ProjectChannelMessage) => void
+			broadcast: (message: ProjectChannelMessage) => void
 			refreshHistoryStatus: () => Promise<void>
+			perf: Perf
+			subscribeState: (callback: (terminal: boolean) => void) => () => void
+			signalStateChange: (terminal: boolean) => void
 		},
 	) {
 		this.store = store
@@ -80,8 +99,11 @@ export class Document<
 		this.extensionsRegistry = extensions
 		this.state = project.state
 		this.channelName = project.channelName
-		this.notify = project.notify
+		this.broadcast = project.broadcast
 		this.refreshHistoryStatus = project.refreshHistoryStatus
+		this.perf = project.perf
+		this.subscribe = project.subscribeState
+		this.signalStateChange = project.signalStateChange
 	}
 
 	//== Query access (read-only, no mutations exposed)
@@ -116,7 +138,7 @@ export class Document<
 	 * Override in dialecte subclass to return a domain-specific Query.
 	 */
 	protected createQuery(): Query<GenericConfig> {
-		return new Query(this.store, this.config, this.documentId)
+		return new Query(this.store, this.config, this.documentId, this.perf)
 	}
 
 	get query(): Query<GenericConfig> & QueryExtensions<GenericExtension> {
@@ -130,7 +152,15 @@ export class Document<
 	 * e.g. SclDocument overrides this to return new SclTransaction(...)
 	 */
 	protected createTransaction(): Transaction<GenericConfig> {
-		return new Transaction(this.store, this.config, this.documentId, this.state, this.hooks)
+		return new Transaction(
+			this.store,
+			this.config,
+			this.documentId,
+			this.state,
+			this.hooks,
+			this.perf,
+			this.signalStateChange,
+		)
 	}
 
 	async transaction<T>(
@@ -146,6 +176,7 @@ export class Document<
 		this.activeTransactions++
 		this.state.loading = true
 		this.state.error = null
+		this.signalStateChange(false)
 
 		const tx = this.withAllExtensions(this.createTransaction())
 
@@ -157,7 +188,7 @@ export class Document<
 			// Project.undo/redo) so state is correct synchronously — no channel
 			// echo required.
 			await this.refreshHistoryStatus()
-			this.notify({
+			this.broadcast({
 				type: 'commit',
 				documentId: this.documentId,
 				timestamp: this.state.lastUpdate ?? Date.now(),
@@ -172,7 +203,6 @@ export class Document<
 
 			return result
 		} catch (error) {
-			this.state.progress = null
 			throw (
 				this.state.error ??
 				throwDialecteError('UNKNOWN', {
@@ -181,8 +211,10 @@ export class Document<
 				})
 			)
 		} finally {
+			tx.progress.forceClear()
 			this.activeTransactions--
 			this.state.loading = false
+			this.signalStateChange(true)
 		}
 	}
 
@@ -266,7 +298,7 @@ export class Document<
 					// Refresh canUndo/canRedo locally so the shared entry is correct
 					// synchronously — no channel echo required.
 					await this.refreshHistoryStatus()
-					this.notify({
+					this.broadcast({
 						type: 'commit',
 						documentId: this.documentId,
 						timestamp: this.state.lastUpdate ?? Date.now(),

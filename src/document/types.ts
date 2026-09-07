@@ -1,8 +1,10 @@
 import type { Document } from './document'
+import type { ProgressReporter, DocumentProgress } from './progress/progress.types'
 import type { Query } from './query'
 import type { ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { ExtensionModules, MergedExtensions } from './types.extensions'
 import type { DialecteError } from '@/errors'
+import type { Perf } from '@/perf'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig, Operation, AnyRawRecord } from '@/types'
 
@@ -34,6 +36,8 @@ export type Context<GenericConfig extends AnyDialecteConfig> = {
 	readonly documentId: string
 	readonly recordCache: Map<string, AnyRawRecord> | undefined
 	stagedOperations: Operation<GenericConfig>[]
+	readonly progress: ProgressReporter
+	readonly perf: Perf
 }
 
 /**
@@ -89,11 +93,7 @@ export type DocumentState = {
 	error: DialecteError | null
 
 	/** Drives progress bars and status messages (commit, deepClone, bulk ops) */
-	progress: {
-		message: string
-		current: number
-		total: number
-	} | null
+	progress: DocumentProgress
 
 	/** Breadcrumb trail — what happened in order (debugging) */
 	history: TransactionEntry[]
