@@ -36,7 +36,7 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 		metadata: options?.metadata,
 	}
 
-	await store.registerDocument(documentRecord)
+	await perfRegisterDocument(store, documentRecord)
 
 	const { recordCount } = await parseXmlFile({
 		file,
@@ -54,5 +54,14 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 		record: documentRecord,
 		documentState: buildDocumentState(documentRecord),
 		recordCount,
+	}
+
+	async function perfRegisterDocument(s: typeof store, r: DocumentRecord): Promise<void> {
+		perf?.start('core::import::registerDocument')
+		try {
+			await s.registerDocument(r)
+		} finally {
+			perf?.stop('core::import::registerDocument')
+		}
 	}
 }

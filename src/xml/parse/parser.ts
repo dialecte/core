@@ -4,9 +4,11 @@ import { ParseSession } from './parse-session'
 import * as sax from 'sax'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE, standardizeRecord } from '@/helpers'
+import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
 
 import type { ParserInstance, ParserState } from './types'
+import type { Perf } from '@/perf'
 import type {
 	Namespace,
 	AnyDialecteConfig,
@@ -30,16 +32,18 @@ export function setSaxParser(params: {
 	useCustomRecordsIds: boolean
 	session: ParseSession
 	hooks?: DialecteHooks<AnyDialecteConfig>
+	perf?: Perf
 }): ParserInstance {
-	const { dialecteConfig, useCustomRecordsIds, session, hooks } = params
+	const { dialecteConfig, useCustomRecordsIds, session, hooks, perf = NOOP_PERF } = params
 
-	const initialState: ParserState = {
+	// Single closure-private state, mutated in place per SAX event. The parser is
+	// the sole sequential writer, so immutable rebuilds bought nothing and cost an
+	// allocation (+ GC) per node — see handleOpenTag/handleCloseTag.
+	const state: ParserState = {
 		defaultNamespace: null,
 		stack: [],
 		recordsBatch: [],
 	}
-
-	let updatedState = initialState
 
 	const parser = sax.parser(
 		true, // strict mode
@@ -52,37 +56,39 @@ export function setSaxParser(params: {
 		},
 	)
 
-	parser.onopentag = (node: sax.QualifiedTag) =>
-		(updatedState = handleOpenTag({
-			node,
-			state: updatedState,
-			dialecteConfig,
-			useCustomRecordsIds,
-		}))
+	// Self-time per handler (create-record / text / close+reconcile-children) via
+	// the O(1) time accumulator, NOT per-call spans — millions of nodes would
+	// otherwise flood the timeline. Surfaced as calls/totalMs/avgMs in report().
+	parser.onopentag = (node: sax.QualifiedTag) => {
+		perf.time('core::import::onOpenTag', () =>
+			handleOpenTag({ node, state, dialecteConfig, useCustomRecordsIds }),
+		)
+	}
 
-	parser.ontext = (text: string) => (updatedState = handleText({ text, state: updatedState }))
+	parser.ontext = (text: string) => {
+		perf.time('core::import::onText', () => handleText({ text, state }))
+	}
 
-	parser.oncdata = (cdata: string) =>
-		(updatedState = handleText({ text: cdata, state: updatedState }))
+	parser.oncdata = (cdata: string) => {
+		perf.time('core::import::onText', () => handleText({ text: cdata, state }))
+	}
 
-	parser.onclosetag = () =>
-		({ updatedState } = handleCloseTag({
-			state: updatedState,
-			hooks,
-			session,
-			dialecteConfig,
-		}))
+	parser.onclosetag = () => {
+		perf.time('core::import::onCloseTag', () =>
+			handleCloseTag({ state, hooks, session, dialecteConfig, perf }),
+		)
+	}
 
 	parser.onerror = handleError
 
 	function drainBatch() {
-		const snapshot = updatedState.recordsBatch
-		updatedState.recordsBatch = []
+		const snapshot = state.recordsBatch
+		state.recordsBatch = []
 		return snapshot
 	}
 
 	function getSize() {
-		return updatedState.recordsBatch.length
+		return state.recordsBatch.length
 	}
 
 	return {
@@ -106,20 +112,19 @@ function handleOpenTag(params: {
 	state: ParserState
 	dialecteConfig: AnyDialecteConfig
 	useCustomRecordsIds: boolean
-}) {
+}): void {
 	const { node, state, dialecteConfig, useCustomRecordsIds } = params
-	const updatedState = { ...state }
 
 	const tagName = getElementLocalName(node)
 
-	if (!updatedState.defaultNamespace)
-		updatedState.defaultNamespace = getDefaultNamespace({
+	if (!state.defaultNamespace)
+		state.defaultNamespace = getDefaultNamespace({
 			element: node,
 			defaultNamespace: dialecteConfig.namespaces.default,
 			rootElementName: dialecteConfig.rootElementName,
 		})
 
-	const namespace = getElementNamespace(node, updatedState.defaultNamespace)
+	const namespace = getElementNamespace(node, state.defaultNamespace)
 
 	const id = getElementId({ attributes: node.attributes, useCustomRecordsIds })
 	const filteredAttributes = getFilteredAttributes({
@@ -140,9 +145,7 @@ function handleOpenTag(params: {
 		children: [],
 	}
 
-	updatedState.stack.push(record)
-
-	return updatedState
+	state.stack.push(record)
 }
 
 /**
@@ -152,13 +155,11 @@ function handleOpenTag(params: {
  * @returns Updated state
  *
  */
-function handleText(params: { text: string; state: ParserState }): ParserState {
+function handleText(params: { text: string; state: ParserState }): void {
 	const { text, state } = params
 
-	if (!text) return state
+	if (!text) return
 	if (state.stack.length > 0) state.stack[state.stack.length - 1].value += text
-
-	return state
 }
 
 /**
@@ -173,72 +174,57 @@ function handleCloseTag(params: {
 	session: ParseSession
 	hooks?: DialecteHooks<AnyDialecteConfig>
 	dialecteConfig: AnyDialecteConfig
-}): {
-	updatedState: ParserState
-} {
-	const { state, hooks, session, dialecteConfig } = params
+	perf?: Perf
+}): void {
+	const { state, hooks, session, dialecteConfig, perf = NOOP_PERF } = params
 
-	const rawRecord = state.stack.at(-1)
-	// removing the last record from the stack and current parent elements
-	let updatedStack = state.stack.slice(0, -1)
-	const updatedRecordsBatch = [...state.recordsBatch]
+	// Pop the closing record in place; the stack now holds only its ancestors.
+	const rawRecord = state.stack.pop()
+	if (!rawRecord) return
 
-	if (rawRecord) {
-		// Standardize the parsed record to the same canonical form produced by
-		// create/clone (schema attribute order + defaults + namespace +
-		// afterStandardizedRecord hook). Keeps the store's canonical form
-		// consistent across entry points so record comparison (e.g. the merging
-		// editor) doesn't flag standardization artifacts as changes. id/tagName/
-		// parent/children are preserved, so parent→child references stay valid.
-		//
-		// Runs BEFORE beforeImportRecord so that hook receives the finalized record
-		// (canonical attributes + any hook-enforced uuid already present), letting
-		// it index / resolve references without re-implementing standardization.
-		const currentRecord = standardizeRecord({
+	// Standardize the parsed record to the same canonical form produced by
+	// create/clone (schema attribute order + defaults + namespace +
+	// afterStandardizedRecord hook). Keeps the store's canonical form
+	// consistent across entry points so record comparison (e.g. the merging
+	// editor) doesn't flag standardization artifacts as changes. id/tagName/
+	// parent/children are preserved, so parent→child references stay valid.
+	//
+	// Runs BEFORE beforeImportRecord so that hook receives the finalized record
+	// (canonical attributes + any hook-enforced uuid already present), letting
+	// it index / resolve references without re-implementing standardization.
+	const currentRecord = perf.time('core::import::onCloseTag::standardize', () =>
+		standardizeRecord({
 			dialecteConfig,
 			hooks,
 			record: rawRecord,
-		})
+		}),
+	)
 
-		if (hooks?.beforeImportRecord) {
-			hooks.beforeImportRecord({
+	if (hooks?.beforeImportRecord) {
+		perf.time('core::import::onCloseTag::beforeHook', () =>
+			hooks.beforeImportRecord!({
 				record: currentRecord,
-				ancestry: updatedStack,
-			})
-		}
+				ancestry: state.stack,
+			}),
+		)
+	}
 
-		if (updatedStack.length) {
-			// create children relationship if parent is still in the stack
-			const parentIndex = updatedStack.length - 1
-
-			updatedStack = updatedStack.map((item, currentIndex) =>
-				currentIndex === parentIndex
-					? {
-							...item,
-							children: [
-								...item.children,
-								{ id: currentRecord.id, tagName: currentRecord.tagName },
-							],
-						}
-					: item,
-			)
+	perf.time('core::import::onCloseTag::reconcileChildren', () => {
+		const parent = state.stack[state.stack.length - 1]
+		if (parent) {
+			// Mutate the still-open parent's children in place; it captures them when it
+			// standardizes on its own close.
+			parent.children.push({ id: currentRecord.id, tagName: currentRecord.tagName })
 		} else if (currentRecord.parent) {
+			// Parent already left the stack (drained in an earlier batch) → resolve later.
 			session.registerPendingChild(currentRecord.parent.id, {
 				id: currentRecord.id,
 				tagName: currentRecord.tagName,
 			})
 		}
+	})
 
-		updatedRecordsBatch.push(currentRecord)
-	}
-
-	return {
-		updatedState: {
-			defaultNamespace: state.defaultNamespace,
-			stack: updatedStack,
-			recordsBatch: updatedRecordsBatch,
-		},
-	}
+	state.recordsBatch.push(currentRecord)
 }
 
 /**

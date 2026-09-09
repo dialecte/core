@@ -17,6 +17,7 @@ export function createPerf({ enabled }: { enabled: boolean }): Perf {
 
 	const pending = new Map<string, string[]>() // qualified name → stack of start-mark ids
 	const counters = new Map<string, number>() // qualified name → tally
+	const accumulators = new Map<string, { calls: number; totalMs: number }>() // qualified name → summed wall-time
 	let seq = 0
 
 	const perf: Perf = {
@@ -41,6 +42,20 @@ export function createPerf({ enabled }: { enabled: boolean }): Perf {
 			counters.set(qualified, (counters.get(qualified) ?? 0) + 1)
 		},
 
+		time(name, fn) {
+			const qualified = ROOT_PREFIX + name
+			const t0 = performance.now()
+			try {
+				return fn()
+			} finally {
+				const bucket =
+					accumulators.get(qualified) ??
+					accumulators.set(qualified, { calls: 0, totalMs: 0 }).get(qualified)!
+				bucket.calls++
+				bucket.totalMs += performance.now() - t0
+			}
+		},
+
 		profile(name, fn) {
 			if (typeof console.profile !== 'function') return fn() // node/headless → skip
 			console.profile(ROOT_PREFIX + name)
@@ -56,6 +71,14 @@ export function createPerf({ enabled }: { enabled: boolean }): Perf {
 				bucket.calls++
 				bucket.totalMs += entry.duration
 				bucket.avgMs = bucket.totalMs / bucket.calls
+			}
+			// Overlay time accumulators — merge into the same calls/totalMs bucket.
+			for (const [qualified, acc] of accumulators) {
+				const name = qualified.slice(ROOT_PREFIX.length)
+				const bucket = (out[name] ??= { calls: 0, totalMs: 0, avgMs: 0 })
+				bucket.calls += acc.calls
+				bucket.totalMs += acc.totalMs
+				bucket.avgMs = bucket.calls ? bucket.totalMs / bucket.calls : 0
 			}
 			// Overlay counters — a counted-only name gets zeroed timing fields.
 			for (const [qualified, count] of counters) {
@@ -74,6 +97,7 @@ export function createPerf({ enabled }: { enabled: boolean }): Perf {
 			performance.clearMarks()
 			performance.clearMeasures()
 			counters.clear()
+			accumulators.clear()
 		},
 	}
 

@@ -60,7 +60,7 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 	const batchSize = chunkOptions?.batchSize ?? DEFAULT_BATCH_SIZE
 
 	const session = new ParseSession()
-	const sax = setSaxParser({ dialecteConfig: config, useCustomRecordsIds, session, hooks })
+	const sax = setSaxParser({ dialecteConfig: config, useCustomRecordsIds, session, hooks, perf })
 
 	perf.start('core::import')
 	const parsedCount = await streamFileInChunks({
@@ -97,43 +97,60 @@ async function streamFileInChunks(params: {
 	let totalRecords = 0
 	const reader = file.stream().getReader()
 	const textDecoder = new TextDecoder()
-	let buffer: Uint8Array = new Uint8Array(0)
+	// Bytes left over from the previous read (< chunkSize, or a split multi-byte char):
+	// carried and re-fed at the head of the next read so every byte is decoded once, in order.
+	let remainder = new Uint8Array(0)
 
 	let done = false
 	while (!done) {
+		perf.start('core::import::read')
 		const result = await reader.read()
+		perf.stop('core::import::read')
 		done = result.done
 
-		if (done) {
-			if (buffer.length > 0) {
+		if (result.value) {
+			perf.start('core::import::bufferAppend')
+			const buffer = remainder.length === 0 ? result.value : appendToBuffer(remainder, result.value)
+			perf.stop('core::import::bufferAppend')
+
+			// Advance a cursor with subarray VIEWS (O(1), no copy) instead of re-slicing the
+			// tail every chunk (the old `buffer = buffer.slice(chunkSize)` was O(fileSize²)).
+			let offset = 0
+			while (offset + chunkSize <= buffer.length) {
+				perf.start('core::import::decode')
+				const chunk = textDecoder.decode(buffer.subarray(offset, offset + chunkSize), {
+					stream: true,
+				})
+				perf.stop('core::import::decode')
+				offset += chunkSize
 				perf.start('core::import::sax')
-				sax.parser.write(textDecoder.decode(buffer))
+				sax.parser.write(chunk)
+				perf.stop('core::import::sax')
+
+				totalRecords += await flushBatch({
+					sax,
+					session,
+					store,
+					documentId,
+					threshold: batchSize,
+					perf,
+				})
+			}
+			// Copy the small tail into a fresh array so the (possibly huge) read buffer is released.
+			remainder = offset < buffer.length ? buffer.slice(offset) : new Uint8Array(0)
+		}
+
+		if (done) {
+			if (remainder.length > 0) {
+				perf.start('core::import::decode')
+				const tail = textDecoder.decode(remainder) // final flush of any pending multi-byte char
+				perf.stop('core::import::decode')
+				perf.start('core::import::sax')
+				sax.parser.write(tail)
 				perf.stop('core::import::sax')
 			}
 			sax.parser.close()
 			totalRecords += await flushBatch({ sax, session, store, documentId, threshold: 0, perf })
-			break
-		}
-
-		if (!result.value) continue
-
-		buffer = appendToBuffer(buffer, result.value)
-
-		while (buffer.length >= chunkSize) {
-			const chunk = textDecoder.decode(buffer.slice(0, chunkSize), { stream: true })
-			buffer = buffer.slice(chunkSize)
-			perf.start('core::import::sax')
-			sax.parser.write(chunk)
-			perf.stop('core::import::sax')
-
-			totalRecords += await flushBatch({
-				sax,
-				session,
-				store,
-				documentId,
-				threshold: batchSize,
-				perf,
-			})
 		}
 	}
 

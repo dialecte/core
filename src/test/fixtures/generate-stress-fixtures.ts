@@ -28,25 +28,31 @@ const DEFAULT_NAMESPACE_URI = 'http://dialecte.dev/XML/DEFAULT'
 // real facets (fixed/enum/pattern/identity), so a generic payload would fail
 // standardization on clone. D..Z are unknown → returned verbatim → pure structural stress.
 const ALPHABET = 'DEFGHIJKLMNOPQRSTUVWXYZ'
-const DEFAULT_SIZES_MB = [5, 10, 50, 100, 200, 500]
+// Greater arrangement: fine steps up to 100 MB, then 100-MB steps to 500 MB.
+const DEFAULT_SIZES_MB = [5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 200, 300, 400, 500]
 
 /** Tunables for the generated tree — kept small so byte size scales predictably. */
 export type StressShape = {
 	/** Root's `xmlns`. */
 	namespaceUri: string
-	/** Children per node inside a block (the "Rule of 3" is `breadth: 3`). */
+	/** Children per node inside a block. Low so a depth-`maxDepth` block stays modest,
+	 * which keeps MANY blocks per file (breadth at the Root — how real SCL scales). */
 	breadth: number
-	/** Depth of the first block; grows by one every full alphabet cycle (logic growth). */
+	/** Depth of every block. Kept CONSTANT (not size-correlated) at a realistic value. */
 	baseDepth: number
-	/** Cap on the grown depth so a single block stays bounded. */
+	/** Cap on block depth. Equal to `baseDepth` here → every block has the same depth. */
 	maxDepth: number
 }
 
+// Depth is FIXED at ~real production (max SCL nesting ~8-10) + a bit, and does NOT grow
+// with file size — bigger files add more blocks (breadth at Root), not deeper nodes.
+// This matches how real SCL scales (many records at bounded depth), unlike a generator
+// where size↑ ⇒ depth↑ (which would stress an axis production never hits).
 const DEFAULT_SHAPE: StressShape = {
 	namespaceUri: DEFAULT_NAMESPACE_URI,
-	breadth: 3,
-	baseDepth: 4,
-	maxDepth: 8,
+	breadth: 2,
+	baseDepth: 10,
+	maxDepth: 10,
 }
 
 type BlockResult = { xml: string; nodes: number }
@@ -111,8 +117,8 @@ function write(stream: NodeJS.WritableStream, chunk: string): Promise<void> {
 
 /**
  * Stream a well-formed stress document to `outPath` until it reaches ~`targetBytes`.
- * Blocks cycle through the alphabet; depth grows by one each full cycle, so the tree
- * mixes shallow-wide and deep-narrow subtrees. Returns the node count + byte size.
+ * Every block has the SAME (realistic, ~10) depth; file size grows by emitting MORE
+ * blocks (Root breadth), not deeper trees. Returns the node count + byte size.
  */
 export async function generateStressXml(params: {
 	outPath: string
@@ -135,10 +141,8 @@ export async function generateStressXml(params: {
 
 	while (bytes < params.targetBytes) {
 		const letter = ALPHABET[blockIndex % ALPHABET.length]
-		const depth = Math.min(
-			shape.baseDepth + Math.floor(blockIndex / ALPHABET.length),
-			shape.maxDepth,
-		)
+		// Constant depth (not size-correlated): every block is a realistic-depth subtree.
+		const depth = shape.maxDepth
 		const block = emitBlock(letter, 0, depth, shape)
 		buffer += block.xml
 		nodes += block.nodes

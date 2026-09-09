@@ -15,9 +15,11 @@ import {
 import Dexie from 'dexie'
 
 import { throwDialecteError } from '@/errors'
+import { NOOP_PERF } from '@/perf'
 
 import type { Store, ChangeLogEntry, ChangeLogMeta, RecordSchema } from '../store.types'
 import type { DexieStoreOptions } from './types'
+import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
@@ -64,6 +66,8 @@ export class DexieStore implements Store {
 	private db: Dexie
 	private schemaVersion = 1
 	private readonly dexieRecordSchema: string
+	/** Dev-only perf helper from the owning Project (no-op unless dev.perf is on). */
+	private readonly perf: Perf
 	/** In-memory file registry - avoids bootstrap connections during close/reopen */
 	private knownDocuments: Map<string, DocumentRecord> = new Map()
 	/** Serialization lock for schema-changing operations */
@@ -78,6 +82,7 @@ export class DexieStore implements Store {
 	constructor(projectName: string, options?: DexieStoreOptions) {
 		this.name = projectName
 		this.dexieRecordSchema = buildDexieSchema(options?.recordSchema ?? DEFAULT_RECORD_SCHEMA)
+		this.perf = options?.perf ?? NOOP_PERF
 		this.db = new Dexie(projectName)
 	}
 
@@ -228,10 +233,13 @@ export class DexieStore implements Store {
 
 		await this.db.transaction('rw', table, async () => {
 			if (creates?.length) {
+				this.perf.start('core::store::bulkWrite::add')
 				await table.bulkAdd(creates)
+				this.perf.stop('core::store::bulkWrite::add')
 			}
 
 			if (updates?.length) {
+				this.perf.start('core::store::bulkWrite::update')
 				for (const { recordId, ...patch } of updates) {
 					const record = await table.get(recordId)
 					if (!record) continue
@@ -260,10 +268,13 @@ export class DexieStore implements Store {
 
 					await table.update(recordId, merged)
 				}
+				this.perf.stop('core::store::bulkWrite::update')
 			}
 
 			if (deletes?.length) {
+				this.perf.start('core::store::bulkWrite::delete')
 				await table.bulkDelete(deletes)
+				this.perf.stop('core::store::bulkWrite::delete')
 			}
 		})
 	}
@@ -578,16 +589,21 @@ export class DexieStore implements Store {
 
 	/** Close DB, bump version, reopen with updated schema */
 	private async reopenWithNewSchema(options?: { drop?: string }): Promise<void> {
-		this.db.close()
-		await tick()
-		this.schemaVersion++
-		this.db = new Dexie(this.name)
-		this.db.version(this.schemaVersion).stores(this.buildStores(options))
-		this.attachVersionChangeHandler()
-		await this.db.open()
-		// Persist schema version
-		await this.db.table(TABLE_META).put({ key: 'schemaVersion', value: this.schemaVersion })
-		this.stale = false
+		this.perf.start('core::store::reopenSchema')
+		try {
+			this.db.close()
+			await tick()
+			this.schemaVersion++
+			this.db = new Dexie(this.name)
+			this.db.version(this.schemaVersion).stores(this.buildStores(options))
+			this.attachVersionChangeHandler()
+			await this.db.open()
+			// Persist schema version
+			await this.db.table(TABLE_META).put({ key: 'schemaVersion', value: this.schemaVersion })
+			this.stale = false
+		} finally {
+			this.perf.stop('core::store::reopenSchema')
+		}
 	}
 
 	/**

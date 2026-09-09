@@ -30,6 +30,14 @@ export type Perf = {
 	 * `start`/`stop` would flood the timeline. Surfaced as `count` in `report()`.
 	 */
 	count(name: string): void
+	/**
+	 * O(1) wall-time accumulator: runs `fn`, adds its elapsed time to a running
+	 * total keyed by `name` WITHOUT emitting a timeline measure per call (unlike
+	 * `start`/`stop`). Surfaced as calls/totalMs/avgMs in `report()`. Use to time a
+	 * hot per-node primitive (e.g. the SAX handlers) where millions of measures
+	 * would flood the timeline.
+	 */
+	time<GenericResult>(name: string, fn: () => GenericResult): GenericResult
 	/** Run `fn` inside a DevTools CPU profile (no-op in node/headless). */
 	profile<GenericResult>(name: string, fn: () => Promise<GenericResult>): Promise<GenericResult>
 	/** Aggregate the timeline synchronously on demand — no `PerformanceObserver`. */

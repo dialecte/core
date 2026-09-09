@@ -147,3 +147,50 @@ describe('createPerf — counters', () => {
 		expect(perf.report()).toEqual({})
 	})
 })
+
+describe('createPerf — time() accumulator', () => {
+	it('accumulates wall-time as calls/totalMs WITHOUT emitting a per-call timeline measure', () => {
+		const perf = createPerf({ enabled: true })
+
+		perf.time('core::import::onOpenTag', () => {})
+
+		const entry = perf.report()['core::import::onOpenTag']
+		expect(entry.calls).toBe(1)
+		expect(entry.totalMs).toBeGreaterThanOrEqual(0)
+		// no timeline pollution — the whole point vs start/stop for a hot per-node path
+		expect(performance.getEntriesByType('measure')).toHaveLength(0)
+	})
+
+	it('aggregates repeated calls of the same name: calls counts up, avg = total / calls', () => {
+		const perf = createPerf({ enabled: true })
+
+		perf.time('core::import::onCloseTag', () => {})
+		perf.time('core::import::onCloseTag', () => {})
+
+		const entry = perf.report()['core::import::onCloseTag']
+		expect(entry.calls).toBe(2)
+		expect(entry.avgMs).toBeCloseTo(entry.totalMs / 2, 10)
+	})
+
+	it('returns the wrapped function result', () => {
+		const perf = createPerf({ enabled: true })
+
+		expect(perf.time('core::import::onText', () => 42)).toBe(42)
+	})
+
+	it('reset() clears time accumulators', () => {
+		const perf = createPerf({ enabled: true })
+
+		perf.time('core::import::onOpenTag', () => {})
+		perf.reset()
+
+		expect(perf.report()).toEqual({})
+	})
+
+	it('disabled: time() still runs fn and returns its result but records nothing', () => {
+		const perf = createPerf({ enabled: false })
+
+		expect(perf.time('core::import::onOpenTag', () => 7)).toBe(7)
+		expect(perf.report()).toEqual({})
+	})
+})

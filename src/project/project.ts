@@ -171,7 +171,7 @@ export class Project<
 			this.onChannelMessage(event.data)
 		})
 
-		const store = resolveStore(name, this.storage, this.configs[this.defaultConfigKey])
+		const store = resolveStore(name, this.storage, this.configs[this.defaultConfigKey], this.perf)
 		await store.open()
 		this._store = store as GenericStore
 

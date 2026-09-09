@@ -5,6 +5,9 @@ export const NOOP_PERF: Perf = Object.freeze({
 	start() {},
 	stop() {},
 	count() {},
+	time(_name, fn) {
+		return fn()
+	},
 	profile(_name, fn) {
 		return fn()
 	},
