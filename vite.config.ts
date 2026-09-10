@@ -20,6 +20,11 @@ export default defineConfig({
 			'@': fileURLToPath(new URL('./src', import.meta.url)),
 		},
 	},
+	// The sqlite-wasm package ships its own .wasm asset; excluding it from dep
+	// pre-bundling lets Vite serve that asset correctly (dev + vitest browser).
+	optimizeDeps: {
+		exclude: ['@sqlite.org/sqlite-wasm'],
+	},
 	build: {
 		sourcemap: import.meta.env?.DEV,
 		lib: {
