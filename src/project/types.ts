@@ -85,6 +85,7 @@ export type ProjectChannelMessage =
 
 export type StorageParam =
 	| { type: 'local' }
+	| { type: 'opfs' }
 	| { type: 'custom'; store: Store }
 	| { type: 'inMemory'; writable?: boolean }
 

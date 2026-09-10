@@ -38,16 +38,27 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 
 	await perfRegisterDocument(store, documentRecord)
 
-	const { recordCount } = await parseXmlFile({
-		file,
-		documentId,
-		store,
-		config,
-		useCustomRecordsIds: options?.useCustomRecordsIds,
-		chunkOptions: options?.chunkOptions,
-		hooks,
-		perf,
-	})
+	// One-open-transaction import for stores that support it (SQLite). On any
+	// failure, roll the whole document back so no partial import persists.
+	await store.beginImport?.(documentId)
+	let recordCount: number
+	try {
+		;({ recordCount } = await parseXmlFile({
+			file,
+			documentId,
+			store,
+			config,
+			useCustomRecordsIds: options?.useCustomRecordsIds,
+			chunkOptions: options?.chunkOptions,
+			hooks,
+			perf,
+		}))
+		await store.finalizeImport?.(documentId)
+	} catch (error) {
+		await store.finalizeImport?.(documentId).catch(() => {})
+		await store.removeDocument(documentId).catch(() => {})
+		throw error
+	}
 
 	return {
 		documentId,
