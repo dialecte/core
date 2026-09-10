@@ -39,8 +39,8 @@ export interface Store {
 	/** Open the connection (if not already open) */
 	open(): Promise<void>
 
-	/** Close the connection */
-	close(): void
+	/** Close the connection. May be async for worker-backed stores. */
+	close(): void | Promise<void>
 
 	/** Delete the database entirely (not just clear — remove from browser) */
 	destroy(): Promise<void>
@@ -105,6 +105,20 @@ export interface Store {
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void>
 
+	/**
+	 * Begin an import session for a document. Optional: stores that batch a whole
+	 * import into one transaction (SQLite) open it here; `bulkWrite` calls between
+	 * begin and finalize insert into that transaction. No-op / absent for stores
+	 * that commit per `bulkWrite` (Dexie, InMemory).
+	 */
+	beginImport?(documentId: string): Promise<void>
+
+	/**
+	 * Finalize an import session: commit the open transaction (and build deferred
+	 * indexes, if the store defers them). Optional — see `beginImport`.
+	 */
+	finalizeImport?(documentId: string): Promise<void>
+
 	/** Atomic commit — all-or-nothing write scoped to a document */
 	commit(params: {
 		documentId: string
@@ -161,6 +175,10 @@ export interface Store {
 	 * Expose the underlying database instance.
 	 * Type depends on the implementation (e.g. Dexie for DexieStore).
 	 * Cast at the call site when the concrete store type is known.
+	 *
+	 * @deprecated Leaks the backend (returns Dexie). Worker-backed stores (SQLite)
+	 * return `null` — the DB lives in a worker and cannot be handed out. Will be
+	 * removed from the port once `makeDexieLayer` / `Project` migrate off it.
 	 */
 	getDatabaseInstance(): unknown
 }
