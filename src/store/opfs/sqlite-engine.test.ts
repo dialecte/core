@@ -198,6 +198,45 @@ describe('SqliteEngine — deferred secondary indexes (bulk-load optimization)',
 		expect((await engine.getByTagNameInDocument('IED', 'd1')).map((r) => r.id)).toEqual(['a'])
 	})
 
+	it('applies an in-import update without duplicating the row (REPLACE parity with the id index dropped)', async () => {
+		await engine.registerDocument(doc('d1'))
+		await engine.beginImport('d1')
+		await engine.bulkWrite('d1', { creates: [rec('a', 'IED'), rec('b', 'LN')] })
+		// The id unique index is dropped during import, so INSERT OR REPLACE has no
+		// conflict target: this update must not leave a duplicate id row behind.
+		await engine.bulkWrite('d1', {
+			updates: [{ recordId: 'a', attributes: [{ name: 'desc', value: 'x' }] }],
+		})
+		// Rebuilding the unique id index at finalize must not throw on a duplicate.
+		await engine.finalizeImport('d1')
+		expect(await engine.listRecordIndexes('d1')).toHaveLength(4)
+		const rowsForA = (await engine.getByDocumentId('d1')).filter((r) => r.id === 'a')
+		expect(rowsForA).toHaveLength(1)
+		expect((await engine.get('a', 'd1'))!.attributes).toEqual([
+			{ name: 'name', value: 'IED_a' },
+			{ name: 'desc', value: 'x' },
+		])
+	})
+
+	it('composes repeated in-import updates to the same id', async () => {
+		await engine.registerDocument(doc('d1'))
+		await engine.beginImport('d1')
+		await engine.bulkWrite('d1', { creates: [rec('a', 'IED')] })
+		await engine.bulkWrite('d1', {
+			updates: [{ recordId: 'a', attributes: [{ name: 'p1', value: '1' }] }],
+		})
+		await engine.bulkWrite('d1', {
+			updates: [{ recordId: 'a', attributes: [{ name: 'p2', value: '2' }] }],
+		})
+		await engine.finalizeImport('d1')
+		expect((await engine.getByDocumentId('d1')).filter((r) => r.id === 'a')).toHaveLength(1)
+		expect((await engine.get('a', 'd1'))!.attributes).toEqual([
+			{ name: 'name', value: 'IED_a' },
+			{ name: 'p1', value: '1' },
+			{ name: 'p2', value: '2' },
+		])
+	})
+
 	it('commit ensures secondary indexes exist for a non-imported document', async () => {
 		await engine.registerDocument(doc('d1'))
 		await engine.bulkWrite('d1', { creates: [rec('a', 'IED')] })
