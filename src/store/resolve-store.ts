@@ -26,7 +26,10 @@ export function resolveStore<GenericConfig extends AnyDialecteConfig>(
 		return new InMemoryStore(name, { writable: storage.writable ?? true })
 	}
 	if (storage.type === 'opfs') {
-		return new SqliteStore(name, { recordSchema: config.database.recordSchema })
+		return new SqliteStore(name, {
+			recordSchema: config.database.recordSchema,
+			definitionSpecifier: storage.definitionSpecifier,
+		})
 	}
 	return storage.store
 }

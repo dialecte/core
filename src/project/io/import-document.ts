@@ -38,26 +38,43 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 
 	await perfRegisterDocument(store, documentRecord)
 
-	// One-open-transaction import for stores that support it (SQLite). On any
-	// failure, roll the whole document back so no partial import persists.
-	await store.beginImport?.(documentId)
 	let recordCount: number
-	try {
-		;({ recordCount } = await parseXmlFile({
-			file,
-			documentId,
-			store,
-			config,
-			useCustomRecordsIds: options?.useCustomRecordsIds,
-			chunkOptions: options?.chunkOptions,
-			hooks,
-			perf,
-		}))
-		await store.finalizeImport?.(documentId)
-	} catch (error) {
-		await store.finalizeImport?.(documentId).catch(() => {})
-		await store.removeDocument(documentId).catch(() => {})
-		throw error
+	if (store.supportsRealmImport && store.importFile) {
+		// Parse + persist entirely in the store's realm (worker). The File clones
+		// cheaply across the boundary; records never cross it. On failure, roll the
+		// whole document back so no partial import persists.
+		try {
+			;({ recordCount } = await store.importFile(
+				documentId,
+				file,
+				config,
+				options?.useCustomRecordsIds,
+			))
+		} catch (error) {
+			await store.removeDocument(documentId).catch(() => {})
+			throw error
+		}
+	} else {
+		// One-open-transaction import for stores that support it (SQLite). On any
+		// failure, roll the whole document back so no partial import persists.
+		await store.beginImport?.(documentId)
+		try {
+			;({ recordCount } = await parseXmlFile({
+				file,
+				documentId,
+				store,
+				config,
+				useCustomRecordsIds: options?.useCustomRecordsIds,
+				chunkOptions: options?.chunkOptions,
+				hooks,
+				perf,
+			}))
+			await store.finalizeImport?.(documentId)
+		} catch (error) {
+			await store.finalizeImport?.(documentId).catch(() => {})
+			await store.removeDocument(documentId).catch(() => {})
+			throw error
+		}
 	}
 
 	return {

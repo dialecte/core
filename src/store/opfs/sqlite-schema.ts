@@ -36,7 +36,7 @@ const PATH_TO_COLUMN: Record<string, string> = {
 export function recordTableDDL(tableName: string): string {
 	return (
 		`CREATE TABLE IF NOT EXISTS "${tableName}" (` +
-		'id TEXT PRIMARY KEY, ' +
+		'id TEXT, ' +
 		'tagName TEXT, ' +
 		'nsPrefix TEXT, ' +
 		'nsUri TEXT, ' +
@@ -48,8 +48,24 @@ export function recordTableDDL(tableName: string): string {
 	)
 }
 
+/**
+ * The unique index on `id`. Present for all non-import writes (created with the
+ * table), dropped during an import session and rebuilt in bulk at finalize so the
+ * uuid index isn't maintained per row while loading.
+ */
+export function recordIdIndexDDL(tableName: string): string {
+	return `CREATE UNIQUE INDEX IF NOT EXISTS "idx_${tableName}_id" ON "${tableName}"("id")`
+}
+
+/** Drops the deferred `id` unique index for the bulk-load window. */
+export function recordIdIndexDropDDL(tableName: string): string {
+	return `DROP INDEX IF EXISTS "idx_${tableName}_id"`
+}
+
 export function recordIndexDDL(tableName: string, schema: RecordSchema): string[] {
-	const stmts: string[] = []
+	// The id unique index is deferred (dropped at beginImport, rebuilt here) so bulk
+	// import appends to a plain rowid table and the uuid index is built once in bulk.
+	const stmts: string[] = [recordIdIndexDDL(tableName)]
 
 	for (const path of schema.indexes) {
 		const col = PATH_TO_COLUMN[path]

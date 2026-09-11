@@ -1,5 +1,10 @@
 import { recordTableName } from '../store.constants'
-import { recordIndexDDL, recordTableDDL } from './sqlite-schema'
+import {
+	recordIdIndexDDL,
+	recordIdIndexDropDDL,
+	recordIndexDDL,
+	recordTableDDL,
+} from './sqlite-schema'
 import { indexBuildCacheSizeKiB, pageCacheSizeKiB } from './sqlite-tuning'
 
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
@@ -9,6 +14,8 @@ import { parseXmlFile } from '@/xml'
 
 import type { ChangeLogEntry, RecordSchema, Store } from '../store.types'
 import type {
+	ImportResult,
+	DialecteDefinitionModule,
 	Sqlite3Static,
 	SqlBindable,
 	SqliteDb,
@@ -24,11 +31,15 @@ import type {
 	AnyRawRecord,
 	BlobAttachment,
 	BlobRecord,
+	DialecteHooks,
 	RecordPatch,
 } from '@/types'
 
 const RECORD_INSERT_COLUMNS = 'id,tagName,nsPrefix,nsUri,value,parentId,parentTagName,attributes'
 const RECORD_PLACEHOLDERS = '?,?,?,?,?,?,?,?'
+// Rows per JSON1 bulk-insert chunk: each chunk is one `json_each(?)` bind + step,
+// so this only bounds the per-statement JSON payload size, not a param count.
+const JSON_INSERT_CHUNK_ROWS = 1000
 
 type ChangeLogOperations = ChangeLogEntry['operations']
 
@@ -49,7 +60,14 @@ export class SqliteEngine implements SqliteEngineApi {
 	// Steady-state page cache (negative KiB), 0 in memory mode. Bumped transiently for the
 	// finalize-time index build.
 	private cacheKiB = 0
+	// Worker-side import timing breakdown (reset per import), read back by the bench.
+	private importInsertMs = 0
+	private importCommitMs = 0
+	private importIndexMs = 0
 	private readonly recordSchema: RecordSchema
+	// Hooks loaded from `definitionSpecifier` and run in this realm during import
+	// (they cannot cross Comlink as functions, so the engine loads them itself).
+	private importHooks?: DialecteHooks<AnyDialecteConfig>
 	// Import mutex: the tail of the queue of in-flight import sessions.
 	private importQueueTail: Promise<void> = Promise.resolve()
 	private releaseImport: (() => void) | null = null
@@ -86,6 +104,12 @@ export class SqliteEngine implements SqliteEngineApi {
 			)
 		}
 		this.createSystemTables()
+		if (mode.definitionSpecifier) {
+			const module = (await import(
+				/* @vite-ignore */ mode.definitionSpecifier
+			)) as DialecteDefinitionModule
+			this.importHooks = module.createHooks()
+		}
 	}
 
 	async close(): Promise<void> {
@@ -134,7 +158,10 @@ export class SqliteEngine implements SqliteEngineApi {
 		const table = recordTableName(file.id)
 		// Create the table WITHOUT secondary indexes: inserting into an unindexed table keeps
 		// a bulk import sequential. The indexes are built once in finalizeImport / commit.
+		// The id unique index is present for non-import writes; beginImport drops it to defer
+		// the uuid index maintenance during a bulk load.
 		this.database.exec(recordTableDDL(table))
+		this.database.exec(recordIdIndexDDL(table))
 		this.database.exec({
 			sql: 'INSERT OR REPLACE INTO _documents (id,name,extension,configKey,createdAt,metadata) VALUES (?,?,?,?,?,?)',
 			bind: [
@@ -148,12 +175,12 @@ export class SqliteEngine implements SqliteEngineApi {
 		})
 	}
 
-	/** The named secondary indexes on a document's record table (excludes the PK autoindex). */
+	/** The named secondary indexes on a document's record table (excludes the id unique index). */
 	async listRecordIndexes(documentId: string): Promise<string[]> {
 		const table = recordTableName(documentId)
 		return this.query<{ name: SqlValue }>(
-			`SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND name LIKE 'idx_%'`,
-			[table],
+			`SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=? AND name LIKE 'idx_%' AND name<>?`,
+			[table, `idx_${table}_id`],
 		).map((row) => String(row.name))
 	}
 
@@ -248,38 +275,50 @@ export class SqliteEngine implements SqliteEngineApi {
 
 	// ── Writes ───────────────────────────────────────────────────────────────
 
-	async beginImport(_documentId?: string): Promise<void> {
+	async beginImport(documentId?: string): Promise<void> {
 		// Serialize import sessions on the single connection: wait for any active one.
 		const previous = this.importQueueTail
 		let release!: () => void
 		this.importQueueTail = new Promise<void>((resolve) => (release = resolve))
 		await previous
 		this.releaseImport = release
+		this.importInsertMs = 0
+		this.importCommitMs = 0
+		this.importIndexMs = 0
+		// Defer the id unique index for the bulk-load window; finalize rebuilds it in bulk.
+		if (documentId) this.database.exec(recordIdIndexDropDDL(recordTableName(documentId)))
 		this.database.exec('BEGIN')
 	}
 
 	async finalizeImport(documentId?: string): Promise<void> {
 		if (!this.importActive) return
+		const tCommit = performance.now()
 		this.database.exec('COMMIT')
+		this.importCommitMs += performance.now() - tCommit
 		const release = this.releaseImport
 		this.releaseImport = null
 		release?.()
 		// Build the deferred secondary indexes once, over the fully-loaded table.
-		if (documentId) this.ensureRecordIndexes(recordTableName(documentId))
+		if (documentId) {
+			const tIndex = performance.now()
+			this.ensureRecordIndexes(recordTableName(documentId))
+			this.importIndexMs += performance.now() - tIndex
+		}
 	}
 
 	/**
 	 * Parse a file and persist it entirely within this engine's realm. In the OPFS
 	 * worker this runs the SAX parser IN the worker against the in-worker store, so
 	 * records never cross the Comlink boundary (no per-record structured clone). The
-	 * document must already be registered. Returns the parsed record count.
+	 * document must already be registered. Returns the parsed count + a worker-side
+	 * timing breakdown (insert loop / commit flush / index build) for the bench.
 	 */
 	async importDocument(
 		documentId: string,
 		file: File,
 		config: AnyDialecteConfig,
 		useCustomRecordsIds?: boolean,
-	): Promise<number> {
+	): Promise<ImportResult> {
 		await this.beginImport(documentId)
 		try {
 			const { recordCount } = await parseXmlFile({
@@ -288,9 +327,15 @@ export class SqliteEngine implements SqliteEngineApi {
 				store: this as unknown as Store,
 				config,
 				useCustomRecordsIds,
+				hooks: this.importHooks,
 			})
 			await this.finalizeImport(documentId)
-			return recordCount
+			return {
+				recordCount,
+				insertMs: this.importInsertMs,
+				commitMs: this.importCommitMs,
+				indexMs: this.importIndexMs,
+			}
 		} catch (error) {
 			await this.finalizeImport(documentId).catch(() => {})
 			throw error
@@ -321,27 +366,26 @@ export class SqliteEngine implements SqliteEngineApi {
 		const table = recordTableName(documentId)
 
 		if (ops.creates?.length) {
-			const stmt = this.database.prepare(
-				`INSERT OR REPLACE INTO "${table}" (${RECORD_INSERT_COLUMNS}) VALUES (${RECORD_PLACEHOLDERS})`,
-			)
-			try {
-				for (const record of ops.creates) {
-					stmt.bind(recordBindings(record))
-					stmt.step()
-					stmt.reset(true)
-				}
-			} finally {
-				stmt.finalize()
-			}
+			const tInsert = performance.now()
+			this.insertCreatesBatched(table, ops.creates)
+			this.importInsertMs += performance.now() - tInsert
 		}
 
 		if (ops.updates?.length) {
 			for (const { recordId, ...patch } of ops.updates) {
-				const rows = this.query(`SELECT * FROM "${table}" WHERE id=?`, [recordId])
+				// Read the latest row for the id (rowid order) so repeated in-import
+				// updates compose instead of merging onto a stale original.
+				const rows = this.query(`SELECT * FROM "${table}" WHERE id=? ORDER BY rowid DESC LIMIT 1`, [
+					recordId,
+				])
 				if (!rows[0]) continue
 				const merged = mergePatch(rowToRecord(rows[0]), patch)
+				// The id unique index is dropped during import, so INSERT OR REPLACE has no
+				// conflict target and would append a duplicate row. Delete existing row(s)
+				// for the id first to keep REPLACE parity whether or not the index exists.
+				this.database.exec({ sql: `DELETE FROM "${table}" WHERE id=?`, bind: [recordId] })
 				this.database.exec({
-					sql: `INSERT OR REPLACE INTO "${table}" (${RECORD_INSERT_COLUMNS}) VALUES (${RECORD_PLACEHOLDERS})`,
+					sql: `INSERT INTO "${table}" (${RECORD_INSERT_COLUMNS}) VALUES (${RECORD_PLACEHOLDERS})`,
 					bind: recordBindings(merged),
 				})
 			}
@@ -358,6 +402,35 @@ export class SqliteEngine implements SqliteEngineApi {
 			} finally {
 				stmt.finalize()
 			}
+		}
+	}
+
+	/**
+	 * Bulk-insert creates via the JSON1 extension: each chunk of records is passed
+	 * as a SINGLE json array-of-arrays parameter and expanded with `json_each` +
+	 * positional `->>`. This collapses N binds + N `step()`s into one bind + one
+	 * step per chunk, eliminating the per-row JS<->WASM crossing that dominates
+	 * import cost, and sidesteps the SQLITE_MAX_VARIABLE_NUMBER limit.
+	 */
+	private insertCreatesBatched(table: string, records: AnyRawRecord[]): void {
+		const stmt = this.database.prepare(
+			`INSERT OR REPLACE INTO "${table}" (${RECORD_INSERT_COLUMNS}) ` +
+				'SELECT ' +
+				'e.value->>0, e.value->>1, e.value->>2, e.value->>3, ' +
+				'e.value->>4, e.value->>5, e.value->>6, e.value->>7 ' +
+				'FROM json_each(?) e',
+		)
+		try {
+			for (let i = 0; i < records.length; i += JSON_INSERT_CHUNK_ROWS) {
+				const end = Math.min(i + JSON_INSERT_CHUNK_ROWS, records.length)
+				const rows: SqlBindable[][] = []
+				for (let j = i; j < end; j++) rows.push(recordBindings(records[j]!))
+				stmt.bind([JSON.stringify(rows)])
+				stmt.step()
+				stmt.reset(true)
+			}
+		} finally {
+			stmt.finalize()
 		}
 	}
 

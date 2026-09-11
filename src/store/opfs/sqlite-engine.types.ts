@@ -1,6 +1,6 @@
 import type { RecordSchema } from '../store.types'
 import type { Store } from '../store.types'
-import type { AnyDialecteConfig } from '@/types'
+import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 /**
  * Minimal typed facade over the `@sqlite.org/sqlite-wasm` oo1 surface we use, so
  * the engine stays `any`-free without depending on the package's large type tree.
@@ -49,7 +49,33 @@ export interface SqliteSahPool {
 }
 
 /** How the engine opens its database. `memory` needs no Worker (used by tests). */
-export type SqliteEngineMode = { kind: 'memory' } | { kind: 'opfs-sahpool'; projectName: string }
+export type SqliteEngineMode = (
+	| { kind: 'memory' }
+	| { kind: 'opfs-sahpool'; projectName: string }
+) & {
+	/**
+	 * Optional module specifier the engine `import()`s in its own realm to obtain
+	 * the dialecte's hooks. Lets the worker run per-record hooks (which cannot cross
+	 * Comlink as functions) by loading them locally instead of receiving them.
+	 */
+	definitionSpecifier?: string
+}
+
+/**
+ * The shape of a dialecte "definition" module loaded by `definitionSpecifier`.
+ * `createHooks` is called once in the engine's realm; its hooks run during import.
+ */
+export type DialecteDefinitionModule = {
+	createHooks(): DialecteHooks<AnyDialecteConfig>
+}
+
+/** Parse-in-worker result: record count + worker-side timing breakdown (ms). */
+export type ImportResult = {
+	recordCount: number
+	insertMs: number
+	commitMs: number
+	indexMs: number
+}
 
 export type SqliteEngineOptions = {
 	recordSchema: RecordSchema
@@ -60,6 +86,8 @@ export type SqliteStoreOptions = {
 	recordSchema: RecordSchema
 	/** `opfs-sahpool` runs the engine in a worker (production); `memory` runs it in-process (tests). */
 	mode?: 'opfs-sahpool' | 'memory'
+	/** Module specifier the engine loads in its realm to run the dialecte's import hooks. */
+	definitionSpecifier?: string
 }
 
 /**
@@ -82,5 +110,5 @@ export type SqliteEngineApi = Omit<
 		file: File,
 		config: AnyDialecteConfig,
 		useCustomRecordsIds?: boolean,
-	): Promise<number>
+	): Promise<ImportResult>
 }

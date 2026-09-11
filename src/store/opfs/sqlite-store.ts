@@ -4,6 +4,7 @@ import * as Comlink from 'comlink'
 
 import type { ChangeLogEntry, RecordSchema, Store } from '../store.types'
 import type { SqliteEngineApi, SqliteStoreOptions } from './sqlite-engine.types'
+import type { ImportResult } from './sqlite-engine.types'
 import type { DocumentRecord } from '@/project/types'
 import type {
 	AnyDialecteConfig,
@@ -25,6 +26,9 @@ export class SqliteStore implements Store {
 	readonly name: string
 	private readonly recordSchema: RecordSchema
 	private readonly mode: 'opfs-sahpool' | 'memory'
+	private readonly definitionSpecifier?: string
+	/** In-realm import is possible only when the worker can load hooks itself. */
+	readonly supportsRealmImport: boolean
 	private worker: Worker | null = null
 	private remote: SqliteEngineApi | null = null
 
@@ -32,6 +36,8 @@ export class SqliteStore implements Store {
 		this.name = name
 		this.recordSchema = options.recordSchema
 		this.mode = options.mode ?? 'opfs-sahpool'
+		this.definitionSpecifier = options.definitionSpecifier
+		this.supportsRealmImport = !!options.definitionSpecifier
 	}
 
 	private get engine(): SqliteEngineApi {
@@ -46,7 +52,7 @@ export class SqliteStore implements Store {
 
 		if (this.mode === 'memory') {
 			const engine = new SqliteEngine({ recordSchema: this.recordSchema })
-			await engine.init({ kind: 'memory' })
+			await engine.init({ kind: 'memory', definitionSpecifier: this.definitionSpecifier })
 			this.remote = engine
 			return
 		}
@@ -57,7 +63,11 @@ export class SqliteStore implements Store {
 		const remote = (await new EngineProxy({
 			recordSchema: this.recordSchema,
 		})) as unknown as SqliteEngineApi
-		await remote.init({ kind: 'opfs-sahpool', projectName: this.name })
+		await remote.init({
+			kind: 'opfs-sahpool',
+			projectName: this.name,
+			definitionSpecifier: this.definitionSpecifier,
+		})
 		this.remote = remote
 	}
 
@@ -143,8 +153,22 @@ export class SqliteStore implements Store {
 		file: File,
 		config: AnyDialecteConfig,
 		useCustomRecordsIds?: boolean,
-	): Promise<number> {
+	): Promise<ImportResult> {
 		return this.engine.importDocument(documentId, file, config, useCustomRecordsIds)
+	}
+
+	/**
+	 * Parse + persist a File inside the worker realm (records never cross Comlink).
+	 * Requires `definitionSpecifier` so the worker can load import hooks locally.
+	 */
+	async importFile(
+		documentId: string,
+		file: File,
+		config: AnyDialecteConfig,
+		useCustomRecordsIds?: boolean,
+	): Promise<{ recordCount: number }> {
+		const result = await this.engine.importDocument(documentId, file, config, useCustomRecordsIds)
+		return { recordCount: result.recordCount }
 	}
 
 	bulkWrite(

@@ -1,5 +1,11 @@
 import type { DocumentRecord } from '@/project/types'
-import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
+import type {
+	AnyDialecteConfig,
+	AnyRawRecord,
+	BlobAttachment,
+	BlobRecord,
+	RecordPatch,
+} from '@/types'
 
 /**
  * RecordSchema — backend-agnostic index declaration for record tables.
@@ -118,6 +124,24 @@ export interface Store {
 	 * indexes, if the store defers them). Optional — see `beginImport`.
 	 */
 	finalizeImport?(documentId: string): Promise<void>
+
+	/**
+	 * True when the store can parse + persist a file entirely in its own realm
+	 * (e.g. a worker with import hooks loaded), so `project.import` can hand off the
+	 * whole file via `importFile` instead of parsing on the main thread.
+	 */
+	readonly supportsRealmImport?: boolean
+
+	/**
+	 * Parse + persist a File within the store's realm. Present only when
+	 * `supportsRealmImport` is true. The document must already be registered.
+	 */
+	importFile?(
+		documentId: string,
+		file: File,
+		config: AnyDialecteConfig,
+		useCustomRecordsIds?: boolean,
+	): Promise<{ recordCount: number }>
 
 	/** Atomic commit — all-or-nothing write scoped to a document */
 	commit(params: {
