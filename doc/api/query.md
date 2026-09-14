@@ -211,6 +211,8 @@ const tree = await doc.query.getTree(ref)
 // TreeRecord<Config, Element> | undefined
 ```
 
+The full tree reads the document in a single batched store call and assembles the shape in memory, so it stays fast on large documents regardless of node count.
+
 With options to filter the tree shape:
 
 ```ts
@@ -228,6 +230,25 @@ const tree = await doc.query.getTree(ref, {
 | `select` | `TreeSelect`    | Prisma-style nested projection to pick branches               |
 | `omit`   | `OmitEntry[]`   | Exclude elements - string or key-based object with conditions |
 | `unwrap` | `ElementName[]` | Skip these elements and promote their children                |
+| `depth`  | `number`        | Structural levels to expand (see below)                       |
+
+#### Depth-limited reads
+
+`depth` bounds how many structural levels `getTree` expands:
+
+- `undefined` (default) — the full tree.
+- `0` — the node alone.
+- `1` — the node and its direct children.
+- `n` — `n` levels below the node.
+
+An unexpanded node keeps its `children` refs but returns an empty `tree`, so a collapsed branch is distinguishable from a leaf — exactly what a lazy / expand-on-demand UI needs.
+
+A bounded depth reads only the levels it needs (one batched store read per level) instead of the whole document, so a shallow expand on a large document is milliseconds rather than seconds. Inside a transaction with pending writes it reads the whole document so the staged overlay stays correct.
+
+```ts
+const root = await doc.query.getTree(ref, { depth: 1 }) // node + direct children
+const hasChildren = (node) => node.children.length > 0 // collapsed vs leaf
+```
 
 #### TreeSelect
 
