@@ -1,5 +1,6 @@
 import { TEST_DIALECTE_CONFIG } from './config'
 
+import { createStagedOperations } from '@/document'
 import { createProgressReporter } from '@/document/progress'
 import { NOOP_PERF } from '@/perf'
 import { Project } from '@/project'
@@ -114,7 +115,7 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 		store,
 		documentId,
 		recordCache: new Map(),
-		stagedOperations: [],
+		stagedOperations: createStagedOperations(),
 		progress: createProgressReporter({
 			loading: false,
 			error: null,

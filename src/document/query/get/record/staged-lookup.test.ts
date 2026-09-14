@@ -36,6 +36,12 @@ function deleted(record: TestRecord): Operation<TestDialecteConfig> {
 	return { status: 'deleted', oldRecord: record, newRecord: undefined }
 }
 
+function staged(ops: Operation<TestDialecteConfig>[]) {
+	const byId = new Map<string, Operation<TestDialecteConfig>>()
+	for (const op of ops) byId.set(op.status === 'deleted' ? op.oldRecord.id : op.newRecord.id, op)
+	return { log: ops, byId }
+}
+
 // ── overlayAllStaged ──────────────────────────────────────────────────────────
 
 describe('overlayAllStaged', () => {
@@ -44,7 +50,7 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperations: [],
+			stagedOperationsLog: [],
 		})
 
 		expect(live.get('a1')).toMatchObject({ id: 'a1', status: 'unchanged' })
@@ -57,7 +63,7 @@ describe('overlayAllStaged', () => {
 
 		const { live } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperations: [created(b)],
+			stagedOperationsLog: [created(b)],
 		})
 
 		expect(live.get('b1')).toMatchObject({ id: 'b1', status: 'created' })
@@ -70,7 +76,7 @@ describe('overlayAllStaged', () => {
 
 		const { live } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperations: [updated(a, aNext)],
+			stagedOperationsLog: [updated(a, aNext)],
 		})
 
 		expect(live.get('a1')).toMatchObject({ id: 'a1', status: 'updated', value: 'changed' })
@@ -81,7 +87,7 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperations: [deleted(a)],
+			stagedOperationsLog: [deleted(a)],
 		})
 
 		expect(live.has('a1')).toBe(false)
@@ -93,7 +99,7 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperations: [deleted(a)],
+			stagedOperationsLog: [deleted(a)],
 			includeDeleted: true,
 		})
 
@@ -107,7 +113,7 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [],
-			stagedOperations: [created(a), deleted(a)],
+			stagedOperationsLog: [created(a), deleted(a)],
 			includeDeleted: true,
 		})
 
@@ -160,7 +166,7 @@ describe('indexStagedDeletesByParent', () => {
 describe('getLatestStagedRecord', () => {
 	it('returns a created record matched by id', () => {
 		const result = getLatestStagedRecord({
-			stagedOperations: [created(raw('A', 'a1'))],
+			stagedOperations: staged([created(raw('A', 'a1'))]),
 			tagName: 'A',
 			id: 'a1',
 		})
@@ -170,7 +176,7 @@ describe('getLatestStagedRecord', () => {
 
 	it('returns an updated record matched by id', () => {
 		const result = getLatestStagedRecord({
-			stagedOperations: [updated(raw('A', 'a1'), raw('A', 'a1'))],
+			stagedOperations: staged([updated(raw('A', 'a1'), raw('A', 'a1'))]),
 			tagName: 'A',
 			id: 'a1',
 		})
@@ -180,7 +186,7 @@ describe('getLatestStagedRecord', () => {
 
 	it('returns a deleted record with status "deleted"', () => {
 		const result = getLatestStagedRecord({
-			stagedOperations: [deleted(raw('A', 'a1'))],
+			stagedOperations: staged([deleted(raw('A', 'a1'))]),
 			tagName: 'A',
 			id: 'a1',
 		})
@@ -190,7 +196,7 @@ describe('getLatestStagedRecord', () => {
 
 	it('returns undefined when the id is not staged', () => {
 		const result = getLatestStagedRecord({
-			stagedOperations: [created(raw('A', 'a1'))],
+			stagedOperations: staged([created(raw('A', 'a1'))]),
 			tagName: 'A',
 			id: 'other',
 		})
@@ -200,10 +206,10 @@ describe('getLatestStagedRecord', () => {
 
 	it('returns the most recent operation (scans in reverse)', () => {
 		const result = getLatestStagedRecord({
-			stagedOperations: [
+			stagedOperations: staged([
 				updated(raw('A', 'a1'), { ...raw('A', 'a1'), value: 'first' }),
 				updated(raw('A', 'a1'), { ...raw('A', 'a1'), value: 'last' }),
-			],
+			]),
 			tagName: 'A',
 			id: 'a1',
 		})
@@ -214,7 +220,7 @@ describe('getLatestStagedRecord', () => {
 	it('throws when the staged tagName does not match the requested one', () => {
 		expect(() =>
 			getLatestStagedRecord({
-				stagedOperations: [created(raw('A', 'a1'))],
+				stagedOperations: staged([created(raw('A', 'a1'))]),
 				tagName: 'B',
 				id: 'a1',
 			}),
@@ -223,7 +229,7 @@ describe('getLatestStagedRecord', () => {
 
 	it('matches by tagName only for singletons (id omitted)', () => {
 		const result = getLatestStagedRecord({
-			stagedOperations: [created(raw('A', 'a1'))],
+			stagedOperations: staged([created(raw('A', 'a1'))]),
 			tagName: 'A',
 		})
 

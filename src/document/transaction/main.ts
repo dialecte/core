@@ -1,5 +1,6 @@
 import { createProgressReporter } from '../progress'
 import { Query } from '../query'
+import { createStagedOperations } from '../staged-operations'
 import { AnyTransaction } from './any'
 import { stageDeepClone } from './clone'
 import { commitTransaction } from './commit'
@@ -13,7 +14,7 @@ import { NOOP_PERF } from '@/perf'
 
 import type { ProgressReporter } from '../progress'
 import type { DocumentState } from '../types'
-import type { Context } from '../types'
+import type { Context, StagedOperations } from '../types'
 import type { CloneResult } from './clone'
 import type { AddChildParams } from './create'
 import type { UpdateParams } from './update'
@@ -47,7 +48,8 @@ import type {
  * Subclass in a dialecte (e.g. SclTransaction) to add domain-specific mutations.
  */
 export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<GenericConfig> {
-	protected stagedOperations: Operation<GenericConfig>[] = []
+	/** Ordered write log + derived by-id index (kept in sync by stageOperation). */
+	protected stagedOperations: StagedOperations<GenericConfig> = createStagedOperations()
 	protected documentActivity: DocumentState
 	protected recordCache = new Map<string, AnyRawRecord>()
 	protected hooks: TransactionHooks<GenericConfig> | undefined
@@ -90,14 +92,14 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	/**
 	 * Override: returns staged operations so Query's record methods overlay them.
 	 */
-	protected override getOperations(): Operation<GenericConfig>[] {
+	protected override getOperations(): StagedOperations<GenericConfig> {
 		return this.stagedOperations
 	}
 
 	/**
 	 * Single context for both reads and writes inside a Transaction.
 	 * Overrides Query's cacheless context — adds the transaction-scoped cache
-	 * and a mutable stagedOperations array (mutation FP functions push to it).
+	 * and the mutable staged-operations container (mutation FP functions push to it).
 	 */
 	protected override get context(): Context<GenericConfig> {
 		return {
@@ -267,12 +269,12 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 
 	/** Returns a read-only view of staged operations (for prepare/preview) */
 	getStagedOperations(): ReadonlyArray<Operation<GenericConfig>> {
-		return this.stagedOperations
+		return this.stagedOperations.log
 	}
 
 	/** Free staged operations from memory */
 	clearStagedOperations(): void {
-		this.stagedOperations = []
+		this.stagedOperations = createStagedOperations()
 	}
 
 	/** Free cached records from memory */
@@ -289,7 +291,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 */
 	async commit(): Promise<void> {
 		await commitTransaction({
-			stagedOperations: this.stagedOperations,
+			stagedOperations: this.stagedOperations.log,
 			store: this.store,
 			documentId: this.documentId,
 			documentState: this.documentActivity,

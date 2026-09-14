@@ -51,7 +51,7 @@ export async function collectSnapshotRecords<GenericConfig extends AnyDialecteCo
 	// Index staged deletes by parent once (single pass over ops); excludes
 	// created-then-deleted ids. Each node then looks up its tombstones in O(1).
 	const deletedByParentId = includeDeleted
-		? indexStagedDeletesByParent(context.stagedOperations)
+		? indexStagedDeletesByParent(context.stagedOperations.log)
 		: undefined
 
 	// Recursively pull a staged-deleted subtree rooted at `parentId`.
@@ -141,7 +141,7 @@ async function collectFullDocument<GenericConfig extends AnyDialecteConfig>(para
 	const rawRecords = await context.store.getByDocumentId(context.documentId)
 	const { live, deleted } = overlayAllStaged({
 		rawRecords,
-		stagedOperations: context.stagedOperations,
+		stagedOperationsLog: context.stagedOperations.log,
 		includeDeleted,
 	})
 

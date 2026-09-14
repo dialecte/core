@@ -5,9 +5,10 @@ import {
 	isOmitted,
 	shouldStopTraversal,
 } from '../../tree-filter'
+import { overlayAllStaged } from '../record/staged-lookup'
 
-import { matchesAttributeFilter, getRecord } from '@/document'
-import { toRef, toTreeRecord } from '@/helpers'
+import { matchesAttributeFilter } from '@/document'
+import { toTreeRecord } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { OmitSpecification } from '../../tree-filter'
@@ -27,9 +28,19 @@ export async function getTree<
 	dialecteConfig?: GenericConfig
 }): Promise<TreeRecord<GenericConfig, GenericElement> | undefined> {
 	const { context, ref, options = {}, dialecteConfig } = params
-	const { select, omit, unwrap } = options
+	const { select, omit, unwrap, depth } = options
 
-	const root = await getRecord({ context, ref })
+	// depth undefined -> read the whole document once and assemble in memory (the common
+	// full-tree render). Bounded depth with a concrete id and no pending writes -> scoped BFS
+	// that reads only the needed levels (one batched store call per level). Bounded depth with
+	// staged ops falls back to the whole-doc read so the staged overlay stays correct.
+	const useScoped =
+		depth !== undefined && ref.id !== undefined && context.stagedOperations.log.length === 0
+	const recordsById = useScoped
+		? await loadSubtreeRecords(context, ref, depth)
+		: await loadLiveRecords(context)
+
+	const root = resolveRoot(recordsById, ref)
 	invariant(root, {
 		detail: 'No record found for provided ref',
 		key: 'ELEMENT_NOT_FOUND',
@@ -40,13 +51,14 @@ export async function getTree<
 		| readonly string[]
 		| undefined
 
-	const tree = await buildNode({
-		context,
+	const tree = buildNode({
+		recordsById,
 		record: root as TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>,
 		select: select as TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined,
 		compiledOmit,
 		dialecteConfig,
 		transparentElements,
+		remainingDepth: depth ?? Number.POSITIVE_INFINITY,
 	})
 
 	if (!tree) {
@@ -67,25 +79,107 @@ export async function getTree<
 	}) as TreeRecord<GenericConfig, GenericElement>
 }
 
+//== Bulk load + root resolution
+
+/** Read every record of the document once and overlay staged ops — the tree's data source. */
+async function loadLiveRecords<GenericConfig extends AnyDialecteConfig>(
+	context: Context<GenericConfig>,
+): Promise<Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>> {
+	context.perf.count('core::store::getByDocumentId')
+	const rawRecords = await context.store.getByDocumentId(context.documentId)
+	const { live } = overlayAllStaged({
+		rawRecords,
+		stagedOperationsLog: context.stagedOperations.log,
+	})
+	return live as unknown as Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>
+}
+
+/**
+ * Read only the subtree under `ref` down to `depth` levels, one batched store call per level.
+ * Committed records only — the caller guarantees no staged ops (else the whole-doc path is used).
+ */
+async function loadSubtreeRecords<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(
+	context: Context<GenericConfig>,
+	ref: Ref<GenericConfig, GenericElement>,
+	depth: number,
+): Promise<Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>> {
+	const map = new Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>()
+	if (ref.id === undefined) return map
+
+	context.perf.count('core::store::get')
+	const rootRaw = await context.store.get(ref.id, context.documentId)
+	if (!rootRaw) return map
+
+	let frontier = [rootRaw]
+	map.set(rootRaw.id, { ...rootRaw, status: 'unchanged' } as TrackedRecord<
+		GenericConfig,
+		ElementsOf<GenericConfig>
+	>)
+
+	for (let level = 0; level < depth && frontier.length > 0; level++) {
+		const childIds = frontier.flatMap((record) => record.children.map((child) => child.id))
+		if (childIds.length === 0) break
+		context.perf.count('core::store::getMany')
+		const children = await context.store.getMany(childIds, context.documentId)
+		const next: typeof frontier = []
+		for (const child of children) {
+			if (!child) continue
+			map.set(child.id, { ...child, status: 'unchanged' } as TrackedRecord<
+				GenericConfig,
+				ElementsOf<GenericConfig>
+			>)
+			next.push(child)
+		}
+		frontier = next
+	}
+	return map
+}
+
+/** Resolve the requested root from the map: by id, or by tagName for a singleton (id absent). */
+function resolveRoot<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(
+	recordsById: Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>,
+	ref: Ref<GenericConfig, GenericElement>,
+): TrackedRecord<GenericConfig, GenericElement> | undefined {
+	if (ref.id !== undefined) {
+		const record = recordsById.get(ref.id)
+		return record?.tagName === ref.tagName
+			? (record as TrackedRecord<GenericConfig, GenericElement>)
+			: undefined
+	}
+	for (const record of recordsById.values()) {
+		if (record.tagName === ref.tagName) {
+			return record as TrackedRecord<GenericConfig, GenericElement>
+		}
+	}
+	return undefined
+}
+
 //== Node builder
 
-async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
-	context: Context<GenericConfig>
+function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
+	recordsById: Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	compiledOmit: OmitSpecification<GenericConfig>
 	dialecteConfig?: GenericConfig
 	transparentElements?: readonly string[]
-}): Promise<TreeRecord<GenericConfig, ElementsOf<GenericConfig>> | null> {
-	const { context, record, select, compiledOmit, dialecteConfig, transparentElements } = params
+	remainingDepth: number
+}): TreeRecord<GenericConfig, ElementsOf<GenericConfig>> | null {
+	const { recordsById, record, select, compiledOmit, dialecteConfig, transparentElements } = params
 
-	// Stop traversal if omit scope=children matches
-	if (shouldStopTraversal({ record, compiledOmit })) {
+	// Stop at the depth boundary (keep the node, drop its subtree) or an omit scope=children match.
+	if (params.remainingDepth <= 0 || shouldStopTraversal({ record, compiledOmit })) {
 		return toTreeRecord({ record })
 	}
 
-	const childrenToProcess = await fetchAndFilterChildren({
-		context,
+	const childrenToProcess = fetchAndFilterChildren({
+		recordsById,
 		record,
 		select,
 		compiledOmit,
@@ -93,17 +187,16 @@ async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 		transparentElements,
 	})
 
-	const childTrees = await Promise.all(
-		childrenToProcess.map(({ record: child, select: childSelect }) =>
-			buildNode({
-				context,
-				record: child,
-				select: childSelect,
-				compiledOmit,
-				dialecteConfig,
-				transparentElements,
-			}),
-		),
+	const childTrees = childrenToProcess.map(({ record: child, select: childSelect }) =>
+		buildNode({
+			recordsById,
+			record: child,
+			select: childSelect,
+			compiledOmit,
+			dialecteConfig,
+			transparentElements,
+			remainingDepth: params.remainingDepth - 1,
+		}),
 	)
 
 	const validChildren = childTrees.filter(
@@ -115,20 +208,18 @@ async function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 
 //== Children fetching with pre-filtering
 
-async function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(params: {
-	context: Context<GenericConfig>
+function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(params: {
+	recordsById: Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	compiledOmit: OmitSpecification<GenericConfig>
 	dialecteConfig?: GenericConfig
 	transparentElements?: readonly string[]
-}): Promise<
-	Array<{
-		record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
-		select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
-	}>
-> {
-	const { context, record, select, compiledOmit, dialecteConfig, transparentElements } = params
+}): Array<{
+	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
+}> {
+	const { recordsById, record, select, compiledOmit, dialecteConfig, transparentElements } = params
 
 	if (!record.children?.length) return []
 
@@ -158,19 +249,13 @@ async function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(p
 
 	if (!relevantRefs.length) return []
 
-	const childRecords = await Promise.all(
-		relevantRefs.map((childRef) =>
-			getRecord({
-				context,
-				ref: toRef(childRef),
-			}),
-		),
-	)
-
-	const children = childRecords.filter(
-		(child): child is TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> =>
-			child !== undefined,
-	)
+	// Resolve from the pre-loaded document map — no per-node store round-trip.
+	const children = relevantRefs
+		.map((childRef) => recordsById.get(childRef.id))
+		.filter(
+			(child): child is TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> =>
+				child !== undefined,
+		)
 
 	// Apply conditional omit (requires record attributes)
 	const nonOmitted = children.filter((child) => !isOmitted({ record: child, compiledOmit }))

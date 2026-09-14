@@ -35,4 +35,11 @@ export type GetTreeParams<
 	select?: TreeSelect<GenericConfig, GenericElement>
 	omit?: OmitEntry<GenericConfig>[]
 	unwrap?: ElementsOf<GenericConfig>[]
+	/**
+	 * Structural depth to expand. `undefined` = full tree; `0` = the node alone; `1` = node + its
+	 * direct children; etc. Unexpanded nodes keep their `children` refs (so a caller can tell a
+	 * collapsed branch from a leaf) but an empty `tree`. Bounded depth reads only the levels it
+	 * needs (one batched store call per level) instead of the whole document.
+	 */
+	depth?: number
 }

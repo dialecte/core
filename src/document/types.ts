@@ -24,6 +24,19 @@ export type ExtendedDocument<
 > = Document<GenericConfig, MergedExtensions<GenericModules>>
 
 /**
+ * Staged writes of a transaction.
+ *
+ * `log` is the ordered write history — the source of truth for commit merge,
+ * overlay, and the id-less singleton scan. `byId` is a derived index giving
+ * O(1) access to the latest operation for a given record id. The two views are
+ * held together so they can never desync.
+ */
+export type StagedOperations<GenericConfig extends AnyDialecteConfig> = {
+	log: Operation<GenericConfig>[]
+	byId: Map<string, Operation<GenericConfig>>
+}
+
+/**
  * Context passed to methods.
  *
  * Owned and built by Query, exposed as `this.context` for subclasses.
@@ -35,7 +48,7 @@ export type Context<GenericConfig extends AnyDialecteConfig> = {
 	readonly dialecteConfig: GenericConfig
 	readonly documentId: string
 	readonly recordCache: Map<string, AnyRawRecord> | undefined
-	stagedOperations: Operation<GenericConfig>[]
+	readonly stagedOperations: StagedOperations<GenericConfig>
 	readonly progress: ProgressReporter
 	readonly perf: Perf
 }

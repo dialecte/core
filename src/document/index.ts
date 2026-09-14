@@ -1,5 +1,6 @@
 export { Document } from './document'
 export { bindExtensions } from './bind-extensions'
+export { createStagedOperations } from './staged-operations'
 export * from './query'
 export * from './transaction'
 
@@ -9,6 +10,7 @@ export type {
 	ExtendedDocument,
 	Context,
 	CachedContext,
+	StagedOperations,
 	PreparedTransaction,
 	DocumentState,
 	TransactionEntry,

@@ -1,4 +1,5 @@
 import { NOOP_PROGRESS_REPORTER } from '../progress'
+import { createStagedOperations } from '../staged-operations'
 import { AnyQuery } from './any'
 import { findAncestors, findByAttributes, findDescendants } from './find'
 import { getTree } from './get'
@@ -15,7 +16,7 @@ import { toRef } from '@/helpers'
 import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
 
-import type { Context } from '../types'
+import type { Context, StagedOperations } from '../types'
 import type {
 	FindAncestorsOptions,
 	FilterAttributes,
@@ -42,7 +43,6 @@ import type {
 	NamespaceKeysUsedByElement,
 	TrackedRecord,
 	TreeRecord,
-	Operation,
 	RootElementOf,
 } from '@/types'
 import type { AttributeDefaults } from '@/utils'
@@ -89,11 +89,11 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	//== Context
 
 	/**
-	 * Override point for Transaction: returns staged operations to overlay.
-	 * Query returns [] — no staged ops. Transaction returns its stagedOperations.
+	 * Override point for Transaction: returns the staged operations to overlay.
+	 * Query has none — returns a fresh empty container. Transaction returns its own.
 	 */
-	protected getOperations(): Operation<GenericConfig>[] {
-		return []
+	protected getOperations(): StagedOperations<GenericConfig> {
+		return createStagedOperations()
 	}
 
 	/**

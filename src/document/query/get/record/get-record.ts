@@ -28,7 +28,7 @@ export async function getRecord<
 }): Promise<TrackedRecord<GenericConfig, GenericElement> | undefined> {
 	const { context, ref } = params
 	// 1. Staged operations (highest priority)
-	if (context.stagedOperations.length > 0) {
+	if (context.stagedOperations.log.length > 0) {
 		const staged = getLatestStagedRecord<GenericConfig, GenericElement>({
 			stagedOperations: context.stagedOperations,
 			tagName: ref.tagName as GenericElement,

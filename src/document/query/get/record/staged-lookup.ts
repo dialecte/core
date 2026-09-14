@@ -1,6 +1,7 @@
 import { throwDialecteError } from '@/errors'
 import { isRecordOf } from '@/helpers'
 
+import type { StagedOperations } from '@/document'
 import type {
 	AnyDialecteConfig,
 	Operation,
@@ -13,83 +14,46 @@ import type {
 } from '@/types'
 
 /**
- * Find the latest staged operation matching a record id.
- * Scans operations in reverse (most recent first).
+ * Find the latest staged record matching a ref.
  *
- * When id is omitted (singleton), matches by tagName only.
+ * By id: answered in O(1) from the maintained `byId` index.
+ * Without id (singleton): reverse-scans the ordered `log` by tagName, most-recent first.
  *
  * Pure function — no DB access, no side effects.
  *
- * @returns The record + operation status, or undefined if not in staged ops
+ * @returns The record + operation status, or undefined if not staged
  */
 export function getLatestStagedRecord<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
-	stagedOperations: ReadonlyArray<Operation<GenericConfig>>
+	stagedOperations: StagedOperations<GenericConfig>
 	tagName: GenericElement
 	id?: string
 }): TrackedRecord<GenericConfig, GenericElement> | undefined {
 	const { stagedOperations, tagName, id } = params
+	const { log, byId } = stagedOperations
 
-	for (let i = stagedOperations.length - 1; i >= 0; i--) {
-		const operation = stagedOperations[i]
+	// By-id path: O(1) via the maintained "latest op per id" index.
+	if (id !== undefined) {
+		const operation = byId.get(id)
+		return operation ? resolveStagedById({ operation, tagName, id }) : undefined
+	}
 
-		// Singleton path — no id provided, match by tagName only
-		if (id === undefined) {
-			if (
-				(operation.status === 'created' || operation.status === 'updated') &&
-				isRecordOf(operation.newRecord, tagName)
-			) {
-				return {
-					...(operation.newRecord as RawRecord<GenericConfig, GenericElement>),
-					status: operation.status,
-				}
-			}
-			if (operation.status === 'deleted' && isRecordOf(operation.oldRecord, tagName)) {
-				return {
-					...(operation.oldRecord as RawRecord<GenericConfig, GenericElement>),
-					status: 'deleted',
-				}
-			}
-			continue
-		}
+	// Singleton path (id absent): reverse scan the log by tagName, most-recent first.
+	for (let i = log.length - 1; i >= 0; i--) {
+		const operation = log[i]
 
-		// Normal path — match by id
-		if (operation.status === 'created' && operation.newRecord.id === id) {
-			const actualTagName: string = operation.newRecord.tagName
-			if (actualTagName !== tagName) {
-				throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
-					detail: `Expected tagName '${tagName}', got '${actualTagName}' for id '${id}'`,
-					ref: { tagName, id },
-				})
-			}
+		if (
+			(operation.status === 'created' || operation.status === 'updated') &&
+			isRecordOf(operation.newRecord, tagName)
+		) {
 			return {
 				...(operation.newRecord as RawRecord<GenericConfig, GenericElement>),
-				status: 'created',
+				status: operation.status,
 			}
 		}
-		if (operation.status === 'updated' && operation.newRecord.id === id) {
-			const actualTagName: string = operation.newRecord.tagName
-			if (actualTagName !== tagName) {
-				throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
-					detail: `Expected tagName '${tagName}', got '${actualTagName}' for id '${id}'`,
-					ref: { tagName, id },
-				})
-			}
-			return {
-				...(operation.newRecord as RawRecord<GenericConfig, GenericElement>),
-				status: 'updated',
-			}
-		}
-		if (operation.status === 'deleted' && operation.oldRecord.id === id) {
-			const actualTagName: string = operation.oldRecord.tagName
-			if (actualTagName !== tagName) {
-				throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
-					detail: `Expected tagName '${tagName}', got '${actualTagName}' for id '${id}'`,
-					ref: { tagName, id },
-				})
-			}
+		if (operation.status === 'deleted' && isRecordOf(operation.oldRecord, tagName)) {
 			return {
 				...(operation.oldRecord as RawRecord<GenericConfig, GenericElement>),
 				status: 'deleted',
@@ -98,6 +62,46 @@ export function getLatestStagedRecord<
 	}
 
 	return undefined
+}
+
+/** Resolve the staged record for a specific id from one operation (throws on tagName mismatch). */
+function resolveStagedById<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(params: {
+	operation: Operation<GenericConfig>
+	tagName: GenericElement
+	id: string
+}): TrackedRecord<GenericConfig, GenericElement> | undefined {
+	const { operation, tagName, id } = params
+
+	if (
+		(operation.status === 'created' || operation.status === 'updated') &&
+		operation.newRecord.id === id
+	) {
+		assertStagedTagName(operation.newRecord.tagName, tagName, id)
+		return {
+			...(operation.newRecord as RawRecord<GenericConfig, GenericElement>),
+			status: operation.status,
+		}
+	}
+	if (operation.status === 'deleted' && operation.oldRecord.id === id) {
+		assertStagedTagName(operation.oldRecord.tagName, tagName, id)
+		return {
+			...(operation.oldRecord as RawRecord<GenericConfig, GenericElement>),
+			status: 'deleted',
+		}
+	}
+	return undefined
+}
+
+function assertStagedTagName(actual: string, expected: string, id: string): void {
+	if (actual !== expected) {
+		throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
+			detail: `Expected tagName '${expected}', got '${actual}' for id '${id}'`,
+			ref: { tagName: expected, id },
+		})
+	}
 }
 
 /**
@@ -150,10 +154,10 @@ export function overlayStaged<
  */
 export function overlayAllStaged<GenericConfig extends AnyDialecteConfig>(params: {
 	rawRecords: AnyRawRecord[]
-	stagedOperations: ReadonlyArray<Operation<GenericConfig>>
+	stagedOperationsLog: ReadonlyArray<Operation<GenericConfig>>
 	includeDeleted?: boolean
 }): { live: Map<string, AnyTrackedRecord>; deleted: AnyTrackedRecord[] } {
-	const { rawRecords, stagedOperations, includeDeleted = false } = params
+	const { rawRecords, stagedOperationsLog: stagedOperations, includeDeleted = false } = params
 
 	const live = new Map<string, AnyTrackedRecord>(
 		rawRecords.map((record) => [record.id, { ...record, status: 'unchanged' as OperationStatus }]),

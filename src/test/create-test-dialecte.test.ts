@@ -113,6 +113,6 @@ describe('createTestContext', () => {
 			documentId: source.documentId,
 		})
 		expect(context.recordCache?.size).toBe(0)
-		expect(context.stagedOperations).toHaveLength(0)
+		expect(context.stagedOperations.log).toHaveLength(0)
 	})
 })

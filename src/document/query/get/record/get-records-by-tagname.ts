@@ -31,5 +31,5 @@ export async function getRecordsByTagName<
 		if (isTransactionContext(context)) context.recordCache.set(record.id, record)
 	}
 
-	return overlayStaged({ rawRecords, stagedOperations: context.stagedOperations, tagName })
+	return overlayStaged({ rawRecords, stagedOperations: context.stagedOperations.log, tagName })
 }

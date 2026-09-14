@@ -42,19 +42,37 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 			detail: 'Record is required for created',
 			key: 'ELEMENT_NOT_FOUND',
 		})
-		context.stagedOperations.push({ status, oldRecord: undefined, newRecord: rawRecord })
+		const operation: Operation<GenericConfig> = {
+			status,
+			oldRecord: undefined,
+			newRecord: rawRecord,
+		}
+		context.stagedOperations.log.push(operation)
+		context.stagedOperations.byId.set(rawRecord.id, operation)
 	} else if (status === 'updated') {
 		invariant(rawOldRecord && rawNewRecord, {
 			detail: 'Old record and new record are required for updated',
 			key: 'ELEMENT_NOT_FOUND',
 		})
-		context.stagedOperations.push({ status, oldRecord: rawOldRecord, newRecord: rawNewRecord })
+		const operation: Operation<GenericConfig> = {
+			status,
+			oldRecord: rawOldRecord,
+			newRecord: rawNewRecord,
+		}
+		context.stagedOperations.log.push(operation)
+		context.stagedOperations.byId.set(rawNewRecord.id, operation)
 	} else if (status === 'deleted' && rawRecord) {
 		invariant(rawRecord, {
 			detail: 'Record is required for deleted',
 			key: 'ELEMENT_NOT_FOUND',
 		})
-		context.stagedOperations.push({ status, oldRecord: rawRecord, newRecord: undefined })
+		const operation: Operation<GenericConfig> = {
+			status,
+			oldRecord: rawRecord,
+			newRecord: undefined,
+		}
+		context.stagedOperations.log.push(operation)
+		context.stagedOperations.byId.set(rawRecord.id, operation)
 	}
 }
 
