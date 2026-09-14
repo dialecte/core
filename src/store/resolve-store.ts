@@ -2,6 +2,7 @@ import { DexieStore, InMemoryStore } from '@/store'
 
 import type { StorageParam } from '../project/types'
 import type { DexieStoreOptions } from './local'
+import type { Perf } from '@/perf'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
 
@@ -14,9 +15,10 @@ export function resolveStore<GenericConfig extends AnyDialecteConfig>(
 	name: string,
 	storage: StorageParam,
 	config: GenericConfig,
+	perf?: Perf,
 ): Store {
 	if (storage.type === 'local') {
-		const options: DexieStoreOptions = { recordSchema: config.database.recordSchema }
+		const options: DexieStoreOptions = { recordSchema: config.database.recordSchema, perf }
 		return new DexieStore(name, options)
 	}
 	if (storage.type === 'inMemory') {
