@@ -221,6 +221,11 @@ export class DexieStore implements Store {
 			.toArray()
 	}
 
+	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
+		await this.ensureCurrentSchema()
+		return this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).bulkGet(ids)
+	}
+
 	// --- Writes ---
 
 	async bulkWrite(

@@ -97,6 +97,9 @@ export interface Store {
 	/** Get records matching a tagName within a specific document */
 	getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]>
 
+	/** Get many records by id in one call, ordered like `ids`; a missing id yields `undefined`. */
+	getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]>
+
 	// --- Writes ---
 
 	/** Bulk write - atomic creates/updates/deletes bypassing changelog. For import pipeline. */

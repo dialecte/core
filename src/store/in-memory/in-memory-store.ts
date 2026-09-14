@@ -141,6 +141,11 @@ export class InMemoryStore implements Store {
 		return results
 	}
 
+	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
+		const table = this.getTable(documentId)
+		return ids.map((id) => table.get(id))
+	}
+
 	// --- Writes ---
 
 	async bulkWrite(
