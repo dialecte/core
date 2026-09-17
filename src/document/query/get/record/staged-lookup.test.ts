@@ -50,7 +50,7 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperationsLog: [],
+			stagedOperations: staged([]),
 		})
 
 		expect(live.get('a1')).toMatchObject({ id: 'a1', status: 'unchanged' })
@@ -63,7 +63,7 @@ describe('overlayAllStaged', () => {
 
 		const { live } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperationsLog: [created(b)],
+			stagedOperations: staged([created(b)]),
 		})
 
 		expect(live.get('b1')).toMatchObject({ id: 'b1', status: 'created' })
@@ -76,7 +76,7 @@ describe('overlayAllStaged', () => {
 
 		const { live } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperationsLog: [updated(a, aNext)],
+			stagedOperations: staged([updated(a, aNext)]),
 		})
 
 		expect(live.get('a1')).toMatchObject({ id: 'a1', status: 'updated', value: 'changed' })
@@ -87,7 +87,7 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperationsLog: [deleted(a)],
+			stagedOperations: staged([deleted(a)]),
 		})
 
 		expect(live.has('a1')).toBe(false)
@@ -99,7 +99,7 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [a],
-			stagedOperationsLog: [deleted(a)],
+			stagedOperations: staged([deleted(a)]),
 			includeDeleted: true,
 		})
 
@@ -113,12 +113,26 @@ describe('overlayAllStaged', () => {
 
 		const { live, deleted: tombstones } = overlayAllStaged({
 			rawRecords: [],
-			stagedOperationsLog: [created(a), deleted(a)],
+			stagedOperations: staged([created(a), deleted(a)]),
 			includeDeleted: true,
 		})
 
 		expect(live.has('a1')).toBe(false)
 		expect(tombstones).toEqual([])
+	})
+
+	it('repeated updates to the same id resolve to the last value (via the byId index)', () => {
+		const a = raw('A', 'a1')
+		const first = { ...raw('A', 'a1'), value: 'first' }
+		const last = { ...raw('A', 'a1'), value: 'last' }
+
+		const { live } = overlayAllStaged({
+			rawRecords: [a],
+			stagedOperations: staged([updated(a, first), updated(first, last)]),
+		})
+
+		expect(live.get('a1')).toMatchObject({ id: 'a1', status: 'updated', value: 'last' })
+		expect(live.size).toBe(1)
 	})
 })
 

@@ -141,7 +141,7 @@ async function collectFullDocument<GenericConfig extends AnyDialecteConfig>(para
 	const rawRecords = await context.store.getByDocumentId(context.documentId)
 	const { live, deleted } = overlayAllStaged({
 		rawRecords,
-		stagedOperationsLog: context.stagedOperations.log,
+		stagedOperations: context.stagedOperations,
 		includeDeleted,
 	})
 

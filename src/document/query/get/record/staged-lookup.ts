@@ -154,27 +154,40 @@ export function overlayStaged<
  */
 export function overlayAllStaged<GenericConfig extends AnyDialecteConfig>(params: {
 	rawRecords: AnyRawRecord[]
-	stagedOperationsLog: ReadonlyArray<Operation<GenericConfig>>
+	stagedOperations: StagedOperations<GenericConfig>
 	includeDeleted?: boolean
 }): { live: Map<string, AnyTrackedRecord>; deleted: AnyTrackedRecord[] } {
-	const { rawRecords, stagedOperationsLog: stagedOperations, includeDeleted = false } = params
+	const { rawRecords, stagedOperations, includeDeleted = false } = params
+	const { log, byId } = stagedOperations
 
 	const live = new Map<string, AnyTrackedRecord>(
 		rawRecords.map((record) => [record.id, { ...record, status: 'unchanged' as OperationStatus }]),
 	)
-	const deleted: AnyTrackedRecord[] = []
-	const createdIds = new Set<string>()
 
-	for (const operation of stagedOperations) {
+	// `byId` already holds the latest (last-write-wins) operation per id — same net effect as
+	// replaying the ordered log, without revisiting every historical operation for an id touched
+	// more than once.
+	for (const operation of byId.values()) {
 		if (operation.status === 'created' || operation.status === 'updated') {
-			if (operation.status === 'created') createdIds.add(operation.newRecord.id)
 			live.set(operation.newRecord.id, { ...operation.newRecord, status: operation.status })
 			continue
 		}
-
-		// deleted
 		live.delete(operation.oldRecord.id)
-		if (includeDeleted && !createdIds.has(operation.oldRecord.id)) {
+	}
+
+	if (!includeDeleted) return { live, deleted: [] }
+
+	// Tombstones need the full ordered log: a record created and deleted within the same staged
+	// set is a net no-op that never reaches the store, and only the log shows both operations
+	// (`byId` only keeps the latest one, which alone can't tell a pure delete from a create+delete).
+	const createdIds = new Set<string>()
+	for (const operation of log) {
+		if (operation.status === 'created') createdIds.add(operation.newRecord.id)
+	}
+
+	const deleted: AnyTrackedRecord[] = []
+	for (const operation of log) {
+		if (operation.status === 'deleted' && !createdIds.has(operation.oldRecord.id)) {
 			deleted.push({ ...operation.oldRecord, status: 'deleted' })
 		}
 	}

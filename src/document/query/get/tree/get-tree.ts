@@ -89,7 +89,7 @@ async function loadLiveRecords<GenericConfig extends AnyDialecteConfig>(
 	const rawRecords = await context.store.getByDocumentId(context.documentId)
 	const { live } = overlayAllStaged({
 		rawRecords,
-		stagedOperationsLog: context.stagedOperations.log,
+		stagedOperations: context.stagedOperations,
 	})
 	return live as unknown as Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>
 }
