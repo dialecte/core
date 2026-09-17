@@ -239,6 +239,19 @@ crypto.randomUUID = createMockRandomUUID()
 
 Prefer `dev:db-id` over mock UUIDs when possible - more explicit, decoupled from creation order.
 
+### Stable snapshots - `normalizeUuids`
+
+A snapshot of a whole document (`getSnapshot({ as: 'xml' })` → `toMatchSnapshot`) freezes uuid VALUES, which are random - and for elements minted during setup (before any `act` mock) not even deterministic. Rather than mock `crypto.randomUUID` around the whole test, normalize the OUTPUT: `normalizeUuids` rewrites every uuid to a stable first-appearance token (`uuid-1`, `uuid-2`, …), the same uuid always mapping to the same token so lineage - a `templateUuid` pointing at an element's `uuid`, a reference's target - stays visible.
+
+```ts
+import { normalizeUuids } from '@dialecte/core/test'
+
+const xml = await target.query.getSnapshot({ as: 'xml' })
+expect(normalizeUuids(xml)).toMatchSnapshot()
+```
+
+The snapshot then depends on structure + lineage, never on the random values - immune to uuid ordering or a leaked mock, and with no `crypto.randomUUID` mocking in the test. A real structural or lineage change still moves it. Preferred for document snapshots.
+
 ### XPath namespace prefixes
 
 The default namespace (no prefix in XML) maps to `default` in XPath. All element names must be prefixed:
