@@ -102,6 +102,7 @@ function xmlWithExport<
 					assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
 				}
 			} finally {
+				crypto.randomUUID = originalRandomUUID
 				await project.destroy()
 			}
 		})
@@ -146,6 +147,7 @@ function xmlWithoutExport<
 
 				await act({ testCase, project, source: source.document, target: target?.document })
 			} finally {
+				crypto.randomUUID = originalRandomUUID
 				await project.destroy()
 			}
 		})

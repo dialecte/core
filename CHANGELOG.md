@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Fixed
+
+- **Flaky `ConstraintError: Key already exists in the object store` in tests using `runTestCases`.** The `crypto.randomUUID` mock swapped in during a test's `act()` was never restored on completion, only reset by the _next_ wrapped test — so a plain `it()` running afterward in the same file could inherit the leaked low-entropy counter, collapsing test project db names down to near-collision-prone values under parallel execution. `crypto.randomUUID` is now always restored in the test's `finally` block.
+
 ## [0.4.14] - 2026-09-16
 
 ### Changed
