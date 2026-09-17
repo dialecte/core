@@ -27,7 +27,21 @@ const CONFIG = TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
 
 const SIZES = [5, 10, 20]
-const CAP_MS = 120_000
+
+/**
+ * Reads should stay fast regardless of size (that's the point of the bench) — 60s is already
+ * generous slack over the sub-2s numbers observed, while still catching a real regression.
+ */
+const READ_CAP_MS = 60_000
+
+/**
+ * Generous per-size budget for the IndexedDB import step alone. Import is a known-slow,
+ * explicitly out-of-scope step for this read-perf bench (see the read-perf tracker's import
+ * numbers) — it must NOT share a cap with the reads it gates. A flat 120s cap around import+reads
+ * combined made every local(IndexedDB) run at 10MB+ fail before a single read even started, since
+ * import alone already exceeds 120s there. ~13-20s/MB observed; this gives ample headless/CI slack.
+ */
+const importCapMs = (mb: number): number => Math.max(90_000, mb * 20_000)
 
 type Ref = { tagName: string; id: string }
 type Storage = 'inMemory' | 'local'
@@ -47,10 +61,10 @@ function fetchText(url: URL): Promise<string> {
 
 const stressUrl = (mb: number): URL => new URL(`./data/stress-${mb}mb.xml`, import.meta.url)
 
-function withCap<T>(label: string, p: Promise<T>): Promise<T> {
+function withCap<T>(label: string, ms: number, p: Promise<T>): Promise<T> {
 	let timer: ReturnType<typeof setTimeout>
 	const cap = new Promise<never>((_, reject) => {
-		timer = setTimeout(() => reject(new Error(`CAP ${CAP_MS / 1000}s: ${label}`)), CAP_MS)
+		timer = setTimeout(() => reject(new Error(`CAP ${ms / 1000}s: ${label}`)), ms)
 	})
 	return Promise.race([p, cap]).finally(() => clearTimeout(timer!)) as Promise<T>
 }
@@ -98,43 +112,56 @@ async function measure(
 	}
 }
 
+async function runReads(
+	doc: ReturnType<Project<AnyDialecteConfig>['openDocument']>,
+	mb: number,
+	storage: Storage,
+): Promise<void> {
+	const q = doc.query.any
+	const [rootRec] = await q.getRecordsByTagName('Root')
+	const [sampleRec] = await q.getRecordsByTagName('DDD_1')
+	const rootRef: Ref = { tagName: rootRec.tagName, id: rootRec.id }
+	const sampleRef: Ref = { tagName: sampleRec.tagName, id: sampleRec.id }
+	const ddd = await q.getRecordsByTagName('DDD_1')
+	const batchRefs = ddd.slice(0, 2000).map((r: Ref) => ({ tagName: r.tagName, id: r.id }))
+
+	const rows: Row[] = []
+	rows.push(await measure(doc, 'getRoot', () => doc.query.getRoot()))
+	rows.push(await measure(doc, 'getRecord(byId)', () => q.getRecord(sampleRef), 50))
+	rows.push(await measure(doc, 'getRecords(batch2k)', () => q.getRecords(batchRefs)))
+	rows.push(await measure(doc, 'getRecordsByTagName', () => q.getRecordsByTagName('DDD_1')))
+	rows.push(await measure(doc, 'getChild', () => q.getChild(rootRef, 'D'), 20))
+	rows.push(await measure(doc, 'getChildren', () => q.getChildren(rootRef, 'D'), 5))
+	rows.push(
+		await measure(doc, 'findByAttributes', () =>
+			q.findByAttributes({ tagName: 'DDD_1', attributes: { aDDD_1: 'x' } }),
+		),
+	)
+	rows.push(await measure(doc, 'getTree(root)', () => q.getTree(rootRef)))
+	rows.push(await measure(doc, 'getTree(root,depth:1)', () => q.getTree(rootRef, { depth: 1 })))
+	rows.push(await measure(doc, 'getSnapshot', () => q.getSnapshot()))
+
+	for (const row of rows) {
+		RESULTS[row.method] ??= {}
+		RESULTS[row.method][storage] = row.ms
+		const line =
+			`[READ] ${mb}MB ${storage.padEnd(8)} ${row.method.padEnd(20)} ` +
+			`${row.ms.toFixed(2).padStart(10)} ms  store.get ${String(row.get).padStart(8)}  ` +
+			`byTag ${String(row.byTag).padStart(5)}  getMany ${String(row.getMany).padStart(5)}`
+		LINES.push(line)
+		console.log(line)
+	}
+}
+
+/** Import (capped generously, per-size — known slow, out of scope here) then time the reads (capped tight — they should stay fast). */
 async function benchStorage(mb: number, storage: Storage): Promise<void> {
-	const { project, doc } = await openImported(await fetchText(stressUrl(mb)), storage)
+	const { project, doc } = await withCap(
+		`${storage} ${mb}MB import`,
+		importCapMs(mb),
+		openImported(await fetchText(stressUrl(mb)), storage),
+	)
 	try {
-		const q = doc.query.any
-		const [rootRec] = await q.getRecordsByTagName('Root')
-		const [sampleRec] = await q.getRecordsByTagName('DDD_1')
-		const rootRef: Ref = { tagName: rootRec.tagName, id: rootRec.id }
-		const sampleRef: Ref = { tagName: sampleRec.tagName, id: sampleRec.id }
-		const ddd = await q.getRecordsByTagName('DDD_1')
-		const batchRefs = ddd.slice(0, 2000).map((r: Ref) => ({ tagName: r.tagName, id: r.id }))
-
-		const rows: Row[] = []
-		rows.push(await measure(doc, 'getRoot', () => doc.query.getRoot()))
-		rows.push(await measure(doc, 'getRecord(byId)', () => q.getRecord(sampleRef), 50))
-		rows.push(await measure(doc, 'getRecords(batch2k)', () => q.getRecords(batchRefs)))
-		rows.push(await measure(doc, 'getRecordsByTagName', () => q.getRecordsByTagName('DDD_1')))
-		rows.push(await measure(doc, 'getChild', () => q.getChild(rootRef, 'D'), 20))
-		rows.push(await measure(doc, 'getChildren', () => q.getChildren(rootRef, 'D'), 5))
-		rows.push(
-			await measure(doc, 'findByAttributes', () =>
-				q.findByAttributes({ tagName: 'DDD_1', attributes: { aDDD_1: 'x' } }),
-			),
-		)
-		rows.push(await measure(doc, 'getTree(root)', () => q.getTree(rootRef)))
-		rows.push(await measure(doc, 'getTree(root,depth:1)', () => q.getTree(rootRef, { depth: 1 })))
-		rows.push(await measure(doc, 'getSnapshot', () => q.getSnapshot()))
-
-		for (const row of rows) {
-			RESULTS[row.method] ??= {}
-			RESULTS[row.method][storage] = row.ms
-			const line =
-				`[READ] ${mb}MB ${storage.padEnd(8)} ${row.method.padEnd(20)} ` +
-				`${row.ms.toFixed(2).padStart(10)} ms  store.get ${String(row.get).padStart(8)}  ` +
-				`byTag ${String(row.byTag).padStart(5)}  getMany ${String(row.getMany).padStart(5)}`
-			LINES.push(line)
-			console.log(line)
-		}
+		await withCap(`${storage} ${mb}MB reads`, READ_CAP_MS, runReads(doc, mb, storage))
 	} finally {
 		await project.destroy()
 	}
@@ -142,21 +169,26 @@ async function benchStorage(mb: number, storage: Storage): Promise<void> {
 
 describe('core read-cost bench — inMemory vs IndexedDB (browser)', () => {
 	for (const mb of SIZES) {
+		// vitest's own per-test timeout is the outer safety net; the real caps are the
+		// import/read `withCap` calls inside benchStorage, which produce a labeled error
+		// instead of vitest's generic "test timed out" once one of them trips.
+		const testTimeoutMs = importCapMs(mb) + READ_CAP_MS + 20_000
+
 		it.runIf(RUN)(
 			`${mb}MB — inMemory`,
 			async () => {
 				await benchStorage(mb, 'inMemory')
 				expect(RESULTS['getTree(root)']?.inMemory).toBeGreaterThan(0)
 			},
-			CAP_MS + 20_000,
+			testTimeoutMs,
 		)
 		it.runIf(RUN)(
 			`${mb}MB — local(IndexedDB)`,
 			async () => {
-				await withCap(`local ${mb}MB`, benchStorage(mb, 'local'))
+				await benchStorage(mb, 'local')
 				expect(RESULTS['getTree(root)']?.local).toBeGreaterThan(0)
 			},
-			CAP_MS + 20_000,
+			testTimeoutMs,
 		)
 	}
 

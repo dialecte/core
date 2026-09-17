@@ -16,9 +16,9 @@
  *
  * Runs against the vite-built dist (self-imports `@dialecte/core`). The full `npm run build`
  * may fail type-check on unrelated WIP code; build the bundle directly instead:
- *   npx vite build && npx tsx src/test/fixtures/audit-core-methods.ts            # 5/10/20/50/100 MB
- *   npx vite build && npx tsx src/test/fixtures/audit-core-methods.ts 5 50        # only those
- *   node --max-old-space-size=8192 --import tsx src/test/fixtures/audit-core-methods.ts 200
+ *   npx vite build && npx tsx src/test/fixtures/scripts/audit-core-methods.ts            # 5/10/20/50/100 MB
+ *   npx vite build && npx tsx src/test/fixtures/scripts/audit-core-methods.ts 5 50        # only those
+ *   node --max-old-space-size=8192 --import tsx src/test/fixtures/scripts/audit-core-methods.ts 200
  *
  * Prerequisite: generate the fixtures first (`generate-stress-fixtures.ts`).
  * Writes a machine-readable ledger to `.tmp/core-method-audit.json`.

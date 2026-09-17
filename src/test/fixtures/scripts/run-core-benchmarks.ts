@@ -12,9 +12,9 @@
  * first (`npm run build`) — measuring a stale build is worse than not measuring.
  * Uses the in-memory store to isolate method cost from IndexedDB.
  *
- *   npm run build && npx tsx src/test/fixtures/run-core-benchmarks.ts          # 5/10/50 MB
- *   npx tsx src/test/fixtures/run-core-benchmarks.ts 5 100                      # only those
- *   node --max-old-space-size=8192 --import tsx src/test/fixtures/run-core-benchmarks.ts 200
+ *   npm run build && npx tsx src/test/fixtures/scripts/run-core-benchmarks.ts          # 5/10/50 MB
+ *   npx tsx src/test/fixtures/scripts/run-core-benchmarks.ts 5 100                      # only those
+ *   node --max-old-space-size=8192 --import tsx src/test/fixtures/scripts/run-core-benchmarks.ts 200
  *
  * Prerequisite: generate the fixtures first (`generate-stress-fixtures.ts`).
  */
