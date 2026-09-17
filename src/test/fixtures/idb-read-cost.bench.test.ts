@@ -33,7 +33,7 @@ type Ref = { tagName: string; id: string }
 type Storage = 'inMemory' | 'local'
 
 /** One measured method result. */
-type Row = { method: string; ms: number; get: number; byTag: number }
+type Row = { method: string; ms: number; get: number; byTag: number; getMany: number }
 /** method -> storage -> ms, for the final side-by-side. */
 const RESULTS: Record<string, Partial<Record<Storage, number>>> = {}
 const LINES: string[] = []
@@ -94,6 +94,7 @@ async function measure(
 		ms,
 		get: Math.round((r['core::store::get']?.count ?? 0) / repeat),
 		byTag: Math.round((r['core::store::getByTagName']?.count ?? 0) / repeat),
+		getMany: Math.round((r['core::store::getMany']?.count ?? 0) / repeat),
 	}
 }
 
@@ -121,6 +122,7 @@ async function benchStorage(mb: number, storage: Storage): Promise<void> {
 			),
 		)
 		rows.push(await measure(doc, 'getTree(root)', () => q.getTree(rootRef)))
+		rows.push(await measure(doc, 'getTree(root,depth:1)', () => q.getTree(rootRef, { depth: 1 })))
 		rows.push(await measure(doc, 'getSnapshot', () => q.getSnapshot()))
 
 		for (const row of rows) {
@@ -129,7 +131,7 @@ async function benchStorage(mb: number, storage: Storage): Promise<void> {
 			const line =
 				`[READ] ${mb}MB ${storage.padEnd(8)} ${row.method.padEnd(20)} ` +
 				`${row.ms.toFixed(2).padStart(10)} ms  store.get ${String(row.get).padStart(8)}  ` +
-				`byTag ${String(row.byTag).padStart(5)}`
+				`byTag ${String(row.byTag).padStart(5)}  getMany ${String(row.getMany).padStart(5)}`
 			LINES.push(line)
 			console.log(line)
 		}
