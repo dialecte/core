@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.14] - 2026-09-16
+
+### Changed
+
+- **`getTree`/`getSnapshot` staged-write overlay resolves via the maintained id index instead of replaying the full staged log.** For a full-document read (`getTree` with `depth: undefined`, or a snapshot), the `live` result is now built from `stagedOperations.byId` — the same last-write-wins result as before, without revisiting every historical operation for an id staged more than once in a transaction. The `includeDeleted` tombstone path (which needs the full ordered log to exclude create+delete-in-the-same-set no-ops) is unchanged. No API change.
+
+## [0.4.13] - 2026-09-10
+
 ### Added
 
 - **`getTree({ depth })` — expand only part of a tree.** Pass a `depth` to load just the levels you need (`undefined` = full tree, the default; `0` = the node alone; `1` = node + direct children; …). A collapsed node keeps its `children` refs but returns an empty `tree`, so you can tell a collapsed branch from a leaf — ideal for lazy, expand-on-demand UIs. A bounded read only touches the levels it needs (via the new `Store.getMany`), so a shallow expand stays fast on large documents. Inside a transaction with pending writes it reads the whole document so staged changes still show.
@@ -16,8 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Staged writes no longer slow down as a transaction grows.** A big `deepClone` or a bulk delete used to get slower with every change staged; reads now use a maintained id-index, so a transaction stays fast whatever its size. Behaviour is unchanged.
 - **`getTree` reads the document once instead of once per node.** A full tree is now built from a single read assembled in memory — much faster on large documents, with the same `select`/`omit`/`unwrap`/ordering behaviour and no API change.
 - **Faster XML parsing for large files.** Two fixes in the import pipeline — no longer re-copying the buffer on every chunk, and no longer rebuilding the parser's state on every element — make large files parse substantially faster. (Overall import also depends on the database write step, which this change doesn't touch.)
-
-## [0.4.13] - 2026-09-10
 
 ## [0.4.12] - 2026-09-07
 
