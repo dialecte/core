@@ -1,4 +1,5 @@
 export * from './attribute-rules'
+export * from './format-xml'
 export * from './invariant'
 export * from './order-children'
 export * from './save-to-disk'

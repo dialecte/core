@@ -20,6 +20,8 @@ import {
 	orderByConfigSequence,
 	invariant,
 	saveToDisk,
+	formatXml,
+	formatEmbeddedXml,
 } from '@dialecte/core/utils'
 ```
 
@@ -232,3 +234,32 @@ await saveToDisk({
 ```
 
 A cancelled save-file picker (`AbortError`) resolves silently.
+
+## XML formatting
+
+### `formatXml`
+
+Formats an XML string to a canonical, readable shape: one structural tag per line, indented by depth, with pure-text leaves kept inline (`<Name ...>text</Name>`). **NON-VALIDATING** and tolerant of `${...}` template interpolations (treated as opaque characters), which is why it is used on XML embedded in JS/TS template literals — a real XML parser silently mis-parses a whole-attribute interpolation like `${templateUuid}` and drops the element. Only the insignificant whitespace _between_ elements is rewritten; attribute and leaf text are preserved verbatim, and mixed text + element content is emitted untouched. Idempotent. Options: `indent` (default `'\t'`), `baseIndent` (default `''`).
+
+```ts
+import { formatXml } from '@dialecte/core/utils'
+
+formatXml('<A ${id}="1"><B ${id}="2">t</B></A>')
+// <A ${id}="1">
+// 	<B ${id}="2">t</B>
+// </A>
+```
+
+### `formatEmbeddedXml`
+
+Reformats every XML snippet embedded in a JS/TS source string — a template literal preceded by a `/* xml */` marker comment — with `formatXml`, re-indented under the marker's own line with the closing backtick aligned to the statement. The rest of the source is untouched.
+
+It backs the **`dialecte-xmlfmt` bin**, so a consuming package needs no wrapper script:
+
+```jsonc
+// package.json
+"scripts": {
+	"format:xml": "dialecte-xmlfmt 'src/**/*.test.ts'",
+	"format:xml:check": "dialecte-xmlfmt --check 'src/**/*.test.ts'"
+}
+```
