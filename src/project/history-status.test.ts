@@ -36,9 +36,20 @@ async function commitChild(project: Project<AnyDialecteConfig>, documentId: stri
 	})
 }
 
-/** BroadcastChannel delivery + the fire-and-forget flag refresh are async */
-function settle(): Promise<void> {
-	return new Promise((r) => setTimeout(r, 25))
+/**
+ * Poll until `predicate()` is true, or a generous ceiling elapses (letting the assertion below fail
+ * with a clear diagnostic instead of a silent timeout). BroadcastChannel delivery and the
+ * fire-and-forget flag refresh it triggers (`refreshHistoryStatus`, never awaited by
+ * `onChannelMessage` — see project.ts) are both variable-latency IPC/IO with no public "settled"
+ * signal, so a flat sleep that is comfortable locally can be too short under CI load. Polling the
+ * actual condition converges immediately when it's already true and only waits as long as needed
+ * otherwise.
+ */
+async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+	const deadline = Date.now() + timeoutMs
+	while (!predicate() && Date.now() < deadline) {
+		await new Promise((r) => setTimeout(r, 5))
+	}
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -117,7 +128,7 @@ describe('canUndo/canRedo history status', () => {
 		expect(project.state.documents.get(documentId)?.canRedo).toBe(true)
 
 		await commitChild(project, documentId)
-		await settle()
+		await waitUntil(() => project.state.documents.get(documentId)?.canRedo === false)
 
 		const entry = project.state.documents.get(documentId)
 		expect(entry?.canUndo).toBe(true)
@@ -130,7 +141,7 @@ describe('canUndo/canRedo history status', () => {
 
 		const documentId = await importOne(project)
 		await commitChild(project, documentId)
-		await settle()
+		await waitUntil(() => project.state.documents.get(documentId)?.canUndo === true)
 		project.close()
 
 		const reopened = await openProject(name)
@@ -151,7 +162,7 @@ describe('canUndo/canRedo history status', () => {
 		cleanups.push(() => projectA.destroy())
 
 		await commitChild(projectA, documentId)
-		await settle()
+		await waitUntil(() => projectB.state.documents.get(documentId)?.canUndo === true)
 
 		const entryB = projectB.state.documents.get(documentId)
 		expect(entryB?.lastUpdate).not.toBeNull()
