@@ -39,7 +39,10 @@ export type GetTreeParams<
 	 * Structural depth to expand. `undefined` = full tree; `0` = the node alone; `1` = node + its
 	 * direct children; etc. Unexpanded nodes keep their `children` refs (so a caller can tell a
 	 * collapsed branch from a leaf) but an empty `tree`. Bounded depth reads only the levels it
-	 * needs (one batched store call per level) instead of the whole document.
+	 * needs (one batched store call per level) instead of the whole document — but only for a
+	 * committed read (no pending staged writes) with a concrete `id`. Inside a transaction with
+	 * pending writes, or without an `id`, a bounded `depth` still reads the whole document so the
+	 * staged overlay stays correct; scoped BFS never runs against uncommitted state.
 	 */
 	depth?: number
 }

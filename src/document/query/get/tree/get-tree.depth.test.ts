@@ -78,4 +78,21 @@ describe('getTree — depth', () => {
 			await project.destroy()
 		}
 	})
+
+	it('bounded depth with pending staged writes falls back to the whole-doc read (no scoped BFS)', async () => {
+		const { project, source } = await createTestProject({ sourceXml, dev: { perf: true } })
+		try {
+			await source.document.transaction(async (tx) => {
+				await tx.any.addChild({ tagName: 'A', id: 'a1' }, { tagName: 'AA_2', attributes: {} })
+				tx.perf.reset()
+				await tx.any.getTree({ tagName: 'A', id: 'a1' }, { depth: 1 })
+				const report = tx.perf.report()
+				expect(report['core::store::getByDocumentId']?.count ?? 0).toBe(1)
+				expect(report['core::store::getMany']?.count ?? 0).toBe(0)
+				expect(report['core::store::get']?.count ?? 0).toBe(0)
+			})
+		} finally {
+			await project.destroy()
+		}
+	})
 })
