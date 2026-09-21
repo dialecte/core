@@ -7,10 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.4.17] - 2026-09-21
+
+### Added
+
+- **`createXmlSchemaAssertions` test helper** (`@dialecte/core/test`). Structural fixture validator bound to a dialecte's generated `DEFINITION` + `namespaces`: `assertValidXml(xml)` fails a fixture whose element namespace, containment or attributes don't match the schema (content unknown to the schema, or in a namespace the dialecte doesn't declare, is skipped), and `assertValidXmlTestCases` reports every invalid case at once. Extracted from scl's own test harness so every dialecte shares one validator.
+
+## [0.4.16] - 2026-09-17
+
+### Added
+
+- **`formatXml` / `formatEmbeddedXml` utils** (`@dialecte/core/utils`) and a **`dialecte-xmlfmt` bin**. `formatXml` reindents an XML string to one structural tag per line with text leaves inline; it is NON-VALIDATING and tolerant of `${...}` template interpolations, which is why it is safe on XML embedded in JS/TS template literals — a real XML parser silently mis-parses a whole-attribute interpolation like `${templateUuid}` and drops the element. `formatEmbeddedXml` applies it to every `/* xml */`-marked template literal in a JS/TS source string (closing backtick aligned to the statement); the `dialecte-xmlfmt` bin runs it over a glob (`--check` for CI), so a consuming package formats its fixtures with no wrapper script.
+
+## [0.4.15] - 2026-09-17
+
 ### Added
 
 - **`normalizeUuids` test helper** (`@dialecte/core/test`). Rewrites every uuid value in a serialized document to a stable first-appearance token (`uuid-1`, `uuid-2`, …) — the same uuid always maps to the same token, so lineage (a `templateUuid` pointing at an element's `uuid`, a reference's target) stays visible. Lets a snapshot freeze structure + lineage without mocking `crypto.randomUUID` (`expect(normalizeUuids(xml)).toMatchSnapshot()`), immune to uuid ordering or a leaked mock.
-- **`formatXml` / `formatEmbeddedXml` utils** (`@dialecte/core/utils`) and a **`dialecte-xmlfmt` bin**. `formatXml` reindents an XML string to one structural tag per line with text leaves inline; it is NON-VALIDATING and tolerant of `${...}` template interpolations, which is why it is safe on XML embedded in JS/TS template literals — a real XML parser silently mis-parses a whole-attribute interpolation like `${templateUuid}` and drops the element. `formatEmbeddedXml` applies it to every `/* xml */`-marked template literal in a JS/TS source string (closing backtick aligned to the statement); the `dialecte-xmlfmt` bin runs it over a glob (`--check` for CI), so a consuming package formats its fixtures with no wrapper script.
 
 ### Fixed
 

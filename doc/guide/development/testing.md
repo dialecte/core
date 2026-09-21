@@ -334,6 +334,51 @@ In dialecte packages, instantiate once and re-export (see [Adapting to your dial
 
 ---
 
+## createXmlSchemaAssertions
+
+Factory that returns structural-validation assertions pre-bound to a dialecte's generated `DEFINITION` and declared `namespaces`. Where `createXmlAssertions` checks specific XPath queries, `createXmlSchemaAssertions` validates a whole XML string against the schema shape: every element's namespace matches its parent context, every element is an allowed child of its parent, and every attribute is known to its element. Use it to guard test fixtures - a mistyped tag, a wrong namespace or a stray attribute fails loudly instead of silently exercising the wrong shape.
+
+### Signature
+
+```ts
+function createXmlSchemaAssertions(params: {
+	definition: AnyDefinition
+	namespaces: Record<string, Namespace>
+	schemaName?: string // names the schema in messages ("not valid SCL"); default 'XML'
+}): {
+	assertValidXml(xml: string, label?: string, options?: { requireComplete?: boolean }): void
+	assertValidXmlTestCases(params: {
+		testCases: Record<string, { sourceXml: string; targetXml?: string }>
+	}): void
+}
+```
+
+### assertValidXml
+
+Throws with every violation found, each tagged `[namespace]` / `[containment]` / `[attribute]` / `[required]`. Elements unknown to the schema are skipped (bespoke content under a transparent `Private`), as is any element in a namespace the dialecte does not declare - even when its local name collides with a schema element. An element in **no** namespace is not foreign - it is a schema element that forgot its namespace, and stays validated. `requireComplete` (default `true`) also requires every schema-required attribute; minimal fixtures pass `false`.
+
+### assertValidXmlTestCases
+
+Validates every case's `sourceXml`/`targetXml` and throws ONCE listing all invalid cases, each attributed to its case name - so a suite's fixtures are fixed in one round instead of one failure at a time.
+
+### Usage
+
+```ts
+import { createXmlSchemaAssertions } from '@dialecte/core/test'
+
+const { assertValidXml } = createXmlSchemaAssertions({
+	definition: MY_DEFINITION,
+	namespaces: MY_DIALECTE_CONFIG.namespaces,
+	schemaName: 'SCL',
+})
+
+assertValidXml(fixtureXml, 'my fixture', { requireComplete: false })
+```
+
+Not yet enforced (planned with the validation feature): attribute value facets (uuid pattern, enums, datatypes) and cross-element constraints (unique keys, keyref resolution). In dialecte packages, instantiate once and re-export (see [Adapting to your dialecte](#adapting-to-your-dialecte)).
+
+---
+
 ## createTestProject
 
 Lower-level helper for tests that need manual control over export, intermediate assertions, or multi-step verification. Spins up a `Project` with source (and optionally target) XML imported.
@@ -452,12 +497,14 @@ import {
 	createTestProject,
 	createTestRecordFactory,
 	createXmlAssertions,
+	createXmlSchemaAssertions,
 	createTestRunner,
 	XMLNS_DEV_NAMESPACE,
 } from '@dialecte/core/test'
 import type { TestRunner } from '@dialecte/core/test'
 
 import { MY_DIALECTE_CONFIG } from '@/config'
+import { DEFINITION } from '@/definition'
 
 // Namespace strings for use in XML template literals
 export const XMLNS_DEFAULT_NAMESPACE = `xmlns="http://dialecte.dev/XML/DEFAULT"`
@@ -487,6 +534,12 @@ export const createDialecteTestRecord = createTestRecordFactory(MY_DIALECTE_CONF
 export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions(
 	{ namespaces: MY_DIALECTE_CONFIG.namespaces },
 )
+
+// Structural fixture validation bound to this dialecte's schema
+export const { assertValidXml, assertValidXmlTestCases } = createXmlSchemaAssertions({
+	definition: DEFINITION,
+	namespaces: MY_DIALECTE_CONFIG.namespaces,
+})
 ```
 
 ### What each export provides
@@ -497,6 +550,7 @@ export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = 
 | `createDialecteTestProject`                                       | Manual test setup pre-bound to the dialecte config                                        |
 | `createDialecteTestRecord`                                        | Typed record factory - `tagName` narrowed to the dialecte's elements                      |
 | `assertExpectedElementQueries` / `assertUnexpectedElementQueries` | XPath assertions with namespace prefix resolution pre-configured                          |
+| `assertValidXml` / `assertValidXmlTestCases`                      | Structural fixture validation (namespace / containment / attributes) bound to the schema  |
 | Namespace constants                                               | `XMLNS_*` strings for XML template literals; `CUSTOM_RECORD_ID_ATTRIBUTE` for `dev:db-id` |
 
 ### Usage in tests

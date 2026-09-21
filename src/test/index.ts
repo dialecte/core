@@ -1,3 +1,4 @@
+export * from './assert-valid-xml'
 export * from './assert-xml'
 export * from './config'
 export * from './constant'
