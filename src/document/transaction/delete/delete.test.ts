@@ -213,3 +213,160 @@ describe('stageDelete hooks — returned operations applied', () => {
 
 	runTestCases.withExport({ testCases, act, hooks })
 })
+
+describe('stageDelete afterDelete hook — spy behavior', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	const afterDelete = vi.fn()
+	const hooks = { afterDelete }
+
+	type TestCase = BaseXmlTestCase & {
+		deleteRef: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+		expectedTagName: string
+		expectedParentTagName: string
+		expectedParentChildIds: string[]
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'afterDelete → called once with the deleted root and the parent without it': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="parent">
+						<AA_1 ${customId}="aa1" aAA_1="target" />
+						<AA_1 ${customId}="aa2" aAA_1="sibling" />
+					</A>
+				</Root>
+			`,
+			deleteRef: { tagName: 'AA_1', id: 'aa1' },
+			expectedTagName: 'AA_1',
+			expectedParentTagName: 'A',
+			expectedParentChildIds: ['aa2'],
+		},
+		'afterDelete → called once for a subtree, with the subtree root': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="target">
+						<AA_1 ${customId}="aa1" aAA_1="child" />
+					</A>
+				</Root>
+			`,
+			deleteRef: { tagName: 'A', id: 'a1' },
+			expectedTagName: 'A',
+			expectedParentTagName: 'Root',
+			expectedParentChildIds: [],
+		},
+	}
+
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const recordsSeenByHook: unknown[] = []
+		afterDelete.mockReset()
+		afterDelete.mockImplementation(
+			async ({
+				record,
+				query,
+			}: {
+				record: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+				query: Transaction<TestDialecteConfig>
+			}) => {
+				const deletedRecord = await query.getRecord(record)
+				recordsSeenByHook.push(deletedRecord)
+				return []
+			},
+		)
+		await source.transaction(async (tx) => {
+			await tx.delete(testCase.deleteRef as any)
+		})
+		expect(afterDelete).toHaveBeenCalledOnce()
+		const [[callArgs]] = afterDelete.mock.calls
+		expect(callArgs.record.tagName).toBe(testCase.expectedTagName)
+		expect(callArgs.parentRecord.tagName).toBe(testCase.expectedParentTagName)
+		expect(
+			callArgs.parentRecord.children.map(
+				(child: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>) => child.id,
+			),
+		).toEqual(testCase.expectedParentChildIds)
+		expect(recordsSeenByHook).toEqual([undefined])
+	}
+
+	runTestCases.withoutExport({ testCases, act, hooks })
+})
+
+describe('stageDelete afterDelete hook — returned operations applied', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase & {
+		deleteRef: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'afterDelete deletes the parent left empty → parent removed in export': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="container">
+						<AA_1 ${customId}="aa1" aAA_1="only-child" />
+					</A>
+				</Root>
+			`,
+			deleteRef: { tagName: 'AA_1', id: 'aa1' },
+			unexpectedQueries: ['//default:AA_1', '//default:A'],
+		},
+		'afterDelete leaves a parent with remaining children → parent kept in export': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="container">
+						<AA_1 ${customId}="aa1" aAA_1="target" />
+						<AA_1 ${customId}="aa2" aAA_1="sibling" />
+					</A>
+				</Root>
+			`,
+			deleteRef: { tagName: 'AA_1', id: 'aa1' },
+			expectedQueries: ['//default:A/default:AA_1[@aAA_1="sibling"]'],
+			unexpectedQueries: ['//default:AA_1[@aAA_1="target"]'],
+		},
+	}
+
+	const hooks = {
+		afterDelete: vi
+			.fn()
+			.mockImplementation(
+				async ({
+					parentRecord,
+					query,
+				}: {
+					parentRecord: RawRecord<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+					query: Transaction<TestDialecteConfig>
+				}) => {
+					if (parentRecord.tagName !== 'A' || parentRecord.children.length > 0) return []
+					if (!parentRecord.parent) return []
+					const grandParentRecord = await query.getRecord(parentRecord.parent)
+					if (!grandParentRecord) return []
+					const updatedGrandParent = {
+						...grandParentRecord,
+						children: grandParentRecord.children.filter((child) => child.id !== parentRecord.id),
+					}
+					return [
+						{ status: 'deleted' as const, oldRecord: parentRecord, newRecord: undefined },
+						{
+							status: 'updated' as const,
+							oldRecord: grandParentRecord,
+							newRecord: updatedGrandParent,
+						},
+					]
+				},
+			),
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		await source.transaction(async (tx) => {
+			await tx.delete(testCase.deleteRef as any)
+		})
+		return {}
+	}
+
+	runTestCases.withExport({ testCases, act, hooks })
+})

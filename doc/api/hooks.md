@@ -1,5 +1,5 @@
 ---
-description: Reference for all DialecteHooks extension points in @dialecte/core. Covers the record hooks (beforeClone, afterStandardizedRecord, afterCreated, afterUpdated, beforeDelete) and links to the IO hooks. All hooks are provided on the Project instance.
+description: Reference for all DialecteHooks extension points in @dialecte/core. Covers the record hooks (beforeClone, afterStandardizedRecord, afterCreated, afterUpdated, beforeDelete, afterDelete) and links to the IO hooks. All hooks are provided on the Project instance.
 ---
 
 # Hooks
@@ -129,6 +129,30 @@ The hook fires once on the root. Call `findDescendants(record)` inside to get th
 
 ---
 
+### `afterDelete`
+
+Fires **once per deletion root** after the subtree is cascaded and the parent's children list is updated. The subtree is **no longer visible in `query`**.
+
+`record` is the deletion root as it was before removal. `parentRecord` is the parent as staged — without the deleted child — so a hook can tell whether the parent was left empty.
+
+**Signature**
+
+```ts
+afterDelete?: (params: {
+  record: RawRecord<Config, Element>
+  parentRecord: RawRecord<Config, ParentElement>
+  query: Query<Config>
+}) => Promise<Operation<Config>[]>
+```
+
+**Return** — additional operations to stage (e.g., remove a container the deletion left empty).
+
+::: warning Deleting from a hook
+A `deleted` operation returned by a hook only removes that record. To delete an element, also return an `updated` operation on its parent that drops it from `children`, as `delete` does.
+:::
+
+---
+
 ## IO hooks
 
 IO hooks (`beforeImportRecord`, `afterImport`) are documented on the [IO hooks](/io/hooks) page.
@@ -163,7 +187,8 @@ For `delete`:
 
 ```
 beforeDelete           (once, on root — descendants still live)
-[subtree cascade]
+[subtree cascade + parent update]
+afterDelete            (once, on root — subtree gone)
 ```
 
 For `project.import` (see [IO hooks](/io/hooks)) — standardization runs **before** `beforeImportRecord`, so that hook receives the finalized, canonical record:

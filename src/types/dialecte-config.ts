@@ -105,6 +105,22 @@ export type TransactionHooks<GenericConfig extends AnyDialecteConfig> = {
 		record: RawRecord<GenericConfig, GenericElement>
 		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
+
+	/**
+	 * Called once a record and its subtree are staged for deletion.
+	 * The subtree is no longer visible through `query`; `parentRecord` is the
+	 * parent as staged, without the deleted child.
+	 *
+	 * Return additional operations to stage (e.g., remove a container left empty).
+	 */
+	afterDelete?: <
+		GenericElement extends ElementsOf<GenericConfig>,
+		GenericParentElement extends ParentsOf<GenericConfig, GenericElement>,
+	>(params: {
+		record: RawRecord<GenericConfig, GenericElement>
+		parentRecord: RawRecord<GenericConfig, GenericParentElement>
+		query: Query<GenericConfig>
+	}) => Promise<Operation<GenericConfig>[]>
 }
 
 export type DatabaseConfig = Readonly<{

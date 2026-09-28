@@ -70,6 +70,12 @@ export async function stageDelete<
 
 	stageOperation({ context, status: 'updated', oldRecord: parentRecord, newRecord: updatedParent })
 
+	// Fire after the cascade and the parent update — the subtree is gone from query here.
+	if (hooks?.afterDelete) {
+		const hookOperations = await hooks.afterDelete({ record, parentRecord: updatedParent, query })
+		stageOperations({ context, operations: hookOperations })
+	}
+
 	return updatedParent
 }
 

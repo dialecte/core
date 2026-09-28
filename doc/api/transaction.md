@@ -118,7 +118,7 @@ await doc.transaction(async (tx) => {
 
 Returns `Promise<RawRecord<Config, ParentElement>>` — the updated parent record.
 
-`delete` fires `hooks.beforeDelete` before cascading the subtree. See [Hooks — beforeDelete](/api/hooks#beforedelete) for the full reference.
+`delete` fires `hooks.beforeDelete` before cascading the subtree and `hooks.afterDelete` once the subtree and the parent update are staged. See [Hooks — beforeDelete](/api/hooks#beforedelete) and [Hooks — afterDelete](/api/hooks#afterdelete) for the full reference.
 
 ::: tip
 Define `beforeDelete` to clear or delete elements that reference the deleted subtree before it is removed.

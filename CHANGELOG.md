@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Read an element as declared under its parent: `resolveDefinition({ dialecteConfig, record })` and `query.getDefinition(refOrRecord)`. Attribute reads, the `fixed` guard, standardization and export follow it.
 - The attribute types take an optional parent (`AttributesOf<Config, 'AAA_1', 'AA_2'>`); `addChild` and `ensureChild` use it, so an attribute not declared under that parent no longer compiles.
 - Definition types for what the generator now emits: `type` on attributes and text, `contentModel`, `nillable`, `anyNamespace`, text `default` / `fixed`.
+- `afterDelete` transaction hook: fires once per deletion root after the subtree and the parent update are staged, with the deleted `record`, the staged `parentRecord` and `query`. Returned operations are staged.
 
 ### Changed
 
