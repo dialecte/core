@@ -52,21 +52,23 @@ export type AuthoredAttributeObjectOf<
 export type ChildAttributesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericChildElement extends ElementsOf<GenericConfig>,
+	GenericParent extends ElementsOf<GenericConfig> = never,
 > =
-	| DefaultAttributesValueObjectOf<GenericConfig, GenericChildElement>
+	| DefaultAttributesValueObjectOf<GenericConfig, GenericChildElement, GenericParent>
 	| AuthoredAttributeObjectOf<GenericConfig, GenericChildElement>[]
 
 /**
- * `attributes` is optional when the child element has no required attributes
- * and required as soon as it declares at least one required attribute.
+ * `attributes` is optional when the child element has no required attributes and required as
+ * soon as it declares at least one - as declared under the parent it is added to.
  */
 type AddChildAttributesParams<
 	GenericConfig extends AnyDialecteConfig,
-	GenericChildElement extends ElementsOf<GenericConfig>,
+	GenericParent extends ElementsOf<GenericConfig>,
+	GenericChildElement extends ChildrenOf<GenericConfig, GenericParent>,
 > =
-	{} extends AttributesValueObjectOf<GenericConfig, GenericChildElement>
-		? { attributes?: ChildAttributesOf<GenericConfig, GenericChildElement> }
-		: { attributes: ChildAttributesOf<GenericConfig, GenericChildElement> }
+	{} extends AttributesValueObjectOf<GenericConfig, GenericChildElement, GenericParent>
+		? { attributes?: ChildAttributesOf<GenericConfig, GenericChildElement, GenericParent> }
+		: { attributes: ChildAttributesOf<GenericConfig, GenericChildElement, GenericParent> }
 
 export type AddChildParams<
 	GenericConfig extends AnyDialecteConfig,
@@ -77,4 +79,4 @@ export type AddChildParams<
 	tagName: GenericChildElement
 	namespace?: Namespace
 	value?: string
-} & AddChildAttributesParams<GenericConfig, GenericChildElement>
+} & AddChildAttributesParams<GenericConfig, GenericElement, GenericChildElement>

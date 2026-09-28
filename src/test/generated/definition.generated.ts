@@ -8,12 +8,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aA', 'bA', 'ext:cA'],
 			details: {
-				aA: { required: true, facets: { pattern: ['[A-Z]+'], whiteSpace: 'preserve' } },
-				bA: { facets: { enumeration: ['x', 'y', 'z'], whiteSpace: 'preserve' } },
-				'ext:cA': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aA: { required: true, facets: { pattern: ['[A-Z]+'] } },
+				bA: { facets: { enumeration: ['x', 'y', 'z'] } },
+				'ext:cA': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -23,6 +20,16 @@ export const DEFINITION = {
 				AA_2: { maxOccurs: 2 },
 				AA_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'AA_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'AA_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'AA_3', maxOccurs: 3 },
+			],
 		},
 		constraints: [
 			{
@@ -43,13 +50,12 @@ export const DEFINITION = {
 		parents: ['AAA_1', 'AAA_2', 'AAA_3'],
 		attributes: {
 			sequence: ['aAAAA_1', 'bAAAA_1', 'ext:cAAAA_1'],
+			any: true,
+			anyNamespace: ['##other'],
 			details: {
-				aAAAA_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bAAAA_1: { facets: { whiteSpace: 'preserve' } },
-				'ext:cAAAA_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aAAAA_1: { required: true },
+				bAAAA_1: {},
+				'ext:cAAAA_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -66,14 +72,12 @@ export const DEFINITION = {
 			sequence: ['aAAAA_2', 'bAAAA_2', 'ext:cAAAA_2'],
 			details: {
 				aAAAA_2: {
+					type: { builtin: 'decimal' },
 					required: true,
-					facets: { totalDigits: 5, fractionDigits: 2, whiteSpace: 'collapse' },
+					facets: { totalDigits: 5, fractionDigits: 2 },
 				},
-				bAAAA_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cAAAA_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				bAAAA_2: {},
+				'ext:cAAAA_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -91,16 +95,10 @@ export const DEFINITION = {
 				'ext:aAAAA_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { length: 8, whiteSpace: 'preserve' },
+					facets: { length: 8 },
 				},
-				'ext:bAAAA_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cAAAA_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bAAAA_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cAAAA_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -115,12 +113,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aAAA_1', 'bAAA_1', 'ext:cAAA_1'],
 			details: {
-				aAAA_1: { required: true, facets: { pattern: ['[a-z]{3}'], whiteSpace: 'preserve' } },
-				bAAA_1: { facets: { whiteSpace: 'preserve' } },
-				'ext:cAAA_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aAAA_1: { required: true, facets: { pattern: ['[a-z]{3}'] } },
+				bAAA_1: {},
+				'ext:cAAA_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -130,6 +125,16 @@ export const DEFINITION = {
 				AAAA_2: { maxOccurs: 2 },
 				AAAA_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'AAAA_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'AAAA_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'AAAA_3', maxOccurs: 3 },
+			],
 		},
 	},
 	AAA_2: {
@@ -139,12 +144,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aAAA_2', 'bAAA_2', 'ext:cAAA_2'],
 			details: {
-				aAAA_2: { required: true, facets: { pattern: ['[a-z]{3}'], whiteSpace: 'preserve' } },
-				bAAA_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cAAA_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aAAA_2: { required: true, facets: { pattern: ['[a-z]{3}'] } },
+				bAAA_2: {},
+				'ext:cAAA_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -154,6 +156,16 @@ export const DEFINITION = {
 				AAAA_2: { maxOccurs: 2 },
 				AAAA_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'AAAA_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'AAAA_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'AAAA_3', maxOccurs: 3 },
+			],
 		},
 	},
 	AAA_3: {
@@ -166,25 +178,37 @@ export const DEFINITION = {
 				'ext:aAAA_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { pattern: ['[a-z]{3}'], whiteSpace: 'preserve' },
+					facets: { pattern: ['[a-z]{3}'] },
 				},
-				'ext:bAAA_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cAAA_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bAAA_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cAAA_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
 			sequence: ['AAAA_1', 'AAAA_2', 'AAAA_3'],
 			details: {
-				AAAA_1: { required: true, minOccurs: 1, maxOccurs: 1 },
-				AAAA_2: { maxOccurs: 2 },
+				AAAA_1: {
+					required: true,
+					minOccurs: 1,
+					maxOccurs: 1,
+					namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
+				AAAA_2: {
+					maxOccurs: 2,
+					namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
 				AAAA_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'AAAA_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'AAAA_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'AAAA_3', maxOccurs: 3 },
+			],
 		},
 	},
 	AA_1: {
@@ -194,22 +218,38 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aAA_1', 'bAA_1', 'ext:cAA_1'],
 			details: {
-				aAA_1: { required: true, facets: { minLength: 1, maxLength: 32, whiteSpace: 'replace' } },
-				bAA_1: { facets: { whiteSpace: 'preserve' } },
-				'ext:cAA_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
+				aAA_1: {
+					type: { builtin: 'normalizedString' },
+					required: true,
+					facets: { minLength: 1, maxLength: 32 },
 				},
+				bAA_1: {},
+				'ext:cAA_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aAA_1'],
 		},
 		children: {
 			sequence: ['AAA_1', 'AAA_2', 'AAA_3'],
 			details: {
-				AAA_1: { required: true, minOccurs: 1, maxOccurs: 1 },
-				AAA_2: { maxOccurs: 2 },
+				AAA_1: {
+					required: true,
+					minOccurs: 1,
+					maxOccurs: 1,
+					namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
+				AAA_2: { maxOccurs: 2, namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' } },
 				AAA_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'AAA_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'AAA_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'AAA_3', maxOccurs: 3 },
+			],
 		},
 	},
 	AA_2: {
@@ -220,24 +260,37 @@ export const DEFINITION = {
 			sequence: ['aAA_2', 'bAA_2', 'ext:cAA_2'],
 			details: {
 				aAA_2: {
+					type: { builtin: 'integer' },
 					required: true,
-					facets: { minInclusive: 0, maxInclusive: 100, whiteSpace: 'collapse' },
+					facets: { minInclusive: 0, maxInclusive: 100 },
 				},
-				bAA_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cAA_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				bAA_2: {},
+				'ext:cAA_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aAA_1'],
 		},
 		children: {
 			sequence: ['AAA_1', 'AAA_2', 'AAA_3'],
 			details: {
-				AAA_1: { required: true, minOccurs: 1, maxOccurs: 1 },
-				AAA_2: { maxOccurs: 2 },
+				AAA_1: {
+					required: true,
+					minOccurs: 1,
+					maxOccurs: 1,
+					namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
+				AAA_2: { maxOccurs: 2, namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' } },
 				AAA_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'AAA_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'AAA_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'AAA_3', maxOccurs: 3 },
+			],
 		},
 	},
 	AA_3: {
@@ -250,16 +303,12 @@ export const DEFINITION = {
 				'ext:aAA_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
 				'ext:bAA_3': {
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
 					facets: { whiteSpace: 'collapse' },
 				},
-				'ext:cAA_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:cAA_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aAA_1'],
 		},
@@ -271,6 +320,16 @@ export const DEFINITION = {
 				AAA_3: { maxOccurs: 3 },
 			},
 		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'AAA_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'AAA_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'AAA_3', maxOccurs: 3 },
+			],
+		},
 	},
 	B: {
 		tag: 'B',
@@ -279,12 +338,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aB', 'bB', 'ext:cB'],
 			details: {
-				aB: { required: true, facets: { whiteSpace: 'preserve' } },
-				bB: { facets: { whiteSpace: 'preserve' } },
-				'ext:cB': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aB: { required: true },
+				bB: {},
+				'ext:cB': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -325,6 +381,16 @@ export const DEFINITION = {
 				BB_3: { maxOccurs: 3 },
 			},
 		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'BB_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'BB_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'BB_3', maxOccurs: 3 },
+			],
+		},
 		constraints: [
 			{
 				kind: 'key',
@@ -354,12 +420,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aBBBB_1', 'bBBBB_1', 'ext:cBBBB_1'],
 			details: {
-				aBBBB_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBBBB_1: { facets: { whiteSpace: 'preserve' } },
-				'ext:cBBBB_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aBBBB_1: { required: true },
+				bBBBB_1: {},
+				'ext:cBBBB_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aBBBB_1', 'bBBBB_1'],
 		},
@@ -367,7 +430,7 @@ export const DEFINITION = {
 			sequence: [],
 			details: {},
 		},
-		textContent: { facets: { pattern: ['\\S+'], minLength: 1, whiteSpace: 'preserve' } },
+		textContent: { facets: { pattern: ['\\S+'], minLength: 1 } },
 	},
 	BBBB_2: {
 		tag: 'BBBB_2',
@@ -376,12 +439,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aBBBB_2', 'bBBBB_2', 'ext:cBBBB_2'],
 			details: {
-				aBBBB_2: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBBBB_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cBBBB_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aBBBB_2: { required: true },
+				bBBBB_2: {},
+				'ext:cBBBB_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -399,16 +459,9 @@ export const DEFINITION = {
 				'ext:aBBBB_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
-				'ext:bBBBB_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cBBBB_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bBBBB_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cBBBB_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -423,14 +476,11 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aBBB_1', 'bBBB_1', 'ext:cBBB_1'],
 			details: {
-				aBBB_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBBB_1: { default: 'false', facets: { whiteSpace: 'preserve' } },
-				'ext:cBBB_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aBBB_1: { required: true },
+				bBBB_1: { default: 'false' },
+				'ext:cBBB_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
-			identityFields: ['aBBBB_1', 'aBBB_1'],
+			identityFields: ['aBBB_1'],
 		},
 		children: {
 			sequence: ['BBBB_1', 'BBBB_2', 'BBBB_3'],
@@ -439,6 +489,16 @@ export const DEFINITION = {
 				BBBB_2: { maxOccurs: 2 },
 				BBBB_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'BBBB_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'BBBB_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'BBBB_3', maxOccurs: 3 },
+			],
 		},
 		constraints: [
 			{
@@ -459,12 +519,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aBBB_2', 'bBBB_2', 'ext:cBBB_2'],
 			details: {
-				aBBB_2: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBBB_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cBBB_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aBBB_2: { required: true },
+				bBBB_2: {},
+				'ext:cBBB_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -474,6 +531,16 @@ export const DEFINITION = {
 				BBBB_2: { maxOccurs: 2 },
 				BBBB_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'BBBB_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'BBBB_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'BBBB_3', maxOccurs: 3 },
+			],
 		},
 	},
 	BBB_3: {
@@ -486,25 +553,36 @@ export const DEFINITION = {
 				'ext:aBBB_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
-				'ext:bBBB_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cBBB_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bBBB_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cBBB_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
 			sequence: ['BBBB_1', 'BBBB_2', 'BBBB_3'],
 			details: {
-				BBBB_1: { required: true, minOccurs: 1, maxOccurs: 1 },
-				BBBB_2: { maxOccurs: 2 },
+				BBBB_1: {
+					required: true,
+					minOccurs: 1,
+					maxOccurs: 1,
+					namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
+				BBBB_2: {
+					maxOccurs: 2,
+					namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
 				BBBB_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'BBBB_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'BBBB_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'BBBB_3', maxOccurs: 3 },
+			],
 		},
 	},
 	BB_1: {
@@ -514,12 +592,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aBB_1', 'bBB_1', 'ext:cBB_1'],
 			details: {
-				aBB_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBB_1: { default: '', facets: { whiteSpace: 'preserve' } },
-				'ext:cBB_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aBB_1: { required: true },
+				bBB_1: { default: '' },
+				'ext:cBB_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aBB_1', 'bBB_1'],
 		},
@@ -541,10 +616,21 @@ export const DEFINITION = {
 							],
 						},
 					],
+					namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
 				},
-				BBB_2: { maxOccurs: 2 },
+				BBB_2: { maxOccurs: 2, namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' } },
 				BBB_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'BBB_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'BBB_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'BBB_3', maxOccurs: 3 },
+			],
 		},
 		constraints: [
 			{
@@ -569,12 +655,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aBB_2', 'bBB_2', 'ext:cBB_2'],
 			details: {
-				aBB_2: { required: true, facets: { whiteSpace: 'preserve' } },
-				bBB_2: { default: '', facets: { whiteSpace: 'preserve' } },
-				'ext:cBB_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aBB_2: { required: true },
+				bBB_2: { default: '' },
+				'ext:cBB_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -595,10 +678,21 @@ export const DEFINITION = {
 							],
 						},
 					],
+					namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
 				},
-				BBB_2: { maxOccurs: 2 },
+				BBB_2: { maxOccurs: 2, namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' } },
 				BBB_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'BBB_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'BBB_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'BBB_3', maxOccurs: 3 },
+			],
 		},
 		constraints: [
 			{
@@ -620,16 +714,9 @@ export const DEFINITION = {
 				'ext:aBB_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
-				'ext:bBB_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cBB_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bBB_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cBB_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -655,6 +742,16 @@ export const DEFINITION = {
 				BBB_3: { maxOccurs: 3 },
 			},
 		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'BBB_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'BBB_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'BBB_3', maxOccurs: 3 },
+			],
+		},
 	},
 	C: {
 		tag: 'C',
@@ -663,12 +760,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aC', 'bC', 'ext:cC'],
 			details: {
-				aC: { required: true, facets: { whiteSpace: 'preserve' } },
-				bC: { facets: { whiteSpace: 'preserve' } },
-				'ext:cC': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aC: { required: true },
+				bC: {},
+				'ext:cC': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -688,7 +782,22 @@ export const DEFINITION = {
 					],
 				},
 			},
-			choices: [{ options: ['CC_1', 'CC_2'], maxOccurs: 1 }],
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{
+					kind: 'choice',
+					maxOccurs: 1,
+					particles: [
+						{ kind: 'element', name: 'CC_1', minOccurs: 1, maxOccurs: 1 },
+						{ kind: 'element', name: 'CC_2', minOccurs: 1, maxOccurs: 1 },
+					],
+				},
+				{ kind: 'element', name: 'CC_3', maxOccurs: 3 },
+			],
 		},
 		constraints: [
 			{
@@ -709,19 +818,16 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aCCCC_1', 'bCCCC_1', 'ext:cCCCC_1'],
 			details: {
-				aCCCC_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bCCCC_1: { facets: { whiteSpace: 'preserve' } },
-				'ext:cCCCC_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aCCCC_1: { required: true },
+				bCCCC_1: {},
+				'ext:cCCCC_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
 			sequence: [],
 			details: {},
 		},
-		textContent: { facets: { whiteSpace: 'collapse' } },
+		textContent: { type: { builtin: 'token' } },
 	},
 	CCCC_2: {
 		tag: 'CCCC_2',
@@ -730,12 +836,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aCCCC_2', 'bCCCC_2', 'ext:cCCCC_2'],
 			details: {
-				aCCCC_2: { required: true, facets: { whiteSpace: 'preserve' } },
-				bCCCC_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cCCCC_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aCCCC_2: { required: true },
+				bCCCC_2: {},
+				'ext:cCCCC_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -753,16 +856,9 @@ export const DEFINITION = {
 				'ext:aCCCC_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
-				'ext:bCCCC_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cCCCC_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bCCCC_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cCCCC_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -777,12 +873,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aCCC_1', 'bCCC_1', 'ext:cCCC_1'],
 			details: {
-				aCCC_1: { required: true, facets: { whiteSpace: 'preserve' } },
-				bCCC_1: { facets: { whiteSpace: 'preserve' } },
-				'ext:cCCC_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aCCC_1: { required: true },
+				bCCC_1: {},
+				'ext:cCCC_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aCCC_1'],
 		},
@@ -794,6 +887,16 @@ export const DEFINITION = {
 				CCCC_3: { maxOccurs: 3 },
 			},
 		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'CCCC_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'CCCC_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'CCCC_3', maxOccurs: 3 },
+			],
+		},
 	},
 	CCC_2: {
 		tag: 'CCC_2',
@@ -802,12 +905,9 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aCCC_2', 'bCCC_2', 'ext:cCCC_2'],
 			details: {
-				aCCC_2: { required: true, facets: { whiteSpace: 'preserve' } },
-				bCCC_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cCCC_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aCCC_2: { required: true },
+				bCCC_2: {},
+				'ext:cCCC_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -817,6 +917,16 @@ export const DEFINITION = {
 				CCCC_2: { maxOccurs: 2 },
 				CCCC_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'CCCC_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'CCCC_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'CCCC_3', maxOccurs: 3 },
+			],
 		},
 	},
 	CCC_3: {
@@ -829,25 +939,36 @@ export const DEFINITION = {
 				'ext:aCCC_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
-				'ext:bCCC_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cCCC_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bCCC_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cCCC_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
 			sequence: ['CCCC_1', 'CCCC_2', 'CCCC_3'],
 			details: {
-				CCCC_1: { required: true, minOccurs: 1, maxOccurs: 1 },
-				CCCC_2: { maxOccurs: 2 },
+				CCCC_1: {
+					required: true,
+					minOccurs: 1,
+					maxOccurs: 1,
+					namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
+				CCCC_2: {
+					maxOccurs: 2,
+					namespace: { prefix: 'dflt', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
 				CCCC_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'CCCC_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'CCCC_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'CCCC_3', maxOccurs: 3 },
+			],
 		},
 	},
 	CC_1: {
@@ -857,22 +978,34 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aCC_1', 'bCC_1', 'ext:cCC_1'],
 			details: {
-				aCC_1: { required: true, fixed: 'fixed_val', facets: { whiteSpace: 'preserve' } },
-				bCC_1: { facets: { whiteSpace: 'preserve' } },
-				'ext:cCC_1': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aCC_1: { required: true, fixed: 'fixed_val' },
+				bCC_1: {},
+				'ext:cCC_1': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aCC_1'],
 		},
 		children: {
 			sequence: ['CCC_1', 'CCC_2', 'CCC_3'],
 			details: {
-				CCC_1: { required: true, minOccurs: 1, maxOccurs: 1 },
-				CCC_2: { maxOccurs: 2 },
+				CCC_1: {
+					required: true,
+					minOccurs: 1,
+					maxOccurs: 1,
+					namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
+				CCC_2: { maxOccurs: 2, namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' } },
 				CCC_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'CCC_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'CCC_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'CCC_3', maxOccurs: 3 },
+			],
 		},
 	},
 	CC_2: {
@@ -882,22 +1015,34 @@ export const DEFINITION = {
 		attributes: {
 			sequence: ['aCC_2', 'bCC_2', 'ext:cCC_2'],
 			details: {
-				aCC_2: { required: true, facets: { whiteSpace: 'preserve' } },
-				bCC_2: { facets: { whiteSpace: 'preserve' } },
-				'ext:cCC_2': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				aCC_2: { required: true },
+				bCC_2: {},
+				'ext:cCC_2': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 			identityFields: ['aCC_1'],
 		},
 		children: {
 			sequence: ['CCC_1', 'CCC_2', 'CCC_3'],
 			details: {
-				CCC_1: { required: true, minOccurs: 1, maxOccurs: 1 },
-				CCC_2: { maxOccurs: 2 },
+				CCC_1: {
+					required: true,
+					minOccurs: 1,
+					maxOccurs: 1,
+					namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+				},
+				CCC_2: { maxOccurs: 2, namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' } },
 				CCC_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'CCC_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'CCC_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'CCC_3', maxOccurs: 3 },
+			],
 		},
 	},
 	CC_3: {
@@ -910,16 +1055,9 @@ export const DEFINITION = {
 				'ext:aCC_3': {
 					required: true,
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
-				'ext:bCC_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
-				'ext:cCC_3': {
-					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
-				},
+				'ext:bCC_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
+				'ext:cCC_3': { namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' } },
 			},
 		},
 		children: {
@@ -929,6 +1067,16 @@ export const DEFINITION = {
 				CCC_2: { maxOccurs: 2 },
 				CCC_3: { maxOccurs: 3 },
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'CCC_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'CCC_2', maxOccurs: 2 },
+				{ kind: 'element', name: 'CCC_3', maxOccurs: 3 },
+			],
 		},
 		constraints: [
 			{
@@ -950,9 +1098,8 @@ export const DEFINITION = {
 				'ext:root': {
 					default: '2',
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
-					facets: { whiteSpace: 'preserve' },
 				},
-				root: { default: '1', facets: { whiteSpace: 'preserve' } },
+				root: { default: '1' },
 			},
 		},
 		children: {
@@ -1012,6 +1159,16 @@ export const DEFINITION = {
 					],
 				},
 			},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'A', maxOccurs: 1 },
+				{ kind: 'element', name: 'B', maxOccurs: 1 },
+				{ kind: 'element', name: 'C', maxOccurs: 1 },
+			],
 		},
 		constraints: [
 			{

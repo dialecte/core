@@ -225,6 +225,125 @@ export type AttributesMap = {
 
 export type AttributesOf<T extends AvailableElement> = AttributesMap[T]
 
+/**
+ * The attributes of a child AS DECLARED UNDER each parent. An element declared once has the
+ * same type under every parent; a homonym has the type of its declaration under each. Read
+ * through the dialecte's `AttributesOf<Element, Parent>`; the constant `ATTRIBUTES.byParent`
+ * is checked against this map.
+ */
+export type AttributesByParent = {
+	A: {
+		AA_1: AttributesAA_1
+		AA_2: AttributesAA_2
+		AA_3: AttributesAA_3
+	}
+	AAA_1: {
+		AAAA_1: AttributesAAAA_1
+		AAAA_2: AttributesAAAA_2
+		AAAA_3: AttributesAAAA_3
+	}
+	AAA_2: {
+		AAAA_1: AttributesAAAA_1
+		AAAA_2: AttributesAAAA_2
+		AAAA_3: AttributesAAAA_3
+	}
+	AAA_3: {
+		AAAA_1: AttributesAAAA_1
+		AAAA_2: AttributesAAAA_2
+		AAAA_3: AttributesAAAA_3
+	}
+	AA_1: {
+		AAA_1: AttributesAAA_1
+		AAA_2: AttributesAAA_2
+		AAA_3: AttributesAAA_3
+	}
+	AA_2: {
+		AAA_1: AttributesAAA_1
+		AAA_2: AttributesAAA_2
+		AAA_3: AttributesAAA_3
+	}
+	AA_3: {
+		AAA_1: AttributesAAA_1
+		AAA_2: AttributesAAA_2
+		AAA_3: AttributesAAA_3
+	}
+	B: {
+		BB_1: AttributesBB_1
+		BB_2: AttributesBB_2
+		BB_3: AttributesBB_3
+	}
+	BBB_1: {
+		BBBB_1: AttributesBBBB_1
+		BBBB_2: AttributesBBBB_2
+		BBBB_3: AttributesBBBB_3
+	}
+	BBB_2: {
+		BBBB_1: AttributesBBBB_1
+		BBBB_2: AttributesBBBB_2
+		BBBB_3: AttributesBBBB_3
+	}
+	BBB_3: {
+		BBBB_1: AttributesBBBB_1
+		BBBB_2: AttributesBBBB_2
+		BBBB_3: AttributesBBBB_3
+	}
+	BB_1: {
+		BBB_1: AttributesBBB_1
+		BBB_2: AttributesBBB_2
+		BBB_3: AttributesBBB_3
+	}
+	BB_2: {
+		BBB_1: AttributesBBB_1
+		BBB_2: AttributesBBB_2
+		BBB_3: AttributesBBB_3
+	}
+	BB_3: {
+		BBB_1: AttributesBBB_1
+		BBB_2: AttributesBBB_2
+		BBB_3: AttributesBBB_3
+	}
+	C: {
+		CC_1: AttributesCC_1
+		CC_2: AttributesCC_2
+		CC_3: AttributesCC_3
+	}
+	CCC_1: {
+		CCCC_1: AttributesCCCC_1
+		CCCC_2: AttributesCCCC_2
+		CCCC_3: AttributesCCCC_3
+	}
+	CCC_2: {
+		CCCC_1: AttributesCCCC_1
+		CCCC_2: AttributesCCCC_2
+		CCCC_3: AttributesCCCC_3
+	}
+	CCC_3: {
+		CCCC_1: AttributesCCCC_1
+		CCCC_2: AttributesCCCC_2
+		CCCC_3: AttributesCCCC_3
+	}
+	CC_1: {
+		CCC_1: AttributesCCC_1
+		CCC_2: AttributesCCC_2
+		CCC_3: AttributesCCC_3
+	}
+	CC_2: {
+		CCC_1: AttributesCCC_1
+		CCC_2: AttributesCCC_2
+		CCC_3: AttributesCCC_3
+	}
+	CC_3: {
+		CCC_1: AttributesCCC_1
+		CCC_2: AttributesCCC_2
+		CCC_3: AttributesCCC_3
+	}
+	Root: {
+		A: AttributesA
+		B: AttributesB
+		C: AttributesC
+	}
+}
+
 export type RequiredAttributeNames<T extends AvailableElement> =
 	(typeof REQUIRED_ATTRIBUTES)[T][number]
 export type OptionalAttributeNames<T extends AvailableElement> = Exclude<

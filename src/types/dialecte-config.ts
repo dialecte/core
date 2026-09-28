@@ -5,10 +5,21 @@ import type { Namespace, RawRecord, TreeRecord } from './records'
 import type { Query } from '@/document'
 import type { RecordSchema } from '@/store'
 
+/**
+ * The attribute skeletons a dialecte generates: one key per attribute name, typed for the aliases
+ * below; what an attribute is (required, fixed, facets) lives in `definition`. `byTag` is the shape
+ * of an element wherever it appears; `byParent` its shape AS DECLARED UNDER each parent - the same
+ * where the schema declares the tag once, its own where a homonym differs.
+ */
+export type AttributeTables = {
+	byTag: Record<string, any>
+	byParent: Record<string, Record<string, any>>
+}
+
 export type RawDialecteConfig<
 	GenericElementNames extends readonly string[],
 	GenericRootElement extends GenericElementNames[number],
-	GenericAttributes extends Record<string, any>,
+	GenericAttributes extends AttributeTables,
 	GenericChildren extends Record<string, readonly string[]>,
 	GenericParents extends Record<string, readonly string[]>,
 	GenericDescendants extends Record<string, readonly string[]>,
@@ -116,7 +127,7 @@ export type DatabaseConfig = Readonly<{
 export type AnyDialecteConfig = RawDialecteConfig<
 	readonly string[],
 	string,
-	Record<string, any>,
+	AttributeTables,
 	Record<string, readonly string[]>,
 	Record<string, readonly string[]>,
 	Record<string, readonly string[]>,
@@ -181,10 +192,18 @@ export type SingletonElementsOf<GenericConfig extends AnyDialecteConfig> =
 /**
  * Get attributes type for a specific element from dialecte config
  */
+/**
+ * The attribute value object of an element: by tag, or - when a parent is named - as declared
+ * under that parent (`attributes.byParent`). Without a parent this is exactly the tag-level type,
+ * so nothing changes for a caller that names none; the conditional tests the parent only.
+ */
 export type AttributesValueObjectOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
-> = GenericConfig['attributes'][GenericElement]
+	GenericParent extends ElementsOf<GenericConfig> = never,
+> = [GenericParent] extends [never]
+	? GenericConfig['attributes']['byTag'][GenericElement]
+	: GenericConfig['attributes']['byParent'][GenericParent][GenericElement]
 export type AnyAttributesValueObject = Record<string, string>
 
 /**
@@ -193,7 +212,8 @@ export type AnyAttributesValueObject = Record<string, string>
 export type AttributesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
-> = keyof AttributesValueObjectOf<GenericConfig, GenericElement> & string
+	GenericParent extends ElementsOf<GenericConfig> = never,
+> = keyof AttributesValueObjectOf<GenericConfig, GenericElement, GenericParent> & string
 export type AnyAttributeName = string
 
 /**
@@ -278,13 +298,16 @@ export type NamespaceKeysUsedByElement<
 export type DefaultAttributesValueObjectOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
+	GenericParent extends ElementsOf<GenericConfig> = never,
 > = {
 	[K in keyof AttributesValueObjectOf<
 		GenericConfig,
-		GenericElement
+		GenericElement,
+		GenericParent
 	> as K extends `${string}:${string}` ? never : K]: AttributesValueObjectOf<
 		GenericConfig,
-		GenericElement
+		GenericElement,
+		GenericParent
 	>[K]
 }
 
@@ -317,4 +340,5 @@ export type LocalAttributeNamesInNamespace<
 export type DefaultAttributeNamesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
-> = keyof DefaultAttributesValueObjectOf<GenericConfig, GenericElement> & string
+	GenericParent extends ElementsOf<GenericConfig> = never,
+> = keyof DefaultAttributesValueObjectOf<GenericConfig, GenericElement, GenericParent> & string
