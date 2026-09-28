@@ -59,12 +59,20 @@ export type Facets = {
 
 // --- Attribute / child / text definitions ---
 
+/** What a simple value is: an XSD built-in, a list of one, or a union of several. */
+export type DataType =
+	| { readonly builtin: string; readonly facets?: Facets }
+	| { readonly list: DataType; readonly facets?: Facets }
+	| { readonly union: readonly DataType[]; readonly facets?: Facets }
+
 export type AttributeDefinition = {
 	readonly required?: true
 	readonly default?: string
 	readonly fixed?: string
 	readonly namespace?: Namespace
 	readonly facets?: Facets
+	/** Absent for a plain string. */
+	readonly type?: DataType
 }
 
 export type ChildDefinition = {
@@ -80,27 +88,64 @@ export type ChildDefinition = {
 	 * it onto the record; absent ⇒ the element's own namespace applies.
 	 */
 	readonly namespace?: Namespace
+	/*
+	 * What the child holds as declared under THIS parent, present only when a schema declares the
+	 * tag with different content under different parents - and then all of it, never a mix with the
+	 * tag-level union. Read with `resolveDefinition`; absent ⇒ the tag-level definition applies.
+	 */
+	readonly nillable?: true
+	readonly attributes?: ElementDefinition['attributes']
+	readonly children?: ElementDefinition['children']
+	readonly contentModel?: Particle
+	readonly textContent?: TextContent
 }
 
-export type ChoiceGroup = {
-	readonly options: readonly string[]
-	readonly minOccurs?: number
-	readonly maxOccurs?: number
-}
+/** One node of a content model as the schema wrote it. */
+export type Particle =
+	| {
+			readonly kind: 'sequence' | 'choice' | 'all'
+			readonly minOccurs?: number
+			readonly maxOccurs?: number
+			readonly particles: readonly Particle[]
+	  }
+	| {
+			readonly kind: 'element'
+			readonly name: string
+			readonly minOccurs?: number
+			readonly maxOccurs?: number
+	  }
+	| {
+			readonly kind: 'any'
+			readonly namespace?: readonly string[]
+			readonly processContents?: string
+			readonly minOccurs?: number
+			readonly maxOccurs?: number
+	  }
 
 export type TextContent = {
 	readonly facets?: Facets
+	readonly type?: DataType
+	readonly default?: string
+	readonly fixed?: string
 }
 
 // --- Element definition ---
 
+/**
+ * What an element is: the union of its declarations when a schema declares the tag differently
+ * under different parents. What it holds under one parent is on that parent's edge
+ * (`children.details[tag]`); `resolveDefinition` returns the definition in that context.
+ */
 export type ElementDefinition = {
 	readonly tag: string
 	readonly namespace: Namespace
 	readonly documentation?: string
 	readonly parents: readonly string[]
+	readonly nillable?: true
 	readonly attributes: {
 		readonly sequence: readonly string[]
+		readonly any?: true
+		readonly anyNamespace?: readonly string[]
 		readonly details: Record<string, AttributeDefinition>
 		readonly identityFields?: readonly string[]
 	}
@@ -108,8 +153,8 @@ export type ElementDefinition = {
 		readonly sequence: readonly string[]
 		readonly any?: true
 		readonly details: Record<string, ChildDefinition>
-		readonly choices?: readonly ChoiceGroup[]
 	}
+	readonly contentModel?: Particle
 	readonly constraints?: readonly IdentityConstraint[]
 	readonly textContent?: TextContent
 }
