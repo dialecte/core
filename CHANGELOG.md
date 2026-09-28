@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.5.0] - 2026-09-28
+
+### Added
+
+- Read an element as declared under its parent: `resolveDefinition({ dialecteConfig, record })` and `query.getDefinition(refOrRecord)`. Attribute reads, the `fixed` guard, standardization and export follow it.
+- The attribute types take an optional parent (`AttributesOf<Config, 'AAA_1', 'AA_2'>`); `addChild` and `ensureChild` use it, so an attribute not declared under that parent no longer compiles.
+- Definition types for what the generator now emits: `type` on attributes and text, `contentModel`, `nillable`, `anyNamespace`, text `default` / `fixed`.
+
+### Changed
+
+- `config.attributes` is `{ byTag, byParent }`: regenerate the definition with the latest `@dialecte/create`, and read `ATTRIBUTES.byTag[tag]` where you read `ATTRIBUTES[tag]`.
+- `getAttributeRules`, `resolveSchemaAttributeValue`, `isSchemaDefaultValue` and `assertNoFixedViolation` take the `record` instead of its `tagName`.
+
+### Removed
+
+- `ChoiceGroup` and `children.choices`: read the `choice` nodes of `contentModel` instead.
+
 ## [0.4.17] - 2026-09-21
 
 ### Added

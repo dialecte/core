@@ -33,12 +33,14 @@ import {
 
 Returns the schema-derived facts about a single attribute of an element. This is the **single source of truth** shared by `standardizeRecord` (which builds the canonical stored form) and XML export (which shapes output) — centralizing the schema reads here keeps the two from drifting.
 
+The element is passed as `record` - any record variant: raw, tracked or tree. A record always knows its parent (`null` for the root), and the rules are those of the element **as declared under that parent**; see [`resolveDefinition`](#resolvedefinition) for why that can differ from one parent to another. A ref is refused by the compiler: it carries no parent. Fetch its record first, or use `query.getDefinition(ref)`.
+
 ```ts
 import { getAttributeRules } from '@dialecte/core/utils'
 
 const rules = getAttributeRules({
 	dialecteConfig,
-	tagName: 'Root',
+	record: root, // the Root record
 	attributeName: 'ext:root',
 })
 // {
@@ -68,9 +70,28 @@ Note that the `attributeName` is the **canonical** name — bare local for a def
 
 An unknown element or attribute returns the type with the booleans `false` and the value fields `undefined`, so callers can branch without extra guards.
 
+### `resolveDefinition`
+
+A schema may declare one tag with different content under different parents. Suppose the test schema declared `AAA_1` twice: under `AA_1` with a required `aAAA_1` and its `AAAA_*` children, under `AA_2` as a bare text with no attribute. The generated definition keeps the **union** at the tag level (`DEFINITION.AAA_1`). What `AAA_1` holds under each parent sits **on that parent's edge**, next to its occurrence: `DEFINITION.AA_2.children.details.AAA_1.attributes`, `.children`, `.contentModel`, `.textContent` - all four, only on the edges whose declaration differs. Those edges are the whole record of where the declarations differ: there is no second list to keep in step. `resolveDefinition` is the one rule every reader of the definition follows:
+
+```ts
+import { resolveDefinition } from '@dialecte/core/utils'
+
+resolveDefinition({ dialecteConfig, record: aaa1UnderAa2 }) // an AAA_1 whose parent is an AA_2
+// → the definition on the AA_2 → AAA_1 edge: no attribute, a text
+resolveDefinition({ dialecteConfig, record: aaa1UnderAa1 }) // an AAA_1 whose parent is an AA_1
+// → the definition on the AA_1 → AAA_1 edge: `aAAA_1` required, the `AAAA_*` children
+resolveDefinition({ dialecteConfig, record: root }) // parent: null
+// → DEFINITION.Root: the tag level, also what a parent without its own declaration gets
+```
+
+It takes a record because the record carries its parent. A ref does not, and passing one would silently read the union, so the compiler refuses it: `query.getDefinition(ref)` fetches the record first (staged → cache → store) and resolves from it.
+
+The same rule holds at the type level, additively: `AttributesValueObjectOf<Config, 'AAA_1'>` is the tag-level object exactly as before, and `AttributesValueObjectOf<Config, 'AAA_1', 'AA_2'>` - a parent named - is the object declared under `AA_2`, read from `ATTRIBUTES.byParent`, the second axis of the one attributes constant a dialecte generates (`byTag` is the table every consumer had; both are skeletons - one key per attribute name, typed - and what an attribute is lives in `DEFINITION`). `addChild` and `ensureChild` already know the parent, so `tx.addChild(aa2, { tagName: 'AAA_1', attributes: { aAAA_1: 'x' } })` is refused by the compiler. A dialecte package exposes the same through its namespace: `<Name>.AttributesOf<'AAA_1', 'AA_2'>`.
+
 ### `resolveSchemaAttributeValue`
 
-The schema value to inject for an **absent** attribute, per the requested view. Derived entirely from `getAttributeRules`, so read, export, and compare share one source of truth. The store is [faithful](/io/#schema-value-materialization) — it never fills defaults — so this resolver is what turns the stored form into an effective or export view. A stored value always wins and is handled by the caller before this is consulted.
+The schema value to inject for an **absent** attribute, per the requested view. Derived entirely from `getAttributeRules`, so read, export, and compare share one source of truth. The store is [faithful](/io/#schema-value-materialization) — it never fills defaults — so this resolver is what turns the stored form into an effective or export view. A stored value always wins and is handled by the caller before this is consulted. It takes the same `record` as [`getAttributeRules`](#getattributerules).
 
 The `defaults` mode selects the view (`AttributeDefaults = 'none' | 'optional' | 'required'`):
 
@@ -86,14 +107,14 @@ import { resolveSchemaAttributeValue } from '@dialecte/core/utils'
 // A required attribute with no schema default:
 resolveSchemaAttributeValue({
 	dialecteConfig,
-	tagName: 'AA_1',
+	record: aa1, // an AA_1 record
 	attributeName: 'aAA_1',
 	defaults: 'optional',
 })
 // → undefined  (read view does not fabricate it)
 resolveSchemaAttributeValue({
 	dialecteConfig,
-	tagName: 'AA_1',
+	record: aa1, // an AA_1 record
 	attributeName: 'aAA_1',
 	defaults: 'required',
 })
@@ -104,14 +125,24 @@ This resolver backs the [`defaults` option](/api/query#schema-defaults-the-defau
 
 ### `isSchemaDefaultValue`
 
-Whether a value equals the attribute's schema default, for **compare**: matches the `fixed` value if any, else the `default` (an empty-string default included). Compare sites drop attributes for which this is true, so an authored default-equal value and an absent attribute fold to the same thing.
+Whether a value equals the attribute's schema default, for **compare**: matches the `fixed` value if any, else the `default` (an empty-string default included). Compare sites drop attributes for which this is true, so an authored default-equal value and an absent attribute fold to the same thing. It takes the same `record` as [`getAttributeRules`](#getattributerules).
 
 ```ts
 import { isSchemaDefaultValue } from '@dialecte/core/utils'
 
-isSchemaDefaultValue({ dialecteConfig, tagName: 'BBB_1', attributeName: 'bBBB_1', value: 'false' })
+isSchemaDefaultValue({
+	dialecteConfig,
+	record: bbb1, // a BBB_1 record
+	attributeName: 'bBBB_1',
+	value: 'false',
+})
 // → true   ('false' is the schema default)
-isSchemaDefaultValue({ dialecteConfig, tagName: 'BBB_1', attributeName: 'bBBB_1', value: 'true' })
+isSchemaDefaultValue({
+	dialecteConfig,
+	record: bbb1, // a BBB_1 record
+	attributeName: 'bBBB_1',
+	value: 'true',
+})
 // → false
 ```
 

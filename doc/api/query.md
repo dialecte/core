@@ -448,6 +448,18 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 
 Unscoped, `getAttributes(ref)` returns **default-namespace** attributes only. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the complete, prefixed set.
 
+### getDefinition
+
+Returns the element's definition **in its context**: as declared under its parent when the schema declares the tag differently there, else the tag-level definition. The record is fetched first, so the parent is always known.
+
+```ts
+const definition = await doc.query.getDefinition(aaa1)
+definition?.attributes.details.aAAA_1?.required
+// → whether `aAAA_1` is required under THIS parent (AA_1 vs AA_2, when the schema declares AAA_1 differently under each)
+```
+
+Returns `undefined` when the ref points at no record or at a tag the dialecte does not know. When you already hold the record, the synchronous `resolveDefinition({ dialecteConfig, record })` from `@dialecte/core/utils` gives the same answer without a lookup.
+
 ### Schema defaults — the `defaults` option
 
 Every read (`getAttribute`, `getAttributes`, and their `{ fullObject: true }` forms) accepts a `defaults` option controlling how an **absent** schema attribute is filled. A stored value always wins; `defaults` only governs attributes the author omitted.
