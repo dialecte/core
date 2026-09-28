@@ -2,7 +2,7 @@ import { NOOP_PROGRESS_REPORTER } from '../progress'
 import { createStagedOperations } from '../staged-operations'
 import { AnyQuery } from './any'
 import { findAncestors, findByAttributes, findDescendants } from './find'
-import { getTree } from './get'
+import { getDefinition, getTree } from './get'
 import {
 	getAttribute,
 	getAttributes,
@@ -34,16 +34,17 @@ import type {
 	AnyDialecteConfig,
 	AnyTreeRecord,
 	AttributesOf,
+	ChildrenOf,
 	DefaultAttributesValueObjectOf,
 	DescendantsOf,
+	ElementDefinition,
 	ElementsOf,
-	ChildrenOf,
 	FullAttributeObjectOf,
 	NamespacedAttributesValueObjectOf,
 	NamespaceKeysUsedByElement,
+	RootElementOf,
 	TrackedRecord,
 	TreeRecord,
-	RootElementOf,
 } from '@/types'
 import type { AttributeDefaults } from '@/utils'
 
@@ -178,6 +179,25 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 	): Promise<TrackedRecord<GenericConfig, GenericElement> | undefined> {
 		return getRecord({ context: this.context, ref: toRef(refOrRecord) })
+	}
+
+	/**
+	 * The definition of an element in its context: as declared under its parent when the schema
+	 * declares the tag differently there, else the tag-level definition.
+	 *
+	 * @param refOrRecord - The element to describe; its record is fetched, so its parent is known.
+	 * @returns The `ElementDefinition`, or `undefined` when nothing is found.
+	 *
+	 * @example
+	 * ```ts
+	 * const definition = await query.getDefinition(p)
+	 * definition?.attributes.details.type?.facets?.enumeration // as declared under p's parent
+	 * ```
+	 */
+	async getDefinition<GenericElement extends ElementsOf<GenericConfig>>(
+		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
+	): Promise<ElementDefinition | undefined> {
+		return getDefinition({ context: this.context, ref: toRef(refOrRecord) })
 	}
 
 	/**

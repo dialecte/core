@@ -45,7 +45,7 @@ export async function getAttribute<
 	const value = record
 		? resolveSchemaAttributeValue({
 				dialecteConfig: context.dialecteConfig,
-				tagName: record.tagName,
+				record,
 				attributeName: storedName,
 				defaults,
 			})
@@ -86,14 +86,14 @@ export async function getAttributeFullObject<
 	if (!record || defaults === 'none') return undefined
 	const value = resolveSchemaAttributeValue({
 		dialecteConfig,
-		tagName: record.tagName,
+		record,
 		attributeName: storedName,
 		defaults,
 	})
 	if (value === undefined) return undefined
 	const { namespace: attributeNamespace } = getAttributeRules({
 		dialecteConfig,
-		tagName: record.tagName,
+		record,
 		attributeName: storedName,
 	})
 	return { name: storedName, value, namespace: attributeNamespace } as GenericAttribute

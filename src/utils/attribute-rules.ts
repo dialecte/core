@@ -1,17 +1,20 @@
+import { resolveDefinition } from './resolve-definition'
+
 import type { AttributeDefaults, AttributeRules } from './attribute-rules.types'
-import type { AnyDialecteConfig, Namespace } from '@/types'
+import type { AnyDialecteConfig, AnyRawRecord, Namespace } from '@/types'
 
 export type { AttributeDefaults, AttributeRules } from './attribute-rules.types'
 
 export function getAttributeRules(params: {
 	dialecteConfig: AnyDialecteConfig
-	tagName: string
+	/** The element and its parent: the rules are those of its definition there. */
+	record: Pick<AnyRawRecord, 'tagName' | 'parent'>
 	attributeName: string
 }): AttributeRules {
-	const { dialecteConfig, tagName, attributeName } = params
+	const { dialecteConfig, record, attributeName } = params
 
-	const isKnownElement = dialecteConfig.elements.includes(tagName)
-	const definition = isKnownElement ? dialecteConfig.definition[tagName] : undefined
+	const isKnownElement = dialecteConfig.elements.includes(record.tagName)
+	const definition = isKnownElement ? resolveDefinition({ dialecteConfig, record }) : undefined
 	const details = definition?.attributes.details[attributeName]
 
 	return {
@@ -33,14 +36,14 @@ export function getAttributeRules(params: {
  */
 export function resolveSchemaAttributeValue(params: {
 	dialecteConfig: AnyDialecteConfig
-	tagName: string
+	record: Pick<AnyRawRecord, 'tagName' | 'parent'>
 	attributeName: string
 	defaults: AttributeDefaults
 }): string | undefined {
-	const { dialecteConfig, tagName, attributeName, defaults } = params
+	const { dialecteConfig, record, attributeName, defaults } = params
 	if (defaults === 'none') return undefined
 
-	const rules = getAttributeRules({ dialecteConfig, tagName, attributeName })
+	const rules = getAttributeRules({ dialecteConfig, record, attributeName })
 
 	if (defaults === 'required') {
 		if (rules.isRequired || rules.fixed !== undefined) return rules.fixed ?? rules.default ?? ''
@@ -61,12 +64,12 @@ export function resolveSchemaAttributeValue(params: {
  */
 export function isSchemaDefaultValue(params: {
 	dialecteConfig: AnyDialecteConfig
-	tagName: string
+	record: Pick<AnyRawRecord, 'tagName' | 'parent'>
 	attributeName: string
 	value: string
 }): boolean {
-	const { dialecteConfig, tagName, attributeName, value } = params
-	const rules = getAttributeRules({ dialecteConfig, tagName, attributeName })
+	const { dialecteConfig, record, attributeName, value } = params
+	const rules = getAttributeRules({ dialecteConfig, record, attributeName })
 	const schemaValue = rules.fixed ?? rules.default
 	return schemaValue !== undefined && value === schemaValue
 }

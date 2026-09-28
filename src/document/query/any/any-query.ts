@@ -1,5 +1,5 @@
 import { findAncestors, findByAttributes, findDescendants } from '../find'
-import { getTree } from '../get'
+import { getDefinition, getTree } from '../get'
 import {
 	getAttribute,
 	getAttributes,
@@ -21,6 +21,7 @@ import type {
 	AnyTrackedRecord,
 	AnyTreeRecord,
 	ElementsOf,
+	ElementDefinition,
 } from '@/types'
 import type { AttributeDefaults } from '@/utils'
 
@@ -40,6 +41,14 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		return getRecord({
 			context: this.getContext(),
 			ref: ref as Ref<GenericConfig, ElementsOf<GenericConfig>>,
+		})
+	}
+
+	/** The definition of the element in its context: as declared under its parent when the schema declares the tag differently there. */
+	async getDefinition(ref: AnyRefOrRecord): Promise<ElementDefinition | undefined> {
+		return getDefinition({
+			context: this.getContext(),
+			ref: toRef(ref) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
 		})
 	}
 

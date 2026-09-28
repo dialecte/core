@@ -4,6 +4,7 @@ import {
 	extractLocalName,
 	invariant,
 	orderByConfigSequence,
+	resolveDefinition,
 	resolveSchemaAttributeValue,
 } from '@/utils'
 
@@ -250,7 +251,7 @@ function createElementWithAttributesAndText(params: {
 		config,
 		document: doc,
 		element,
-		tagName: record.tagName,
+		record,
 		isFragment,
 		declareNamespaces,
 	})
@@ -352,7 +353,7 @@ function enforceRootAttributes(params: {
 		// attributes are not reintroduced, keeping the store faithful.
 		const value = resolveSchemaAttributeValue({
 			dialecteConfig: config,
-			tagName: config.rootElementName,
+			record: { tagName: config.rootElementName, parent: null }, // the root has no parent
 			attributeName,
 			defaults: 'required',
 		})
@@ -374,7 +375,7 @@ function enforceRootAttributes(params: {
 		const value =
 			resolveSchemaAttributeValue({
 				dialecteConfig: config,
-				tagName: config.rootElementName,
+				record: { tagName: config.rootElementName, parent: null }, // the root has no parent
 				attributeName,
 				defaults: 'required',
 			}) ?? ''
@@ -407,23 +408,24 @@ function materializeRequiredAndFixedAttributes(params: {
 	config: AnyDialecteConfig
 	document: XMLDocument
 	element: Element
-	tagName: string
+	record: Pick<AnyRawRecord, 'tagName' | 'parent'>
 	isFragment: boolean
 	declareNamespaces: boolean
 }): void {
-	const { config, document: doc, element, tagName, isFragment, declareNamespaces } = params
+	const { config, document: doc, element, record, isFragment, declareNamespaces } = params
 
 	// Bare-fragment mode (no namespace declarations) is a minimal literal snippet
 	// view, not a schema-valid document — skip materialization there.
 	if (!declareNamespaces) return
 
-	const details = config.definition[tagName]?.attributes.details
+	// as declared under this parent: what a homonym requires differs from one parent to another
+	const details = resolveDefinition({ dialecteConfig: config, record })?.attributes.details
 	if (!details) return
 
 	for (const [attributeName, attribute] of Object.entries(details)) {
 		const value = resolveSchemaAttributeValue({
 			dialecteConfig: config,
-			tagName,
+			record,
 			attributeName,
 			defaults: 'required',
 		})

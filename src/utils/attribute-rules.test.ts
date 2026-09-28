@@ -83,7 +83,7 @@ describe('resolveSchemaAttributeValue', () => {
 	runTestCases.generic(testCases, (tc) => {
 		const result = resolveSchemaAttributeValue({
 			dialecteConfig: config,
-			tagName: tc.tagName,
+			record: { tagName: tc.tagName, parent: null },
 			attributeName: tc.attributeName,
 			defaults: tc.defaults,
 		})
@@ -150,7 +150,7 @@ describe('isSchemaDefaultValue', () => {
 	runTestCases.generic(testCases, (tc) => {
 		const result = isSchemaDefaultValue({
 			dialecteConfig: config,
-			tagName: tc.tagName,
+			record: { tagName: tc.tagName, parent: null },
 			attributeName: tc.attributeName,
 			value: tc.value,
 		})

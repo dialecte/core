@@ -1,5 +1,6 @@
 import { getRecord } from '@/document'
 import {
+	resolveDefinition,
 	getAttributeRules,
 	resolvePrefixByNamespaceScope,
 	resolveSchemaAttributeValue,
@@ -63,13 +64,14 @@ export async function getAttributes<
 	// Fill absent schema attributes in the requested namespace scope per `defaults`.
 	// Stored values already in `stored` are never overwritten.
 	if (record && defaults !== 'none') {
-		const sequence = dialecteConfig.definition[record.tagName]?.attributes.sequence ?? []
+		const definition = resolveDefinition({ dialecteConfig, record })
+		const sequence = definition?.attributes.sequence ?? []
 		for (const schemaName of sequence) {
 			const { prefix, local, isXmlns } = splitAttributeName(schemaName)
 			if (isXmlns || prefix !== targetPrefix || local in stored) continue
 			const value = resolveSchemaAttributeValue({
 				dialecteConfig,
-				tagName: record.tagName,
+				record,
 				attributeName: schemaName,
 				defaults,
 			})
@@ -108,19 +110,20 @@ export async function getAttributesFullObject<
 
 	if (record && defaults !== 'none') {
 		const present = new Set(attributes.map((attribute) => attribute.name))
-		const sequence = dialecteConfig.definition[record.tagName]?.attributes.sequence ?? []
+		const definition = resolveDefinition({ dialecteConfig, record })
+		const sequence = definition?.attributes.sequence ?? []
 		for (const schemaName of sequence) {
 			if (present.has(schemaName)) continue
 			const value = resolveSchemaAttributeValue({
 				dialecteConfig,
-				tagName: record.tagName,
+				record,
 				attributeName: schemaName,
 				defaults,
 			})
 			if (value === undefined) continue
 			const { namespace } = getAttributeRules({
 				dialecteConfig,
-				tagName: record.tagName,
+				record,
 				attributeName: schemaName,
 			})
 			attributes.push({ name: schemaName, value, namespace } as GenericAttribute)

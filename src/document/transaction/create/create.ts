@@ -68,7 +68,7 @@ export async function stageAddChild<
 	// Write-path guard: reject an authored value that violates a schema `fixed`.
 	assertNoFixedViolation({
 		dialecteConfig,
-		tagName: childRecord.tagName,
+		record: childRecord,
 		attributes: childRecord.attributes,
 	})
 

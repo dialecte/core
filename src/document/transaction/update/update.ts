@@ -50,7 +50,7 @@ export async function stageUpdate<
 		})
 
 		// Write-path guard: reject an authored value that violates a schema `fixed`.
-		assertNoFixedViolation({ dialecteConfig, tagName: record.tagName, attributes: newAttributes })
+		assertNoFixedViolation({ dialecteConfig, record, attributes: newAttributes })
 
 		const unchangedAttributes = record.attributes.filter(
 			(old) => !newAttributes.some((next) => next.name === old.name),

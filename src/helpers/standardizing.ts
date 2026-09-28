@@ -1,6 +1,7 @@
 import { toFullAttributeArray } from './converter'
 
 import { orderAttributesBySequence } from '@/utils'
+import { resolveDefinition } from '@/utils/resolve-definition'
 
 import type {
 	AnyDialecteConfig,
@@ -26,6 +27,7 @@ export function standardizeRecord<
 }): RawRecord<GenericConfig, GenericElement> {
 	const { dialecteConfig, hooks, record } = params
 	const { id, tagName, attributes, namespace, value } = record
+	const parentTagName = record.parent?.tagName as ElementsOf<GenericConfig> | undefined
 
 	const recordId = id ?? crypto.randomUUID()
 
@@ -58,7 +60,9 @@ export function standardizeRecord<
 
 	if (!isDialecteElement) return inputRecord
 
-	const standardAttributeNames = dialecteConfig.definition[tagName].attributes.sequence
+	// as declared under this parent: a homonym's attributes differ from one parent to another
+	const definition = resolveDefinition({ dialecteConfig, record: inputRecord })
+	const standardAttributeNames = definition?.attributes.sequence ?? []
 
 	// Keep provided attributes only — the store stays faithful to the source, with one
 	// normalization: an empty ('') or undefined value on a schema-managed attribute is
@@ -100,7 +104,6 @@ export function standardizeRecord<
 	// `Labels` under `Substation` vs `eIEC61850-6-100:Labels` under `DAS`). The
 	// generated definition carries that override on the parent→child edge; fall back
 	// to the element's own namespace when the edge omits one (or the record is a root).
-	const parentTagName = record.parent?.tagName as ElementsOf<GenericConfig> | undefined
 	const edgeNamespace = parentTagName
 		? dialecteConfig.definition[parentTagName]?.children?.details?.[tagName]?.namespace
 		: undefined
