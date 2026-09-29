@@ -62,7 +62,8 @@
 		"prepare": "husky"
 	},
 	"dependencies": {
-		"dexie": "4.2.0",
+		"@types/sax": "1.2.7",
+		"dexie": "4.4.6",
 		"sax": "^1.4.3",
 		"xml-formatter": "^3.6.7"
 	},
@@ -70,7 +71,6 @@
 		"@dialecte/cli": "0.0.2",
 		"@tsconfig/node24": "^24.0.4",
 		"@types/node": "^24.12.4",
-		"@types/sax": "^1.2.7",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"@vitest/browser-playwright": "^4.1.10",
 		"@xmldom/xmldom": "^0.8.11",
