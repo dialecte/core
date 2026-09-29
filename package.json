@@ -68,7 +68,7 @@
 		"xml-formatter": "^3.6.7"
 	},
 	"devDependencies": {
-		"@dialecte/cli": "0.0.2",
+		"@dialecte/cli": "0.0.3",
 		"@tsconfig/node24": "^24.0.4",
 		"@types/node": "^24.12.4",
 		"@typescript/native": "npm:typescript@^7.0.2",
