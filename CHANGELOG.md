@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.5.1] - 2026-09-29
+
+### Fixed
+
+- A package using `@dialecte/core` type-checks without `skipLibCheck`: the XML parser's types (`@types/sax`) ship with it, and `dexie` 4.4.6 declares its types the way current TypeScript expects.
+
 ## [0.5.0] - 2026-09-28
 
 ### Added
