@@ -162,7 +162,7 @@ export class InMemoryStore implements Store {
 		}
 
 		if (ops.updates) {
-			for (const { recordId, ...patch } of ops.updates) {
+			for (const { recordId, removeAttributes, ...patch } of ops.updates) {
 				const existing = table.get(recordId)
 				if (!existing) continue
 
@@ -176,6 +176,12 @@ export class InMemoryStore implements Store {
 						else updatedAttributes.push(attr)
 					}
 					merged.attributes = updatedAttributes
+				}
+
+				if (removeAttributes?.length) {
+					merged.attributes = merged.attributes.filter(
+						(attribute) => !removeAttributes.includes(attribute.name),
+					)
 				}
 
 				if (patch.children) {

@@ -245,7 +245,7 @@ export class DexieStore implements Store {
 
 			if (updates?.length) {
 				this.perf.start('core::store::bulkWrite::update')
-				for (const { recordId, ...patch } of updates) {
+				for (const { recordId, removeAttributes, ...patch } of updates) {
 					const record = await table.get(recordId)
 					if (!record) continue
 
@@ -259,6 +259,12 @@ export class DexieStore implements Store {
 							else updatedAttributes.push(attr)
 						}
 						merged.attributes = updatedAttributes
+					}
+
+					if (removeAttributes?.length) {
+						merged.attributes = (merged.attributes ?? record.attributes).filter(
+							(attribute) => !removeAttributes.includes(attribute.name),
+						)
 					}
 
 					if (patch.children) {

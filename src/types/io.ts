@@ -23,8 +23,12 @@ export type ExportOptions = {
  * A partial update to apply to an existing record.
  * Any field except `id` can be patched. For `attributes`, values are merged
  * by attribute name (existing attributes are updated, new ones appended).
+ * `removeAttributes` names attributes to drop; it is applied after the merge,
+ * so an attribute both set and removed by the same patch ends up removed.
  */
-export type RecordPatch = { recordId: string } & Partial<Omit<AnyRawRecord, 'id'>>
+export type RecordPatch = { recordId: string } & Partial<Omit<AnyRawRecord, 'id'>> & {
+		removeAttributes?: readonly string[]
+	}
 
 /**
  * A warning produced during import.
