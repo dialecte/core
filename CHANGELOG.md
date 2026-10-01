@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Added
+
+- An `afterImport` update can drop attributes: list their names in `removeAttributes` on the `RecordPatch`. It is applied after the attribute merge, in both stores.
+
 ## [0.5.1] - 2026-09-29
 
 ### Fixed

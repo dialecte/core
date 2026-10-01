@@ -119,7 +119,7 @@ afterImport?: () => Promise<AfterImportResult>
 ```ts
 type AfterImportResult = {
 	creates?: AnyRawRecord[]
-	updates?: RecordPatch[] // { recordId, ...partial record }[]
+	updates?: RecordPatch[] // { recordId, ...partial record, removeAttributes? }[]
 	deletes?: string[] // record IDs
 	warnings?: ImportWarning[]
 }
@@ -129,6 +129,16 @@ type ImportWarning = {
 	recordId: string
 	details?: Record<string, unknown>
 }
+```
+
+A `RecordPatch` merges `attributes` by name: an existing attribute is overwritten, a new one is appended. To drop attributes, list their names in `removeAttributes`. Removal is applied after the merge, so an attribute that the same patch sets and removes ends up removed.
+
+```ts
+afterImport: async () => ({
+	updates: [
+		{ recordId: 'a-1', attributes: [{ name: 'label', value: 'A' }], removeAttributes: ['legacy'] },
+	],
+})
 ```
 
 Use `warnings` to surface unresolved references, unknown paths, or any other dialecte-specific anomalies detected during the import pass.
