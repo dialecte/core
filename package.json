@@ -1,6 +1,6 @@
 {
 	"name": "@dialecte/core",
-	"version": "0.5.1",
+	"version": "0.5.2",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"repository": {
@@ -44,7 +44,8 @@
 		"doc:build": "vitepress build",
 		"doc:preview": "vitepress preview",
 		"//====== TEST ======//": "",
-		"test": "vitest",
+		"test": "vitest --project unit",
+		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
 		"//====== CHECK ======//": "",
 		"check": "run-p type-check type-check:test lint:check format:check",
 		"type-check": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
