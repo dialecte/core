@@ -49,3 +49,5 @@ AGENTS.md
 .bench-trace
 .bench-*.tsconfig.json
 benchmarks/types/generated/
+# Local scratch (audits, ad-hoc scripts)
+.tmp/
