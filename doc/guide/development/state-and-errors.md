@@ -178,13 +178,42 @@ Errors are structured, serializable objects - not raw `Error` instances. They ca
 
 ```ts
 type DialecteError = {
-	code: string // e.g. "D2001"
-	key: DialecteErrorKey // e.g. "ELEMENT_NOT_FOUND"
-	message: string // UI-consumable (toast)
+	code: string // e.g. "D2001" — or the code of an error a dialecte declared
+	key: string // e.g. "ELEMENT_NOT_FOUND" — a core key, or the key of an error a dialecte declared
+	message: string // UI-consumable default wording (toast)
 	detail: string // developer-consumable (console)
 	method: string // auto-resolved from stack trace
 	ref?: { tagName: string; id: string }
+	meta?: Record<string, unknown> // what the error is about, as serializable data
 	cause?: Error
+}
+```
+
+A structured error thrown inside `doc.transaction` or `doc.prepare` — by the core, by a dialecte, by your own code — reaches the caller unchanged; only an error that is not structured is reported as `UNKNOWN`, the original kept as `cause`. The structured error the caller gets is also `doc.state.error`, until the next transaction clears it.
+
+`key` is the stable identifier: a consumer that wants its own wording maps `key` to a sentence, fills it from `meta`, and falls back to `message` for a key it does not know. `detail` is for developers — it is not meant to be parsed.
+
+`key` is typed open — any dialecte may declare its own. `isKnownDialecteError(error, { catalogues })` narrows it back to the core keys and the keys of the catalogues named (same key, same code), so a table of sentences keyed by them, or a `switch` on `key`, is checked by the compiler again. It works on a caught error and on `doc.state.error` alike.
+
+```ts
+import { isKnownDialecteError, toDialecteError } from '@dialecte/core'
+import type { DialecteErrorKey } from '@dialecte/core'
+
+const SENTENCES: Record<
+	DialecteErrorKey | keyof typeof MY_ERRORS,
+	(meta?: Record<string, unknown>) => string
+> = {
+	/* … one sentence per key: a key left out is a type error */
+}
+
+try {
+	await doc.transaction(/* … */)
+} catch (thrown) {
+	const error = toDialecteError(thrown) // undefined for anything that is not a structured error
+	if (!error) showToast('Something went wrong')
+	else if (isKnownDialecteError(error, { catalogues: [MY_ERRORS] }))
+		showToast(SENTENCES[error.key](error.meta))
+	else showToast(error.message) // a key from a catalogue not named: its default wording
 }
 ```
 
@@ -205,6 +234,27 @@ Errors use a typed catalog organized by domain:
 
 The full catalog is in `core/src/errors/codes.ts`.
 
+### Errors of a dialecte
+
+A dialecte declares its own errors beside the core catalog with `defineErrors`: each entry gets its property name as `key`, and can be passed wherever a core key is. Pick a code prefix of your own (the core uses `D`).
+
+`defineErrors` refuses an entry that takes a key or a code of the core catalog, or a code another entry already has: written out as a literal, the catalog fails the type-check on that entry; built at run time, `defineErrors` throws.
+
+```ts
+import { defineErrors } from '@dialecte/core'
+import { invariant } from '@dialecte/core/utils'
+
+export const MY_ERRORS = defineErrors({
+	NAME_TAKEN: { code: 'X1001', message: 'The name is already taken' },
+})
+
+invariant(isFree, {
+	key: MY_ERRORS.NAME_TAKEN,
+	detail: `<${tagName}> name "${name}" is already taken`,
+	meta: { name, tagName },
+})
+```
+
 ## Creating errors
 
 ### throwDialecteError
@@ -222,13 +272,14 @@ throwDialecteError('ELEMENT_NOT_FOUND', {
 
 **Parameters:**
 
-| Param     | Required | Description                                             |
-| --------- | -------- | ------------------------------------------------------- |
-| `key`     | yes      | Error key from the catalog (e.g. `'ELEMENT_NOT_FOUND'`) |
-| `detail`  | yes      | Developer-facing explanation of what went wrong         |
-| `message` | no       | Override the catalog's default UI message               |
-| `ref`     | no       | Element reference for contextual error display          |
-| `cause`   | no       | Original `Error` to chain                               |
+| Param     | Required | Description                                                                                       |
+| --------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `key`     | yes      | Error key from the catalog (e.g. `'ELEMENT_NOT_FOUND'`), or an error declared with `defineErrors` |
+| `detail`  | yes      | Developer-facing explanation of what went wrong                                                   |
+| `message` | no       | Override the catalog's default UI message                                                         |
+| `ref`     | no       | Element reference for contextual error display                                                    |
+| `meta`    | no       | What the error is about, as serializable data                                                     |
+| `cause`   | no       | Original `Error` to chain                                                                         |
 
 ### invariant
 
@@ -252,16 +303,17 @@ invariant(record.parentRef, {
 
 **Parameters:**
 
-| Param       | Required | Default              | Description                       |
-| ----------- | -------- | -------------------- | --------------------------------- |
-| `condition` | yes      | -                    | Value to check - if falsy, throws |
-| `detail`    | yes      | -                    | Developer-facing error message    |
-| `key`       | no       | `'ASSERTION_FAILED'` | Error key from the catalog        |
-| `ref`       | no       | -                    | Element reference for context     |
+| Param       | Required | Default              | Description                                                          |
+| ----------- | -------- | -------------------- | -------------------------------------------------------------------- |
+| `condition` | yes      | -                    | Value to check - if falsy, throws                                    |
+| `detail`    | yes      | -                    | Developer-facing error message                                       |
+| `key`       | no       | `'ASSERTION_FAILED'` | Error key from the catalog, or an error declared with `defineErrors` |
+| `ref`       | no       | -                    | Element reference for context                                        |
+| `meta`      | no       | -                    | What the error is about, as data                                     |
 
 ### Stack trace resolution
 
-Both `throwDialecteError` and `invariant` auto-resolve the `method` field from the call stack. Internal frames (`throwDialecteError`, `invariant`) are skipped so the reported method is always the actual caller:
+Both `throwDialecteError` and `invariant` auto-resolve the `method` field from the call stack. Internal frames (`throwDialecteError`, `invariant`, and the document's own reporting of a failure) are skipped by function name, so the reported method is always the actual caller. A function called under another name — an extension method bound onto `query` or `tx` — is reported under its own name:
 
 ```
 core/src/document/query/query::findChildren

@@ -2,7 +2,7 @@ import { bindExtensions } from './bind-extensions'
 import { Query } from './query'
 import { Transaction } from './transaction'
 
-import { throwDialecteError } from '@/errors'
+import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 
 import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
@@ -203,13 +203,7 @@ export class Document<
 
 			return result
 		} catch (error) {
-			throw (
-				this.state.error ??
-				throwDialecteError('UNKNOWN', {
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error instanceof Error ? error : undefined,
-				})
-			)
+			throw this.reportFailure(error)
 		} finally {
 			tx.progress.forceClear()
 			this.activeTransactions--
@@ -253,13 +247,7 @@ export class Document<
 		} catch (error) {
 			this.activeTransactions--
 			this.state.loading = false
-			throw (
-				this.state.error ??
-				throwDialecteError('UNKNOWN', {
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error instanceof Error ? error : undefined,
-				})
-			)
+			throw this.reportFailure(error)
 		}
 
 		// Stop loading — build phase done, waiting for user decision
@@ -312,13 +300,7 @@ export class Document<
 						timestamp: Date.now(),
 					})
 				} catch (error) {
-					throw (
-						this.state.error ??
-						throwDialecteError('UNKNOWN', {
-							detail: error instanceof Error ? error.message : String(error),
-							cause: error instanceof Error ? error : undefined,
-						})
-					)
+					throw this.reportFailure(error)
 				} finally {
 					this.activeTransactions--
 					this.state.loading = false
@@ -334,6 +316,26 @@ export class Document<
 				tx.clearRecordCache()
 			},
 		}
+	}
+
+	/**
+	 * What a failed operation throws, kept as the document's last error: a structured error stays
+	 * what it is — its key, its data — and anything else is reported as unknown, the original kept
+	 * as its cause.
+	 */
+	private reportFailure(error: unknown): Error {
+		const carried = toDialecteError(error)
+		if (error instanceof Error && carried) {
+			this.state.error = carried
+			return error
+		}
+
+		const reported = createDialecteError('UNKNOWN', {
+			detail: error instanceof Error ? error.message : String(error),
+			cause: error instanceof Error ? error : undefined,
+		})
+		this.state.error = toDialecteError(reported) ?? null
+		return reported
 	}
 
 	//== Lifecycle

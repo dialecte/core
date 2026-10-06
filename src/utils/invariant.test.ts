@@ -2,9 +2,10 @@ import { invariant } from './invariant'
 
 import { describe, expect } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { runTestCases } from '@/test'
 
-import type { DialecteErrorKey } from '@/errors'
+import type { DialecteErrorDefinition, DialecteErrorKey } from '@/errors'
 import type { BaseTestCase } from '@/test'
 
 describe('invariant', () => {
@@ -30,9 +31,10 @@ describe('invariant', () => {
 		type TestCase = BaseTestCase & {
 			condition: unknown
 			detail: string
-			key?: DialecteErrorKey
+			key?: DialecteErrorKey | DialecteErrorDefinition
 			ref?: { tagName: string; id?: string }
-			expectedKey: DialecteErrorKey
+			meta?: Record<string, unknown>
+			expectedKey: string
 			expectedDetail: string
 		}
 
@@ -82,23 +84,65 @@ describe('invariant', () => {
 				expectedKey: 'ELEMENT_NOT_FOUND',
 				expectedDetail: 'parent not found',
 			},
+			'an error a dialecte defined, with what it is about → its key and the data': {
+				condition: false,
+				detail: 'name "n1" is already taken',
+				key: { key: 'NAME_TAKEN', code: 'X1001', message: 'The name is already taken' },
+				meta: { name: 'n1' },
+				expectedKey: 'NAME_TAKEN',
+				expectedDetail: 'name "n1" is already taken',
+			},
 		}
 
 		runTestCases.generic(testCases, (tc) => {
 			expect(() =>
-				invariant(tc.condition, { detail: tc.detail, key: tc.key, ref: tc.ref }),
+				invariant(tc.condition, { detail: tc.detail, key: tc.key, ref: tc.ref, meta: tc.meta }),
 			).toThrow()
 
 			try {
-				invariant(tc.condition, { detail: tc.detail, key: tc.key, ref: tc.ref })
+				invariant(tc.condition, { detail: tc.detail, key: tc.key, ref: tc.ref, meta: tc.meta })
 			} catch (error) {
 				const cause = (error as Error).cause as Record<string, unknown>
 				expect(cause.key).toBe(tc.expectedKey)
 				expect(cause.detail).toBe(tc.expectedDetail)
+				expect(cause.meta).toEqual(tc.meta)
 				if (tc.ref) {
 					expect(cause.ref).toEqual(tc.ref)
 				}
 			}
+		})
+	})
+
+	describe('the method a failure reports', () => {
+		type TestCase = BaseTestCase & {
+			act: () => void
+			expectedMethod: string
+		}
+
+		function reserveName(): void {
+			invariant(false, { detail: 'name "n1" is already taken' })
+		}
+
+		const testCases: Record<string, TestCase> = {
+			'a function asserting through invariant → that function, not invariant': {
+				act: () => reserveName(),
+				expectedMethod: 'reserveName',
+			},
+			'a function called under another name, as an extension method is → its own name': {
+				act: reserveName,
+				expectedMethod: 'reserveName',
+			},
+		}
+
+		runTestCases.generic(testCases, (testCase) => {
+			let thrown: unknown
+			try {
+				testCase.act()
+			} catch (error) {
+				thrown = error
+			}
+
+			expect(toDialecteError(thrown)?.method).toMatch(new RegExp(`::${testCase.expectedMethod}$`))
 		})
 	})
 })
