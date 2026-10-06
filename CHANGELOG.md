@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.5.3] - 2026-10-06
+
+### Added
+
+- `defineErrors` declares the errors of a dialecte. `throwDialecteError` and `invariant` accept them like core keys. A key or a code that clashes with the core catalogue is refused.
+- `meta` on `throwDialecteError` and `invariant`: data about the error, read back on `DialecteError.meta`.
+- `toDialecteError(thrown)` reads the structured error out of a caught value.
+- `isKnownDialecteError(error, { catalogues })` narrows `error.key` to the core keys and the keys of the catalogues given.
+- `createDialecteError` builds a structured error without throwing it.
+
+### Fixed
+
+- A structured error thrown inside `doc.transaction` or `doc.prepare` reaches the caller unchanged, instead of being reported as `UNKNOWN`.
+- `doc.state.error` is set when a transaction fails.
+- `DialecteError.method` names the function that failed, not `invariant` or an internal helper.
+
+### Changed
+
+- `DialecteError.key` and `.code` also accept the keys and codes a dialecte declares. Use `isKnownDialecteError` to get a closed key type back.
+
 ## [0.5.2] - 2026-10-01
 
 ### Added
