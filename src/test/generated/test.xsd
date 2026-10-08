@@ -25,6 +25,7 @@ selector)
 	targetNamespace="http://dialecte.dev/XML/DEFAULT"
 	xmlns="http://dialecte.dev/XML/DEFAULT"
 	xmlns:ext="http://dialecte.dev/XML/DEV-EXT"
+	xmlns:dflt="http://dialecte.dev/XML/DEFAULT"
 >
 	<xs:import namespace="http://dialecte.dev/XML/DEV-EXT" schemaLocation="test-ext.xsd" />
 
@@ -127,7 +128,7 @@ selector)
 			<xs:attribute ref="ext:cA" />
 		</xs:complexType>
 		<xs:unique name="uniqueChildInA">
-			<xs:selector xpath="AA_1|AA_2|ext:AA_3" />
+			<xs:selector xpath="dflt:AA_1|dflt:AA_2|ext:AA_3" />
 			<xs:field xpath="@aAA_1" />
 		</xs:unique>
 	</xs:element>
@@ -225,7 +226,7 @@ selector)
 			<xs:attribute ref="ext:cB" />
 		</xs:complexType>
 		<xs:key name="keyBB">
-			<xs:selector xpath="BB_1" />
+			<xs:selector xpath="dflt:BB_1" />
 			<xs:field xpath="@aBB_1" />
 			<xs:field xpath="@bBB_1" />
 		</xs:key>
@@ -249,7 +250,7 @@ selector)
 			<xs:attribute ref="ext:cBB_1" />
 		</xs:complexType>
 		<xs:unique name="uniqueBBB_multiStep">
-			<xs:selector xpath="BBB_1/BBBB_1" />
+			<xs:selector xpath="dflt:BBB_1/dflt:BBBB_1" />
 			<xs:field xpath="@aBBBB_1" />
 		</xs:unique>
 	</xs:element>
@@ -267,7 +268,7 @@ selector)
 			<xs:attribute ref="ext:cBB_2" />
 		</xs:complexType>
 		<xs:unique name="deepUniqueBBB">
-			<xs:selector xpath=".//BBB_1" />
+			<xs:selector xpath=".//dflt:BBB_1" />
 			<xs:field xpath="@aBBB_1" />
 		</xs:unique>
 	</xs:element>
@@ -285,7 +286,7 @@ selector)
 			<xs:attribute ref="ext:cBBB_1" />
 		</xs:complexType>
 		<xs:unique name="uniqueBBBB_multiField">
-			<xs:selector xpath="BBBB_1" />
+			<xs:selector xpath="dflt:BBBB_1" />
 			<xs:field xpath="@aBBBB_1" />
 			<xs:field xpath="@bBBBB_1" />
 		</xs:unique>
@@ -346,7 +347,7 @@ selector)
 			<xs:attribute ref="ext:cC" />
 		</xs:complexType>
 		<xs:unique name="uniqueCC_union">
-			<xs:selector xpath="CC_1|CC_2" />
+			<xs:selector xpath="dflt:CC_1|dflt:CC_2" />
 			<xs:field xpath="@aCC_1" />
 		</xs:unique>
 	</xs:element>
