@@ -25,7 +25,15 @@ const underAa2 = {
 	attributes: { sequence: [], details: {} },
 	children: { sequence: [], details: {} },
 	textContent: {},
+	constraints: [{ kind: 'unique', name: 'uniqueUnderAa2', selector: [], fields: [] }],
 }
+// AA_3 declares AAA_1 with the tag-level content but its own identity constraint: only the
+// constraint sits on the edge
+const underAa3 = {
+	constraints: [{ kind: 'unique', name: 'uniqueUnderAa3', selector: [], fields: [] }],
+}
+// AA_4 declares AAA_1 with no identity constraint at all: an empty list, not an absent one
+const underAa4 = { constraints: [] }
 const config = {
 	...TEST_DIALECTE_CONFIG,
 	definition: {
@@ -47,10 +55,24 @@ const config = {
 			attributes: { sequence: [], details: {} },
 			children: { sequence: ['AAA_1'], details: { AAA_1: { maxOccurs: 1, ...underAa2 } } },
 		},
+		AA_3: {
+			tag: 'AA_3',
+			namespace: none,
+			parents: [],
+			attributes: { sequence: [], details: {} },
+			children: { sequence: ['AAA_1'], details: { AAA_1: { maxOccurs: 1, ...underAa3 } } },
+		},
+		AA_4: {
+			tag: 'AA_4',
+			namespace: none,
+			parents: [],
+			attributes: { sequence: [], details: {} },
+			children: { sequence: ['AAA_1'], details: { AAA_1: { maxOccurs: 1, ...underAa4 } } },
+		},
 		AAA_1: {
 			tag: 'AAA_1',
 			namespace: none,
-			parents: ['AA_1', 'AA_2'],
+			parents: ['AA_1', 'AA_2', 'AA_3', 'AA_4'],
 			// the union: aAAA_1 is no longer required, since the AAA_1 under AA_2 has none
 			attributes: {
 				sequence: ['bAAA_1', 'aAAA_1'],
@@ -94,6 +116,37 @@ describe('resolveDefinition', () => {
 		expect(aa1).not.toHaveProperty('required')
 	})
 
+	it('takes the identity constraints declared under the parent, the rest from the tag level', () => {
+		const aa3 = resolveDefinition({ dialecteConfig: config, record: under('AA_3') })
+		const tagLevel = config.definition.AAA_1
+		expect(aa3?.constraints).toBe(underAa3.constraints)
+		expect(aa3?.attributes).toBe(tagLevel.attributes)
+		expect(aa3?.children).toBe(tagLevel.children)
+		expect(aa3?.textContent).toBe(tagLevel.textContent)
+		const aa2 = resolveDefinition({ dialecteConfig: config, record: under('AA_2') })
+		expect(aa2?.constraints).toBe(underAa2.constraints)
+	})
+
+	it('reads an empty list of constraints on the edge as declared with none, not as absent', () => {
+		const aa4 = resolveDefinition({ dialecteConfig: config, record: under('AA_4') })
+		expect(aa4?.constraints).toEqual([])
+	})
+
+	it('is one object per edge, built against the tag level of the config it is read from', () => {
+		const first = resolveDefinition({ dialecteConfig: config, record: under('AA_3') })
+		expect(resolveDefinition({ dialecteConfig: config, record: under('AA_3') })).toBe(first)
+
+		// another config sharing the same edge object, with another tag level
+		const otherTagLevel = { ...config.definition.AAA_1, documentation: 'other' }
+		const other = {
+			...config,
+			definition: { ...config.definition, AAA_1: otherTagLevel },
+		} as AnyDialecteConfig
+		const fromOther = resolveDefinition({ dialecteConfig: other, record: under('AA_3') })
+		expect(fromOther?.documentation).toBe('other')
+		expect(fromOther?.constraints).toBe(underAa3.constraints)
+	})
+
 	it('is the tag-level definition for a root, or a parent with no definition for it', () => {
 		const tagLevel = config.definition.AAA_1
 		expect(resolveDefinition({ dialecteConfig: config, record: under(null) })).toBe(tagLevel)
@@ -101,9 +154,9 @@ describe('resolveDefinition', () => {
 		expect(
 			resolveDefinition({
 				dialecteConfig: config,
-				record: { tagName: 'A', parent: { id: 'root-1', tagName: 'Root' } },
+				record: { tagName: 'BB_3', parent: { id: 'b-1', tagName: 'B' } },
 			}),
-		).toBe(config.definition.A)
+		).toBe(config.definition.BB_3)
 	})
 
 	it('is undefined for a tag the dialecte does not know', () => {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Fixed
+
+- `resolveDefinition` returns the identity constraints declared under the record's parent. A schema that declares one tag with a different `unique` or `key` under each parent was read with the constraints of one of those parents everywhere.
+
 ## [0.5.3] - 2026-10-06
 
 ### Added

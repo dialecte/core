@@ -79,6 +79,7 @@ export type ChildDefinition = {
 	readonly required?: true
 	readonly minOccurs?: number
 	readonly maxOccurs?: number
+	/** The identity constraints of the child as declared under THIS parent; `resolveDefinition` returns them. */
 	readonly constraints?: readonly IdentityConstraint[]
 	/**
 	 * Per parent→child edge namespace override, present only when the child's
