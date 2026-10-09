@@ -530,6 +530,40 @@ describe('buildXmlDocument', () => {
 		})
 	})
 
+	describe('enforceRootAttributes reads the root as declared', () => {
+		// the root admits a type, with xsi:type, that fixes a `version` attribute
+		const typeName = `{${NS.default.uri}}tVersioned`
+		const config = {
+			...CONFIG,
+			definition: {
+				...CONFIG.definition,
+				Root: { ...CONFIG.definition.Root, variants: [typeName] },
+			},
+			types: {
+				[typeName]: {
+					attributes: { sequence: ['version'], details: { version: { fixed: '2' } } },
+					children: CONFIG.definition.Root.children,
+				},
+			},
+		} as unknown as typeof CONFIG
+		const root = (attributes: AnyRawRecord['attributes']) =>
+			buildXmlDocument({ records: [record({ id: 'root-1', tagName: 'Root', attributes })], config })
+				.documentElement
+
+		it('materializes the fixed attribute of the type the root names', () => {
+			const xsiType = {
+				name: 'xsi:type',
+				value: 'tVersioned',
+				namespace: { prefix: 'xsi', uri: 'http://www.w3.org/2001/XMLSchema-instance' },
+			}
+			expect(root([xsiType]).getAttribute('version')).toBe('2')
+		})
+
+		it('materializes nothing of a type the root does not name', () => {
+			expect(root([]).hasAttribute('version')).toBe(false)
+		})
+	})
+
 	describe('attribute emission (normalization is a write-boundary concern)', () => {
 		type TestCase = BaseTestCase & {
 			records: AnyRawRecord[]

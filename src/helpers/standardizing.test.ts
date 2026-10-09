@@ -481,31 +481,85 @@ describe('standardizeRecord', () => {
 	})
 
 	describe('element namespace by parent context', () => {
-		it('stamps the parent→child edge namespace override, else the element namespace', () => {
-			// Give the Root→A edge an ext-namespace override; A's own namespace is default.
-			const configWithEdge = structuredClone(config) as any
-			configWithEdge.definition.Root.children.details.A.namespace = ns.ext
+		// A declared two ways: in its own namespace, and in ext - Root holding it in ext only
+		const withDeclarations = (heldUnderRoot: Record<string, string[]>) => {
+			const configured = structuredClone(config) as any
+			const tagLevel = configured.definition.A
+			configured.definition.A.declarations = {
+				'1': { ...tagLevel, tag: undefined, parents: undefined, namespace: tagLevel.namespace },
+				'2': { ...tagLevel, tag: undefined, parents: undefined, namespace: ns.ext },
+			}
+			configured.definition.Root.children.details.A = { declarations: heldUnderRoot }
+			return configured
+		}
+		const underRoot = (namespace?: { prefix: string; uri: string }) => ({
+			tagName: 'A' as const,
+			parent: { id: 'root-id', tagName: 'Root' as const },
+			attributes: { aA: 'X' },
+			...(namespace ? { namespace } : {}),
+		})
 
-			const overridden = standardizeRecord({
-				record: {
-					tagName: 'A',
-					parent: { id: 'root-id', tagName: 'Root' },
-					attributes: { aA: 'X' },
-				},
-				dialecteConfig: configWithEdge,
+		it('stamps the namespace of the declaration its parent holds', () => {
+			const result = standardizeRecord({
+				record: underRoot(),
+				dialecteConfig: withDeclarations({ [ns.ext.uri]: ['2'] }),
 			})
-			expect(overridden.namespace).toEqual(ns.ext)
+			expect(result.namespace).toEqual(ns.ext)
+		})
 
-			// Same element, no edge override → the element's own canonical namespace.
-			const canonical = standardizeRecord({
-				record: {
-					tagName: 'A',
-					parent: { id: 'root-id', tagName: 'Root' },
-					attributes: { aA: 'X' },
-				},
-				dialecteConfig: config,
+		it('keeps the namespace a record was read in where its parent leaves the declaration open', () => {
+			const configured = withDeclarations({ [ns.ext.uri]: ['1', '2'] })
+			const result = standardizeRecord({
+				record: underRoot({ prefix: 'whatever', uri: ns.ext.uri }),
+				dialecteConfig: configured,
 			})
-			expect(canonical.namespace).toEqual(config.definition.A.namespace)
+			expect(result.namespace).toEqual(ns.ext) // the definition's prefix
+		})
+
+		it('keeps a namespace none of its declarations uses, as read', () => {
+			const read = { prefix: 'whatever', uri: ns.ext.uri }
+			const result = standardizeRecord({ record: underRoot(read), dialecteConfig: config })
+			expect(result.namespace).toEqual(read)
+		})
+
+		it('keeps an attribute in no namespace the attribute wildcard admits, drops it otherwise', () => {
+			const kept = (any: unknown) => {
+				const configured = structuredClone(config) as any
+				configured.definition.A.attributes.any = any
+				return standardizeRecord({
+					record: { ...underRoot(), attributes: { extra: '1' } },
+					dialecteConfig: configured,
+				}).attributes.map((attribute) => attribute.name)
+			}
+			expect(kept({ notNamespace: [], processContents: 'lax' })).toEqual(['extra']) // ##any
+			expect(kept({ namespace: [''], processContents: 'lax' })).toEqual(['extra']) // ##local
+			expect(kept({ notNamespace: [ns.default.uri, ''], processContents: 'lax' })).toEqual([]) // ##other
+			expect(kept(undefined)).toEqual([])
+		})
+
+		it('keeps the attributes of the type a created element names with xsi:type', () => {
+			// A admits tWide, which adds `wide`; created by its attribute names, xsi:type through the xsi prefix
+			const typeName = `{${ns.default.uri}}tWide`
+			const typed = structuredClone(config) as any
+			typed.definition.A.variants = [typeName]
+			typed.types = {
+				[typeName]: {
+					attributes: { sequence: ['wide'], details: { wide: {} } },
+					children: typed.definition.A.children,
+				},
+			}
+			const created = (attributes: Record<string, string>) =>
+				standardizeRecord({
+					record: { ...underRoot(), attributes },
+					dialecteConfig: typed,
+				}).attributes.map((attribute) => attribute.name)
+			expect(created({ 'xsi:type': 'tWide', wide: '1' })).toEqual(['wide', 'xsi:type'])
+			expect(created({ wide: '1' })).toEqual([])
+		})
+
+		it('stamps the namespace of a tag declared one way', () => {
+			const result = standardizeRecord({ record: underRoot(), dialecteConfig: config })
+			expect(result.namespace).toEqual(config.definition.A.namespace)
 		})
 
 		it('falls back to the element namespace for a root record with no parent', () => {

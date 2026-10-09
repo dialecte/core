@@ -450,7 +450,7 @@ Unscoped, `getAttributes(ref)` returns **default-namespace** attributes only. Pa
 
 ### getDefinition
 
-Returns the element's definition **in its context**: as declared under its parent when the schema declares the tag differently there, else the tag-level definition. The record is fetched first, so the parent is always known.
+Returns the element's definition **in its context**: the declaration its parent holds when the schema declares the tag several ways, and what the type it names with `xsi:type` lets it hold. The record is fetched first, so the parent is always known.
 
 ```ts
 const definition = await doc.query.getDefinition(aaa1)

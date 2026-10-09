@@ -27,7 +27,6 @@ export function standardizeRecord<
 }): RawRecord<GenericConfig, GenericElement> {
 	const { dialecteConfig, hooks, record } = params
 	const { id, tagName, attributes, namespace, value } = record
-	const parentTagName = record.parent?.tagName as ElementsOf<GenericConfig> | undefined
 
 	const recordId = id ?? crypto.randomUUID()
 
@@ -60,8 +59,9 @@ export function standardizeRecord<
 
 	if (!isDialecteElement) return inputRecord
 
-	// as declared under this parent: a homonym's attributes differ from one parent to another
-	const definition = resolveDefinition({ dialecteConfig, record: inputRecord })
+	// as declared under this parent: a homonym's attributes differ from one parent to another; the namespace as
+	// given - a created record has none yet, its parent decides it
+	const definition = resolveDefinition({ dialecteConfig, record: { ...inputRecord, namespace } })
 	const standardAttributeNames = definition?.attributes.sequence ?? []
 
 	// Keep provided attributes only — the store stays faithful to the source, with one
@@ -71,13 +71,20 @@ export function standardizeRecord<
 	// read/validation — so storing '' would be redundant and misread as a real value.
 	// Schema-sequence attributes that are present with a value, plus any qualified
 	// attribute (foreign-namespace or xmlns/xmlns:*), are retained; unqualified
-	// non-schema attributes are dropped. Missing required/fixed/default attributes are
+	// non-schema attributes are dropped, unless the element's attribute wildcard admits
+	// attributes in no namespace (`##any`, `##local`). Missing required/fixed/default attributes are
 	// NOT synthesized here: schema values are materialized on export (required + fixed)
 	// and surfaced on read (getAttribute/getAttributes effective view).
+	const wildcard = definition?.attributes.any
+	const admitsUnqualified =
+		wildcard !== undefined &&
+		(wildcard.namespace !== undefined
+			? wildcard.namespace.includes('')
+			: !(wildcard.notNamespace ?? []).includes(''))
 	const keptAttributes = attributesArray.filter((attribute) => {
 		const isSchemaAttribute = standardAttributeNames.includes(attribute.name)
 		const isQualifiedExtra = 'namespace' in attribute && attribute.namespace != null
-		if (!isSchemaAttribute && !isQualifiedExtra) return false
+		if (!isSchemaAttribute && !isQualifiedExtra && !admitsUnqualified) return false
 
 		const isEmptyValue =
 			attribute.value === undefined || attribute.value === null || attribute.value === ''
@@ -99,18 +106,22 @@ export function standardizeRecord<
 		return attribute
 	})
 
-	// An element's namespace can depend on its parent context: the same local name
-	// may be declared in different namespaces under different parents (e.g. SCL
-	// `Labels` under `Substation` vs `eIEC61850-6-100:Labels` under `DAS`). The
-	// generated definition carries that override on the parent→child edge; fall back
-	// to the element's own namespace when the edge omits one (or the record is a root).
-	const edgeNamespace = parentTagName
-		? dialecteConfig.definition[parentTagName]?.children?.details?.[tagName]?.namespace
-		: undefined
+	// An element's namespace can depend on its parent context: the same local name may be declared in
+	// different namespaces under different parents (e.g. SCL `Labels` under `Substation` vs
+	// `eIEC61850-6-100:Labels` under `DAS`). The declaration that applies says it; a record read in one of
+	// the tag's namespaces keeps it (with the definition's prefix) even where its parent leaves the
+	// declaration open; one read in a namespace none of its declarations uses keeps it too - the store stays
+	// faithful to the source, validation reports it.
+	const tagLevel = dialecteConfig.definition[tagName]
+	const declaredNamespaces = [
+		definition?.namespace ?? tagLevel.namespace,
+		...Object.values(tagLevel.declarations ?? {}).map((declaration) => declaration.namespace),
+	]
+	const readNamespace = declaredNamespaces.find((declared) => declared.uri === namespace?.uri)
 
 	let standardizedRecord: RawRecord<GenericConfig, GenericElement> = {
 		...inputRecord,
-		namespace: edgeNamespace ?? dialecteConfig.definition[tagName].namespace,
+		namespace: readNamespace ?? namespace ?? declaredNamespaces[0],
 		attributes: orderAttributesBySequence(canonicalAttributes, standardAttributeNames),
 	}
 

@@ -1,4 +1,4 @@
-import type { AnyDefinition } from './definition'
+import type { AnyDefinition, AnyTypes } from './definition'
 import type { ImportOptions, ExportOptions, IOHooks } from './io'
 import type { Operation } from './operations'
 import type { Namespace, RawRecord, TreeRecord } from './records'
@@ -38,6 +38,8 @@ export type RawDialecteConfig<
 	database: DatabaseConfig
 	io: IOConfig
 	definition: AnyDefinition
+	/** The types elements may take with xsi:type: the `TYPES` the generator writes beside `DEFINITION`. */
+	types: AnyTypes
 }
 
 /**

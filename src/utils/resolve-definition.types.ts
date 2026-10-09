@@ -1,5 +1,6 @@
-import type { ChildDefinition } from '@/types'
+import type { AnyRawRecord, Namespace } from '@/types'
 
-/** An edge that carries the element as declared under its parent: attributes and children, at least. */
-export type DeclaredEdge = ChildDefinition &
-	Required<Pick<ChildDefinition, 'attributes' | 'children'>>
+/** What resolving a record's definition reads: its tag, parent, attributes (xsi:type, xmlns) and namespace, once known. */
+export type ResolvableRecord = Pick<AnyRawRecord, 'tagName' | 'parent' | 'attributes'> & {
+	namespace?: Namespace
+}

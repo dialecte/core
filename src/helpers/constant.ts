@@ -12,6 +12,9 @@ export const XSI_NAMESPACE = {
 	prefix: 'xsi',
 }
 
+/** The namespace of the `xmlns` / `xmlns:p` declarations themselves. */
+export const XMLNS_NAMESPACE_URI = 'http://www.w3.org/2000/xmlns/'
+
 export const XMLNS_XSI_NAMESPACE = `xmlns:${XSI_NAMESPACE.prefix}="${XSI_NAMESPACE.uri}"`
 
 export const DIALECTE_NAMESPACES = {

@@ -1,3 +1,5 @@
+import { resolveDefinition } from '@/utils'
+
 import type {
 	AssertValidXmlOptions,
 	AssertValidXmlTestCasesParams,
@@ -6,7 +8,7 @@ import type {
 	CreateXmlSchemaAssertionsParams,
 	DescribeInvalidXmlParams,
 } from './assert-valid-xml.types'
-import type { ElementDefinition } from '@/types'
+import type { AnyAttribute, ResolvedDefinition } from '@/types'
 
 /**
  * Create structural XML assertions bound to a dialecte's generated `definition`
@@ -27,7 +29,12 @@ import type { ElementDefinition } from '@/types'
  * constraints (unique keys, keyref resolution).
  */
 export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParams) {
-	const { definition, namespaces, schemaName = 'XML' } = params
+	const { definition, types, namespaces, schemaName = 'XML' } = params
+	const dialecteConfig = {
+		definition,
+		types,
+		namespaces,
+	}
 	const knownNamespaceUris: readonly string[] = Object.values(namespaces).map(
 		(namespace) => namespace.uri,
 	)
@@ -37,22 +44,57 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 	}
 
 	/**
-	 * The namespace URI the schema expects for a `<child>` element appearing under
-	 * `<parent>`. Local element names are reused across namespaces, so the authoritative
-	 * source is the contextual `parent.children.details[child].namespace`, falling back
-	 * to the child's own primary `namespace`. `undefined` when the tag is unknown.
+	 * The namespace URIs the schema accepts for a `<child>` element under a parent. Local element names are
+	 * reused across namespaces: a tag declared several ways lists, under its parent, the namespaces it is held
+	 * in there; at the root only a global declaration applies. Where the parent holds it through a wildcard
+	 * only, the wildcard decides: no namespace is expected. A tag declared one way has one. `undefined` when
+	 * nothing is expected.
 	 */
-	function expectedNamespaceUri(
-		parentLocalName: string | undefined,
+	function expectedNamespaceUris(
+		parentDefinition: ResolvedDefinition | undefined,
 		childLocalName: string,
-	): string | undefined {
-		const contextual = parentLocalName
-			? definition[parentLocalName]?.children.details[childLocalName]?.namespace
-			: undefined
-		return (contextual ?? definition[childLocalName]?.namespace)?.uri
+	): string[] | undefined {
+		const child = definition[childLocalName]
+		if (child === undefined) return undefined
+		const held = parentDefinition?.children.details[childLocalName]?.declarations
+		if (held !== undefined) return Object.keys(held)
+		const heldByWildcardOnly =
+			parentDefinition?.children.any === true &&
+			!parentDefinition.children.sequence.includes(childLocalName)
+		if (heldByWildcardOnly) return undefined
+		const declarations = Object.values(child.declarations ?? {})
+		const globals = parentDefinition
+			? declarations
+			: declarations.filter((declaration) => declaration.global)
+		return globals.length > 0
+			? [...new Set(globals.map((declaration) => declaration.namespace.uri))]
+			: [child.namespace.uri]
 	}
 
-	function isAllowedChild(parentDefinition: ElementDefinition, childLocalName: string): boolean {
+	/** The element as a record resolving reads it: its attributes, the xsi:type prefix bound where it is in scope. */
+	function asRecord(element: Element, parentLocalName: string | undefined) {
+		const attributes: AnyAttribute[] = Array.from(element.attributes).map((attribute) => ({
+			name: attribute.name,
+			value: attribute.value,
+			...(attribute.namespaceURI
+				? { namespace: { prefix: attribute.prefix ?? '', uri: attribute.namespaceURI } }
+				: {}),
+		}))
+		const xsiType = element.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'type')
+		const colon = xsiType?.indexOf(':') ?? -1
+		const prefix = xsiType && colon !== -1 ? xsiType.slice(0, colon) : null
+		const bound = xsiType === null ? null : element.lookupNamespaceURI(prefix)
+		if (bound !== null)
+			attributes.push({ name: prefix ? `xmlns:${prefix}` : 'xmlns', value: bound })
+		return {
+			tagName: element.localName,
+			parent: parentLocalName ? { id: '', tagName: parentLocalName } : null,
+			namespace: { prefix: element.prefix ?? '', uri: element.namespaceURI ?? '' },
+			attributes,
+		}
+	}
+
+	function isAllowedChild(parentDefinition: ResolvedDefinition, childLocalName: string): boolean {
 		const children = parentDefinition.children
 		if (children.any === true) return true
 		if (children.sequence.includes(childLocalName)) return true
@@ -60,7 +102,7 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 	}
 
 	/** Attribute names the element may carry, per the schema (sequence ∪ detail keys). */
-	function allowedAttributes(elementDefinition: ElementDefinition): Set<string> {
+	function allowedAttributes(elementDefinition: ResolvedDefinition): Set<string> {
 		return new Set([
 			...elementDefinition.attributes.sequence,
 			...Object.keys(elementDefinition.attributes.details),
@@ -91,14 +133,14 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 	}
 
 	function collectElementViolations(params: CollectElementViolationsParams): string[] {
-		const { element, parentLocalName, requireComplete } = params
+		const { element, parent, requireComplete } = params
 		const childElements = Array.from(element.children)
 
 		// Opaque: not checked itself, and no parent context for its children — a schema
 		// element nested inside is still validated on its own namespace and attributes.
 		if (isForeignNamespaceElement(element)) {
 			return childElements.flatMap((child) =>
-				collectElementViolations({ element: child, parentLocalName: undefined, requireComplete }),
+				collectElementViolations({ element: child, parent: undefined, requireComplete }),
 			)
 		}
 
@@ -109,29 +151,38 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 		// null, a schema with no target namespace declares ''. Normalize the element's side to ''
 		// so a no-namespace element matches a no-namespace schema. (Foreignness above deliberately
 		// stays on null: a no-namespace element is never foreign - it forgot its namespace.)
-		const expectedNamespace = expectedNamespaceUri(parentLocalName, localName)
+		const expectedNamespaces = expectedNamespaceUris(parent?.definition, localName)
 		const actualNamespace = element.namespaceURI ?? ''
-		if (expectedNamespace !== undefined && actualNamespace !== expectedNamespace) {
-			const where = parentLocalName ? ` under <${parentLocalName}>` : ''
+		if (expectedNamespaces !== undefined && !expectedNamespaces.includes(actualNamespace)) {
+			const where = parent ? ` under <${parent.localName}>` : ''
+			const declared = expectedNamespaces.map((uri) => uri || '(no namespace)').join(' or ')
 			violations.push(
-				`[namespace] <${element.tagName}>${where}: is in ${element.namespaceURI ?? '(no namespace)'}, schema declares ${expectedNamespace || '(no namespace)'}`,
+				`[namespace] <${element.tagName}>${where}: is in ${element.namespaceURI ?? '(no namespace)'}, schema declares ${declared}`,
 			)
 		}
 
-		// 2. containment
-		const parentDefinition = parentLocalName ? definition[parentLocalName] : undefined
-		if (parentDefinition && !isAllowedChild(parentDefinition, localName)) {
-			violations.push(`[containment] <${localName}> is not a valid child of <${parentLocalName}>`)
+		// 2. containment, by what the parent holds as it applies there
+		if (parent?.definition && !isAllowedChild(parent.definition, localName)) {
+			violations.push(`[containment] <${localName}> is not a valid child of <${parent.localName}>`)
 		}
 
-		// 3. attributes (known + required), only for schema-known elements
-		const elementDefinition = definition[localName]
+		// 3. attributes (known + required), only for schema-known elements: the declaration that applies,
+		// and the type it names with xsi:type
+		const elementDefinition = resolveDefinition({
+			dialecteConfig,
+			record: asRecord(element, parent?.localName),
+			parentDefinition: parent?.definition,
+		})
 		const attributeViolations = elementDefinition
 			? collectAttributeViolations({ element, elementDefinition, requireComplete })
 			: []
 
 		const childViolations = childElements.flatMap((child) =>
-			collectElementViolations({ element: child, parentLocalName: localName, requireComplete }),
+			collectElementViolations({
+				element: child,
+				parent: { localName, definition: elementDefinition },
+				requireComplete,
+			}),
 		)
 		return [...violations, ...attributeViolations, ...childViolations]
 	}
@@ -153,7 +204,7 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 
 		const violations = collectElementViolations({
 			element: xmlDocument.documentElement,
-			parentLocalName: undefined,
+			parent: undefined,
 			requireComplete,
 		})
 		return violations.length > 0

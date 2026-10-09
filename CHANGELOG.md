@@ -7,9 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Changed
+
+- **Breaking - the definition is the one `@dialecte/create` writes from 0.1 on.** Regenerate your dialecte with it.
+  - A tag declared several ways lists each way under `declarations`, by number. The tag level is their union: required, default, fixed, constraints and variants only where every way agrees. A parent names the way it holds, per namespace, in `children.details[tag].declarations`. Edges no longer carry attributes, children, constraints or a namespace.
+  - An attribute's or a text's `type` holds its facets (`type.facets`). Patterns are one list per derivation level, written as JavaScript sources for the `u` flag. Ranges are kept as the schema writes them.
+  - Identity constraints sit on the declaration that declares them, with their `namespace`. `refer` is `{ name, namespace }`. Selector and field steps are name tests `{ name?, namespace? }`. A field is a list of alternatives, each reading an `attribute` or the element's text.
+  - `attributes.any` is a wildcard `{ namespace? | notNamespace?, processContents }`; `anyNamespace` is gone. Element particles carry their `namespace` and `declaration`. Wildcard particles carry `notNamespace`.
+- **Breaking:** `DialecteConfig.types` is required. Pass the `TYPES` the generated definition exports.
+- **Breaking:** `createXmlSchemaAssertions` takes the dialecte's `types`. It checks each element against the declaration that applies there and the type it names with `xsi:type`.
+- **Breaking:** `resolveDefinition` reads the record's attributes and namespace, and returns a `ResolvedDefinition`. An optional `parentDefinition` decides a tag whose parent is itself declared several ways. `query.getDefinition` also returns a `ResolvedDefinition`.
+
+### Added
+
+- `enumeratedValues(datatype)` and `valuePatterns(datatype)` in `@dialecte/core/utils` read a datatype as the definition writes it. The first gives the values it enumerates, its union members' included. The second gives one anchored pattern per level, compiled with the `u` flag.
+- `xsi:type`. A declaration lists the types an instance may name in `variants`, and says `abstractType` when it must name one. `resolveDefinition` gives a record naming one of them what its type lets it hold.
+
 ### Fixed
 
-- `resolveDefinition` returns the identity constraints declared under the record's parent. A schema that declares one tag with a different `unique` or `key` under each parent was read with the constraints of one of those parents everywhere.
+- An attribute in no namespace that the element's attribute wildcard admits (`##any`, `##local`) is kept on import and create. It was dropped.
+- An element read in a namespace that none of its declarations uses keeps that namespace. Before, it was moved into its tag's namespace, so export wrote a different document than was read.
+- Each declaration keeps its own identity constraints. A schema that declares one tag with a different `unique` or `key` under each parent was read with the constraints of one of those parents everywhere.
 
 ## [0.5.3] - 2026-10-06
 

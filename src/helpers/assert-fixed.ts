@@ -1,7 +1,8 @@
 import { throwDialecteError } from '@/errors'
 import { getAttributeRules } from '@/utils'
 
-import type { AnyAttribute, AnyDialecteConfig, AnyRawRecord } from '@/types'
+import type { AnyAttribute, AnyDialecteConfig } from '@/types'
+import type { ResolvableRecord } from '@/utils'
 
 /**
  * Reject a write whose authored value differs from an attribute's schema `fixed`
@@ -13,7 +14,7 @@ import type { AnyAttribute, AnyDialecteConfig, AnyRawRecord } from '@/types'
  */
 export function assertNoFixedViolation(params: {
 	dialecteConfig: AnyDialecteConfig
-	record: Pick<AnyRawRecord, 'tagName' | 'parent'>
+	record: ResolvableRecord
 	attributes: readonly AnyAttribute[]
 }): void {
 	const { dialecteConfig, record, attributes } = params

@@ -21,7 +21,7 @@ import type {
 	AnyTrackedRecord,
 	AnyTreeRecord,
 	ElementsOf,
-	ElementDefinition,
+	ResolvedDefinition,
 } from '@/types'
 import type { AttributeDefaults } from '@/utils'
 
@@ -45,7 +45,7 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/** The definition of the element in its context: as declared under its parent when the schema declares the tag differently there. */
-	async getDefinition(ref: AnyRefOrRecord): Promise<ElementDefinition | undefined> {
+	async getDefinition(ref: AnyRefOrRecord): Promise<ResolvedDefinition | undefined> {
 		return getDefinition({
 			context: this.getContext(),
 			ref: toRef(ref) as Ref<GenericConfig, ElementsOf<GenericConfig>>,

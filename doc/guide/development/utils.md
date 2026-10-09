@@ -72,20 +72,22 @@ An unknown element or attribute returns the type with the booleans `false` and t
 
 ### `resolveDefinition`
 
-A schema may declare one tag with different content under different parents. Suppose the test schema declared `AAA_1` twice: under `AA_1` with a required `aAAA_1` and its `AAAA_*` children, under `AA_2` as a bare text with no attribute. The generated definition keeps the **union** at the tag level (`DEFINITION.AAA_1`). What `AAA_1` holds under each parent sits **on that parent's edge**, next to its occurrence: `DEFINITION.AA_2.children.details.AAA_1.attributes`, `.children`, `.contentModel`, `.textContent` - all four, only on the edges whose declaration differs. Those edges are the whole record of where the declarations differ: there is no second list to keep in step. `resolveDefinition` is the one rule every reader of the definition follows:
+A schema may declare one tag several ways - with different content under different parents, or in different namespaces. Suppose the test schema declared `AAA_1` twice: under `AA_1` with a required `aAAA_1` and its `AAAA_*` children, under `AA_2` as a bare text with no attribute. The generated definition keeps the **union** at the tag level (`DEFINITION.AAA_1`), lenient where the two differ, and each declaration under its number (`DEFINITION.AAA_1.declarations['1']`, `['2']`). A parent says which one it holds, per namespace: `DEFINITION.AA_2.children.details.AAA_1.declarations` is `{ '<uri>': ['2'] }`. `resolveDefinition` is the one rule every reader of the definition follows:
 
 ```ts
 import { resolveDefinition } from '@dialecte/core/utils'
 
 resolveDefinition({ dialecteConfig, record: aaa1UnderAa2 }) // an AAA_1 whose parent is an AA_2
-// → the definition on the AA_2 → AAA_1 edge: no attribute, a text
+// → declaration 2: no attribute, a text
 resolveDefinition({ dialecteConfig, record: aaa1UnderAa1 }) // an AAA_1 whose parent is an AA_1
-// → the definition on the AA_1 → AAA_1 edge: `aAAA_1` required, the `AAAA_*` children
+// → declaration 1: `aAAA_1` required, the `AAAA_*` children
 resolveDefinition({ dialecteConfig, record: root }) // parent: null
-// → DEFINITION.Root: the tag level, also what a parent without its own declaration gets
+// → the global declaration of the record's namespace
 ```
 
-The identity constraints follow the same rule: those declared under the record's parent sit on that parent's edge (`DEFINITION.AA_2.children.details.AAA_1.constraints`) and are the ones returned for an `AAA_1` there - even when the rest of its definition is the tag level's. A schema often declares the same tag with a different `unique` or `key` under each parent; an edge that carries no `constraints` (absent - an empty list means declared with none) gets the tag-level ones - the right answer for an element admitted through a wildcard, which keeps the constraints of its global declaration. The resolved definition is built once per edge and returned as the same object afterwards.
+A record without a namespace yet (created) takes the only namespace its parent holds it in. A parent whose wildcard admits the record gives the global declaration of its namespace; a parent that leaves the choice to the particle the record matches gives the tag level. The parent is read at its own tag level, unless the caller passes its resolved definition (`parentDefinition`) - a top-down walk does, and decides the rare tags whose parent is itself declared several ways. The identity constraints, `nillable` and the `variants` are the declaration's: the union carries them only where every declaration agrees.
+
+Then `xsi:type`: when the record names a type its declaration lists in `variants` - any declaration of the tag, where the parent leaves the declaration open - the attributes, children, content model and text are the type's (`dialecteConfig.types`, the `TYPES` the generator writes beside `DEFINITION`); the identity fields and constraints stay the element's. The type's prefix is read where the record binds it, else among the dialecte's namespaces: a prefix a document binds on an ancestor only, to a name the dialecte does not use, is not seen (a record does not carry the namespaces in scope). A tag declared one way, without `xsi:type`, resolves to its tag level itself; anything else is built once and returned as the same object afterwards.
 
 It takes a record because the record carries its parent. A ref does not, and passing one would silently read the union, so the compiler refuses it: `query.getDefinition(ref)` fetches the record first (staged → cache → store) and resolves from it.
 

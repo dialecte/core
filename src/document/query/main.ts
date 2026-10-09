@@ -37,7 +37,7 @@ import type {
 	ChildrenOf,
 	DefaultAttributesValueObjectOf,
 	DescendantsOf,
-	ElementDefinition,
+	ResolvedDefinition,
 	ElementsOf,
 	FullAttributeObjectOf,
 	NamespacedAttributesValueObjectOf,
@@ -182,21 +182,21 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * The definition of an element in its context: as declared under its parent when the schema
-	 * declares the tag differently there, else the tag-level definition.
+	 * The definition of an element in its context: the declaration its parent holds when the schema
+	 * declares the tag several ways, and what the type it names with xsi:type lets it hold.
 	 *
 	 * @param refOrRecord - The element to describe; its record is fetched, so its parent is known.
-	 * @returns The `ElementDefinition`, or `undefined` when nothing is found.
+	 * @returns The `ResolvedDefinition`, or `undefined` when nothing is found.
 	 *
 	 * @example
 	 * ```ts
 	 * const definition = await query.getDefinition(p)
-	 * definition?.attributes.details.type?.facets?.enumeration // as declared under p's parent
+	 * definition?.attributes.details.type?.type?.facets?.enumeration // as declared under p's parent
 	 * ```
 	 */
 	async getDefinition<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-	): Promise<ElementDefinition | undefined> {
+	): Promise<ResolvedDefinition | undefined> {
 		return getDefinition({ context: this.context, ref: toRef(refOrRecord) })
 	}
 
