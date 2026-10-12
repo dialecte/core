@@ -46,7 +46,7 @@ export async function getTree<
 		key: 'ELEMENT_NOT_FOUND',
 	})
 
-	const compiledOmit = parseOmit(omit)
+	const compiledOmit = parseOmit({ omit, dialecteConfig: context.dialecteConfig })
 	const transparentElements = context.dialecteConfig.transparentElements as
 		| readonly string[]
 		| undefined
@@ -262,6 +262,7 @@ function fetchAndFilterChildren<GenericConfig extends AnyDialecteConfig>(params:
 
 	// Apply where filter from select and resolve child select
 	return resolveChildSelect({
+		filterConfig: compiledOmit.dialecteConfig,
 		children: nonOmitted,
 		select,
 		record,
@@ -305,12 +306,14 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	dialecteConfig?: GenericConfig
+	/** The dialecte the `where` filters are read against (an `xsi:type` value names a type of it). */
+	filterConfig: GenericConfig
 	transparentElements?: readonly string[]
 }): Array<{
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 }> {
-	const { children, select, record, dialecteConfig, transparentElements } = params
+	const { children, select, record, dialecteConfig, filterConfig, transparentElements } = params
 
 	// No select = include all descendants
 	if (!select) {
@@ -333,7 +336,7 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 
 		// Auto-recursion: child has same tagName as parent and is self-recursive per config
 		if (entry === undefined && child.tagName === record.tagName) {
-			const resolved = resolveAutoRecursion({ child, select, dialecteConfig })
+			const resolved = resolveAutoRecursion({ child, select, dialecteConfig, filterConfig })
 			if (resolved) {
 				result.push(resolved)
 				continue
@@ -347,7 +350,7 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 			continue
 		}
 
-		const resolved = resolveNestedSelect({ child, entry, parentRecord: record })
+		const resolved = resolveNestedSelect({ child, entry, parentRecord: record, filterConfig })
 		if (resolved) result.push(resolved)
 	}
 
@@ -358,13 +361,15 @@ function resolveAutoRecursion<GenericConfig extends AnyDialecteConfig>(params: {
 	child: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>>
 	dialecteConfig?: GenericConfig
+	/** The dialecte the `where` filters are read against (an `xsi:type` value names a type of it). */
+	filterConfig: GenericConfig
 }):
 	| {
 			record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 			select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>>
 	  }
 	| undefined {
-	const { child, select, dialecteConfig } = params
+	const { child, select, dialecteConfig, filterConfig } = params
 	if (!dialecteConfig || select.recursive === false) return undefined
 
 	const childrenOfTag = (dialecteConfig.children as Record<string, readonly string[]>)[
@@ -375,6 +380,7 @@ function resolveAutoRecursion<GenericConfig extends AnyDialecteConfig>(params: {
 	// Apply where filter from select to auto-recursed child
 	if (select.where) {
 		const matches = matchesAttributeFilter({
+			dialecteConfig: filterConfig,
 			record: child,
 			attributeFilter: select.where as Parameters<
 				typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
@@ -390,18 +396,21 @@ function resolveNestedSelect<GenericConfig extends AnyDialecteConfig>(params: {
 	child: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	entry: unknown
 	parentRecord: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+	/** The dialecte the `where` filters are read against (an `xsi:type` value names a type of it). */
+	filterConfig: GenericConfig
 }):
 	| {
 			record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 			select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	  }
 	| undefined {
-	const { child, entry, parentRecord } = params
+	const { child, entry, parentRecord, filterConfig } = params
 	const childSelect = entry as TreeSelect<GenericConfig, ElementsOf<GenericConfig>>
 
 	// Check where filter - applies to the child element's own attributes
 	if (childSelect.where) {
 		const childMatches = matchesAttributeFilter({
+			dialecteConfig: filterConfig,
 			record: child,
 			attributeFilter: childSelect.where as Parameters<
 				typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>

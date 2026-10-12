@@ -1,6 +1,6 @@
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
-import { XMLNS_NAMESPACE_URI } from '@/helpers/constant'
+import { XMLNS_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
 import {
 	extractLocalName,
 	invariant,
@@ -8,6 +8,7 @@ import {
 	resolveDefinition,
 	resolveSchemaAttributeValue,
 } from '@/utils'
+import { storedNamespaceLookup, xsiTypeNameOf } from '@/utils/xsi-type'
 
 import type { BuildXmlDocumentParams } from './build-xml-document.types'
 import type {
@@ -92,6 +93,8 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 	if (withDatabaseIds) rootElement.setAttribute(TEMP_IDB_ID_ATTRIBUTE_NAME, rootRecord.id)
 
 	xmlDocument.appendChild(rootElement)
+	if (declareNamespaces)
+		bindXsiTypePrefix({ config, element: rootElement, record: rootRecord, documentRoot })
 
 	// Recursively build tree from index
 	buildChildren({
@@ -163,6 +166,9 @@ function buildChildren(params: {
 		})
 
 		parentElement.appendChild(childElement)
+		if (declareNamespaces) {
+			bindXsiTypePrefix({ config, element: childElement, record: childRecord, documentRoot })
+		}
 
 		buildChildren({
 			index,
@@ -323,6 +329,68 @@ function addAttributesToElement(params: {
 			`${attribute.namespace.prefix}:${localName}`,
 			String(attribute.value),
 		)
+	}
+}
+
+// ── xsi:type ─────────────────────────────────────────────────────────────────
+
+/**
+ * Bind the prefix of the element's xsi:type value where the element stands: a name is bound by the serializer, a
+ * value is not. A dialecte prefix is declared on the root like an attribute's; when the binding in scope at the
+ * element still names another namespace (an element in a foreign namespace re-binding it, or the default
+ * namespace), the value takes a prefix bound to its namespace there, declared on the element when none is. The
+ * element is in the tree already: the lookup walks its ancestors. A value core cannot read is written as stored.
+ */
+function bindXsiTypePrefix(params: {
+	config: AnyDialecteConfig
+	element: Element
+	record: AnyRawRecord
+	documentRoot: AnyRawRecord | undefined
+}): void {
+	const { config, element, record, documentRoot } = params
+	const value = element.getAttributeNS(XSI_NAMESPACE.uri, 'type')
+	if (value === null) return
+	const name = xsiTypeNameOf({
+		value,
+		namespaceOf: storedNamespaceLookup({ dialecteConfig: config, attributes: record.attributes }),
+	})
+	if (name === undefined || name.namespace === '') return
+
+	const colon = value.indexOf(':')
+	const prefix = colon === -1 ? '' : value.slice(0, colon)
+	const isDialectePrefix = Object.values(config.namespaces).some(
+		(namespace) => namespace.prefix === prefix && namespace.uri === name.namespace,
+	)
+	if (prefix && isDialectePrefix) {
+		addNamespaceToRootElementIfNeeded({
+			config,
+			document: element.ownerDocument,
+			namespace: { prefix, uri: name.namespace },
+			documentRoot,
+		})
+	}
+	if (element.lookupNamespaceURI(prefix || null) === name.namespace) return
+
+	// a prefix an ancestor binds to the namespace, unless a closer element re-binds it (DOM lookupPrefix does not check)
+	const found = element.lookupPrefix(name.namespace)
+	const bound =
+		found !== null && element.lookupNamespaceURI(found) === name.namespace ? found : null
+	const written = bound ?? freePrefix({ element })
+	if (bound === null)
+		element.setAttributeNS(XMLNS_NAMESPACE_URI, `xmlns:${written}`, name.namespace)
+	element.setAttributeNS(
+		XSI_NAMESPACE.uri,
+		`${element.lookupPrefix(XSI_NAMESPACE.uri) ?? 'xsi'}:type`,
+		`${written}:${name.local}`,
+	)
+}
+
+/** A prefix bound to nothing where the element stands: `ns1`, `ns2`, … */
+function freePrefix(params: { element: Element }): string {
+	const { element } = params
+	for (let index = 1; ; index++) {
+		const prefix = `ns${index}`
+		if (element.lookupNamespaceURI(prefix) === null) return prefix
 	}
 }
 

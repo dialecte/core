@@ -1,6 +1,4 @@
-import { resolveNamespaceByPrefix } from './namespaces'
-
-import { XMLNS_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
+import { resolveXsiType } from './xsi-type'
 
 import type { ResolvableRecord } from './resolve-definition.types'
 import type {
@@ -54,6 +52,31 @@ export function resolveDefinition(params: {
 	return resolved({ tagLevel, declaration, type })
 }
 
+/**
+ * The types the record may name with xsi:type (Clark names): its declared type when named and not abstract, and its
+ * variants; where its parent leaves the declaration open, those any declaration of the tag admits. The record's own
+ * xsi:type is not read.
+ */
+export function admittedXsiTypes(params: {
+	dialecteConfig: DefinitionConfig
+	record: ResolvableRecord
+	parentDefinition?: DeclarationDefinition
+}): readonly string[] {
+	const { dialecteConfig, record, parentDefinition } = params
+	const tagLevel = dialecteConfig.definition[record.tagName]
+	if (tagLevel === undefined) return []
+	const declaration = declarationOf({ dialecteConfig, record, tagLevel, parentDefinition })
+	const candidates =
+		declaration === tagLevel
+			? [tagLevel, ...Object.values(tagLevel.declarations ?? {})]
+			: [declaration]
+	const admitted = candidates.flatMap((candidate) => [
+		...(candidate.type === undefined || candidate.abstractType ? [] : [candidate.type]),
+		...(candidate.variants ?? []),
+	])
+	return [...new Set(admitted)]
+}
+
 /** The declaration of the tag that applies under the record's parent; the tag level when none is decided. */
 function declarationOf(params: {
 	dialecteConfig: DefinitionConfig
@@ -86,39 +109,12 @@ function declarationOf(params: {
 	)
 }
 
-/**
- * The Clark name of the type the record names with xsi:type, its prefix bound on the record itself or by the dialecte.
- * A prefix the document binds on an ancestor only, to another name than the dialecte's, is not seen: the record does
- * not carry the namespaces in scope.
- */
+/** The Clark name of the type the record names with xsi:type, read as a stored value is (`storedNamespaceLookup`). */
 function xsiTypeOf(params: {
 	dialecteConfig: DefinitionConfig
 	record: ResolvableRecord
 }): string | undefined {
-	const { dialecteConfig, record } = params
-	const attribute = record.attributes.find(
-		(candidate) =>
-			candidate.namespace?.uri === XSI_NAMESPACE.uri && candidate.name.split(':').at(-1) === 'type',
-	)
-	if (attribute === undefined) return undefined
-	const value = attribute.value.trim()
-	const colon = value.indexOf(':')
-	const prefix = colon === -1 ? '' : value.slice(0, colon)
-	const local = colon === -1 ? value : value.slice(colon + 1)
-	// as parsed (`q` in the xmlns namespace, `xmlns` for the default) or as created (`xmlns:q`)
-	const declared = record.attributes.find((candidate) =>
-		prefix
-			? candidate.name === `xmlns:${prefix}` ||
-				(candidate.namespace?.uri === XMLNS_NAMESPACE_URI && candidate.name === prefix)
-			: candidate.name === 'xmlns',
-	)
-	const uri =
-		declared?.value ??
-		(prefix
-			? resolveNamespaceByPrefix(dialecteConfig, prefix)?.uri
-			: dialecteConfig.namespaces.default.uri)
-	if (uri === undefined) return undefined
-	return uri ? `{${uri}}${local}` : local
+	return resolveXsiType(params)?.clark
 }
 
 /**

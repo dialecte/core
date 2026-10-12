@@ -70,7 +70,7 @@ function toTree<GenericConfig extends AnyDialecteConfig>(
 ): AnyTreeRecord {
 	let tree = recordsToTree(collected)
 
-	tree = applyOmit({ tree, omit: filters.omit })
+	tree = applyOmit({ tree, omit: filters.omit, dialecteConfig: context.dialecteConfig })
 
 	const transparentElements = context.dialecteConfig.transparentElements as
 		| readonly string[]

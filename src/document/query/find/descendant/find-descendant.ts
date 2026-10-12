@@ -21,7 +21,7 @@ export async function findDescendants<
 	const { context, ref, options } = params
 	const { collect, omit } = options
 
-	const omitSpec = parseOmitEntries(omit)
+	const omitSpec = parseOmitEntries({ omit, dialecteConfig: context.dialecteConfig })
 	const collectSpec = parseCollect(collect)
 
 	const collected = new Map<
@@ -59,6 +59,8 @@ export async function findDescendants<
 // ============================================================================
 
 type OmitSpec = {
+	/** The dialecte the `where` filters are read against (an `xsi:type` value names a type of it). */
+	dialecteConfig: AnyDialecteConfig
 	unconditional: Set<string>
 	conditional: Array<{
 		tagName: string
@@ -66,13 +68,15 @@ type OmitSpec = {
 	}>
 }
 
-function parseOmitEntries<GenericConfig extends AnyDialecteConfig>(
-	omit: OmitEntry<GenericConfig>[] | undefined,
-): OmitSpec {
+function parseOmitEntries<GenericConfig extends AnyDialecteConfig>(params: {
+	omit: OmitEntry<GenericConfig>[] | undefined
+	dialecteConfig: GenericConfig
+}): OmitSpec {
+	const { omit, dialecteConfig } = params
 	const unconditional = new Set<string>()
 	const conditional: OmitSpec['conditional'] = []
 
-	if (!omit) return { unconditional, conditional }
+	if (!omit) return { dialecteConfig, unconditional, conditional }
 
 	for (const entry of omit) {
 		if (typeof entry === 'string') {
@@ -87,7 +91,7 @@ function parseOmitEntries<GenericConfig extends AnyDialecteConfig>(
 			}
 		}
 	}
-	return { unconditional, conditional }
+	return { dialecteConfig, unconditional, conditional }
 }
 
 function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
@@ -100,6 +104,7 @@ function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
 		if (cond.tagName !== record.tagName) continue
 		if (
 			matchesAttributeFilter({
+				dialecteConfig: omitSpec.dialecteConfig as GenericConfig,
 				record,
 				attributeFilter: cond.where as Parameters<
 					typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
@@ -236,7 +241,14 @@ async function traverseFlat<GenericConfig extends AnyDialecteConfig>(params: {
 		})
 
 		for (const candidate of candidates) {
-			if (!matchesFlatTarget({ record: candidate, where: target.where })) continue
+			if (
+				!matchesFlatTarget({
+					dialecteConfig: context.dialecteConfig,
+					record: candidate,
+					where: target.where,
+				})
+			)
+				continue
 			if (isOmitted({ record: candidate, omitSpec })) continue
 
 			// Verify ancestry: walk parent refs up to rootId
@@ -248,12 +260,14 @@ async function traverseFlat<GenericConfig extends AnyDialecteConfig>(params: {
 }
 
 function matchesFlatTarget<GenericConfig extends AnyDialecteConfig>(params: {
+	dialecteConfig: GenericConfig
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	where: Record<string, unknown> | undefined
 }): boolean {
-	const { record, where } = params
+	const { dialecteConfig, record, where } = params
 	if (!where) return true
 	return matchesAttributeFilter({
+		dialecteConfig,
 		record,
 		attributeFilter: where as Parameters<
 			typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
@@ -374,7 +388,8 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
 		const current = queue.shift()!
 
 		if (current.tagName === tagName) {
-			if (matchesFlatTarget({ record: current, where })) results.push(current)
+			if (matchesFlatTarget({ dialecteConfig: context.dialecteConfig, record: current, where }))
+				results.push(current)
 			// Don't descend into matched nodes (they become new root for child paths)
 			continue
 		}

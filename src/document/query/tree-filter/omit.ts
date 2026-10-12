@@ -11,6 +11,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord, TreeRecord } from '@
  *   `scope:'self'` drops the node, `scope:'children'` keeps it but stops below.
  */
 export type OmitSpecification<GenericConfig extends AnyDialecteConfig> = {
+	/** The dialecte the `where` filters are read against (an `xsi:type` value names a type of it). */
+	dialecteConfig: GenericConfig
 	unconditional: Set<string>
 	conditional: Array<{
 		tagName: ElementsOf<GenericConfig>
@@ -26,13 +28,15 @@ export type OmitSpecification<GenericConfig extends AnyDialecteConfig> = {
  * Object entries with `where` conditions go into `conditional` (checked against record attributes).
  * This avoids re-parsing the omit array on every node visit.
  */
-export function parseOmit<GenericConfig extends AnyDialecteConfig>(
-	omit: OmitEntry<GenericConfig>[] | undefined,
-): OmitSpecification<GenericConfig> {
+export function parseOmit<GenericConfig extends AnyDialecteConfig>(params: {
+	omit: OmitEntry<GenericConfig>[] | undefined
+	dialecteConfig: GenericConfig
+}): OmitSpecification<GenericConfig> {
+	const { omit, dialecteConfig } = params
 	const unconditional = new Set<string>()
 	const conditional: OmitSpecification<GenericConfig>['conditional'] = []
 
-	if (!omit) return { unconditional, conditional }
+	if (!omit) return { dialecteConfig, unconditional, conditional }
 
 	for (const entry of omit) {
 		if (typeof entry === 'string') {
@@ -56,7 +60,7 @@ export function parseOmit<GenericConfig extends AnyDialecteConfig>(
 			scope: config.scope ?? 'self',
 		})
 	}
-	return { unconditional, conditional }
+	return { dialecteConfig, unconditional, conditional }
 }
 
 /**
@@ -76,6 +80,7 @@ export function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
 			entry.scope === 'self' &&
 			entry.tagName === record.tagName &&
 			matchesAttributeFilter({
+				dialecteConfig: compiledOmit.dialecteConfig,
 				record,
 				attributeFilter: entry.where as Parameters<
 					typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
@@ -99,6 +104,7 @@ export function shouldStopTraversal<GenericConfig extends AnyDialecteConfig>(par
 			entry.scope === 'children' &&
 			entry.tagName === record.tagName &&
 			matchesAttributeFilter({
+				dialecteConfig: compiledOmit.dialecteConfig,
 				record,
 				attributeFilter: entry.where as Parameters<
 					typeof matchesAttributeFilter<GenericConfig, ElementsOf<GenericConfig>>
@@ -120,11 +126,12 @@ export function applyOmit<
 >(params: {
 	tree: TreeRecord<GenericConfig, GenericElement>
 	omit: OmitEntry<GenericConfig>[] | undefined
+	dialecteConfig: GenericConfig
 }): TreeRecord<GenericConfig, GenericElement> {
-	const { tree, omit } = params
+	const { tree, omit, dialecteConfig } = params
 	if (!omit?.length) return tree
 
-	const compiledOmit = parseOmit(omit)
+	const compiledOmit = parseOmit({ omit, dialecteConfig })
 
 	const filterNode = (
 		node: TreeRecord<GenericConfig, ElementsOf<GenericConfig>>,

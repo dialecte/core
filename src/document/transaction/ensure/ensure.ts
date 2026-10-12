@@ -55,7 +55,7 @@ export async function stageEnsureChild<
 
 	const existing = filter
 		? siblings.find((sibling) =>
-				matchesAttributeFilter({ record: sibling, attributeFilter: filter }),
+				matchesAttributeFilter({ dialecteConfig, record: sibling, attributeFilter: filter }),
 			)
 		: childParams.id !== undefined
 			? siblings.find((sibling) => sibling.id === childParams.id)

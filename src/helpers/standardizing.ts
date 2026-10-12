@@ -2,11 +2,13 @@ import { toFullAttributeArray } from './converter'
 
 import { orderAttributesBySequence } from '@/utils'
 import { resolveDefinition } from '@/utils/resolve-definition'
+import { storedNamespaceLookup, withCanonicalXsiType } from '@/utils/xsi-type'
 
 import type {
 	AnyDialecteConfig,
 	AttributeInputOf,
 	ElementsOf,
+	Namespace,
 	RawRecord,
 	AttributesValueObjectOf,
 	TransactionHooks,
@@ -30,9 +32,10 @@ export function standardizeRecord<
 
 	const recordId = id ?? crypto.randomUUID()
 
-	const attributesArray = attributes
-		? toFullAttributeArray({ tagName, attributes, dialecteConfig })
-		: []
+	const attributesArray = canonicalXsiTypeOf({
+		dialecteConfig,
+		attributes: attributes ? toFullAttributeArray({ tagName, attributes, dialecteConfig }) : [],
+	})
 
 	const inputRecord: RawRecord<GenericConfig, GenericElement> = {
 		id: recordId,
@@ -132,11 +135,30 @@ export function standardizeRecord<
 		// The hook may append or move attributes (e.g. enforce a `uuid`), so
 		// re-apply canonical ordering to keep records order-comparable regardless
 		// of where the hook placed things. See [[attribute-rules]].
+		// the hook may also set xsi:type: stored canonical like any other
 		standardizedRecord = {
 			...standardizedRecord,
-			attributes: orderAttributesBySequence(standardizedRecord.attributes, standardAttributeNames),
+			attributes: orderAttributesBySequence(
+				canonicalXsiTypeOf({ dialecteConfig, attributes: standardizedRecord.attributes }),
+				standardAttributeNames,
+			),
 		}
 	}
 
 	return standardizedRecord
+}
+
+/** The attributes with their xsi:type value in the form core stores, read as a stored value is (see `xsi-type`). */
+function canonicalXsiTypeOf<
+	GenericAttribute extends { name: string; value: unknown; namespace?: Namespace },
+>(params: {
+	dialecteConfig: AnyDialecteConfig
+	attributes: GenericAttribute[]
+}): GenericAttribute[] {
+	const { dialecteConfig, attributes } = params
+	return withCanonicalXsiType({
+		dialecteConfig,
+		attributes,
+		namespaceOf: storedNamespaceLookup({ dialecteConfig, attributes }),
+	})
 }

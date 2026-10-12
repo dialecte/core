@@ -6,6 +6,7 @@ import * as sax from 'sax'
 import { CUSTOM_RECORD_ID_ATTRIBUTE, standardizeRecord } from '@/helpers'
 import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
+import { withCanonicalXsiType } from '@/utils/xsi-type'
 
 import type { ParserInstance, ParserState } from './types'
 import type { Perf } from '@/perf'
@@ -132,7 +133,12 @@ function handleOpenTag(params: {
 		useCustomRecordsIds,
 	})
 
-	const attributes = getElementAttributes(filteredAttributes)
+	// the xsi:type value read with the namespaces in scope here (an ancestor's bindings too), stored canonical
+	const attributes = withCanonicalXsiType({
+		dialecteConfig,
+		attributes: getElementAttributes(filteredAttributes),
+		namespaceOf: (prefix) => node.ns[prefix],
+	})
 	const parent = getParent(state.stack)
 
 	const record: AnyRawRecord = {
