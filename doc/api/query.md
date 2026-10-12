@@ -198,6 +198,8 @@ const results = await doc.query.findByAttributes({
 // TrackedRecord<Config, 'AA_1'>[]
 ```
 
+An `xsi:type` filter compares the type the record names, whatever form either side writes it in: a local name, the dialecte's prefix, or a Clark name (see [`xsi:type` values](/guide/development/utils#xsi-type-values)).
+
 ## Tree queries
 
 ### getTree

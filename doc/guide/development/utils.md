@@ -87,7 +87,28 @@ resolveDefinition({ dialecteConfig, record: root }) // parent: null
 
 A record without a namespace yet (created) takes the only namespace its parent holds it in. A parent whose wildcard admits the record gives the global declaration of its namespace; a parent that leaves the choice to the particle the record matches gives the tag level. The parent is read at its own tag level, unless the caller passes its resolved definition (`parentDefinition`) - a top-down walk does, and decides the rare tags whose parent is itself declared several ways. The identity constraints, `nillable` and the `variants` are the declaration's: the union carries them only where every declaration agrees.
 
-Then `xsi:type`: when the record names a type its declaration lists in `variants` - any declaration of the tag, where the parent leaves the declaration open - the attributes, children, content model and text are the type's (`dialecteConfig.types`, the `TYPES` the generator writes beside `DEFINITION`); the identity fields and constraints stay the element's. The type's prefix is read where the record binds it, else among the dialecte's namespaces: a prefix a document binds on an ancestor only, to a name the dialecte does not use, is not seen (a record does not carry the namespaces in scope). A tag declared one way, without `xsi:type`, resolves to its tag level itself; anything else is built once and returned as the same object afterwards.
+Then `xsi:type`: when the record names a type its declaration lists in `variants` - any declaration of the tag, where the parent leaves the declaration open - the attributes, children, content model and text are the type's (`dialecteConfig.types`, the `TYPES` the generator writes beside `DEFINITION`); the identity fields and constraints stay the element's. Naming the declared type itself (`type`) gives the declaration as it is. A tag declared one way, without `xsi:type`, resolves to its tag level itself; anything else is built once and returned as the same object afterwards.
+
+### `xsi:type` values
+
+A document writes an `xsi:type` value as a qualified name - `Block`, `plc:Block`, `abc:Block` may all name the same type. Core stores one form of it, on import and on every write (`addChild`, `update`, a hook's change): the local name for a type in the dialecte's default namespace, the dialecte's prefix and the local name for a type in another namespace it declares.
+
+| Document or author writes                                     | Stored        |
+| ------------------------------------------------------------- | ------------- |
+| `Block`, `p:Block` (`p` bound to the default namespace)       | `Block`       |
+| `e:tSquare` (`e` bound to the ext namespace), `{uri}tSquare`  | `ext:tSquare` |
+| `q:Block` (`q` bound nowhere), a namespace the dialecte lacks | as written    |
+
+Import reads the prefix with the namespaces in scope at the element, an ancestor's bindings included. The value keeps what XML says it means, whoever writes it - a file or code: an unprefixed name is in the default namespace, so `tTriangle` where only `ext:tTriangle` exists stays `tTriangle` and validation reports it. Export declares the prefix the value uses, and when an element in another namespace re-binds it where the value stands, writes the value with a prefix bound to its namespace there.
+
+```ts
+import { admittedXsiTypes, canonicalXsiType, resolveXsiType } from '@dialecte/core/utils'
+
+resolveXsiType({ dialecteConfig, record }) // { clark: '{uri}tSquare', namespace: 'uri', local: 'tSquare' }
+admittedXsiTypes({ dialecteConfig, record }) // the Clark names it may name: its declared type (unless abstract), its variants
+```
+
+Filters (`findByAttributes`, `findDescendants`, `getTree` `where`, `omit`, `ensureChild`) compare `xsi:type` as the type it names: `{ 'xsi:type': 'tSquare' }`, `{ 'xsi:type': 'ext:tSquare' }` and the Clark name each find what they name, a record stored by an earlier core with the document's own prefix included.
 
 It takes a record because the record carries its parent. A ref does not, and passing one would silently read the union, so the compiler refuses it: `query.getDefinition(ref)` fetches the record first (staged → cache → store) and resolves from it.
 

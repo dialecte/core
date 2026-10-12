@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Added
+
+- A declaration's definition may say its declared type, `type` (its Clark name), when the type is named - as `@dialecte/create` writes it from its next release on.
+- `resolveXsiType` (the type a record names), `canonicalXsiType` (the form core stores a value in) and `admittedXsiTypes` (the types an element may name) in `@dialecte/core/utils`.
+
+### Changed
+
+- **Breaking - one stored form of an `xsi:type` value.** Import and every write store the local name for a type in the dialecte's default namespace, the dialecte's prefix and the local name otherwise; export writes that form. A value core cannot read (a prefix bound nowhere, a namespace the dialecte does not declare) is kept as written.
+- **Breaking:** `matchesAttributeFilter` takes the `dialecteConfig`; `parseOmit` takes `{ omit, dialecteConfig }`; `applyOmit` takes a `dialecteConfig`.
+- Filters (`findByAttributes`, `findDescendants`, `getTree` `where`, `omit`, `ensureChild`) compare `xsi:type` as the type it names, written as a local name, with the dialecte's prefix or as a Clark name.
+
+### Fixed
+
+- An `xsi:type` whose prefix a document binds on an ancestor only is read: the attributes of the type it names were dropped on import.
+- Export declares the namespace an `xsi:type` value uses: a type outside the default namespace was written with an unbound prefix.
+- An attribute only an `xsi:type` variant declares keeps its namespace when written in the value-object form.
+
 ## [0.6.0] - 2026-10-12
 
 ### Changed
