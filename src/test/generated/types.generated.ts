@@ -64,6 +64,27 @@ export type AttributesAA_3 = {
 	'ext:cAA_3'?: string
 }
 
+export type AttributesAnything = {
+	'xsi:type'?:
+		| 'tCircle'
+		| 'tCode'
+		| 'tDigits'
+		| 'tEnum'
+		| 'tFixedLen'
+		| 'tLocked'
+		| 'tLockedExt'
+		| 'tName'
+		| 'tNonEmpty'
+		| 'tPattern'
+		| 'tPercent'
+		| 'tPlain'
+		| 'tPlainExt'
+		| 'tSquare'
+		| 'tSquare'
+		| 'tTriangle'
+		| (string & {})
+}
+
 export type AttributesB = {
 	aB: string
 	bB?: string
@@ -184,9 +205,31 @@ export type AttributesCC_3 = {
 	'ext:cCC_3'?: string
 }
 
+export type AttributesCorner = {
+	aCorner: string
+}
+
+export type AttributesD = {
+	aD: string
+}
+
+export type AttributesLocked = {
+	aLocked: string
+}
+
+export type AttributesPlain = {
+	aPlain: string
+	'xsi:type'?: 'tPlainExt' | (string & {})
+}
+
 export type AttributesRoot = {
 	'ext:root'?: string
 	root?: string
+}
+
+export type AttributesShape = {
+	aShape: string
+	'xsi:type'?: 'tCircle' | 'tSquare' | 'tSquare' | 'tTriangle' | (string & {})
 }
 
 export type AttributesMap = {
@@ -200,6 +243,7 @@ export type AttributesMap = {
 	AA_1: AttributesAA_1
 	AA_2: AttributesAA_2
 	AA_3: AttributesAA_3
+	Anything: AttributesAnything
 	B: AttributesB
 	BBBB_1: AttributesBBBB_1
 	BBBB_2: AttributesBBBB_2
@@ -220,7 +264,12 @@ export type AttributesMap = {
 	CC_1: AttributesCC_1
 	CC_2: AttributesCC_2
 	CC_3: AttributesCC_3
+	Corner: AttributesCorner
+	D: AttributesD
+	Locked: AttributesLocked
+	Plain: AttributesPlain
 	Root: AttributesRoot
+	Shape: AttributesShape
 }
 
 export type AttributesOf<T extends AvailableElement> = AttributesMap[T]
@@ -337,10 +386,20 @@ export type AttributesByParent = {
 		CCC_2: AttributesCCC_2
 		CCC_3: AttributesCCC_3
 	}
+	D: {
+		Shape: AttributesShape
+		Plain: AttributesPlain
+		Locked: AttributesLocked
+		Anything: AttributesAnything
+	}
 	Root: {
 		A: AttributesA
 		B: AttributesB
 		C: AttributesC
+		D: AttributesD
+	}
+	Shape: {
+		Corner: AttributesCorner
 	}
 }
 

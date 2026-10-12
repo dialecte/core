@@ -13,6 +13,7 @@ export const ELEMENT_NAMES = [
 	'AA_1',
 	'AA_2',
 	'AA_3',
+	'Anything',
 	'B',
 	'BBBB_1',
 	'BBBB_2',
@@ -33,7 +34,12 @@ export const ELEMENT_NAMES = [
 	'CC_1',
 	'CC_2',
 	'CC_3',
+	'Corner',
+	'D',
+	'Locked',
+	'Plain',
 	'Root',
+	'Shape',
 ] as const
 
 export const CHILDREN = {
@@ -47,6 +53,7 @@ export const CHILDREN = {
 	AA_1: ['AAA_1', 'AAA_2', 'AAA_3'],
 	AA_2: ['AAA_1', 'AAA_2', 'AAA_3'],
 	AA_3: ['AAA_1', 'AAA_2', 'AAA_3'],
+	Anything: [],
 	B: ['BB_1', 'BB_2', 'BB_3'],
 	BBBB_1: [],
 	BBBB_2: [],
@@ -67,7 +74,12 @@ export const CHILDREN = {
 	CC_1: ['CCC_1', 'CCC_2', 'CCC_3'],
 	CC_2: ['CCC_1', 'CCC_2', 'CCC_3'],
 	CC_3: ['CCC_1', 'CCC_2', 'CCC_3'],
-	Root: ['A', 'B', 'C'],
+	Corner: [],
+	D: ['Shape', 'Plain', 'Locked', 'Anything'],
+	Locked: [],
+	Plain: [],
+	Root: ['A', 'B', 'C', 'D'],
+	Shape: ['Corner'],
 } as const
 
 export const PARENTS = {
@@ -81,6 +93,7 @@ export const PARENTS = {
 	AA_1: ['A'],
 	AA_2: ['A'],
 	AA_3: ['A'],
+	Anything: ['D'],
 	B: ['Root'],
 	BBBB_1: ['BBB_1', 'BBB_2', 'BBB_3'],
 	BBBB_2: ['BBB_1', 'BBB_2', 'BBB_3'],
@@ -101,7 +114,12 @@ export const PARENTS = {
 	CC_1: ['C'],
 	CC_2: ['C'],
 	CC_3: ['C'],
+	Corner: ['Shape'],
+	D: ['Root'],
+	Locked: ['D'],
+	Plain: ['D'],
 	Root: [],
+	Shape: ['D'],
 } as const
 
 export const DESCENDANTS = {
@@ -115,6 +133,7 @@ export const DESCENDANTS = {
 	AA_1: ['AAAA_1', 'AAAA_2', 'AAAA_3', 'AAA_1', 'AAA_2', 'AAA_3'],
 	AA_2: ['AAAA_1', 'AAAA_2', 'AAAA_3', 'AAA_1', 'AAA_2', 'AAA_3'],
 	AA_3: ['AAAA_1', 'AAAA_2', 'AAAA_3', 'AAA_1', 'AAA_2', 'AAA_3'],
+	Anything: [],
 	B: ['BBBB_1', 'BBBB_2', 'BBBB_3', 'BBB_1', 'BBB_2', 'BBB_3', 'BB_1', 'BB_2', 'BB_3'],
 	BBBB_1: [],
 	BBBB_2: [],
@@ -135,6 +154,10 @@ export const DESCENDANTS = {
 	CC_1: ['CCCC_1', 'CCCC_2', 'CCCC_3', 'CCC_1', 'CCC_2', 'CCC_3'],
 	CC_2: ['CCCC_1', 'CCCC_2', 'CCCC_3', 'CCC_1', 'CCC_2', 'CCC_3'],
 	CC_3: ['CCCC_1', 'CCCC_2', 'CCCC_3', 'CCC_1', 'CCC_2', 'CCC_3'],
+	Corner: [],
+	D: ['Anything', 'Corner', 'Locked', 'Plain', 'Shape'],
+	Locked: [],
+	Plain: [],
 	Root: [
 		'A',
 		'AAAA_1',
@@ -146,6 +169,7 @@ export const DESCENDANTS = {
 		'AA_1',
 		'AA_2',
 		'AA_3',
+		'Anything',
 		'B',
 		'BBBB_1',
 		'BBBB_2',
@@ -166,7 +190,13 @@ export const DESCENDANTS = {
 		'CC_1',
 		'CC_2',
 		'CC_3',
+		'Corner',
+		'D',
+		'Locked',
+		'Plain',
+		'Shape',
 	],
+	Shape: ['Corner'],
 } as const
 
 export const ANCESTORS = {
@@ -180,6 +210,7 @@ export const ANCESTORS = {
 	AA_1: ['A', 'Root'],
 	AA_2: ['A', 'Root'],
 	AA_3: ['A', 'Root'],
+	Anything: ['D', 'Root'],
 	B: ['Root'],
 	BBBB_1: ['B', 'BBB_1', 'BBB_2', 'BBB_3', 'BB_1', 'BB_2', 'BB_3', 'Root'],
 	BBBB_2: ['B', 'BBB_1', 'BBB_2', 'BBB_3', 'BB_1', 'BB_2', 'BB_3', 'Root'],
@@ -200,12 +231,29 @@ export const ANCESTORS = {
 	CC_1: ['C', 'Root'],
 	CC_2: ['C', 'Root'],
 	CC_3: ['C', 'Root'],
+	Corner: ['D', 'Root', 'Shape'],
+	D: ['Root'],
+	Locked: ['D', 'Root'],
+	Plain: ['D', 'Root'],
 	Root: [],
+	Shape: ['D', 'Root'],
 } as const
 
 export const ROOT_ELEMENT = 'Root' as const
 
-export const SINGLETON_ELEMENTS = ['A', 'AA_1', 'B', 'BB_1', 'C', 'CC_1', 'CC_2', 'Root'] as const
+export const SINGLETON_ELEMENTS = [
+	'A',
+	'AA_1',
+	'Anything',
+	'B',
+	'BB_1',
+	'C',
+	'CC_1',
+	'CC_2',
+	'D',
+	'Locked',
+	'Root',
+] as const
 
 const ATTRIBUTES_BY_TAG = {
 	A: {
@@ -258,6 +306,9 @@ const ATTRIBUTES_BY_TAG = {
 		'ext:bAA_3': '' as string,
 		'ext:cAA_3': '' as string,
 	} as AttributesOf<'AA_3'>,
+	Anything: {
+		'xsi:type': '' as string,
+	} as AttributesOf<'Anything'>,
 	B: {
 		aB: '' as string,
 		bB: '' as string,
@@ -358,10 +409,27 @@ const ATTRIBUTES_BY_TAG = {
 		'ext:bCC_3': '' as string,
 		'ext:cCC_3': '' as string,
 	} as AttributesOf<'CC_3'>,
+	Corner: {
+		aCorner: '' as string,
+	} as AttributesOf<'Corner'>,
+	D: {
+		aD: '' as string,
+	} as AttributesOf<'D'>,
+	Locked: {
+		aLocked: '' as string,
+	} as AttributesOf<'Locked'>,
+	Plain: {
+		aPlain: '' as string,
+		'xsi:type': '' as string,
+	} as AttributesOf<'Plain'>,
 	Root: {
 		'ext:root': '' as string,
 		root: '' as string,
 	} as AttributesOf<'Root'>,
+	Shape: {
+		aShape: '' as string,
+		'xsi:type': '' as string,
+	} as AttributesOf<'Shape'>,
 } as const
 
 /**
@@ -478,10 +546,20 @@ export const ATTRIBUTES = {
 			CCC_2: ATTRIBUTES_BY_TAG.CCC_2,
 			CCC_3: ATTRIBUTES_BY_TAG.CCC_3,
 		},
+		D: {
+			Shape: ATTRIBUTES_BY_TAG.Shape,
+			Plain: ATTRIBUTES_BY_TAG.Plain,
+			Locked: ATTRIBUTES_BY_TAG.Locked,
+			Anything: ATTRIBUTES_BY_TAG.Anything,
+		},
 		Root: {
 			A: ATTRIBUTES_BY_TAG.A,
 			B: ATTRIBUTES_BY_TAG.B,
 			C: ATTRIBUTES_BY_TAG.C,
+			D: ATTRIBUTES_BY_TAG.D,
+		},
+		Shape: {
+			Corner: ATTRIBUTES_BY_TAG.Corner,
 		},
 	} satisfies AttributesByParent,
 } as const
@@ -497,6 +575,7 @@ export const REQUIRED_ATTRIBUTES = {
 	AA_1: ['aAA_1'],
 	AA_2: ['aAA_2'],
 	AA_3: ['ext:aAA_3'],
+	Anything: [],
 	B: ['aB'],
 	BBBB_1: ['aBBBB_1'],
 	BBBB_2: ['aBBBB_2'],
@@ -517,5 +596,10 @@ export const REQUIRED_ATTRIBUTES = {
 	CC_1: ['aCC_1'],
 	CC_2: ['aCC_2'],
 	CC_3: ['ext:aCC_3'],
+	Corner: ['aCorner'],
+	D: ['aD'],
+	Locked: ['aLocked'],
+	Plain: ['aPlain'],
 	Root: [],
+	Shape: ['aShape'],
 } as const satisfies Record<AvailableElement, readonly string[]>

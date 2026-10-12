@@ -138,6 +138,8 @@ export type DeclarationDefinition = ContentDefinition & {
 	readonly global?: true
 	readonly nillable?: true
 	readonly constraints?: readonly IdentityConstraint[]
+	/** The declared type when it is named (Clark name): an instance may name it with xsi:type too. */
+	readonly type?: string
 	/** The types an instance may name with xsi:type instead (Clark names, keys of the dialecte's `TYPES`). */
 	readonly variants?: readonly string[]
 	/** The declared type is abstract: an instance must name a variant. */

@@ -175,4 +175,20 @@
 		</xs:complexType>
 	</xs:element>
 
+	<!-- Branch D: a variant of dflt:tShape whose local name only this namespace has -->
+	<xs:complexType name="tTriangle">
+		<xs:complexContent>
+			<xs:extension base="dflt:tShape" />
+		</xs:complexContent>
+	</xs:complexType>
+
+	<!-- Branch D: a variant of dflt:tShape sharing tSquare's local name; its attribute is qualified -->
+	<xs:complexType name="tSquare">
+		<xs:complexContent>
+			<xs:extension base="dflt:tShape">
+				<xs:attribute name="edge" type="xs:string" />
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
 </xs:schema>

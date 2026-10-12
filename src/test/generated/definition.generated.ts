@@ -423,6 +423,48 @@ export const DEFINITION = {
 			],
 		},
 	},
+	Anything: {
+		tag: 'Anything',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['D'],
+		attributes: {
+			sequence: [],
+			any: { notNamespace: [], processContents: 'lax' },
+			details: {},
+		},
+		children: {
+			sequence: [],
+			any: true,
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [{ kind: 'any', notNamespace: [], processContents: 'lax' }],
+		},
+		textContent: {},
+		type: '{http://www.w3.org/2001/XMLSchema}anyType',
+		variants: [
+			'{http://dialecte.dev/XML/DEFAULT}tCircle',
+			'{http://dialecte.dev/XML/DEFAULT}tCode',
+			'{http://dialecte.dev/XML/DEFAULT}tDigits',
+			'{http://dialecte.dev/XML/DEFAULT}tEnum',
+			'{http://dialecte.dev/XML/DEFAULT}tFixedLen',
+			'{http://dialecte.dev/XML/DEFAULT}tLocked',
+			'{http://dialecte.dev/XML/DEFAULT}tLockedExt',
+			'{http://dialecte.dev/XML/DEFAULT}tName',
+			'{http://dialecte.dev/XML/DEFAULT}tNonEmpty',
+			'{http://dialecte.dev/XML/DEFAULT}tPattern',
+			'{http://dialecte.dev/XML/DEFAULT}tPercent',
+			'{http://dialecte.dev/XML/DEFAULT}tPlain',
+			'{http://dialecte.dev/XML/DEFAULT}tPlainExt',
+			'{http://dialecte.dev/XML/DEFAULT}tSquare',
+			'{http://dialecte.dev/XML/DEV-EXT}tSquare',
+			'{http://dialecte.dev/XML/DEV-EXT}tTriangle',
+		],
+	},
 	B: {
 		tag: 'B',
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
@@ -1275,6 +1317,84 @@ export const DEFINITION = {
 			},
 		],
 	},
+	Corner: {
+		tag: 'Corner',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['Shape'],
+		attributes: {
+			sequence: ['aCorner'],
+			details: {
+				aCorner: { required: true },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	D: {
+		tag: 'D',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['Root'],
+		attributes: {
+			sequence: ['aD'],
+			details: {
+				aD: { required: true },
+			},
+		},
+		children: {
+			sequence: ['Shape', 'Plain', 'Locked', 'Anything'],
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'Shape' },
+				{ kind: 'element', name: 'Plain' },
+				{ kind: 'element', name: 'Locked', maxOccurs: 1 },
+				{ kind: 'element', name: 'Anything', maxOccurs: 1 },
+			],
+		},
+	},
+	Locked: {
+		tag: 'Locked',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['D'],
+		attributes: {
+			sequence: ['aLocked'],
+			details: {
+				aLocked: { required: true },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		type: '{http://dialecte.dev/XML/DEFAULT}tLocked',
+	},
+	Plain: {
+		tag: 'Plain',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['D'],
+		attributes: {
+			sequence: ['aPlain'],
+			details: {
+				aPlain: { required: true },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		type: '{http://dialecte.dev/XML/DEFAULT}tPlain',
+		variants: ['{http://dialecte.dev/XML/DEFAULT}tPlainExt'],
+	},
 	Root: {
 		tag: 'Root',
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
@@ -1292,7 +1412,7 @@ export const DEFINITION = {
 			},
 		},
 		children: {
-			sequence: ['A', 'B', 'C'],
+			sequence: ['A', 'B', 'C', 'D'],
 			details: {},
 		},
 		contentModel: {
@@ -1303,6 +1423,7 @@ export const DEFINITION = {
 				{ kind: 'element', name: 'A', maxOccurs: 1 },
 				{ kind: 'element', name: 'B', maxOccurs: 1 },
 				{ kind: 'element', name: 'C', maxOccurs: 1 },
+				{ kind: 'element', name: 'D', maxOccurs: 1 },
 			],
 		},
 		constraints: [
@@ -1327,6 +1448,275 @@ export const DEFINITION = {
 			},
 		],
 	},
+	Shape: {
+		tag: 'Shape',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['D'],
+		attributes: {
+			sequence: ['aShape'],
+			details: {
+				aShape: { required: true },
+			},
+		},
+		children: {
+			sequence: ['Corner'],
+			details: {},
+		},
+		type: '{http://dialecte.dev/XML/DEFAULT}tShape',
+		variants: [
+			'{http://dialecte.dev/XML/DEFAULT}tCircle',
+			'{http://dialecte.dev/XML/DEFAULT}tSquare',
+			'{http://dialecte.dev/XML/DEV-EXT}tSquare',
+			'{http://dialecte.dev/XML/DEV-EXT}tTriangle',
+		],
+		abstractType: true,
+	},
 } as const
 
-export const TYPES = {} as const
+export const TYPES = {
+	'{http://dialecte.dev/XML/DEFAULT}tCircle': {
+		attributes: {
+			sequence: ['aShape', 'radius'],
+			details: {
+				aShape: { required: true },
+				radius: { default: '1' },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tCode': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'string',
+				facets: {
+					pattern: [['[a-z]{3}']],
+				},
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tDigits': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'decimal',
+				facets: { totalDigits: 5, fractionDigits: 2 },
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tEnum': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'string',
+				facets: { enumeration: ['x', 'y', 'z'] },
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tFixedLen': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'string',
+				facets: { length: 8 },
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tLocked': {
+		attributes: {
+			sequence: ['aLocked'],
+			details: {
+				aLocked: { required: true },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tLockedExt': {
+		attributes: {
+			sequence: ['aLocked', 'bLockedExt'],
+			details: {
+				aLocked: { required: true },
+				bLockedExt: {},
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tName': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'normalizedString',
+				facets: { minLength: 1, maxLength: 32 },
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tNonEmpty': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'string',
+				facets: {
+					pattern: [['[^\\t\\n\\r ]+']],
+					minLength: 1,
+				},
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tPattern': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'string',
+				facets: {
+					pattern: [['[A-Z]+']],
+				},
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tPercent': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'integer',
+				facets: { minInclusive: '0', maxInclusive: '100' },
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tPlain': {
+		attributes: {
+			sequence: ['aPlain'],
+			details: {
+				aPlain: { required: true },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tPlainExt': {
+		attributes: {
+			sequence: ['aPlain', 'bPlainExt'],
+			details: {
+				aPlain: { required: true },
+				bPlainExt: {},
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tSquare': {
+		attributes: {
+			sequence: ['aShape', 'side'],
+			details: {
+				aShape: { required: true },
+				side: { required: true },
+			},
+		},
+		children: {
+			sequence: ['Corner'],
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [{ kind: 'element', name: 'Corner', maxOccurs: 4 }],
+		},
+	},
+	'{http://dialecte.dev/XML/DEV-EXT}tSquare': {
+		attributes: {
+			sequence: ['aShape', 'ext:edge'],
+			details: {
+				aShape: { required: true },
+				'ext:edge': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEV-EXT}tTriangle': {
+		attributes: {
+			sequence: ['aShape'],
+			details: {
+				aShape: { required: true },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+} as const

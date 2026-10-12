@@ -9,6 +9,8 @@ whiteSpace)
     Branch B → identity constraints (unique, key, keyref, deep, multi-step, multi-field, union
 selector)
     Branch C → children config (choice, xs:any, fixed attr, simpleContent textContent, documentation)
+    Branch D → xsi:type variants (abstract type, concrete type, blocked derivation, anyType, a variant
+in the ext namespace sharing a local name)
 
   Convention:
     _1 = required (minOccurs=1)
@@ -100,6 +102,7 @@ selector)
 				<xs:element ref="A" minOccurs="0" />
 				<xs:element ref="B" minOccurs="0" />
 				<xs:element ref="C" minOccurs="0" />
+				<xs:element ref="D" minOccurs="0" />
 			</xs:sequence>
 			<xs:attribute name="root" type="xs:string" default="1" />
 			<xs:attribute ref="ext:root" default="2" />
@@ -432,5 +435,90 @@ selector)
 			<xs:attribute ref="ext:cCCCC_2" />
 		</xs:complexType>
 	</xs:element>
+
+	<!-- ================================================================== -->
+	<!-- Branch D — xsi:type variants                                       -->
+	<!-- ================================================================== -->
+
+	<!-- tShape: abstract - a Shape must name a variant (tSquare, tCircle, ext:tSquare, ext:tTriangle) -->
+	<xs:complexType name="tShape" abstract="true">
+		<xs:attribute name="aShape" type="xs:string" use="required" />
+	</xs:complexType>
+
+	<!-- tSquare: a required attribute and a child only this variant holds -->
+	<xs:complexType name="tSquare">
+		<xs:complexContent>
+			<xs:extension base="tShape">
+				<xs:sequence>
+					<xs:element ref="Corner" minOccurs="0" maxOccurs="4" />
+				</xs:sequence>
+				<xs:attribute name="side" type="xs:string" use="required" />
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
+	<!-- tCircle: an optional attribute with a default -->
+	<xs:complexType name="tCircle">
+		<xs:complexContent>
+			<xs:extension base="tShape">
+				<xs:attribute name="radius" type="xs:string" default="1" />
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
+	<!-- tPlain: concrete - a Plain names nothing, tPlain itself, or tPlainExt -->
+	<xs:complexType name="tPlain">
+		<xs:attribute name="aPlain" type="xs:string" use="required" />
+	</xs:complexType>
+
+	<xs:complexType name="tPlainExt">
+		<xs:complexContent>
+			<xs:extension base="tPlain">
+				<xs:attribute name="bPlainExt" type="xs:string" />
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
+	<!-- tLocked: blocks extension - a Locked admits no variant -->
+	<xs:complexType name="tLocked" block="extension">
+		<xs:attribute name="aLocked" type="xs:string" use="required" />
+	</xs:complexType>
+
+	<xs:complexType name="tLockedExt">
+		<xs:complexContent>
+			<xs:extension base="tLocked">
+				<xs:attribute name="bLockedExt" type="xs:string" />
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
+	<!-- D: one element of each kind -->
+	<xs:element name="D">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="Shape" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element ref="Plain" minOccurs="0" maxOccurs="unbounded" />
+				<xs:element ref="Locked" minOccurs="0" />
+				<xs:element ref="Anything" minOccurs="0" />
+			</xs:sequence>
+			<xs:attribute name="aD" type="xs:string" use="required" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="Shape" type="tShape" />
+
+	<!-- Corner: held only through the tSquare variant (leaf) -->
+	<xs:element name="Corner">
+		<xs:complexType>
+			<xs:attribute name="aCorner" type="xs:string" use="required" />
+		</xs:complexType>
+	</xs:element>
+
+	<xs:element name="Plain" type="tPlain" />
+
+	<xs:element name="Locked" type="tLocked" />
+
+	<!-- Anything: no type - anyType, any attribute, any child; every named type is a variant -->
+	<xs:element name="Anything" />
 
 </xs:schema>
