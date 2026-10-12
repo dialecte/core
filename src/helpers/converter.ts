@@ -166,13 +166,38 @@ export function toFullAttributeArray<
 		: Object.entries(attributes).map(([name, value]) => ({
 				name,
 				value,
-				namespace:
-					dialecteConfig.definition[tagName]?.attributes.details[name]?.namespace || undefined,
+				namespace: declaredAttributeNamespace({ dialecteConfig, tagName, name }),
 			}))
 
 	return rawArray.map((attribute) =>
 		canonicalizeAttributeName({ attribute, dialecteConfig, tagName }),
 	) as FullAttributeObjectOf<GenericConfig, GenericElement>[]
+}
+
+/**
+ * The namespace the definition declares an attribute of the tag in: on the tag, on one of its declarations, or on a
+ * type it may name with xsi:type. A name is declared in one namespace wherever it appears, so no record is needed.
+ */
+function declaredAttributeNamespace(params: {
+	dialecteConfig: AnyDialecteConfig
+	tagName: string
+	name: string
+}): Namespace | undefined {
+	const { dialecteConfig, tagName, name } = params
+	const tagLevel = dialecteConfig.definition[tagName]
+	if (tagLevel === undefined) return undefined
+	const declarations = Object.values(tagLevel.declarations ?? {})
+	const typeNames = [tagLevel, ...declarations].flatMap((declaration) => declaration.variants ?? [])
+	const contents = [
+		tagLevel,
+		...declarations,
+		...typeNames.flatMap((typeName) => dialecteConfig.types[typeName] ?? []),
+	]
+	for (const content of contents) {
+		const namespace = content.attributes.details[name]?.namespace
+		if (namespace) return namespace
+	}
+	return undefined
 }
 
 /**
