@@ -4,111 +4,6 @@ import type { ELEMENT_NAMES, REQUIRED_ATTRIBUTES } from './constants.generated'
 
 export type AvailableElement = (typeof ELEMENT_NAMES)[number]
 
-/**
- * A union on xsi:type whose every member lists every key of the union - one it does not have as `?: undefined` - so
- * `keyof` reaches each member's attributes and naming a type rules out the other types'.
- */
-type Exclusive<Members, Keys extends PropertyKey = AllKeys<Members>> = Members extends unknown
-	? Flat<Members & { [K in Exclude<Keys, keyof Members>]?: undefined }>
-	: never
-type AllKeys<Members> = Members extends unknown ? keyof Members : never
-/** One object type per member, not an intersection: what TypeScript picks a member of a large union by. */
-type Flat<Intersection> = { [K in keyof Intersection]: Intersection[K] }
-
-export type AttributesType_ExtTDD_1A = {
-	'xsi:type': 'ext:tDD_1A'
-	aDD_1: string
-	bDD_1?: string
-	'ext:cDD_1'?: string
-	'ext:dDD_1'?: string
-}
-
-export type AttributesType_ExtTDD_1C = {
-	'xsi:type': 'ext:tDD_1C'
-	aDD_1: string
-	bDD_1?: string
-	'ext:cDD_1'?: string
-}
-
-export type AttributesType_ExtTDD_3 = {
-	'xsi:type': 'ext:tDD_3'
-	'ext:aDD_3': string
-	'ext:bDD_3'?: string
-	'ext:cDD_3'?: string
-}
-
-export type AttributesType_ExtTDD_3A = {
-	'xsi:type': 'ext:tDD_3A'
-	'ext:aDD_3': string
-	'ext:bDD_3'?: string
-	'ext:cDD_3'?: string
-	'ext:dDD_3'?: string
-}
-
-export type AttributesType_tCode = {
-	'xsi:type': 'tCode'
-}
-
-export type AttributesType_tDD_1A = {
-	'xsi:type': 'tDD_1A'
-	aDD_1: string
-	bDD_1?: string
-	dDD_1: string
-	'ext:cDD_1'?: string
-}
-
-export type AttributesType_tDD_1B = {
-	'xsi:type': 'tDD_1B'
-	aDD_1: string
-	bDD_1?: string
-	eDD_1?: string
-	'ext:cDD_1'?: string
-	fDD_1?: 'mm'
-}
-
-export type AttributesType_tDD_2 = {
-	'xsi:type': 'tDD_2'
-	aDD_2: string
-	bDD_2?: string
-	'ext:cDD_2'?: string
-}
-
-export type AttributesType_tDD_2A = {
-	'xsi:type': 'tDD_2A'
-	aDD_2: string
-	bDD_2?: string
-	dDD_2?: string
-	'ext:cDD_2'?: string
-}
-
-export type AttributesType_tDigits = {
-	'xsi:type': 'tDigits'
-}
-
-export type AttributesType_tEnum = {
-	'xsi:type': 'tEnum'
-}
-
-export type AttributesType_tFixedLen = {
-	'xsi:type': 'tFixedLen'
-}
-
-export type AttributesType_tName = {
-	'xsi:type': 'tName'
-}
-
-export type AttributesType_tNonEmpty = {
-	'xsi:type': 'tNonEmpty'
-}
-
-export type AttributesType_tPattern = {
-	'xsi:type': 'tPattern'
-}
-
-export type AttributesType_tPercent = {
-	'xsi:type': 'tPercent'
-}
-
 export type AttributesA = {
 	aA: string
 	bA?: 'x' | 'y' | 'z' | (string & {})
@@ -301,46 +196,417 @@ export type AttributesDDD_1 = {
 	'ext:cDDD_1'?: string
 }
 
-export type AttributesDDD_2 = Exclusive<
-	| {
-			'xsi:type'?: never
-	  }
-	| AttributesType_tCode
-	| AttributesType_tDD_1A
-	| AttributesType_tDD_1B
-	| AttributesType_tDD_2
-	| AttributesType_tDD_2A
-	| AttributesType_tDigits
-	| AttributesType_tEnum
-	| AttributesType_tFixedLen
-	| AttributesType_tName
-	| AttributesType_tNonEmpty
-	| AttributesType_tPattern
-	| AttributesType_tPercent
-	| AttributesType_ExtTDD_1A
-	| AttributesType_ExtTDD_1C
-	| AttributesType_ExtTDD_3
-	| AttributesType_ExtTDD_3A
->
+export type AttributesDDD_2 =
+	| AttributesDDD_2_Own
+	| AttributesDDD_2_tCode
+	| AttributesDDD_2_tDD_1A
+	| AttributesDDD_2_tDD_1B
+	| AttributesDDD_2_tDD_2
+	| AttributesDDD_2_tDD_2A
+	| AttributesDDD_2_tDigits
+	| AttributesDDD_2_tEnum
+	| AttributesDDD_2_tFixedLen
+	| AttributesDDD_2_tName
+	| AttributesDDD_2_tNonEmpty
+	| AttributesDDD_2_tPattern
+	| AttributesDDD_2_tPercent
+	| AttributesDDD_2_ExtTDD_1A
+	| AttributesDDD_2_ExtTDD_1C
+	| AttributesDDD_2_ExtTDD_3
+	| AttributesDDD_2_ExtTDD_3A
+
+export type AttributesDDD_2_Own = {
+	'xsi:type'?: never
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tCode = {
+	'xsi:type': 'tCode'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tDD_1A = {
+	'xsi:type': 'tDD_1A'
+	aDD_1: string
+	bDD_1?: string
+	dDD_1: string
+	'ext:cDD_1'?: string
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tDD_1B = {
+	'xsi:type': 'tDD_1B'
+	aDD_1: string
+	bDD_1?: string
+	eDD_1?: string
+	'ext:cDD_1'?: string
+	fDD_1?: 'mm'
+	dDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tDD_2 = {
+	'xsi:type': 'tDD_2'
+	aDD_2: string
+	bDD_2?: string
+	'ext:cDD_2'?: string
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tDD_2A = {
+	'xsi:type': 'tDD_2A'
+	aDD_2: string
+	bDD_2?: string
+	dDD_2?: string
+	'ext:cDD_2'?: string
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tDigits = {
+	'xsi:type': 'tDigits'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tEnum = {
+	'xsi:type': 'tEnum'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tFixedLen = {
+	'xsi:type': 'tFixedLen'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tName = {
+	'xsi:type': 'tName'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tNonEmpty = {
+	'xsi:type': 'tNonEmpty'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tPattern = {
+	'xsi:type': 'tPattern'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tPercent = {
+	'xsi:type': 'tPercent'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_ExtTDD_1A = {
+	'xsi:type': 'ext:tDD_1A'
+	aDD_1: string
+	bDD_1?: string
+	'ext:cDD_1'?: string
+	'ext:dDD_1'?: string
+	dDD_1?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_ExtTDD_1C = {
+	'xsi:type': 'ext:tDD_1C'
+	aDD_1: string
+	bDD_1?: string
+	'ext:cDD_1'?: string
+	dDD_1?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_ExtTDD_3 = {
+	'xsi:type': 'ext:tDD_3'
+	'ext:aDD_3': string
+	'ext:bDD_3'?: string
+	'ext:cDD_3'?: string
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_ExtTDD_3A = {
+	'xsi:type': 'ext:tDD_3A'
+	'ext:aDD_3': string
+	'ext:bDD_3'?: string
+	'ext:cDD_3'?: string
+	'ext:dDD_3'?: string
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+}
 
 export type AttributesDDD_3 = {}
 
-export type AttributesDD_1 = Exclusive<
-	| AttributesType_tDD_1A
-	| AttributesType_tDD_1B
-	| AttributesType_ExtTDD_1A
-	| AttributesType_ExtTDD_1C
->
+export type AttributesDD_1 =
+	| AttributesDD_1_tDD_1A
+	| AttributesDD_1_tDD_1B
+	| AttributesDD_1_ExtTDD_1A
+	| AttributesDD_1_ExtTDD_1C
 
-export type AttributesDD_2 = Exclusive<
-	| {
-			aDD_2: string
-			bDD_2?: string
-			'ext:cDD_2'?: string
-			'xsi:type'?: 'tDD_2'
-	  }
-	| AttributesType_tDD_2A
->
+export type AttributesDD_1_tDD_1A = {
+	'xsi:type': 'tDD_1A'
+	aDD_1: string
+	bDD_1?: string
+	dDD_1: string
+	'ext:cDD_1'?: string
+	eDD_1?: undefined
+	fDD_1?: undefined
+	'ext:dDD_1'?: undefined
+}
+
+export type AttributesDD_1_tDD_1B = {
+	'xsi:type': 'tDD_1B'
+	aDD_1: string
+	bDD_1?: string
+	eDD_1?: string
+	'ext:cDD_1'?: string
+	fDD_1?: 'mm'
+	dDD_1?: undefined
+	'ext:dDD_1'?: undefined
+}
+
+export type AttributesDD_1_ExtTDD_1A = {
+	'xsi:type': 'ext:tDD_1A'
+	aDD_1: string
+	bDD_1?: string
+	'ext:cDD_1'?: string
+	'ext:dDD_1'?: string
+	dDD_1?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+}
+
+export type AttributesDD_1_ExtTDD_1C = {
+	'xsi:type': 'ext:tDD_1C'
+	aDD_1: string
+	bDD_1?: string
+	'ext:cDD_1'?: string
+	dDD_1?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	'ext:dDD_1'?: undefined
+}
+
+export type AttributesDD_2 = AttributesDD_2_Own | AttributesDD_2_tDD_2A
+
+export type AttributesDD_2_Own = {
+	'xsi:type'?: 'tDD_2'
+	aDD_2: string
+	bDD_2?: string
+	'ext:cDD_2'?: string
+	dDD_2?: undefined
+}
+
+export type AttributesDD_2_tDD_2A = {
+	'xsi:type': 'tDD_2A'
+	aDD_2: string
+	bDD_2?: string
+	dDD_2?: string
+	'ext:cDD_2'?: string
+}
 
 export type AttributesDD_3 = {
 	'ext:aDD_3': string
