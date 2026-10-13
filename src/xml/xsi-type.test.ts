@@ -20,12 +20,26 @@ import type {
 	TestCases,
 	TestDialecteConfig,
 } from '@/test'
-import type { ElementsOf, Namespace, RawRecord, TrackedRecord } from '@/types'
+import type {
+	AttributesValueObjectOf,
+	ElementsOf,
+	Namespace,
+	RawRecord,
+	TrackedRecord,
+} from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${XMLNS_XSI_NAMESPACE}`
 const DEFAULT_URI = DIALECTE_TEST_NAMESPACES.default.uri
 const EXT_URI = DIALECTE_TEST_NAMESPACES.ext.uri
 const EXT = DIALECTE_TEST_NAMESPACES.ext
+
+/**
+ * The xsi:type values the types offer for DD_1: the stored literals. Some cases below hand the runtime another form of
+ * the same type - a Clark name, a prefix the document binds - to prove it resolves them: typed as what they stand for.
+ */
+type StoredXsiTypeOfDD_1 = NonNullable<
+	AttributesValueObjectOf<TestDialecteConfig, 'DD_1'>['xsi:type']
+>
 
 describe('xsi:type - one stored form', () => {
 	describe('import', () => {
@@ -203,7 +217,7 @@ describe('xsi:type - one stored form', () => {
 			await source.transaction(async (tx) => {
 				await tx.update(
 					{ tagName: 'DD_1', id: 's' },
-					{ attributes: { 'xsi:type': testCase.xsiType } },
+					{ attributes: { 'xsi:type': testCase.xsiType as StoredXsiTypeOfDD_1 } },
 				)
 			})
 			return {}
@@ -289,7 +303,9 @@ describe('xsi:type - one stored form', () => {
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
 			const shapes = await source.query.findByAttributes({
 				tagName: 'DD_1',
-				attributes: { 'xsi:type': testCase.xsiType },
+				attributes: {
+					'xsi:type': testCase.xsiType as StoredXsiTypeOfDD_1 | StoredXsiTypeOfDD_1[],
+				},
 			})
 			const names = shapes.map(
 				(shape) => shape.attributes.find((attribute) => attribute.name === 'aDD_1')?.value,
@@ -345,7 +361,7 @@ describe('xsi:type - one stored form', () => {
 				const matches = matchesAttributeFilter({
 					dialecteConfig: TEST_DIALECTE_CONFIG,
 					record: testCase.record,
-					attributeFilter: { 'xsi:type': testCase.xsiType },
+					attributeFilter: { 'xsi:type': testCase.xsiType as StoredXsiTypeOfDD_1 },
 				})
 				expect(matches).toBe(testCase.expected)
 			},

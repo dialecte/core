@@ -320,16 +320,18 @@ export type DefaultAttributesValueObjectOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 	GenericParent extends ElementsOf<GenericConfig> = never,
-> = {
-	[K in keyof AttributesValueObjectOf<
-		GenericConfig,
-		GenericElement,
-		GenericParent
-	> as K extends 'xsi:type'
+> = DefaultMembersOf<AttributesValueObjectOf<GenericConfig, GenericElement, GenericParent>>
+
+/**
+ * Each member of an attribute type with its default-namespace keys and `xsi:type`: a write names one member. A mapped
+ * type over a type parameter is one per member of a union - no conditional type to evaluate at each call.
+ */
+type DefaultMembersOf<GenericAttributes> = {
+	[K in keyof GenericAttributes as K extends 'xsi:type'
 		? K
 		: K extends `${string}:${string}`
 			? never
-			: K]: AttributesValueObjectOf<GenericConfig, GenericElement, GenericParent>[K]
+			: K]: GenericAttributes[K]
 }
 
 /**
