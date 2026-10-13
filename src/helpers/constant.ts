@@ -12,6 +12,9 @@ export const XSI_NAMESPACE = {
 	prefix: 'xsi',
 }
 
+/** The namespace of XML Schema itself: its built-in types (`xs:string`, `xs:anyType`, ...). */
+export const XSD_NAMESPACE_URI = 'http://www.w3.org/2001/XMLSchema'
+
 /** The namespace of the `xmlns` / `xmlns:p` declarations themselves. */
 export const XMLNS_NAMESPACE_URI = 'http://www.w3.org/2000/xmlns/'
 

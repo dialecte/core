@@ -423,48 +423,6 @@ export const DEFINITION = {
 			],
 		},
 	},
-	Anything: {
-		tag: 'Anything',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		global: true,
-		parents: ['D'],
-		attributes: {
-			sequence: [],
-			any: { notNamespace: [], processContents: 'lax' },
-			details: {},
-		},
-		children: {
-			sequence: [],
-			any: true,
-			details: {},
-		},
-		contentModel: {
-			kind: 'sequence',
-			minOccurs: 1,
-			maxOccurs: 1,
-			particles: [{ kind: 'any', notNamespace: [], processContents: 'lax' }],
-		},
-		textContent: {},
-		type: '{http://www.w3.org/2001/XMLSchema}anyType',
-		variants: [
-			'{http://dialecte.dev/XML/DEFAULT}tCircle',
-			'{http://dialecte.dev/XML/DEFAULT}tCode',
-			'{http://dialecte.dev/XML/DEFAULT}tDigits',
-			'{http://dialecte.dev/XML/DEFAULT}tEnum',
-			'{http://dialecte.dev/XML/DEFAULT}tFixedLen',
-			'{http://dialecte.dev/XML/DEFAULT}tLocked',
-			'{http://dialecte.dev/XML/DEFAULT}tLockedExt',
-			'{http://dialecte.dev/XML/DEFAULT}tName',
-			'{http://dialecte.dev/XML/DEFAULT}tNonEmpty',
-			'{http://dialecte.dev/XML/DEFAULT}tPattern',
-			'{http://dialecte.dev/XML/DEFAULT}tPercent',
-			'{http://dialecte.dev/XML/DEFAULT}tPlain',
-			'{http://dialecte.dev/XML/DEFAULT}tPlainExt',
-			'{http://dialecte.dev/XML/DEFAULT}tSquare',
-			'{http://dialecte.dev/XML/DEV-EXT}tSquare',
-			'{http://dialecte.dev/XML/DEV-EXT}tTriangle',
-		],
-	},
 	B: {
 		tag: 'B',
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
@@ -1317,35 +1275,23 @@ export const DEFINITION = {
 			},
 		],
 	},
-	Corner: {
-		tag: 'Corner',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		global: true,
-		parents: ['Shape'],
-		attributes: {
-			sequence: ['aCorner'],
-			details: {
-				aCorner: { required: true },
-			},
-		},
-		children: {
-			sequence: [],
-			details: {},
-		},
-	},
 	D: {
 		tag: 'D',
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
 		global: true,
 		parents: ['Root'],
 		attributes: {
-			sequence: ['aD'],
+			sequence: ['aD', 'bD', 'ext:cD'],
 			details: {
 				aD: { required: true },
+				bD: {},
+				'ext:cD': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
 			},
 		},
 		children: {
-			sequence: ['Shape', 'Plain', 'Locked', 'Anything'],
+			sequence: ['DD_1', 'DD_2', 'DD_3'],
 			details: {},
 		},
 		contentModel: {
@@ -1353,47 +1299,182 @@ export const DEFINITION = {
 			minOccurs: 1,
 			maxOccurs: 1,
 			particles: [
-				{ kind: 'element', name: 'Shape' },
-				{ kind: 'element', name: 'Plain' },
-				{ kind: 'element', name: 'Locked', maxOccurs: 1 },
-				{ kind: 'element', name: 'Anything', maxOccurs: 1 },
+				{ kind: 'element', name: 'DD_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'DD_2', maxOccurs: 2 },
+				{
+					kind: 'element',
+					name: 'DD_3',
+					namespace: 'http://dialecte.dev/XML/DEV-EXT',
+					maxOccurs: 3,
+				},
 			],
 		},
 	},
-	Locked: {
-		tag: 'Locked',
+	DDD_1: {
+		tag: 'DDD_1',
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
 		global: true,
-		parents: ['D'],
+		parents: ['DD_1'],
 		attributes: {
-			sequence: ['aLocked'],
+			sequence: ['aDDD_1', 'bDDD_1', 'ext:cDDD_1'],
 			details: {
-				aLocked: { required: true },
+				aDDD_1: { required: true },
+				bDDD_1: {},
+				'ext:cDDD_1': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
 			},
 		},
 		children: {
 			sequence: [],
 			details: {},
 		},
-		type: '{http://dialecte.dev/XML/DEFAULT}tLocked',
 	},
-	Plain: {
-		tag: 'Plain',
+	DDD_2: {
+		tag: 'DDD_2',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['DD_2'],
+		attributes: {
+			sequence: [],
+			any: { notNamespace: [], processContents: 'lax' },
+			details: {},
+		},
+		children: {
+			sequence: [],
+			any: true,
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [{ kind: 'any', notNamespace: [], processContents: 'lax' }],
+		},
+		textContent: {},
+		type: '{http://www.w3.org/2001/XMLSchema}anyType',
+		variants: [
+			'{http://dialecte.dev/XML/DEFAULT}tCode',
+			'{http://dialecte.dev/XML/DEFAULT}tDD_1A',
+			'{http://dialecte.dev/XML/DEFAULT}tDD_1B',
+			'{http://dialecte.dev/XML/DEFAULT}tDD_2',
+			'{http://dialecte.dev/XML/DEFAULT}tDD_2A',
+			'{http://dialecte.dev/XML/DEFAULT}tDigits',
+			'{http://dialecte.dev/XML/DEFAULT}tEnum',
+			'{http://dialecte.dev/XML/DEFAULT}tFixedLen',
+			'{http://dialecte.dev/XML/DEFAULT}tName',
+			'{http://dialecte.dev/XML/DEFAULT}tNonEmpty',
+			'{http://dialecte.dev/XML/DEFAULT}tPattern',
+			'{http://dialecte.dev/XML/DEFAULT}tPercent',
+			'{http://dialecte.dev/XML/DEV-EXT}tDD_1A',
+			'{http://dialecte.dev/XML/DEV-EXT}tDD_1C',
+			'{http://dialecte.dev/XML/DEV-EXT}tDD_3',
+			'{http://dialecte.dev/XML/DEV-EXT}tDD_3A',
+		],
+	},
+	DDD_3: {
+		tag: 'DDD_3',
+		namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+		global: true,
+		parents: ['DD_2'],
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	DD_1: {
+		tag: 'DD_1',
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
 		global: true,
 		parents: ['D'],
 		attributes: {
-			sequence: ['aPlain'],
+			sequence: ['aDD_1', 'bDD_1', 'ext:cDD_1'],
 			details: {
-				aPlain: { required: true },
+				aDD_1: { required: true },
+				bDD_1: {},
+				'ext:cDD_1': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: ['DDD_1'],
+			details: {},
+		},
+		type: '{http://dialecte.dev/XML/DEFAULT}tDD_1',
+		variants: [
+			'{http://dialecte.dev/XML/DEFAULT}tDD_1A',
+			'{http://dialecte.dev/XML/DEFAULT}tDD_1B',
+			'{http://dialecte.dev/XML/DEV-EXT}tDD_1A',
+			'{http://dialecte.dev/XML/DEV-EXT}tDD_1C',
+		],
+		abstractType: true,
+	},
+	DD_2: {
+		tag: 'DD_2',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['D'],
+		attributes: {
+			sequence: ['aDD_2', 'bDD_2', 'ext:cDD_2'],
+			details: {
+				aDD_2: { required: true },
+				bDD_2: {},
+				'ext:cDD_2': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: ['DDD_2', 'DDD_3'],
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'DDD_2', maxOccurs: 2 },
+				{
+					kind: 'element',
+					name: 'DDD_3',
+					namespace: 'http://dialecte.dev/XML/DEV-EXT',
+					maxOccurs: 3,
+				},
+			],
+		},
+		type: '{http://dialecte.dev/XML/DEFAULT}tDD_2',
+		variants: ['{http://dialecte.dev/XML/DEFAULT}tDD_2A'],
+	},
+	DD_3: {
+		tag: 'DD_3',
+		namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+		global: true,
+		parents: ['D'],
+		attributes: {
+			sequence: ['ext:aDD_3', 'ext:bDD_3', 'ext:cDD_3'],
+			details: {
+				'ext:aDD_3': {
+					required: true,
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:bDD_3': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:cDD_3': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
 			},
 		},
 		children: {
 			sequence: [],
 			details: {},
 		},
-		type: '{http://dialecte.dev/XML/DEFAULT}tPlain',
-		variants: ['{http://dialecte.dev/XML/DEFAULT}tPlainExt'],
+		type: '{http://dialecte.dev/XML/DEV-EXT}tDD_3',
 	},
 	Root: {
 		tag: 'Root',
@@ -1448,46 +1529,9 @@ export const DEFINITION = {
 			},
 		],
 	},
-	Shape: {
-		tag: 'Shape',
-		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
-		global: true,
-		parents: ['D'],
-		attributes: {
-			sequence: ['aShape'],
-			details: {
-				aShape: { required: true },
-			},
-		},
-		children: {
-			sequence: ['Corner'],
-			details: {},
-		},
-		type: '{http://dialecte.dev/XML/DEFAULT}tShape',
-		variants: [
-			'{http://dialecte.dev/XML/DEFAULT}tCircle',
-			'{http://dialecte.dev/XML/DEFAULT}tSquare',
-			'{http://dialecte.dev/XML/DEV-EXT}tSquare',
-			'{http://dialecte.dev/XML/DEV-EXT}tTriangle',
-		],
-		abstractType: true,
-	},
 } as const
 
 export const TYPES = {
-	'{http://dialecte.dev/XML/DEFAULT}tCircle': {
-		attributes: {
-			sequence: ['aShape', 'radius'],
-			details: {
-				aShape: { required: true },
-				radius: { default: '1' },
-			},
-		},
-		children: {
-			sequence: [],
-			details: {},
-		},
-	},
 	'{http://dialecte.dev/XML/DEFAULT}tCode': {
 		attributes: {
 			sequence: [],
@@ -1504,6 +1548,115 @@ export const TYPES = {
 					pattern: [['[a-z]{3}']],
 				},
 			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tDD_1A': {
+		attributes: {
+			sequence: ['aDD_1', 'bDD_1', 'dDD_1', 'ext:cDD_1'],
+			details: {
+				aDD_1: { required: true },
+				bDD_1: {},
+				dDD_1: { required: true },
+				'ext:cDD_1': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: ['DDD_1'],
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [{ kind: 'element', name: 'DDD_1', minOccurs: 1, maxOccurs: 1 }],
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tDD_1B': {
+		attributes: {
+			sequence: ['aDD_1', 'bDD_1', 'eDD_1', 'ext:cDD_1', 'fDD_1'],
+			details: {
+				aDD_1: { required: true },
+				bDD_1: {},
+				eDD_1: { default: '1' },
+				'ext:cDD_1': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				fDD_1: { fixed: 'mm' },
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tDD_2': {
+		attributes: {
+			sequence: ['aDD_2', 'bDD_2', 'ext:cDD_2'],
+			details: {
+				aDD_2: { required: true },
+				bDD_2: {},
+				'ext:cDD_2': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: ['DDD_2', 'DDD_3'],
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'DDD_2', maxOccurs: 2 },
+				{
+					kind: 'element',
+					name: 'DDD_3',
+					namespace: 'http://dialecte.dev/XML/DEV-EXT',
+					maxOccurs: 3,
+				},
+			],
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tDD_2A': {
+		attributes: {
+			sequence: ['aDD_2', 'bDD_2', 'dDD_2', 'ext:cDD_2'],
+			details: {
+				aDD_2: { required: true },
+				bDD_2: {},
+				dDD_2: {},
+				'ext:cDD_2': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: ['DDD_2', 'DDD_3'],
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{
+					kind: 'sequence',
+					minOccurs: 1,
+					maxOccurs: 1,
+					particles: [
+						{ kind: 'element', name: 'DDD_2', maxOccurs: 2 },
+						{
+							kind: 'element',
+							name: 'DDD_3',
+							namespace: 'http://dialecte.dev/XML/DEV-EXT',
+							maxOccurs: 3,
+						},
+					],
+				},
+			],
 		},
 	},
 	'{http://dialecte.dev/XML/DEFAULT}tDigits': {
@@ -1552,31 +1705,6 @@ export const TYPES = {
 				builtin: 'string',
 				facets: { length: 8 },
 			},
-		},
-	},
-	'{http://dialecte.dev/XML/DEFAULT}tLocked': {
-		attributes: {
-			sequence: ['aLocked'],
-			details: {
-				aLocked: { required: true },
-			},
-		},
-		children: {
-			sequence: [],
-			details: {},
-		},
-	},
-	'{http://dialecte.dev/XML/DEFAULT}tLockedExt': {
-		attributes: {
-			sequence: ['aLocked', 'bLockedExt'],
-			details: {
-				aLocked: { required: true },
-				bLockedExt: {},
-			},
-		},
-		children: {
-			sequence: [],
-			details: {},
 		},
 	},
 	'{http://dialecte.dev/XML/DEFAULT}tName': {
@@ -1648,56 +1776,16 @@ export const TYPES = {
 			},
 		},
 	},
-	'{http://dialecte.dev/XML/DEFAULT}tPlain': {
+	'{http://dialecte.dev/XML/DEV-EXT}tDD_1A': {
 		attributes: {
-			sequence: ['aPlain'],
+			sequence: ['aDD_1', 'bDD_1', 'ext:cDD_1', 'ext:dDD_1'],
 			details: {
-				aPlain: { required: true },
-			},
-		},
-		children: {
-			sequence: [],
-			details: {},
-		},
-	},
-	'{http://dialecte.dev/XML/DEFAULT}tPlainExt': {
-		attributes: {
-			sequence: ['aPlain', 'bPlainExt'],
-			details: {
-				aPlain: { required: true },
-				bPlainExt: {},
-			},
-		},
-		children: {
-			sequence: [],
-			details: {},
-		},
-	},
-	'{http://dialecte.dev/XML/DEFAULT}tSquare': {
-		attributes: {
-			sequence: ['aShape', 'side'],
-			details: {
-				aShape: { required: true },
-				side: { required: true },
-			},
-		},
-		children: {
-			sequence: ['Corner'],
-			details: {},
-		},
-		contentModel: {
-			kind: 'sequence',
-			minOccurs: 1,
-			maxOccurs: 1,
-			particles: [{ kind: 'element', name: 'Corner', maxOccurs: 4 }],
-		},
-	},
-	'{http://dialecte.dev/XML/DEV-EXT}tSquare': {
-		attributes: {
-			sequence: ['aShape', 'ext:edge'],
-			details: {
-				aShape: { required: true },
-				'ext:edge': {
+				aDD_1: { required: true },
+				bDD_1: {},
+				'ext:cDD_1': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:dDD_1': {
 					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
 				},
 			},
@@ -1707,11 +1795,60 @@ export const TYPES = {
 			details: {},
 		},
 	},
-	'{http://dialecte.dev/XML/DEV-EXT}tTriangle': {
+	'{http://dialecte.dev/XML/DEV-EXT}tDD_1C': {
 		attributes: {
-			sequence: ['aShape'],
+			sequence: ['aDD_1', 'bDD_1', 'ext:cDD_1'],
 			details: {
-				aShape: { required: true },
+				aDD_1: { required: true },
+				bDD_1: {},
+				'ext:cDD_1': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEV-EXT}tDD_3': {
+		attributes: {
+			sequence: ['ext:aDD_3', 'ext:bDD_3', 'ext:cDD_3'],
+			details: {
+				'ext:aDD_3': {
+					required: true,
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:bDD_3': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:cDD_3': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	'{http://dialecte.dev/XML/DEV-EXT}tDD_3A': {
+		attributes: {
+			sequence: ['ext:aDD_3', 'ext:bDD_3', 'ext:cDD_3', 'ext:dDD_3'],
+			details: {
+				'ext:aDD_3': {
+					required: true,
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:bDD_3': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:cDD_3': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+				'ext:dDD_3': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
 			},
 		},
 		children: {

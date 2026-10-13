@@ -96,6 +96,18 @@ export const ERROR_CATALOG = {
 		code: 'D3008',
 		message: 'Attribute value differs from the schema-fixed value',
 	},
+	XSI_TYPE_REQUIRED: {
+		code: 'D3009',
+		message: 'The element is declared with an abstract type: name a type with xsi:type',
+	},
+	XSI_TYPE_NOT_ADMITTED: {
+		code: 'D3010',
+		message: 'The element may not take the type named with xsi:type',
+	},
+	XSI_TYPE_CHANGE_LEAVES_CONTENT: {
+		code: 'D3011',
+		message: 'The new xsi:type does not admit content the element still holds',
+	},
 
 	// D4xxx — Transaction lifecycle
 	ALREADY_COMMITTED: {

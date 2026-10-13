@@ -1,8 +1,15 @@
 import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
-import { assertNoFixedViolation, standardizeRecord, toFullAttributeArray } from '@/helpers'
+import {
+	assertNoFixedViolation,
+	assertXsiTypeAdmitted,
+	assertXsiTypeChangeLeavesNothing,
+	standardizeRecord,
+	toFullAttributeArray,
+} from '@/helpers'
 import { invariant } from '@/utils'
+import { isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { UpdateParams } from './update.types'
 import type { Context, Query, Ref } from '@/document'
@@ -41,17 +48,11 @@ export async function stageUpdate<
 		ref,
 	})
 
+	const newAttributes = attributes
+		? toFullAttributeArray({ dialecteConfig, tagName: record.tagName, attributes })
+		: []
 	let updatedAttributes = record.attributes
 	if (attributes) {
-		const newAttributes = toFullAttributeArray({
-			dialecteConfig,
-			tagName: record.tagName,
-			attributes,
-		})
-
-		// Write-path guard: reject an authored value that violates a schema `fixed`.
-		assertNoFixedViolation({ dialecteConfig, record, attributes: newAttributes })
-
 		const unchangedAttributes = record.attributes.filter(
 			(old) => !newAttributes.some((next) => next.name === old.name),
 		)
@@ -59,7 +60,17 @@ export async function stageUpdate<
 		updatedAttributes = [...unchangedAttributes, ...newAttributes].filter(
 			(attr) => attr.value !== undefined && attr.value !== null,
 		)
+
+		// Write-path guard: reject an authored value that violates a schema `fixed` - of the type the record names
+		// once updated, a new xsi:type included.
+		assertNoFixedViolation({
+			dialecteConfig,
+			record: { ...record, attributes: updatedAttributes },
+			attributes: newAttributes,
+		})
 	}
+	// the update names another type, or none
+	const touchesXsiType = newAttributes.some(isXsiTypeAttribute)
 
 	// Re-standardize so the updated record keeps the same canonical form as
 	// create/clone/import (schema attribute order + defaults + deterministic
@@ -73,6 +84,17 @@ export async function stageUpdate<
 			value: value !== undefined ? value : record.value,
 		},
 	})
+
+	// Write-path guard, when the update names another type or none: one the element may take, and nothing left that
+	// the new type does not admit.
+	if (touchesXsiType) {
+		assertXsiTypeAdmitted({ dialecteConfig, record: updatedRecord })
+		assertXsiTypeChangeLeavesNothing({
+			dialecteConfig,
+			merged: updatedAttributes,
+			record: updatedRecord,
+		})
+	}
 
 	// Skip staging a no-op: if the canonical updated record is identical to the
 	// stored one, there is no real change — avoids false "updated" flags (e.g.

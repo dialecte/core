@@ -175,20 +175,52 @@
 		</xs:complexType>
 	</xs:element>
 
-	<!-- Branch D: a variant of dflt:tShape whose local name only this namespace has -->
-	<xs:complexType name="tTriangle">
-		<xs:complexContent>
-			<xs:extension base="dflt:tShape" />
-		</xs:complexContent>
-	</xs:complexType>
+	<!-- ================================================================== -->
+	<!-- Branch D — xsi:type variants                                       -->
+	<!-- ================================================================== -->
 
-	<!-- Branch D: a variant of dflt:tShape sharing tSquare's local name; its attribute is qualified -->
-	<xs:complexType name="tSquare">
+	<xs:attribute name="cD" type="xs:string" />
+	<xs:attribute name="cDD_1" type="xs:string" />
+	<xs:attribute name="cDD_2" type="xs:string" />
+	<xs:attribute name="cDD_3" type="xs:string" />
+	<xs:attribute name="cDDD_1" type="xs:string" />
+
+	<!-- tDD_1A: a variant of dflt:tDD_1 sharing dflt:tDD_1A's local name; its attribute is qualified -->
+	<xs:complexType name="tDD_1A">
 		<xs:complexContent>
-			<xs:extension base="dflt:tShape">
-				<xs:attribute name="edge" type="xs:string" />
+			<xs:extension base="dflt:tDD_1">
+				<xs:attribute name="dDD_1" type="xs:string" />
 			</xs:extension>
 		</xs:complexContent>
 	</xs:complexType>
+
+	<!-- tDD_1C: a variant of dflt:tDD_1 whose local name only this namespace has -->
+	<xs:complexType name="tDD_1C">
+		<xs:complexContent>
+			<xs:extension base="dflt:tDD_1" />
+		</xs:complexContent>
+	</xs:complexType>
+
+	<!-- tDD_3: blocks extension - a DD_3 admits no variant -->
+	<xs:complexType name="tDD_3" block="extension">
+		<xs:attribute name="aDD_3" type="xs:string" use="required" />
+		<xs:attribute name="bDD_3" type="xs:string" />
+		<xs:attribute ref="ext:cDD_3" />
+	</xs:complexType>
+
+	<xs:complexType name="tDD_3A">
+		<xs:complexContent>
+			<xs:extension base="ext:tDD_3">
+				<xs:attribute name="dDD_3" type="xs:string" />
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+
+	<xs:element name="DD_3" type="ext:tDD_3" />
+
+	<!-- DDD_3: no attribute, no child (leaf) -->
+	<xs:element name="DDD_3">
+		<xs:complexType />
+	</xs:element>
 
 </xs:schema>

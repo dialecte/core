@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Test XSD for Dialecte core test fixtures.
-  Follows A/B/C deterministic tree: Root → A,B,C → XX_1/2/3 → XXX_1/2/3 → XXXX_1/2/3
+  Follows A/B/C/D deterministic tree: Root → A,B,C,D → XX_1/2/3 → XXX_1/2/3 → XXXX_1/2/3
 
   Feature coverage:
     Branch A → attribute facets (pattern, enum, minLength, maxLength, range, digits, length,
@@ -10,13 +10,14 @@ whiteSpace)
 selector)
     Branch C → children config (choice, xs:any, fixed attr, simpleContent textContent, documentation)
     Branch D → xsi:type variants (abstract type, concrete type, blocked derivation, anyType, a variant
-in the ext namespace sharing a local name)
+in the ext namespace sharing a local name, one only the ext namespace has, an element without attributes)
 
   Convention:
     _1 = required (minOccurs=1)
     _2 = maxOccurs=2
     _3 = maxOccurs=3
-    Attributes: a{NAME} (required), b{NAME} (optional), c{NAME} (optional, ext namespace)
+    Attributes: a{NAME} (required), b{NAME} (optional), c{NAME} (optional, ext namespace);
+    d/e/f{NAME}: declared by an xsi:type variant only (branch D)
 
   Namespace rules:
     _3 suffix elements → ext namespace (http://dialecte.dev/XML/DEV-EXT)
@@ -439,86 +440,88 @@ in the ext namespace sharing a local name)
 	<!-- ================================================================== -->
 	<!-- Branch D — xsi:type variants                                       -->
 	<!-- ================================================================== -->
+	<!--
+	  Same naming and occurrence rules as A/B/C. d/e/f attributes are declared by an xsi:type variant only.
+	  Two leaves break the a/b/c rule on purpose: DDD_2 has no type (anyType: any attribute, any child) and
+	  ext:DDD_3 has no attribute at all.
+	-->
 
-	<!-- tShape: abstract - a Shape must name a variant (tSquare, tCircle, ext:tSquare, ext:tTriangle) -->
-	<xs:complexType name="tShape" abstract="true">
-		<xs:attribute name="aShape" type="xs:string" use="required" />
+	<!-- tDD_1: abstract - a DD_1 must name a variant (tDD_1A, tDD_1B, ext:tDD_1A, ext:tDD_1C) -->
+	<xs:complexType name="tDD_1" abstract="true">
+		<xs:attribute name="aDD_1" type="xs:string" use="required" />
+		<xs:attribute name="bDD_1" type="xs:string" />
+		<xs:attribute ref="ext:cDD_1" />
 	</xs:complexType>
 
-	<!-- tSquare: a required attribute and a child only this variant holds -->
-	<xs:complexType name="tSquare">
+	<!-- tDD_1A: a required attribute and a child only this variant holds -->
+	<xs:complexType name="tDD_1A">
 		<xs:complexContent>
-			<xs:extension base="tShape">
+			<xs:extension base="tDD_1">
 				<xs:sequence>
-					<xs:element ref="Corner" minOccurs="0" maxOccurs="4" />
+					<xs:element ref="DDD_1" />
 				</xs:sequence>
-				<xs:attribute name="side" type="xs:string" use="required" />
+				<xs:attribute name="dDD_1" type="xs:string" use="required" />
 			</xs:extension>
 		</xs:complexContent>
 	</xs:complexType>
 
-	<!-- tCircle: an optional attribute with a default -->
-	<xs:complexType name="tCircle">
+	<!-- tDD_1B: an optional attribute with a default, one with a fixed value -->
+	<xs:complexType name="tDD_1B">
 		<xs:complexContent>
-			<xs:extension base="tShape">
-				<xs:attribute name="radius" type="xs:string" default="1" />
+			<xs:extension base="tDD_1">
+				<xs:attribute name="eDD_1" type="xs:string" default="1" />
+				<xs:attribute name="fDD_1" type="xs:string" fixed="mm" />
 			</xs:extension>
 		</xs:complexContent>
 	</xs:complexType>
 
-	<!-- tPlain: concrete - a Plain names nothing, tPlain itself, or tPlainExt -->
-	<xs:complexType name="tPlain">
-		<xs:attribute name="aPlain" type="xs:string" use="required" />
+	<!-- tDD_2: concrete - a DD_2 names nothing, tDD_2 itself, or tDD_2A -->
+	<xs:complexType name="tDD_2">
+		<xs:sequence>
+			<xs:element ref="DDD_2" minOccurs="0" maxOccurs="2" />
+			<xs:element ref="ext:DDD_3" minOccurs="0" maxOccurs="3" />
+		</xs:sequence>
+		<xs:attribute name="aDD_2" type="xs:string" use="required" />
+		<xs:attribute name="bDD_2" type="xs:string" />
+		<xs:attribute ref="ext:cDD_2" />
 	</xs:complexType>
 
-	<xs:complexType name="tPlainExt">
+	<xs:complexType name="tDD_2A">
 		<xs:complexContent>
-			<xs:extension base="tPlain">
-				<xs:attribute name="bPlainExt" type="xs:string" />
+			<xs:extension base="tDD_2">
+				<xs:attribute name="dDD_2" type="xs:string" />
 			</xs:extension>
 		</xs:complexContent>
 	</xs:complexType>
 
-	<!-- tLocked: blocks extension - a Locked admits no variant -->
-	<xs:complexType name="tLocked" block="extension">
-		<xs:attribute name="aLocked" type="xs:string" use="required" />
-	</xs:complexType>
-
-	<xs:complexType name="tLockedExt">
-		<xs:complexContent>
-			<xs:extension base="tLocked">
-				<xs:attribute name="bLockedExt" type="xs:string" />
-			</xs:extension>
-		</xs:complexContent>
-	</xs:complexType>
-
-	<!-- D: one element of each kind -->
+	<!-- D: an abstract-typed, a concrete-typed and a blocking child -->
 	<xs:element name="D">
 		<xs:complexType>
 			<xs:sequence>
-				<xs:element ref="Shape" minOccurs="0" maxOccurs="unbounded" />
-				<xs:element ref="Plain" minOccurs="0" maxOccurs="unbounded" />
-				<xs:element ref="Locked" minOccurs="0" />
-				<xs:element ref="Anything" minOccurs="0" />
+				<xs:element ref="DD_1" />
+				<xs:element ref="DD_2" minOccurs="0" maxOccurs="2" />
+				<xs:element ref="ext:DD_3" minOccurs="0" maxOccurs="3" />
 			</xs:sequence>
 			<xs:attribute name="aD" type="xs:string" use="required" />
+			<xs:attribute name="bD" type="xs:string" />
+			<xs:attribute ref="ext:cD" />
 		</xs:complexType>
 	</xs:element>
 
-	<xs:element name="Shape" type="tShape" />
+	<xs:element name="DD_1" type="tDD_1" />
 
-	<!-- Corner: held only through the tSquare variant (leaf) -->
-	<xs:element name="Corner">
+	<xs:element name="DD_2" type="tDD_2" />
+
+	<!-- DDD_1: held only through the tDD_1A variant (leaf) -->
+	<xs:element name="DDD_1">
 		<xs:complexType>
-			<xs:attribute name="aCorner" type="xs:string" use="required" />
+			<xs:attribute name="aDDD_1" type="xs:string" use="required" />
+			<xs:attribute name="bDDD_1" type="xs:string" />
+			<xs:attribute ref="ext:cDDD_1" />
 		</xs:complexType>
 	</xs:element>
 
-	<xs:element name="Plain" type="tPlain" />
-
-	<xs:element name="Locked" type="tLocked" />
-
-	<!-- Anything: no type - anyType, any attribute, any child; every named type is a variant -->
-	<xs:element name="Anything" />
+	<!-- DDD_2: no type - anyType, any attribute, any child; every named type is a variant (leaf) -->
+	<xs:element name="DDD_2" />
 
 </xs:schema>

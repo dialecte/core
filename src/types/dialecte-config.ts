@@ -312,7 +312,10 @@ export type NamespaceKeysUsedByElement<
 		: never
 }[NamespaceKeysOf<GenericConfig>]
 
-/** Value object of an element's default-namespace (unprefixed) attributes only. */
+/**
+ * Value object of an element's default-namespace (unprefixed) attributes, and `xsi:type` where the element may name a
+ * type: the one prefixed key it takes - XSD gives it to every element, it is no attribute of a dialecte namespace.
+ */
 export type DefaultAttributesValueObjectOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
@@ -322,11 +325,11 @@ export type DefaultAttributesValueObjectOf<
 		GenericConfig,
 		GenericElement,
 		GenericParent
-	> as K extends `${string}:${string}` ? never : K]: AttributesValueObjectOf<
-		GenericConfig,
-		GenericElement,
-		GenericParent
-	>[K]
+	> as K extends 'xsi:type'
+		? K
+		: K extends `${string}:${string}`
+			? never
+			: K]: AttributesValueObjectOf<GenericConfig, GenericElement, GenericParent>[K]
 }
 
 /**
@@ -354,9 +357,13 @@ export type LocalAttributeNamesInNamespace<
 > = keyof NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey> &
 	string
 
-/** Default-namespace (unprefixed) attribute names for an element. */
+/** Default-namespace (unprefixed) attribute names for an element: `xsi:type` is no name of that namespace. */
 export type DefaultAttributeNamesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 	GenericParent extends ElementsOf<GenericConfig> = never,
-> = keyof DefaultAttributesValueObjectOf<GenericConfig, GenericElement, GenericParent> & string
+> = Exclude<
+	keyof DefaultAttributesValueObjectOf<GenericConfig, GenericElement, GenericParent>,
+	'xsi:type'
+> &
+	string

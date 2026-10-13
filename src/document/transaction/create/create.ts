@@ -2,7 +2,7 @@ import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
 import { throwDialecteError } from '@/errors'
-import { assertNoFixedViolation, standardizeRecord } from '@/helpers'
+import { assertNoFixedViolation, assertXsiTypeAdmitted, standardizeRecord } from '@/helpers'
 import { extractLocalName, invariant } from '@/utils'
 
 import type { AddChildParams, ChildAttributesOf } from './create.types'
@@ -71,6 +71,8 @@ export async function stageAddChild<
 		record: childRecord,
 		attributes: childRecord.attributes,
 	})
+	// Write-path guard: an abstract type is named, and only a type the element may take.
+	assertXsiTypeAdmitted({ dialecteConfig, record: childRecord })
 
 	stageOperation({
 		context,
