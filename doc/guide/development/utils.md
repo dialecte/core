@@ -108,6 +108,16 @@ resolveXsiType({ dialecteConfig, record }) // { clark: '{uri}tSquare', namespace
 admittedXsiTypes({ dialecteConfig, record }) // the Clark names it may name: its declared type (unless abstract), its variants
 ```
 
+Writes check the type an element names (`addChild`, `ensureChild`, a clone, an `update` that touches `xsi:type`); import never refuses, validation reports a document as it is:
+
+| Write                                                                                                                                                                                             | Refused with                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| an element whose declared type is abstract, without `xsi:type`                                                                                                                                    | `XSI_TYPE_REQUIRED` (`D3009`)              |
+| a type that is neither the declared one (when not abstract) nor one of its variants, or a prefix bound nowhere                                                                                    | `XSI_TYPE_NOT_ADMITTED` (`D3010`)          |
+| an update naming another type while attributes or children the new type does not admit remain - clear the attributes in the same update, delete the children first; the error's `meta` names them | `XSI_TYPE_CHANGE_LEAVES_CONTENT` (`D3011`) |
+
+A built-in XSD type (`xs:token`, ...) is not judged: the definition does not list the built-in hierarchy. An update that leaves `xsi:type` alone is never refused for it, so an imported record naming a type it may not take can still be edited. A fixed value is judged on the type the record names once updated.
+
 Filters (`findByAttributes`, `findDescendants`, `getTree` `where`, `omit`, `ensureChild`) compare `xsi:type` as the type it names: `{ 'xsi:type': 'tSquare' }`, `{ 'xsi:type': 'ext:tSquare' }` and the Clark name each find what they name, a record stored by an earlier core with the document's own prefix included.
 
 It takes a record because the record carries its parent. A ref does not, and passing one would silently read the union, so the compiler refuses it: `query.getDefinition(ref)` fetches the record first (staged → cache → store) and resolves from it.

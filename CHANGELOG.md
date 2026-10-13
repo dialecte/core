@@ -11,9 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A declaration's definition may say its declared type, `type` (its Clark name), when the type is named - as `@dialecte/create` writes it from its next release on.
 - `resolveXsiType` (the type a record names), `canonicalXsiType` (the form core stores a value in) and `admittedXsiTypes` (the types an element may name) in `@dialecte/core/utils`.
+- `addChild` takes `xsi:type` in its value-object form, beside the default-namespace attributes (`{ aShape: 's', 'xsi:type': 'tCircle' }`); the array form is no longer needed for it.
 
 ### Changed
 
+- **Breaking:** writes check the type an element names with `xsi:type`: `XSI_TYPE_REQUIRED` (`D3009`) where its declared type is abstract and none is named, `XSI_TYPE_NOT_ADMITTED` (`D3010`) for a type it may not take, `XSI_TYPE_CHANGE_LEAVES_CONTENT` (`D3011`) for an update naming another type while attributes or children that type does not admit remain - named in the error. Import never refuses.
 - **Breaking - one stored form of an `xsi:type` value.** Import and every write store the local name for a type in the dialecte's default namespace, the dialecte's prefix and the local name otherwise; export writes that form. A value core cannot read (a prefix bound nowhere, a namespace the dialecte does not declare) is kept as written.
 - **Breaking:** `matchesAttributeFilter` takes the `dialecteConfig`; `parseOmit` takes `{ omit, dialecteConfig }`; `applyOmit` takes a `dialecteConfig`.
 - Filters (`findByAttributes`, `findDescendants`, `getTree` `where`, `omit`, `ensureChild`) compare `xsi:type` as the type it names, written as a local name, with the dialecte's prefix or as a Clark name.
@@ -23,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An `xsi:type` whose prefix a document binds on an ancestor only is read: the attributes of the type it names were dropped on import.
 - Export declares the namespace an `xsi:type` value uses: a type outside the default namespace was written with an unbound prefix.
 - An attribute only an `xsi:type` variant declares keeps its namespace when written in the value-object form.
+- A fixed value set by an update that also names another `xsi:type` is judged on the new type: it was judged on the old one.
 
 ## [0.6.0] - 2026-10-12
 
