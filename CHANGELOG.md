@@ -11,10 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A declaration's definition may say its declared type, `type` (its Clark name), when the type is named - as `@dialecte/create` writes it from its next release on.
 - `resolveXsiType` (the type a record names), `canonicalXsiType` (the form core stores a value in) and `admittedXsiTypes` (the types an element may name) in `@dialecte/core/utils`.
-- `addChild` takes `xsi:type` in its value-object form, beside the default-namespace attributes (`{ aShape: 's', 'xsi:type': 'tCircle' }`); the array form is no longer needed for it.
+- `addChild` and `ensureChild` take every attribute the dialecte declares in their value-object form, under the name it is stored by - `xsi:type` and namespaced ones included (`{ aShape: 's', 'xsi:type': 'tCircle', 'ext:cShape': 'c' }`): what `getAttributes` returns is written back as is. A prefix no namespace of the dialecte has throws `UNKNOWN_NAMESPACE_PREFIX`; the array form stays for a namespace given by key or one the dialecte does not declare.
 
 ### Changed
 
+- **Breaking:** `getAttributes(record)` without a `namespace` returns every attribute under the name it is stored by: a namespaced one as `prefix:local`, `xsi:type` included; it returned the default-namespace attributes only. Destructuring is unaffected; code iterating the object sees the namespaced attributes too (their keys carry a prefix).
+- **Breaking (types):** `DefaultAttributesValueObjectOf` is removed - the value-object forms are `AttributesValueObjectOf`; `DefaultAttributeNamesOf` remains for the array form.
 - **Breaking:** writes check the type an element names with `xsi:type`: `XSI_TYPE_REQUIRED` (`D3009`) where its declared type is abstract and none is named, `XSI_TYPE_NOT_ADMITTED` (`D3010`) for a type it may not take, `XSI_TYPE_CHANGE_LEAVES_CONTENT` (`D3011`) for an update naming another type while attributes or children that type does not admit remain - named in the error. Import never refuses.
 - **Breaking - one stored form of an `xsi:type` value.** Import and every write store the local name for a type in the dialecte's default namespace, the dialecte's prefix and the local name otherwise; export writes that form. A value core cannot read (a prefix bound nowhere, a namespace the dialecte does not declare) is kept as written.
 - **Breaking:** `matchesAttributeFilter` takes the `dialecteConfig`; `parseOmit` takes `{ omit, dialecteConfig }`; `applyOmit` takes a `dialecteConfig`.
@@ -23,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `getAttributes` returns `xsi:type`: it was typed in the value object but dropped at runtime, so a check of `attributes['xsi:type']` never matched.
+- An attribute of a namespace the dialecte declares is stored under the dialecte's prefix, whatever prefix the document bound to that namespace: `x:cA`, with `x` bound to the namespace the dialecte calls `ext`, was stored as `x:cA`, so `getAttribute('ext:cA')`, filters and updates by `ext:cA` missed it.
+- Value objects leave the document's namespace declarations out: `getAttributes` returned a parsed `xmlns:foo` as an attribute `foo`.
+- `update` takes an attribute of a namespace the dialecte does not declare by the name it is stored by (`'foo:bar'`): it threw `UNKNOWN_NAMESPACE_PREFIX` although the record holds its namespace.
+- `assertValidXml` (`@dialecte/core/test`) finds a required attribute of a dialecte namespace written under another prefix than the dialecte's: it reported it missing.
 - An `xsi:type` whose prefix a document binds on an ancestor only is read: the attributes of the type it names were dropped on import.
 - Export declares the namespace an `xsi:type` value uses: a type outside the default namespace was written with an unbound prefix.
 - An attribute only an `xsi:type` variant declares keeps its namespace when written in the value-object form.

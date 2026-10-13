@@ -438,7 +438,7 @@ Returns a destructurable value object, or an array of full attribute objects.
 
 ```ts
 // Default-namespace attributes only, keyed by local name
-const { aA, bA } = await doc.query.getAttributes(ref)
+const { aA, bA, 'ext:cA': cA } = await doc.query.getAttributes(ref)
 
 // A namespace's attributes, keyed by local name (prefix stripped)
 const { cA } = await doc.query.getAttributes(ref, { namespace: 'ext' })
@@ -448,7 +448,7 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 // → FullAttributeObject[]
 ```
 
-Unscoped, `getAttributes(ref)` returns **default-namespace** attributes only. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the complete, prefixed set.
+Unscoped, `getAttributes(ref)` returns every attribute under the name it is stored by - unprefixed in the default namespace, `prefix:local` otherwise, `xsi:type` included - the object a write takes back. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the array of full attribute objects. Namespace declarations (`xmlns:*`) are none of them.
 
 ### getDefinition
 
