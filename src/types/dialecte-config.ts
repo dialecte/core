@@ -313,28 +313,6 @@ export type NamespaceKeysUsedByElement<
 }[NamespaceKeysOf<GenericConfig>]
 
 /**
- * Value object of an element's default-namespace (unprefixed) attributes, and `xsi:type` where the element may name a
- * type: the one prefixed key it takes - XSD gives it to every element, it is no attribute of a dialecte namespace.
- */
-export type DefaultAttributesValueObjectOf<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-	GenericParent extends ElementsOf<GenericConfig> = never,
-> = DefaultMembersOf<AttributesValueObjectOf<GenericConfig, GenericElement, GenericParent>>
-
-/**
- * Each member of an attribute type with its default-namespace keys and `xsi:type`: a write names one member. A mapped
- * type over a type parameter is one per member of a union - no conditional type to evaluate at each call.
- */
-type DefaultMembersOf<GenericAttributes> = {
-	[K in keyof GenericAttributes as K extends 'xsi:type'
-		? K
-		: K extends `${string}:${string}`
-			? never
-			: K]: GenericAttributes[K]
-}
-
-/**
  * Value object of an element's attributes within a given namespace key, re-keyed
  * by **local** name (the prefix is stripped since the scope already fixes it).
  */
@@ -359,13 +337,12 @@ export type LocalAttributeNamesInNamespace<
 > = keyof NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey> &
 	string
 
-/** Default-namespace (unprefixed) attribute names for an element: `xsi:type` is no name of that namespace. */
+/**
+ * Default-namespace (unprefixed) attribute names for an element - what the array form of a write names without a
+ * namespace; `xsi:type` and every other prefixed name are not.
+ */
 export type DefaultAttributeNamesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 	GenericParent extends ElementsOf<GenericConfig> = never,
-> = Exclude<
-	keyof DefaultAttributesValueObjectOf<GenericConfig, GenericElement, GenericParent>,
-	'xsi:type'
-> &
-	string
+> = Exclude<AttributesOf<GenericConfig, GenericElement, GenericParent>, `${string}:${string}`>

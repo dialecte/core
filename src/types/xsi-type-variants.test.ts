@@ -7,7 +7,6 @@ import type {
 	AttributesOf,
 	AttributesValueObjectOf,
 	DefaultAttributeNamesOf,
-	DefaultAttributesValueObjectOf,
 	FullAttributeObjectOf,
 } from '@/types'
 
@@ -22,7 +21,7 @@ function asFilter(filter: FilterAttributes<Config, 'DD_1'>): unknown {
 }
 function asWritten<Element extends 'DD_1' | 'DD_2'>(
 	_element: Element,
-	attributes: DefaultAttributesValueObjectOf<Config, Element>,
+	attributes: AttributesValueObjectOf<Config, Element>,
 ): unknown {
 	return attributes
 }
@@ -79,7 +78,7 @@ describe('xsi:type variants: filters', () => {
 })
 
 describe('xsi:type variants: writes', () => {
-	type Written<Element extends 'DD_1' | 'DD_2'> = DefaultAttributesValueObjectOf<Config, Element>
+	type Written<Element extends 'DD_1' | 'DD_2'> = AttributesValueObjectOf<Config, Element>
 
 	it("an abstract type -> its type named, with that type's attributes", () => {
 		expectTypeOf<{ 'xsi:type': 'tDD_1A'; aDD_1: 'x'; dDD_1: 'y' }>().toExtend<Written<'DD_1'>>()

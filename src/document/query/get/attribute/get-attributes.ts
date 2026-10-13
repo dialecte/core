@@ -1,4 +1,5 @@
 import { getRecord } from '@/document'
+import { XMLNS_NAMESPACE_URI } from '@/helpers/constant'
 import {
 	resolveDefinition,
 	getAttributeRules,
@@ -12,17 +13,16 @@ import type {
 	AttributesValueObjectOf,
 	ElementsOf,
 	FullAttributeObjectOf,
+	Namespace,
 } from '@/types'
 import type { AttributeDefaults } from '@/utils'
 
 /**
- * Fetch attributes for the given ref as a destructurable value object, scoped to a
- * single namespace and re-keyed by **local** name.
+ * Fetch attributes for the given ref as a destructurable value object.
  *
- * Without `namespace`, only default-namespace (unprefixed) attributes are returned.
- * With a `namespace` key, only that namespace's attributes are returned, with the
- * prefix stripped from the keys (`ext:cA` → `cA`). `xmlns` declarations are
- * always excluded.
+ * Without `namespace`, every attribute under the name it is stored by (`aA`, `xsi:type`, `ext:cA`) - what a write takes
+ * back. With a `namespace` key, only that namespace's attributes, with the prefix stripped from the keys
+ * (`ext:cA` → `cA`). Namespace declarations are always excluded.
  *
  * `defaults` (default `'optional'`) controls how absent schema attributes are filled:
  * `'none'` = stored only; `'optional'` = read view (fixed / non-empty default);
@@ -49,13 +49,12 @@ export async function getAttributes<
 	const attributes = (record?.attributes ?? []) as GenericAttribute[]
 
 	const targetPrefix =
-		namespace === undefined ? '' : resolvePrefixByNamespaceScope(dialecteConfig, namespace)
+		namespace === undefined ? undefined : resolvePrefixByNamespaceScope(dialecteConfig, namespace)
 
 	const stored = attributes.reduce(
 		(acc, attr) => {
-			const { prefix, local, isXmlns } = splitAttributeName(attr.name)
-			if (isXmlns || prefix !== targetPrefix) return acc
-			acc[local] = attr.value ?? ''
+			const key = keyOf({ name: attr.name, namespace: attr.namespace, targetPrefix })
+			if (key !== undefined) acc[key] = attr.value ?? ''
 			return acc
 		},
 		{} as Record<string, string>,
@@ -67,19 +66,36 @@ export async function getAttributes<
 		const definition = resolveDefinition({ dialecteConfig, record })
 		const sequence = definition?.attributes.sequence ?? []
 		for (const schemaName of sequence) {
-			const { prefix, local, isXmlns } = splitAttributeName(schemaName)
-			if (isXmlns || prefix !== targetPrefix || local in stored) continue
+			const key = keyOf({ name: schemaName, targetPrefix })
+			if (key === undefined || key in stored) continue
 			const value = resolveSchemaAttributeValue({
 				dialecteConfig,
 				record,
 				attributeName: schemaName,
 				defaults,
 			})
-			if (value !== undefined) stored[local] = value
+			if (value !== undefined) stored[key] = value
 		}
 	}
 
 	return stored as AttributesValueObjectOf<GenericConfig, GenericElement>
+}
+
+/**
+ * The key an attribute has in a value object: without a scope (`targetPrefix` undefined) the name it is stored by
+ * (`aA`, `xsi:type`, `ext:cA`); in a namespace scope its local name, when it is in that namespace. A namespace
+ * declaration has none - as parsed it is stored by its prefix alone, in the xmlns namespace.
+ */
+function keyOf(params: {
+	name: string
+	namespace?: Namespace
+	targetPrefix: string | undefined
+}): string | undefined {
+	const { name, namespace, targetPrefix } = params
+	const { prefix, local, isXmlns } = splitAttributeName(name)
+	if (isXmlns || namespace?.uri === XMLNS_NAMESPACE_URI) return undefined
+	if (targetPrefix === undefined) return name
+	return prefix === targetPrefix ? local : undefined
 }
 
 /**

@@ -49,7 +49,12 @@ export async function stageUpdate<
 	})
 
 	const newAttributes = attributes
-		? toFullAttributeArray({ dialecteConfig, tagName: record.tagName, attributes })
+		? toFullAttributeArray({
+				dialecteConfig,
+				tagName: record.tagName,
+				attributes,
+				stored: record.attributes,
+			})
 		: []
 	let updatedAttributes = record.attributes
 	if (attributes) {

@@ -374,7 +374,10 @@ describe('xsi:type - one stored form', () => {
 			expected: { clark: string; namespace: string; local: string } | undefined
 		}
 
-		const xsiType = (value: string) => ({ name: 'xsi:type', value, namespace: XSI_NAMESPACE })
+		/** An xsi:type attribute as core stores it. */
+		function xsiType(value: string): { name: string; value: string; namespace: Namespace } {
+			return { name: 'xsi:type', value, namespace: XSI_NAMESPACE }
+		}
 
 		runTestCases.generic<TestCase>(
 			{
@@ -453,7 +456,10 @@ describe('xsi:type - one stored form', () => {
 		}
 
 		const sourceXml = /* xml */ `<Root ${ns}><D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/></Root>`
-		const xsiType = (value: string) => ({ name: 'type', value, namespace: XSI_NAMESPACE })
+		/** An xsi:type attribute in the array form of a write: the local name, its namespace. */
+		function xsiType(value: string): { name: string; value: string; namespace: Namespace } {
+			return { name: 'type', value, namespace: XSI_NAMESPACE }
+		}
 
 		const testCases: TestCases<TestCase> = {
 			'abstract declared type, no xsi:type → XSI_TYPE_REQUIRED': {
@@ -630,7 +636,7 @@ describe('xsi:type - one stored form', () => {
 
 		async function act({ source }: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
 			await source.transaction(async (tx) => {
-				// typed: 'xsi:type' is the one prefixed key the object form takes (XSD gives it to every element)
+				// typed: the object form takes every attribute under its stored name, 'xsi:type' included
 				await tx.addChild(
 					{ tagName: 'D', id: 'd' },
 					{ tagName: 'DD_1', attributes: { aDD_1: 's', 'xsi:type': 'tDD_1B' } },

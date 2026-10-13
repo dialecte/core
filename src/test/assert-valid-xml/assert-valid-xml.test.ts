@@ -36,6 +36,11 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			expect(() => assertValidXml(xml, 'snippet', { requireComplete: false })).not.toThrow()
 		})
 
+		it("a required attribute of a dialecte namespace, under another prefix than the dialecte's", () => {
+			const xml = /* xml */ `<x:DD_3 xmlns:x="${DIALECTE_TEST_NAMESPACES.ext.uri}" x:aDD_3="v" />`
+			expect(() => assertValidXml(xml, 'snippet', { requireComplete: true })).not.toThrow()
+		})
+
 		it('a foreign-namespace element whose local name collides with a schema element', () => {
 			const xml = /* xml */ `
 				<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_VENDOR_NAMESPACE} root="1">

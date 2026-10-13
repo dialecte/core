@@ -109,6 +109,20 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 		])
 	}
 
+	/**
+	 * Whether the element carries a definition attribute: `prefix:local` is the dialecte's prefix, which a document may
+	 * bind to its namespace under another - the attribute is looked up by namespace and local name.
+	 */
+	function hasSchemaAttribute(element: Element, attributeName: string): boolean {
+		const colon = attributeName.indexOf(':')
+		if (colon === -1) return element.hasAttribute(attributeName)
+		const prefix = attributeName.slice(0, colon)
+		const namespace = Object.values(namespaces).find((candidate) => candidate.prefix === prefix)
+		return namespace === undefined
+			? element.hasAttribute(attributeName)
+			: element.hasAttributeNS(namespace.uri, attributeName.slice(colon + 1))
+	}
+
 	function collectAttributeViolations(params: CollectAttributeViolationsParams): string[] {
 		const { element, elementDefinition, requireComplete } = params
 
@@ -124,7 +138,9 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 		if (!requireComplete) return unknownAttributeViolations
 
 		const missingAttributeViolations = Object.entries(elementDefinition.attributes.details)
-			.filter(([attributeName, rule]) => rule.required && !element.hasAttribute(attributeName))
+			.filter(
+				([attributeName, rule]) => rule.required && !hasSchemaAttribute(element, attributeName),
+			)
 			.map(
 				([attributeName]) =>
 					`[required] <${element.localName}> is missing required attribute '${attributeName}'`,

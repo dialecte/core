@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import { XMLNS_XSI_NAMESPACE } from '@/helpers/constant'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
@@ -65,6 +66,17 @@ describe('getAttributes', () => {
 			ref: { tagName: 'A', id: 'missing' },
 			expected: {},
 		},
+		"the type it names with xsi:type -> beside its attributes, the variant's included": {
+			sourceXml: /* xml */ `
+				<Root ${ns} ${XMLNS_XSI_NAMESPACE}>
+					<D>
+						<DD_2 ${customId}="dd2" xsi:type="tDD_2A" aDD_2="x" dDD_2="y" />
+					</D>
+				</Root>
+			`,
+			ref: { tagName: 'DD_2', id: 'dd2' },
+			expected: { aDD_2: 'x', dDD_2: 'y', 'xsi:type': 'tDD_2A' },
+		},
 		'returns multiple attributes when record has several': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
@@ -92,15 +104,16 @@ describe('getAttributes (namespace scoping)', () => {
 	}
 
 	const testCases: Record<string, TestCase> = {
-		'no namespace option → returns only default-namespace attributes (local keys)': {
-			sourceXml: /* xml */ `
+		'no namespace option → every attribute under the name it is stored by, a namespaced one prefixed':
+			{
+				sourceXml: /* xml */ `
 				<Root ${nsExt}>
 					<A ${customId}="a1" aA="hi" ext:cA="qualified" />
 				</Root>
 			`,
-			ref: { tagName: 'A', id: 'a1' },
-			expected: { aA: 'hi' },
-		},
+				ref: { tagName: 'A', id: 'a1' },
+				expected: { aA: 'hi', 'ext:cA': 'qualified' },
+			},
 		'scoped by namespace key → returns only that namespace, keyed by local name': {
 			sourceXml: /* xml */ `
 				<Root ${nsExt}>

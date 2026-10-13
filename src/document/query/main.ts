@@ -35,11 +35,11 @@ import type {
 	AnyTreeRecord,
 	AttributesOf,
 	ChildrenOf,
-	DefaultAttributesValueObjectOf,
 	DescendantsOf,
 	ResolvedDefinition,
 	ElementsOf,
 	FullAttributeObjectOf,
+	AttributesValueObjectOf,
 	NamespacedAttributesValueObjectOf,
 	NamespaceKeysUsedByElement,
 	RootElementOf,
@@ -469,20 +469,21 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get a record's default-namespace attributes as a destructurable value object.
+	 * Get a record's attributes as a destructurable value object, each under the name it is stored by - what a write
+	 * takes back.
 	 *
 	 * @param refOrRecord - The element to read from.
-	 * @returns A `{ aA, bA, ... }` object of the unprefixed attributes.
+	 * @returns A `{ aA, bA, 'ext:cA', 'xsi:type', ... }` object: unprefixed in the default namespace, prefixed otherwise.
 	 *
 	 * @example
 	 * ```ts
-	 * const { aA } = await query.getAttributes(a)
+	 * const { aA, 'ext:cA': cA } = await query.getAttributes(a)
 	 * ```
 	 */
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params?: { namespace?: undefined; fullObject?: false; defaults?: AttributeDefaults },
-	): Promise<DefaultAttributesValueObjectOf<GenericConfig, GenericElement>>
+	): Promise<AttributesValueObjectOf<GenericConfig, GenericElement>>
 	/**
 	 * Get a record's attributes for a namespace scope, keyed by **local** name.
 	 *
