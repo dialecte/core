@@ -482,7 +482,7 @@ describe('standardizeRecord', () => {
 
 	describe('element namespace by parent context', () => {
 		// A declared two ways: in its own namespace, and in ext - Root holding it in ext only
-		const withDeclarations = (heldUnderRoot: Record<string, string[]>) => {
+		function withDeclarations(heldUnderRoot: Record<string, string[]>) {
 			const configured = structuredClone(config) as any
 			const tagLevel = configured.definition.A
 			configured.definition.A.declarations = {
@@ -492,12 +492,14 @@ describe('standardizeRecord', () => {
 			configured.definition.Root.children.details.A = { declarations: heldUnderRoot }
 			return configured
 		}
-		const underRoot = (namespace?: { prefix: string; uri: string }) => ({
-			tagName: 'A' as const,
-			parent: { id: 'root-id', tagName: 'Root' as const },
-			attributes: { aA: 'X' },
-			...(namespace ? { namespace } : {}),
-		})
+		function underRoot(namespace?: { prefix: string; uri: string }) {
+			return {
+				tagName: 'A' as const,
+				parent: { id: 'root-id', tagName: 'Root' as const },
+				attributes: { aA: 'X' },
+				...(namespace ? { namespace } : {}),
+			}
+		}
 
 		it('stamps the namespace of the declaration its parent holds', () => {
 			const result = standardizeRecord({
@@ -523,7 +525,7 @@ describe('standardizeRecord', () => {
 		})
 
 		it('keeps an attribute in no namespace the attribute wildcard admits, drops it otherwise', () => {
-			const kept = (any: unknown) => {
+			function kept(any: unknown) {
 				const configured = structuredClone(config) as any
 				configured.definition.A.attributes.any = any
 				return standardizeRecord({
@@ -548,11 +550,12 @@ describe('standardizeRecord', () => {
 					children: typed.definition.A.children,
 				},
 			}
-			const created = (attributes: Record<string, string>) =>
-				standardizeRecord({
+			function created(attributes: Record<string, string>) {
+				return standardizeRecord({
 					record: { ...underRoot(), attributes },
 					dialecteConfig: typed,
 				}).attributes.map((attribute) => attribute.name)
+			}
 			expect(created({ 'xsi:type': 'tWide', wide: '1' })).toEqual(['wide', 'xsi:type'])
 			expect(created({ wide: '1' })).toEqual([])
 		})

@@ -31,7 +31,7 @@ export function createProgressReporter(
 	let stack: PlanFrame[] = []
 
 	// Project the plan stack onto the two-level DocumentProgress shape.
-	const render = (): void => {
+	function render(): void {
 		if (stack.length === 0) {
 			state.progress = null
 			return

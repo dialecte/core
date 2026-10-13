@@ -133,9 +133,9 @@ export function applyOmit<
 
 	const compiledOmit = parseOmit({ omit, dialecteConfig })
 
-	const filterNode = (
+	function filterNode(
 		node: TreeRecord<GenericConfig, ElementsOf<GenericConfig>>,
-	): TreeRecord<GenericConfig, ElementsOf<GenericConfig>> => {
+	): TreeRecord<GenericConfig, ElementsOf<GenericConfig>> {
 		if (shouldStopTraversal({ record: node, compiledOmit })) {
 			return { ...node, tree: [] }
 		}

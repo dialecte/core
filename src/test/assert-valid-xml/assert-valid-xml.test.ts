@@ -82,11 +82,13 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 
 	describe('a tag declared in two namespaces', () => {
 		const NO_NAMESPACE = { prefix: '', uri: '' }
-		const leafIn = (uri: string) => ({
-			namespace: { prefix: uri ? 'b' : '', uri },
-			attributes: { sequence: [], details: {} },
-			children: { sequence: [], details: {} },
-		})
+		function leafIn(uri: string) {
+			return {
+				namespace: { prefix: uri ? 'b' : '', uri },
+				attributes: { sequence: [], details: {} },
+				children: { sequence: [], details: {} },
+			}
+		}
 		const { assertValidXml: assertValidTwoNamespaces } = createXmlSchemaAssertions({
 			definition: {
 				Plain: {
@@ -172,15 +174,19 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			attributes: { sequence: [], details: {} },
 			children: { sequence: [], details: {} },
 		}
-		const leaf = (required: string) => ({
-			...empty,
-			namespace: NO_NAMESPACE,
-			attributes: { sequence: [required], details: { [required]: { required: true as const } } },
-		})
-		const holds = (id: string) => ({
-			sequence: ['Leaf'],
-			details: { Leaf: { declarations: { '': [id] } } },
-		})
+		function leaf(required: string) {
+			return {
+				...empty,
+				namespace: NO_NAMESPACE,
+				attributes: { sequence: [required], details: { [required]: { required: true as const } } },
+			}
+		}
+		function holds(id: string) {
+			return {
+				sequence: ['Leaf'],
+				details: { Leaf: { declarations: { '': [id] } } },
+			}
+		}
 		const { assertValidXml: assertValidByParent } = createXmlSchemaAssertions({
 			definition: {
 				// Holder declared in two namespaces: the global one in no namespace holds Leaf 1, which requires x

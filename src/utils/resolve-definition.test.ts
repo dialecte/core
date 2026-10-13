@@ -15,13 +15,15 @@ const empty: ContentDefinition = {
 	attributes: { sequence: [], details: {} },
 	children: { sequence: [], details: {} },
 }
-const holding = (details: ContentDefinition['children']['details'], any?: true) => ({
-	tag: 'Holder',
-	namespace: none,
-	parents: [],
-	attributes: { sequence: [], details: {} },
-	children: { sequence: Object.keys(details), details, ...(any ? { any } : {}) },
-})
+function holding(details: ContentDefinition['children']['details'], any?: true) {
+	return {
+		tag: 'Holder',
+		namespace: none,
+		parents: [],
+		attributes: { sequence: [], details: {} },
+		children: { sequence: Object.keys(details), details, ...(any ? { any } : {}) },
+	}
+}
 
 // AAA_1 declared two ways: the first requires aAAA_1 and holds AAAA_1, the second - the global one, in another
 // namespace - holds text and admits a type with xsi:type. The tag level is their union.
@@ -108,11 +110,13 @@ function record(params: {
 		...(namespace ? { namespace } : {}),
 	}
 }
-const xsiType = (value: string) => ({
-	name: 'xsi:type',
-	value,
-	namespace: { prefix: 'xsi', uri: XSI },
-})
+function xsiType(value: string) {
+	return {
+		name: 'xsi:type',
+		value,
+		namespace: { prefix: 'xsi', uri: XSI },
+	}
+}
 
 type DeclarationCase = {
 	record: ResolvableRecord
@@ -291,8 +295,8 @@ describe('resolveDefinition', () => {
 	})
 
 	it('is one object per declaration and type resolved', () => {
-		const read = () =>
-			resolveDefinition({
+		function read() {
+			return resolveDefinition({
 				dialecteConfig: config,
 				record: record({
 					parent: 'ByNamespace',
@@ -300,6 +304,7 @@ describe('resolveDefinition', () => {
 					attributes: [xsiType('o:tExt')],
 				}),
 			})
+		}
 		expect(read()).toBe(read())
 	})
 
@@ -322,12 +327,13 @@ describe('resolveDefinition', () => {
 
 describe('attribute rules read the declaration that applies', () => {
 	it('an attribute required by one declaration only is required there, and only there', () => {
-		const rules = (parent: string, namespace: { prefix: string; uri: string }) =>
-			getAttributeRules({
+		function rules(parent: string, namespace: { prefix: string; uri: string }) {
+			return getAttributeRules({
 				dialecteConfig: config,
 				record: record({ parent, namespace }),
 				attributeName: 'aAAA_1',
 			})
+		}
 		expect(rules('ByNamespace', none).isRequired).toBe(true)
 		expect(rules('ByNamespace', other).isDefined).toBe(false)
 		expect(rules('Positional', none).isRequired).toBe(false) // the union: what any declaration accepts
@@ -347,13 +353,14 @@ describe('attribute rules read the declaration that applies', () => {
 				},
 			},
 		} as AnyDialecteConfig
-		const value = (parent: string, namespace: { prefix: string; uri: string }) =>
-			resolveSchemaAttributeValue({
+		function value(parent: string, namespace: { prefix: string; uri: string }) {
+			return resolveSchemaAttributeValue({
 				dialecteConfig: defaulted,
 				record: record({ parent, namespace }),
 				attributeName: 'aAAA_1',
 				defaults: 'optional',
 			})
+		}
 		expect(value('Positional', none)).toBe('x')
 		expect(value('ByNamespace', other)).toBeUndefined()
 	})

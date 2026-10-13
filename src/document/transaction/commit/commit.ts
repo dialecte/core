@@ -31,7 +31,7 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	// store.commit reports absolute cumulative progress; convert it to relative
 	// nextStep() calls (robust to batched jumps).
 	let reported = 0
-	const advanceTo = (current: number): void => {
+	function advanceTo(current: number): void {
 		while (reported < current) {
 			progress.nextStep()
 			reported++

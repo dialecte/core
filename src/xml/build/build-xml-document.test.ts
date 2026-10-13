@@ -546,9 +546,12 @@ describe('buildXmlDocument', () => {
 				},
 			},
 		} as unknown as typeof CONFIG
-		const root = (attributes: AnyRawRecord['attributes']) =>
-			buildXmlDocument({ records: [record({ id: 'root-1', tagName: 'Root', attributes })], config })
-				.documentElement
+		function root(attributes: AnyRawRecord['attributes']) {
+			return buildXmlDocument({
+				records: [record({ id: 'root-1', tagName: 'Root', attributes })],
+				config,
+			}).documentElement
+		}
 
 		it('materializes the fixed attribute of the type the root names', () => {
 			const xsiType = {

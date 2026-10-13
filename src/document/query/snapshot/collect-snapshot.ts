@@ -55,7 +55,7 @@ export async function collectSnapshotRecords<GenericConfig extends AnyDialecteCo
 		: undefined
 
 	// Recursively pull a staged-deleted subtree rooted at `parentId`.
-	const collectDeletedUnder = (parentId: string): void => {
+	function collectDeletedUnder(parentId: string): void {
 		if (!deletedByParentId) return
 		for (const deleted of deletedByParentId.get(parentId) ?? []) {
 			if (deletedById.has(deleted.id)) continue
@@ -66,10 +66,10 @@ export async function collectSnapshotRecords<GenericConfig extends AnyDialecteCo
 
 	// Descend from a record into `live`, bounded by `depth`. Reused for the start
 	// record and, when `expandSiblings` is set, for each sibling's subtree.
-	const descend = async (
+	async function descend(
 		record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>,
 		level: number,
-	): Promise<void> => {
+	): Promise<void> {
 		live.set(record.id, record)
 		collectDeletedUnder(record.id)
 
