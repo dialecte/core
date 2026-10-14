@@ -281,6 +281,20 @@ throwDialecteError('ELEMENT_NOT_FOUND', {
 | `meta`    | no       | What the error is about, as serializable data                                                     |
 | `cause`   | no       | Original `Error` to chain                                                                         |
 
+### createDialecteError
+
+Builds the `Error` that `throwDialecteError` throws, without throwing it - same `key` and params. For a caller that reports an error it caught instead of raising one. The structured `DialecteError` is its `cause`; `toDialecteError` reads it back.
+
+```ts
+import { createDialecteError } from '@dialecte/core'
+
+const error = createDialecteError('ELEMENT_NOT_FOUND', { detail: 'parent record does not exist' })
+```
+
+### toDialecteError
+
+`toDialecteError(thrown)` returns the structured `DialecteError` a caught value carries - thrown by `throwDialecteError` or `invariant`, built by `createDialecteError` - and `undefined` for any other error or value. See the [example above](#dialecteerror).
+
 ### invariant
 
 A guard that throws a structured `DialecteError` when a condition is falsy. TypeScript narrows the value after the call (`asserts condition`).

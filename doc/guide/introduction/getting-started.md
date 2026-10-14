@@ -37,10 +37,11 @@ import { TEST_DIALECTE_CONFIG } from '@dialecte/core'
 // elements: ['Root', 'A', 'B', 'C', 'AA_1', 'AA_2', 'AA_3', ...]
 // namespaces: { default: { uri: 'http://dialecte.dev/XML/DEFAULT', prefix: '' },
 //               ext:     { uri: 'http://dialecte.dev/XML/DEV-EXT', prefix: 'ext' }, ... }
+// definition, types: the DEFINITION and TYPES the generator writes
 // io.supportedFileExtensions: ['.xml']
 ```
 
-> In practice you won't write this by hand. The definition generator (in progress) reads an XSD file and emits the full config automatically. `@dialecte/scl` is a real-world example.
+> In practice you won't write this by hand. `@dialecte/create` reads an XSD file and emits the full config. Core 0.6 reads only the definition `@dialecte/create` 0.1 writes: regenerate your dialecte when you upgrade. `@dialecte/scl` is a real-world example.
 
 ## Step 2 - Open a Project
 

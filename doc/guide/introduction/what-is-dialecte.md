@@ -26,7 +26,7 @@ Dialecte collapses that stack into a single, schema-driven package.
 
 The shape of your XML is described once, in a config object. Every element name, attribute, parent–child relationship, and namespace is captured there. That config becomes the source of truth for TypeScript — the compiler knows what children an element can have, what attributes are required, and which operations are valid.
 
-In practice you generate the config from an XSD file using the definition generator (in progress). You never write it by hand.
+In practice you generate the config from an XSD file with `@dialecte/create`. You never write it by hand. Core reads only the definition the generator of its own line writes (core 0.6: `@dialecte/create` 0.1), so a dialecte is regenerated when core is upgraded.
 
 ### Document / Query / Transaction
 
@@ -63,7 +63,7 @@ Export reconstructs the XML from IndexedDB on demand.
 
 A **dialecte** is a thin package that combines three things:
 
-1. **A generated definition** — produced by the definition generator from your XSD. Captures every element, attribute, namespace, parent–child rule, and cardinality.
+1. **A generated definition** — produced by `@dialecte/create` from your XSD. Captures every element, attribute, namespace, parent–child rule, and cardinality, and the types an element may name with `xsi:type`.
 2. **A config object** — wraps the definition and wires it into `@dialecte/core`.
 3. **Domain-specific subclasses** _(optional)_ — extend `Query` and `Transaction` with typed domain methods. This is what graduates a config into a genuine DSL.
 4. **Hooks** _(optional)_ — lifecycle callbacks that run during import and export, letting you enforce invariants or enrich elements as they flow through the pipeline.
