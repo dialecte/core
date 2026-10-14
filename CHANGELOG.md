@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.5.4] - 2026-10-14
+
+### Added
+
+- **A `beforeCommit` transaction hook.** Called once per transaction when its callback is done (`document.transaction` and `document.prepare`, so a preview shows what it adds), with every staged operation and a query that reads them. It returns operations to stage, which call no hook again. For a rule that needs the whole transaction: `afterCreated` runs as soon as a record is added, before a copy or a caller adds its children.
+
 ## [0.5.3] - 2026-10-06
 
 ### Added
