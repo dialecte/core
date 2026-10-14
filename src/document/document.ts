@@ -183,6 +183,7 @@ export class Document<
 		try {
 			const result = await fn(tx)
 
+			await tx.finishStaging()
 			await tx.commit()
 			// Refresh canUndo/canRedo on the shared entry locally (mirrors
 			// Project.undo/redo) so state is correct synchronously — no channel
@@ -244,6 +245,7 @@ export class Document<
 
 		try {
 			await fn(this.withAllExtensions(tx))
+			await tx.finishStaging()
 		} catch (error) {
 			this.activeTransactions--
 			this.state.loading = false

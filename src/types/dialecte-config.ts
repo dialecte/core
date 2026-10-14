@@ -123,6 +123,19 @@ export type TransactionHooks<GenericConfig extends AnyDialecteConfig> = {
 		parentRecord: RawRecord<GenericConfig, GenericParentElement>
 		query: Query<GenericConfig>
 	}) => Promise<Operation<GenericConfig>[]>
+
+	/**
+	 * Called once per transaction, when its work is done: after the callback of
+	 * `document.transaction`, or of `document.prepare` (so a preview shows what it adds).
+	 * `operations` are every operation staged so far; `query` reads the document with them.
+	 *
+	 * Return additional operations to stage (e.g., complete what the transaction
+	 * created, now that every record it adds is known). They do not call the hooks again.
+	 */
+	beforeCommit?: (params: {
+		operations: ReadonlyArray<Operation<GenericConfig>>
+		query: Query<GenericConfig>
+	}) => Promise<Operation<GenericConfig>[]>
 }
 
 export type DatabaseConfig = Readonly<{
