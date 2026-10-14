@@ -1,5 +1,5 @@
 ---
-description: Reference for all DialecteHooks extension points in @dialecte/core. Covers the record hooks (beforeClone, afterStandardizedRecord, afterCreated, afterUpdated, beforeDelete, afterDelete) and links to the IO hooks. All hooks are provided on the Project instance.
+description: Reference for all DialecteHooks extension points in @dialecte/core. Covers the record hooks (beforeClone, afterStandardizedRecord, afterCreated, afterUpdated, beforeDelete, afterDelete, beforeCommit) and links to the IO hooks. All hooks are provided on the Project instance.
 ---
 
 # Hooks
@@ -153,6 +153,25 @@ A `deleted` operation returned by a hook only removes that record. To delete an 
 
 ---
 
+### `beforeCommit`
+
+Fires **once per transaction**, when its work is done: after the callback of `document.transaction`, or of `document.prepare` (so a preview shows what it adds), before anything is committed. `operations` are every operation staged so far, in order; `query` reads the document with them.
+
+Use it for a rule that needs the whole transaction: `afterCreated` runs as soon as a record is added, before a copy or a caller adds its children; at `beforeCommit` every record the transaction adds is known.
+
+**Signature**
+
+```ts
+beforeCommit?: (params: {
+  operations: ReadonlyArray<Operation<Config>>
+  query: Query<Config>
+}) => Promise<Operation<Config>[]>
+```
+
+**Return** — additional operations to stage (e.g., give each created element a child it must have and was not given). They do not call any hook again, `beforeCommit` included. A transaction whose callback throws does not reach it.
+
+---
+
 ## IO hooks
 
 IO hooks (`beforeImportRecord`, `afterImport`) are documented on the [IO hooks](/io/hooks) page.
@@ -189,6 +208,14 @@ For `delete`:
 beforeDelete           (once, on root — descendants still live)
 [subtree cascade + parent update]
 afterDelete            (once, on root — subtree gone)
+```
+
+For a transaction (`document.transaction` / `document.prepare`), after every call above:
+
+```
+[callback done]
+beforeCommit           (once, every staged operation)
+[commit — for prepare: when prepared.commit() is called]
 ```
 
 For `project.import` (see [IO hooks](/io/hooks)) — standardization runs **before** `beforeImportRecord`, so that hook receives the finalized, canonical record:
