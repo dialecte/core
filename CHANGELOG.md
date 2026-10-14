@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.6.1] - 2026-10-14
+
+### Added
+
+- `isNamespaceAllowedByWildcard` in `@dialecte/core/utils`: whether an element's attribute wildcard allows a namespace.
+
+### Fixed
+
+- `assertValidXml` (`createXmlSchemaAssertions`) checks the attributes of every namespace, not only unprefixed ones: an attribute of a namespace the dialecte declares is looked up under the dialecte's prefix, whatever prefix the document binds (`x:unknown` reports `'ext:unknown'`), and one of a foreign namespace is reported too. An attribute the element's wildcard allows passes (`##other`, `##any`, a namespace list) - the wildcard was ignored, so an unprefixed attribute under `##any` was reported. Namespace declarations, `xsi:*` and the test record id are always allowed. A fixture carrying an attribute its element does not declare now fails.
+
 ## [0.6.0] - 2026-10-14
 
 ### Added
