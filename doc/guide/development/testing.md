@@ -336,13 +336,14 @@ In dialecte packages, instantiate once and re-export (see [Adapting to your dial
 
 ## createXmlSchemaAssertions
 
-Factory that returns structural-validation assertions pre-bound to a dialecte's generated `DEFINITION` and declared `namespaces`. Where `createXmlAssertions` checks specific XPath queries, `createXmlSchemaAssertions` validates a whole XML string against the schema shape: every element's namespace matches its parent context, every element is an allowed child of its parent, and every attribute is known to its element. Use it to guard test fixtures - a mistyped tag, a wrong namespace or a stray attribute fails loudly instead of silently exercising the wrong shape.
+Factory that returns structural-validation assertions pre-bound to a dialecte's generated `DEFINITION` and `TYPES` and its declared `namespaces`. Where `createXmlAssertions` checks specific XPath queries, `createXmlSchemaAssertions` validates a whole XML string against the schema shape: every element's namespace matches its parent context, every element is an allowed child of its parent, and every attribute is one its element may carry - as declared, or as the type it names with `xsi:type` declares. Use it to guard test fixtures - a mistyped tag, a wrong namespace or an attribute the element does not declare fails loudly instead of silently exercising the wrong shape.
 
 ### Signature
 
 ```ts
 function createXmlSchemaAssertions(params: {
 	definition: AnyDefinition
+	types: AnyTypes // the TYPES generated beside DEFINITION
 	namespaces: Record<string, Namespace>
 	schemaName?: string // names the schema in messages ("not valid SCL"); default 'XML'
 }): {
@@ -355,7 +356,15 @@ function createXmlSchemaAssertions(params: {
 
 ### assertValidXml
 
-Throws with every violation found, each tagged `[namespace]` / `[containment]` / `[attribute]` / `[required]`. Elements unknown to the schema are skipped (bespoke content under a transparent `Private`), as is any element in a namespace the dialecte does not declare - even when its local name collides with a schema element. An element in **no** namespace is not foreign - it is a schema element that forgot its namespace, and stays validated. `requireComplete` (default `true`) also requires every schema-required attribute; minimal fixtures pass `false`.
+Throws with every violation found, each tagged `[namespace]` / `[containment]` / `[attribute]` / `[required]`. Elements unknown to the schema are skipped (bespoke content under a transparent `Private`), as is any element in a namespace the dialecte does not declare - even when its local name collides with a schema element. An element in **no** namespace is not foreign - it is a schema element that forgot its namespace, and stays validated.
+
+Attributes are checked in every namespace, against the declaration that applies to the element under its parent and the type it names with `xsi:type`:
+
+- an attribute of a namespace the dialecte declares is looked up under the dialecte's prefix, whatever prefix the document binds to that namespace: `x:unknown`, with `x` bound to the `ext` namespace, is reported as `'ext:unknown'`;
+- an attribute of a namespace the dialecte does not declare is reported too, unless the element's attribute wildcard admits its namespace (`##any`, `##other`, a namespace list); an unprefixed attribute the element does not declare passes only where the wildcard admits no namespace;
+- namespace declarations (`xmlns`, `xmlns:*`), `xsi:*` and the test record id (`dev:db-id`) are always allowed.
+
+`requireComplete` (default `true`) also requires every schema-required attribute; a required attribute of a dialecte namespace is found under any prefix the document binds to it. Minimal fixtures pass `false`.
 
 ### assertValidXmlTestCases
 
@@ -368,6 +377,7 @@ import { createXmlSchemaAssertions } from '@dialecte/core/test'
 
 const { assertValidXml } = createXmlSchemaAssertions({
 	definition: MY_DEFINITION,
+	types: MY_TYPES,
 	namespaces: MY_DIALECTE_CONFIG.namespaces,
 	schemaName: 'SCL',
 })
@@ -504,7 +514,7 @@ import {
 import type { TestRunner } from '@dialecte/core/test'
 
 import { MY_DIALECTE_CONFIG } from '@/config'
-import { DEFINITION } from '@/definition'
+import { DEFINITION, TYPES } from '@/definition'
 
 // Namespace strings for use in XML template literals
 export const XMLNS_DEFAULT_NAMESPACE = `xmlns="http://dialecte.dev/XML/DEFAULT"`
@@ -538,6 +548,7 @@ export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = 
 // Structural fixture validation bound to this dialecte's schema
 export const { assertValidXml, assertValidXmlTestCases } = createXmlSchemaAssertions({
 	definition: DEFINITION,
+	types: TYPES,
 	namespaces: MY_DIALECTE_CONFIG.namespaces,
 })
 ```
