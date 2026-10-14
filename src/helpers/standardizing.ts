@@ -1,6 +1,6 @@
 import { toFullAttributeArray } from './converter'
 
-import { orderAttributesBySequence } from '@/utils'
+import { isNamespaceAllowedByWildcard, orderAttributesBySequence } from '@/utils'
 import { resolveDefinition } from '@/utils/resolve-definition'
 import { storedNamespaceLookup, withCanonicalXsiType } from '@/utils/xsi-type'
 
@@ -74,20 +74,18 @@ export function standardizeRecord<
 	// read/validation — so storing '' would be redundant and misread as a real value.
 	// Schema-sequence attributes that are present with a value, plus any qualified
 	// attribute (foreign-namespace or xmlns/xmlns:*), are retained; unqualified
-	// non-schema attributes are dropped, unless the element's attribute wildcard admits
+	// non-schema attributes are dropped, unless the element's attribute wildcard allows
 	// attributes in no namespace (`##any`, `##local`). Missing required/fixed/default attributes are
 	// NOT synthesized here: schema values are materialized on export (required + fixed)
 	// and surfaced on read (getAttribute/getAttributes effective view).
-	const wildcard = definition?.attributes.any
-	const admitsUnqualified =
-		wildcard !== undefined &&
-		(wildcard.namespace !== undefined
-			? wildcard.namespace.includes('')
-			: !(wildcard.notNamespace ?? []).includes(''))
+	const allowsUnqualified = isNamespaceAllowedByWildcard({
+		wildcard: definition?.attributes.any,
+		namespaceUri: '',
+	})
 	const keptAttributes = attributesArray.filter((attribute) => {
 		const isSchemaAttribute = standardAttributeNames.includes(attribute.name)
 		const isQualifiedExtra = 'namespace' in attribute && attribute.namespace != null
-		if (!isSchemaAttribute && !isQualifiedExtra && !admitsUnqualified) return false
+		if (!isSchemaAttribute && !isQualifiedExtra && !allowsUnqualified) return false
 
 		const isEmptyValue =
 			attribute.value === undefined || attribute.value === null || attribute.value === ''

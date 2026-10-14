@@ -4,6 +4,8 @@ import { createXmlSchemaAssertions } from './assert-valid-xml'
 
 import { describe, expect, it } from 'vitest'
 
+import { XMLNS_XSI_NAMESPACE } from '@/helpers/constant'
+
 const { assertValidXml, assertValidXmlTestCases } = createXmlSchemaAssertions({
 	definition: DEFINITION,
 	types: TYPES,
@@ -272,6 +274,63 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			const xml = /* xml */ `<Outer><Plain wide="1" /></Outer>`
 			const message = captureErrorMessage(() => assertValidTyped(xml, 'snippet'))
 			expect(message).toContain("[attribute] <Plain> has unknown attribute 'wide'")
+		})
+	})
+
+	describe('attributes in a namespace', () => {
+		const EXT = DIALECTE_TEST_NAMESPACES.ext.uri
+		const XMLNS_EXT_NAMESPACE = `xmlns:ext="${EXT}"`
+
+		function violationsOf(xml: string): string {
+			return captureErrorMessage(() => assertValidXml(xml, 'snippet', { requireComplete: false }))
+		}
+
+		it('accepts a declared one, under any prefix bound to its namespace', () => {
+			expect(
+				violationsOf(
+					/* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ext:cA="v" />`,
+				),
+			).toBe('')
+			expect(
+				violationsOf(/* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} xmlns:x="${EXT}" x:cA="v" />`),
+			).toBe('')
+		})
+
+		it('rejects one of a dialecte namespace the element does not declare, by its stored name', () => {
+			expect(
+				violationsOf(
+					/* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ext:unknown="v" />`,
+				),
+			).toContain("[attribute] <A> has unknown attribute 'ext:unknown'")
+			expect(
+				violationsOf(/* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} xmlns:x="${EXT}" x:unknown="v" />`),
+			).toContain("[attribute] <A> has unknown attribute 'ext:unknown'")
+		})
+
+		it('rejects one of a foreign namespace, unless a wildcard allows it', () => {
+			expect(
+				violationsOf(
+					/* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_VENDOR_NAMESPACE} vendor:anything="v" />`,
+				),
+			).toContain("[attribute] <A> has unknown attribute 'vendor:anything'")
+		})
+
+		it('accepts what the wildcard allows: ##other takes another namespace, not none', () => {
+			const xml = /* xml */ `<AAAA_1 ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_EXT_NAMESPACE} ${XMLNS_VENDOR_NAMESPACE} ext:anything="v" vendor:anything="v" />`
+			expect(violationsOf(xml)).toBe('')
+			expect(
+				violationsOf(/* xml */ `<AAAA_1 ${XMLNS_DEFAULT_NAMESPACE} anything="v" />`),
+			).toContain("[attribute] <AAAA_1> has unknown attribute 'anything'")
+		})
+
+		it('accepts what the wildcard allows: ##any takes none too', () => {
+			const xml = /* xml */ `<DDD_2 ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_VENDOR_NAMESPACE} anything="v" vendor:anything="v" />`
+			expect(violationsOf(xml)).toBe('')
+		})
+
+		it('accepts xsi attributes and the test record id anywhere', () => {
+			const xml = /* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE} xmlns:dev="${DIALECTE_TEST_NAMESPACES.dev.uri}" xsi:schemaLocation="urn:a a.xsd" dev:id="a1" />`
+			expect(violationsOf(xml)).toBe('')
 		})
 	})
 

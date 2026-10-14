@@ -1,4 +1,5 @@
-import { resolveDefinition } from '@/utils'
+import { DIALECTE_DEV_NAMESPACE, XMLNS_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
+import { isNamespaceAllowedByWildcard, resolveDefinition } from '@/utils'
 
 import type {
 	AssertValidXmlOptions,
@@ -10,6 +11,13 @@ import type {
 } from './assert-valid-xml.types'
 import type { AnyAttribute, ResolvedDefinition } from '@/types'
 
+/** Attributes any element may carry: namespace declarations, `xsi:*`, and the test record id. */
+const ALWAYS_ALLOWED_NAMESPACE_URIS: readonly string[] = [
+	XMLNS_NAMESPACE_URI,
+	XSI_NAMESPACE.uri,
+	DIALECTE_DEV_NAMESPACE.uri,
+]
+
 /**
  * Create structural XML assertions bound to a dialecte's generated `definition`
  * and declared `namespaces`. Instantiate once per dialecte (e.g. in scl test) and
@@ -17,7 +25,9 @@ import type { AnyAttribute, ResolvedDefinition } from '@/types'
  *
  * `assertValidXml` asserts, structurally: every element's namespace matches its
  * parent context, every element is an allowed child of its parent, and every
- * attribute is a known attribute of its element. Elements unknown to the schema are
+ * attribute is a known attribute of its element - in whatever namespace: declared by the element (a dialecte
+ * namespace under any prefix the document binds), or allowed by its attribute wildcard. Namespace declarations,
+ * `xsi:*` and the test record id are always allowed. Elements unknown to the schema are
  * skipped (bespoke content under a transparent `Private`), and so is any element in
  * a namespace the dialecte does not declare — even when its local name collides with
  * a schema element. An element in NO namespace is not foreign — it is a schema
@@ -123,17 +133,36 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 			: element.hasAttributeNS(namespace.uri, attributeName.slice(colon + 1))
 	}
 
+	/**
+	 * The name the definition keys an attribute by: bare in no namespace or the default one, `prefix:local` under the
+	 * dialecte's prefix for another namespace it declares (whatever prefix the document bound), as written otherwise.
+	 */
+	function storedAttributeName(attribute: Attr): string {
+		if (attribute.namespaceURI === null) return attribute.localName
+		const namespace = Object.values(namespaces).find(
+			(candidate) => candidate.uri === attribute.namespaceURI,
+		)
+		if (namespace === undefined) return attribute.name
+		return namespace.prefix ? `${namespace.prefix}:${attribute.localName}` : attribute.localName
+	}
+
 	function collectAttributeViolations(params: CollectAttributeViolationsParams): string[] {
 		const { element, elementDefinition, requireComplete } = params
 
 		const allowed = allowedAttributes(elementDefinition)
-		// Skip namespaced attributes: xmlns/xsi, and any dev-namespaced test record id.
-		// Only unprefixed schema attributes are validated.
 		const unknownAttributeViolations = Array.from(element.attributes)
-			.filter((attribute) => attribute.namespaceURI === null && !allowed.has(attribute.localName))
+			.filter((attribute) => !ALWAYS_ALLOWED_NAMESPACE_URIS.includes(attribute.namespaceURI ?? ''))
+			.filter(
+				(attribute) =>
+					!allowed.has(storedAttributeName(attribute)) &&
+					!isNamespaceAllowedByWildcard({
+						wildcard: elementDefinition.attributes.any,
+						namespaceUri: attribute.namespaceURI ?? '',
+					}),
+			)
 			.map(
 				(attribute) =>
-					`[attribute] <${element.localName}> has unknown attribute '${attribute.localName}'`,
+					`[attribute] <${element.localName}> has unknown attribute '${storedAttributeName(attribute)}'`,
 			)
 		if (!requireComplete) return unknownAttributeViolations
 

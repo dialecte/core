@@ -1,4 +1,4 @@
-import type { AnyDialecteConfig, Namespace } from '@/types'
+import type { AnyDialecteConfig, Namespace, Wildcard } from '@/types'
 
 /**
  * Resolve a namespace declared in the config by its prefix (e.g. `ext`,
@@ -77,4 +77,16 @@ export function orderAttributesBySequence<
 		.sort(compareQualifiedAttributes)
 
 	return [...inSequence, ...extras]
+}
+
+/** Whether a wildcard allows a namespace (`''` = none): the namespaces it lists, or every one it does not exclude. */
+export function isNamespaceAllowedByWildcard(params: {
+	wildcard: Wildcard | undefined
+	namespaceUri: string
+}): boolean {
+	const { wildcard, namespaceUri } = params
+	if (wildcard === undefined) return false
+	return wildcard.namespace !== undefined
+		? wildcard.namespace.includes(namespaceUri)
+		: !(wildcard.notNamespace ?? []).includes(namespaceUri)
 }
