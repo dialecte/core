@@ -186,7 +186,7 @@ Builds a complete, **canonical** `RawRecord` from a partial input — the single
 - standardizes only elements in a **declared namespace** (default or a registered one). An element whose local name matches a schema element but lives in a namespace the config does not declare is treated as foreign and returned **verbatim** — namespace and attributes untouched (see [Element namespaces](#element-namespaces));
 - assigns `crypto.randomUUID()` when no `id` is given, and normalizes attributes to array form with **canonical names** (see [Attribute namespaces](#attribute-namespaces));
 - fills schema attributes in **definition-`sequence` order**, resolving each value as `provided ?? fixed ?? default` (required attributes fall back to `''`);
-- drops unnamespaced attributes not in the schema; keeps namespaced/`xmlns` ones, **deterministically ordered** after the schema attributes (`orderAttributesBySequence`);
+- drops an unnamespaced attribute the element neither declares nor admits through its attribute wildcard (one admitting no namespace keeps it); keeps namespaced ones, **deterministically ordered** after the schema attributes (`orderAttributesBySequence`);
 - sets the element's namespace, resolved **per parent→child context** (see [Element namespaces](#element-namespaces));
 - runs the `afterStandardizedRecord` hook (if provided), then re-applies canonical ordering so hook additions stay ordered.
 
@@ -230,7 +230,7 @@ A prefixed authored `name` throws `PREFIXED_ATTRIBUTE_NAME`; an unknown namespac
 
 #### Element namespaces
 
-An element's namespace can depend on its **parent context**: the same local name may be declared in different namespaces under different parents. The generated definition carries this on the parent→child edge (`ChildDefinition.namespace`), and `standardizeRecord` stamps the edge namespace onto the record, falling back to the element's own namespace when the edge omits one (or the record is a root).
+An element's namespace can depend on its **parent context**: the same local name may be declared in different namespaces under different parents. The generated definition carries this in the parent's content model - an element particle names its namespace when it differs from its holder's, and the declaration it holds for a tag declared several ways - and the parent lists, per namespace, the declarations it holds the child in (`children.details[tag].declarations`). `standardizeRecord` resolves the declaration that applies through [`resolveDefinition`](/guide/development/utils#resolvedefinition) and stamps its namespace onto a record that has none yet (a created one). A record read in one of the tag's namespaces keeps it, with the definition's prefix; one read in a namespace none of its declarations uses keeps it too - the store stays faithful to the source, validation reports it.
 
 For example, an element declared in the default namespace under one parent but in the `ext` namespace under another serializes as bare `A` under the first parent and `ext:A` under the second — driven entirely by the definition, with no per-element special-casing.
 

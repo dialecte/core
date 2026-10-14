@@ -186,6 +186,8 @@ Partial attribute match. Values can be a single value or an array of accepted va
 } // match either
 ```
 
+An `xsi:type` value is compared as the type it names, whatever form either side writes it in - a local name, the dialecte's prefix or a Clark name (see [`xsi:type` values](/guide/development/utils#xsi-type-values)). The same holds for the `where` of `omit` and `getTree`.
+
 ### findByAttributes
 
 Find all records of a given tag name matching attribute filters.
@@ -437,7 +439,7 @@ Without `namespace`, `name` is the attribute's canonical name (bare local for th
 Returns a destructurable value object, or an array of full attribute objects.
 
 ```ts
-// Default-namespace attributes only, keyed by local name
+// Every attribute under its stored name: bare in the default namespace, prefixed otherwise
 const { aA, bA, 'ext:cA': cA } = await doc.query.getAttributes(ref)
 
 // A namespace's attributes, keyed by local name (prefix stripped)
@@ -484,6 +486,18 @@ const forExport = await doc.query.getAttributes(ref, { defaults: 'required' })
 ```
 
 `getAttributes(ref, { fullObject: true })` defaults to `'optional'` too, synthesizing absent schema attributes with their schema-derived namespace. Pass `{ fullObject: true, defaults: 'none' }` for the stored-only array.
+
+## Filter helpers
+
+The functions behind the attribute filters and `omit` are exported from `@dialecte/core`, for an extension that filters records it already holds. Each takes the `dialecteConfig`: an `xsi:type` value is compared as the type it names.
+
+```ts
+import { applyOmit, matchesAttributeFilter, parseOmit } from '@dialecte/core'
+
+matchesAttributeFilter({ dialecteConfig, record, attributeFilter }) // boolean - every key must match, an array value matches any of its values
+const compiled = parseOmit({ omit, dialecteConfig }) // the omit entries split for traversal
+const pruned = applyOmit({ tree, omit, dialecteConfig }) // the tree without the omitted descendants; the root is never dropped
+```
 
 ## Untyped namespace — `query.any`
 

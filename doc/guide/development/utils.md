@@ -9,12 +9,19 @@ Utilities exported from `@dialecte/core/utils`. These are the shared, framework-
 ```ts
 import {
 	getAttributeRules,
+	resolveDefinition,
+	admittedXsiTypes,
+	resolveXsiType,
+	canonicalXsiType,
 	resolveSchemaAttributeValue,
 	isSchemaDefaultValue,
+	enumeratedValues,
+	valuePatterns,
 	extractLocalName,
 	resolveNamespaceByPrefix,
 	resolveNamespaceByScope,
 	resolvePrefixByNamespaceScope,
+	isNamespaceAllowedByWildcard,
 	compareQualifiedAttributes,
 	orderAttributesBySequence,
 	orderByConfigSequence,
@@ -87,6 +94,8 @@ resolveDefinition({ dialecteConfig, record: root }) // parent: null
 
 A record without a namespace yet (created) takes the only namespace its parent holds it in. A parent whose wildcard admits the record gives the global declaration of its namespace; a parent that leaves the choice to the particle the record matches gives the tag level. The parent is read at its own tag level, unless the caller passes its resolved definition (`parentDefinition`) - a top-down walk does, and decides the rare tags whose parent is itself declared several ways. The identity constraints, `nillable` and the `variants` are the declaration's: the union carries them only where every declaration agrees.
 
+It takes a record because the record carries its parent. A ref does not, and passing one would silently read the union, so the compiler refuses it: `query.getDefinition(ref)` fetches the record first (staged → cache → store) and resolves from it.
+
 Then `xsi:type`: when the record names a type its declaration lists in `variants` - any declaration of the tag, where the parent leaves the declaration open - the attributes, children, content model and text are the type's (`dialecteConfig.types`, the `TYPES` the generator writes beside `DEFINITION`); the identity fields and constraints stay the element's. Naming the declared type itself (`type`) gives the declaration as it is. A tag declared one way, without `xsi:type`, resolves to its tag level itself; anything else is built once and returned as the same object afterwards.
 
 ### `xsi:type` values
@@ -106,7 +115,10 @@ import { admittedXsiTypes, canonicalXsiType, resolveXsiType } from '@dialecte/co
 
 resolveXsiType({ dialecteConfig, record }) // { clark: '{uri}tSquare', namespace: 'uri', local: 'tSquare' }
 admittedXsiTypes({ dialecteConfig, record }) // the Clark names it may name: its declared type (unless abstract), its variants
+canonicalXsiType({ dialecteConfig, value: 'e:tSquare', namespaceOf }) // 'ext:tSquare' - the stored form of a written value
 ```
+
+`resolveXsiType` returns `undefined` without `xsi:type` or when its prefix is bound nowhere. `canonicalXsiType` reads the value with `namespaceOf`, a `NamespaceLookup` (`(prefix: string) => string | undefined`) giving the namespace bound to a prefix where the value stands, and returns the value as written when the lookup cannot read it.
 
 Writes check the type an element names (`addChild`, `ensureChild`, a clone, an `update` that touches `xsi:type`); import never refuses, validation reports a document as it is:
 
@@ -133,9 +145,25 @@ The types offer the stored literals only. Another form of the same type - a Clar
 
 An element without any attribute types its value object as `{}`, which TypeScript lets take any object: a key no element has is not refused at compile time there - validation reports it. Closing it would also refuse payloads typed over several elements at once (a generic helper's), which read as having no key either.
 
-It takes a record because the record carries its parent. A ref does not, and passing one would silently read the union, so the compiler refuses it: `query.getDefinition(ref)` fetches the record first (staged → cache → store) and resolves from it.
-
 The same rule holds at the type level, additively: `AttributesValueObjectOf<Config, 'AAA_1'>` is the tag-level object exactly as before, and `AttributesValueObjectOf<Config, 'AAA_1', 'AA_2'>` - a parent named - is the object declared under `AA_2`, read from `ATTRIBUTES.byParent`, the second axis of the one attributes constant a dialecte generates (`byTag` is the table every consumer had; both are skeletons - one key per attribute name, typed - and what an attribute is lives in `DEFINITION`). `addChild` and `ensureChild` already know the parent, so `tx.addChild(aa2, { tagName: 'AAA_1', attributes: { aAAA_1: 'x' } })` is refused by the compiler. A dialecte package exposes the same through its namespace: `<Name>.AttributesOf<'AAA_1', 'AA_2'>`.
+
+### Definition shape
+
+What `@dialecte/create` writes in `definition.generated.ts`, and what `resolveDefinition` reads. `DEFINITION` maps each tag to its `ElementDefinition`; `TYPES`, passed as `DialecteConfig.types`, maps each named type (Clark name) to a `ContentDefinition`.
+
+| Field                                   | On                                | Holds                                                                                                                                                                                                  |
+| --------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tag`, `parents`                        | `ElementDefinition`               | The tag and every element that may hold it                                                                                                                                                             |
+| `declarations`                          | `ElementDefinition`               | For a tag declared several ways, each way under its number; the tag level keeps only what every way agrees on                                                                                          |
+| `namespace`, `global`, `nillable`       | a declaration                     | Its namespace; whether the schema declares it globally; whether it may be `xsi:nil`                                                                                                                    |
+| `type`, `variants`, `abstractType`      | a declaration                     | Its declared type when named (Clark name); the types an instance may name with `xsi:type` instead (keys of `TYPES`); whether the declared type is abstract, so an instance must name a variant         |
+| `constraints`                           | a declaration                     | Its identity constraints: `kind` (`unique` / `key` / `keyref`), `name`, `namespace`, `refer: { name, namespace }` for a keyref, `selector` and `fields` as paths of namespaced name tests              |
+| `attributes.sequence`, `.details`       | any content (`ContentDefinition`) | The attribute names in order, and per name `required`, `default`, `fixed`, `namespace`, `type` (a `DataType`, absent for a plain string)                                                               |
+| `attributes.any`                        | any content                       | The attribute wildcard: `namespace` (the namespaces it admits, `''` = none) or `notNamespace` (those it excludes), with `processContents`                                                              |
+| `attributes.identityFields`             | any content                       | The attributes that take part in a `key` / `unique`                                                                                                                                                    |
+| `children.sequence`, `.any`, `.details` | any content                       | Every element it may hold (its variants' included); `true` when a wildcard admits others; per child declared several ways, `declarations`: the ways it holds it, per namespace                         |
+| `contentModel`                          | any content                       | The particles as the schema wrote them: `sequence` / `choice` / `all` groups, `element` particles with `name`, `namespace` (absent in the holder's), `declaration` (the way held), and `any` wildcards |
+| `textContent`                           | any content                       | `type`, `default`, `fixed` of the text, when the element has one                                                                                                                                       |
 
 ### `resolveSchemaAttributeValue`
 
@@ -240,6 +268,20 @@ import { resolvePrefixByNamespaceScope } from '@dialecte/core/utils'
 resolvePrefixByNamespaceScope(dialecteConfig, 'ext') // → 'ext'
 ```
 
+### `isNamespaceAllowedByWildcard`
+
+Whether a wildcard admits a namespace: the namespaces it lists (`namespace`), or every one it does not exclude (`notNamespace`). `''` is "no namespace". No wildcard admits nothing. This is what `standardizeRecord` and `assertValidXml` ask before keeping or reporting an attribute the element does not declare.
+
+```ts
+import { isNamespaceAllowedByWildcard } from '@dialecte/core/utils'
+
+const wildcard = definition.attributes.any // { namespace?: string[]; notNamespace?: string[]; processContents }
+
+isNamespaceAllowedByWildcard({ wildcard, namespaceUri: 'http://example.com/x' })
+isNamespaceAllowedByWildcard({ wildcard, namespaceUri: '' }) // an attribute in no namespace
+isNamespaceAllowedByWildcard({ wildcard: undefined, namespaceUri: '' }) // → false
+```
+
 ### `compareQualifiedAttributes`
 
 A stable comparator for attributes that fall outside an element's schema `sequence` (namespaced extras and `xmlns` declarations). Sorts by namespace URI, then name — so two records carrying the same attribute set compare equal regardless of parse/clone/update order.
@@ -258,6 +300,33 @@ Puts an element's attributes into canonical order: schema-`sequence` attributes 
 import { orderAttributesBySequence } from '@dialecte/core/utils'
 
 const ordered = orderAttributesBySequence(record.attributes, definition.attributes.sequence)
+```
+
+---
+
+## Datatypes
+
+An attribute's or a text's facets live in its `type`, a `DataType`: an XSD built-in (`{ builtin, facets? }`), a list of one (`{ list, facets? }`) or a union of several (`{ union, facets? }`). Patterns are stored one list per derivation level, as JavaScript sources written for the `u` flag.
+
+### `enumeratedValues`
+
+The values a datatype enumerates: its own enumeration, else those its union members enumerate (a member restricted by a pattern alone enumerates none). A qualified name's values are written `{uri}local`. `[]` for `undefined` or a datatype without enumeration.
+
+```ts
+import { enumeratedValues } from '@dialecte/core/utils'
+
+enumeratedValues(definition.attributes.details.aA?.type) // readonly string[]
+```
+
+### `valuePatterns`
+
+The patterns of a datatype's own levels, one `RegExp` per level: each anchored to the whole value, compiled with the `u` flag, the level's patterns joined as alternatives. A value is valid when it matches every one. `[]` without patterns.
+
+```ts
+import { valuePatterns } from '@dialecte/core/utils'
+
+const patterns = valuePatterns(definition.attributes.details.aA?.type) // readonly RegExp[]
+const isValid = patterns.every((pattern) => pattern.test(value))
 ```
 
 ---

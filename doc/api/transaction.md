@@ -66,15 +66,17 @@ await tx.addChild(parentRef, {
 
 A prefixed authored `name` (e.g. `ext:cAA_1`) throws `PREFIXED_ATTRIBUTE_NAME`. See [Attribute namespaces](/guide/development/helpers#attribute-namespaces).
 
+The type the child names with `xsi:type` is checked: an element whose declared type is abstract must name one (`XSI_TYPE_REQUIRED`), and only a type it may take is accepted (`XSI_TYPE_NOT_ADMITTED`). See [`xsi:type` values](/guide/development/utils#xsi-type-values).
+
 #### AddChildParams
 
-| Field        | Type                                           | Description                                                                                                                                                                    |
-| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tagName`    | `ChildElement`                                 | Tag name of the child to create                                                                                                                                                |
-| `attributes` | `AttributesValueObject \| AuthoredAttribute[]` | Every declared attribute under its stored name via the value-object form; or the array form (`{ name, value, namespace }`). Optional when the child has no required attributes |
-| `namespace`  | `Namespace`                                    | Override the element's namespace                                                                                                                                               |
-| `value`      | `string`                                       | Text content of the element                                                                                                                                                    |
-| `id`         | `UUID`                                         | Explicit ID (for tests with `dev:db-id`)                                                                                                                                       |
+| Field        | Type                                           | Description                                                                                                                                                                                                                                                                                            |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tagName`    | `ChildElement`                                 | Tag name of the child to create                                                                                                                                                                                                                                                                        |
+| `attributes` | `AttributesValueObject \| AuthoredAttribute[]` | Every declared attribute under its stored name via the value-object form; or the array form (`{ name, value, namespace }`). Optional when the child has no required attribute (as declared under this parent); required otherwise - an abstract-type element always, since it must name its `xsi:type` |
+| `namespace`  | `Namespace`                                    | Override the element's namespace                                                                                                                                                                                                                                                                       |
+| `value`      | `string`                                       | Text content of the element                                                                                                                                                                                                                                                                            |
+| `id`         | `UUID`                                         | Explicit ID (for tests with `dev:db-id`)                                                                                                                                                                                                                                                               |
 
 Returns `Promise<RawRecord<Config, ChildElement>>` — the full record of the newly created element.
 
@@ -102,6 +104,8 @@ await doc.transaction(async (tx) => {
 Returns `Promise<RawRecord<Config, Element>>`.
 
 Setting a schema attribute to `undefined`, `null`, or an empty string `''` removes it from the record — it will no longer appear in the XML output. An empty carries no information over the schema (a `required` / `fixed` value is re-materialized on export and a `default` — including `''` — is re-applied on read), so it is normalized away rather than stored. This applies to every write path (`addChild` / `ensureChild` / `update`) and to import.
+
+An update that touches `xsi:type` is checked like a create (`XSI_TYPE_REQUIRED`, `XSI_TYPE_NOT_ADMITTED`), and one naming another type while attributes or children the new type does not admit remain is refused with `XSI_TYPE_CHANGE_LEAVES_CONTENT` - clear the attributes in the same update, delete the children first. An update that leaves `xsi:type` alone is never refused for it. See [`xsi:type` values](/guide/development/utils#xsi-type-values).
 
 `update` fires `hooks.afterUpdated` with the old and new record. See [Hooks — afterUpdated](/api/hooks#afterupdated) for the full reference.
 
