@@ -20,6 +20,7 @@ const TRANSACTION_EXCLUDED = new Set([
 	'clearStagedOperations',
 	'clearRecordCache',
 	'commit',
+	'finishStaging',
 	'constructor',
 ])
 

@@ -2,6 +2,7 @@ import { createProgressReporter } from '../progress'
 import { Query } from '../query'
 import { createStagedOperations } from '../staged-operations'
 import { AnyTransaction } from './any'
+import { stageBeforeCommit } from './before-commit'
 import { stageDeepClone } from './clone'
 import { commitTransaction } from './commit'
 import { stageAddChild } from './create'
@@ -55,6 +56,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	protected hooks: TransactionHooks<GenericConfig> | undefined
 	protected progressReporter: ProgressReporter
 	private _anyTx?: AnyTransaction<GenericConfig>
+	private stagingFinished = false
 
 	constructor(
 		store: Store,
@@ -266,6 +268,16 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	}
 
 	//== Internal — called by Document, not by consumers
+
+	/**
+	 * Run the `beforeCommit` hook once, when the transaction's work is done, and stage
+	 * what it returns. Called by Document.transaction() / prepare() after the callback.
+	 */
+	async finishStaging(): Promise<void> {
+		if (this.stagingFinished) return
+		this.stagingFinished = true
+		await stageBeforeCommit({ hooks: this.hooks, context: this.context, query: this })
+	}
 
 	/** Returns a read-only view of staged operations (for prepare/preview) */
 	getStagedOperations(): ReadonlyArray<Operation<GenericConfig>> {
