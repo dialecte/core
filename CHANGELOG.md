@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A `beforeCommit` transaction hook** (also in 0.5.4). Called once per transaction when its callback is done (`document.transaction` and `document.prepare`, so a preview shows what it adds), with every staged operation and a query that reads them. It returns operations to stage, which call no hook again.
 - A declaration's definition may say its declared type, `type` (its Clark name), when the type is named - as `@dialecte/create` writes it from its next release on.
 - `resolveXsiType` (the type a record names), `canonicalXsiType` (the form core stores a value in) and `admittedXsiTypes` (the types an element may name) in `@dialecte/core/utils`.
 - `addChild` and `ensureChild` take every attribute the dialecte declares in their value-object form, under the name it is stored by - `xsi:type` and namespaced ones included (`{ aShape: 's', 'xsi:type': 'tCircle', 'ext:cShape': 'c' }`): what `getAttributes` returns is written back as is. A prefix no namespace of the dialecte has throws `UNKNOWN_NAMESPACE_PREFIX`; the array form stays for a namespace given by key or one the dialecte does not declare.
