@@ -72,18 +72,66 @@ An unknown element or attribute returns the type with the booleans `false` and t
 
 ### `resolveDefinition`
 
-A schema may declare one tag with different content under different parents. Suppose the test schema declared `AAA_1` twice: under `AA_1` with a required `aAAA_1` and its `AAAA_*` children, under `AA_2` as a bare text with no attribute. The generated definition keeps the **union** at the tag level (`DEFINITION.AAA_1`). What `AAA_1` holds under each parent sits **on that parent's edge**, next to its occurrence: `DEFINITION.AA_2.children.details.AAA_1.attributes`, `.children`, `.contentModel`, `.textContent` - all four, only on the edges whose declaration differs. Those edges are the whole record of where the declarations differ: there is no second list to keep in step. `resolveDefinition` is the one rule every reader of the definition follows:
+A schema may declare one tag several ways - with different content under different parents, or in different namespaces. Suppose the test schema declared `AAA_1` twice: under `AA_1` with a required `aAAA_1` and its `AAAA_*` children, under `AA_2` as a bare text with no attribute. The generated definition keeps the **union** at the tag level (`DEFINITION.AAA_1`), lenient where the two differ, and each declaration under its number (`DEFINITION.AAA_1.declarations['1']`, `['2']`). A parent says which one it holds, per namespace: `DEFINITION.AA_2.children.details.AAA_1.declarations` is `{ '<uri>': ['2'] }`. `resolveDefinition` is the one rule every reader of the definition follows:
 
 ```ts
 import { resolveDefinition } from '@dialecte/core/utils'
 
 resolveDefinition({ dialecteConfig, record: aaa1UnderAa2 }) // an AAA_1 whose parent is an AA_2
-// → the definition on the AA_2 → AAA_1 edge: no attribute, a text
+// → declaration 2: no attribute, a text
 resolveDefinition({ dialecteConfig, record: aaa1UnderAa1 }) // an AAA_1 whose parent is an AA_1
-// → the definition on the AA_1 → AAA_1 edge: `aAAA_1` required, the `AAAA_*` children
+// → declaration 1: `aAAA_1` required, the `AAAA_*` children
 resolveDefinition({ dialecteConfig, record: root }) // parent: null
-// → DEFINITION.Root: the tag level, also what a parent without its own declaration gets
+// → the global declaration of the record's namespace
 ```
+
+A record without a namespace yet (created) takes the only namespace its parent holds it in. A parent whose wildcard admits the record gives the global declaration of its namespace; a parent that leaves the choice to the particle the record matches gives the tag level. The parent is read at its own tag level, unless the caller passes its resolved definition (`parentDefinition`) - a top-down walk does, and decides the rare tags whose parent is itself declared several ways. The identity constraints, `nillable` and the `variants` are the declaration's: the union carries them only where every declaration agrees.
+
+Then `xsi:type`: when the record names a type its declaration lists in `variants` - any declaration of the tag, where the parent leaves the declaration open - the attributes, children, content model and text are the type's (`dialecteConfig.types`, the `TYPES` the generator writes beside `DEFINITION`); the identity fields and constraints stay the element's. Naming the declared type itself (`type`) gives the declaration as it is. A tag declared one way, without `xsi:type`, resolves to its tag level itself; anything else is built once and returned as the same object afterwards.
+
+### `xsi:type` values
+
+A document writes an `xsi:type` value as a qualified name - `Block`, `plc:Block`, `abc:Block` may all name the same type. Core stores one form of it, on import and on every write (`addChild`, `update`, a hook's change): the local name for a type in the dialecte's default namespace, the dialecte's prefix and the local name for a type in another namespace it declares.
+
+| Document or author writes                                     | Stored        |
+| ------------------------------------------------------------- | ------------- |
+| `Block`, `p:Block` (`p` bound to the default namespace)       | `Block`       |
+| `e:tSquare` (`e` bound to the ext namespace), `{uri}tSquare`  | `ext:tSquare` |
+| `q:Block` (`q` bound nowhere), a namespace the dialecte lacks | as written    |
+
+Import reads the prefix with the namespaces in scope at the element, an ancestor's bindings included. The value keeps what XML says it means, whoever writes it - a file or code: an unprefixed name is in the default namespace, so `tTriangle` where only `ext:tTriangle` exists stays `tTriangle` and validation reports it. Export declares the prefix the value uses, and when an element in another namespace re-binds it where the value stands, writes the value with a prefix bound to its namespace there.
+
+```ts
+import { admittedXsiTypes, canonicalXsiType, resolveXsiType } from '@dialecte/core/utils'
+
+resolveXsiType({ dialecteConfig, record }) // { clark: '{uri}tSquare', namespace: 'uri', local: 'tSquare' }
+admittedXsiTypes({ dialecteConfig, record }) // the Clark names it may name: its declared type (unless abstract), its variants
+```
+
+Writes check the type an element names (`addChild`, `ensureChild`, a clone, an `update` that touches `xsi:type`); import never refuses, validation reports a document as it is:
+
+| Write                                                                                                                                                                                             | Refused with                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| an element whose declared type is abstract, without `xsi:type`                                                                                                                                    | `XSI_TYPE_REQUIRED` (`D3009`)              |
+| a type that is neither the declared one (when not abstract) nor one of its variants, or a prefix bound nowhere                                                                                    | `XSI_TYPE_NOT_ADMITTED` (`D3010`)          |
+| an update naming another type while attributes or children the new type does not admit remain - clear the attributes in the same update, delete the children first; the error's `meta` names them | `XSI_TYPE_CHANGE_LEAVES_CONTENT` (`D3011`) |
+
+A built-in XSD type (`xs:token`, ...) is not judged: the definition does not list the built-in hierarchy. An update that leaves `xsi:type` alone is never refused for it, so an imported record naming a type it may not take can still be edited. A fixed value is judged on the type the record names once updated.
+
+Filters (`findByAttributes`, `findDescendants`, `getTree` `where`, `omit`, `ensureChild`) compare `xsi:type` as the type it names: `{ 'xsi:type': 'tSquare' }`, `{ 'xsi:type': 'ext:tSquare' }` and the Clark name each find what they name, a record stored by an earlier core with the document's own prefix included.
+
+#### The types of an element that may take another type
+
+A dialecte generated by `@dialecte/create` types such an element as a union on `'xsi:type'`: its own attributes (none for an abstract type) and one member per type it may take, each naming its literal - the stored form above. Every member lists every key of the union, one it does not have as `?: undefined`, so:
+
+- `AttributesOf<Config, 'Shape'>` is every attribute any member has, and a record of one element stays assignable to a record of any.
+- A read narrows on `'xsi:type'`: `const attributes = await query.getAttributes(shape)`, then `if (attributes['xsi:type'] === 'tSquare') attributes.side` - the check is the guard, there is no other.
+- A filter names no type unless it wants one: `{ side: '2' }` finds any member having `side`; `{ 'xsi:type': 'tSquare', side: '2' }` only squares; `{ 'xsi:type': 'tCircle', side: '2' }` is refused (`side` is no attribute of `tCircle`), and so is a type the element may not take. `'xsi:type'` takes several types too (`['tSquare', 'tCircle']`), or a variable holding one of several.
+- A write names one member: an abstract type's element is written with its `'xsi:type'` and that type's attributes (`attributes` is required on `addChild`); a concrete one may omit `'xsi:type'` and write its own attributes, while an attribute only a variant has means naming that variant.
+
+The types offer the stored literals only. Another form of the same type - a Clark name, a prefix the document binds - is resolved by the runtime as above; written as a literal it is a compile error, by design (the literal is what a narrowed read sees).
+
+An element without any attribute types its value object as `{}`, which TypeScript lets take any object: a key no element has is not refused at compile time there - validation reports it. Closing it would also refuse payloads typed over several elements at once (a generic helper's), which read as having no key either.
 
 It takes a record because the record carries its parent. A ref does not, and passing one would silently read the union, so the compiler refuses it: `query.getDefinition(ref)` fetches the record first (staged → cache → store) and resolves from it.
 

@@ -2,7 +2,7 @@ import { getRecord } from '@/document'
 import { resolveDefinition } from '@/utils'
 
 import type { Context, RefOrRecord } from '@/document'
-import type { AnyDialecteConfig, ElementDefinition, ElementsOf } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, ResolvedDefinition } from '@/types'
 
 /**
  * The definition of an element in its context. The record is fetched (staged → cache → store),
@@ -15,7 +15,7 @@ export async function getDefinition<
 >(params: {
 	context: Context<GenericConfig>
 	ref: RefOrRecord<GenericConfig, GenericElement>
-}): Promise<ElementDefinition | undefined> {
+}): Promise<ResolvedDefinition | undefined> {
 	const { context, ref } = params
 	const record = await getRecord({ context, ref })
 	if (!record) return undefined

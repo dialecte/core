@@ -2,7 +2,7 @@ import { applyOmit, parseOmit } from './omit'
 
 import { describe, expect } from 'vitest'
 
-import { createTestRecord, runTestCases } from '@/test'
+import { createTestRecord, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { OmitEntry } from './types'
 import type { BaseTestCase, TestDialecteConfig, TestRecord } from '@/test'
@@ -73,7 +73,7 @@ describe('parseOmit', () => {
 	}
 
 	runTestCases.generic(testCases, (tc) => {
-		const result = parseOmit(tc.omit)
+		const result = parseOmit({ omit: tc.omit, dialecteConfig: TEST_DIALECTE_CONFIG })
 		expect([...result.unconditional]).toEqual(tc.expectedUnconditional)
 		expect(result.conditional).toEqual(tc.expectedConditional)
 	})
@@ -133,7 +133,11 @@ describe('applyOmit', () => {
 	}
 
 	runTestCases.generic(testCases, (tc) => {
-		const result = applyOmit({ tree: rootWith2(), omit: tc.omit })
+		const result = applyOmit({
+			tree: rootWith2(),
+			omit: tc.omit,
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+		})
 		expect(toShape(result)).toEqual(tc.expected)
 	})
 })

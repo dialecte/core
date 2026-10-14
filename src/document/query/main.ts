@@ -35,11 +35,11 @@ import type {
 	AnyTreeRecord,
 	AttributesOf,
 	ChildrenOf,
-	DefaultAttributesValueObjectOf,
 	DescendantsOf,
-	ElementDefinition,
+	ResolvedDefinition,
 	ElementsOf,
 	FullAttributeObjectOf,
+	AttributesValueObjectOf,
 	NamespacedAttributesValueObjectOf,
 	NamespaceKeysUsedByElement,
 	RootElementOf,
@@ -182,21 +182,21 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * The definition of an element in its context: as declared under its parent when the schema
-	 * declares the tag differently there, else the tag-level definition.
+	 * The definition of an element in its context: the declaration its parent holds when the schema
+	 * declares the tag several ways, and what the type it names with xsi:type lets it hold.
 	 *
 	 * @param refOrRecord - The element to describe; its record is fetched, so its parent is known.
-	 * @returns The `ElementDefinition`, or `undefined` when nothing is found.
+	 * @returns The `ResolvedDefinition`, or `undefined` when nothing is found.
 	 *
 	 * @example
 	 * ```ts
 	 * const definition = await query.getDefinition(p)
-	 * definition?.attributes.details.type?.facets?.enumeration // as declared under p's parent
+	 * definition?.attributes.details.type?.type?.facets?.enumeration // as declared under p's parent
 	 * ```
 	 */
 	async getDefinition<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
-	): Promise<ElementDefinition | undefined> {
+	): Promise<ResolvedDefinition | undefined> {
 		return getDefinition({ context: this.context, ref: toRef(refOrRecord) })
 	}
 
@@ -469,20 +469,21 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get a record's default-namespace attributes as a destructurable value object.
+	 * Get a record's attributes as a destructurable value object, each under the name it is stored by - what a write
+	 * takes back.
 	 *
 	 * @param refOrRecord - The element to read from.
-	 * @returns A `{ aA, bA, ... }` object of the unprefixed attributes.
+	 * @returns A `{ aA, bA, 'ext:cA', 'xsi:type', ... }` object: unprefixed in the default namespace, prefixed otherwise.
 	 *
 	 * @example
 	 * ```ts
-	 * const { aA } = await query.getAttributes(a)
+	 * const { aA, 'ext:cA': cA } = await query.getAttributes(a)
 	 * ```
 	 */
 	async getAttributes<GenericElement extends ElementsOf<GenericConfig>>(
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params?: { namespace?: undefined; fullObject?: false; defaults?: AttributeDefaults },
-	): Promise<DefaultAttributesValueObjectOf<GenericConfig, GenericElement>>
+	): Promise<AttributesValueObjectOf<GenericConfig, GenericElement>>
 	/**
 	 * Get a record's attributes for a namespace scope, keyed by **local** name.
 	 *

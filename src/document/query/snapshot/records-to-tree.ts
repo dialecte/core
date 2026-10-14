@@ -37,7 +37,7 @@ export function recordsToTree(snapshot: CollectedSnapshot): AnyTreeRecord {
 
 	// Build a node by recursing within one source map. Live nodes additionally
 	// re-attach any staged-deleted children as tombstones, after the live ones.
-	const build = (record: AnyTrackedRecord, source: 'live' | 'deleted'): AnyTreeRecord => {
+	function build(record: AnyTrackedRecord, source: 'live' | 'deleted'): AnyTreeRecord {
 		const childMap = source === 'live' ? liveById : deletedById
 
 		const children = record.children

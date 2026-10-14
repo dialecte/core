@@ -1,5 +1,6 @@
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
 
+import { XMLNS_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
 import {
 	extractLocalName,
 	invariant,
@@ -7,6 +8,7 @@ import {
 	resolveDefinition,
 	resolveSchemaAttributeValue,
 } from '@/utils'
+import { storedNamespaceLookup, xsiTypeNameOf } from '@/utils/xsi-type'
 
 import type { BuildXmlDocumentParams } from './build-xml-document.types'
 import type {
@@ -16,6 +18,7 @@ import type {
 	AnyQualifiedAttribute,
 	Namespace,
 } from '@/types'
+import type { ResolvableRecord } from '@/utils'
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
@@ -50,7 +53,7 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 
 	// A fragment is any build whose root is not the document root element.
 	// Root-only attribute enforcement is skipped for fragments.
-	const isFragment = rootRecord.tagName !== config.rootElementName
+	const documentRoot = rootRecord.tagName === config.rootElementName ? rootRecord : undefined
 
 	const defaultNamespace = config.namespaces.default
 
@@ -72,19 +75,26 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 			element: rootElement,
 			attributes: rootRecord.attributes,
 			isRoot: true,
-			isFragment,
+			documentRoot,
 			declareNamespaces,
 		})
 	}
 
-	if (!isFragment) {
-		enforceRootAttributes({ config, rootElement, namespace: rootRecord.namespace })
+	if (documentRoot) {
+		enforceRootAttributes({
+			config,
+			rootElement,
+			namespace: rootRecord.namespace,
+			rootRecord: documentRoot,
+		})
 	}
 
 	if (rootRecord.value) rootElement.textContent = rootRecord.value.trim()
 	if (withDatabaseIds) rootElement.setAttribute(TEMP_IDB_ID_ATTRIBUTE_NAME, rootRecord.id)
 
 	xmlDocument.appendChild(rootElement)
+	if (declareNamespaces)
+		bindXsiTypePrefix({ config, element: rootElement, record: rootRecord, documentRoot })
 
 	// Recursively build tree from index
 	buildChildren({
@@ -94,7 +104,7 @@ export function buildXmlDocument(params: BuildXmlDocumentParams): XMLDocument {
 		xmlDocument,
 		parentRecord: rootRecord,
 		parentElement: rootElement,
-		isFragment,
+		documentRoot,
 		declareNamespaces,
 	})
 
@@ -110,7 +120,8 @@ function buildChildren(params: {
 	xmlDocument: XMLDocument
 	parentRecord: AnyRawRecord
 	parentElement: Element
-	isFragment: boolean
+	/** The document's root record; `undefined` for a fragment, which gets no root attributes. */
+	documentRoot: AnyRawRecord | undefined
 	declareNamespaces: boolean
 }): void {
 	const {
@@ -120,7 +131,7 @@ function buildChildren(params: {
 		xmlDocument,
 		parentRecord,
 		parentElement,
-		isFragment,
+		documentRoot,
 		declareNamespaces,
 	} = params
 
@@ -150,11 +161,14 @@ function buildChildren(params: {
 			record: childRecord,
 			defaultNamespace: config.namespaces.default,
 			withDatabaseIds,
-			isFragment,
+			documentRoot,
 			declareNamespaces,
 		})
 
 		parentElement.appendChild(childElement)
+		if (declareNamespaces) {
+			bindXsiTypePrefix({ config, element: childElement, record: childRecord, documentRoot })
+		}
 
 		buildChildren({
 			index,
@@ -163,7 +177,7 @@ function buildChildren(params: {
 			xmlDocument,
 			parentRecord: childRecord,
 			parentElement: childElement,
-			isFragment,
+			documentRoot,
 			declareNamespaces,
 		})
 	}
@@ -200,7 +214,8 @@ function createElementWithAttributesAndText(params: {
 	record: AnyRawRecord
 	defaultNamespace: Namespace
 	withDatabaseIds: boolean
-	isFragment: boolean
+	/** The document's root record; `undefined` for a fragment, which gets no root attributes. */
+	documentRoot: AnyRawRecord | undefined
 	declareNamespaces: boolean
 }): Element {
 	const {
@@ -209,7 +224,7 @@ function createElementWithAttributesAndText(params: {
 		record,
 		defaultNamespace,
 		withDatabaseIds,
-		isFragment,
+		documentRoot,
 		declareNamespaces,
 	} = params
 
@@ -231,7 +246,7 @@ function createElementWithAttributesAndText(params: {
 			config,
 			document: doc,
 			namespace: record.namespace,
-			isFragment,
+			documentRoot,
 		})
 	}
 
@@ -242,7 +257,7 @@ function createElementWithAttributesAndText(params: {
 			element,
 			attributes: record.attributes,
 			isRoot: false,
-			isFragment,
+			documentRoot,
 			declareNamespaces,
 		})
 	}
@@ -252,7 +267,7 @@ function createElementWithAttributesAndText(params: {
 		document: doc,
 		element,
 		record,
-		isFragment,
+		documentRoot,
 		declareNamespaces,
 	})
 
@@ -270,7 +285,8 @@ function addAttributesToElement(params: {
 	element: Element
 	attributes: AnyAttribute[]
 	isRoot: boolean
-	isFragment: boolean
+	/** The document's root record; `undefined` for a fragment, which gets no root attributes. */
+	documentRoot: AnyRawRecord | undefined
 	declareNamespaces: boolean
 }): void {
 	const {
@@ -279,7 +295,7 @@ function addAttributesToElement(params: {
 		element,
 		attributes,
 		isRoot,
-		isFragment,
+		documentRoot,
 		declareNamespaces,
 	} = params
 
@@ -304,7 +320,7 @@ function addAttributesToElement(params: {
 				config,
 				document: doc,
 				namespace: attribute.namespace,
-				isFragment,
+				documentRoot,
 			})
 		}
 
@@ -316,25 +332,88 @@ function addAttributesToElement(params: {
 	}
 }
 
+// ── xsi:type ─────────────────────────────────────────────────────────────────
+
+/**
+ * Bind the prefix of the element's xsi:type value where the element stands: a name is bound by the serializer, a
+ * value is not. A dialecte prefix is declared on the root like an attribute's; when the binding in scope at the
+ * element still names another namespace (an element in a foreign namespace re-binding it, or the default
+ * namespace), the value takes a prefix bound to its namespace there, declared on the element when none is. The
+ * element is in the tree already: the lookup walks its ancestors. A value core cannot read is written as stored.
+ */
+function bindXsiTypePrefix(params: {
+	config: AnyDialecteConfig
+	element: Element
+	record: AnyRawRecord
+	documentRoot: AnyRawRecord | undefined
+}): void {
+	const { config, element, record, documentRoot } = params
+	const value = element.getAttributeNS(XSI_NAMESPACE.uri, 'type')
+	if (value === null) return
+	const name = xsiTypeNameOf({
+		value,
+		namespaceOf: storedNamespaceLookup({ dialecteConfig: config, attributes: record.attributes }),
+	})
+	if (name === undefined || name.namespace === '') return
+
+	const colon = value.indexOf(':')
+	const prefix = colon === -1 ? '' : value.slice(0, colon)
+	const isDialectePrefix = Object.values(config.namespaces).some(
+		(namespace) => namespace.prefix === prefix && namespace.uri === name.namespace,
+	)
+	if (prefix && isDialectePrefix) {
+		addNamespaceToRootElementIfNeeded({
+			config,
+			document: element.ownerDocument,
+			namespace: { prefix, uri: name.namespace },
+			documentRoot,
+		})
+	}
+	if (element.lookupNamespaceURI(prefix || null) === name.namespace) return
+
+	// a prefix an ancestor binds to the namespace, unless a closer element re-binds it (DOM lookupPrefix does not check)
+	const found = element.lookupPrefix(name.namespace)
+	const bound =
+		found !== null && element.lookupNamespaceURI(found) === name.namespace ? found : null
+	const written = bound ?? freePrefix({ element })
+	if (bound === null)
+		element.setAttributeNS(XMLNS_NAMESPACE_URI, `xmlns:${written}`, name.namespace)
+	element.setAttributeNS(
+		XSI_NAMESPACE.uri,
+		`${element.lookupPrefix(XSI_NAMESPACE.uri) ?? 'xsi'}:type`,
+		`${written}:${name.local}`,
+	)
+}
+
+/** A prefix bound to nothing where the element stands: `ns1`, `ns2`, … */
+function freePrefix(params: { element: Element }): string {
+	const { element } = params
+	for (let index = 1; ; index++) {
+		const prefix = `ns${index}`
+		if (element.lookupNamespaceURI(prefix) === null) return prefix
+	}
+}
+
 // ── Namespace helpers ────────────────────────────────────────────────────────
 function addNamespaceToRootElementIfNeeded(params: {
 	config: AnyDialecteConfig
 	document: XMLDocument
 	namespace: { prefix: string; uri: string }
-	isFragment: boolean
+	/** The document's root record; `undefined` for a fragment, which gets no root attributes. */
+	documentRoot: AnyRawRecord | undefined
 }): void {
-	const { config, document: doc, namespace, isFragment } = params
+	const { config, document: doc, namespace, documentRoot } = params
 	const rootElement = doc.documentElement
 	if (!rootElement) return
 	if (!namespace.prefix) return
 	if (namespace.prefix === 'xmlns') return
 
-	const XMLNS_NS = 'http://www.w3.org/2000/xmlns/'
+	const XMLNS_NS = XMLNS_NAMESPACE_URI
 	const existing = rootElement.getAttributeNS(XMLNS_NS, namespace.prefix)
 	if (existing === null) {
 		rootElement.setAttributeNS(XMLNS_NS, `xmlns:${namespace.prefix}`, namespace.uri)
-		if (!isFragment) {
-			enforceRootAttributes({ config, rootElement, namespace })
+		if (documentRoot) {
+			enforceRootAttributes({ config, rootElement, namespace, rootRecord: documentRoot })
 		}
 	}
 }
@@ -343,17 +422,19 @@ function enforceRootAttributes(params: {
 	config: AnyDialecteConfig
 	rootElement: Element
 	namespace: { prefix: string; uri: string }
+	rootRecord: AnyRawRecord
 }): void {
-	const { config, rootElement, namespace } = params
+	const { config, rootElement, namespace, rootRecord } = params
 
-	const matchingRootAttributes = Object.entries(
-		config.definition[config.rootElementName].attributes.details,
-	).filter(([attributeName, attribute]) => {
+	// the root as declared: the global declaration of its namespace, and the type it names with xsi:type
+	const details =
+		resolveDefinition({ dialecteConfig: config, record: rootRecord })?.attributes.details ?? {}
+	const matchingRootAttributes = Object.entries(details).filter(([attributeName, attribute]) => {
 		// Materialize only the `required` view (required + fixed); optional default-only
 		// attributes are not reintroduced, keeping the store faithful.
 		const value = resolveSchemaAttributeValue({
 			dialecteConfig: config,
-			record: { tagName: config.rootElementName, parent: null }, // the root has no parent
+			record: rootRecord,
 			attributeName,
 			defaults: 'required',
 		})
@@ -375,7 +456,7 @@ function enforceRootAttributes(params: {
 		const value =
 			resolveSchemaAttributeValue({
 				dialecteConfig: config,
-				record: { tagName: config.rootElementName, parent: null }, // the root has no parent
+				record: rootRecord,
 				attributeName,
 				defaults: 'required',
 			}) ?? ''
@@ -408,11 +489,12 @@ function materializeRequiredAndFixedAttributes(params: {
 	config: AnyDialecteConfig
 	document: XMLDocument
 	element: Element
-	record: Pick<AnyRawRecord, 'tagName' | 'parent'>
-	isFragment: boolean
+	record: ResolvableRecord
+	/** The document's root record; `undefined` for a fragment, which gets no root attributes. */
+	documentRoot: AnyRawRecord | undefined
 	declareNamespaces: boolean
 }): void {
-	const { config, document: doc, element, record, isFragment, declareNamespaces } = params
+	const { config, document: doc, element, record, documentRoot, declareNamespaces } = params
 
 	// Bare-fragment mode (no namespace declarations) is a minimal literal snippet
 	// view, not a schema-valid document — skip materialization there.
@@ -447,7 +529,7 @@ function materializeRequiredAndFixedAttributes(params: {
 					config,
 					document: doc,
 					namespace: attribute.namespace,
-					isFragment,
+					documentRoot,
 				})
 			}
 			element.setAttributeNS(

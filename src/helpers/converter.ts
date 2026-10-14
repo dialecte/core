@@ -1,4 +1,5 @@
 import { throwDialecteError } from '@/errors'
+import { XMLNS_NAMESPACE_URI } from '@/helpers/constant'
 import {
 	extractLocalName,
 	invariant,
@@ -158,8 +159,13 @@ export function toFullAttributeArray<
 	attributes:
 		| Partial<AttributesValueObjectOf<GenericConfig, GenericElement>>
 		| AttributeInputOf<GenericConfig, GenericElement>[]
+	/**
+	 * The attributes the element has (an update): a key it already holds - one of a namespace the dialecte does not
+	 * declare, read back under the document's prefix - is in the namespace it is stored in.
+	 */
+	stored?: readonly { readonly name: string; readonly namespace?: Namespace }[]
 }): FullAttributeObjectOf<GenericConfig, GenericElement>[] {
-	const { dialecteConfig, tagName, attributes } = params
+	const { dialecteConfig, tagName, attributes, stored = [] } = params
 
 	const rawArray = Array.isArray(attributes)
 		? attributes
@@ -167,12 +173,39 @@ export function toFullAttributeArray<
 				name,
 				value,
 				namespace:
-					dialecteConfig.definition[tagName]?.attributes.details[name]?.namespace || undefined,
+					declaredAttributeNamespace({ dialecteConfig, tagName, name }) ??
+					stored.find((attribute) => attribute.name === name)?.namespace,
 			}))
 
 	return rawArray.map((attribute) =>
 		canonicalizeAttributeName({ attribute, dialecteConfig, tagName }),
 	) as FullAttributeObjectOf<GenericConfig, GenericElement>[]
+}
+
+/**
+ * The namespace the definition declares an attribute of the tag in: on the tag, on one of its declarations, or on a
+ * type it may name with xsi:type. A name is declared in one namespace wherever it appears, so no record is needed.
+ */
+function declaredAttributeNamespace(params: {
+	dialecteConfig: AnyDialecteConfig
+	tagName: string
+	name: string
+}): Namespace | undefined {
+	const { dialecteConfig, tagName, name } = params
+	const tagLevel = dialecteConfig.definition[tagName]
+	if (tagLevel === undefined) return undefined
+	const declarations = Object.values(tagLevel.declarations ?? {})
+	const typeNames = [tagLevel, ...declarations].flatMap((declaration) => declaration.variants ?? [])
+	const contents = [
+		tagLevel,
+		...declarations,
+		...typeNames.flatMap((typeName) => dialecteConfig.types[typeName] ?? []),
+	]
+	for (const content of contents) {
+		const namespace = content.attributes.details[name]?.namespace
+		if (namespace) return namespace
+	}
+	return undefined
 }
 
 /**
@@ -226,6 +259,12 @@ function canonicalizeAttributeName(params: {
 		}
 	}
 
+	// A namespace the dialecte declares is stored under the dialecte's prefix, whatever prefix a document bound to it
+	// (`x:cA` with x bound to ext's URI is `ext:cA`): the name every typed lookup, filter and write uses.
+	if (namespace && namespace.prefix && namespace.uri !== XMLNS_NAMESPACE_URI) {
+		namespace = dialecteNamespaceOf({ dialecteConfig, uri: namespace.uri }) ?? namespace
+	}
+
 	// Non-default namespace → always prefixed. Default/unprefixed and xmlns declarations
 	// keep their name verbatim.
 	if (namespace && namespace.prefix && namespace.prefix !== 'xmlns') {
@@ -238,6 +277,17 @@ function canonicalizeAttributeName(params: {
 	return namespace === attribute.namespace
 		? { ...attribute, namespace }
 		: { ...attribute, namespace }
+}
+
+/** The namespace the dialecte declares for a URI, under a prefix: `undefined` for its default one or another URI. */
+function dialecteNamespaceOf(params: {
+	dialecteConfig: AnyDialecteConfig
+	uri: string
+}): Namespace | undefined {
+	const { dialecteConfig, uri } = params
+	return (Object.values(dialecteConfig.namespaces) as Namespace[]).find(
+		(namespace) => namespace.uri === uri && namespace.prefix !== '',
+	)
 }
 
 /**

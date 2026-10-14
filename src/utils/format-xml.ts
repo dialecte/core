@@ -90,7 +90,7 @@ function tokenize(input: string): Token[] {
 /** Build a node tree. Tolerant of imbalance — an unmatched close simply ends the current element. */
 function parseNodes(tokens: Token[]): XmlNode[] {
 	let pos = 0
-	const parseChildren = (): XmlNode[] => {
+	function parseChildren(): XmlNode[] {
 		const children: XmlNode[] = []
 		while (pos < tokens.length) {
 			const token = tokens[pos]!

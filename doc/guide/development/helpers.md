@@ -209,10 +209,12 @@ Every attribute is stored under one predictable name, whether it arrived from a 
 
 - **Default namespace → bare local name**, no `namespace` object: `aA`, `aAA_1`, `root`.
 - **Any non-default namespace → `prefix:local`**, with a `namespace` object: `ext:cA`, `ext:cAA_1`, `ext:root`.
+- **The prefix is the dialecte's** for a namespace it declares, whatever prefix a document bound to it: `<A xmlns:x="…DEV-EXT" x:cA="v"/>` is stored, read, filtered and exported as `ext:cA`. A namespace the dialecte does not declare keeps the document's prefix (`foo:bar`) - an `update` takes it back by that name (the record holds its namespace); an `addChild` needs the array form with `{ prefix, uri }`, and `deepClone` copies it as it is.
+- **Namespace declarations are no attributes**: reads leave them out, as parsed (`xmlns:foo`, stored under its prefix) or written.
 
 A prefixed name is used only when a namespace applies, so a non-default attribute never collides with a bare default one (e.g. `root` and `ext:root` coexist on the `Root` element). This matches the generated schema keys and XML export, so read/write by the same name regardless of how the record was produced.
 
-**Authoring.** The value-object form (`{ attributes: { aA: 'v' } }`) is for default-namespace attributes only. Author a namespaced attribute with the array form — a **local** `name` plus a `namespace`, given as a registered namespace **key** string or a full `{ prefix, uri }` object. Dialecte derives the stored `prefix:local` name:
+**Authoring.** The value-object form takes the names reads return - `{ attributes: { aA: 'v', 'ext:cA': 'w' } }` -, so what is read is written back as is; a prefix no namespace of the dialecte has throws `UNKNOWN_NAMESPACE_PREFIX`. The array form names an attribute by a **local** `name` plus a `namespace`, given as a registered namespace **key** string or a full `{ prefix, uri }` object - the way to a namespace the dialecte does not declare. Dialecte derives the stored `prefix:local` name:
 
 ```ts
 await tx.addChild(parent, {

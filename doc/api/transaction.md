@@ -52,7 +52,7 @@ await doc.transaction(async (tx) => {
 })
 ```
 
-The value-object `attributes` form is for **default-namespace** attributes. Author namespaced attributes with the array form — a **local** `name` plus a `namespace` (a registered namespace **key** string or a `{ prefix, uri }` object); dialecte derives the stored `prefix:local` name:
+The value-object `attributes` form takes every attribute the dialecte declares under the name it is stored by - the object `getAttributes` returns: `{ aAA_1: 'req', 'ext:cAA_1': 'qualified', 'xsi:type': 'tDD_1A' }`. A prefix no namespace of the dialecte has throws `UNKNOWN_NAMESPACE_PREFIX`. The array form names an attribute by a **local** `name` plus a `namespace` (a registered namespace **key** string or a `{ prefix, uri }` object, for a namespace the dialecte does not declare); dialecte derives the stored `prefix:local` name:
 
 ```ts
 await tx.addChild(parentRef, {
@@ -68,13 +68,13 @@ A prefixed authored `name` (e.g. `ext:cAA_1`) throws `PREFIXED_ATTRIBUTE_NAME`. 
 
 #### AddChildParams
 
-| Field        | Type                                                  | Description                                                                                                                                                                   |
-| ------------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tagName`    | `ChildElement`                                        | Tag name of the child to create                                                                                                                                               |
-| `attributes` | `DefaultAttributesValueObject \| AuthoredAttribute[]` | Default-namespace attributes via the value-object form; namespaced ones via the array form (`{ name, value, namespace }`). Optional when the child has no required attributes |
-| `namespace`  | `Namespace`                                           | Override the element's namespace                                                                                                                                              |
-| `value`      | `string`                                              | Text content of the element                                                                                                                                                   |
-| `id`         | `UUID`                                                | Explicit ID (for tests with `dev:db-id`)                                                                                                                                      |
+| Field        | Type                                           | Description                                                                                                                                                                    |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `tagName`    | `ChildElement`                                 | Tag name of the child to create                                                                                                                                                |
+| `attributes` | `AttributesValueObject \| AuthoredAttribute[]` | Every declared attribute under its stored name via the value-object form; or the array form (`{ name, value, namespace }`). Optional when the child has no required attributes |
+| `namespace`  | `Namespace`                                    | Override the element's namespace                                                                                                                                               |
+| `value`      | `string`                                       | Text content of the element                                                                                                                                                    |
+| `id`         | `UUID`                                         | Explicit ID (for tests with `dev:db-id`)                                                                                                                                       |
 
 Returns `Promise<RawRecord<Config, ChildElement>>` — the full record of the newly created element.
 

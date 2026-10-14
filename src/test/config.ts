@@ -1,6 +1,7 @@
 import { DIALECTE_TEST_NAMESPACES } from './constant'
 import {
 	DEFINITION,
+	TYPES,
 	ROOT_ELEMENT,
 	SINGLETON_ELEMENTS,
 	ELEMENT_NAMES,
@@ -49,6 +50,7 @@ export const TEST_DIALECTE_CONFIG = {
 	database: DATABASE_CONFIG,
 	io: IO_CONFIG,
 	definition: DEFINITION,
+	types: TYPES,
 } as const satisfies AnyDialecteConfig
 
 export type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG

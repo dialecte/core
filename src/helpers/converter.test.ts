@@ -331,4 +331,43 @@ describe('Record Converter', () => {
 
 		runTestCases.generic(testCases, act)
 	})
+
+	describe('toFullAttributeArray - a namespace only a variant declares', () => {
+		type TestCase = BaseTestCase & { expectedNamespace: string }
+
+		const T_SQUARE = '{http://dialecte.dev/XML/DEFAULT}tDD_1A'
+		const square = TEST_DIALECTE_CONFIG.types[T_SQUARE]
+		/** The test dialecte with tDD_1A also declaring `q:foo`, in a namespace the dialecte does not list. */
+		const config = {
+			...TEST_DIALECTE_CONFIG,
+			types: {
+				...TEST_DIALECTE_CONFIG.types,
+				[T_SQUARE]: {
+					...square,
+					attributes: {
+						...square.attributes,
+						sequence: [...square.attributes.sequence, 'q:foo'],
+						details: {
+							...square.attributes.details,
+							'q:foo': { namespace: { prefix: 'q', uri: 'urn:q' } },
+						},
+					},
+				},
+			},
+		} as unknown as TestConfig
+
+		runTestCases.generic<TestCase>(
+			{
+				'attribute of a DD_1 variant → the variant namespace': { expectedNamespace: 'urn:q' },
+			},
+			(testCase) => {
+				const [attribute] = toFullAttributeArray({
+					dialecteConfig: config,
+					tagName: 'DD_1',
+					attributes: { 'q:foo': '1' } as unknown as AttributesValueObjectOf<TestConfig, 'DD_1'>,
+				})
+				expect(attribute.namespace?.uri).toBe(testCase.expectedNamespace)
+			},
+		)
+	})
 })

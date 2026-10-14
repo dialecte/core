@@ -198,6 +198,8 @@ const results = await doc.query.findByAttributes({
 // TrackedRecord<Config, 'AA_1'>[]
 ```
 
+An `xsi:type` filter compares the type the record names, whatever form either side writes it in: a local name, the dialecte's prefix, or a Clark name (see [`xsi:type` values](/guide/development/utils#xsi-type-values)). For an element that may take another type, the filter is typed per member: an attribute only a variant has needs no type named (`{ side: '2' }`), but is refused beside a type that does not have it ([the types of such an element](/guide/development/utils#the-types-of-an-element-that-may-take-another-type)).
+
 ## Tree queries
 
 ### getTree
@@ -436,7 +438,7 @@ Returns a destructurable value object, or an array of full attribute objects.
 
 ```ts
 // Default-namespace attributes only, keyed by local name
-const { aA, bA } = await doc.query.getAttributes(ref)
+const { aA, bA, 'ext:cA': cA } = await doc.query.getAttributes(ref)
 
 // A namespace's attributes, keyed by local name (prefix stripped)
 const { cA } = await doc.query.getAttributes(ref, { namespace: 'ext' })
@@ -446,11 +448,11 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 // → FullAttributeObject[]
 ```
 
-Unscoped, `getAttributes(ref)` returns **default-namespace** attributes only. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the complete, prefixed set.
+Unscoped, `getAttributes(ref)` returns every attribute under the name it is stored by - unprefixed in the default namespace, `prefix:local` otherwise, `xsi:type` included - the object a write takes back. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the array of full attribute objects. Namespace declarations (`xmlns:*`) are none of them.
 
 ### getDefinition
 
-Returns the element's definition **in its context**: as declared under its parent when the schema declares the tag differently there, else the tag-level definition. The record is fetched first, so the parent is always known.
+Returns the element's definition **in its context**: the declaration its parent holds when the schema declares the tag several ways, and what the type it names with `xsi:type` lets it hold. The record is fetched first, so the parent is always known.
 
 ```ts
 const definition = await doc.query.getDefinition(aaa1)

@@ -1,4 +1,4 @@
-import type { AnyDefinition } from './definition'
+import type { AnyDefinition, AnyTypes } from './definition'
 import type { ImportOptions, ExportOptions, IOHooks } from './io'
 import type { Operation } from './operations'
 import type { Namespace, RawRecord, TreeRecord } from './records'
@@ -38,6 +38,8 @@ export type RawDialecteConfig<
 	database: DatabaseConfig
 	io: IOConfig
 	definition: AnyDefinition
+	/** The types elements may take with xsi:type: the `TYPES` the generator writes beside `DEFINITION`. */
+	types: AnyTypes
 }
 
 /**
@@ -323,23 +325,6 @@ export type NamespaceKeysUsedByElement<
 		: never
 }[NamespaceKeysOf<GenericConfig>]
 
-/** Value object of an element's default-namespace (unprefixed) attributes only. */
-export type DefaultAttributesValueObjectOf<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
-	GenericParent extends ElementsOf<GenericConfig> = never,
-> = {
-	[K in keyof AttributesValueObjectOf<
-		GenericConfig,
-		GenericElement,
-		GenericParent
-	> as K extends `${string}:${string}` ? never : K]: AttributesValueObjectOf<
-		GenericConfig,
-		GenericElement,
-		GenericParent
-	>[K]
-}
-
 /**
  * Value object of an element's attributes within a given namespace key, re-keyed
  * by **local** name (the prefix is stripped since the scope already fixes it).
@@ -365,9 +350,12 @@ export type LocalAttributeNamesInNamespace<
 > = keyof NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey> &
 	string
 
-/** Default-namespace (unprefixed) attribute names for an element. */
+/**
+ * Default-namespace (unprefixed) attribute names for an element - what the array form of a write names without a
+ * namespace; `xsi:type` and every other prefixed name are not.
+ */
 export type DefaultAttributeNamesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 	GenericParent extends ElementsOf<GenericConfig> = never,
-> = keyof DefaultAttributesValueObjectOf<GenericConfig, GenericElement, GenericParent> & string
+> = Exclude<AttributesOf<GenericConfig, GenericElement, GenericParent>, `${string}:${string}`>

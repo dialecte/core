@@ -5,7 +5,6 @@ import type {
 	Namespace,
 	AttributesValueObjectOf,
 	DefaultAttributeNamesOf,
-	DefaultAttributesValueObjectOf,
 	LocalAttributeNamesInNamespace,
 	NamespaceKeysUsedByElement,
 } from '@/types'
@@ -45,16 +44,16 @@ export type AuthoredAttributeObjectOf<
 	  }
 
 /**
- * Attributes accepted by `addChild`. The less-verbose value-object form is reserved
- * for **default-namespace (standard) attributes**; any namespaced attribute is
- * authored via the full-object array form (see `AuthoredAttributeObjectOf`).
+ * Attributes accepted by `addChild`: the value object every read returns - each attribute the dialecte declares under
+ * the name it is stored by (`aA`, `xsi:type`, `ext:cA`) - or the array form (`AuthoredAttributeObjectOf`), for a
+ * namespace given by key or one the dialecte does not declare.
  */
 export type ChildAttributesOf<
 	GenericConfig extends AnyDialecteConfig,
 	GenericChildElement extends ElementsOf<GenericConfig>,
 	GenericParent extends ElementsOf<GenericConfig> = never,
 > =
-	| DefaultAttributesValueObjectOf<GenericConfig, GenericChildElement, GenericParent>
+	| AttributesValueObjectOf<GenericConfig, GenericChildElement, GenericParent>
 	| AuthoredAttributeObjectOf<GenericConfig, GenericChildElement>[]
 
 /**

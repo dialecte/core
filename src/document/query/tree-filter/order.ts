@@ -19,7 +19,7 @@ export function applyOrder<
 }): TreeRecord<GenericConfig, GenericElement> {
 	const { tree, childrenConfig } = params
 
-	const orderNode = (node: AnyTreeRecord): AnyTreeRecord => {
+	function orderNode(node: AnyTreeRecord): AnyTreeRecord {
 		if (node.tree.length === 0) return node
 
 		const children = orderByConfigSequence({

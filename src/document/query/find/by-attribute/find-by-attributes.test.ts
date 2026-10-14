@@ -2,7 +2,12 @@ import { matchesAttributeFilter } from './find-by-attributes'
 
 import { describe, expect } from 'vitest'
 
-import { XMLNS_DEFAULT_NAMESPACE, createTestRecord, runTestCases } from '@/test'
+import {
+	TEST_DIALECTE_CONFIG,
+	XMLNS_DEFAULT_NAMESPACE,
+	createTestRecord,
+	runTestCases,
+} from '@/test'
 
 import type { FilterAttributes } from './find-by-attributes.types'
 import type {
@@ -213,7 +218,11 @@ describe('matchesAttributeFilter', () => {
 				attributes: tc.attributes as TrackedRecord<TestDialecteConfig, 'A'>['attributes'],
 			},
 		})
-		const result = matchesAttributeFilter({ record, attributeFilter: tc.attributeFilter })
+		const result = matchesAttributeFilter({
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+			record,
+			attributeFilter: tc.attributeFilter,
+		})
 		expect(result).toBe(tc.expected)
 	}
 

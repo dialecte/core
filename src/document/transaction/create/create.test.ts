@@ -215,6 +215,33 @@ describe('stageAddChild', () => {
 			},
 			expectThrow: true,
 		},
+		'value object with a namespaced attribute under its stored name → stored in that namespace': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			childPayload: { tagName: 'AA_1', attributes: { aAA_1: 'req', 'ext:cAA_1': 'qualified' } },
+			expectedQueries: [
+				'//default:A/default:AA_1[@aAA_1="req"]',
+				'//default:A/default:AA_1[@ext:cAA_1="qualified"]',
+			],
+		},
+		'value object with a prefix no namespace of the dialecte has → throws loudly': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<A ${customId}="a1" aA="parent" />
+				</Root>
+			`,
+			parentRef: { tagName: 'A', id: 'a1' },
+			// what untyped code could pass: the types refuse the key
+			childPayload: {
+				tagName: 'AA_1',
+				attributes: { aAA_1: 'req', 'nope:cAA_1': 'x' } as { aAA_1: string },
+			},
+			expectThrow: true,
+		},
 		'addChild with a fixed attribute set to a wrong value → throws': {
 			sourceXml: /* xml */ `<Root ${ns}><C ${customId}="c1" /></Root>`,
 			parentRef: { tagName: 'C', id: 'c1' },
