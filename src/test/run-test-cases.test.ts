@@ -16,15 +16,28 @@ describe('runTestCases', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'source XML imported and exported → expected element found': {
-				sourceXml: /* xml */ `<Root ${ns}><A aA="hello"/></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A aA="hello"/>
+					</Root>
+				`,
 				expectedQueries: ['//default:A[@aA="hello"]'],
 			},
 			'unexpected element absent → assertion passes': {
-				sourceXml: /* xml */ `<Root ${ns}><A aA="hello"/></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A aA="hello"/>
+					</Root>
+				`,
 				unexpectedQueries: ['//default:B'],
 			},
 			'both expected and unexpected assertions in same case': {
-				sourceXml: /* xml */ `<Root ${ns}><A aA="x"/><B aB="y"/></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A aA="x"/>
+						<B aB="y"/>
+					</Root>
+				`,
 				expectedQueries: ['//default:A[@aA="x"]', '//default:B[@aB="y"]'],
 				unexpectedQueries: ['//default:C'],
 			},
@@ -46,8 +59,16 @@ describe('runTestCases', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'target document accessible in act → asserts on target': {
-				sourceXml: /* xml */ `<Root ${ns}><A aA="source"/></Root>`,
-				targetXml: /* xml */ `<Root ${ns}><B aB="target"/></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A aA="source"/>
+					</Root>
+				`,
+				targetXml: /* xml */ `
+					<Root ${ns}>
+						<B aB="target"/>
+					</Root>
+				`,
 				expectedQueries: ['//default:B[@aB="target"]'],
 			},
 		}
@@ -66,7 +87,12 @@ describe('runTestCases', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'document.query.getRecordsByTagName returns imported records': {
-				sourceXml: /* xml */ `<Root ${ns}><A aA="q1"/><A aA="q2"/></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A aA="q1"/>
+						<A aA="q2"/>
+					</Root>
+				`,
 				expectedQueries: ['//default:A[@aA="q1"]'],
 			},
 		}
@@ -86,7 +112,11 @@ describe('runTestCases', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'element added via transaction → visible in exported XML': {
-				sourceXml: /* xml */ `<Root ${ns}><A aA="original"/></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A aA="original"/>
+					</Root>
+				`,
 				expectedQueries: [
 					'//default:A[@aA="original"]',
 					'//default:A/default:AA_1[@aAA_1="added"]',

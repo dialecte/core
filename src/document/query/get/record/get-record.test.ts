@@ -100,7 +100,11 @@ describe('getRecord', () => {
 
 	describe('staged operation visibility', () => {
 		it('returns staged created record within transaction', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="p" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="p" />
+				</Root>
+			`
 			const { source, project } = await createTestProject({ sourceXml: xmlString })
 			const document = source.document
 
@@ -147,7 +151,11 @@ describe('getRecord', () => {
 		})
 
 		it('returns staged updated attributes within transaction', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="old" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="old" />
+				</Root>
+			`
 			const { source, project } = await createTestProject({ sourceXml: xmlString })
 			const document = source.document
 
@@ -167,7 +175,11 @@ describe('getRecord', () => {
 
 	describe('record cache', () => {
 		it('populates cache on store hit by id', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v" />
+				</Root>
+			`
 			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {
@@ -189,7 +201,11 @@ describe('getRecord', () => {
 		})
 
 		it('returns cache entry on second call by id', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v" />
+				</Root>
+			`
 			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {
@@ -239,7 +255,11 @@ describe('getRecord', () => {
 		})
 
 		it('does not populate cache outside of transaction context', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v" />
+				</Root>
+			`
 			const { project, source } = await createTestProject({ sourceXml: xmlString })
 
 			try {

@@ -45,7 +45,9 @@ describe('getAttributes', () => {
 		'injects an absent fixed attribute as its fixed value': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<C ${customId}="c1"><CC_1 ${customId}="cc1" /></C>
+					<C ${customId}="c1">
+						<CC_1 ${customId}="cc1" />
+					</C>
 				</Root>
 			`,
 			ref: { tagName: 'CC_1', id: 'cc1' },
@@ -54,7 +56,11 @@ describe('getAttributes', () => {
 		'injects an absent non-empty default value': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<B ${customId}="b1"><BB_1 ${customId}="bb1"><BBB_1 ${customId}="bbb1" /></BB_1></B>
+					<B ${customId}="b1">
+						<BB_1 ${customId}="bb1">
+							<BBB_1 ${customId}="bbb1" />
+						</BB_1>
+					</B>
 				</Root>
 			`,
 			ref: { tagName: 'BBB_1', id: 'bbb1' },
@@ -107,10 +113,10 @@ describe('getAttributes (namespace scoping)', () => {
 		'no namespace option → every attribute under the name it is stored by, a namespaced one prefixed':
 			{
 				sourceXml: /* xml */ `
-				<Root ${nsExt}>
-					<A ${customId}="a1" aA="hi" ext:cA="qualified" />
-				</Root>
-			`,
+					<Root ${nsExt}>
+						<A ${customId}="a1" aA="hi" ext:cA="qualified" />
+					</Root>
+				`,
 				ref: { tagName: 'A', id: 'a1' },
 				expected: { aA: 'hi', 'ext:cA': 'qualified' },
 			},
@@ -167,7 +173,9 @@ describe('getAttributesFullObject', () => {
 		"defaults: 'none' keeps only stored attributes verbatim": {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<C ${customId}="c1"><CC_1 ${customId}="cc1" /></C>
+					<C ${customId}="c1">
+						<CC_1 ${customId}="cc1" />
+					</C>
 				</Root>
 			`,
 			ref: { tagName: 'CC_1', id: 'cc1' },
@@ -177,7 +185,9 @@ describe('getAttributesFullObject', () => {
 		"defaults: 'optional' (default) synthesizes an absent fixed attribute": {
 			sourceXml: /* xml */ `
 				<Root ${ns}>
-					<C ${customId}="c1"><CC_1 ${customId}="cc1" /></C>
+					<C ${customId}="c1">
+						<CC_1 ${customId}="cc1" />
+					</C>
 				</Root>
 			`,
 			ref: { tagName: 'CC_1', id: 'cc1' },

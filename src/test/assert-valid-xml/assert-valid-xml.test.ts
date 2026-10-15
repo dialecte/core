@@ -76,7 +76,11 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				namespaces: { default: NO_NAMESPACE },
 				schemaName: 'Plain',
 			})
-			const xml = /* xml */ `<Plain name="p"><Leaf /></Plain>`
+			const xml = /* xml */ `
+				<Plain name="p">
+					<Leaf />
+				</Plain>
+			`
 
 			expect(() => assertValidPlainXml(xml, 'snippet', { requireComplete: false })).not.toThrow()
 		})
@@ -115,7 +119,11 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 		})
 
 		it('accepts it in the namespace its parent holds it in', () => {
-			const xml = /* xml */ `<Plain xmlns:b="urn:b"><b:Leaf /></Plain>`
+			const xml = /* xml */ `
+				<Plain xmlns:b="urn:b">
+					<b:Leaf />
+				</Plain>
+			`
 			expect(() =>
 				assertValidTwoNamespaces(xml, 'snippet', { requireComplete: false }),
 			).not.toThrow()
@@ -154,14 +162,22 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				namespaces: { default: NO_NAMESPACE, b: { prefix: 'b', uri: 'urn:b' } },
 				schemaName: 'Open',
 			})
-			const xml = /* xml */ `<Open xmlns:b="urn:b"><b:Leaf /></Open>`
+			const xml = /* xml */ `
+				<Open xmlns:b="urn:b">
+					<b:Leaf />
+				</Open>
+			`
 			expect(() =>
 				assertValidUnderWildcard(xml, 'snippet', { requireComplete: false }),
 			).not.toThrow()
 		})
 
 		it('rejects it in the namespace of a way its parent does not hold', () => {
-			const xml = /* xml */ `<Plain><Leaf /></Plain>`
+			const xml = /* xml */ `
+				<Plain>
+					<Leaf />
+				</Plain>
+			`
 			const message = captureErrorMessage(() =>
 				assertValidTwoNamespaces(xml, 'snippet', { requireComplete: false }),
 			)
@@ -260,18 +276,30 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 		const XSI = 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
 
 		it('accepts the attributes of the type an element names, its prefix bound on an ancestor', () => {
-			const xml = /* xml */ `<Outer xmlns:t="urn:t" ${XSI}><Plain xsi:type="t:tWide" wide="1" /></Outer>`
+			const xml = /* xml */ `
+				<Outer xmlns:t="urn:t" ${XSI}>
+					<Plain xsi:type="t:tWide" wide="1" />
+				</Outer>
+			`
 			expect(() => assertValidTyped(xml, 'snippet')).not.toThrow()
 		})
 
 		it('requires what the type requires', () => {
-			const xml = /* xml */ `<Outer xmlns:t="urn:t" ${XSI}><Plain xsi:type="t:tWide" /></Outer>`
+			const xml = /* xml */ `
+				<Outer xmlns:t="urn:t" ${XSI}>
+					<Plain xsi:type="t:tWide" />
+				</Outer>
+			`
 			const message = captureErrorMessage(() => assertValidTyped(xml, 'snippet'))
 			expect(message).toContain("[required] <Plain> is missing required attribute 'wide'")
 		})
 
 		it('rejects the attributes of a type the element does not name', () => {
-			const xml = /* xml */ `<Outer><Plain wide="1" /></Outer>`
+			const xml = /* xml */ `
+				<Outer>
+					<Plain wide="1" />
+				</Outer>
+			`
 			const message = captureErrorMessage(() => assertValidTyped(xml, 'snippet'))
 			expect(message).toContain("[attribute] <Plain> has unknown attribute 'wide'")
 		})

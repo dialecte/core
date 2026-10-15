@@ -43,7 +43,11 @@ function getPublicMethods(proto: object): string[] {
 describe('any namespace - API parity', () => {
 	it('AnyQuery mirrors all expected Query public methods', async () => {
 		const { project, source } = await createTestProject({
-			sourceXml: /* xml */ `<Root ${ns}><A ${customId}="a1" /></Root>`,
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" />
+				</Root>
+			`,
 		})
 		const document = source.document
 
@@ -70,7 +74,11 @@ describe('any namespace - API parity', () => {
 
 	it('AnyTransaction mirrors all expected Transaction mutation methods', async () => {
 		const { project, source } = await createTestProject({
-			sourceXml: /* xml */ `<Root ${ns}><A ${customId}="a1" /></Root>`,
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" />
+				</Root>
+			`,
 		})
 		const document = source.document
 

@@ -16,24 +16,24 @@ function parseXml(xml: string): XMLDocument {
 // Root > A > AA_1 > AAA_1 > AAAA_1 (leaf)
 // _3 elements and c-prefixed attributes use ext namespace
 const sampleXml = /* xml */ `
-<Root xmlns="${DEFAULT_NS_URI}" xmlns:${EXT_PREFIX}="${EXT_NS_URI}" root="1">
-	<A aA="valA">
-		<AA_1 aAA_1="v1">
-			<AAA_1 aAAA_1="deep1">
-				<AAAA_1 aAAAA_1="leaf1" />
-				<AAAA_2 aAAAA_2="leaf2" />
-			</AAA_1>
-		</AA_1>
-		<AA_2 aAA_2="v2" />
-		<${EXT_PREFIX}:AA_3 ${EXT_PREFIX}:aAA_3="v3" />
-	</A>
-	<B aB="valB">
-		<BB_1 aBB_1="b1">
-			<BBB_1 aBBB_1="bb1" />
-			<BBB_1 aBBB_1="bb1-dup" />
-		</BB_1>
-	</B>
-</Root>
+	<Root xmlns="${DEFAULT_NS_URI}" xmlns:${EXT_PREFIX}="${EXT_NS_URI}" root="1">
+		<A aA="valA">
+			<AA_1 aAA_1="v1">
+				<AAA_1 aAAA_1="deep1">
+					<AAAA_1 aAAAA_1="leaf1" />
+					<AAAA_2 aAAAA_2="leaf2" />
+				</AAA_1>
+			</AA_1>
+			<AA_2 aAA_2="v2" />
+			<${EXT_PREFIX}:AA_3 ${EXT_PREFIX}:aAA_3="v3" />
+		</A>
+		<B aB="valB">
+			<BB_1 aBB_1="b1">
+				<BBB_1 aBBB_1="bb1" />
+				<BBB_1 aBBB_1="bb1-dup" />
+			</BB_1>
+		</B>
+	</Root>
 `
 
 const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({

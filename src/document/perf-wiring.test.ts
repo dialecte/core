@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createTestProject } from '@/test/create-test-dialecte'
 
 const SIMPLE_XML = /* xml */ `
-<Root>
-	<A aA="a1" bA="hello" />
-</Root>
+	<Root>
+		<A aA="a1" bA="hello" />
+	</Root>
 `
 
 describe('Document/Transaction perf wiring (dev.perf flag)', () => {

@@ -100,7 +100,11 @@ describe('getRecordsByTagName', () => {
 
 	describe('staged operation visibility', () => {
 		it('includes staged created record in results', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="p" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="p" />
+				</Root>
+			`
 			const { source, project } = await createTestProject({ sourceXml: xmlString })
 			const document = source.document
 
@@ -149,7 +153,11 @@ describe('getRecordsByTagName', () => {
 		})
 
 		it('reflects staged updated attributes in results', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="old" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="old" />
+				</Root>
+			`
 			const { source, project } = await createTestProject({ sourceXml: xmlString })
 			const document = source.document
 

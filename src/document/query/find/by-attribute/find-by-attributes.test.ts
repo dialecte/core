@@ -103,9 +103,7 @@ describe('findByAttributes', () => {
 			unexpectedQueries: ['//default:A[@bA="not-present"]'],
 		},
 		'returns empty array when tagName has no records in store': {
-			sourceXml: /* xml */ `
-				<Root ${ns} />
-			`,
+			sourceXml: /* xml */ `<Root ${ns} />`,
 			tagName: 'A',
 			attributes: undefined,
 			expectedCount: 0,

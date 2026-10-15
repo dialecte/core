@@ -133,7 +133,13 @@ describe('stageUpdate — fixed attribute guard', () => {
 
 	const testCases: TestCases<TestCase> = {
 		'update a fixed attribute to a wrong value → throws': {
-			sourceXml: /* xml */ `<Root ${ns}><C ${customId}="c1"><CC_1 ${customId}="cc1" aCC_1="fixed_val" /></C></Root>`,
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C ${customId}="c1">
+						<CC_1 ${customId}="cc1" aCC_1="fixed_val" />
+					</C>
+				</Root>
+			`,
 			targetRef: { tagName: 'CC_1', id: 'cc1' },
 			// @ts-expect-error the fixed attribute type only permits 'fixed_val'; this
 			// exercises the RUNTIME guard for untyped/JS callers passing a wrong value.
@@ -141,7 +147,13 @@ describe('stageUpdate — fixed attribute guard', () => {
 			expectThrow: true,
 		},
 		'update a fixed attribute to its fixed value → allowed': {
-			sourceXml: /* xml */ `<Root ${ns}><C ${customId}="c1"><CC_1 ${customId}="cc1" aCC_1="fixed_val" /></C></Root>`,
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C ${customId}="c1">
+						<CC_1 ${customId}="cc1" aCC_1="fixed_val" />
+					</C>
+				</Root>
+			`,
 			targetRef: { tagName: 'CC_1', id: 'cc1' },
 			updateParams: { attributes: { aCC_1: 'fixed_val' } },
 			expectThrow: false,

@@ -47,32 +47,74 @@ describe('xsi:type - one stored form', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'type prefix bound only on an ancestor → canonical value, the variant attributes kept': {
-				sourceXml: /* xml */ `<Root ${ns}><D aD="d" xmlns:p="${DEFAULT_URI}"><DD_1 xsi:type="p:tDD_1A" aDD_1="s" dDD_1="2"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<D aD="d" xmlns:p="${DEFAULT_URI}">
+							<DD_1 xsi:type="p:tDD_1A" aDD_1="s" dDD_1="2"/>
+						</D>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_1[@xsi:type="tDD_1A"][@dDD_1="2"]'],
 			},
 			'default namespace under the document own prefix → local name': {
-				sourceXml: /* xml */ `<Root ${ns} xmlns:p="${DEFAULT_URI}"><D aD="d"><DD_1 xsi:type="p:tDD_1B" aDD_1="s" eDD_1="3"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns} xmlns:p="${DEFAULT_URI}">
+						<D aD="d">
+							<DD_1 xsi:type="p:tDD_1B" aDD_1="s" eDD_1="3"/>
+						</D>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_1[@xsi:type="tDD_1B"][@eDD_1="3"]'],
 			},
 			'ext type under the document own prefix → dialecte prefix, its qualified attribute kept': {
-				sourceXml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE} xmlns:e="${EXT_URI}"><D aD="d"><DD_1 xsi:type="e:tDD_1A" aDD_1="s" e:dDD_1="5"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE} xmlns:e="${EXT_URI}">
+						<D aD="d">
+							<DD_1 xsi:type="e:tDD_1A" aDD_1="s" e:dDD_1="5"/>
+						</D>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_1[@xsi:type="ext:tDD_1A"][@ext:dDD_1="5"]'],
 			},
 			'prefix bound nowhere → value kept as written': {
-				sourceXml: /* xml */ `<Root ${ns}><D aD="d"><DD_1 xsi:type="q:tDD_1A" aDD_1="s"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<D aD="d">
+							<DD_1 xsi:type="q:tDD_1A" aDD_1="s"/>
+						</D>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_1[@xsi:type="q:tDD_1A"]'],
 			},
 			'local name the default namespace lacks → kept, never read as another namespace type': {
-				sourceXml: /* xml */ `<Root ${ns}><D aD="d"><DD_1 xsi:type="tDD_1C" aDD_1="s"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<D aD="d">
+							<DD_1 xsi:type="tDD_1C" aDD_1="s"/>
+						</D>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_1[@xsi:type="tDD_1C"]'],
 			},
 			'declared type itself named → local name': {
-				sourceXml: /* xml */ `<Root ${ns} xmlns:p="${DEFAULT_URI}"><D aD="d"><DD_2 xsi:type="p:tDD_2" aDD_2="p"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns} xmlns:p="${DEFAULT_URI}">
+						<D aD="d">
+							<DD_2 xsi:type="p:tDD_2" aDD_2="p"/>
+						</D>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_2[@xsi:type="tDD_2"][@aDD_2="p"]'],
 			},
 			'XSI namespace bound under another prefix → stored as xsi:type, the variant attributes kept':
 				{
-					sourceXml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} xmlns:i="${XSI_NAMESPACE.uri}"><D aD="d"><DD_1 i:type="tDD_1A" aDD_1="s" dDD_1="2"/></D></Root>`,
+					sourceXml: /* xml */ `
+						<Root ${XMLNS_DEFAULT_NAMESPACE} xmlns:i="${XSI_NAMESPACE.uri}">
+							<D aD="d">
+								<DD_1 i:type="tDD_1A" aDD_1="s" dDD_1="2"/>
+							</D>
+						</Root>
+					`,
 					expectedQueries: ['//default:DD_1[@xsi:type="tDD_1A"][@dDD_1="2"]'],
 				},
 		}
@@ -92,17 +134,47 @@ describe('xsi:type - one stored form', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'ext type the only use of its namespace → its prefix declared': {
-				sourceXml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE} xmlns:e="${EXT_URI}"><D aD="d"><DD_1 xsi:type="e:tDD_1A" aDD_1="s"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE} xmlns:e="${EXT_URI}">
+						<D aD="d">
+							<DD_1 xsi:type="e:tDD_1A" aDD_1="s"/>
+						</D>
+					</Root>
+				`,
 				expectedValue: 'ext:tDD_1A',
 				expectedNamespace: EXT_URI,
 			},
 			'foreign ancestor re-binding the dialecte prefix → a prefix bound to the type namespace at the element':
 				{
-					sourceXml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE}><D aD="d"><DD_2 aDD_2="p"><DDD_2><ext:Wrap xmlns:ext="urn:foreign" xmlns:e="${EXT_URI}"><DD_1 xsi:type="e:tDD_1A" aDD_1="s"/></ext:Wrap></DDD_2></DD_2></D></Root>`,
+					sourceXml: /* xml */ `
+						<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE}>
+							<D aD="d">
+								<DD_2 aDD_2="p">
+									<DDD_2>
+										<ext:Wrap xmlns:ext="urn:foreign" xmlns:e="${EXT_URI}">
+											<DD_1 xsi:type="e:tDD_1A" aDD_1="s"/>
+										</ext:Wrap>
+									</DDD_2>
+								</DD_2>
+							</D>
+						</Root>
+					`,
 					expectedNamespace: EXT_URI,
 				},
 			'root binds the dialecte prefix, a foreign ancestor shadows it → not the shadowed prefix': {
-				sourceXml: /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE} ${XMLNS_EXT_NAMESPACE}><D aD="d"><DD_2 aDD_2="p"><DDD_2 ext:root="r"><ext:Wrap xmlns:ext="urn:foreign"><DD_1 xmlns:e="${EXT_URI}" xsi:type="e:tDD_1A" aDD_1="s"/></ext:Wrap></DDD_2></DD_2></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_XSI_NAMESPACE} ${XMLNS_EXT_NAMESPACE}>
+						<D aD="d">
+							<DD_2 aDD_2="p">
+								<DDD_2 ext:root="r">
+									<ext:Wrap xmlns:ext="urn:foreign">
+										<DD_1 xmlns:e="${EXT_URI}" xsi:type="e:tDD_1A" aDD_1="s"/>
+									</ext:Wrap>
+								</DDD_2>
+							</DD_2>
+						</D>
+					</Root>
+				`,
 				expectedNamespace: EXT_URI,
 			},
 		}
@@ -126,7 +198,11 @@ describe('xsi:type - one stored form', () => {
 	describe('create', () => {
 		type TestCase = BaseXmlTestCase & { xsiType: string }
 
-		const sourceXml = /* xml */ `<Root ${ns}><D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/></Root>`
+		const sourceXml = /* xml */ `
+			<Root ${ns}>
+				<D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/>
+			</Root>
+		`
 
 		const testCases: TestCases<TestCase> = {
 			'Clark name of an ext type → dialecte prefix': {
@@ -179,7 +255,13 @@ describe('xsi:type - one stored form', () => {
 		const testCases: TestCases<TestCase> = {
 			'a stored value the element may not take → the clone is refused, the value never read as another type':
 				{
-					sourceXml: /* xml */ `<Root ${ns}><D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"><DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1C" aDD_1="s"/></D></Root>`,
+					sourceXml: /* xml */ `
+						<Root ${ns}>
+							<D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d">
+								<DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1C" aDD_1="s"/>
+							</D>
+						</Root>
+					`,
 					expectedQueries: ['//default:DD_1[@xsi:type="tDD_1C"]'],
 					unexpectedQueries: ['//default:DD_1[2]', '//default:DD_1[@xsi:type="ext:tDD_1C"]'],
 				},
@@ -200,7 +282,13 @@ describe('xsi:type - one stored form', () => {
 	describe('update', () => {
 		type TestCase = BaseXmlTestCase & { xsiType: string }
 
-		const sourceXml = /* xml */ `<Root ${ns}><D aD="d"><DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1B" aDD_1="s"/></D></Root>`
+		const sourceXml = /* xml */ `
+			<Root ${ns}>
+				<D aD="d">
+					<DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1B" aDD_1="s"/>
+				</D>
+			</Root>
+		`
 
 		const testCases: TestCases<TestCase> = {
 			'Clark name of an ext type → dialecte prefix': {
@@ -244,7 +332,13 @@ describe('xsi:type - one stored form', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'afterStandardizedRecord sets a Clark name → stored canonical': {
-				sourceXml: /* xml */ `<Root ${ns}><D aD="d"><DD_1 aDD_1="s"/></D></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<D aD="d">
+							<DD_1 aDD_1="s"/>
+						</D>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_1[@xsi:type="ext:tDD_1A"]'],
 			},
 		}
@@ -262,7 +356,16 @@ describe('xsi:type - one stored form', () => {
 			expectedShapes: string[]
 		}
 
-		const sourceXml = /* xml */ `<Root ${ns}><D aD="d"><DD_1 xsi:type="tDD_1A" aDD_1="square" dDD_1="1"/><DD_1 xsi:type="ext:tDD_1A" aDD_1="ext-square"/><DD_1 xsi:type="ext:tDD_1C" aDD_1="triangle"/><DD_1 xsi:type="tDD_1B" aDD_1="circle"/></D></Root>`
+		const sourceXml = /* xml */ `
+			<Root ${ns}>
+				<D aD="d">
+					<DD_1 xsi:type="tDD_1A" aDD_1="square" dDD_1="1"/>
+					<DD_1 xsi:type="ext:tDD_1A" aDD_1="ext-square"/>
+					<DD_1 xsi:type="ext:tDD_1C" aDD_1="triangle"/>
+					<DD_1 xsi:type="tDD_1B" aDD_1="circle"/>
+				</D>
+			</Root>
+		`
 
 		const testCases: TestCases<TestCase> = {
 			'local name → the default-namespace type only': {
@@ -455,7 +558,11 @@ describe('xsi:type - one stored form', () => {
 			refusedWith?: string
 		}
 
-		const sourceXml = /* xml */ `<Root ${ns}><D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/></Root>`
+		const sourceXml = /* xml */ `
+			<Root ${ns}>
+				<D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/>
+			</Root>
+		`
 		/** An xsi:type attribute in the array form of a write: the local name, its namespace. */
 		function xsiType(value: string): { name: string; value: string; namespace: Namespace } {
 			return { name: 'type', value, namespace: XSI_NAMESPACE }
@@ -549,8 +656,22 @@ describe('xsi:type - one stored form', () => {
 			leftOver?: { attributes: string[]; children: string[] }
 		}
 
-		const square = /* xml */ `<Root ${ns}><D aD="d"><DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1A" aDD_1="s" dDD_1="2"/></D></Root>`
-		const squareWithCorner = /* xml */ `<Root ${ns}><D aD="d"><DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1A" aDD_1="s"><DDD_1 aDDD_1="c"/></DD_1></D></Root>`
+		const square = /* xml */ `
+			<Root ${ns}>
+				<D aD="d">
+					<DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1A" aDD_1="s" dDD_1="2"/>
+				</D>
+			</Root>
+		`
+		const squareWithCorner = /* xml */ `
+			<Root ${ns}>
+				<D aD="d">
+					<DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1A" aDD_1="s">
+						<DDD_1 aDDD_1="c"/>
+					</DD_1>
+				</D>
+			</Root>
+		`
 
 		const testCases: TestCases<TestCase> = {
 			'a type the element may not take → XSI_TYPE_NOT_ADMITTED': {
@@ -596,7 +717,13 @@ describe('xsi:type - one stored form', () => {
 				},
 			'another attribute of a stored value the element may not take → accepted, xsi:type untouched':
 				{
-					sourceXml: /* xml */ `<Root ${ns}><D aD="d"><DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1C" aDD_1="s"/></D></Root>`,
+					sourceXml: /* xml */ `
+						<Root ${ns}>
+							<D aD="d">
+								<DD_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="tDD_1C" aDD_1="s"/>
+							</D>
+						</Root>
+					`,
 					attributes: { aDD_1: 'renamed' },
 					expectedQueries: ['//default:DD_1[@xsi:type="tDD_1C"][@aDD_1="renamed"]'],
 				},
@@ -629,7 +756,11 @@ describe('xsi:type - one stored form', () => {
 
 		const testCases: TestCases<TestCase> = {
 			'a variant named beside the declared attributes → stored like any value': {
-				sourceXml: /* xml */ `<Root ${ns}><D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/></Root>`,
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/>
+					</Root>
+				`,
 				expectedQueries: ['//default:DD_1[@xsi:type="tDD_1B"][@aDD_1="s"]'],
 			},
 		}

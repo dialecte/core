@@ -6,9 +6,9 @@ import { createTestProject } from '@/test/create-test-dialecte'
 import type { DialecteError } from '@/errors'
 
 const SIMPLE_XML = /* xml */ `
-<Root>
-	<A aA="a1" bA="hello" />
-</Root>
+	<Root>
+		<A aA="a1" bA="hello" />
+	</Root>
 `
 
 describe('Document.transaction — progress forceClear', () => {

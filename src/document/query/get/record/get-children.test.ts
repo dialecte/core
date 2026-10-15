@@ -95,7 +95,11 @@ describe('getChildren', () => {
 
 	describe('staged operation visibility', () => {
 		it('includes staged created children', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v" />
+				</Root>
+			`
 			const { source, project } = await createTestProject({ sourceXml: xmlString })
 			const document = source.document
 

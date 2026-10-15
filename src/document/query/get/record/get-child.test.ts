@@ -100,7 +100,11 @@ describe('getChild', () => {
 
 	describe('staged operation visibility', () => {
 		it('returns staged created child within transaction', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v" />
+				</Root>
+			`
 			const { source, project } = await createTestProject({ sourceXml: xmlString })
 			const document = source.document
 

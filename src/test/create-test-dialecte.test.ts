@@ -13,11 +13,11 @@ type TestCase = {
 }
 
 const SIMPLE_XML = /* xml */ `
-<Root>
-	<A aA="a1" bA="hello" />
-	<A aA="a2" bA="world" />
-	<B aB="b1" />
-</Root>
+	<Root>
+		<A aA="a1" bA="hello" />
+		<A aA="a2" bA="world" />
+		<B aB="b1" />
+	</Root>
 `
 
 describe('createTestProject', () => {

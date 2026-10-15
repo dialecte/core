@@ -3,12 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { createTestProject } from '@/test'
 
 const SOURCE_XML = /* xml */ `
-<Root>
-	<A aA="parent">
-		<AA_1 aAA_1="one" />
-		<AA_1 aAA_1="two" />
-	</A>
-</Root>
+	<Root>
+		<A aA="parent">
+			<AA_1 aAA_1="one" />
+			<AA_1 aAA_1="two" />
+		</A>
+	</Root>
 `
 
 describe('stageDeepClone — progress instrumentation', () => {

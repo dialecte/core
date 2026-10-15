@@ -114,7 +114,11 @@ describe('getRecords', () => {
 
 	describe('staged operation visibility', () => {
 		it('sees staged created record in batch', async () => {
-			const xmlString = /* xml */ `<Root ${ns}><A ${customId}="a1" aA="p" /></Root>`
+			const xmlString = /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="p" />
+				</Root>
+			`
 			const { source, project } = await createTestProject({ sourceXml: xmlString })
 			const document = source.document
 
