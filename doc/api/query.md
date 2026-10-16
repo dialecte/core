@@ -454,7 +454,7 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 // → FullAttributeObject[]
 ```
 
-Unscoped, `getAttributes(ref)` returns every attribute under the name it is stored by - unprefixed in the default namespace, `prefix:local` otherwise, `xsi:type` included - the object a write takes back. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the array of full attribute objects. Namespace declarations (`xmlns:*`) are none of them.
+Unscoped, `getAttributes(ref)` returns every attribute under the name it is stored by - unprefixed in the default namespace, `prefix:local` otherwise, `xsi:type` included - the object a write takes back. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the array of full attribute objects. The value objects leave namespace declarations (`xmlns:*`) out; the `fullObject` array is the stored attributes as they are, a declaration a parsed document carries included (stored by its prefix, in the xmlns namespace).
 
 #### Reading from a record
 
@@ -468,6 +468,8 @@ for (const node of tree.tree) {
 ```
 
 Inside a transaction the staged operations still come first: a record held from before a staged write reads as the transaction sees it, and one deleted in the transaction reads as absent. Outside a transaction the record is a snapshot - a record held across a commit does not pick that commit up through these reads. Pass its ref (`toRef(record)`) to read the store again. The dev perf counter `core::query::getRecord.fromRecord` counts the reads served from the record given.
+
+Once they have the record, both read it with [`readAttribute` / `readAttributes`](/guide/development/helpers#readattribute-readattributes) from `@dialecte/core/helpers`: the same reads without a query, for code that holds a record but has no query - an import pass, a pure composer. Those read the record as held, staged writes not consulted: inside a transaction, use the query.
 
 ### getDefinition
 

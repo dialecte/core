@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Added
+
+- `readAttribute` and `readAttributes` in `@dialecte/core/helpers`: read the attributes of a record you hold the way `getAttribute` / `getAttributes` read them - same `namespace`, `defaults` and `fullObject` options, same results - with no query, synchronously, for an import pass or a pure composer. `getAttribute(s)` delegate to them once they have the record (no behaviour change). They read the record as held, staged operations not consulted: inside a transaction, use the query. Plain types (`string`, `Record<string, string>`, `AnyAttribute`); typed reads stay on the query.
+
 ## [0.6.3] - 2026-10-16
 
 ### Changed

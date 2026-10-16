@@ -1,9 +1,5 @@
 import { resolveRecord } from '@/document'
-import {
-	getAttributeRules,
-	resolvePrefixByNamespaceScope,
-	resolveSchemaAttributeValue,
-} from '@/utils'
+import { readAttribute } from '@/helpers'
 
 import type { Context, RefOrRecord } from '@/document'
 import type { AnyDialecteConfig, ElementsOf, FullAttributeObjectOf } from '@/types'
@@ -13,10 +9,10 @@ import type { AttributeDefaults } from '@/utils'
  * Fetch a single attribute for the given ref or record.
  *
  * Resolves the record (a record given in full is read as it is, through the staged
- * operations; a ref via staged → cache → store, see `resolveRecord`), then extracts the named
- * attribute. Pass `namespace` to scope by a namespace key (a local `name` is resolved
- * to the stored `prefix:local` key). `defaults` (default `'optional'`) controls the
- * fallback for an absent attribute: `'none'` → `''`; `'optional'` → `fixed` /
+ * operations; a ref via staged → cache → store, see `resolveRecord`), then reads the named
+ * attribute with {@link readAttribute}. Pass `namespace` to scope by a namespace key (a local
+ * `name` is resolved to the stored `prefix:local` key). `defaults` (default `'optional'`)
+ * controls the fallback for an absent attribute: `'none'` → `''`; `'optional'` → `fixed` /
  * non-empty `default` (else `''`); `'required'` → required/fixed materialized value.
  *
  * @example
@@ -34,31 +30,20 @@ export async function getAttribute<
 	namespace?: string
 	defaults?: AttributeDefaults
 }): Promise<GenericAttribute['value'] | ''> {
-	const { context, ref, name, namespace, defaults = 'optional' } = params
+	const { context, ref, name, namespace, defaults } = params
 	const record = await resolveRecord({ context, ref })
-	const attributes = (record?.attributes ?? []) as GenericAttribute[]
-
-	const storedName = resolveStoredAttributeName(context.dialecteConfig, name, namespace)
-	const attribute = attributes.find((attribute) => attribute.name === storedName)
-	if (attribute) return attribute.value
-
-	// Not stored: fall back to the schema value for the requested `defaults` view.
-	const value = record
-		? resolveSchemaAttributeValue({
-				dialecteConfig: context.dialecteConfig,
-				record,
-				attributeName: storedName,
-				defaults,
-			})
-		: undefined
-	return (value ?? '') as GenericAttribute['value'] | ''
+	if (!record) return ''
+	const { dialecteConfig } = context
+	return readAttribute({ record, dialecteConfig, name, namespace, defaults }) as
+		| GenericAttribute['value']
+		| ''
 }
 
 /**
  * Fetch a single attribute for the given ref or record as a full object (name + value +
- * namespace). `defaults` (default `'optional'`) fills an absent schema attribute by
- * synthesizing its object; `'none'` returns `undefined` when the attribute is not
- * stored.
+ * namespace), read with {@link readAttribute}. `defaults` (default `'optional'`) fills an
+ * absent schema attribute by synthesizing its object; `'none'` returns `undefined` when the
+ * attribute is not stored.
  *
  * @example
  * getAttribute({ context, ref, name: 'name', fullObject: true }) // → FullAttributeObject | undefined
@@ -74,43 +59,11 @@ export async function getAttributeFullObject<
 	namespace?: string
 	defaults?: AttributeDefaults
 }): Promise<GenericAttribute | undefined> {
-	const { context, ref, name, namespace, defaults = 'optional' } = params
-	const { dialecteConfig } = context
+	const { context, ref, name, namespace, defaults } = params
 	const record = await resolveRecord({ context, ref })
-	const attributes = (record?.attributes ?? []) as GenericAttribute[]
-
-	const storedName = resolveStoredAttributeName(dialecteConfig, name, namespace)
-	const attribute = attributes.find((attribute) => attribute.name === storedName)
-	if (attribute) return attribute
-
-	// Not stored: synthesize from the schema for the requested `defaults` view.
-	if (!record || defaults === 'none') return undefined
-	const value = resolveSchemaAttributeValue({
-		dialecteConfig,
-		record,
-		attributeName: storedName,
-		defaults,
-	})
-	if (value === undefined) return undefined
-	const { namespace: attributeNamespace } = getAttributeRules({
-		dialecteConfig,
-		record,
-		attributeName: storedName,
-	})
-	return { name: storedName, value, namespace: attributeNamespace } as GenericAttribute
-}
-
-/**
- * Resolve the stored attribute name for a lookup: without a namespace scope the
- * name is used verbatim (a bare local name, or an already-canonical `prefix:local`
- * key); with a scope the local `name` is prefixed with the scope's XML prefix.
- */
-function resolveStoredAttributeName(
-	dialecteConfig: AnyDialecteConfig,
-	name: string,
-	namespaceScope: string | undefined,
-): string {
-	if (namespaceScope === undefined) return name
-	const prefix = resolvePrefixByNamespaceScope(dialecteConfig, namespaceScope)
-	return prefix ? `${prefix}:${name}` : name
+	if (!record) return undefined
+	const { dialecteConfig } = context
+	return readAttribute({ record, dialecteConfig, name, namespace, defaults, fullObject: true }) as
+		| GenericAttribute
+		| undefined
 }
