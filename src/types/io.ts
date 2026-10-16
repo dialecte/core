@@ -1,4 +1,5 @@
 import type { AnyRawRecord } from './records'
+import type { Diagnostic } from '@/diagnostics'
 
 /**
  * Options for chunking during import/export
@@ -31,31 +32,38 @@ export type RecordPatch = { recordId: string } & Partial<Omit<AnyRawRecord, 'id'
 	}
 
 /**
- * A warning produced during import.
- *
- * `type` is a discriminant string owned by the dialecte (e.g. `'unresolved-reference'`).
- * `recordId` identifies the record that triggered the warning.
- * `details` carries dialecte-specific context — its shape is defined by the dialecte.
+ * What an import session gives back once the last record is stored.
+ * Core applies each collection in order: creates → updates → deletes; the diagnostics are returned
+ * to the caller of the import with the document.
  */
-export type ImportWarning = {
-	type: string
-	recordId: string
-	details?: Record<string, unknown>
-}
-
-/**
- * Return value of the afterImport hook.
- * Core applies each collection in order: creates → updates → deletes.
- */
-export type AfterImportResult = {
+export type AfterImportResult<GenericDiagnostic extends Diagnostic = Diagnostic> = {
 	/** New records to insert */
 	creates?: AnyRawRecord[]
 	/** Patches to merge into existing records */
 	updates?: RecordPatch[]
 	/** IDs of records to remove */
 	deletes?: string[]
-	/** Warnings collected during resolution — unresolved refs, unknown paths, etc. */
-	warnings?: ImportWarning[]
+	/** What the import has to say about the file - unresolved references, values rewritten, … */
+	diagnostics?: GenericDiagnostic[]
+}
+
+/**
+ * The hooks of one file's import. Core creates a session per file (`IOHooks.createImportSession`)
+ * and drops it after `afterImport`: whatever state the session keeps between records is that file's
+ * only. Typed on the diagnostics it emits so a dialecte's tests check them exactly; the project does
+ * not carry the type (a document's diagnostics come from several producers).
+ */
+export type ImportSession<GenericDiagnostic extends Diagnostic = Diagnostic> = {
+	/**
+	 * Called once per record as its closing tag is parsed, AFTER the record has
+	 * been standardized (attributes canonicalized, `afterStandardizedRecord`
+	 * applied). The record is finalized so this hook can index it or collect
+	 * reference resolutions without re-implementing standardization. `ancestry`
+	 * are the still-open parent records (not yet closed, hence not yet standardized).
+	 */
+	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void
+	/** Called once after all records are stored: the writes to apply and the diagnostics of this file. */
+	afterImport?: () => Promise<AfterImportResult<GenericDiagnostic>>
 }
 
 /**
@@ -68,14 +76,6 @@ export type IOHooks = {
 	 * e.g. transforming a legacy schema to the canonical form expected by this config.
 	 */
 	beforeImport?: (xml: string) => string
-	/**
-	 * Called once per record as its closing tag is parsed, AFTER the record has
-	 * been standardized (attributes canonicalized, `afterStandardizedRecord`
-	 * applied). The record is finalized so this hook can index it or collect
-	 * reference resolutions without re-implementing standardization. `ancestry`
-	 * are the still-open parent records (not yet closed, hence not yet standardized).
-	 */
-	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void
-	/** Returns records to create/update/delete after all records are stored. */
-	afterImport?: () => Promise<AfterImportResult>
+	/** Called once per file imported; the session it returns lives for that file only. */
+	createImportSession?: (params: { documentId: string; configKey: string }) => ImportSession
 }

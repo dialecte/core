@@ -174,7 +174,7 @@ beforeCommit?: (params: {
 
 ## IO hooks
 
-IO hooks (`beforeImportRecord`, `afterImport`) are documented on the [IO hooks](/io/hooks) page.
+IO hooks (`beforeImport`, `createImportSession` and the session's `beforeImportRecord` / `afterImport`) are documented on the [IO hooks](/io/hooks) page.
 
 ---
 
@@ -222,10 +222,11 @@ For `project.import` (see [IO hooks](/io/hooks)) — standardization runs **befo
 
 ```
 beforeImport            (once, whole XML string)
+createImportSession     (once per file)
 afterStandardizedRecord (per record, as each element closes)
-beforeImportRecord      (per record, document order)
+beforeImportRecord      (per record, document order - the session's)
 [records stored]
-afterImport             (once)
+afterImport             (once - the session's; its diagnostics come back with the document)
 ```
 
 For `initEmptyDocument`:

@@ -38,9 +38,10 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 
 	await perfRegisterDocument(store, documentRecord)
 
-	const { recordCount } = await parseXmlFile({
+	const { recordCount, diagnostics } = await parseXmlFile({
 		file,
 		documentId,
+		configKey,
 		store,
 		config,
 		useCustomRecordsIds: options?.useCustomRecordsIds,
@@ -54,6 +55,7 @@ export async function importDocument(params: ImportDocumentParams): Promise<Impo
 		record: documentRecord,
 		documentState: buildDocumentState(documentRecord),
 		recordCount,
+		diagnostics,
 	}
 
 	async function perfRegisterDocument(s: typeof store, r: DocumentRecord): Promise<void> {

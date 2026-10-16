@@ -1,3 +1,4 @@
+import type { Diagnostic } from '@/diagnostics'
 import type { DocumentState, ExtensionModules } from '@/document'
 import type { Perf } from '@/perf'
 import type { Store } from '@/store/store.types'
@@ -169,6 +170,8 @@ export type ImportDocumentResult = {
 	record: DocumentRecord
 	documentState: DocumentEntry
 	recordCount: number
+	/** What the import had to say about the file; `[]` when nothing */
+	diagnostics: Diagnostic[]
 }
 
 // ── exportDocument ───────────────────────────────────────────────────────────

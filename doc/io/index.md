@@ -100,6 +100,6 @@ Backend behaviour:
 ## Further reading
 
 - [IO reference](/io/xml) - `buildXmlDocument`, `parseXmlFile`, `IOConfig`
-- [IO hooks](/io/hooks) - `beforeImportRecord`, `afterImport`
+- [IO hooks](/io/hooks) - `beforeImport`, `createImportSession` (`beforeImportRecord`, `afterImport`, diagnostics)
 - [API overview](/api/) - Document, Query, Transaction
 - [Transaction hooks](/api/hooks) - mutation lifecycle hooks

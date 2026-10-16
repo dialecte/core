@@ -5,9 +5,10 @@ import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
 
 import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
+import type { Diagnostic } from '@/diagnostics'
 import type { Perf } from '@/perf'
 import type { Store } from '@/store/store.types'
-import type { AnyDialecteConfig, DialecteHooks } from '@/types'
+import type { ImportSession } from '@/types'
 
 export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
 
@@ -29,6 +30,7 @@ const DEFAULT_BATCH_SIZE = 2000
 export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXmlFileResult> {
 	const {
 		documentId,
+		configKey,
 		store,
 		config,
 		useCustomRecordsIds = false,
@@ -46,7 +48,7 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 	)
 
 	if (file.size === 0) {
-		return { documentId, recordCount: 0 }
+		return { documentId, recordCount: 0, diagnostics: [] }
 	}
 
 	const beforeImport = hooks?.beforeImport
@@ -60,7 +62,16 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 	const batchSize = chunkOptions?.batchSize ?? DEFAULT_BATCH_SIZE
 
 	const session = new ParseSession()
-	const sax = setSaxParser({ dialecteConfig: config, useCustomRecordsIds, session, hooks, perf })
+	// One session per file: its state is this file's only, and it is dropped after afterImport.
+	const importSession = hooks?.createImportSession?.({ documentId, configKey })
+	const sax = setSaxParser({
+		dialecteConfig: config,
+		useCustomRecordsIds,
+		session,
+		hooks,
+		importSession,
+		perf,
+	})
 
 	perf.start('core::import')
 	const parsedCount = await streamFileInChunks({
@@ -75,9 +86,9 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 	})
 	perf.stop('core::import')
 
-	const hookDelta = await runAfterImportHook({ hooks, store, documentId })
+	const { recordDelta, diagnostics } = await endImportSession({ importSession, store, documentId })
 
-	return { documentId, recordCount: parsedCount + hookDelta }
+	return { documentId, recordCount: parsedCount + recordDelta, diagnostics }
 }
 
 // ── Stream processing ────────────────────────────────────────────────────────
@@ -157,23 +168,22 @@ async function streamFileInChunks(params: {
 	return totalRecords
 }
 
-// ── After-import hook ────────────────────────────────────────────────────────
+// ── End of the import session ────────────────────────────────────────────────
 
-async function runAfterImportHook(params: {
-	hooks?: DialecteHooks<AnyDialecteConfig>
+async function endImportSession(params: {
+	importSession?: ImportSession
 	store: Store
 	documentId: string
-}): Promise<number> {
-	const { hooks, store, documentId } = params
+}): Promise<{ recordDelta: number; diagnostics: Diagnostic[] }> {
+	const { importSession, store, documentId } = params
 
-	if (!hooks?.afterImport) return 0
+	if (!importSession?.afterImport) return { recordDelta: 0, diagnostics: [] }
 
-	const { creates, updates, deletes } = await hooks.afterImport()
+	const { creates, updates, deletes, diagnostics = [] } = await importSession.afterImport()
 	const hasOps = creates?.length || updates?.length || deletes?.length
-	if (!hasOps) return 0
+	if (hasOps) await store.bulkWrite(documentId, { creates, updates, deletes })
 
-	await store.bulkWrite(documentId, { creates, updates, deletes })
-	return (creates?.length ?? 0) - (deletes?.length ?? 0)
+	return { recordDelta: (creates?.length ?? 0) - (deletes?.length ?? 0), diagnostics }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

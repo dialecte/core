@@ -1,5 +1,5 @@
 ---
-description: IO lifecycle hooks for @dialecte/core — beforeImport (whole-XML normalizer), beforeImportRecord (per-record SAX pass), and afterImport (post-store resolution). Fires during project.import, outside the transaction system.
+description: IO lifecycle hooks for @dialecte/core — beforeImport (whole-XML normalizer) and createImportSession, the per-file session whose beforeImportRecord (per-record SAX pass) and afterImport (post-store resolution, diagnostics) fire during project.import, outside the transaction system.
 ---
 
 # IO Hooks
@@ -7,8 +7,20 @@ description: IO lifecycle hooks for @dialecte/core — beforeImport (whole-XML n
 Provided on the `Project` instance alongside the record hooks — one flat [`DialecteHooks`](/api/hooks) object passed to `new Project({ hooks })`, not on the config. Fires during `project.import` — not during transactions.
 
 ::: warning No store access
-IO hooks run outside the transaction store. Do not call `getRecord` or any store API inside IO hooks. Accumulate state in closure variables during `beforeImportRecord`, then flush in `afterImport`.
+IO hooks run outside the transaction store. Do not call `getRecord` or any store API inside IO hooks. Accumulate state in the session during `beforeImportRecord`, then flush in `afterImport`.
 :::
+
+```ts
+type IOHooks = {
+	beforeImport?: (xml: string) => string
+	createImportSession?: (params: { documentId: string; configKey: string }) => ImportSession
+}
+
+type ImportSession<GenericDiagnostic extends Diagnostic = Diagnostic> = {
+	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void
+	afterImport?: () => Promise<AfterImportResult<GenericDiagnostic>>
+}
+```
 
 ## `beforeImport`
 
@@ -42,21 +54,27 @@ const hooks: IOHooks = {
 
 ---
 
-## Providing IO hooks
+## `createImportSession`
 
-Dialecte packages author their IO hooks independently, then merge them with the record hooks into the single `DialecteHooks` object handed to the `Project`. Stateful IO hooks (e.g. a per-import index) are best built by a factory so each `Project` gets fresh state.
+Fires **once per file**, after `beforeImport` and before the SAX parser starts, with the id the document was registered under and the key of its config. The `ImportSession` it returns holds the two per-file hooks and whatever state they share; core drops it after `afterImport`. Two files imported one after the other never see each other's state, and nothing has to be reset by hand.
 
 ```ts
-// hooks/io/io-hooks.ts
-import type { IOHooks } from '@dialecte/core'
+createImportSession?: (params: { documentId: string; configKey: string }) => ImportSession
+```
 
-export function createMyIoHooks(): IOHooks {
-	const indexByName = new Map<string, string>()
+A dialecte writes the session as a factory and hands it to the `Project` with its record hooks:
+
+```ts
+// hooks/io/import-session.ts
+import type { ImportSession } from '@dialecte/core'
+
+export function createMyImportSession(): ImportSession {
+	const indexByName = new Map<string, string>() // this file's only
 	return {
 		beforeImportRecord: ({ record }) => {
 			/* accumulate into indexByName */
 		},
-		afterImport: async () => ({ updates: [] }),
+		afterImport: async () => ({ updates: [], diagnostics: [] }),
 	}
 }
 
@@ -64,8 +82,8 @@ export function createMyIoHooks(): IOHooks {
 new Project({
 	configs,
 	storage,
-	// io hooks (fresh per project) + record hooks, one flat object
-	hooks: { ...createMyIoHooks(), ...RECORD_HOOKS },
+	// io hooks + record hooks, one flat object
+	hooks: { createImportSession: createMyImportSession, ...RECORD_HOOKS },
 })
 ```
 
@@ -84,12 +102,12 @@ beforeImportRecord?: (params: {
 }) => void
 ```
 
-`ancestry` is top-down: `[root, ..., parent]` (still-open parents, not yet standardized). No return value — use closure state.
+`ancestry` is top-down: `[root, ..., parent]` (still-open parents, not yet standardized). No return value — keep what you need in the session.
 
 **Example**
 
 ```ts
-function createIoHooks(): IOHooks {
+function createImportSession(): ImportSession {
 	const indexByName = new Map<string, string>() // name → record id
 	return {
 		beforeImportRecord: ({ record }) => {
@@ -102,32 +120,24 @@ function createIoHooks(): IOHooks {
 		},
 	}
 }
-
-// merged into the Project hooks: new Project({ hooks: { ...createIoHooks(), ...RECORD_HOOKS } })
 ```
 
 ---
 
 ## `afterImport`
 
-Fires **once** after all records are stored. Return batched creates, updates, and deletes — applied atomically by core in order: creates → updates → deletes.
+Fires **once** after all records are stored. Return batched creates, updates, and deletes — applied atomically by core in order: creates → updates → deletes — and the diagnostics of the file. The writes are applied whether or not there are diagnostics, and the diagnostics come back to the caller of the import with the document (`parseXmlFile` and `importDocument` return `diagnostics: Diagnostic[]`, `[]` when there is nothing to say).
 
 ```ts
 afterImport?: () => Promise<AfterImportResult>
 ```
 
 ```ts
-type AfterImportResult = {
+type AfterImportResult<GenericDiagnostic extends Diagnostic = Diagnostic> = {
 	creates?: AnyRawRecord[]
 	updates?: RecordPatch[] // { recordId, ...partial record, removeAttributes? }[]
 	deletes?: string[] // record IDs
-	warnings?: ImportWarning[]
-}
-
-type ImportWarning = {
-	type: string // discriminant owned by the dialecte
-	recordId: string
-	details?: Record<string, unknown>
+	diagnostics?: GenericDiagnostic[]
 }
 ```
 
@@ -141,7 +151,46 @@ afterImport: async () => ({
 })
 ```
 
-Use `warnings` to surface unresolved references, unknown paths, or any other dialecte-specific anomalies detected during the import pass.
+### Diagnostics
+
+A `Diagnostic` is what the import has to say about one record — an unresolved reference, a value it rewrote — in the shape of the language-server protocol, on records instead of text ranges. Plain data: it crosses a worker boundary as is.
+
+```ts
+type Diagnostic<GenericCode extends string = string> = {
+	code: GenericCode // a code of the producer's catalogue
+	severity: 'error' | 'warning' | 'information' | 'hint'
+	source: string // who said it: the dialecte's name
+	message: string // default wording; a consumer words it from code + meta
+	ref: { tagName: string; id: string; attribute?: string }
+	related?: { ref: DiagnosticRef; message: string }[] // the other records it involves
+	meta?: Record<string, unknown> // what it is about, as data
+}
+```
+
+A dialecte declares its codes once, in a catalogue - `source`, and per code the severity, the family (`'value' | 'attribute' | 'structure' | 'identity' | 'reference' | 'import'`, a property of the entry, not of the diagnostic) and the default wording - and builds each diagnostic from it with `createDiagnostic`, which fills `severity`, `source` and `message` from the entry and keeps the type of the `meta` and `related` given:
+
+```ts
+import { createDiagnostic } from '@dialecte/core'
+import type { DiagnosticCatalogue } from '@dialecte/core'
+
+export const MY_IMPORT_DIAGNOSTICS = {
+	source: 'my-dialecte',
+	codes: {
+		'unresolved-reference': {
+			severity: 'warning',
+			family: 'reference',
+			message: 'A reference names an element the file does not hold',
+		},
+	},
+} as const satisfies DiagnosticCatalogue
+
+createDiagnostic(MY_IMPORT_DIAGNOSTICS, 'unresolved-reference', {
+	ref: { tagName: 'FunctionRef', id: record.id, attribute: 'function' },
+	meta: { pathValue, triedKeys },
+})
+```
+
+A consumer that holds a `Diagnostic[]` of unknown origin narrows it to the codes it knows with `isKnownDiagnostic(diagnostic, { catalogues: [MY_IMPORT_DIAGNOSTICS] })` - matched on the pair `source` + `code`, so two dialectes may share a code.
 
 ---
 
@@ -149,11 +198,12 @@ Use `warnings` to surface unresolved references, unknown paths, or any other dia
 
 ```
 beforeImport            (once - whole XML string)
+createImportSession     (once - { documentId, configKey })
 [SAX parse begins]
 afterStandardizedRecord (per record - standardization runs first)
 beforeImportRecord      (per record, document order - receives the standardized record)
-[records stored to IndexedDB]
-afterImport             (once)
+[records stored]
+afterImport             (once - writes applied, diagnostics returned)
 ```
 
 See [IO overview](/io/) for how this fits into the full import → API → export pipeline.

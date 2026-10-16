@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 import { runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
+import type { Diagnostic } from '@/diagnostics'
 import type { Store } from '@/store/store.types'
 import type { BaseTestCase } from '@/test'
 import type { AnyDialecteConfig } from '@/types'
@@ -110,6 +111,32 @@ describe('importDocument', () => {
 			})
 
 			expect(result.record.metadata).toEqual({ source: 'upload', version: 3 })
+		})
+	})
+
+	describe('import diagnostics', () => {
+		it('the parse reports diagnostics → they come out with the document, the parse got the configKey', async () => {
+			const unresolved: Diagnostic = {
+				code: 'unresolved-reference',
+				severity: 'warning',
+				source: 'test',
+				message: 'A reference names an element the file does not hold',
+				ref: { tagName: 'A', id: 'a-1' },
+			}
+			mockParseXmlFile.mockResolvedValue({
+				documentId: 'ignored',
+				recordCount: 1,
+				diagnostics: [unresolved],
+			})
+			const store = mockStore()
+			const file = new File(['<Root/>'], 'test.xml', { type: 'text/xml' })
+
+			const result = await importDocument({ file, store, configs, defaultConfigKey: 'default' })
+
+			expect(result.diagnostics).toEqual([unresolved])
+			expect(mockParseXmlFile).toHaveBeenCalledWith(
+				expect.objectContaining({ configKey: 'default' }),
+			)
 		})
 	})
 

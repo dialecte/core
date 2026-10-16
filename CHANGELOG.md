@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Added
+
+- **A `Diagnostic`** - what an import hook (and, later, a validation rule) says about one record of a document, in the shape of the language-server protocol: `code`, `severity` (`error` | `warning` | `information` | `hint`), `source` (who said it), `message`, `ref` (the record, and the attribute when it is about one), `related` (the other records it involves) and `meta` (what it is about, as data). Plain data, so it crosses a worker boundary as is. A dialecte declares its codes in a `DiagnosticCatalogue` (`source` + `codes`, each with its severity, family and default wording), builds one with `createDiagnostic(catalogue, code, { ref, meta, related, message? })` and a consumer narrows one with `isKnownDiagnostic(diagnostic, { catalogues })` - matched on the pair `source` + `code`, so two dialectes may share a code.
+- The import of a file returns what its import session had to say: `parseXmlFile` and `importDocument` carry `diagnostics: Diagnostic[]`, always present (`[]` when nothing). `Project.import` does not expose them yet (it follows in this release, with one entry per file).
+
+### Changed
+
+- **Breaking:** the import hooks are one session per file. `IOHooks` loses `beforeImportRecord` and `afterImport`; it gains `createImportSession({ documentId, configKey })`, called once per file imported, which returns an `ImportSession` holding those two hooks. The state a dialecte keeps between the records of a file is now that file's only - two imports can no longer share it, and no reset at the end of `afterImport` is needed. `AfterImportResult.warnings` (an `ImportWarning[]`, which core dropped) becomes `diagnostics` (a `Diagnostic[]`, which core returns); `ImportWarning` is removed.
+- `parseXmlFile` takes `configKey`, given to the import session.
+
 ## [0.6.2] - 2026-10-16
 
 ### Changed

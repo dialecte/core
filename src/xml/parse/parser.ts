@@ -17,7 +17,8 @@ import type {
 	AnyQualifiedAttribute,
 	AnyAttribute,
 	AnyRelationship,
-	DialecteHooks,
+	ImportSession,
+	TransactionHooks,
 } from '@/types'
 
 //====== PUBLIC FUNCTIONS ======//
@@ -32,10 +33,19 @@ export function setSaxParser(params: {
 	dialecteConfig: AnyDialecteConfig
 	useCustomRecordsIds: boolean
 	session: ParseSession
-	hooks?: DialecteHooks<AnyDialecteConfig>
+	/** The record hooks standardization applies; the per-record io hook is the import session's */
+	hooks?: TransactionHooks<AnyDialecteConfig>
+	importSession?: ImportSession
 	perf?: Perf
 }): ParserInstance {
-	const { dialecteConfig, useCustomRecordsIds, session, hooks, perf = NOOP_PERF } = params
+	const {
+		dialecteConfig,
+		useCustomRecordsIds,
+		session,
+		hooks,
+		importSession,
+		perf = NOOP_PERF,
+	} = params
 
 	// Single closure-private state, mutated in place per SAX event. The parser is
 	// the sole sequential writer, so immutable rebuilds bought nothing and cost an
@@ -76,7 +86,7 @@ export function setSaxParser(params: {
 
 	parser.onclosetag = () => {
 		perf.time('core::import::onCloseTag', () =>
-			handleCloseTag({ state, hooks, session, dialecteConfig, perf }),
+			handleCloseTag({ state, hooks, importSession, session, dialecteConfig, perf }),
 		)
 	}
 
@@ -172,17 +182,19 @@ function handleText(params: { text: string; state: ParserState }): void {
  * Handles the closing tag event.
  * @param state Current state
  * @param session Parse session
- * @param hooks Dialecte hooks (io + record lifecycle), from the Project instance
+ * @param hooks Dialecte record hooks (standardization), from the Project instance
+ * @param importSession This file's import session, when the dialecte creates one
  * @returns Updated state
  */
 function handleCloseTag(params: {
 	state: ParserState
 	session: ParseSession
-	hooks?: DialecteHooks<AnyDialecteConfig>
+	hooks?: TransactionHooks<AnyDialecteConfig>
+	importSession?: ImportSession
 	dialecteConfig: AnyDialecteConfig
 	perf?: Perf
 }): void {
-	const { state, hooks, session, dialecteConfig, perf = NOOP_PERF } = params
+	const { state, hooks, importSession, session, dialecteConfig, perf = NOOP_PERF } = params
 
 	// Pop the closing record in place; the stack now holds only its ancestors.
 	const rawRecord = state.stack.pop()
@@ -206,12 +218,10 @@ function handleCloseTag(params: {
 		}),
 	)
 
-	if (hooks?.beforeImportRecord) {
+	const beforeImportRecord = importSession?.beforeImportRecord
+	if (beforeImportRecord) {
 		perf.time('core::import::onCloseTag::beforeHook', () =>
-			hooks.beforeImportRecord!({
-				record: currentRecord,
-				ancestry: state.stack,
-			}),
+			beforeImportRecord({ record: currentRecord, ancestry: state.stack }),
 		)
 	}
 

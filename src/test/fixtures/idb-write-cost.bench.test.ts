@@ -69,6 +69,7 @@ async function parseRecords(xml: string): Promise<AnyRawRecord[]> {
 	await parseXmlFile({
 		file: new File([xml], 'writecost.xml', { type: 'text/xml' }),
 		documentId: 'writecost',
+		configKey: 'test',
 		store,
 		config: CONFIG,
 	})

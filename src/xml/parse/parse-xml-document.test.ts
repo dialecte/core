@@ -4,9 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
+import type { Diagnostic } from '@/diagnostics'
 import type { Store } from '@/store/store.types'
 import type { BaseTestCase } from '@/test'
-import type { AnyRawRecord, RecordPatch } from '@/types'
+import type { AfterImportResult, AnyRawRecord, ImportSession } from '@/types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -99,6 +100,7 @@ describe('parseXmlFile', () => {
 			const result = await parseXmlFile({
 				file: testCase.file,
 				documentId: 'f1',
+				configKey: 'test',
 				store,
 				config: CONFIG,
 			})
@@ -168,7 +170,13 @@ describe('parseXmlFile', () => {
 
 		runTestCases.generic(testCases, async (testCase) => {
 			const store = createMockStore()
-			await parseXmlFile({ file: testCase.file, documentId: 'f1', store, config: CONFIG })
+			await parseXmlFile({
+				file: testCase.file,
+				documentId: 'f1',
+				configKey: 'test',
+				store,
+				config: CONFIG,
+			})
 			const allRecords = store.bulkWriteCalls.flatMap(([, ops]) => ops.creates ?? [])
 			testCase.assertRecords(allRecords)
 		})
@@ -201,12 +209,19 @@ describe('parseXmlFile', () => {
 
 			if (testCase.expectError) {
 				await expect(
-					parseXmlFile({ file: testCase.file, documentId: 'f1', store, config: CONFIG }),
+					parseXmlFile({
+						file: testCase.file,
+						documentId: 'f1',
+						configKey: 'test',
+						store,
+						config: CONFIG,
+					}),
 				).rejects.toMatchObject({ cause: { key: testCase.expectError.key } })
 			} else {
 				const result = await parseXmlFile({
 					file: testCase.file,
 					documentId: 'f1',
+					configKey: 'test',
 					store,
 					config: CONFIG,
 				})
@@ -259,6 +274,7 @@ describe('parseXmlFile', () => {
 			await parseXmlFile({
 				file: xmlFile(testCase.xml),
 				documentId: 'f1',
+				configKey: 'test',
 				store,
 				config: CONFIG,
 			})
@@ -304,6 +320,7 @@ describe('parseXmlFile', () => {
 			await parseXmlFile({
 				file: xmlFile(testCase.xml),
 				documentId: 'f1',
+				configKey: 'test',
 				store,
 				config: CONFIG,
 				chunkOptions: { chunkSize: testCase.chunkSize, batchSize: testCase.batchSize },
@@ -312,14 +329,38 @@ describe('parseXmlFile', () => {
 		})
 	})
 
-	describe('afterImport hook', () => {
+	describe('import session', () => {
 		type TestCase = BaseTestCase & {
-			hookResult: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] }
+			/** `absent`: no hooks at all; `without-factory`: hooks that declare no session factory */
+			hooks?: 'absent' | 'without-factory'
+			session?: ImportSession
+			expectedDiagnostics: Diagnostic[]
+			/** Root(1) + creates - deletes */
 			expectedRecordCount: number
-			expectHookBulkWrite: boolean
+			/** the session's write, when it has one: a second bulkWrite after the parse's one */
+			expectedWrite?: Parameters<Store['bulkWrite']>[1]
 		}
 
-		const baseRecord: AnyRawRecord = {
+		const unresolved: Diagnostic = {
+			code: 'unresolved-reference',
+			severity: 'warning',
+			source: 'test',
+			message: 'A reference names an element the file does not hold',
+			ref: { tagName: 'A', id: 'a-1', attribute: 'ref' },
+		}
+		const incoherent: Diagnostic = {
+			code: 'incoherent-reference',
+			severity: 'warning',
+			source: 'test',
+			message: 'A reference names one element by its path and another by its uuid',
+			ref: { tagName: 'A', id: 'a-2' },
+			related: [
+				{ ref: { tagName: 'B', id: 'b-1' }, message: 'the element the path names' },
+				{ ref: { tagName: 'B', id: 'b-2' }, message: 'the element the uuid names' },
+			],
+			meta: { pathValue: 'B1', uuidValue: 'b-2' },
+		}
+		const created: AnyRawRecord = {
 			id: 'hook-1',
 			tagName: 'A',
 			namespace: NS.default,
@@ -328,43 +369,164 @@ describe('parseXmlFile', () => {
 			parent: null,
 			children: [],
 		}
+		const patch = { recordId: 'some-id', attributes: [{ name: 'a', value: '1' }] }
+		const afterImport = (result: AfterImportResult) => async () => result
 
 		const testCases: Record<string, TestCase> = {
-			'hook creates add to record count': {
-				hookResult: { creates: [baseRecord] },
-				expectedRecordCount: 2, // Root(1) + hook-created(1)
-				expectHookBulkWrite: true,
+			'session reports one diagnostic and no write → the diagnostic comes out, nothing written': {
+				session: { afterImport: afterImport({ diagnostics: [unresolved] }) },
+				expectedDiagnostics: [unresolved],
+				expectedRecordCount: 1,
 			},
-			'hook deletes subtract from record count': {
-				hookResult: { deletes: ['some-id'] },
-				expectedRecordCount: 0, // Root(1) - delete(1)
-				expectHookBulkWrite: true,
+			'session reports two diagnostics and a create → both come out in order, the create is written':
+				{
+					session: {
+						afterImport: afterImport({ creates: [created], diagnostics: [unresolved, incoherent] }),
+					},
+					expectedDiagnostics: [unresolved, incoherent],
+					expectedRecordCount: 2,
+					expectedWrite: { creates: [created], updates: undefined, deletes: undefined },
+				},
+			'session updates a record → the patch is written, record count unchanged': {
+				session: { afterImport: afterImport({ updates: [patch] }) },
+				expectedDiagnostics: [],
+				expectedRecordCount: 1,
+				expectedWrite: { creates: undefined, updates: [patch], deletes: undefined },
 			},
-			'hook with empty ops does not call bulkWrite': {
-				hookResult: {},
-				expectedRecordCount: 1, // Root only
-				expectHookBulkWrite: false,
+			'session deletes a record → record count drops, no diagnostic': {
+				session: { afterImport: afterImport({ deletes: ['some-id'] }) },
+				expectedDiagnostics: [],
+				expectedRecordCount: 0,
+				expectedWrite: { creates: undefined, updates: undefined, deletes: ['some-id'] },
+			},
+			'session with nothing to say → no diagnostic, nothing written': {
+				session: { afterImport: afterImport({}) },
+				expectedDiagnostics: [],
+				expectedRecordCount: 1,
+			},
+			'session with a per-record hook only → no diagnostic, nothing written': {
+				session: { beforeImportRecord: () => {} },
+				expectedDiagnostics: [],
+				expectedRecordCount: 1,
+			},
+			'hooks without a session factory → no diagnostic': {
+				hooks: 'without-factory',
+				expectedDiagnostics: [],
+				expectedRecordCount: 1,
+			},
+			'no hooks → no diagnostic': {
+				hooks: 'absent',
+				expectedDiagnostics: [],
+				expectedRecordCount: 1,
 			},
 		}
 
 		runTestCases.generic(testCases, async (testCase) => {
 			const store = createMockStore()
+			const { session } = testCase
+			const hooks =
+				testCase.hooks === 'absent'
+					? undefined
+					: testCase.hooks === 'without-factory'
+						? {}
+						: { createImportSession: () => session! }
 
 			const result = await parseXmlFile({
 				file: xmlFile(minimalXml()),
 				documentId: 'f1',
+				configKey: 'test',
 				store,
 				config: CONFIG,
-				hooks: { afterImport: async () => testCase.hookResult },
+				hooks,
 			})
 
+			expect(result.diagnostics).toStrictEqual(testCase.expectedDiagnostics)
 			expect(result.recordCount).toBe(testCase.expectedRecordCount)
-
-			if (testCase.expectHookBulkWrite) {
-				// Last bulkWrite call should be from the hook
-				const lastCall = store.bulkWriteCalls.at(-1)!
-				expect(lastCall[0]).toBe('f1')
+			// the parse writes Root in one batch; the session's write, when it has one, is the second
+			if (testCase.expectedWrite) {
+				expect(store.bulkWriteCalls).toHaveLength(2)
+				expect(store.bulkWriteCalls[1]).toEqual(['f1', testCase.expectedWrite])
+			} else {
+				expect(store.bulkWriteCalls).toHaveLength(1)
 			}
+		})
+
+		it('afterImport runs once the last record is stored', async () => {
+			const store = createMockStore()
+			let writesWhenCalled = -1
+			await parseXmlFile({
+				file: xmlFile(minimalXml('<A/>')),
+				documentId: 'f1',
+				configKey: 'test',
+				store,
+				config: CONFIG,
+				chunkOptions: { chunkSize: 16, batchSize: 1 },
+				hooks: {
+					createImportSession: () => ({
+						afterImport: async () => {
+							writesWhenCalled = store.bulkWriteCalls.length
+							return {}
+						},
+					}),
+				},
+			})
+			const recordsWritten = store.bulkWriteCalls.flatMap(([, ops]) => ops.creates ?? []).length
+			expect(recordsWritten).toBe(2)
+			expect(writesWhenCalled).toBe(store.bulkWriteCalls.length)
+		})
+
+		it('empty file → no diagnostic, no session created', async () => {
+			const createImportSession = vi.fn((): ImportSession => ({}))
+			const result = await parseXmlFile({
+				file: xmlFile(''),
+				documentId: 'f1',
+				configKey: 'test',
+				store: createMockStore(),
+				config: CONFIG,
+				hooks: { createImportSession },
+			})
+			expect(result).toEqual({ documentId: 'f1', recordCount: 0, diagnostics: [] })
+			expect(createImportSession).not.toHaveBeenCalled()
+		})
+
+		it('one file → one session, created with the documentId and the configKey', async () => {
+			const createImportSession = vi.fn((): ImportSession => ({}))
+			await parseXmlFile({
+				file: xmlFile(minimalXml('<A/>')),
+				documentId: 'doc-1',
+				configKey: 'cfg',
+				store: createMockStore(),
+				config: CONFIG,
+				hooks: { createImportSession },
+			})
+			expect(createImportSession).toHaveBeenCalledTimes(1)
+			expect(createImportSession).toHaveBeenCalledWith({ documentId: 'doc-1', configKey: 'cfg' })
+		})
+
+		it('two files one after the other → two sessions, each sees only its own records', async () => {
+			const seen: Record<string, string[]> = {}
+			const hooks = {
+				createImportSession: ({ documentId }: { documentId: string }): ImportSession => {
+					seen[documentId] = []
+					return {
+						beforeImportRecord: ({ record }) => seen[documentId]!.push(record.tagName),
+					}
+				},
+			}
+			const parse = (documentId: string, body: string) =>
+				parseXmlFile({
+					file: xmlFile(minimalXml(body)),
+					documentId,
+					configKey: 'test',
+					store: createMockStore(),
+					config: CONFIG,
+					hooks,
+				})
+
+			await parse('first', '<A><AA_1/></A>')
+			await parse('second', '<B/>')
+
+			expect(seen).toEqual({ first: ['AA_1', 'A', 'Root'], second: ['B', 'Root'] })
 		})
 	})
 
@@ -383,6 +545,7 @@ describe('parseXmlFile', () => {
 			const result = await parseXmlFile({
 				file: xmlFile(minimalXml()),
 				documentId: testCase.documentId,
+				configKey: 'test',
 				store,
 				config: CONFIG,
 			})
@@ -408,6 +571,7 @@ describe('parseXmlFile', () => {
 				parseXmlFile({
 					file: xmlFile(xmlA, 'a.xml'),
 					documentId: 'file-a',
+					configKey: 'test',
 					store: storeA,
 					config: CONFIG,
 					chunkOptions: { chunkSize: 16, batchSize: 1 },
@@ -415,6 +579,7 @@ describe('parseXmlFile', () => {
 				parseXmlFile({
 					file: xmlFile(xmlB, 'b.xml'),
 					documentId: 'file-b',
+					configKey: 'test',
 					store: storeB,
 					config: CONFIG,
 					chunkOptions: { chunkSize: 16, batchSize: 1 },
@@ -459,6 +624,7 @@ describe('parseXmlFile', () => {
 				parseXmlFile({
 					file: xmlFile(xml1, 'one.xml'),
 					documentId: 'same-id',
+					configKey: 'test',
 					store: store1,
 					config: CONFIG,
 					chunkOptions: { chunkSize: 16, batchSize: 1 },
@@ -466,6 +632,7 @@ describe('parseXmlFile', () => {
 				parseXmlFile({
 					file: xmlFile(xml2, 'two.xml'),
 					documentId: 'same-id',
+					configKey: 'test',
 					store: store2,
 					config: CONFIG,
 					chunkOptions: { chunkSize: 16, batchSize: 1 },
