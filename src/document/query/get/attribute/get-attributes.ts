@@ -1,11 +1,5 @@
 import { resolveRecord } from '@/document'
-import { XMLNS_NAMESPACE_URI } from '@/helpers/constant'
-import {
-	resolveDefinition,
-	getAttributeRules,
-	resolvePrefixByNamespaceScope,
-	resolveSchemaAttributeValue,
-} from '@/utils'
+import { readAttributes } from '@/helpers'
 
 import type { Context, RefOrRecord } from '@/document'
 import type {
@@ -13,13 +7,13 @@ import type {
 	AttributesValueObjectOf,
 	ElementsOf,
 	FullAttributeObjectOf,
-	Namespace,
 } from '@/types'
 import type { AttributeDefaults } from '@/utils'
 
 /**
  * Fetch attributes for the given ref or record as a destructurable value object. A record given in full is read as it
- * is, through the staged operations, with no store round trip (see `resolveRecord`).
+ * is, through the staged operations, with no store round trip (see `resolveRecord`); the reading itself is
+ * {@link readAttributes}.
  *
  * Without `namespace`, every attribute under the name it is stored by (`aA`, `xsi:type`, `ext:cA`) - what a write takes
  * back. With a `namespace` key, only that namespace's attributes, with the prefix stripped from the keys
@@ -37,70 +31,26 @@ import type { AttributeDefaults } from '@/utils'
 export async function getAttributes<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
-	GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
+	_GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
 >(params: {
 	context: Context<GenericConfig>
 	ref: RefOrRecord<GenericConfig, GenericElement> | undefined
 	namespace?: string
 	defaults?: AttributeDefaults
 }): Promise<AttributesValueObjectOf<GenericConfig, GenericElement>> {
-	const { context, ref, namespace, defaults = 'optional' } = params
-	const { dialecteConfig } = context
+	const { context, ref, namespace, defaults } = params
 	const record = await resolveRecord({ context, ref })
-	const attributes = (record?.attributes ?? []) as GenericAttribute[]
-
-	const targetPrefix =
-		namespace === undefined ? undefined : resolvePrefixByNamespaceScope(dialecteConfig, namespace)
-
-	const stored = attributes.reduce(
-		(acc, attr) => {
-			const key = keyOf({ name: attr.name, namespace: attr.namespace, targetPrefix })
-			if (key !== undefined) acc[key] = attr.value ?? ''
-			return acc
-		},
-		{} as Record<string, string>,
-	)
-
-	// Fill absent schema attributes in the requested namespace scope per `defaults`.
-	// Stored values already in `stored` are never overwritten.
-	if (record && defaults !== 'none') {
-		const definition = resolveDefinition({ dialecteConfig, record })
-		const sequence = definition?.attributes.sequence ?? []
-		for (const schemaName of sequence) {
-			const key = keyOf({ name: schemaName, targetPrefix })
-			if (key === undefined || key in stored) continue
-			const value = resolveSchemaAttributeValue({
-				dialecteConfig,
-				record,
-				attributeName: schemaName,
-				defaults,
-			})
-			if (value !== undefined) stored[key] = value
-		}
-	}
-
-	return stored as AttributesValueObjectOf<GenericConfig, GenericElement>
+	if (!record) return {} as AttributesValueObjectOf<GenericConfig, GenericElement>
+	const { dialecteConfig } = context
+	return readAttributes({ record, dialecteConfig, namespace, defaults }) as AttributesValueObjectOf<
+		GenericConfig,
+		GenericElement
+	>
 }
 
 /**
- * The key an attribute has in a value object: without a scope (`targetPrefix` undefined) the name it is stored by
- * (`aA`, `xsi:type`, `ext:cA`); in a namespace scope its local name, when it is in that namespace. A namespace
- * declaration has none - as parsed it is stored by its prefix alone, in the xmlns namespace.
- */
-function keyOf(params: {
-	name: string
-	namespace?: Namespace
-	targetPrefix: string | undefined
-}): string | undefined {
-	const { name, namespace, targetPrefix } = params
-	const { prefix, local, isXmlns } = splitAttributeName(name)
-	if (isXmlns || namespace?.uri === XMLNS_NAMESPACE_URI) return undefined
-	if (targetPrefix === undefined) return name
-	return prefix === targetPrefix ? local : undefined
-}
-
-/**
- * Fetch all attributes of the given ref or record as a full array (name + value + namespace).
+ * Fetch all attributes of the given ref or record as a full array (name + value + namespace), read with
+ * {@link readAttributes}.
  *
  * `defaults` (default `'optional'`) fills absent schema attributes just like
  * {@link getAttributes}: `'none'` returns the faithful stored-only set;
@@ -120,46 +70,14 @@ export async function getAttributesFullObject<
 	ref: RefOrRecord<GenericConfig, GenericElement> | undefined
 	defaults?: AttributeDefaults
 }): Promise<GenericAttribute[]> {
-	const { context, ref, defaults = 'optional' } = params
-	const { dialecteConfig } = context
+	const { context, ref, defaults } = params
 	const record = await resolveRecord({ context, ref })
-	const attributes = [...((record?.attributes ?? []) as GenericAttribute[])]
-
-	if (record && defaults !== 'none') {
-		const present = new Set(attributes.map((attribute) => attribute.name))
-		const definition = resolveDefinition({ dialecteConfig, record })
-		const sequence = definition?.attributes.sequence ?? []
-		for (const schemaName of sequence) {
-			if (present.has(schemaName)) continue
-			const value = resolveSchemaAttributeValue({
-				dialecteConfig,
-				record,
-				attributeName: schemaName,
-				defaults,
-			})
-			if (value === undefined) continue
-			const { namespace } = getAttributeRules({
-				dialecteConfig,
-				record,
-				attributeName: schemaName,
-			})
-			attributes.push({ name: schemaName, value, namespace } as GenericAttribute)
-		}
-	}
-
-	return attributes
-}
-
-/**
- * Split a stored attribute name into its XML prefix and local part. Default
- * (unprefixed) attributes report an empty prefix; `xmlns`/`xmlns:*` declarations
- * are flagged so callers can skip them.
- */
-function splitAttributeName(name: string): { prefix: string; local: string; isXmlns: boolean } {
-	if (name === 'xmlns' || name.startsWith('xmlns:')) {
-		return { prefix: '', local: name, isXmlns: true }
-	}
-	const colonIndex = name.indexOf(':')
-	if (colonIndex === -1) return { prefix: '', local: name, isXmlns: false }
-	return { prefix: name.slice(0, colonIndex), local: name.slice(colonIndex + 1), isXmlns: false }
+	if (!record) return []
+	const { dialecteConfig } = context
+	return readAttributes({
+		record,
+		dialecteConfig,
+		defaults,
+		fullObject: true,
+	}) as GenericAttribute[]
 }

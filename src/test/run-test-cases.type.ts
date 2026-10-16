@@ -52,12 +52,16 @@ export type TestRunner<
 		) => Promise<ActResult | void>
 		dialecteConfig?: GenericConfig
 		hooks?: DialecteHooks<GenericConfig>
+		/** Project dev options; `perf: true` makes `document.perf.report()` count the store reads. */
+		dev?: { perf?: boolean }
 	}): void
 	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
 		testCases: TestCases<GenericTestCase>
 		act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
 		dialecteConfig?: GenericConfig
 		hooks?: DialecteHooks<GenericConfig>
+		/** Project dev options; `perf: true` makes `document.perf.report()` count the store reads. */
+		dev?: { perf?: boolean }
 	}): void
 	generic<GenericTestCase extends BaseTestCase>(
 		testCases: Record<string, GenericTestCase>,

@@ -42,12 +42,14 @@ function xmlWithExport<
 	dialecteConfig?: GenericConfig
 	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 	hooks?: DialecteHooks<GenericConfig>
+	dev?: { perf?: boolean }
 }): void {
 	const {
 		testCases,
 		act,
 		extensions,
 		hooks,
+		dev,
 		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
 	} = params
 
@@ -67,6 +69,7 @@ function xmlWithExport<
 				dialecteConfig,
 				extensions,
 				hooks,
+				dev,
 			})
 
 			try {
@@ -119,12 +122,14 @@ function xmlWithoutExport<
 	dialecteConfig?: GenericConfig
 	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 	hooks?: DialecteHooks<GenericConfig>
+	dev?: { perf?: boolean }
 }): void {
 	const {
 		testCases,
 		act,
 		extensions,
 		hooks,
+		dev,
 		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
 	} = params
 
@@ -140,6 +145,7 @@ function xmlWithoutExport<
 				dialecteConfig,
 				extensions,
 				hooks,
+				dev,
 			})
 
 			try {

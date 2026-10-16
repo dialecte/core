@@ -177,6 +177,38 @@ const clean = stripAttributes(record, ['aA_1', 'aA_2'])
 
 ---
 
+## Attribute reads
+
+### `readAttribute` / `readAttributes`
+
+Read the attributes of a record you already hold, the way [`query.getAttribute(s)`](/api/query#reading-from-a-record) reads them, with no query: synchronous, for code that has a record but no query - an import pass (`afterImport` works in memory, with no store reads), or a pure composer shared between an import pass and a query. `query.getAttribute(s)` itself resolves the record, then reads it through these.
+
+Same options, same results as the query: `namespace` scope, `defaults` fill (default `'optional'`), `''` for an absent attribute, `fullObject: true` for the attribute objects. Namespace declarations are left out of the value object only: `fullObject: true` returns the stored attributes as they are, a declaration a parsed document carries included (stored by its prefix, in the xmlns namespace) - as the query does. The schema values come from the `dialecteConfig` passed.
+
+```ts
+import { readAttribute, readAttributes } from '@dialecte/core/helpers'
+
+readAttributes({ record, dialecteConfig }) // → { aA: 'v', 'ext:cA': 'w' } - absent schema attributes filled
+readAttributes({ record, dialecteConfig, defaults: 'none' }) // → stored only
+readAttributes({ record, dialecteConfig, namespace: 'ext' }) // → { cA: 'w' }
+readAttribute({ record, dialecteConfig, name: 'bA' }) // → 'x' | ''
+```
+
+**Absent or written empty.** The value form reads both as `''`, as the query does. When the difference matters - an attribute left out means "use another one", one written empty does not - read the object with `defaults: 'none'`: `undefined` is absent, `{ value: '' }` is written empty.
+
+```ts
+const written = readAttribute({ record, dialecteConfig, name, defaults: 'none', fullObject: true })
+const value = written
+	? written.value
+	: readAttribute({ record, dialecteConfig, name: fallbackName })
+```
+
+**Not inside a transaction.** These read the record as you hold it. `tx.getAttribute(s)` reads a record through the transaction's staged writes, so a record held from before a write reads its new values (see [Reading inside a transaction](/api/transaction#reading-inside-a-transaction)); these read its old ones. In a transaction - or wherever a query is at hand and the record may have changed since it was read - use the query.
+
+**Plain types.** They take any record (`AnyRawRecord`; a typed `RawRecord`, `TrackedRecord` or `TreeRecord` too, without a cast) and return plain strings: `string`, `Record<string, string>`, `AnyAttribute | undefined`, `AnyAttribute[]`. For reads typed by element, use the query.
+
+---
+
 ## Record factory
 
 ### `standardizeRecord`

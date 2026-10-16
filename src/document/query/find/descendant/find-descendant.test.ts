@@ -357,6 +357,21 @@ describe('findDescendants - omit', () => {
 			options: { collect: { AA_1: { AAA_1: true } }, omit: ['AA_1'] },
 			expectedCounts: { AA_1: 0, AAA_1: 0 },
 		},
+		'omit names the root tag, flat collect → nothing collected (the omit is checked before the root)':
+			{
+				sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A ${customId}="a1" aA="v">
+						<AA_1 ${customId}="aa1" aAA_1="v">
+							<AAA_1 ${customId}="aaa1" aAAA_1="v" />
+						</AA_1>
+					</A>
+				</Root>
+			`,
+				ref: { tagName: 'A', id: 'a1' },
+				options: { collect: ['AA_1', 'AAA_1'], omit: ['A'] },
+				expectedCounts: { AA_1: 0, AAA_1: 0 },
+			},
 		'omit with where - conditional exclusion': {
 			sourceXml: /* xml */ `
 				<Root ${ns}>

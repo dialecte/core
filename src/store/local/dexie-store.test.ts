@@ -180,6 +180,12 @@ describe('DexieStore', () => {
 			expect(result).toHaveLength(3)
 		})
 
+		it('count is the number of records of the document', async () => {
+			expect(await store.count(documentId)).toBe(0)
+			await store.bulkWrite(documentId, { creates: [makeRecord(), makeRecord(), makeRecord()] })
+			expect(await store.count(documentId)).toBe(3)
+		})
+
 		it('get with documentId', async () => {
 			const rec = makeRecord()
 			await store.bulkWrite(documentId, { creates: [rec] })
@@ -312,6 +318,27 @@ describe('DexieStore', () => {
 
 			const result = await store.get(rec.id, documentId)
 			expect(result?.id).toBe(rec.id)
+		})
+
+		it('count follows every write: bulk write, commit, undo, redo, remove', async () => {
+			const commit = (creates: ReturnType<typeof makeRecord>[], deletes: string[]) =>
+				store.commit({ documentId, creates, updates: [], deletes, onProgress: () => {} })
+			const [first, second, third] = [makeRecord(), makeRecord(), makeRecord()]
+
+			expect(await store.count(documentId), 'empty').toBe(0)
+			await store.bulkWrite(documentId, { creates: [first] })
+			expect(await store.count(documentId), 'after a bulk write').toBe(1)
+			await commit([second, third], [])
+			expect(await store.count(documentId), 'after a commit creating two').toBe(3)
+			await commit([], [first.id])
+			expect(await store.count(documentId), 'after a commit deleting one').toBe(2)
+			await store.undo(documentId)
+			expect(await store.count(documentId), 'after undoing the delete').toBe(3)
+			await store.redo(documentId)
+			expect(await store.count(documentId), 'after redoing it').toBe(2)
+			await store.removeDocument(documentId)
+			await store.registerDocument({ ...makeFile(), id: documentId })
+			expect(await store.count(documentId), 'after removing the document').toBe(0)
 		})
 
 		it('undo is no-op at beginning of history', async () => {

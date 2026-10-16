@@ -284,6 +284,17 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	/**
 	 * Find all descendants of an element, grouped by tag name.
 	 *
+	 * The groups are keyed by tag name; the records of a group come in no guaranteed order (the
+	 * store's own; it is not guaranteed to be document order) - walk a `getTree` result for
+	 * document order.
+	 *
+	 * Reads: a flat collect reads each tag name's candidates from the store's tag index and
+	 * climbs their parent chains, each ancestor read once per call; the path form reads level
+	 * by level. Once a call has issued more store reads than one whole-document read is worth for
+	 * this document (never before 128), it reads the document once and serves the rest from
+	 * memory - a large collect costs one `getByDocumentId`, never one read per ancestor step. A
+	 * flat collect under the document root with no `omit` climbs nothing.
+	 *
 	 * @param refOrRecord - The ancestor element.
 	 * @param options - Collect spec and optional omit list. When omitted, collects all descendant tag names.
 	 * @returns Object keyed by tag name, each value an array of tracked records.

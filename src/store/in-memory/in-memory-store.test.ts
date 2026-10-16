@@ -104,6 +104,11 @@ describe('InMemoryStore (writable)', () => {
 			expect(await store.getByDocumentId('doc-1')).toHaveLength(2)
 		})
 
+		it('count is the number of records of the document', async () => {
+			expect(await store.count('doc-1')).toBe(2)
+			expect(await store.count('unknown-doc')).toBe(0)
+		})
+
 		it('getByTagNameInDocument filters', async () => {
 			const results = await store.getByTagNameInDocument('Bay', 'doc-1')
 			expect(results).toHaveLength(1)

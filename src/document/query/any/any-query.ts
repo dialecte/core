@@ -151,6 +151,7 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		})
 	}
 
+	/** Every descendant of the element, grouped by tag name; a group's records come in no guaranteed order. */
 	async findDescendants(
 		refOrRecord: AnyRefOrRecord | undefined,
 	): Promise<Record<string, AnyTrackedRecord[]>> {

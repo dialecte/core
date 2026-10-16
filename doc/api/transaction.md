@@ -259,6 +259,8 @@ await doc.transaction(async (tx) => {
 })
 ```
 
+The synchronous [`readAttribute(s)`](/guide/development/helpers#readattribute-readattributes) from `@dialecte/core/helpers` do not see staged changes: they read the record as you hold it. Use `tx.getAttribute(s)` here.
+
 ## RefOrRecord
 
 Like Query, all Transaction methods accept any `RefOrRecord` — refs, records, or relationships:

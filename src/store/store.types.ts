@@ -94,6 +94,13 @@ export interface Store {
 	/** Get all records belonging to a document */
 	getByDocumentId(documentId: string): Promise<AnyRawRecord[]>
 
+	/**
+	 * How many records a document holds; no record is read. It sizes read strategies, so an
+	 * implementation may answer from a cache kept in step with its own writes (it may then lag
+	 * writes made through another connection).
+	 */
+	count(documentId: string): Promise<number>
+
 	/** Get records matching a tagName within a specific document */
 	getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]>
 

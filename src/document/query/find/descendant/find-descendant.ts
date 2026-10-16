@@ -1,7 +1,10 @@
-import { matchesAttributeFilter, getRecord, getRecordsByTagName } from '@/document'
+import { createRecordSource } from './record-source'
+
+import { matchesAttributeFilter } from '@/document'
 import { toRef } from '@/helpers'
 
 import type { Collect, FindDescendantsParams, FindDescendantsReturn } from './find-descendant.types'
+import type { RecordSource } from './record-source'
 import type { Context, Ref, OmitEntry } from '@/document'
 import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 
@@ -9,6 +12,18 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 // Main export
 // ============================================================================
 
+/**
+ * Collect the descendants of `ref` by tag name.
+ *
+ * Reads: the records come from one per-call {@link RecordSource} - the store first, each
+ * record once, then one whole-document read once the call has issued more store reads (by id
+ * or by tag name) than that read is worth for this document. A flat collect under the document
+ * root with no `omit` verifies no ancestry at all: it relies on every record of a document
+ * lying under its root.
+ *
+ * Order: the groups are keyed by tag name; the records of a group come in no guaranteed order
+ * (the store's own; it is not guaranteed to be document order).
+ */
 export async function findDescendants<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
@@ -33,7 +48,8 @@ export async function findDescendants<
 		collected.set(tagName, new Map())
 	}
 
-	const root = await getRecord({ context, ref })
+	const source = createRecordSource({ context })
+	const root = await source.get(ref)
 	if (!root)
 		return buildResult(collected) as FindDescendantsReturn<
 			GenericConfig,
@@ -42,9 +58,16 @@ export async function findDescendants<
 		>
 
 	if (collectSpec.mode === 'flat') {
-		await traverseFlat({ context, rootId: root.id, collectSpec, omitSpec, collected })
+		await traverseFlat({ context, source, root, collectSpec, omitSpec, collected })
 	} else {
-		await traversePath({ context, record: root, pathNodes: collectSpec.paths, omitSpec, collected })
+		await traversePath({
+			context,
+			source,
+			record: root,
+			pathNodes: collectSpec.paths,
+			omitSpec,
+			collected,
+		})
 	}
 
 	return buildResult(collected) as FindDescendantsReturn<
@@ -92,6 +115,10 @@ function parseOmitEntries<GenericConfig extends AnyDialecteConfig>(params: {
 		}
 	}
 	return { dialecteConfig, unconditional, conditional }
+}
+
+function hasOmit(omitSpec: OmitSpec): boolean {
+	return omitSpec.unconditional.size > 0 || omitSpec.conditional.length > 0
 }
 
 function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
@@ -216,29 +243,32 @@ function parsePathEntry(params: {
 }
 
 // ============================================================================
-// Flat traversal - INDEXED bottom-up approach
+// Flat traversal - indexed bottom-up
 // ============================================================================
-// Strategy: query store by tagName index (O(matches)), then walk parent refs
-// upward to verify ancestry under root. Avoids visiting all nodes in subtree.
+// Strategy: the candidates of a tag come from the store's tagName index (O(matches)), and
+// each one is kept when its parent chain reaches the root without crossing an omitted record.
+// The chain is climbed through the record source: each ancestor is read once per call, and
+// the climb gives way to one whole-document read once it has cost more than that read.
 
 async function traverseFlat<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>
-	rootId: string
+	source: RecordSource<GenericConfig>
+	root: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	collectSpec: { targets: FlatTarget[]; allTags: Set<string> }
 	omitSpec: OmitSpec
 	collected: Map<string, Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>>
 }): Promise<void> {
-	const { context, rootId, collectSpec, omitSpec, collected } = params
+	const { context, source, root, collectSpec, omitSpec, collected } = params
+
+	// Under the document root with nothing omitted, every record of the document qualifies.
+	const everyRecordQualifies = !root.parent && !hasOmit(omitSpec)
+	const ancestry = createAncestryCheck({ source, rootId: root.id, omitSpec })
 
 	for (const target of collectSpec.targets) {
 		// omit takes precedence: if target tagName is unconditionally omitted, skip entirely
 		if (omitSpec.unconditional.has(target.tagName)) continue
 
-		// O(matching records) via Dexie tagName index
-		const candidates = await getRecordsByTagName({
-			context,
-			tagName: target.tagName as ElementsOf<GenericConfig>,
-		})
+		const candidates = await source.byTag(target.tagName as ElementsOf<GenericConfig>)
 
 		for (const candidate of candidates) {
 			if (
@@ -249,10 +279,11 @@ async function traverseFlat<GenericConfig extends AnyDialecteConfig>(params: {
 				})
 			)
 				continue
-			if (isOmitted({ record: candidate, omitSpec })) continue
-
-			// Verify ancestry: walk parent refs up to rootId
-			if (await isDescendantOf({ context, record: candidate, rootId, omitSpec })) {
+			if (
+				everyRecordQualifies
+					? !isOmitted({ record: candidate, omitSpec })
+					: await ancestry.isUnderRoot(candidate)
+			) {
 				collected.get(target.tagName)!.set(candidate.id, candidate)
 			}
 		}
@@ -276,40 +307,69 @@ function matchesFlatTarget<GenericConfig extends AnyDialecteConfig>(params: {
 }
 
 /**
- * Walk parent chain from record upward. Return true if rootId is found
- * as an ancestor AND no omitted tagName appears on the path.
+ * Whether a record lies under the root, neither it nor any record on the way up omitted. The verdict of
+ * every record climbed through is kept, so sibling candidates (and the candidates of a later
+ * tag) settle on a shared ancestor without climbing it again.
  */
-async function isDescendantOf<GenericConfig extends AnyDialecteConfig>(params: {
-	context: Context<GenericConfig>
-	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
+function createAncestryCheck<GenericConfig extends AnyDialecteConfig>(params: {
+	source: RecordSource<GenericConfig>
 	rootId: string
 	omitSpec: OmitSpec
-}): Promise<boolean> {
-	const { context, record, rootId, omitSpec } = params
+}): {
+	isUnderRoot(record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>): Promise<boolean>
+} {
+	const { source, rootId, omitSpec } = params
+	/** id → under the root, with the path from that record (included) up to the root clean. */
+	const verdicts = new Map<string, boolean>()
 
-	if (record.id === rootId) return true
+	async function isUnderRoot(
+		record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>,
+	): Promise<boolean> {
+		// An omitted record is out whatever lies above it; its verdict is not kept, as no climb
+		// passes through it (a climb stops at the first omitted ancestor)
+		if (isOmitted({ record, omitSpec })) return false
+		if (record.id === rootId) return true
 
-	let current: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined = record
+		const climbed: string[] = [record.id]
+		let current = record
+		let verdict: boolean
 
-	while (current) {
-		if (!current.parent) return false
+		for (;;) {
+			const parentRef = current.parent
+			if (!parentRef) {
+				verdict = false
+				break
+			}
+			// Unconditional omit is decided on the ref, before reading the parent - the root's own
+			// tag included, as the climb always has
+			if (omitSpec.unconditional.has(parentRef.tagName)) {
+				verdict = false
+				break
+			}
+			if (parentRef.id === rootId) {
+				verdict = true
+				break
+			}
+			const known = verdicts.get(parentRef.id)
+			if (known !== undefined) {
+				verdict = known
+				break
+			}
+			const parent = await source.get(toRef(parentRef))
+			if (!parent || isOmitted({ record: parent, omitSpec })) {
+				verdicts.set(parentRef.id, false)
+				verdict = false
+				break
+			}
+			climbed.push(parent.id)
+			current = parent
+		}
 
-		// Check unconditional omit on parent ref before fetching
-		if (omitSpec.unconditional.has(current.parent.tagName)) return false
-
-		if (current.parent.id === rootId) return true
-
-		const parent: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined =
-			await getRecord({ context, ref: toRef(current.parent) })
-		if (!parent) return false
-
-		// Check conditional omit on fetched parent
-		if (isOmitted({ record: parent, omitSpec })) return false
-
-		current = parent
+		for (const id of climbed) verdicts.set(id, verdict)
+		return verdict
 	}
 
-	return false
+	return { isUnderRoot }
 }
 
 // ============================================================================
@@ -320,12 +380,13 @@ async function isDescendantOf<GenericConfig extends AnyDialecteConfig>(params: {
 
 async function traversePath<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>
+	source: RecordSource<GenericConfig>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	pathNodes: PathNode[]
 	omitSpec: OmitSpec
 	collected: Map<string, Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>>
 }): Promise<void> {
-	const { context, record, pathNodes, omitSpec, collected } = params
+	const { context, source, record, pathNodes, omitSpec, collected } = params
 
 	if (!record.children?.length) return
 
@@ -336,6 +397,7 @@ async function traversePath<GenericConfig extends AnyDialecteConfig>(params: {
 	for (const pathNode of pathNodes) {
 		const matches = await findMatchingDescendantsPrefiltered({
 			context,
+			source,
 			record,
 			tagName: pathNode.tagName,
 			where: pathNode.where,
@@ -349,6 +411,7 @@ async function traversePath<GenericConfig extends AnyDialecteConfig>(params: {
 			if (!pathNode.isLeaf && pathNode.children.length > 0) {
 				await traversePath({
 					context,
+					source,
 					record: match,
 					pathNodes: pathNode.children,
 					omitSpec,
@@ -365,13 +428,14 @@ async function traversePath<GenericConfig extends AnyDialecteConfig>(params: {
  */
 async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>
+	source: RecordSource<GenericConfig>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	tagName: string
 	where?: Record<string, unknown>
 	omitSpec: OmitSpec
 	stopAtTagNames: Set<string>
 }): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
-	const { context, record, tagName, where, omitSpec, stopAtTagNames } = params
+	const { context, source, record, tagName, where, omitSpec, stopAtTagNames } = params
 
 	const results: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[] = []
 
@@ -381,7 +445,7 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
 	const queue: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[] = []
 
 	// Seed: fetch only non-omitted children
-	const seedChildren = await fetchChildrenPrefiltered({ context, record, omitSpec })
+	const seedChildren = await fetchChildrenPrefiltered({ source, record, omitSpec })
 	queue.push(...seedChildren)
 
 	while (queue.length > 0) {
@@ -400,7 +464,7 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
 
 		// Continue searching deeper
 		if (current.children?.length) {
-			const grandchildren = await fetchChildrenPrefiltered({ context, record: current, omitSpec })
+			const grandchildren = await fetchChildrenPrefiltered({ source, record: current, omitSpec })
 			queue.push(...grandchildren)
 		}
 	}
@@ -417,20 +481,18 @@ async function findMatchingDescendantsPrefiltered<GenericConfig extends AnyDiale
  * Conditional omit entries are checked after fetching.
  */
 async function fetchChildrenPrefiltered<GenericConfig extends AnyDialecteConfig>(params: {
-	context: Context<GenericConfig>
+	source: RecordSource<GenericConfig>
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	omitSpec: OmitSpec
 }): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
-	const { context, record, omitSpec } = params
+	const { source, record, omitSpec } = params
 
 	if (!record.children?.length) return []
 
 	const relevantRefs = record.children.filter((ref) => !omitSpec.unconditional.has(ref.tagName))
 	if (!relevantRefs.length) return []
 
-	const records = await Promise.all(
-		relevantRefs.map((childRef) => getRecord({ context, ref: toRef(childRef) })),
-	)
+	const records = await source.getMany(relevantRefs.map((childRef) => toRef(childRef)))
 
 	return records.filter(
 		(r): r is TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> =>

@@ -5,7 +5,7 @@ import {
 	isOmitted,
 	shouldStopTraversal,
 } from '../../tree-filter'
-import { overlayAllStaged } from '../record/staged-lookup'
+import { loadLiveRecords } from '../record/load-live-records'
 
 import { matchesAttributeFilter } from '@/document'
 import { toTreeRecord } from '@/helpers'
@@ -80,19 +80,6 @@ export async function getTree<
 }
 
 //== Bulk load + root resolution
-
-/** Read every record of the document once and overlay staged ops — the tree's data source. */
-async function loadLiveRecords<GenericConfig extends AnyDialecteConfig>(
-	context: Context<GenericConfig>,
-): Promise<Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>> {
-	context.perf.count('core::store::getByDocumentId')
-	const rawRecords = await context.store.getByDocumentId(context.documentId)
-	const { live } = overlayAllStaged({
-		rawRecords,
-		stagedOperations: context.stagedOperations,
-	})
-	return live as unknown as Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>
-}
 
 /**
  * Read only the subtree under `ref` down to `depth` levels, one batched store call per level.

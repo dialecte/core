@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A malformed file rejects the import with `PARSE_ERROR` - its `detail` says what the parser saw (`Unexpected close tag`, `Unclosed root tag`, `Text data outside of root node.`, …) and `meta` carries `reason: 'malformed-xml'` with the parser's words - instead of being swallowed: the sax error was only recorded, so an error in the last chunk or at the end of the file (a root never closed) let the import succeed with a truncated document. A second root element, which the parser lets through, is a `PARSE_ERROR` too (`reason: 'second-root'`).
 
+## [0.6.4] - 2026-10-16
+
+### Added
+
+- `readAttribute` and `readAttributes` in `@dialecte/core/helpers`: read the attributes of a record you hold the way `getAttribute` / `getAttributes` read them - same `namespace`, `defaults` and `fullObject` options, same results - with no query, synchronously, for an import pass or a pure composer. `getAttribute(s)` delegate to them once they have the record (no behaviour change). They read the record as held, staged operations not consulted: inside a transaction, use the query. Plain types (`string`, `Record<string, string>`, `AnyAttribute`); typed reads stay on the query.
+
+## [0.6.3] - 2026-10-16
+
+### Changed
+
+- `findDescendants` no longer issues one store read per ancestor step. A flat collect climbs each candidate's parent chain through a per-call memo (each ancestor read once; sibling candidates share theirs). Once a call has issued more store reads (by id or by tag name) than one whole-document read is worth for this document - its record count times a per-record cost measured on IndexedDB, never before 128 reads - it reads the document once, staged operations overlaid as `getTree` does, and serves the rest from memory. The path form (`collect: { A: { B: true } }`) reads through the same source. A flat collect under the document root with no `omit` climbs nothing: it relies on every record of a document lying under its root. The result is unchanged; the docs now say that a group's records come in no guaranteed order (the store's own, as before). The dev perf counter `core::store::count` counts the size reads this decision makes.
+- **Breaking** for a custom `Store`: the interface gains `count(documentId)`, the number of records a document holds, read without reading the records; an implementation may cache it in step with its own writes. The in-memory store and the local (Dexie) store implement it, the latter cached until its next write to the document.
+
 ## [0.6.2] - 2026-10-16
 
 ### Changed
