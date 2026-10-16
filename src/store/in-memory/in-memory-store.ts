@@ -133,6 +133,10 @@ export class InMemoryStore implements Store {
 		return [...this.getTable(documentId).values()]
 	}
 
+	async count(documentId: string): Promise<number> {
+		return this.getTable(documentId).size
+	}
+
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
 		const results: AnyRawRecord[] = []
 		for (const record of this.getTable(documentId).values()) {

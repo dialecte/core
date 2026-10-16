@@ -78,6 +78,11 @@ export class DexieStore implements Store {
 	 * `versionchange`. The next data access self-heals through ensureCurrentSchema.
 	 */
 	private stale = false
+	/**
+	 * Record count per document, as `count` last read it. Forgotten after every write this store
+	 * makes to the document (IndexedDB counts by iterating: about 50 ms for 90,000 records).
+	 */
+	private readonly recordCounts = new Map<string, number>()
 
 	constructor(projectName: string, options?: DexieStoreOptions) {
 		this.name = projectName
@@ -103,6 +108,7 @@ export class DexieStore implements Store {
 		}
 		await Dexie.delete(this.name)
 		this.knownDocuments.clear()
+		this.recordCounts.clear()
 	}
 
 	// --- Cross-realm reconciliation ---
@@ -161,36 +167,40 @@ export class DexieStore implements Store {
 	}
 
 	async removeDocument(documentId: string): Promise<void> {
-		await this.withSchemaLock(async () => {
-			if (this.stale) await this.reloadFromPersisted()
-			// Clear records first (O(1) table clear)
-			const tableName = this.resolveTableName(documentId)
-			if (this.db.tables.some((t) => t.name === tableName)) {
-				await this.db.table(tableName).clear()
-			}
+		try {
+			await this.withSchemaLock(async () => {
+				if (this.stale) await this.reloadFromPersisted()
+				// Clear records first (O(1) table clear)
+				const tableName = this.resolveTableName(documentId)
+				if (this.db.tables.some((t) => t.name === tableName)) {
+					await this.db.table(tableName).clear()
+				}
 
-			// Clear blob data table owned by this document
-			const blobTable = blobTableName(documentId)
-			if (this.db.tables.some((t) => t.name === blobTable)) {
-				await this.db.table(blobTable).clear()
-			}
+				// Clear blob data table owned by this document
+				const blobTable = blobTableName(documentId)
+				if (this.db.tables.some((t) => t.name === blobTable)) {
+					await this.db.table(blobTable).clear()
+				}
 
-			// Remove blob registry entries owned by this document
-			await this.db.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
+				// Remove blob registry entries owned by this document
+				await this.db.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
 
-			// Remove changelog entries for this file
-			await this.db.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
+				// Remove changelog entries for this file
+				await this.db.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
 
-			// Remove head
-			await this.db.table(TABLE_META).delete(`head:${documentId}`)
+				// Remove head
+				await this.db.table(TABLE_META).delete(`head:${documentId}`)
 
-			// Remove from _files
-			await this.db.table(TABLE_DOCUMENTS).delete(documentId)
+				// Remove from _files
+				await this.db.table(TABLE_DOCUMENTS).delete(documentId)
 
-			// Remove from memory and reopen (null table = Dexie drop)
-			this.knownDocuments.delete(documentId)
-			await this.reopenWithNewSchema({ drop: documentId })
-		})
+				// Remove from memory and reopen (null table = Dexie drop)
+				this.knownDocuments.delete(documentId)
+				await this.reopenWithNewSchema({ drop: documentId })
+			})
+		} finally {
+			this.recordCounts.delete(documentId)
+		}
 	}
 
 	// --- Record access ---
@@ -213,6 +223,15 @@ export class DexieStore implements Store {
 		return this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).toArray()
 	}
 
+	async count(documentId: string): Promise<number> {
+		const known = this.recordCounts.get(documentId)
+		if (known !== undefined) return known
+		await this.ensureCurrentSchema()
+		const count = await this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).count()
+		this.recordCounts.set(documentId, count)
+		return count
+	}
+
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
 		await this.ensureCurrentSchema()
 		return this.db
@@ -232,62 +251,66 @@ export class DexieStore implements Store {
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
-		await this.ensureCurrentSchema()
-		const { creates, updates, deletes } = ops
-		const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+		try {
+			await this.ensureCurrentSchema()
+			const { creates, updates, deletes } = ops
+			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 
-		await this.db.transaction('rw', table, async () => {
-			if (creates?.length) {
-				this.perf.start('core::store::bulkWrite::add')
-				await table.bulkAdd(creates)
-				this.perf.stop('core::store::bulkWrite::add')
-			}
-
-			if (updates?.length) {
-				this.perf.start('core::store::bulkWrite::update')
-				for (const { recordId, removeAttributes, ...patch } of updates) {
-					const record = await table.get(recordId)
-					if (!record) continue
-
-					const merged: Partial<Omit<AnyRawRecord, 'id'>> = { ...patch }
-
-					if (patch.attributes) {
-						const updatedAttributes = [...record.attributes]
-						for (const attr of patch.attributes) {
-							const idx = updatedAttributes.findIndex((a) => a.name === attr.name)
-							if (idx >= 0) updatedAttributes[idx] = attr
-							else updatedAttributes.push(attr)
-						}
-						merged.attributes = updatedAttributes
-					}
-
-					if (removeAttributes?.length) {
-						merged.attributes = (merged.attributes ?? record.attributes).filter(
-							(attribute) => !removeAttributes.includes(attribute.name),
-						)
-					}
-
-					if (patch.children) {
-						const updatedChildren = [...record.children]
-						for (const child of patch.children) {
-							const idx = updatedChildren.findIndex((c) => c.id === child.id)
-							if (idx >= 0) updatedChildren[idx] = child
-							else updatedChildren.push(child)
-						}
-						merged.children = updatedChildren
-					}
-
-					await table.update(recordId, merged)
+			await this.db.transaction('rw', table, async () => {
+				if (creates?.length) {
+					this.perf.start('core::store::bulkWrite::add')
+					await table.bulkAdd(creates)
+					this.perf.stop('core::store::bulkWrite::add')
 				}
-				this.perf.stop('core::store::bulkWrite::update')
-			}
 
-			if (deletes?.length) {
-				this.perf.start('core::store::bulkWrite::delete')
-				await table.bulkDelete(deletes)
-				this.perf.stop('core::store::bulkWrite::delete')
-			}
-		})
+				if (updates?.length) {
+					this.perf.start('core::store::bulkWrite::update')
+					for (const { recordId, removeAttributes, ...patch } of updates) {
+						const record = await table.get(recordId)
+						if (!record) continue
+
+						const merged: Partial<Omit<AnyRawRecord, 'id'>> = { ...patch }
+
+						if (patch.attributes) {
+							const updatedAttributes = [...record.attributes]
+							for (const attr of patch.attributes) {
+								const idx = updatedAttributes.findIndex((a) => a.name === attr.name)
+								if (idx >= 0) updatedAttributes[idx] = attr
+								else updatedAttributes.push(attr)
+							}
+							merged.attributes = updatedAttributes
+						}
+
+						if (removeAttributes?.length) {
+							merged.attributes = (merged.attributes ?? record.attributes).filter(
+								(attribute) => !removeAttributes.includes(attribute.name),
+							)
+						}
+
+						if (patch.children) {
+							const updatedChildren = [...record.children]
+							for (const child of patch.children) {
+								const idx = updatedChildren.findIndex((c) => c.id === child.id)
+								if (idx >= 0) updatedChildren[idx] = child
+								else updatedChildren.push(child)
+							}
+							merged.children = updatedChildren
+						}
+
+						await table.update(recordId, merged)
+					}
+					this.perf.stop('core::store::bulkWrite::update')
+				}
+
+				if (deletes?.length) {
+					this.perf.start('core::store::bulkWrite::delete')
+					await table.bulkDelete(deletes)
+					this.perf.stop('core::store::bulkWrite::delete')
+				}
+			})
+		} finally {
+			this.recordCounts.delete(documentId)
+		}
 	}
 
 	async commit(params: {
@@ -297,164 +320,176 @@ export class DexieStore implements Store {
 		deletes: string[]
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
-		await this.ensureCurrentSchema()
-		const { documentId, creates, updates, deletes, onProgress } = params
-		const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
-		const total = creates.length + updates.length + deletes.length
-		let completed = 0
-
 		try {
-			await this.db.transaction(
-				'rw',
-				table,
-				this.db.table(TABLE_CHANGELOG),
-				this.db.table(TABLE_META),
-				async () => {
-					// Snapshot before-state for undo
-					const beforeSnapshots: (AnyRawRecord | undefined)[] =
-						updates.length > 0 ? await table.bulkGet(updates.map((r) => r.id)) : []
-					const deletedSnapshots: (AnyRawRecord | undefined)[] =
-						deletes.length > 0 ? await table.bulkGet(deletes) : []
+			await this.ensureCurrentSchema()
+			const { documentId, creates, updates, deletes, onProgress } = params
+			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+			const total = creates.length + updates.length + deletes.length
+			let completed = 0
 
-					if (creates.length > 0) {
-						try {
-							await table.bulkAdd(creates)
-							completed += creates.length
-							onProgress(completed, total)
-						} catch (error) {
-							throwDialecteError('STORE_BULK_ADD_FAILED', {
-								detail: error instanceof Error ? error.message : String(error),
-								cause: error instanceof Error ? error : undefined,
-							})
+			try {
+				await this.db.transaction(
+					'rw',
+					table,
+					this.db.table(TABLE_CHANGELOG),
+					this.db.table(TABLE_META),
+					async () => {
+						// Snapshot before-state for undo
+						const beforeSnapshots: (AnyRawRecord | undefined)[] =
+							updates.length > 0 ? await table.bulkGet(updates.map((r) => r.id)) : []
+						const deletedSnapshots: (AnyRawRecord | undefined)[] =
+							deletes.length > 0 ? await table.bulkGet(deletes) : []
+
+						if (creates.length > 0) {
+							try {
+								await table.bulkAdd(creates)
+								completed += creates.length
+								onProgress(completed, total)
+							} catch (error) {
+								throwDialecteError('STORE_BULK_ADD_FAILED', {
+									detail: error instanceof Error ? error.message : String(error),
+									cause: error instanceof Error ? error : undefined,
+								})
+							}
 						}
-					}
 
-					if (updates.length > 0) {
-						try {
-							await table.bulkPut(updates)
-							completed += updates.length
-							onProgress(completed, total)
-						} catch (error) {
-							throwDialecteError('STORE_BULK_UPDATE_FAILED', {
-								detail: error instanceof Error ? error.message : String(error),
-								cause: error instanceof Error ? error : undefined,
-							})
+						if (updates.length > 0) {
+							try {
+								await table.bulkPut(updates)
+								completed += updates.length
+								onProgress(completed, total)
+							} catch (error) {
+								throwDialecteError('STORE_BULK_UPDATE_FAILED', {
+									detail: error instanceof Error ? error.message : String(error),
+									cause: error instanceof Error ? error : undefined,
+								})
+							}
 						}
-					}
 
-					if (deletes.length > 0) {
-						try {
-							await table.bulkDelete(deletes)
-							completed += deletes.length
-							onProgress(completed, total)
-						} catch (error) {
-							throwDialecteError('STORE_DELETE_FAILED', {
-								detail: error instanceof Error ? error.message : String(error),
-								cause: error instanceof Error ? error : undefined,
-							})
+						if (deletes.length > 0) {
+							try {
+								await table.bulkDelete(deletes)
+								completed += deletes.length
+								onProgress(completed, total)
+							} catch (error) {
+								throwDialecteError('STORE_DELETE_FAILED', {
+									detail: error instanceof Error ? error.message : String(error),
+									cause: error instanceof Error ? error : undefined,
+								})
+							}
 						}
-					}
 
-					// Trim redoable future for this file
-					const head = await this.getHead(documentId)
-					const allForFile = await this.db
-						.table<ChangeLogEntry>(TABLE_CHANGELOG)
-						.where({ documentId })
-						.filter((e) => e.sequenceNumber > head)
-						.toArray()
-					if (allForFile.length > 0) {
-						await this.db.table(TABLE_CHANGELOG).bulkDelete(allForFile.map((e) => e.id))
-					}
+						// Trim redoable future for this file
+						const head = await this.getHead(documentId)
+						const allForFile = await this.db
+							.table<ChangeLogEntry>(TABLE_CHANGELOG)
+							.where({ documentId })
+							.filter((e) => e.sequenceNumber > head)
+							.toArray()
+						if (allForFile.length > 0) {
+							await this.db.table(TABLE_CHANGELOG).bulkDelete(allForFile.map((e) => e.id))
+						}
 
-					const newSeq = head + 1
-					const entry: Omit<ChangeLogEntry, 'id'> = {
-						documentId,
-						sequenceNumber: newSeq,
-						timestamp: Date.now(),
-						operations: {
-							creates,
-							updates: updates.map((after, i) => ({
-								before: beforeSnapshots[i]!,
-								after,
-							})),
-							deletes: deletedSnapshots.filter(Boolean) as AnyRawRecord[],
-						},
-					}
-					await this.db.table(TABLE_CHANGELOG).add(entry)
-					await this.setHead(documentId, newSeq)
-				},
-			)
-		} catch (error) {
-			if (error instanceof Error && error.message.includes('dialecte')) {
-				throw error
+						const newSeq = head + 1
+						const entry: Omit<ChangeLogEntry, 'id'> = {
+							documentId,
+							sequenceNumber: newSeq,
+							timestamp: Date.now(),
+							operations: {
+								creates,
+								updates: updates.map((after, i) => ({
+									before: beforeSnapshots[i]!,
+									after,
+								})),
+								deletes: deletedSnapshots.filter(Boolean) as AnyRawRecord[],
+							},
+						}
+						await this.db.table(TABLE_CHANGELOG).add(entry)
+						await this.setHead(documentId, newSeq)
+					},
+				)
+			} catch (error) {
+				if (error instanceof Error && error.message.includes('dialecte')) {
+					throw error
+				}
+				throwDialecteError('STORE_COMMIT_FAILED', {
+					detail: error instanceof Error ? error.message : String(error),
+					cause: error instanceof Error ? error : undefined,
+				})
 			}
-			throwDialecteError('STORE_COMMIT_FAILED', {
-				detail: error instanceof Error ? error.message : String(error),
-				cause: error instanceof Error ? error : undefined,
-			})
+		} finally {
+			this.recordCounts.delete(params.documentId)
 		}
 	}
 
 	// --- History ---
 
 	async undo(documentId: string): Promise<void> {
-		await this.ensureCurrentSchema()
-		const head = await this.getHead(documentId)
-		if (head === 0) return
+		try {
+			await this.ensureCurrentSchema()
+			const head = await this.getHead(documentId)
+			if (head === 0) return
 
-		const entry = await this.db
-			.table<ChangeLogEntry>(TABLE_CHANGELOG)
-			.where({ documentId, sequenceNumber: head })
-			.first()
-		if (!entry) return
+			const entry = await this.db
+				.table<ChangeLogEntry>(TABLE_CHANGELOG)
+				.where({ documentId, sequenceNumber: head })
+				.first()
+			if (!entry) return
 
-		const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 
-		await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
-			const { creates, updates, deletes } = entry.operations
+			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
+				const { creates, updates, deletes } = entry.operations
 
-			if (creates.length > 0) {
-				await table.bulkDelete(creates.map((r) => r.id))
-			}
-			if (updates.length > 0) {
-				await table.bulkPut(updates.map((u) => u.before))
-			}
-			if (deletes.length > 0) {
-				await table.bulkAdd(deletes)
-			}
+				if (creates.length > 0) {
+					await table.bulkDelete(creates.map((r) => r.id))
+				}
+				if (updates.length > 0) {
+					await table.bulkPut(updates.map((u) => u.before))
+				}
+				if (deletes.length > 0) {
+					await table.bulkAdd(deletes)
+				}
 
-			await this.setHead(documentId, head - 1)
-		})
+				await this.setHead(documentId, head - 1)
+			})
+		} finally {
+			this.recordCounts.delete(documentId)
+		}
 	}
 
 	async redo(documentId: string): Promise<void> {
-		await this.ensureCurrentSchema()
-		const head = await this.getHead(documentId)
-		const next = head + 1
+		try {
+			await this.ensureCurrentSchema()
+			const head = await this.getHead(documentId)
+			const next = head + 1
 
-		const entry = await this.db
-			.table<ChangeLogEntry>(TABLE_CHANGELOG)
-			.where({ documentId, sequenceNumber: next })
-			.first()
-		if (!entry) return
+			const entry = await this.db
+				.table<ChangeLogEntry>(TABLE_CHANGELOG)
+				.where({ documentId, sequenceNumber: next })
+				.first()
+			if (!entry) return
 
-		const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 
-		await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
-			const { creates, updates, deletes } = entry.operations
+			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
+				const { creates, updates, deletes } = entry.operations
 
-			if (creates.length > 0) {
-				await table.bulkAdd(creates)
-			}
-			if (updates.length > 0) {
-				await table.bulkPut(updates.map((update) => update.after))
-			}
-			if (deletes.length > 0) {
-				await table.bulkDelete(deletes.map((record) => record.id))
-			}
+				if (creates.length > 0) {
+					await table.bulkAdd(creates)
+				}
+				if (updates.length > 0) {
+					await table.bulkPut(updates.map((update) => update.after))
+				}
+				if (deletes.length > 0) {
+					await table.bulkDelete(deletes.map((record) => record.id))
+				}
 
-			await this.setHead(documentId, next)
-		})
+				await this.setHead(documentId, next)
+			})
+		} finally {
+			this.recordCounts.delete(documentId)
+		}
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {

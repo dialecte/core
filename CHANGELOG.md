@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Changed
+
+- `findDescendants` no longer issues one store read per ancestor step. A flat collect climbs each candidate's parent chain through a per-call memo (each ancestor read once; sibling candidates share theirs). Once a call has issued more store reads (by id or by tag name) than one whole-document read is worth for this document - its record count times a per-record cost measured on IndexedDB, never before 128 reads - it reads the document once, staged operations overlaid as `getTree` does, and serves the rest from memory. The path form (`collect: { A: { B: true } }`) reads through the same source. A flat collect under the document root with no `omit` climbs nothing: it relies on every record of a document lying under its root. The result is unchanged; the docs now say that a group's records come in no guaranteed order (the store's own, as before). The dev perf counter `core::store::count` counts the size reads this decision makes.
+- **Breaking** for a custom `Store`: the interface gains `count(documentId)`, the number of records a document holds, read without reading the records; an implementation may cache it in step with its own writes. The in-memory store and the local (Dexie) store implement it, the latter cached until its next write to the document.
+
 ## [0.6.2] - 2026-10-16
 
 ### Changed

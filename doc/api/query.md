@@ -173,6 +173,10 @@ const results = await doc.query.findDescendants(ref, {
 
 **omit** shares the same `OmitEntry` type as `getTree.omit` (see above).
 
+**Order:** the groups are keyed by tag name; the records of a group come in no guaranteed order (the store's own; it is not guaranteed to be document order). For descendants in document order, walk a [`getTree`](#gettree) result.
+
+**Reads:** a flat collect reads the candidates of each tag name from the store's tag index, then climbs each candidate's parent chain, each ancestor read once per call; the path form reads level by level. Once a call has issued more store reads (by id or by tag name) than one whole-document read is worth for this document - its record count times a per-record cost measured on IndexedDB, and never before 128 reads - it reads the document once and serves the rest from memory. A large collect therefore costs one `getByDocumentId`, never one read per ancestor step. A flat collect under the document root with no `omit` climbs nothing: it relies on every record of a document lying under its root. The dev perf counters `core::store::get`, `core::store::getByTagName`, `core::store::count` and `core::store::getByDocumentId` show which path a call took.
+
 #### FilterAttributes
 
 Partial attribute match. Values can be a single value or an array of accepted values:
