@@ -1,3 +1,4 @@
+export * from './diagnostics'
 export * from './document'
 export * from './errors'
 export * from './perf'
