@@ -33,6 +33,7 @@ export async function initEmptyDocument(
 		extension,
 		configKey,
 		createdAt: Date.now(),
+		status: 'ready',
 		metadata: options?.metadata,
 	}
 

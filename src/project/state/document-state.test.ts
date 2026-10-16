@@ -13,6 +13,7 @@ function makeFile(overrides: Partial<DocumentRecord> = {}): DocumentRecord {
 		extension: overrides.extension ?? '.scd',
 		configKey: overrides.configKey ?? 'scl',
 		createdAt: overrides.createdAt ?? Date.now(),
+		status: 'ready',
 		metadata: overrides.metadata,
 	}
 }

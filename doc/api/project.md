@@ -85,6 +85,8 @@ const results = await project.import([file1, file2], {
 
 **Returns** `Promise<Array<{ documentId: string; recordCount: number }>>`
 
+**A document is whole or absent.** Files are imported one after the other, in the order given; each lands in `project.state` and is broadcast as soon as it is in. A file is registered with `status: 'importing'` before its first record is stored and set to `'ready'` once the last one is. Whatever fails in between - a malformed file (`PARSE_ERROR`, its `detail` naming what the parser saw and `meta.reason` saying `'malformed-xml'` or `'second-root'`), an import hook that throws, a store write that fails - removes the document again and is thrown: the files before it are in, the ones after it are not attempted. A document still `importing` is never opened, listed or hydrated, here or in another tab. While it imports, a document says it is alive every `IMPORT_HEARTBEAT_MS` (2 s, `importingAt`); `open()` removes the ones whose heartbeat is older than `STALE_IMPORT_MS` (5 min - generous on purpose: a hidden tab's timers are throttled, and a false "dead" would lose a running import) - left by a tab that closed mid-import - and leaves a live import of another tab alone; an open project sweeps again every `STALE_IMPORT_MS`. Both constants are exported.
+
 ## export
 
 Serializes a document's records back to XML.
@@ -117,6 +119,8 @@ const file: DocumentRecord | undefined = await project.getDocument(documentId)
 // Remove a file and all its records
 await project.removeDocument(documentId)
 ```
+
+`DocumentRecord.status` (`DocumentStatus`) is `'importing'` while a file's records are being stored and `'ready'` after; a record stored before the field existed reads as `'ready'`. `getDocuments` and `getDocument` never return an importing document.
 
 ## Document access
 

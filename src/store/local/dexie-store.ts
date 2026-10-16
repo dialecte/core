@@ -18,7 +18,7 @@ import { throwDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
 
 import type { Store, ChangeLogEntry, ChangeLogMeta, RecordSchema } from '../store.types'
-import type { DexieStoreOptions } from './types'
+import type { DexieStoreOptions, StoredDocumentRow } from './types'
 import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
@@ -140,17 +140,19 @@ export class DexieStore implements Store {
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
 		await this.ensureCurrentSchema()
-		return this.db.table<DocumentRecord>(TABLE_DOCUMENTS).get(documentId)
+		const row = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+		return row && withStatus(row)
 	}
 
 	async getDocuments(): Promise<DocumentRecord[]> {
 		await this.ensureCurrentSchema()
-		return this.db.table<DocumentRecord>(TABLE_DOCUMENTS).toArray()
+		const rows = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+		return rows.map(withStatus)
 	}
 
 	async updateDocument(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata'>>,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>,
 	): Promise<void> {
 		await this.ensureCurrentSchema()
 		await this.db.table(TABLE_DOCUMENTS).update(documentId, updates)
@@ -640,7 +642,8 @@ export class DexieStore implements Store {
 
 		try {
 			await bootstrap.open()
-			const files: DocumentRecord[] = await bootstrap.table(TABLE_DOCUMENTS).toArray()
+			const rows: StoredDocumentRow[] = await bootstrap.table(TABLE_DOCUMENTS).toArray()
+			const files = rows.map(withStatus)
 			const meta = await bootstrap.table(TABLE_META).get('schemaVersion')
 			bootstrap.close()
 
@@ -711,4 +714,9 @@ function invariantBlobOwnerKnown(known: Map<string, DocumentRecord>, documentId:
 			detail: `Cannot add blob: owner document "${documentId}" is not registered`,
 		})
 	}
+}
+
+/** A row stored before `status` existed is a finished import: it reads as `ready`. */
+function withStatus(row: StoredDocumentRow): DocumentRecord {
+	return row.status ? (row as DocumentRecord) : { ...row, status: 'ready' }
 }

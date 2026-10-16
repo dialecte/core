@@ -93,7 +93,7 @@ export class InMemoryStore implements Store {
 
 	async updateDocument(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata'>>,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>,
 	): Promise<void> {
 		this.guardWritable()
 		const existing = this.documents.get(documentId)

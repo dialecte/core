@@ -55,6 +55,7 @@ function makeFile(overrides?: Partial<DocumentRecord>): DocumentRecord {
 		extension: '.scd',
 		configKey: 'scl',
 		createdAt: Date.now(),
+		status: 'ready',
 		...overrides,
 	}
 }

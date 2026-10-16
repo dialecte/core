@@ -61,6 +61,7 @@ function makeDoc(overrides?: Partial<DocumentRecord>): DocumentRecord {
 		extension: '.xml',
 		configKey: 'default',
 		createdAt: Date.now(),
+		status: 'ready',
 		...overrides,
 	}
 }

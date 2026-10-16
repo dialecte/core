@@ -22,6 +22,7 @@ const DOCUMENT: DocumentRecord = {
 	extension: '.xml',
 	configKey: 'test',
 	createdAt: 0,
+	status: 'ready',
 }
 
 const RECORD_ID = 'record-1'

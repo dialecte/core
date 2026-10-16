@@ -14,6 +14,7 @@ function makeDocument(id = 'doc-1'): DocumentRecord {
 		extension: '.scd',
 		configKey: 'scl',
 		createdAt: Date.now(),
+		status: 'ready',
 	}
 }
 

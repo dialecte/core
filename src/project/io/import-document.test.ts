@@ -1,3 +1,4 @@
+import { IMPORT_HEARTBEAT_MS } from '../state/document-lifecycle'
 import { importDocument } from './import-document'
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -22,6 +23,8 @@ vi.mock('@/xml', async (importOriginal) => ({
 function mockStore(): Store {
 	return {
 		registerDocument: vi.fn(),
+		updateDocument: vi.fn(),
+		removeDocument: vi.fn(),
 	} as unknown as Store
 }
 
@@ -93,7 +96,7 @@ describe('importDocument', () => {
 				defaultConfigKey: 'default',
 			})
 
-			expect(store.registerDocument).toHaveBeenCalledWith(result.record)
+			expect(store.registerDocument).toHaveBeenCalledWith({ ...result.record, status: 'importing' })
 			expect(result.record.configKey).toBe('default')
 			expect(result.documentId).toBe(result.record.id)
 		})
@@ -111,6 +114,96 @@ describe('importDocument', () => {
 			})
 
 			expect(result.record.metadata).toEqual({ source: 'upload', version: 3 })
+		})
+	})
+
+	describe('a document is whole or absent', () => {
+		it('parse succeeds → registered as importing, marked ready once every record is stored', async () => {
+			const store = mockStore()
+			const file = new File(['<Root/>'], 'test.xml', { type: 'text/xml' })
+
+			const result = await importDocument({ file, store, configs, defaultConfigKey: 'default' })
+
+			expect(store.registerDocument).toHaveBeenCalledWith(
+				expect.objectContaining({
+					id: result.documentId,
+					status: 'importing',
+					importingAt: expect.any(Number),
+				}),
+			)
+			expect(store.updateDocument).toHaveBeenCalledWith(result.documentId, { status: 'ready' })
+			// ready is set once the parse is done, not before
+			const parsedAt = mockParseXmlFile.mock.invocationCallOrder[0]!
+			const readyAt = vi.mocked(store.updateDocument).mock.invocationCallOrder.at(-1)!
+			expect(readyAt).toBeGreaterThan(parsedAt)
+			expect(result.record.status).toBe('ready')
+			expect(result.documentState.record.status).toBe('ready')
+			expect(store.removeDocument).not.toHaveBeenCalled()
+		})
+
+		it('parse fails → the document is removed from the store, the failure is thrown', async () => {
+			const failure = new Error('XML parsing error: Unexpected close tag')
+			mockParseXmlFile.mockRejectedValue(failure)
+			const store = mockStore()
+			const file = new File(['<Root>'], 'broken.xml', { type: 'text/xml' })
+
+			await expect(
+				importDocument({ file, store, configs, defaultConfigKey: 'default' }),
+			).rejects.toBe(failure)
+
+			const registered = vi.mocked(store.registerDocument).mock.calls[0]![0]
+			expect(store.removeDocument).toHaveBeenCalledWith(registered.id)
+			expect(store.updateDocument).not.toHaveBeenCalled()
+		})
+
+		it('a long parse → the document says it is alive every IMPORT_HEARTBEAT_MS, until it is ready', async () => {
+			vi.useFakeTimers()
+			try {
+				mockParseXmlFile.mockImplementation(
+					() =>
+						new Promise((resolve) =>
+							setTimeout(
+								() => resolve({ documentId: 'ignored', recordCount: 1, diagnostics: [] }),
+								IMPORT_HEARTBEAT_MS * 3 + 100,
+							),
+						),
+				)
+				const store = mockStore()
+				const file = new File(['<Root/>'], 'big.xml', { type: 'text/xml' })
+
+				const importing = importDocument({ file, store, configs, defaultConfigKey: 'default' })
+				await vi.advanceTimersByTimeAsync(IMPORT_HEARTBEAT_MS * 3 + 200)
+				const { documentId } = await importing
+
+				const updates = vi.mocked(store.updateDocument).mock.calls.map(([, update]) => update)
+				expect(updates.slice(0, 3)).toEqual([
+					{ importingAt: expect.any(Number) },
+					{ importingAt: expect.any(Number) },
+					{ importingAt: expect.any(Number) },
+				])
+				expect(updates.at(-1)).toEqual({ status: 'ready' })
+				expect(vi.mocked(store.updateDocument).mock.calls.every(([id]) => id === documentId)).toBe(
+					true,
+				)
+
+				// no heartbeat once the import is done
+				await vi.advanceTimersByTimeAsync(IMPORT_HEARTBEAT_MS * 2)
+				expect(vi.mocked(store.updateDocument).mock.calls.length).toBe(updates.length)
+			} finally {
+				vi.useRealTimers()
+			}
+		})
+
+		it('parse fails and the removal fails too → the parse failure is the one thrown', async () => {
+			const failure = new Error('XML parsing error')
+			mockParseXmlFile.mockRejectedValue(failure)
+			const store = mockStore()
+			vi.mocked(store.removeDocument).mockRejectedValue(new Error('store closed'))
+			const file = new File(['<Root>'], 'broken.xml', { type: 'text/xml' })
+
+			await expect(
+				importDocument({ file, store, configs, defaultConfigKey: 'default' }),
+			).rejects.toBe(failure)
 		})
 	})
 

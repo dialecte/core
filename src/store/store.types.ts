@@ -77,10 +77,10 @@ export interface Store {
 	/** Get all registered documents */
 	getDocuments(): Promise<DocumentRecord[]>
 
-	/** Update document metadata (name, metadata) */
+	/** Update document metadata (name, metadata, import status and heartbeat) */
 	updateDocument(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata'>>,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>,
 	): Promise<void>
 
 	/** Remove a document and all its records (O(1) table clear) */

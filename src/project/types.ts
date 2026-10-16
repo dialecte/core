@@ -31,7 +31,18 @@ export type DocumentRecord = {
 	createdAt: number
 	/** Extensible per-file metadata, populated by config.extractMetadata at import */
 	metadata?: Record<string, unknown>
+	/**
+	 * `importing` from registration until the last record is stored, `ready` after. A failed import
+	 * removes the document; one left `importing` with no heartbeat for `STALE_IMPORT_MS` was left
+	 * by a realm that died, and `open()` removes it. A document is never opened, listed or served
+	 * while `importing`.
+	 */
+	status: DocumentStatus
+	/** While `importing`: the last time the importing realm said it was alive (ms since epoch). */
+	importingAt?: number
 }
+
+export type DocumentStatus = 'importing' | 'ready'
 
 // ── DocumentState ────────────────────────────────────────────────────────────
 

@@ -1,6 +1,12 @@
 import { resolveStore } from '../store/resolve-store'
 import { exportBlob, exportDocument, importDocument, initEmptyDocument } from './io'
 import { buildDocumentState, reconcileDocumentState } from './state'
+import {
+	isImporting,
+	isStaleImport,
+	openableDocuments,
+	STALE_IMPORT_MS,
+} from './state/document-lifecycle'
 
 import { Document } from '@/document'
 import { mergeExtensions } from '@/helpers'
@@ -48,6 +54,8 @@ export class Project<
 	private _channel?: BroadcastChannel
 	/** Set once close()/destroy() begins, to stop new channel-triggered store work. */
 	private closing = false
+	/** While open: the imports whose heartbeat went stale are swept every `STALE_IMPORT_MS`. */
+	private staleSweep?: ReturnType<typeof setInterval>
 	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
 	private readonly pendingBroadcastWork = new Set<Promise<void>>()
 	private readonly storage: ProjectParams<GenericConfig>['storage']
@@ -175,11 +183,17 @@ export class Project<
 		await store.open()
 		this._store = store as GenericStore
 
-		const files = await store.getDocuments()
+		// A document still `importing` with a stale heartbeat was left by a realm that died: removed.
+		// One with a live heartbeat is another realm's import in progress: left alone, not opened.
+		const files = await sweepStaleImports(store)
 		for (const file of files) {
 			this.state.documents.set(file.id, buildDocumentState(file))
 		}
 		await Promise.all(files.map((file) => this.refreshHistoryStatus(file.id)))
+		// A realm that dies while this one is open leaves the same leftover: swept periodically too.
+		this.staleSweep = setInterval(() => {
+			this.trackBroadcastWork(sweepStaleImports(store).then(() => {}))
+		}, STALE_IMPORT_MS)
 
 		return this
 	}
@@ -249,6 +263,7 @@ export class Project<
 	 */
 	close(): void {
 		this.closing = true
+		clearInterval(this.staleSweep)
 		this._channel?.close()
 		this.store.close()
 	}
@@ -311,32 +326,30 @@ export class Project<
 		files: File[],
 		options?: ImportDocumentOptions,
 	): Promise<Array<{ documentId: string; recordCount: number }>> {
-		const results = await Promise.all(
-			files.map((file) =>
-				importDocument({
-					file,
-					store: this.store,
-					configs: this.configs,
-					defaultConfigKey: this.defaultConfigKey,
-					options,
-					// Erase to the config-agnostic pipeline shape at this single
-					// core-internal boundary (the import pipeline is registry-driven).
-					hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
-					perf: this.perf,
-				}),
-			),
-		)
-
-		for (const result of results) {
+		const results: Array<{ documentId: string; recordCount: number }> = []
+		// One file at a time: memory is bounded by one file's batches, the registry sees one import,
+		// and a file that fails is removed without touching the ones that landed before it.
+		for (const file of files) {
+			const result = await importDocument({
+				file,
+				store: this.store,
+				configs: this.configs,
+				defaultConfigKey: this.defaultConfigKey,
+				options,
+				// Erase to the config-agnostic pipeline shape at this single
+				// core-internal boundary (the import pipeline is registry-driven).
+				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
+				perf: this.perf,
+			})
 			this.state.documents.set(result.documentId, result.documentState)
 			this.broadcast({
 				type: 'document-imported',
 				documentId: result.documentId,
 				timestamp: Date.now(),
 			})
+			results.push({ documentId: result.documentId, recordCount: result.recordCount })
 		}
-
-		return results.map(({ documentId, recordCount }) => ({ documentId, recordCount }))
+		return results
 	}
 
 	/**
@@ -358,12 +371,14 @@ export class Project<
 
 	// ── File registry ────────────────────────────────────────────────────────
 
+	/** The documents of the project; one still importing - here or in another realm - is not among them. */
 	async getDocuments(): Promise<DocumentRecord[]> {
-		return this.store.getDocuments()
+		return openableDocuments(await this.store.getDocuments())
 	}
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
-		return this.store.getDocument(documentId)
+		const record = await this.store.getDocument(documentId)
+		return record && !isImporting(record) ? record : undefined
 	}
 
 	// ── Document access ──────────────────────────────────────────────────────
@@ -573,7 +588,7 @@ export class Project<
 
 	private async refreshState(): Promise<void> {
 		const files = await this.store.getDocuments()
-		reconcileDocumentState(this.state.documents, files)
+		reconcileDocumentState(this.state.documents, openableDocuments(files))
 	}
 
 	/**
@@ -587,4 +602,13 @@ export class Project<
 		await this.store.reconcile(documentId)
 		await this.refreshState()
 	}
+}
+
+/** Remove the imports nobody runs any more and return the documents to open. */
+async function sweepStaleImports(store: Store): Promise<DocumentRecord[]> {
+	const files = await store.getDocuments()
+	const now = Date.now()
+	const stale = files.filter((file) => isStaleImport(file, now))
+	await Promise.all(stale.map((file) => store.removeDocument(file.id)))
+	return openableDocuments(files)
 }
