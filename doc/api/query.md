@@ -452,6 +452,19 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 
 Unscoped, `getAttributes(ref)` returns every attribute under the name it is stored by - unprefixed in the default namespace, `prefix:local` otherwise, `xsi:type` included - the object a write takes back. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the array of full attribute objects. Namespace declarations (`xmlns:*`) are none of them.
 
+#### Reading from a record
+
+`getAttribute` and `getAttributes` read a record given in full - a `RawRecord`, `TrackedRecord` or `TreeRecord` - as it is, with no store round trip: the attributes of every `getTree` node cost no read. A ref or a relationship is fetched.
+
+```ts
+const tree = await doc.query.getTree(ref)
+for (const node of tree.tree) {
+	const { aAA_1 } = await doc.query.getAttributes(node) // no store read
+}
+```
+
+Inside a transaction the staged operations still come first: a record held from before a staged write reads as the transaction sees it, and one deleted in the transaction reads as absent. Outside a transaction the record is a snapshot - a record held across a commit does not pick that commit up through these reads. Pass its ref (`toRef(record)`) to read the store again. The dev perf counter `core::query::getRecord.fromRecord` counts the reads served from the record given.
+
 ### getDefinition
 
 Returns the element's definition **in its context**: the declaration its parent holds when the schema declares the tag several ways, and what the type it names with `xsi:type` lets it hold. The record is fetched first, so the parent is always known.
@@ -546,7 +559,7 @@ const matches = await doc.query.any.findByAttributes({
 
 ## RefOrRecord
 
-All query methods that take a ref also accept any record type or relationship. The input is resolved to a `Ref` internally:
+All query methods that take a ref also accept any record type or relationship. The input is resolved to a `Ref` internally - except by the attribute reads, which read a record given in full as it is (see [Reading from a record](#reading-from-a-record)):
 
 ```ts
 type RefOrRecord<Config, Element> =

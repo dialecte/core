@@ -1,18 +1,19 @@
-import { getRecord } from '@/document'
+import { resolveRecord } from '@/document'
 import {
 	getAttributeRules,
 	resolvePrefixByNamespaceScope,
 	resolveSchemaAttributeValue,
 } from '@/utils'
 
-import type { Context, Ref } from '@/document'
+import type { Context, RefOrRecord } from '@/document'
 import type { AnyDialecteConfig, ElementsOf, FullAttributeObjectOf } from '@/types'
 import type { AttributeDefaults } from '@/utils'
 
 /**
- * Fetch a single attribute for the given ref.
+ * Fetch a single attribute for the given ref or record.
  *
- * Resolves the record via context (staged → cache → store), then extracts the named
+ * Resolves the record (a record given in full is read as it is, through the staged
+ * operations; a ref via staged → cache → store, see `resolveRecord`), then extracts the named
  * attribute. Pass `namespace` to scope by a namespace key (a local `name` is resolved
  * to the stored `prefix:local` key). `defaults` (default `'optional'`) controls the
  * fallback for an absent attribute: `'none'` → `''`; `'optional'` → `fixed` /
@@ -28,13 +29,13 @@ export async function getAttribute<
 	GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
 >(params: {
 	context: Context<GenericConfig>
-	ref: Ref<GenericConfig, GenericElement>
+	ref: RefOrRecord<GenericConfig, GenericElement> | undefined
 	name: string
 	namespace?: string
 	defaults?: AttributeDefaults
 }): Promise<GenericAttribute['value'] | ''> {
 	const { context, ref, name, namespace, defaults = 'optional' } = params
-	const record = await getRecord({ context, ref })
+	const record = await resolveRecord({ context, ref })
 	const attributes = (record?.attributes ?? []) as GenericAttribute[]
 
 	const storedName = resolveStoredAttributeName(context.dialecteConfig, name, namespace)
@@ -54,7 +55,7 @@ export async function getAttribute<
 }
 
 /**
- * Fetch a single attribute for the given ref as a full object (name + value +
+ * Fetch a single attribute for the given ref or record as a full object (name + value +
  * namespace). `defaults` (default `'optional'`) fills an absent schema attribute by
  * synthesizing its object; `'none'` returns `undefined` when the attribute is not
  * stored.
@@ -68,14 +69,14 @@ export async function getAttributeFullObject<
 	GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
 >(params: {
 	context: Context<GenericConfig>
-	ref: Ref<GenericConfig, GenericElement>
+	ref: RefOrRecord<GenericConfig, GenericElement> | undefined
 	name: string
 	namespace?: string
 	defaults?: AttributeDefaults
 }): Promise<GenericAttribute | undefined> {
 	const { context, ref, name, namespace, defaults = 'optional' } = params
 	const { dialecteConfig } = context
-	const record = await getRecord({ context, ref })
+	const record = await resolveRecord({ context, ref })
 	const attributes = (record?.attributes ?? []) as GenericAttribute[]
 
 	const storedName = resolveStoredAttributeName(dialecteConfig, name, namespace)

@@ -1,11 +1,12 @@
-import { describe, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import { CUSTOM_RECORD_ID_ATTRIBUTE, toRef } from '@/helpers'
 import { XMLNS_XSI_NAMESPACE } from '@/helpers/constant'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	XMLNS_EXT_NAMESPACE,
+	createTestProject,
 	runTestCases,
 } from '@/test'
 
@@ -232,4 +233,104 @@ describe('getAttributesFullObject', () => {
 	}
 
 	runTestCases.withoutExport({ testCases, act })
+})
+
+describe('getAttributes (record argument)', () => {
+	const sourceXml = /* xml */ `
+		<Root ${nsExt}>
+			<A ${customId}="a1" aA="hello" ext:cA="qualified" />
+			<C ${customId}="c1">
+				<CC_1 ${customId}="cc1" />
+			</C>
+		</Root>
+	`
+
+	it('reads a record as given without a store round trip; a bare ref still fetches', async () => {
+		const { project, source } = await createTestProject({ sourceXml, dev: { perf: true } })
+		try {
+			const doc = source.document
+			const record = await doc.query.getRecord({ tagName: 'A', id: 'a1' })
+			doc.perf.reset()
+
+			expect(await doc.query.getAttributes(record)).toEqual({ aA: 'hello', 'ext:cA': 'qualified' })
+			expect(await doc.query.getAttributes(record, { namespace: 'ext' })).toEqual({
+				cA: 'qualified',
+			})
+			expect(await doc.query.getAttributes(record, { fullObject: true })).toEqual([
+				expect.objectContaining({ name: 'aA', value: 'hello' }),
+				expect.objectContaining({ name: 'ext:cA', value: 'qualified' }),
+			])
+			const report = doc.perf.report()
+			expect(report['core::store::get']?.count ?? 0).toBe(0)
+			expect(report['core::query::getRecord.fromRecord']?.count ?? 0).toBe(3)
+
+			doc.perf.reset()
+			expect(await doc.query.getAttributes({ tagName: 'A', id: 'a1' })).toEqual({
+				aA: 'hello',
+				'ext:cA': 'qualified',
+			})
+			expect(doc.perf.report()['core::store::get']?.count ?? 0).toBe(1)
+		} finally {
+			await project.destroy()
+		}
+	})
+
+	it('fills the schema defaults of a getTree node without a store round trip', async () => {
+		const { project, source } = await createTestProject({ sourceXml, dev: { perf: true } })
+		try {
+			const doc = source.document
+			const tree = await doc.query.getTree({ tagName: 'C', id: 'c1' })
+			const node = tree?.tree[0]
+			doc.perf.reset()
+
+			expect(await doc.query.getAttributes(node)).toEqual({ aCC_1: 'fixed_val' })
+			expect(await doc.query.getAttributes(node, { fullObject: true })).toEqual([
+				expect.objectContaining({ name: 'aCC_1', value: 'fixed_val' }),
+			])
+			expect(doc.perf.report()['core::store::get']?.count ?? 0).toBe(0)
+		} finally {
+			await project.destroy()
+		}
+	})
+
+	it('inside a transaction, a record held from before a staged update reads the staged value', async () => {
+		const { project, source } = await createTestProject({ sourceXml, dev: { perf: true } })
+		try {
+			const doc = source.document
+			const held = await doc.query.getRecord({ tagName: 'A', id: 'a1' })
+
+			await doc.transaction(async (tx) => {
+				await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'new' } })
+				doc.perf.reset()
+
+				expect(await tx.getAttributes(held)).toMatchObject({ aA: 'new' })
+				expect(await tx.getAttributes(held, { fullObject: true })).toEqual(
+					expect.arrayContaining([expect.objectContaining({ name: 'aA', value: 'new' })]),
+				)
+				expect(doc.perf.report()['core::store::get']?.count ?? 0).toBe(0)
+			})
+			// Committed: outside a transaction the held record is a snapshot; its ref reads the store again.
+			expect(await doc.query.getAttributes(held)).toMatchObject({ aA: 'hello' })
+			expect(await doc.query.getAttributes(toRef(held))).toMatchObject({ aA: 'new' })
+		} finally {
+			await project.destroy()
+		}
+	})
+
+	it('inside a transaction, a record held from before a staged delete reads as absent', async () => {
+		const { project, source } = await createTestProject({ sourceXml })
+		try {
+			const doc = source.document
+			const held = await doc.query.getRecord({ tagName: 'A', id: 'a1' })
+
+			await doc.transaction(async (tx) => {
+				await tx.delete({ tagName: 'A', id: 'a1' })
+
+				expect(await tx.getAttributes(held)).toEqual({})
+				expect(await tx.getAttributes(held, { fullObject: true })).toEqual([])
+			})
+		} finally {
+			await project.destroy()
+		}
+	})
 })

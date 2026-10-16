@@ -461,11 +461,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			defaults?: AttributeDefaults
 		},
 	): Promise<GenericAttribute | undefined | GenericAttribute['value'] | ''> {
-		const resolvedRef = toRef(refOrRecord)
 		const { fullObject } = params
 		if (fullObject)
-			return getAttributeFullObject({ context: this.context, ref: resolvedRef, ...params })
-		return getAttribute({ context: this.context, ref: resolvedRef, ...params })
+			return getAttributeFullObject({ context: this.context, ref: refOrRecord, ...params })
+		return getAttribute({ context: this.context, ref: refOrRecord, ...params })
 	}
 
 	/**
@@ -530,11 +529,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined,
 		params?: { namespace?: string; fullObject?: boolean; defaults?: AttributeDefaults },
 	): Promise<Record<string, string> | FullAttributeObjectOf<GenericConfig, GenericElement>[]> {
-		const resolvedRef = toRef(refOrRecord)
 		const { fullObject } = params || {}
 		if (fullObject)
-			return getAttributesFullObject({ context: this.context, ref: resolvedRef, ...params })
-		return getAttributes({ context: this.context, ref: resolvedRef, ...params })
+			return getAttributesFullObject({ context: this.context, ref: refOrRecord, ...params })
+		return getAttributes({ context: this.context, ref: refOrRecord, ...params })
 	}
 
 	//== Find queries

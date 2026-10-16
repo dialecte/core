@@ -43,6 +43,7 @@ const COUNTER_KEYS = [
 	'core::store::getByTagName',
 	'core::query::getRecord.cacheHit',
 	'core::query::getRecord.miss',
+	'core::query::getRecord.fromRecord',
 	'core::store::commit',
 ] as const
 

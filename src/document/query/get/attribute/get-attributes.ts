@@ -1,4 +1,4 @@
-import { getRecord } from '@/document'
+import { resolveRecord } from '@/document'
 import { XMLNS_NAMESPACE_URI } from '@/helpers/constant'
 import {
 	resolveDefinition,
@@ -7,7 +7,7 @@ import {
 	resolveSchemaAttributeValue,
 } from '@/utils'
 
-import type { Context, Ref } from '@/document'
+import type { Context, RefOrRecord } from '@/document'
 import type {
 	AnyDialecteConfig,
 	AttributesValueObjectOf,
@@ -18,7 +18,8 @@ import type {
 import type { AttributeDefaults } from '@/utils'
 
 /**
- * Fetch attributes for the given ref as a destructurable value object.
+ * Fetch attributes for the given ref or record as a destructurable value object. A record given in full is read as it
+ * is, through the staged operations, with no store round trip (see `resolveRecord`).
  *
  * Without `namespace`, every attribute under the name it is stored by (`aA`, `xsi:type`, `ext:cA`) - what a write takes
  * back. With a `namespace` key, only that namespace's attributes, with the prefix stripped from the keys
@@ -39,13 +40,13 @@ export async function getAttributes<
 	GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
 >(params: {
 	context: Context<GenericConfig>
-	ref: Ref<GenericConfig, GenericElement>
+	ref: RefOrRecord<GenericConfig, GenericElement> | undefined
 	namespace?: string
 	defaults?: AttributeDefaults
 }): Promise<AttributesValueObjectOf<GenericConfig, GenericElement>> {
 	const { context, ref, namespace, defaults = 'optional' } = params
 	const { dialecteConfig } = context
-	const record = await getRecord({ context, ref })
+	const record = await resolveRecord({ context, ref })
 	const attributes = (record?.attributes ?? []) as GenericAttribute[]
 
 	const targetPrefix =
@@ -99,7 +100,7 @@ function keyOf(params: {
 }
 
 /**
- * Fetch all attributes of a record as a full array (name + value + namespace).
+ * Fetch all attributes of the given ref or record as a full array (name + value + namespace).
  *
  * `defaults` (default `'optional'`) fills absent schema attributes just like
  * {@link getAttributes}: `'none'` returns the faithful stored-only set;
@@ -116,12 +117,12 @@ export async function getAttributesFullObject<
 	GenericAttribute extends FullAttributeObjectOf<GenericConfig, GenericElement>,
 >(params: {
 	context: Context<GenericConfig>
-	ref: Ref<GenericConfig, GenericElement>
+	ref: RefOrRecord<GenericConfig, GenericElement> | undefined
 	defaults?: AttributeDefaults
 }): Promise<GenericAttribute[]> {
 	const { context, ref, defaults = 'optional' } = params
 	const { dialecteConfig } = context
-	const record = await getRecord({ context, ref })
+	const record = await resolveRecord({ context, ref })
 	const attributes = [...((record?.attributes ?? []) as GenericAttribute[])]
 
 	if (record && defaults !== 'none') {

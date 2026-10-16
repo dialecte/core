@@ -241,7 +241,7 @@ await doc.transaction(async (tx) => {
 
 ## Reading inside a transaction
 
-Since `Transaction` extends `Query`, all query methods are available and **see staged changes**:
+Since `Transaction` extends `Query`, all query methods are available and **see staged changes** - a record given in full included: `tx.getAttributes(record)` reads it through the staged operations, so a record held from before a staged write reads as the transaction sees it (see [Reading from a record](/api/query#reading-from-a-record)):
 
 ```ts
 await doc.transaction(async (tx) => {

@@ -14,7 +14,7 @@ import { toRef } from '@/helpers'
 import type { Context } from '../../types'
 import type { GetTreeParams } from '../get'
 import type { GetSnapshotOptions, SnapshotResult } from '../snapshot'
-import type { AnyRef, AnyRefOrRecord, FilterAttributes, Ref } from '@/document'
+import type { AnyRef, AnyRefOrRecord, FilterAttributes, Ref, RefOrRecord } from '@/document'
 import type {
 	AnyAttribute,
 	AnyDialecteConfig,
@@ -99,7 +99,7 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 			defaults?: AttributeDefaults
 		},
 	): Promise<string | AnyAttribute | undefined> {
-		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
+		const ref = refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined
 		const { fullObject } = params
 		if (fullObject) return getAttributeFullObject({ context: this.getContext(), ref, ...params })
 		return getAttribute({ context: this.getContext(), ref, ...params })
@@ -117,7 +117,7 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		refOrRecord: AnyRefOrRecord | undefined,
 		params?: { namespace?: string; fullObject?: boolean; defaults?: AttributeDefaults },
 	): Promise<Record<string, string> | AnyAttribute[]> {
-		const ref = toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>
+		const ref = refOrRecord as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined
 		const { fullObject } = params || {}
 		if (fullObject) return getAttributesFullObject({ context: this.getContext(), ref, ...params })
 		return getAttributes({ context: this.getContext(), ref, ...params })
