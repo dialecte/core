@@ -3,6 +3,7 @@ import { ParseSession } from './parse-session'
 
 import * as sax from 'sax'
 
+import { throwDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE, standardizeRecord } from '@/helpers'
 import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
@@ -54,6 +55,7 @@ export function setSaxParser(params: {
 		defaultNamespace: null,
 		stack: [],
 		recordsBatch: [],
+		sawRoot: false,
 	}
 
 	const parser = sax.parser(
@@ -127,6 +129,16 @@ function handleOpenTag(params: {
 	const { node, state, dialecteConfig, useCustomRecordsIds } = params
 
 	const tagName = getElementLocalName(node)
+
+	if (state.stack.length === 0) {
+		if (state.sawRoot) {
+			throwDialecteError('PARSE_ERROR', {
+				detail: `XML parsing error: a second root element <${node.name}> after the root was closed`,
+				meta: { reason: 'second-root', tagName: node.name },
+			})
+		}
+		state.sawRoot = true
+	}
 
 	if (!state.defaultNamespace)
 		state.defaultNamespace = getDefaultNamespace({
@@ -244,12 +256,15 @@ function handleCloseTag(params: {
 }
 
 /**
- * Handles SAX parser errors.
+ * A SAX error is the file's: thrown as `PARSE_ERROR` from the handler, so `parser.write` rejects the
+ * import with it (sax itself only records the error and keeps going).
  * @param error SAX parser error
- * @returns Error object with a message
  */
-function handleError(error: Error): Error {
-	return new Error(`XML parsing error: ${error}`)
+function handleError(error: Error): never {
+	throwDialecteError('PARSE_ERROR', {
+		detail: `XML parsing error: ${error.message}`,
+		meta: { reason: 'malformed-xml', parser: error.message },
+	})
 }
 
 //====== HELPER FUNCTIONS ======//

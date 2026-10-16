@@ -11,4 +11,6 @@ export type ParserState = {
 	defaultNamespace: Namespace | null
 	stack: AnyRawRecord[]
 	recordsBatch: AnyRawRecord[]
+	/** The root element was opened: a second one at depth 0 is a parse error (sax lets it through) */
+	sawRoot: boolean
 }

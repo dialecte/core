@@ -74,17 +74,21 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 	})
 
 	perf.start('core::import')
-	const parsedCount = await streamFileInChunks({
-		file,
-		sax,
-		session,
-		store,
-		documentId,
-		chunkSize,
-		batchSize,
-		perf,
-	})
-	perf.stop('core::import')
+	let parsedCount: number
+	try {
+		parsedCount = await streamFileInChunks({
+			file,
+			sax,
+			session,
+			store,
+			documentId,
+			chunkSize,
+			batchSize,
+			perf,
+		})
+	} finally {
+		perf.stop('core::import')
+	}
 
 	const { recordDelta, diagnostics } = await endImportSession({ importSession, store, documentId })
 
@@ -134,9 +138,7 @@ async function streamFileInChunks(params: {
 				})
 				perf.stop('core::import::decode')
 				offset += chunkSize
-				perf.start('core::import::sax')
-				sax.parser.write(chunk)
-				perf.stop('core::import::sax')
+				perf.time('core::import::sax', () => sax.parser.write(chunk))
 
 				totalRecords += await flushBatch({
 					sax,
@@ -156,9 +158,7 @@ async function streamFileInChunks(params: {
 				perf.start('core::import::decode')
 				const tail = textDecoder.decode(remainder) // final flush of any pending multi-byte char
 				perf.stop('core::import::decode')
-				perf.start('core::import::sax')
-				sax.parser.write(tail)
-				perf.stop('core::import::sax')
+				perf.time('core::import::sax', () => sax.parser.write(tail))
 			}
 			sax.parser.close()
 			totalRecords += await flushBatch({ sax, session, store, documentId, threshold: 0, perf })

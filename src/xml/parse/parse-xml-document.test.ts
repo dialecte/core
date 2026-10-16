@@ -186,7 +186,7 @@ describe('parseXmlFile', () => {
 		type TestCase = BaseTestCase & {
 			file: File
 			expectedResult?: { recordCount: number }
-			expectError?: { key: string }
+			expectError?: { key: string; detailIncludes?: string }
 		}
 
 		const testCases: Record<string, TestCase> = {
@@ -202,6 +202,22 @@ describe('parseXmlFile', () => {
 				file: new File(['{}'], 'data.json'),
 				expectError: { key: 'ASSERTION_FAILED' },
 			},
+			'tag not closed → PARSE_ERROR, naming what the parser saw': {
+				file: xmlFile(minimalXml('<A><AA_1></A>'), 'broken.xml'),
+				expectError: { key: 'PARSE_ERROR', detailIncludes: 'Unexpected close tag' },
+			},
+			'root never closed → PARSE_ERROR raised when the file ends': {
+				file: xmlFile(`<Root xmlns="${NS.default.uri}"><A>`, 'unclosed.xml'),
+				expectError: { key: 'PARSE_ERROR', detailIncludes: 'Unclosed root tag' },
+			},
+			'two root elements → PARSE_ERROR': {
+				file: xmlFile(`${minimalXml()}<Root/>`, 'two-roots.xml'),
+				expectError: { key: 'PARSE_ERROR' },
+			},
+			'not XML at all → PARSE_ERROR': {
+				file: xmlFile('this is not xml', 'text.xml'),
+				expectError: { key: 'PARSE_ERROR' },
+			},
 		}
 
 		runTestCases.generic(testCases, async (testCase) => {
@@ -216,7 +232,14 @@ describe('parseXmlFile', () => {
 						store,
 						config: CONFIG,
 					}),
-				).rejects.toMatchObject({ cause: { key: testCase.expectError.key } })
+				).rejects.toMatchObject({
+					cause: {
+						key: testCase.expectError.key,
+						...(testCase.expectError.detailIncludes && {
+							detail: expect.stringContaining(testCase.expectError.detailIncludes),
+						}),
+					},
+				})
 			} else {
 				const result = await parseXmlFile({
 					file: testCase.file,
