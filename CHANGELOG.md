@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.6.2] - 2026-10-16
+
 ### Changed
 
 - `getAttribute` and `getAttributes` (their `fullObject` forms too) read a record given in full - a `RawRecord`, `TrackedRecord` or `TreeRecord` - as it is, with no store round trip; a ref or a relationship is still fetched. Inside a transaction the staged operations still come first, so a record held from before a staged write reads as the transaction sees it and one deleted in the transaction reads as absent. Outside a transaction the record is a snapshot: a record held across a commit no longer picks that commit up through these reads - pass `toRef(record)` to read the store again. The dev perf counter `core::query::getRecord.fromRecord` counts the reads served from the record given.
