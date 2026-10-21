@@ -64,14 +64,20 @@ const documentId = await project.initEmptyDocument({
 
 ## import
 
-Imports one or more XML files, streams each through SAX, and registers them as documents.
+Imports XML files one after the other, in the order given, and returns one entry per file: imported, or failed with the error. A file that fails is its own entry, nothing of it lands, and the next file is still attempted. The call itself rejects only for what is about the call: an unknown `configKey` (`UNKNOWN_CONFIG_KEY`, checked before any file is touched) or a project not opened or closed (`PROJECT_NOT_OPENED`).
 
 ```ts
-const results = await project.import([file1, file2], {
+const entries = await project.import([file1, file2], {
 	configKey: 'scl',
 	chunkOptions: { batchSize: 5000 },
 })
-// results: Array<{ documentId: string; recordCount: number }>
+for (const entry of entries) {
+	if (entry.status === 'failed')
+		notifyFailed(entry.fileName, entry.error) // key, message, meta
+	else if (entry.diagnostics.length) notifyDiagnostics(entry.fileName, entry.diagnostics)
+}
+const last = entries.findLast((entry) => entry.status === 'imported')
+if (last) setActiveDocument(last.documentId)
 ```
 
 **ImportDocumentOptions**
@@ -83,9 +89,38 @@ const results = await project.import([file1, file2], {
 | `chunkOptions`        | `Partial<ChunkOptions>`   | -                  | Override chunking defaults for SAX streaming            |
 | `useCustomRecordsIds` | `boolean`                 | `false`            | Use IDs from XML attributes instead of generating UUIDs |
 
-**Returns** `Promise<Array<{ documentId: string; recordCount: number }>>`
+**Returns** `Promise<ImportEntry[]>` - one entry per file, in the order given.
 
-**A document is whole or absent.** Files are imported one after the other, in the order given; each lands in `project.state` and is broadcast as soon as it is in. A file is registered with `status: 'importing'` before its first record is stored and set to `'ready'` once the last one is. Whatever fails in between - a malformed file (`PARSE_ERROR`, its `detail` naming what the parser saw and `meta.reason` saying `'malformed-xml'` or `'second-root'`), an import hook that throws, a store write that fails - removes the document again and is thrown: the files before it are in, the ones after it are not attempted. A document still `importing` is never opened, listed or hydrated, here or in another tab. While it imports, a document says it is alive every `IMPORT_HEARTBEAT_MS` (2 s, `importingAt`); `open()` removes the ones whose heartbeat is older than `STALE_IMPORT_MS` (5 min - generous on purpose: a hidden tab's timers are throttled, and a false "dead" would lose a running import) - left by a tab that closed mid-import - and leaves a live import of another tab alone; an open project sweeps again every `STALE_IMPORT_MS`. Both constants are exported.
+```ts
+type ImportedDocument = {
+	fileName: string // `file.name` as given
+	documentId: string
+	recordCount: number
+	diagnostics: Diagnostic[] // what the import session had to say; `[]` when nothing
+}
+
+type ImportEntry =
+	| ({ status: 'imported' } & ImportedDocument)
+	| { status: 'failed'; fileName: string; error: DialecteError }
+```
+
+A failed entry's `error` is the structured error of what failed, as data: `PARSE_ERROR` for a malformed file, a dialecte's own error when one of its import hooks threw it, or `IMPORT_FAILED` wrapping anything else (a plain `Error` from a hook, a store that refused a write) - its `detail` the message, its `cause` what was thrown. An entry is plain data, `cause` excepted: the thrown `Error`, kept for a console, crosses a structured clone as a bare `Error`. `diagnostics` is an open union, `code: string`: narrow it to the catalogues you know with [`isKnownDiagnostic`](/io/hooks#diagnostics).
+
+A project imports one file at a time: `import` and `importFile` calls made while another import runs wait for it, in call order, so two imports never interleave on the registry. `close()` and `destroy()` wait for the file in flight before closing, so it lands, is in the store and is broadcast; an `importFile` call made after `close()` rejects `PROJECT_NOT_OPENED`. In an `import` of several files, the project closed while one file is in flight means that file lands and the files after it are `failed` entries keyed `PROJECT_NOT_OPENED` - nothing of them is stored; the call itself still resolves with its entries.
+
+## importFile
+
+Imports one file: the imported document, or the failure thrown - for a caller that has one file and wants the throw.
+
+```ts
+const { documentId, recordCount, diagnostics } = await project.importFile(file, {
+	configKey: 'nsd',
+})
+```
+
+Same options as `import`. **Returns** `Promise<ImportedDocument>`. **Throws** what `import` would have put in the file's failed entry, as it was thrown: `PARSE_ERROR`, a hook's error, a store's error as is (`IMPORT_FAILED` is the entry's wrapping only). `import` is `importFile` in a loop with a `catch`: one code path.
+
+**A document is whole or absent.** Files are imported one after the other, in the order given; each lands in `project.state` and is broadcast as soon as it is in. A file is registered with `status: 'importing'` before its first record is stored and set to `'ready'` once the last one is. Whatever fails in between - a malformed file (`PARSE_ERROR`, its `detail` naming what the parser saw and `meta.reason` saying `'malformed-xml'` or `'second-root'`), an import hook that throws, a store write that fails - removes the document again: `importFile` throws it, `import` makes it the file's `failed` entry and goes on with the next file. Nothing is broadcast for a failed file. A document still `importing` is never opened, listed or hydrated, here or in another tab. While it imports, a document says it is alive every `IMPORT_HEARTBEAT_MS` (2 s, `importingAt`); `open()` removes the ones whose heartbeat is older than `STALE_IMPORT_MS` (5 min - generous on purpose: a hidden tab's timers are throttled, and a false "dead" would lose a running import) - left by a tab that closed mid-import - and leaves a live import of another tab alone; an open project sweeps again every `STALE_IMPORT_MS`. Both constants are exported.
 
 ## export
 
@@ -323,9 +358,11 @@ type ProjectState = {
 ## Lifecycle
 
 ```ts
-project.close() // close store connection and BroadcastChannel
-await project.destroy() // delete the database entirely and clear state
+await project.close() // wait for the imports in flight, close store connection and BroadcastChannel
+await project.destroy() // wait for the imports in flight, delete the database entirely and clear state
 ```
+
+Once `close()` or `destroy()` is called the project is closed: `import`, `importFile`, `openDocument`, `export`, the registry reads and the blob methods throw `PROJECT_NOT_OPENED`; an import that was in flight still lands.
 
 ## In-Memory Storage
 

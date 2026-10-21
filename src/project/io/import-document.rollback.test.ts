@@ -7,6 +7,7 @@ import { InMemoryStore } from '@/store/in-memory/in-memory-store'
 import { TABLE_DOCUMENTS } from '@/store/store.constants'
 import { TEST_DIALECTE_CONFIG } from '@/test'
 
+import type { ImportEntry } from '../types'
 import type { DexieStore } from '@/store/local/dexie-store'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
@@ -20,6 +21,14 @@ const NS = CONFIG.namespaces.default.uri
 
 function xmlFile(body: string, name = 'test.xml'): File {
 	return new File([`<Root xmlns="${NS}">${body}</Root>`], name, { type: 'text/xml' })
+}
+
+/** The ids of the documents an import landed; a failed entry fails the test. */
+function documentIds(entries: ImportEntry[]): string[] {
+	return entries.map((entry) => {
+		if (entry.status === 'failed') throw new Error(`${entry.fileName}: ${entry.error.detail}`)
+		return entry.documentId
+	})
 }
 
 /** A store whose n-th bulkWrite fails, as a disk-full or closed backend would. */
@@ -94,23 +103,6 @@ describe('importDocument - a document is whole or absent', () => {
 		})
 	}
 
-	it('through the project: the second of two files is malformed → the first landed (state, store), the second is absent', async () => {
-		const project = await new Project({
-			configs: { default: CONFIG },
-			storage: { type: 'inMemory' },
-		}).open('rollback-project')
-		try {
-			const importing = project.import([xmlFile('<A/>', 'good.xml'), xmlFile('<A>', 'broken.xml')])
-			await expect(importing).rejects.toMatchObject({ cause: { key: 'PARSE_ERROR' } })
-
-			const documents = await project.getDocuments()
-			expect(documents.map((d) => d.name)).toEqual(['good'])
-			expect([...project.state.documents.keys()]).toEqual([documents[0]!.id])
-		} finally {
-			project.close()
-		}
-	})
-
 	it('through the project: two files → the second starts only once the first is in', async () => {
 		const events: string[] = []
 		const hooks: DialecteHooks<AnyDialecteConfig> = {
@@ -130,20 +122,14 @@ describe('importDocument - a document is whole or absent', () => {
 			hooks,
 		}).open('rollback-project')
 		try {
-			const [one, two] = await project.import([
-				xmlFile('<A/>', 'one.xml'),
-				xmlFile('<B/>', 'two.xml'),
-			])
-			expect(events).toEqual([
-				`start ${one!.documentId}`,
-				`end ${one!.documentId}`,
-				`start ${two!.documentId}`,
-				`end ${two!.documentId}`,
-			])
-			expect((await project.getDocument(one!.documentId))!.name).toBe('one')
-			expect((await project.getDocument(two!.documentId))!.name).toBe('two')
+			const [one, two] = documentIds(
+				await project.import([xmlFile('<A/>', 'one.xml'), xmlFile('<B/>', 'two.xml')]),
+			)
+			expect(events).toEqual([`start ${one}`, `end ${one}`, `start ${two}`, `end ${two}`])
+			expect((await project.getDocument(one!))!.name).toBe('one')
+			expect((await project.getDocument(two!))!.name).toBe('two')
 		} finally {
-			project.close()
+			await project.close()
 		}
 	})
 
@@ -153,7 +139,7 @@ describe('importDocument - a document is whole or absent', () => {
 			storage: { type: 'local' },
 		}).open(`rollback-${crypto.randomUUID()}`)
 		try {
-			await expect(project.import([xmlFile('<A>', 'broken.xml')])).rejects.toMatchObject({
+			await expect(project.importFile(xmlFile('<A>', 'broken.xml'))).rejects.toMatchObject({
 				cause: { key: 'PARSE_ERROR' },
 			})
 			expect(await project.getDocuments()).toEqual([])

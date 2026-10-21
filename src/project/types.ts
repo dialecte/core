@@ -1,5 +1,6 @@
 import type { Diagnostic } from '@/diagnostics'
 import type { DocumentState, ExtensionModules } from '@/document'
+import type { DialecteError } from '@/errors'
 import type { Perf } from '@/perf'
 import type { Store } from '@/store/store.types'
 import type {
@@ -123,6 +124,20 @@ export type ProjectParams<
 	hooks?: DialecteHooks<GenericConfig>
 }
 
+// ── resolveConfig ────────────────────────────────────────────────────────────────
+
+export type ResolveConfigParams = {
+	configs: Record<string, AnyDialecteConfig>
+	defaultConfigKey: string
+	/** Key into configs registry. Defaults to defaultConfigKey. */
+	configKey?: string
+}
+
+export type ResolvedConfig = {
+	configKey: string
+	config: AnyDialecteConfig
+}
+
 // ── createDocument ───────────────────────────────────────────────────────────────
 
 export type InitEmptyDocumentOptions = {
@@ -184,6 +199,24 @@ export type ImportDocumentResult = {
 	/** What the import had to say about the file; `[]` when nothing */
 	diagnostics: Diagnostic[]
 }
+
+/** A file `Project.importFile` imported: the document it is now, and what the import had to say. */
+export type ImportedDocument = {
+	/** `file.name` as given */
+	fileName: string
+	documentId: string
+	recordCount: number
+	/** Always present, `[]` when the import had nothing to say; an open union, narrowed with `isKnownDiagnostic` */
+	diagnostics: Diagnostic[]
+}
+
+/**
+ * What `Project.import` says of one file: imported, or failed with the structured error - a file's
+ * failure is its entry, never the call's.
+ */
+export type ImportEntry =
+	| ({ status: 'imported' } & ImportedDocument)
+	| { status: 'failed'; fileName: string; error: DialecteError }
 
 // ── exportDocument ───────────────────────────────────────────────────────────
 

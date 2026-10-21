@@ -51,7 +51,7 @@ const { documentId, recordCount, diagnostics } = await parseXmlFile({
 
 **Returns** `Promise<{ documentId: string; recordCount: number; diagnostics: Diagnostic[] }>` - `diagnostics` is what the file's [import session](/io/hooks#afterimport) had to say, `[]` when nothing.
 
-**Throws** `PARSE_ERROR` on a malformed file - its `detail` names what the parser saw (a tag not closed, text outside the root, a second root element); `meta.reason` is `'malformed-xml'` (with `meta.parser`, the parser's words) or `'second-root'` (with `meta.tagName`). The records stored before the error are the caller's to remove: `importDocument` and `project.import` do it.
+**Throws** `PARSE_ERROR` on a malformed file - its `detail` names what the parser saw (a tag not closed, text outside the root, a second root element); `meta.reason` is `'malformed-xml'` (with `meta.parser`, the parser's words) or `'second-root'` (with `meta.tagName`). The records stored before the error are the caller's to remove: `importDocument` (and so `project.importFile` and `project.import`) does it.
 
 ---
 

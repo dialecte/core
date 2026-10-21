@@ -81,7 +81,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(async () => listener.close())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		await project.import([file])
+		await project.importFile(file)
 		await new Promise((r) => setTimeout(r, 10))
 
 		expect(messages).toContainEqual(expect.objectContaining({ type: 'document-imported' }))
@@ -93,7 +93,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await project.import([file])
+		const { documentId } = await project.importFile(file)
 		const doc = project.openDocument(documentId)
 
 		const messages: unknown[] = []
@@ -117,7 +117,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await project.import([file])
+		const { documentId } = await project.importFile(file)
 
 		// Simulate another tab's document by creating a second BroadcastChannel
 		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
@@ -140,7 +140,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await project.import([file])
+		const { documentId } = await project.importFile(file)
 
 		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
 		cleanups.push(async () => otherTabChannel.close())
@@ -162,7 +162,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => shell.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await shell.import([file])
+		const { documentId } = await shell.importFile(file)
 
 		const status = await iframe.getDocumentStatus(documentId)
 		expect(status).toEqual({ live: true, ready: true })
@@ -203,7 +203,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await project.import([file])
+		const { documentId } = await project.importFile(file)
 		const doc = project.openDocument(documentId)
 
 		const listener = project.createChannel()
@@ -228,7 +228,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await project.import([file])
+		const { documentId } = await project.importFile(file)
 		const doc = project.openDocument(documentId)
 
 		// Document state IS the project entry
@@ -250,7 +250,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await project.import([file])
+		const { documentId } = await project.importFile(file)
 		const docA = project.openDocument(documentId)
 		const docB = project.openDocument(documentId)
 
@@ -268,11 +268,12 @@ describe('Project BroadcastChannel', () => {
 		const project = await openProject(name)
 		cleanups.push(() => project.destroy())
 
-		const files = [
+		const { documentId: firstId } = await project.importFile(
 			new File([minimalXml()], 'one.xml', { type: 'application/xml' }),
+		)
+		const { documentId: secondId } = await project.importFile(
 			new File([minimalXml()], 'two.xml', { type: 'application/xml' }),
-		]
-		const [{ documentId: firstId }, { documentId: secondId }] = await project.import(files)
+		)
 
 		// Historically, each openDocument() overwrote the single shared
 		// channel's onmessage handler — opening more documents killed
@@ -297,7 +298,7 @@ describe('Project BroadcastChannel', () => {
 		const project = await openProject(name)
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-		const [{ documentId }] = await project.import([file])
+		const { documentId } = await project.importFile(file)
 		const doc = project.openDocument(documentId)
 
 		await doc.transaction(async (tx) => {

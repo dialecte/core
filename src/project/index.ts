@@ -10,6 +10,8 @@ export type {
 	ProjectParams,
 	InitEmptyDocumentOptions,
 	ImportDocumentOptions,
+	ImportedDocument,
+	ImportEntry,
 	ExportDocumentOptions,
 	ExportBlobOptions,
 	StorageParam,

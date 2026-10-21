@@ -17,7 +17,7 @@ They operate on the same IndexedDB store but at different times:
 
 ```
 XML file
-  +- project.import(file)            <- IO (SAX stream -> IndexedDB partition)
+  +- project.importFile(file)        <- IO (SAX stream -> IndexedDB partition)
        +- project.openDocument(id)  <- API (IndexedDB -> Document)
              +- doc.query.*           (reads)
              +- doc.transaction()     (writes)
@@ -38,7 +38,7 @@ const project = await new Project({
 }).open('my-project')
 
 // 2. Import
-const [{ documentId }] = await project.import([xmlFile], { configKey: 'scl' })
+const { documentId } = await project.importFile(xmlFile, { configKey: 'scl' })
 
 // 3. Work
 const doc = project.openDocument(documentId)

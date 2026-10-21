@@ -24,7 +24,7 @@ function minimalXml(): string {
 
 async function importOne(project: Project<AnyDialecteConfig>): Promise<string> {
 	const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
-	const [{ documentId }] = await project.import([file])
+	const { documentId } = await project.importFile(file)
 	return documentId
 }
 
@@ -142,7 +142,7 @@ describe('canUndo/canRedo history status', () => {
 		const documentId = await importOne(project)
 		await commitChild(project, documentId)
 		await waitUntil(() => project.state.documents.get(documentId)?.canUndo === true)
-		project.close()
+		await project.close()
 
 		const reopened = await openProject(name)
 		cleanups.push(() => reopened.destroy())

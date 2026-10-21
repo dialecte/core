@@ -104,7 +104,7 @@ function defineSuite(mb: number, storage: Storage): void {
 			await project.open(`floor-${storage}-${crypto.randomUUID()}`)
 			const xml = await fetchText(stressUrl(mb))
 			await timed(`${mb}MB ${storage} import`, async () => {
-				const [imp] = await project.import([new File([xml], 'f.xml')], {
+				const imp = await project.importFile(new File([xml], 'f.xml'), {
 					useCustomRecordsIds: false,
 				})
 				c.documentId = imp.documentId

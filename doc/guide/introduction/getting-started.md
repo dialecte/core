@@ -62,7 +62,7 @@ Replace `{ type: 'local' }` with `{ type: 'inMemory' }` for tests or demos that 
 
 ## Step 3 - Import an XML file
 
-`project.import` streams the file through a SAX parser and persists each element into its own store partition.
+`project.importFile` streams the file through a SAX parser and persists each element into its own store partition (`project.import` takes several files and returns one entry per file, a failed file its own entry).
 
 ```ts
 // An XML file matching TEST_DIALECTE_CONFIG:
@@ -74,7 +74,7 @@ Replace `{ type: 'local' }` with `{ type: 'inMemory' }` for tests or demos that 
 //   </A>
 // </Root>
 
-const { documentId } = await project.import(xmlFile, { configKey: 'test' })
+const { documentId } = await project.importFile(xmlFile, { configKey: 'test' })
 ```
 
 ## Step 4 - Access the Document

@@ -1,7 +1,7 @@
 import { buildDocumentState } from '../state/document-state'
+import { resolveConfig } from './resolve-config'
 
 import { standardizeRecord } from '@/helpers'
-import { invariant } from '@/utils'
 
 import type { InitEmptyDocumentParams, InitEmptyDocumentResult, DocumentRecord } from '../types'
 import type { AnyRawRecord } from '@/types'
@@ -15,12 +15,10 @@ export async function initEmptyDocument(
 ): Promise<InitEmptyDocumentResult> {
 	const { store, configs, defaultConfigKey, options, hooks } = params
 
-	const configKey = options?.configKey ?? defaultConfigKey
-	const config = configs[configKey]
-
-	invariant(config, {
-		key: 'UNKNOWN_CONFIG_KEY',
-		detail: `Unknown configKey: "${configKey}". Available: ${Object.keys(configs).join(', ')}`,
+	const { configKey, config } = resolveConfig({
+		configs,
+		defaultConfigKey,
+		configKey: options?.configKey,
 	})
 
 	const extension = options?.extension ?? config.io.supportedFileExtensions[0]

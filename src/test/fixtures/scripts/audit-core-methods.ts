@@ -214,7 +214,7 @@ async function importFixture(xml: string): Promise<{
 	performance.clearMeasures()
 
 	const start = performance.now()
-	const [imported] = await project.import([new File([xml], 'audit.xml', { type: 'text/xml' })], {
+	const imported = await project.importFile(new File([xml], 'audit.xml', { type: 'text/xml' }), {
 		useCustomRecordsIds: false,
 	})
 	const importMs = performance.now() - start

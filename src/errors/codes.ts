@@ -141,6 +141,10 @@ export const ERROR_CATALOG = {
 		code: 'D5003',
 		message: 'Failed to parse XML',
 	},
+	IMPORT_FAILED: {
+		code: 'D5004',
+		message: 'Failed to import the file',
+	},
 
 	// D6xxx — Config
 	EXTENSION_METHOD_COLLISION: {

@@ -21,7 +21,7 @@ async function openProjectWithDocs(xmlFiles: { name: string; content: string }[]
 	const project = new Project({ configs: { default: CONFIG }, storage: { type: 'local' } })
 	await project.open(projectName())
 	for (const file of xmlFiles) {
-		await project.import([new File([file.content], file.name, { type: 'text/xml' })])
+		await project.importFile(new File([file.content], file.name, { type: 'text/xml' }))
 	}
 	return project
 }

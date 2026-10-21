@@ -1,5 +1,6 @@
 import { resolveStore } from '../store/resolve-store'
 import { exportBlob, exportDocument, importDocument, initEmptyDocument } from './io'
+import { resolveConfig } from './io/resolve-config'
 import { buildDocumentState, reconcileDocumentState } from './state'
 import {
 	isImporting,
@@ -9,6 +10,7 @@ import {
 } from './state/document-lifecycle'
 
 import { Document } from '@/document'
+import { createDialecteError, toDialecteError } from '@/errors'
 import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
 import { invariant } from '@/utils'
@@ -16,6 +18,8 @@ import { invariant } from '@/utils'
 import type {
 	InitEmptyDocumentOptions,
 	ImportDocumentOptions,
+	ImportedDocument,
+	ImportEntry,
 	ExportDocumentOptions,
 	ExportBlobOptions,
 	ExportBlobResult,
@@ -74,12 +78,34 @@ export class Project<
 		return this._name
 	}
 
+	/** The store of an open project: one never opened, closed or destroyed has none to read or write. */
 	private get store(): GenericStore {
-		invariant(this._store !== undefined, {
+		invariant(this._store !== undefined && !this.closing, {
 			key: 'PROJECT_NOT_OPENED',
-			detail: 'Call project.open(name) before accessing project properties.',
+			detail: this.closing
+				? 'The project is closed: open it again before using it.'
+				: 'Call project.open(name) before accessing project properties.',
 		})
 		return this._store
+	}
+
+	/**
+	 * The imports of this project, one after the other: a call made while another import runs
+	 * waits for it. The chain never blocks on a failed import; each caller gets its own outcome.
+	 */
+	private importChain: Promise<unknown> = Promise.resolve()
+
+	/** Run `work` once every import queued before it has settled: one file in flight per project. */
+	private enqueueImport<GenericResult>(work: () => Promise<GenericResult>): Promise<GenericResult> {
+		const queued = this.importChain.then(work, work)
+		this.importChain = queued
+		return queued
+	}
+
+	/** Resolved once every import queued so far has settled, however it settled. */
+	private settledImports(): Promise<void> {
+		const settled = () => {}
+		return this.importChain.then(settled, settled)
 	}
 
 	private get channel(): BroadcastChannel {
@@ -259,25 +285,29 @@ export class Project<
 	}
 
 	/**
-	 * Close the store and release resources.
+	 * Close the store and release resources, once the imports in flight have landed - they
+	 * broadcast on the live channel. From the call on, the project is closed: a new call throws
+	 * `PROJECT_NOT_OPENED`.
 	 */
-	close(): void {
+	async close(): Promise<void> {
 		this.closing = true
+		await this.settledImports()
 		clearInterval(this.staleSweep)
 		this._channel?.close()
-		this.store.close()
+		this._store?.close()
 	}
 
 	/**
-	 * Destroy the project - deletes the database entirely.
+	 * Destroy the project - deletes the database entirely, once the imports in flight have landed.
 	 */
 	async destroy(): Promise<void> {
 		this.closing = true
+		await this.settledImports()
 		this._channel?.close()
 		// Wait for any in-flight foreign-message work to settle on the live store
 		// before deleting it, so no read/reconcile outlives the database.
 		await Promise.allSettled(this.pendingBroadcastWork)
-		await this.store.destroy()
+		await this._store?.destroy()
 		this.state.documents.clear()
 	}
 
@@ -320,36 +350,92 @@ export class Project<
 	// ── Import / Export ──────────────────────────────────────────────────────
 
 	/**
-	 * Import one or more Files into the project: register, parse XML, persist records.
+	 * What is about an import call, checked at the call and before any file: an open project (its
+	 * store, which the import then writes to even if the project closes meanwhile), a known
+	 * `configKey`.
 	 */
-	async import(
-		files: File[],
-		options?: ImportDocumentOptions,
-	): Promise<Array<{ documentId: string; recordCount: number }>> {
-		const results: Array<{ documentId: string; recordCount: number }> = []
-		// One file at a time: memory is bounded by one file's batches, the registry sees one import,
-		// and a file that fails is removed without touching the ones that landed before it.
+	private importStore(options?: ImportDocumentOptions): GenericStore {
+		const store = this.store
+		resolveConfig({
+			configs: this.configs,
+			defaultConfigKey: this.defaultConfigKey,
+			configKey: options?.configKey,
+		})
+		return store
+	}
+
+	/**
+	 * Import Files into the project: one entry per file, in the order given. The files are imported
+	 * one after the other - memory is bounded by one file's batches, the registry sees one import -
+	 * and a file that fails is its own `failed` entry, the next file still attempted: nothing of a
+	 * failed file lands. The call itself rejects only for what is about the call: an unknown
+	 * `configKey`, a project not open.
+	 */
+	async import(files: File[], options?: ImportDocumentOptions): Promise<ImportEntry[]> {
+		this.importStore(options)
+
+		const entries: ImportEntry[] = []
 		for (const file of files) {
-			const result = await importDocument({
-				file,
-				store: this.store,
-				configs: this.configs,
-				defaultConfigKey: this.defaultConfigKey,
-				options,
-				// Erase to the config-agnostic pipeline shape at this single
-				// core-internal boundary (the import pipeline is registry-driven).
-				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
-				perf: this.perf,
-			})
-			this.state.documents.set(result.documentId, result.documentState)
-			this.broadcast({
-				type: 'document-imported',
-				documentId: result.documentId,
-				timestamp: Date.now(),
-			})
-			results.push({ documentId: result.documentId, recordCount: result.recordCount })
+			try {
+				entries.push({ status: 'imported', ...(await this.importFile(file, options)) })
+			} catch (thrown) {
+				// the structured error thrown - `PARSE_ERROR`, a dialecte's own from a hook - or
+				// `IMPORT_FAILED` wrapping anything else: `createDialecteError` sets the structured error
+				// as the Error's cause, so read back it is never undefined
+				const error =
+					toDialecteError(thrown) ??
+					toDialecteError(
+						createDialecteError('IMPORT_FAILED', {
+							detail: thrown instanceof Error ? thrown.message : String(thrown),
+							cause: thrown instanceof Error ? thrown : undefined,
+						}),
+					)!
+				entries.push({ status: 'failed', fileName: file.name, error })
+			}
 		}
-		return results
+		return entries
+	}
+
+	/**
+	 * Import one File into the project: register, parse XML, persist records. The document is in
+	 * the project state and broadcast once its last record is stored; whatever fails before that
+	 * removes it again and is thrown (`PARSE_ERROR` for a malformed file). One file is in flight
+	 * per project: a call made while another import runs waits for it.
+	 */
+	async importFile(file: File, options?: ImportDocumentOptions): Promise<ImportedDocument> {
+		const store = this.importStore(options)
+		return this.enqueueImport(() => this.importOne({ file, options, store }))
+	}
+
+	private async importOne(params: {
+		file: File
+		options?: ImportDocumentOptions
+		store: GenericStore
+	}): Promise<ImportedDocument> {
+		const { file, options, store } = params
+		const result = await importDocument({
+			file,
+			store,
+			configs: this.configs,
+			defaultConfigKey: this.defaultConfigKey,
+			options,
+			// Erase to the config-agnostic pipeline shape at this single
+			// core-internal boundary (the import pipeline is registry-driven).
+			hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
+			perf: this.perf,
+		})
+		this.state.documents.set(result.documentId, result.documentState)
+		this.broadcast({
+			type: 'document-imported',
+			documentId: result.documentId,
+			timestamp: Date.now(),
+		})
+		return {
+			fileName: file.name,
+			documentId: result.documentId,
+			recordCount: result.recordCount,
+			diagnostics: result.diagnostics,
+		}
 	}
 
 	/**

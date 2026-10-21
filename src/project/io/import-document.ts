@@ -1,7 +1,7 @@
 import { IMPORT_HEARTBEAT_MS } from '../state/document-lifecycle'
 import { buildDocumentState } from '../state/document-state'
+import { resolveConfig } from './resolve-config'
 
-import { invariant } from '@/utils'
 import { parseXmlFile } from '@/xml'
 
 import type { ImportDocumentParams, ImportDocumentResult } from '../types'
@@ -15,12 +15,10 @@ import type { Store } from '@/store/store.types'
 export async function importDocument(params: ImportDocumentParams): Promise<ImportDocumentResult> {
 	const { file, store, configs, defaultConfigKey, options, hooks, perf } = params
 
-	const configKey = options?.configKey ?? defaultConfigKey
-	const config = configs[configKey]
-
-	invariant(config, {
-		key: 'UNKNOWN_CONFIG_KEY',
-		detail: `Unknown configKey: "${configKey}". Available: ${Object.keys(configs).join(', ')}`,
+	const { configKey, config } = resolveConfig({
+		configs,
+		defaultConfigKey,
+		configKey: options?.configKey,
 	})
 
 	const documentId = crypto.randomUUID()

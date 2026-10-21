@@ -86,7 +86,7 @@ async function openImported(
 	await project.open(`find-${storage}-${crypto.randomUUID()}`)
 	performance.clearMarks()
 	performance.clearMeasures()
-	const [imp] = await project.import([new File([xml], 'find.xml', { type: 'text/xml' })], {
+	const imp = await project.importFile(new File([xml], 'find.xml', { type: 'text/xml' }), {
 		useCustomRecordsIds: false,
 	})
 	const doc = project.openDocument(imp.documentId)

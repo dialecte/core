@@ -80,7 +80,7 @@ async function importOnce(
 	performance.clearMeasures()
 
 	const t = performance.now()
-	const [imp] = await project.import([new File([xml], 'load.xml', { type: 'text/xml' })], {
+	const imp = await project.importFile(new File([xml], 'load.xml', { type: 'text/xml' }), {
 		useCustomRecordsIds: false,
 	})
 	const importMs = performance.now() - t

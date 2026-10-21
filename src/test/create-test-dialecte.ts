@@ -72,8 +72,8 @@ export async function createTestProject<
 		dev,
 	}).open(projectName)
 
-	const [sourceImport] = await project.import(
-		[new File([sourceXml], 'source.xml', { type: 'text/xml' })],
+	const sourceImport = await project.importFile(
+		new File([sourceXml], 'source.xml', { type: 'text/xml' }),
 		{ useCustomRecordsIds: true },
 	)
 	const source: TestDocument<GenericConfig, GenericModules> = {
@@ -83,8 +83,8 @@ export async function createTestProject<
 
 	let target: TestDocument<GenericConfig, GenericModules> | undefined
 	if (targetXml) {
-		const [targetImport] = await project.import(
-			[new File([targetXml], 'target.xml', { type: 'text/xml' })],
+		const targetImport = await project.importFile(
+			new File([targetXml], 'target.xml', { type: 'text/xml' }),
 			{ useCustomRecordsIds: true },
 		)
 		target = {
