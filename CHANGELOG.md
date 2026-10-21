@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+## [0.7.0] - 2026-10-21
+
 ### Added
 
 - **A `Diagnostic`** - what an import hook (and, later, a validation rule) says about one record of a document, in the shape of the language-server protocol: `code`, `severity` (`error` | `warning` | `information` | `hint`), `source` (who said it), `message`, `ref` (the record, and the attribute when it is about one), `related` (the other records it involves) and `meta` (what it is about, as data). Plain data, so it crosses a worker boundary as is. A dialecte declares its codes in a `DiagnosticCatalogue` (`source` + `codes`, each with its severity, family and default wording), builds one with `createDiagnostic(catalogue, code, { ref, meta, related, message? })` and a consumer narrows one with `isKnownDiagnostic(diagnostic, { catalogues })` - matched on the pair `source` + `code`, so two dialectes may share a code.
