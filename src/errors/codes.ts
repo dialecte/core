@@ -42,6 +42,10 @@ export const ERROR_CATALOG = {
 		code: 'D1008',
 		message: 'Blob not found',
 	},
+	STORE_DUPLICATE_ID: {
+		code: 'D1009',
+		message: 'An id is already taken in the store',
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {

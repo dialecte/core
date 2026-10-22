@@ -88,7 +88,7 @@ The `Store` port carries this concern:
 
 Backend behaviour:
 
-- **`DexieStore`** self-heals transparently: it listens for IndexedDB `versionchange` (fired when another connection upgrades the schema), releases its connection, and rebuilds it from the persisted schema version on the next access — so reads never throw a missing-partition error because of an import in another realm. `reconcile` performs this catch-up on demand.
+- **`DexieStore`** self-heals transparently: it listens for IndexedDB `versionchange` (fired when another connection upgrades the schema), releases its connection, and rebuilds it from the persisted schema version on the next access — so reads never miss the partition because of an import in another realm. `reconcile` performs this catch-up on demand.
 - **`InMemoryStore`** is a no-op (its data is not shared across realms); readiness reduces to liveness. It warns once if `reconcile` is called.
 
 `Project.getDocumentStatus` builds on these to report a document's [`live` / `ready`](/api/project#getdocumentstatus) status regardless of cross-realm signal ordering.

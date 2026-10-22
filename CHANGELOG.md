@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Added
+
+- `STORE_DUPLICATE_ID` (`D1009`): what a store answers when a write would take an id the store already holds - a record created (`bulkWrite`, `commit`) with the id of a record of the document, or a document registered with the id of a registered one. `meta` carries `documentId` and, for records, `recordIds` (each refused id once); `detail` says which ids the document already holds and which the write gives twice.
+
+### Fixed
+
+A store refuses what it cannot apply whole, on IndexedDB and in memory alike:
+
+- A create of an id the document holds, or one id twice in the same write, is `STORE_DUPLICATE_ID` and nothing of the write lands - in memory the record was overwritten; on IndexedDB a bulk write threw the raw `BulkError` and a commit wrapped it twice as `STORE_COMMIT_FAILED`. An import whose file yields one record id twice (`useCustomRecordsIds`, or an import hook creating an id the file holds) fails on the in-memory store too, the document removed, instead of keeping the last record.
+- A commit updating a record the document does not hold is `STORE_RECORD_NOT_FOUND` before anything is written - the undo entry carried no `before`, so the undo of it threw. A commit with several faults is refused for the first of: the document not registered, an update of an absent record, a taken id - the same on every store.
+- A write to a document that is not registered is `DOCUMENT_NOT_REGISTERED` - in memory it created the records of a document nobody registered; on IndexedDB it was a raw `InvalidTableError`.
+- Registering an id already registered is `STORE_DUPLICATE_ID` - in memory the document and its records were replaced.
+- A structured error thrown inside a commit keeps its key on IndexedDB; it was wrapped as `STORE_COMMIT_FAILED`.
+- A document that is not in the store reads as absent on IndexedDB too: `get`, `getByDocumentId`, `getMany`, `getByTagNameInDocument` answer empty and `count` answers 0 for a document never registered or removed (here or in another realm), as the in-memory store did; IndexedDB threw a raw `InvalidTableError`.
+- The in-memory store applies the scalar fields of a bulk-write patch (`tagName`, `value`, `parent`, `namespace`); only `attributes` and `children` were merged, the rest was dropped. A patch removing attributes with `attributes` given as `undefined` no longer throws in memory. On IndexedDB a field given as `undefined` in a bulk-write patch is now left as it is; it was cleared.
+
 ## [0.7.0] - 2026-10-21
 
 ### Added

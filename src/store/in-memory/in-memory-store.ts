@@ -1,4 +1,12 @@
+import { applyRecordPatch } from '../apply-record-patch'
+import {
+	throwDocumentAlreadyRegistered,
+	throwDocumentNotRegistered,
+	throwDuplicateRecordIds,
+	throwRecordToUpdateNotFound,
+} from '../store-errors'
 import { recordTableName } from '../store.constants'
+import { EMPTY_TABLE } from './in-memory-store.constants'
 
 import { throwDialecteError } from '@/errors'
 
@@ -6,6 +14,29 @@ import type { Store, ChangeLogEntry } from '../store.types'
 import type { InMemoryStoreOptions } from './types'
 import type { DocumentRecord } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
+
+/**
+ * A create whose id the document holds, or that the batch holds twice, is refused before anything
+ * is written.
+ */
+function guardNoDuplicate(params: {
+	table: ReadonlyMap<string, AnyRawRecord>
+	creates: AnyRawRecord[]
+	documentId: string
+}): void {
+	const { table, creates, documentId } = params
+	const seen = new Set<string>()
+	const held: string[] = []
+	const repeated: string[] = []
+	for (const { id } of creates) {
+		if (table.has(id)) held.push(id)
+		if (seen.has(id)) repeated.push(id)
+		seen.add(id)
+	}
+	if (held.length > 0 || repeated.length > 0) {
+		throwDuplicateRecordIds({ documentId, held, repeated })
+	}
+}
 
 /**
  * InMemoryStore - Map-backed Store implementation with no persistence.
@@ -78,6 +109,7 @@ export class InMemoryStore implements Store {
 
 	async registerDocument(file: DocumentRecord): Promise<void> {
 		this.guardWritable()
+		if (this.documents.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
 		this.documents.set(file.id, file)
 		this.records.set(recordTableName(file.id), new Map())
 		this.blobData.set(file.id, new Map())
@@ -120,7 +152,7 @@ export class InMemoryStore implements Store {
 
 	async get(id: string, documentId?: string): Promise<AnyRawRecord | undefined> {
 		if (documentId) {
-			return this.getTable(documentId).get(id)
+			return this.readTable(documentId).get(id)
 		}
 		for (const table of this.records.values()) {
 			const record = table.get(id)
@@ -130,23 +162,23 @@ export class InMemoryStore implements Store {
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
-		return [...this.getTable(documentId).values()]
+		return [...this.readTable(documentId).values()]
 	}
 
 	async count(documentId: string): Promise<number> {
-		return this.getTable(documentId).size
+		return this.readTable(documentId).size
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
 		const results: AnyRawRecord[] = []
-		for (const record of this.getTable(documentId).values()) {
+		for (const record of this.readTable(documentId).values()) {
 			if (record.tagName === tagName) results.push(record)
 		}
 		return results
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
-		const table = this.getTable(documentId)
+		const table = this.readTable(documentId)
 		return ids.map((id) => table.get(id))
 	}
 
@@ -157,48 +189,20 @@ export class InMemoryStore implements Store {
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
 		this.guardWritable()
-		const table = this.getTable(documentId)
+		const table = this.writeTable(documentId)
 
 		if (ops.creates) {
+			guardNoDuplicate({ table, creates: ops.creates, documentId })
 			for (const record of ops.creates) {
 				table.set(record.id, record)
 			}
 		}
 
 		if (ops.updates) {
-			for (const { recordId, removeAttributes, ...patch } of ops.updates) {
-				const existing = table.get(recordId)
-				if (!existing) continue
-
-				const merged = { ...existing }
-
-				if (patch.attributes) {
-					const updatedAttributes = [...existing.attributes]
-					for (const attr of patch.attributes) {
-						const idx = updatedAttributes.findIndex((a) => a.name === attr.name)
-						if (idx >= 0) updatedAttributes[idx] = attr
-						else updatedAttributes.push(attr)
-					}
-					merged.attributes = updatedAttributes
-				}
-
-				if (removeAttributes?.length) {
-					merged.attributes = merged.attributes.filter(
-						(attribute) => !removeAttributes.includes(attribute.name),
-					)
-				}
-
-				if (patch.children) {
-					const updatedChildren = [...existing.children]
-					for (const child of patch.children) {
-						const idx = updatedChildren.findIndex((c) => c.id === child.id)
-						if (idx >= 0) updatedChildren[idx] = child
-						else updatedChildren.push(child)
-					}
-					merged.children = updatedChildren
-				}
-
-				table.set(recordId, merged as AnyRawRecord)
+			for (const patch of ops.updates) {
+				const record = table.get(patch.recordId)
+				if (!record) continue
+				table.set(patch.recordId, applyRecordPatch({ record, patch }))
 			}
 		}
 
@@ -218,12 +222,18 @@ export class InMemoryStore implements Store {
 	}): Promise<void> {
 		this.guardWritable()
 		const { documentId, creates, updates, deletes, onProgress } = params
-		const table = this.getTable(documentId)
+		const table = this.writeTable(documentId)
 		const total = creates.length + updates.length + deletes.length
 		let completed = 0
 
-		// Snapshot before-state for undo
-		const beforeSnapshots = updates.map((r) => table.get(r.id))
+		// Nothing is written before the whole commit is known to apply: updates are checked first,
+		// then creates, the order every store answers in
+		const beforeSnapshots = updates.map((record) => {
+			const before = table.get(record.id)
+			if (!before) throwRecordToUpdateNotFound({ documentId, recordId: record.id })
+			return before
+		})
+		guardNoDuplicate({ table, creates, documentId })
 		const deletedSnapshots = deletes.map((id) => table.get(id)).filter(Boolean) as AnyRawRecord[]
 
 		for (const record of creates) {
@@ -259,10 +269,7 @@ export class InMemoryStore implements Store {
 			timestamp: Date.now(),
 			operations: {
 				creates,
-				updates: updates.map((after, i) => ({
-					before: beforeSnapshots[i]!,
-					after,
-				})),
+				updates: updates.map((after, i) => ({ before: beforeSnapshots[i], after })),
 				deletes: deletedSnapshots,
 			},
 		}
@@ -282,7 +289,7 @@ export class InMemoryStore implements Store {
 		const entry = entries.find((e) => e.sequenceNumber === head)
 		if (!entry) return
 
-		const table = this.getTable(documentId)
+		const table = this.writeTable(documentId)
 		const { creates, updates, deletes } = entry.operations
 
 		for (const record of creates) {
@@ -307,7 +314,7 @@ export class InMemoryStore implements Store {
 		const entry = entries.find((e) => e.sequenceNumber === next)
 		if (!entry) return
 
-		const table = this.getTable(documentId)
+		const table = this.writeTable(documentId)
 		const { creates, updates, deletes } = entry.operations
 
 		for (const record of creates) {
@@ -345,9 +352,7 @@ export class InMemoryStore implements Store {
 	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
 		this.guardWritable()
 		if (!this.documents.has(entry.documentId)) {
-			throwDialecteError('DOCUMENT_NOT_REGISTERED', {
-				detail: `Cannot add blob: owner document "${entry.documentId}" is not registered`,
-			})
+			throwDocumentNotRegistered({ documentId: entry.documentId, what: 'a blob' })
 		}
 		this.blobs.set(entry.id, entry)
 		this.getBlobTable(entry.documentId).set(entry.id, data)
@@ -424,13 +429,15 @@ export class InMemoryStore implements Store {
 		return table
 	}
 
-	private getTable(documentId: string): Map<string, AnyRawRecord> {
-		const tableName = recordTableName(documentId)
-		let table = this.records.get(tableName)
-		if (!table) {
-			table = new Map()
-			this.records.set(tableName, table)
-		}
+	/** The records of a document; a document that is not in the store reads empty. */
+	private readTable(documentId: string): ReadonlyMap<string, AnyRawRecord> {
+		return this.records.get(recordTableName(documentId)) ?? EMPTY_TABLE
+	}
+
+	/** The records of a document to write; a document that is not registered takes no write. */
+	private writeTable(documentId: string): Map<string, AnyRawRecord> {
+		const table = this.records.get(recordTableName(documentId))
+		if (!table) throwDocumentNotRegistered({ documentId, what: 'records' })
 		return table
 	}
 

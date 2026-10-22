@@ -21,5 +21,10 @@
 	},
 
 	"include": ["src/**/*"],
-	"exclude": ["**/*.test.ts", "**/__tests__/**", "src/test/fixtures/scripts/**"]
+	"exclude": [
+		"**/*.test.ts",
+		"**/__tests__/**",
+		"src/test/fixtures/scripts/**",
+		"src/store/contract/**"
+	]
 }

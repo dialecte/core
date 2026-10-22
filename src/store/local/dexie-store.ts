@@ -1,3 +1,10 @@
+import { applyRecordPatch } from '../apply-record-patch'
+import {
+	throwDocumentAlreadyRegistered,
+	throwDocumentNotRegistered,
+	throwDuplicateRecordIds,
+	throwRecordToUpdateNotFound,
+} from '../store-errors'
 import {
 	TABLE_DOCUMENTS,
 	TABLE_CHANGELOG,
@@ -14,7 +21,7 @@ import {
 
 import Dexie from 'dexie'
 
-import { throwDialecteError } from '@/errors'
+import { throwDialecteError, toDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
 
 import type { Store, ChangeLogEntry, ChangeLogMeta, RecordSchema } from '../store.types'
@@ -22,6 +29,7 @@ import type { DexieStoreOptions, StoredDocumentRow } from './types'
 import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
+import type { Table } from 'dexie'
 
 /**
  * Translate a backend-agnostic RecordSchema into Dexie's schema DSL string.
@@ -138,6 +146,9 @@ export class DexieStore implements Store {
 	async registerDocument(file: DocumentRecord): Promise<void> {
 		await this.withSchemaLock(async () => {
 			if (this.stale) await this.reloadFromPersisted()
+			// Best effort on one connection: two connections registering the same id at the same time
+			// are not serialised here (core registers fresh uuids only).
+			if (this.knownDocuments.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
 			this.knownDocuments.set(file.id, file)
 			await this.reopenWithNewSchema()
 			await this.db.table(TABLE_DOCUMENTS).add(file)
@@ -208,10 +219,11 @@ export class DexieStore implements Store {
 	// --- Record access ---
 
 	async get(id: string, documentId?: string): Promise<AnyRawRecord | undefined> {
-		await this.ensureCurrentSchema()
 		if (documentId) {
-			return this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).get(id)
+			const table = await this.recordTable(documentId)
+			return table?.get(id)
 		}
+		await this.ensureCurrentSchema()
 		// Cross-file lookup: search all xel_ tables
 		for (const fId of this.knownDocuments.keys()) {
 			const record = await this.db.table<AnyRawRecord>(this.resolveTableName(fId)).get(id)
@@ -221,30 +233,30 @@ export class DexieStore implements Store {
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
-		await this.ensureCurrentSchema()
-		return this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).toArray()
+		const table = await this.recordTable(documentId)
+		return table ? table.toArray() : []
 	}
 
 	async count(documentId: string): Promise<number> {
+		// a connection made stale by another one forgets its counts before answering from them
+		await this.ensureCurrentSchema()
 		const known = this.recordCounts.get(documentId)
 		if (known !== undefined) return known
-		await this.ensureCurrentSchema()
-		const count = await this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).count()
+		const table = await this.recordTable(documentId)
+		if (!table) return 0
+		const count = await table.count()
 		this.recordCounts.set(documentId, count)
 		return count
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
-		await this.ensureCurrentSchema()
-		return this.db
-			.table<AnyRawRecord>(this.resolveTableName(documentId))
-			.where({ tagName })
-			.toArray()
+		const table = await this.recordTable(documentId)
+		return table ? table.where({ tagName }).toArray() : []
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
-		await this.ensureCurrentSchema()
-		return this.db.table<AnyRawRecord>(this.resolveTableName(documentId)).bulkGet(ids)
+		const table = await this.recordTable(documentId)
+		return table ? table.bulkGet(ids) : ids.map(() => undefined)
 	}
 
 	// --- Writes ---
@@ -254,52 +266,22 @@ export class DexieStore implements Store {
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
 		try {
-			await this.ensureCurrentSchema()
 			const { creates, updates, deletes } = ops
-			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+			const table = await this.writeTable(documentId)
 
 			await this.db.transaction('rw', table, async () => {
 				if (creates?.length) {
 					this.perf.start('core::store::bulkWrite::add')
-					await table.bulkAdd(creates)
+					await addRecords({ table, creates, documentId })
 					this.perf.stop('core::store::bulkWrite::add')
 				}
 
 				if (updates?.length) {
 					this.perf.start('core::store::bulkWrite::update')
-					for (const { recordId, removeAttributes, ...patch } of updates) {
-						const record = await table.get(recordId)
+					for (const patch of updates) {
+						const record = await table.get(patch.recordId)
 						if (!record) continue
-
-						const merged: Partial<Omit<AnyRawRecord, 'id'>> = { ...patch }
-
-						if (patch.attributes) {
-							const updatedAttributes = [...record.attributes]
-							for (const attr of patch.attributes) {
-								const idx = updatedAttributes.findIndex((a) => a.name === attr.name)
-								if (idx >= 0) updatedAttributes[idx] = attr
-								else updatedAttributes.push(attr)
-							}
-							merged.attributes = updatedAttributes
-						}
-
-						if (removeAttributes?.length) {
-							merged.attributes = (merged.attributes ?? record.attributes).filter(
-								(attribute) => !removeAttributes.includes(attribute.name),
-							)
-						}
-
-						if (patch.children) {
-							const updatedChildren = [...record.children]
-							for (const child of patch.children) {
-								const idx = updatedChildren.findIndex((c) => c.id === child.id)
-								if (idx >= 0) updatedChildren[idx] = child
-								else updatedChildren.push(child)
-							}
-							merged.children = updatedChildren
-						}
-
-						await table.update(recordId, merged)
+						await table.put(applyRecordPatch({ record, patch }))
 					}
 					this.perf.stop('core::store::bulkWrite::update')
 				}
@@ -323,9 +305,8 @@ export class DexieStore implements Store {
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
 		try {
-			await this.ensureCurrentSchema()
 			const { documentId, creates, updates, deletes, onProgress } = params
-			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+			const table = await this.writeTable(documentId)
 			const total = creates.length + updates.length + deletes.length
 			let completed = 0
 
@@ -336,23 +317,16 @@ export class DexieStore implements Store {
 					this.db.table(TABLE_CHANGELOG),
 					this.db.table(TABLE_META),
 					async () => {
-						// Snapshot before-state for undo
-						const beforeSnapshots: (AnyRawRecord | undefined)[] =
-							updates.length > 0 ? await table.bulkGet(updates.map((r) => r.id)) : []
+						// Snapshot before-state for undo; an update of a record the document does not
+						// hold aborts the commit before anything is written
+						const beforeSnapshots = await snapshotBefore({ table, updates, documentId })
 						const deletedSnapshots: (AnyRawRecord | undefined)[] =
 							deletes.length > 0 ? await table.bulkGet(deletes) : []
 
 						if (creates.length > 0) {
-							try {
-								await table.bulkAdd(creates)
-								completed += creates.length
-								onProgress(completed, total)
-							} catch (error) {
-								throwDialecteError('STORE_BULK_ADD_FAILED', {
-									detail: error instanceof Error ? error.message : String(error),
-									cause: error instanceof Error ? error : undefined,
-								})
-							}
+							await addRecords({ table, creates, documentId })
+							completed += creates.length
+							onProgress(completed, total)
 						}
 
 						if (updates.length > 0) {
@@ -399,10 +373,7 @@ export class DexieStore implements Store {
 							timestamp: Date.now(),
 							operations: {
 								creates,
-								updates: updates.map((after, i) => ({
-									before: beforeSnapshots[i]!,
-									after,
-								})),
+								updates: updates.map((after, i) => ({ before: beforeSnapshots[i], after })),
 								deletes: deletedSnapshots.filter(Boolean) as AnyRawRecord[],
 							},
 						}
@@ -411,9 +382,7 @@ export class DexieStore implements Store {
 					},
 				)
 			} catch (error) {
-				if (error instanceof Error && error.message.includes('dialecte')) {
-					throw error
-				}
+				if (toDialecteError(error)) throw error
 				throwDialecteError('STORE_COMMIT_FAILED', {
 					detail: error instanceof Error ? error.message : String(error),
 					cause: error instanceof Error ? error : undefined,
@@ -661,6 +630,7 @@ export class DexieStore implements Store {
 	 * foreign schema change (see attachVersionChangeHandler / ensureCurrentSchema).
 	 */
 	private async reloadFromPersisted(): Promise<void> {
+		this.recordCounts.clear()
 		if (this.db.isOpen()) {
 			this.db.close()
 			await tick()
@@ -736,6 +706,25 @@ export class DexieStore implements Store {
 	private resolveTableName(documentId: string): string {
 		return recordTableName(documentId)
 	}
+
+	/** The record table of a document to write; a document that is not registered takes no write. */
+	private async writeTable(documentId: string): Promise<Table<AnyRawRecord>> {
+		const table = await this.recordTable(documentId)
+		if (!table) throwDocumentNotRegistered({ documentId, what: 'records' })
+		return table
+	}
+
+	/**
+	 * The record table of a document, once this connection is current - or nothing when the
+	 * document is not in the store (never registered, or removed here or in another realm): a read
+	 * of it answers empty, it is not a backend error.
+	 */
+	private async recordTable(documentId: string): Promise<Table<AnyRawRecord> | undefined> {
+		await this.ensureCurrentSchema()
+		const tableName = this.resolveTableName(documentId)
+		if (!this.db.tables.some((table) => table.name === tableName)) return undefined
+		return this.db.table<AnyRawRecord>(tableName)
+	}
 }
 
 /** Yield one microtask to let IndexedDB release connections */
@@ -743,12 +732,72 @@ function tick(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-function invariantBlobOwnerKnown(known: Map<string, DocumentRecord>, documentId: string): void {
-	if (!known.has(documentId)) {
-		throwDialecteError('DOCUMENT_NOT_REGISTERED', {
-			detail: `Cannot add blob: owner document "${documentId}" is not registered`,
+/**
+ * Add records to a document's table: an id the document already holds refuses the whole batch
+ * (`STORE_DUPLICATE_ID`, the transaction around it rolls back); any other failure is
+ * `STORE_BULK_ADD_FAILED`.
+ */
+async function addRecords(params: {
+	table: Table<AnyRawRecord>
+	creates: AnyRawRecord[]
+	documentId: string
+}): Promise<void> {
+	const { table, creates, documentId } = params
+	try {
+		await table.bulkAdd(creates)
+	} catch (error) {
+		const cause = error instanceof Error ? error : undefined
+		const duplicates = duplicateKeyPositions(error)
+		if (duplicates) {
+			// a failed row whose id an earlier row of the batch already gives is a repeat; any other
+			// failed row's id is held by the document
+			const failed = duplicates.map((position) => ({ position, id: creates[position].id }))
+			function isRepeat(row: { position: number; id: string }): boolean {
+				return creates.findIndex((record) => record.id === row.id) < row.position
+			}
+			throwDuplicateRecordIds({
+				documentId,
+				held: failed.filter((row) => !isRepeat(row)).map((row) => row.id),
+				repeated: failed.filter(isRepeat).map((row) => row.id),
+				cause,
+			})
+		}
+		throwDialecteError('STORE_BULK_ADD_FAILED', {
+			detail: error instanceof Error ? error.message : String(error),
+			cause,
 		})
 	}
+}
+
+/**
+ * IndexedDB refuses an existing key with a ConstraintError, one per failed row of a bulk add: the
+ * positions of those rows, or nothing when the failure is another one.
+ */
+function duplicateKeyPositions(error: unknown): number[] | undefined {
+	if (!(error instanceof Dexie.BulkError)) return undefined
+	const positions = Object.entries(error.failuresByPos)
+		.filter(([, failure]) => failure.name === 'ConstraintError')
+		.map(([position]) => Number(position))
+	return positions.length > 0 ? positions : undefined
+}
+
+/** The records as they are before an update, every one of them: an absent one refuses the commit. */
+async function snapshotBefore(params: {
+	table: Table<AnyRawRecord>
+	updates: AnyRawRecord[]
+	documentId: string
+}): Promise<AnyRawRecord[]> {
+	const { table, updates, documentId } = params
+	if (updates.length === 0) return []
+	const found = await table.bulkGet(updates.map((record) => record.id))
+	return found.map((before, index) => {
+		if (!before) throwRecordToUpdateNotFound({ documentId, recordId: updates[index].id })
+		return before
+	})
+}
+
+function invariantBlobOwnerKnown(known: Map<string, DocumentRecord>, documentId: string): void {
+	if (!known.has(documentId)) throwDocumentNotRegistered({ documentId, what: 'a blob' })
 }
 
 /** A row stored before `status` existed is a finished import: it reads as `ready`. */
