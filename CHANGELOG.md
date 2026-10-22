@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## UNRELEASED
 
+### Fixed
+
+- An exported file keeps each text value on its line (`<Item>2025-08-04 10:59:16</Item>`); it was written wrapped in a newline and indentation, which added whitespace to values (a strict XML reader saw a different value) and made a file with many text values noticeably larger. An element holding text and children is now written as is on one line, where whitespace text used to be inserted between them. The XML of `getSnapshot({ as: 'xml' })` is written the same way.
+
 ## [0.7.0] - 2026-10-21
 
 ### Added

@@ -142,6 +142,8 @@ const { xmlDocument, filename } = await project.export(documentId, {
 
 **Returns** `Promise<{ xmlDocument: XMLDocument; filename: string }>`
 
+The downloaded file is indented by depth; an element that holds text is written as is on its line, children included (`<Item>2025-08-04 10:59:16</Item>`): no whitespace is added to a value. `getSnapshot({ as: 'xml' })` writes its XML the same way.
+
 ## File registry
 
 ```ts
