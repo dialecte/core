@@ -1,114 +1,72 @@
-import { TEST_DIALECTE_CONFIG } from './config'
+import { openTestProject, resolveTestDialecte } from './test-dialecte-setup'
 
 import { createStagedOperations } from '@/document'
 import { createProgressReporter } from '@/document/progress'
 import { NOOP_PERF } from '@/perf'
-import { Project } from '@/project'
-import { DexieStore } from '@/store'
+import { resolveStore } from '@/store/resolve-store'
 
-import type { Document } from '@/document'
-import type { Context, ExtensionModules, MergedExtensions } from '@/document'
-import type { AnyDialecteConfig, DialecteHooks } from '@/types'
-
-type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
-
-export type TestDocument<
-	GenericConfig extends AnyDialecteConfig,
-	GenericModules extends ExtensionModules = Record<never, never>,
-> = {
-	documentId: string
-	document: Document<GenericConfig, MergedExtensions<GenericModules>>
-}
-
-export type TestProjectResult<
-	GenericConfig extends AnyDialecteConfig,
-	GenericModules extends ExtensionModules = Record<never, never>,
-> = {
-	project: Project<GenericConfig, GenericModules>
-	source: TestDocument<GenericConfig, GenericModules>
-	target?: TestDocument<GenericConfig, GenericModules>
-}
+import type { TestDialecteConfig } from './config'
+import type {
+	DeclaredTestProjectParams,
+	LegacyTestProjectParams,
+	TestContextParams,
+	TestProjectResult,
+} from './create-test-dialecte.types'
+import type { Context, ExtensionModules } from '@/document'
+import type { AnyDialecteConfig } from '@/types'
 
 /**
- * Spin up a Project with source (and optionally target) file imported.
- * Returns project + pre-opened documents. Caller owns lifecycle via project.destroy().
+ * Spin up a Project of the declared dialecte - every config, the default key, its extensions and
+ * its own hooks instance; core's own test dialecte when none is given - with the source (and
+ * optionally the target) imported under the default config. Returns project + pre-opened
+ * documents. Caller owns lifecycle via project.destroy().
  */
 export async function createTestProject<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
 	GenericModules extends ExtensionModules = Record<never, never>,
->(params: {
-	sourceXml: string
-	targetXml?: string
-	dialecteConfig?: GenericConfig
-	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-	hooks?: DialecteHooks<GenericConfig>
-	dev?: { perf?: boolean }
-}): Promise<TestProjectResult<GenericConfig, GenericModules>> {
-	const {
+	GenericConfigKey extends string = string,
+>(
+	params: DeclaredTestProjectParams<GenericConfig, GenericModules, GenericConfigKey>,
+): Promise<TestProjectResult<GenericConfig, GenericModules>>
+/**
+ * Spin up a Project from a config, extensions and hooks given one by one, with the source (and
+ * optionally the target) imported under the key `default`.
+ * @deprecated Declare the dialecte with `defineDialecte` and pass it as `dialecte`.
+ */
+export async function createTestProject<
+	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
+>(
+	params: LegacyTestProjectParams<GenericConfig>,
+): Promise<TestProjectResult<GenericConfig, GenericModules>>
+export async function createTestProject(
+	params:
+		| DeclaredTestProjectParams<AnyDialecteConfig, ExtensionModules, string>
+		| LegacyTestProjectParams<AnyDialecteConfig>,
+): Promise<TestProjectResult<AnyDialecteConfig, ExtensionModules>> {
+	const { sourceXml, targetXml, configKey, storage, dev } = params
+	return openTestProject({
+		setup: resolveTestDialecte(params),
 		sourceXml,
 		targetXml,
-		dialecteConfig = TEST_DIALECTE_CONFIG,
-		extensions,
-		hooks,
+		configKey,
+		storage,
 		dev,
-	} = params as {
-		sourceXml: string
-		targetXml?: string
-		dialecteConfig: GenericConfig
-		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-		hooks?: DialecteHooks<GenericConfig>
-		dev?: { perf?: boolean }
-	}
-
-	const projectName = `test-${crypto.randomUUID()}`
-
-	// Hooks are provided on the Project instance (single provenance).
-	const project = await new Project<GenericConfig, GenericModules>({
-		configs: { default: dialecteConfig } as Record<string, GenericConfig>,
-		defaultConfigKey: 'default',
-		storage: { type: 'local' },
-		extensions,
-		hooks,
-		dev,
-	}).open(projectName)
-
-	const sourceImport = await project.importFile(
-		new File([sourceXml], 'source.xml', { type: 'text/xml' }),
-		{ useCustomRecordsIds: true },
-	)
-	const source: TestDocument<GenericConfig, GenericModules> = {
-		documentId: sourceImport.documentId,
-		document: project.openDocument(sourceImport.documentId),
-	}
-
-	let target: TestDocument<GenericConfig, GenericModules> | undefined
-	if (targetXml) {
-		const targetImport = await project.importFile(
-			new File([targetXml], 'target.xml', { type: 'text/xml' }),
-			{ useCustomRecordsIds: true },
-		)
-		target = {
-			documentId: targetImport.documentId,
-			document: project.openDocument(targetImport.documentId),
-		}
-	}
-
-	return { project, source, target }
+	})
 }
 
 /**
- * Create a Context directly from a databaseName for testing FP query functions.
- * Opens the store to discover existing tables.
+ * Create a Context directly for testing FP query functions: on `store` when given, else on the
+ * local store named `databaseName`, opened to discover its tables.
  */
-export async function createTestContext<GenericConfig extends AnyDialecteConfig>(params: {
-	databaseName: string
-	dialecteConfig: GenericConfig
-	documentId: string
-}): Promise<Context<GenericConfig>> {
-	const { databaseName, dialecteConfig, documentId } = params
-	const store = new DexieStore(databaseName, {
-		recordSchema: dialecteConfig.database.recordSchema,
-	})
+export async function createTestContext<GenericConfig extends AnyDialecteConfig>(
+	params: TestContextParams<GenericConfig>,
+): Promise<Context<GenericConfig>> {
+	const { dialecteConfig, documentId } = params
+	const store =
+		params.store === undefined
+			? resolveStore(params.databaseName, { type: 'local' }, dialecteConfig)
+			: params.store
 	await store.open()
 	return {
 		dialecteConfig,

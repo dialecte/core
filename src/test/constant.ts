@@ -15,3 +15,6 @@ export const DIALECTE_TEST_NAMESPACES = {
 export const XMLNS_DEFAULT_NAMESPACE = `xmlns="${DIALECTE_TEST_NAMESPACES.default.uri}"`
 export const XMLNS_DEV_NAMESPACE = `xmlns:${DIALECTE_TEST_NAMESPACES.dev.prefix}="${DIALECTE_TEST_NAMESPACES.dev.uri}"`
 export const XMLNS_EXT_NAMESPACE = `xmlns:${DIALECTE_TEST_NAMESPACES.ext.prefix}="${DIALECTE_TEST_NAMESPACES.ext.uri}"`
+
+/** The config key of core's own test dialecte, and of a config given to the test helpers on its own. */
+export const TEST_CONFIG_KEY = 'default'

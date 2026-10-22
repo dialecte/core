@@ -4,14 +4,14 @@ description: How to write and register domain-specific extensions for a dialecte
 
 # Writing Extensions
 
-Extensions add domain-specific methods as plain functions registered under a named group. Once wired into `openDialecteDocument`, they appear directly on `doc.query` and on the `tx` callback argument — fully typed against your element set.
+Extensions add domain-specific methods as plain functions registered under a named group. Once declared in the dialecte's `extensions`, they appear directly on `doc.query` and on the `tx` callback argument — fully typed against your element set.
 
 ## How it works
 
 1. **Write functions** — plain async functions whose first argument is `Scl.Query` or `Scl.Transaction`
 2. **Bundle into a module** — gather related functions into `{ query, transaction }` objects
 3. **Register** — collect named modules into a plain object: `{ history, dataModel, ... }`
-4. **Wire** — pass the result as `extensions.base` to `openDialecteDocument`
+4. **Wire** — pass the result as `extensions` to the dialecte's declaration (`defineDialecte`)
 
 The `Document` binds them onto each `Query`/`Transaction` instance automatically. No subclassing needed.
 
@@ -122,36 +122,36 @@ export const MY_EXTENSION_MODULES = { a, b }
 
 ## Wiring into a dialecte
 
-Pass all params as an object to `openDialecteDocument`:
+The modules go in the dialecte's declaration; the project factory core derives from it merges them into every project (see [Dialecte declaration](/api/dialecte)):
 
 ```ts
 // dialecte.ts
-import { openDialecteDocument } from '@dialecte/core'
+import engineUrl from './worker?worker&url'
+import { createProjectFactory, defineDialecte } from '@dialecte/core'
 import { MY_CONFIG } from './config'
 import { MY_EXTENSION_MODULES } from './extensions'
+import { version } from '../package.json'
 
-export function openMyDocument<
-	CustomModules extends ExtensionModules = Record<never, never>,
->(params: { storage: StorageOptions; extensions?: CustomModules }) {
-	return openDialecteDocument({
-		config: MY_CONFIG,
-		storage: params.storage,
-		extensions: { base: MY_EXTENSION_MODULES, custom: params.extensions },
-	})
-}
+export const MY_DIALECTE = defineDialecte({
+	id: 'my/v1',
+	version,
+	configs: { my: MY_CONFIG },
+	defaultConfigKey: 'my',
+	extensions: MY_EXTENSION_MODULES,
+})
+
+export const createMyProject = createProjectFactory({ dialecte: MY_DIALECTE, engineUrl })
 ```
 
 ## Letting consumers add their own extensions
 
-The `extensions` param accepts a `custom` key. Core merges `base` and `custom` at the function level. If `base` and `custom` share the same module key (e.g. both define `a`), their methods are merged — but a `DialecteError` is thrown if the same function name appears in both groups.
+The factory takes the consumer's modules as `extensions`. Core merges the dialecte's and the consumer's at the function level. If both share the same module key (e.g. both define `a`), their methods are merged — but a `DialecteError` is thrown if the same function name appears in both groups.
 
 Consumers pass their own modules without importing core:
 
 ```ts
-const doc = openMyDocument({
-	storage: { type: 'local', databaseName },
-	extensions: { myFeature: myExtension },
-})
+const project = await createMyProject({ extensions: { myFeature: myExtension } }).open('my-project')
+const doc = project.openDocument(documentId)
 // doc.query.a.getLatestAaItem()      ← built-in
 // doc.query.myFeature.doSomething()  ← custom, fully typed
 ```
@@ -161,7 +161,8 @@ const doc = openMyDocument({
 Extensions appear on `doc.query` and `tx`, grouped by module name:
 
 ```ts
-const doc = openMyDocument({ storage: { type: 'local', databaseName: 'my-db' } })
+const project = await createMyProject().open('my-project')
+const doc = project.openDocument(documentId)
 
 // Query extensions
 const items = await doc.query.a.getAaItems()

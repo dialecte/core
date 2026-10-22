@@ -274,7 +274,7 @@ This parent-context resolution applies only to elements in a **declared** namesp
 
 ### `mergeExtensions`
 
-Merges `base` and `custom` extension module sets into the flat `{ query, transaction }` registry expected by `openDialecteDocument`. Throws `DialecteError` (`EXTENSION_METHOD_COLLISION`) if the same function name appears in both groups for the same module key.
+Merges `base` and `custom` extension module sets into the flat `{ query, transaction }` registry a `Project` binds onto its documents (the project factory merges the declaration's `extensions` with the consumer's). Throws `DialecteError` (`EXTENSION_METHOD_COLLISION`) if the same function name appears in both groups for the same module key.
 
 ```ts
 import { mergeExtensions } from '@dialecte/core/helpers'

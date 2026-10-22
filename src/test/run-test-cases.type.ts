@@ -50,6 +50,12 @@ export type TestRunner<
 		act: (
 			params: ActParams<GenericConfig, GenericTestCase, GenericModules>,
 		) => Promise<ActResult | void>
+		/**
+		 * The declared config the cases are imported under (and checked against, by the dialecte's
+		 * test helpers). Defaults to the default key.
+		 */
+		configKey?: string
+		/** Replaces the config under `configKey` (the default one when no key is given). */
 		dialecteConfig?: GenericConfig
 		hooks?: DialecteHooks<GenericConfig>
 		/** Project dev options; `perf: true` makes `document.perf.report()` count the store reads. */
@@ -58,6 +64,12 @@ export type TestRunner<
 	withoutExport<GenericTestCase extends BaseXmlTestCase>(params: {
 		testCases: TestCases<GenericTestCase>
 		act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
+		/**
+		 * The declared config the cases are imported under (and checked against, by the dialecte's
+		 * test helpers). Defaults to the default key.
+		 */
+		configKey?: string
+		/** Replaces the config under `configKey` (the default one when no key is given). */
 		dialecteConfig?: GenericConfig
 		hooks?: DialecteHooks<GenericConfig>
 		/** Project dev options; `perf: true` makes `document.perf.report()` count the store reads. */

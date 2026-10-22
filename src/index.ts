@@ -1,4 +1,5 @@
 export * from './diagnostics'
+export * from './dialecte'
 export * from './document'
 export * from './errors'
 export * from './perf'

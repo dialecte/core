@@ -400,11 +400,11 @@ async function createTestProject<
 	GenericConfig extends AnyDialecteConfig,
 	GenericModules extends ExtensionModules = Record<never, never>,
 >(params: {
+	dialecte?: DialecteDeclaration<GenericConfig, GenericModules> // from defineDialecte; TEST_DIALECTE when absent
 	sourceXml: string
 	targetXml?: string
-	dialecteConfig?: GenericConfig // defaults to TEST_DIALECTE_CONFIG
-	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-	hooks?: TransactionHooks<GenericConfig>
+	storage?: StorageParam // the local store by default, { type: 'inMemory' } on request
+	dev?: { perf?: boolean }
 }): Promise<{
 	project: Project<GenericConfig, GenericModules>
 	source: { documentId: string; document: Document<GenericConfig> }
@@ -412,17 +412,23 @@ async function createTestProject<
 }>
 ```
 
+The project is the declaration's: every config, the default key, the dialecte's extensions and its own hooks instance. The source (and the target) are imported under the default config.
+
+Without a `dialecte`, the project is core's own test dialecte (`TEST_DIALECTE`, its one config under the key `default`). Passing `dialecteConfig`, `extensions` and `hooks` one by one still works and is deprecated: the one config goes under the key `default` and the hooks instance given is shared by every project.
+
 ### Usage
 
 ```ts
 import {
 	createTestProject,
+	TEST_DIALECTE,
 	XMLNS_DEFAULT_NAMESPACE,
 	CUSTOM_RECORD_ID_ATTRIBUTE,
 	XMLNS_DEV_NAMESPACE,
 } from '@dialecte/core/test'
 
 const { project, source } = await createTestProject({
+	dialecte: TEST_DIALECTE,
 	sourceXml: `
     <Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${CUSTOM_RECORD_ID_ATTRIBUTE}="1">
       <A aA="value" ${CUSTOM_RECORD_ID_ATTRIBUTE}="2"/>
@@ -490,79 +496,58 @@ const tree = createTestRecord({
 })
 ```
 
-Use `createTestRecordFactory` to get a version typed to a specific dialecte config (see [Adapting to your dialecte](#adapting-to-your-dialecte)).
+Use `createTestRecordFactory(config)` to get a version typed to a specific dialecte config; a dialecte package gets it bound to its declaration as `createTestRecord` from `createTestHelpers` (see [Adapting to your dialecte](#adapting-to-your-dialecte)).
+
+```ts
+const createMyTestRecord = createTestRecordFactory(MY_DIALECTE_CONFIG)
+```
 
 ---
 
 ## Adapting to your dialecte
 
-Create a single `test.ts` file in your dialecte package that wraps all core helpers with your dialecte config. Tests import from that file instead of `@dialecte/core/test` directly.
+Create a single `test.ts` file in your dialecte package. One `createTestHelpers({ dialecte })` call derives every helper from the dialecte's declaration; tests import from that file instead of `@dialecte/core/test` directly.
 
 ### Complete example
 
 ```ts
 // src/test/test.ts
 import { CUSTOM_RECORD_ID_ATTRIBUTE, CUSTOM_RECORD_ID_ATTRIBUTE_NAME } from '@dialecte/core/helpers'
-import {
-	createTestProject,
-	createTestRecordFactory,
-	createXmlAssertions,
-	createXmlSchemaAssertions,
-	createTestRunner,
-	XMLNS_DEV_NAMESPACE,
-} from '@dialecte/core/test'
-import type { TestRunner } from '@dialecte/core/test'
+import { createTestHelpers, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
 
-import { MY_DIALECTE_CONFIG } from '@/config'
-import { DEFINITION, TYPES } from '@/definition'
+import { MY_DIALECTE } from '@/declaration' // defineDialecte({ id, version, configs, defaultConfigKey, extensions, createHooks })
 
 // Namespace strings for use in XML template literals
 export const XMLNS_DEFAULT_NAMESPACE = `xmlns="http://dialecte.dev/XML/DEFAULT"`
 export const ALL_XMLNS_NAMESPACES = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 export { CUSTOM_RECORD_ID_ATTRIBUTE, CUSTOM_RECORD_ID_ATTRIBUTE_NAME }
 
-// Pre-bound runner - same shape as runTestCases but for this dialecte config
-// Pass extensions to get a fully-hydrated project with extension modules
-export const runDialecteTestCases = createTestRunner({
-	dialecteConfig: MY_DIALECTE_CONFIG,
-	extensions: { base: MY_EXTENSION_MODULES },
-})
-
-// Wrap createTestProject with the dialecte config and extensions
-export async function createDialecteTestProject(params: { sourceXml: string; targetXml?: string }) {
-	return createTestProject({
-		...params,
-		dialecteConfig: MY_DIALECTE_CONFIG,
-		extensions: { base: MY_EXTENSION_MODULES },
-	})
-}
-
-// Typed record factory - createDialecteTestRecord({ record: { tagName: 'A', ... } })
-export const createDialecteTestRecord = createTestRecordFactory(MY_DIALECTE_CONFIG)
-
-// Namespace-aware XPath assertion helpers
-export const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions(
-	{ namespaces: MY_DIALECTE_CONFIG.namespaces },
-)
-
-// Structural fixture validation bound to this dialecte's schema
-export const { assertValidXml, assertValidXmlTestCases } = createXmlSchemaAssertions({
-	definition: DEFINITION,
-	types: TYPES,
-	namespaces: MY_DIALECTE_CONFIG.namespaces,
-})
+export const {
+	runTestCases: runDialecteTestCases,
+	createTestProject: createDialecteTestProject,
+	createTestRecord: createDialecteTestRecord,
+	assertExpectedElementQueries,
+	assertUnexpectedElementQueries,
+	assertValidXml,
+	assertValidXmlTestCases,
+} = createTestHelpers({ dialecte: MY_DIALECTE, schemaName: 'MyDialecte' })
 ```
 
-### What each export provides
+`createTestHelpers({ dialecte, storage?, schemaName?, extraChecks? })` builds every helper on the declaration. A runner call and a test project take a `configKey` (a dialecte with two configs, such as nsd and NSDoc): the fixtures are imported under it and checked against its schema; without one, the default config. `storage` names the store the test projects run on (the local store by default); `schemaName` names the schema in fixture violation messages (the dialecte's `id` by default). A check a dialecte adds of its own (scl's coherent references) goes in `extraChecks` (`testCases` for a runner call, `fixture` for each test-project fixture), run after the schema check; a test project skips it with `skipExtraChecks: '<why>'`.
 
-| Export                                                            | Purpose                                                                                   |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `runDialecteTestCases`                                            | Pre-bound runner: `.withExport`, `.withoutExport`, `.generic` (with extension modules)    |
-| `createDialecteTestProject`                                       | Manual test setup pre-bound to the dialecte config                                        |
-| `createDialecteTestRecord`                                        | Typed record factory - `tagName` narrowed to the dialecte's elements                      |
-| `assertExpectedElementQueries` / `assertUnexpectedElementQueries` | XPath assertions with namespace prefix resolution pre-configured                          |
-| `assertValidXml` / `assertValidXmlTestCases`                      | Structural fixture validation (namespace / containment / attributes) bound to the schema  |
-| Namespace constants                                               | `XMLNS_*` strings for XML template literals; `CUSTOM_RECORD_ID_ATTRIBUTE` for `dev:db-id` |
+### What each helper provides
+
+| Helper                                                            | Purpose                                                                                                                                                      |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `runTestCases`                                                    | The runner (`.withExport`, `.withoutExport`, `.generic`) on the declaration; every case's XML is checked against the schema first, all invalid cases at once |
+| `createTestProject`                                               | Manual test setup on the declaration; the source and target are checked against the schema (required attributes may be left out)                             |
+| `createTestRecord`                                                | Typed record factory - `tagName` narrowed to the dialecte's elements                                                                                         |
+| `assertExpectedElementQueries` / `assertUnexpectedElementQueries` | XPath assertions with namespace prefix resolution pre-configured                                                                                             |
+| `assertValidXml` / `assertValidXmlTestCases`                      | Structural fixture validation (namespace / containment / attributes) bound to the schema                                                                     |
+
+Each comes from a lower-level builder of this page, still exported for a case the bundle does not fit: `createTestRunner({ dialecte, storage? })` (the runner of [runTestCases](#runtestcases) on a declaration, without the fixture check), [createTestProject](#createtestproject), [createTestRecordFactory](#createtestrecord), [createXmlAssertions](#createxmlassertions) and [createXmlSchemaAssertions](#createxmlschemaassertions).
+
+The bundle does not derive the `xmlns` strings a dialecte's fixtures use in template literals, nor the record-id re-exports: those stay the dialecte's own. A helper is renamed in the destructure (`assertValidXml: assertValidSclXml`).
 
 ### Usage in tests
 
