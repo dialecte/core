@@ -68,7 +68,10 @@ export interface Store {
 
 	// --- File registry ---
 
-	/** Register a new document — creates its backing storage partition */
+	/**
+	 * Register a new document — creates its backing storage partition. An id already registered is
+	 * refused with `STORE_DUPLICATE_ID`, the registered document left as it was.
+	 */
 	registerDocument(file: DocumentRecord): Promise<void>
 
 	/** Get a document record by id */
@@ -83,10 +86,12 @@ export interface Store {
 		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>,
 	): Promise<void>
 
-	/** Remove a document and all its records (O(1) table clear) */
+	/** Remove a document, all its records, its history entries and the blobs it owns (O(1) table clear) */
 	removeDocument(documentId: string): Promise<void>
 
 	// --- Record access (document-scoped) ---
+	// A document that is not in the store (never registered, or removed - here or through another
+	// connection) reads as absent: no record, a count of 0. Children come back in the order written.
 
 	/** Get a single record by primary key. documentId optimizes lookup when known. */
 	get(id: string, documentId?: string): Promise<AnyRawRecord | undefined>
@@ -109,13 +114,24 @@ export interface Store {
 
 	// --- Writes ---
 
-	/** Bulk write - atomic creates/updates/deletes bypassing changelog. For import pipeline. */
+	/**
+	 * Bulk write - atomic creates/updates/deletes bypassing changelog. For import pipeline. Refused
+	 * whole: a document not registered (`DOCUMENT_NOT_REGISTERED`), a create of an id the document
+	 * holds or the batch holds twice (`STORE_DUPLICATE_ID`, `meta.recordIds`). An update patch of an
+	 * absent record and a delete of an absent id are ignored.
+	 */
 	bulkWrite(
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void>
 
-	/** Atomic commit — all-or-nothing write scoped to a document */
+	/**
+	 * Atomic commit — all-or-nothing write scoped to a document, one undoable history entry holding
+	 * the whole records before and after. Refused whole, nothing written and no entry kept: a document
+	 * not registered (`DOCUMENT_NOT_REGISTERED`), then an update of a record the document does not hold
+	 * (`STORE_RECORD_NOT_FOUND`, `meta.recordId`), then a create of an id the document holds or the
+	 * commit holds twice (`STORE_DUPLICATE_ID`, `meta.recordIds`). A delete of an absent id is ignored.
+	 */
 	commit(params: {
 		documentId: string
 		creates: AnyRawRecord[]

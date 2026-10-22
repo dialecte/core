@@ -186,10 +186,10 @@ if (ready) {
 
 **Returns** `Promise<{ live: boolean; ready: boolean }>`
 
-| Field   | Meaning                                                                                                 |
-| ------- | ------------------------------------------------------------------------------------------------------- |
-| `live`  | Registered in this realm — `openDocument` will not throw `DOCUMENT_NOT_REGISTERED` (D7002).             |
-| `ready` | The store can serve the document's records — reads / `export` will not throw a missing-partition error. |
+| Field   | Meaning                                                                                                                                            |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `live`  | Registered in this realm — `openDocument` will not throw `DOCUMENT_NOT_REGISTERED` (D7002).                                                        |
+| `ready` | The store can serve the document's records — reads / `export` see them, instead of the empty reads of a document the connection does not know yet. |
 
 An unknown document returns `{ live: false, ready: false }` rather than throwing.
 
@@ -200,7 +200,7 @@ When a `Project` is instantiated in more than one JS realm over the same persist
 - the **document registry**, synced over the project [`BroadcastChannel`](#project-channel-events) (`document-imported` / `document-removed`);
 - the **active-document id**, synced by the host application out of band (e.g. a `storage` event).
 
-Because they are not ordered, the active-document id can reach the other realm _before_ the import broadcast registered the document (`openDocument` throws `DOCUMENT_NOT_REGISTERED`); and even once the registry catches up, that realm's connection may predate the schema that added the document's partition, so a read throws a missing-partition error.
+Because they are not ordered, the active-document id can reach the other realm _before_ the import broadcast registered the document (`openDocument` throws `DOCUMENT_NOT_REGISTERED`); and even once the registry catches up, that realm's connection may predate the schema that added the document's partition, so a read answers empty (a document a connection does not know reads as absent: no records, a count of 0).
 
 `getDocumentStatus` removes the dependency on signal ordering: it reconciles this realm against the **persisted** storage — the authoritative source, written before either signal fires (see [Cross-realm reconciliation](/io/#cross-realm-reconciliation)) — then reports `live` / `ready`. Callers branch on the result instead of catching; no retries, no reopening the project.
 
