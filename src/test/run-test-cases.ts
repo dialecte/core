@@ -1,9 +1,15 @@
 import { createXmlAssertions } from './assert-xml'
-import { TEST_DIALECTE_CONFIG } from './config'
-import { createTestProject } from './create-test-dialecte'
+import { TEST_DIALECTE } from './test-dialecte'
+import {
+	openTestProject,
+	overrideTestDialecte,
+	resolveTestConfig,
+	resolveTestDialecte,
+} from './test-dialecte-setup'
 
 import { it } from 'vitest'
 
+import type { DeclaredTestRunnerParams, LegacyTestRunnerParams } from './create-test-dialecte.types'
 import type {
 	BaseTestCase,
 	BaseXmlTestCase,
@@ -12,10 +18,9 @@ import type {
 	ActResult,
 	TestRunner,
 } from './run-test-cases.type'
+import type { CaseOverrides, RunnerSetup } from './test-dialecte-setup.types'
 import type { ExtensionModules } from '@/document'
-import type { AnyDialecteConfig, DialecteHooks } from '@/types'
-
-type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
+import type { AnyDialecteConfig } from '@/types'
 
 // ── UUID mocking ─────────────────────────────────────────────────────────────
 
@@ -32,29 +37,23 @@ export function createMockRandomUUID(): () => `${string}-${string}-${string}-${s
 
 function xmlWithExport<
 	GenericTestCase extends BaseXmlTestCase,
-	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+	GenericConfig extends AnyDialecteConfig,
 	GenericModules extends ExtensionModules = Record<never, never>,
->(params: {
-	testCases: TestCases<GenericTestCase>
-	act: (
-		params: ActParams<GenericConfig, GenericTestCase, GenericModules>,
-	) => Promise<ActResult | void>
-	dialecteConfig?: GenericConfig
-	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-	hooks?: DialecteHooks<GenericConfig>
-	dev?: { perf?: boolean }
-}): void {
-	const {
-		testCases,
-		act,
-		extensions,
-		hooks,
-		dev,
-		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
-	} = params
+>(
+	params: RunnerSetup<GenericConfig> &
+		CaseOverrides<GenericConfig> & {
+			testCases: TestCases<GenericTestCase>
+			act: (
+				params: ActParams<GenericConfig, GenericTestCase, GenericModules>,
+			) => Promise<ActResult | void>
+		},
+): void {
+	const { testCases, act, storage, dev, configKey, dialecteConfig, hooks } = params
+	const setup = overrideTestDialecte({ setup: params.setup, configKey, dialecteConfig, hooks })
+	const { config } = resolveTestConfig({ setup, configKey })
 
 	const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
-		namespaces: dialecteConfig.namespaces,
+		namespaces: config.namespaces,
 	})
 
 	for (const [description, testCase] of Object.entries(testCases)) {
@@ -63,12 +62,12 @@ function xmlWithExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const { project, source, target } = await createTestProject<GenericConfig, GenericModules>({
+			const { project, source, target } = await openTestProject<GenericConfig, GenericModules>({
+				setup,
 				sourceXml: testCase.sourceXml,
 				targetXml: testCase.targetXml,
-				dialecteConfig,
-				extensions,
-				hooks,
+				configKey,
+				storage,
 				dev,
 			})
 
@@ -114,24 +113,17 @@ function xmlWithExport<
 
 function xmlWithoutExport<
 	GenericTestCase extends BaseXmlTestCase,
-	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
+	GenericConfig extends AnyDialecteConfig,
 	GenericModules extends ExtensionModules = Record<never, never>,
->(params: {
-	testCases: TestCases<GenericTestCase>
-	act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
-	dialecteConfig?: GenericConfig
-	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-	hooks?: DialecteHooks<GenericConfig>
-	dev?: { perf?: boolean }
-}): void {
-	const {
-		testCases,
-		act,
-		extensions,
-		hooks,
-		dev,
-		dialecteConfig = TEST_DIALECTE_CONFIG as unknown as GenericConfig,
-	} = params
+>(
+	params: RunnerSetup<GenericConfig> &
+		CaseOverrides<GenericConfig> & {
+			testCases: TestCases<GenericTestCase>
+			act: (params: ActParams<GenericConfig, GenericTestCase, GenericModules>) => Promise<void>
+		},
+): void {
+	const { testCases, act, storage, dev, configKey, dialecteConfig, hooks } = params
+	const setup = overrideTestDialecte({ setup: params.setup, configKey, dialecteConfig, hooks })
 
 	for (const [description, testCase] of Object.entries(testCases)) {
 		const testFn = testCase.only ? it.only : it
@@ -139,12 +131,12 @@ function xmlWithoutExport<
 		testFn(description, async () => {
 			crypto.randomUUID = originalRandomUUID
 
-			const { project, source, target } = await createTestProject<GenericConfig, GenericModules>({
+			const { project, source, target } = await openTestProject<GenericConfig, GenericModules>({
+				setup,
 				sourceXml: testCase.sourceXml,
 				targetXml: testCase.targetXml,
-				dialecteConfig,
-				extensions,
-				hooks,
+				configKey,
+				storage,
 				dev,
 			})
 
@@ -170,20 +162,39 @@ function genericTestCases<GenericTestCase extends BaseTestCase>(
 	}
 }
 
-export const runTestCases = createTestRunner({ dialecteConfig: TEST_DIALECTE_CONFIG })
-
+/**
+ * The test runner of a declared dialecte: each case runs on a fresh project with every config,
+ * the default key, the dialecte's extensions and its own hooks instance, on the store `storage`
+ * names (the local one by default).
+ */
 export function createTestRunner<
 	GenericConfig extends AnyDialecteConfig,
 	GenericModules extends ExtensionModules = Record<never, never>,
->(params: {
-	dialecteConfig: GenericConfig
-	hooks?: DialecteHooks<GenericConfig>
-	extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
-}): TestRunner<GenericConfig, GenericModules> {
-	const { dialecteConfig, hooks, extensions } = params
+	GenericConfigKey extends string = string,
+>(
+	params: DeclaredTestRunnerParams<GenericConfig, GenericModules, GenericConfigKey>,
+): TestRunner<GenericConfig, GenericModules>
+/**
+ * A test runner from a config, extensions and one hooks instance shared by every case.
+ * @deprecated Declare the dialecte with `defineDialecte` and pass it as `dialecte`.
+ */
+export function createTestRunner<
+	GenericConfig extends AnyDialecteConfig,
+	GenericModules extends ExtensionModules = Record<never, never>,
+>(params: LegacyTestRunnerParams<GenericConfig>): TestRunner<GenericConfig, GenericModules>
+export function createTestRunner(
+	params:
+		| DeclaredTestRunnerParams<AnyDialecteConfig, ExtensionModules, string>
+		| LegacyTestRunnerParams<AnyDialecteConfig>,
+): TestRunner<AnyDialecteConfig, ExtensionModules> {
+	const { storage } = params
+	const setup = resolveTestDialecte(params)
 	return {
-		withExport: (params) => xmlWithExport({ dialecteConfig, extensions, hooks, ...params }),
-		withoutExport: (params) => xmlWithoutExport({ dialecteConfig, extensions, hooks, ...params }),
+		withExport: (caseParams) => xmlWithExport({ setup, storage, ...caseParams }),
+		withoutExport: (caseParams) => xmlWithoutExport({ setup, storage, ...caseParams }),
 		generic: genericTestCases,
 	}
 }
+
+/** Core's own runner: the declared test dialecte on the local store. */
+export const runTestCases = createTestRunner({ dialecte: TEST_DIALECTE })

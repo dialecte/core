@@ -1,9 +1,12 @@
+import { TEST_DIALECTE_CONFIG } from './config'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, XMLNS_EXT_NAMESPACE } from './constant'
-import { runTestCases } from './run-test-cases'
+import { createTestRunner, runTestCases } from './run-test-cases'
 
+import Dexie from 'dexie'
 import { describe, expect } from 'vitest'
 
-import type { TEST_DIALECTE_CONFIG } from './config'
+import { defineDialecte } from '@/dialecte'
+
 import type { BaseXmlTestCase, TestCases, ActParams, ActResult } from './run-test-cases.type'
 
 type TestDialecteConfig = typeof TEST_DIALECTE_CONFIG
@@ -82,6 +85,15 @@ describe('runTestCases', () => {
 		})
 	})
 
+	describe('documents under the config key `default`', () => {
+		runTestCases.withoutExport<BaseXmlTestCase>({
+			testCases: { 'source registered under `default`': { sourceXml: /* xml */ `<Root ${ns}/>` } },
+			act: async ({ project, source }) => {
+				expect((await project.getDocument(source.documentId))?.configKey).toBe('default')
+			},
+		})
+	})
+
 	describe('act receives document with working query API', () => {
 		type TestCase = BaseXmlTestCase
 
@@ -154,6 +166,97 @@ describe('runTestCases', () => {
 			testCases,
 			act: async (): Promise<ActResult> => {
 				return {}
+			},
+		})
+	})
+})
+
+describe('createTestRunner from a declaration', () => {
+	const hookInstances: number[] = []
+	let hooksCreated = 0
+	const dialecte = defineDialecte({
+		id: 'core/test',
+		version: '0.0.0',
+		configs: { test: TEST_DIALECTE_CONFIG, second: TEST_DIALECTE_CONFIG },
+		defaultConfigKey: 'test',
+		extensions: {
+			counting: {
+				query: {
+					countA: async (query: { getRecordsByTagName: (tagName: 'A') => Promise<unknown[]> }) =>
+						(await query.getRecordsByTagName('A')).length,
+				},
+			},
+		},
+		createHooks: () => {
+			const instance = ++hooksCreated
+			return {
+				beforeImport: (xml) => {
+					hookInstances.push(instance)
+					return xml
+				},
+			}
+		},
+	})
+	const runDeclaredTestCases = createTestRunner({ dialecte })
+
+	type TestCase = BaseXmlTestCase & { expectedCount: number }
+
+	const testCases: TestCases<TestCase> = {
+		'the declared extensions are on the document': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A aA="1"/>
+					<A aA="2"/>
+				</Root>
+			`,
+			expectedCount: 2,
+		},
+		'each case gets its own hooks instance': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A aA="1"/>
+				</Root>
+			`,
+			expectedCount: 1,
+		},
+	}
+
+	runDeclaredTestCases.withoutExport<TestCase>({
+		testCases,
+		act: async ({ testCase, source, project }) => {
+			expect(await source.query.counting.countA()).toBe(testCase.expectedCount)
+			// one import per case: a shared instance would be seen more often than instances were made
+			expect(hookInstances).toHaveLength(hooksCreated)
+			expect(hookInstances.at(-1)).toBe(hooksCreated)
+			expect((await project.getDocument(source.documentId))?.configKey).toBe('test')
+			await expect(project.initEmptyDocument({ configKey: 'second' })).resolves.toBeTypeOf('string')
+		},
+	})
+
+	describe('export assertions use the default config', () => {
+		runDeclaredTestCases.withExport<BaseXmlTestCase>({
+			testCases: {
+				'element added through a transaction is in the export': {
+					sourceXml: /* xml */ `<Root ${ns}><A aA="x"/></Root>`,
+					expectedQueries: ['//default:A[@aA="x"]', '//default:B[@aB="added"]'],
+				},
+			},
+			act: async ({ source }) => {
+				const root = await source.query.getRoot()
+				await source.transaction(async (tx) => {
+					await tx.addChild(root, { tagName: 'B', attributes: { aB: 'added' } })
+				})
+				return {}
+			},
+		})
+	})
+
+	describe('the in-memory store on request', () => {
+		const runInMemory = createTestRunner({ dialecte, storage: { type: 'inMemory' } })
+		runInMemory.withoutExport<BaseXmlTestCase>({
+			testCases: { 'the project runs in memory': { sourceXml: /* xml */ `<Root ${ns}/>` } },
+			act: async ({ project }) => {
+				expect(await Dexie.exists(project.name)).toBe(false)
 			},
 		})
 	})

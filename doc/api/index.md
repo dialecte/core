@@ -10,6 +10,8 @@ The `@dialecte/core` API is organised around three concepts:
 2. **Document** - per-file entry point for querying records and running transactions
 3. **Query / Transaction** - the read and write interfaces exposed by a Document
 
+A dialecte package declares itself once with `defineDialecte` (id, version, configs, default key, extensions, hooks factory); core derives its project factory and its test helpers from the declaration. See [Dialecte declaration](/api/dialecte).
+
 ## Project
 
 `Project` is the top-level container. Construct it sync, then call `.open(name)` async to connect the store.
@@ -78,4 +80,5 @@ The `extensions` constructor param accepts `{ base?, custom? }` — each is an `
 - [Query](/api/query) — record lookup, descendants, attributes
 - [Transaction](/api/transaction) — addChild, update, delete, deepClone
 - [Hooks](/api/hooks) — transaction lifecycle hooks
+- [Dialecte declaration](/api/dialecte) — defineDialecte, createProjectFactory, createTestHelpers
 - [IO](/io/) — low-level XML utilities and IO hooks

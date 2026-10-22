@@ -73,6 +73,7 @@ export default defineConfig({
 						{ text: 'Query', link: '/api/query' },
 						{ text: 'Transaction', link: '/api/transaction' },
 						{ text: 'Hooks', link: '/api/hooks' },
+						{ text: 'Dialecte declaration', link: '/api/dialecte' },
 					],
 				},
 			],
