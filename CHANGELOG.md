@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An exported file keeps each text value on its line (`<Item>2025-08-04 10:59:16</Item>`); it was written wrapped in a newline and indentation, which added whitespace to values (a strict XML reader saw a different value) and made a file with many text values noticeably larger. An element holding text and children is now written as is on one line, where whitespace text used to be inserted between them. The XML of `getSnapshot({ as: 'xml' })` is written the same way.
+
 A store refuses what it cannot apply whole, on IndexedDB and in memory alike:
 
 - A create of an id the document holds, or one id twice in the same write, is `STORE_DUPLICATE_ID` and nothing of the write lands - in memory the record was overwritten; on IndexedDB a bulk write threw the raw `BulkError` and a commit wrapped it twice as `STORE_COMMIT_FAILED`. An import whose file yields one record id twice (`useCustomRecordsIds`, or an import hook creating an id the file holds) fails on the in-memory store too, the document removed, instead of keeping the last record.
