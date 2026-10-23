@@ -1,15 +1,23 @@
 import {
+	CONTRACT_SESSION_DIAGNOSTICS,
+	CONTRACT_SESSION_SEEN_ATTRIBUTE,
+	CONTRACT_SESSION_TAG,
+} from './store-contract.constants'
+import {
 	childRef,
 	commit,
+	contractFile,
 	expectRejectsWith,
 	makeBlobEntry,
 	makeDocument,
 	makeRecord,
+	sessionRecords,
+	SMALL_BATCHES,
 } from './store-contract.fixtures'
 
 import { expect } from 'vitest'
 
-import type { Store } from '../store.types'
+import type { ImportProgress, Store, WriteOutcome } from '../store.types'
 import type {
 	AbsentDocumentRead,
 	AttributePatchCase,
@@ -45,12 +53,11 @@ const lifecycle: StoreContractCases = {
 
 const documentUpdates: Record<
 	string,
-	Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>
+	Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>
 > = {
 	name: { name: 'renamed' },
 	metadata: { metadata: { origin: 'test' } },
 	status: { status: 'importing' },
-	importingAt: { importingAt: 42 },
 }
 
 const registry: StoreContractCases = {
@@ -115,17 +122,10 @@ const reads: StoreContractCases = {
 			expect((await store.get('r1', 'doc-1'))?.id).toBe('r1')
 		},
 	},
-	'get by id across documents when no document is given': {
-		act: async ({ store }) => {
-			await seedTwoRecords(store)
-			expect((await store.get('r1'))?.id).toBe('r1')
-		},
-	},
 	'an unknown id reads undefined': {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			expect(await store.get('nope', 'doc-1')).toBeUndefined()
-			expect(await store.get('nope')).toBeUndefined()
 		},
 	},
 	'getByDocumentId returns every record of the document': {
@@ -952,7 +952,7 @@ const rejectedWrites: StoreContractCases = {
 				key: 'DOCUMENT_NOT_REGISTERED',
 				meta: { documentId: 'nope' },
 			})
-			expect(await store.get('r1')).toBeUndefined()
+			expect(await store.get('r1', 'nope')).toBeUndefined()
 		},
 	},
 	'a commit to an unregistered document is rejected': {
@@ -962,7 +962,7 @@ const rejectedWrites: StoreContractCases = {
 				key: 'DOCUMENT_NOT_REGISTERED',
 				meta: { documentId: 'nope' },
 			})
-			expect(await store.get('r1')).toBeUndefined()
+			expect(await store.get('r1', 'nope')).toBeUndefined()
 			expect(await store.getChangeLog('nope')).toEqual([])
 		},
 	},
@@ -1089,7 +1089,7 @@ const duringImport: StoreContractCases = {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument({ id: 'b' }))
 			await store.bulkWrite('b', { creates: [makeRecord({ id: 'rb' })] })
-			await store.registerDocument(makeDocument({ id: 'a', status: 'importing', importingAt: 1 }))
+			await store.registerDocument(makeDocument({ id: 'a', status: 'importing' }))
 			await store.bulkWrite('a', { creates: [makeRecord({ id: 'a1' })] })
 
 			await commit({ store, documentId: 'b', updates: [makeRecord({ id: 'rb', value: 'edited' })] })
@@ -1113,14 +1113,255 @@ const duringImport: StoreContractCases = {
 	},
 	'the registry lists a document being imported with its status, and reads it as it is': {
 		act: async ({ store }) => {
-			await store.registerDocument(makeDocument({ id: 'a', status: 'importing', importingAt: 1 }))
+			await store.registerDocument(makeDocument({ id: 'a', status: 'importing' }))
 			await store.bulkWrite('a', { creates: [makeRecord({ id: 'a1' })] })
 			expect((await store.getDocuments()).map((document) => document.status)).toEqual(['importing'])
 			expect(await store.count('a')).toBe(1)
-			await store.updateDocument('a', { status: 'ready', importingAt: undefined })
-			expect(await store.getDocument('a')).toEqual(
-				makeDocument({ id: 'a', importingAt: undefined }),
+			await store.updateDocument('a', { status: 'ready' })
+			expect(await store.getDocument('a')).toEqual(makeDocument({ id: 'a' }))
+		},
+	},
+}
+
+// ── Importing a file ─────────────────────────────────────────────────────────
+
+/** A ready document `kept` with one record: what an import must leave as it was. */
+async function seedKeptDocument(store: Store): Promise<void> {
+	await store.registerDocument(makeDocument({ id: 'kept' }))
+	await store.bulkWrite('kept', { creates: [makeRecord({ id: 'k1' })] })
+}
+
+/** Nothing of an import remains: the kept document alone, as it was, and the import not applied. */
+async function expectOnlyKeptDocument(params: { store: Store; writeId: string }): Promise<void> {
+	const { store, writeId } = params
+	expect((await store.getDocuments()).map((document) => document.id)).toEqual(['kept'])
+	expect(await store.getByDocumentId('kept')).toEqual([makeRecord({ id: 'k1' })])
+	expect(await store.getWriteOutcome({ writeId })).toBe('not-applied')
+}
+
+/** A failing import, and the structured error it must be refused with. */
+type FailingImport = {
+	file: File
+	key: 'PARSE_ERROR' | 'IMPORT_FAILED'
+	detail: RegExp
+}
+
+const failingImports: Record<string, FailingImport> = {
+	'a truncated file is refused PARSE_ERROR': {
+		file: contractFile({ body: `<A>${sessionRecords(3)}`, truncated: true }),
+		key: 'PARSE_ERROR',
+		detail: /unclosed/i,
+	},
+	'a session that throws is refused IMPORT_FAILED with its error': {
+		file: contractFile({ body: `${sessionRecords(2)}<B aB="x" bB="fail"/>` }),
+		key: 'IMPORT_FAILED',
+		detail: /the contract session fails/,
+	},
+}
+
+const importing: StoreContractCases = {
+	'an import answers the ready document, its record count and its session diagnostics': {
+		act: async ({ store }) => {
+			const result = await store.importFile({
+				file: contractFile({ body: `<A/>${sessionRecords(2)}`, name: 'plant.xml' }),
+				options: { metadata: { origin: 'test' } },
+				writeId: 'w-1',
+			})
+			expect(result.record).toEqual({
+				id: expect.any(String),
+				name: 'plant',
+				extension: '.xml',
+				configKey: 'default',
+				createdAt: expect.any(Number),
+				metadata: { origin: 'test' },
+				status: 'ready',
+				writeId: 'w-1',
+			})
+			expect(await store.getDocument(result.record.id)).toEqual(result.record)
+			expect(result.recordCount).toBe(4)
+			expect(await store.count(result.record.id)).toBe(4)
+			const handed = await store.getByTagNameInDocument(CONTRACT_SESSION_TAG, result.record.id)
+			expect(result.diagnostics).toHaveLength(2)
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining(
+					handed.map((record) => ({
+						code: 'seen',
+						severity: 'information',
+						source: CONTRACT_SESSION_DIAGNOSTICS.source,
+						message: CONTRACT_SESSION_DIAGNOSTICS.codes.seen.message,
+						ref: { tagName: CONTRACT_SESSION_TAG, id: record.id },
+						meta: { ancestry: ['Root'] },
+					})),
+				),
 			)
+		},
+	},
+	'the session is handed the records of the tags it asks for only, with their open ancestors': {
+		act: async ({ store }) => {
+			const result = await store.importFile({
+				file: contractFile({ body: '<A><B aB="deep"/></A><C/><B aB="top"/>' }),
+			})
+			expect(result.diagnostics.map((diagnostic) => diagnostic.meta)).toEqual([
+				{ ancestry: ['Root', 'A'] },
+				{ ancestry: ['Root'] },
+			])
+		},
+	},
+	'the writes of the session are stored before the document is ready': {
+		act: async ({ store }) => {
+			const result = await store.importFile({ file: contractFile({ body: sessionRecords(2) }) })
+			const handed = await store.getByTagNameInDocument(CONTRACT_SESSION_TAG, result.record.id)
+			expect(handed).toHaveLength(2)
+			for (const record of handed) {
+				expect(record.attributes).toContainEqual({
+					name: CONTRACT_SESSION_SEEN_ATTRIBUTE,
+					value: 'yes',
+				})
+			}
+		},
+	},
+	...Object.fromEntries(
+		Object.entries(failingImports).map(([description, failing]) => [
+			`${description}, and leaves nothing: the documents there stay as they were`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await seedKeptDocument(store)
+					await expectRejectsWith({
+						action: store.importFile({
+							file: failing.file,
+							options: { chunkOptions: SMALL_BATCHES },
+							writeId: 'w-failed',
+						}),
+						key: failing.key,
+						detail: failing.detail,
+					})
+					await expectOnlyKeptDocument({ store, writeId: 'w-failed' })
+				},
+			},
+		]),
+	),
+	'progress is told after each batch, the bytes read growing to the size of the file': {
+		act: async ({ store }) => {
+			const file = contractFile({ body: sessionRecords(4) })
+			const progress: ImportProgress[] = []
+			await store.importFile({
+				file,
+				options: { chunkOptions: SMALL_BATCHES },
+				onProgress: (step) => progress.push(step),
+			})
+			expect(progress.length).toBeGreaterThan(1)
+			const bytes = progress.map((step) => step.bytesRead)
+			expect(bytes).toEqual([...bytes].sort((left, right) => left - right))
+			expect(progress.every((step) => step.totalBytes === file.size)).toBe(true)
+			expect(progress.at(-1)).toEqual({ bytesRead: file.size, totalBytes: file.size })
+		},
+	},
+	'a progress listener that never answers, rejects or throws neither holds nor fails the import': {
+		act: async ({ store }) => {
+			const listeners: ((progress: ImportProgress) => unknown)[] = [
+				() => new Promise(() => {}),
+				() => Promise.reject(new Error('listener gone')),
+				() => {
+					throw new Error('listener broken')
+				},
+			]
+			for (const listener of listeners) {
+				const result = await store.importFile({
+					file: contractFile({ body: sessionRecords(2) }),
+					options: { chunkOptions: SMALL_BATCHES },
+					onProgress: listener,
+				})
+				expect(result.record.status).toBe('ready')
+			}
+		},
+	},
+	'an import aborted while it runs is refused IMPORT_ABORTED and leaves nothing': {
+		act: async ({ store }) => {
+			await seedKeptDocument(store)
+			const controller = new AbortController()
+			await expectRejectsWith({
+				action: store.importFile({
+					file: contractFile({ body: sessionRecords(6) }),
+					options: { chunkOptions: SMALL_BATCHES },
+					writeId: 'w-aborted',
+					onProgress: () => controller.abort(),
+					signal: controller.signal,
+				}),
+				key: 'IMPORT_ABORTED',
+			})
+			await expectOnlyKeptDocument({ store, writeId: 'w-aborted' })
+		},
+	},
+	'an import aborted before it starts is refused IMPORT_ABORTED and registers nothing': {
+		act: async ({ store }) => {
+			await seedKeptDocument(store)
+			await expectRejectsWith({
+				action: store.importFile({
+					file: contractFile({ body: sessionRecords(1) }),
+					writeId: 'w-aborted',
+					signal: AbortSignal.abort(),
+				}),
+				key: 'IMPORT_ABORTED',
+			})
+			await expectOnlyKeptDocument({ store, writeId: 'w-aborted' })
+		},
+	},
+	'an import left unfinished is removed when the store opens; a ready document stays': {
+		act: async ({ store, reopen }) => {
+			await seedKeptDocument(store)
+			await store.registerDocument(
+				makeDocument({ id: 'left', status: 'importing', writeId: 'w-left' }),
+			)
+			await store.bulkWrite('left', { creates: [makeRecord({ id: 'l1' })] })
+			const reopened = await reopen()
+			await expectOnlyKeptDocument({ store: reopened, writeId: 'w-left' })
+			expect(await reopened.getByDocumentId('left')).toEqual([])
+		},
+	},
+	'the outcome of an import asked by its id: running while it runs, applied once ready': {
+		act: async ({ store }) => {
+			let whileRunning: Promise<WriteOutcome> | undefined
+			await store.importFile({
+				// several batches still to store when the outcome is asked at the first one
+				file: contractFile({ body: sessionRecords(8) }),
+				options: { chunkOptions: SMALL_BATCHES },
+				writeId: 'w-running',
+				onProgress: () => {
+					whileRunning ??= store.getWriteOutcome({ writeId: 'w-running' })
+				},
+			})
+			expect(await whileRunning).toBe('running')
+			expect(await store.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
+		},
+	},
+	'the outcome of an id no import carried is not-applied': {
+		act: async ({ store }) => {
+			expect(await store.getWriteOutcome({ writeId: 'never' })).toBe('not-applied')
+		},
+	},
+	'with perf on, the import hands back the timings of its stages': {
+		act: async ({ store }) => {
+			const result = await store.importFile({ file: contractFile({ body: sessionRecords(2) }) })
+			expect(result.perf?.timeOrigin).toEqual(expect.any(Number))
+			const spanNames = new Set(result.perf?.spans.map((span) => span.name))
+			for (const stage of [
+				'import',
+				'import::register',
+				'import::insert',
+				'import::hooks.after',
+				'import::writes.after',
+				'import::finalize',
+			]) {
+				expect(spanNames, stage).toContain(stage)
+			}
+			for (const stage of [
+				'import::decode',
+				'import::parse',
+				'import::standardize',
+				'import::hooks.record',
+			]) {
+				expect(result.perf?.totals[stage]?.calls, stage).toBeGreaterThan(0)
+			}
 		},
 	},
 }
@@ -1196,6 +1437,7 @@ export const STORE_CONTRACT: StoreContractGroups = {
 	'a document that is not there': absentDocument,
 	'a removed document leaves no history': removedDocument,
 	'an edit during an import': duringImport,
+	'importing a file': importing,
 	'one state for every connection': oneState,
 	blobs,
 }

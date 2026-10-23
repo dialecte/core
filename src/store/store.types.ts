@@ -1,5 +1,7 @@
+import type { Diagnostic } from '@/diagnostics'
+import type { PerfSnapshot } from '@/perf'
 import type { DocumentRecord } from '@/project/types'
-import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
+import type { AnyRawRecord, BlobAttachment, BlobRecord, ChunkOptions, RecordPatch } from '@/types'
 
 /**
  * RecordSchema — backend-agnostic index declaration for record tables.
@@ -80,10 +82,10 @@ export interface Store {
 	/** Get all registered documents */
 	getDocuments(): Promise<DocumentRecord[]>
 
-	/** Update document metadata (name, metadata, import status and heartbeat) */
+	/** Update document metadata (name, metadata, import status) */
 	updateDocument(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
 	): Promise<void>
 
 	/** Remove a document, all its records, its history entries and the blobs it owns (O(1) table clear) */
@@ -93,8 +95,8 @@ export interface Store {
 	// A document that is not in the store (never registered, or removed - here or through another
 	// connection) reads as absent: no record, a count of 0. Children come back in the order written.
 
-	/** Get a single record by primary key. documentId optimizes lookup when known. */
-	get(id: string, documentId?: string): Promise<AnyRawRecord | undefined>
+	/** Get a single record of a document by primary key. */
+	get(id: string, documentId: string): Promise<AnyRawRecord | undefined>
 
 	/** Get all records belonging to a document */
 	getByDocumentId(documentId: string): Promise<AnyRawRecord[]>
@@ -111,6 +113,26 @@ export interface Store {
 
 	/** Get many records by id in one call, ordered like `ids`; a missing id yields `undefined`. */
 	getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]>
+
+	// --- Import ---
+
+	/**
+	 * Import one file next to the data: register the document `importing`, parse it with the
+	 * dialecte's import session, store its records batch by batch, apply the session's writes, mark it
+	 * `ready`. Answers the document, its record count and its diagnostics. Whatever fails, or an abort,
+	 * leaves nothing of the file and throws the structured error (`PARSE_ERROR`, `IMPORT_ABORTED`,
+	 * `IMPORT_FAILED` wrapping anything else). `onProgress` is never awaited; `writeId` is generated
+	 * when absent. A store that opens finds no import of a previous run: an unfinished import is
+	 * removed when the store opens.
+	 */
+	importFile(params: ImportFileParams): Promise<ImportFileResult>
+
+	/**
+	 * What became of a write, asked by its id - after a lost connection, before reading again:
+	 * `running`, `applied` (the document is ready) or `not-applied` (it failed, was aborted, never
+	 * started, or its document was removed since).
+	 */
+	getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome>
 
 	// --- Writes ---
 
@@ -190,6 +212,56 @@ export interface Store {
 	 */
 	getDatabaseInstance(): unknown
 }
+
+/** What a file's import is asked to do: plain data, it crosses a worker boundary as is. */
+export type ImportFileOptions = {
+	/** Key into the dialecte's configs. Defaults to its default key. */
+	configKey?: string
+	/** Extensible per-file metadata */
+	metadata?: Record<string, unknown>
+	/** Override chunking defaults for SAX streaming */
+	chunkOptions?: Partial<ChunkOptions>
+	/** Use custom record IDs from XML attributes instead of generating UUIDs */
+	useCustomRecordsIds?: boolean
+}
+
+/** How far an import is: the bytes of the file parsed so far, out of its size. */
+export type ImportProgress = {
+	bytesRead: number
+	totalBytes: number
+}
+
+/**
+ * What a caller holds over an import that runs: kept apart from the import's data, as a worker call
+ * carries the listener as an argument of its own and the abort as a call of its own.
+ */
+export type ImportControl = {
+	/** Told after each stored batch; never awaited, its failure ignored. */
+	onProgress?: (progress: ImportProgress) => void
+	/** Aborts the import at the next batch: nothing of the file remains, `IMPORT_ABORTED` thrown. */
+	signal?: AbortSignal
+}
+
+export type ImportFileParams = ImportControl & {
+	file: File
+	options?: ImportFileOptions
+	/** The caller's id for this import, asked by `getWriteOutcome`; generated when absent. */
+	writeId?: string
+}
+
+/** A file the store imported. */
+export type ImportFileResult = {
+	/** The document, `ready` */
+	record: DocumentRecord
+	recordCount: number
+	/** What the import session had to say about the file; `[]` when nothing */
+	diagnostics: Diagnostic[]
+	/** The timings of the import's stages, on the clock of the realm that ran it; with perf on only */
+	perf?: PerfSnapshot
+}
+
+/** What became of a write asked by its id. */
+export type WriteOutcome = 'applied' | 'running' | 'not-applied'
 
 export type ChangeLogEntry = {
 	/** Auto-increment primary key (assigned by Dexie) */

@@ -1,15 +1,8 @@
 import type { Diagnostic } from '@/diagnostics'
 import type { DocumentState, ExtensionModules } from '@/document'
 import type { DialecteError } from '@/errors'
-import type { Perf } from '@/perf'
-import type { Store } from '@/store/store.types'
-import type {
-	AnyDialecteConfig,
-	BlobAttachment,
-	BlobRecord,
-	ChunkOptions,
-	DialecteHooks,
-} from '@/types'
+import type { ImportControl, ImportFileOptions, Store } from '@/store/store.types'
+import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
 // ── DocumentRecord ───────────────────────────────────────────────────────────
 
@@ -33,14 +26,13 @@ export type DocumentRecord = {
 	/** Extensible per-file metadata, populated by config.extractMetadata at import */
 	metadata?: Record<string, unknown>
 	/**
-	 * `importing` from registration until the last record is stored, `ready` after. A failed import
-	 * removes the document; one left `importing` with no heartbeat for `STALE_IMPORT_MS` was left
-	 * by a realm that died, and `open()` removes it. A document is never opened, listed or served
-	 * while `importing`.
+	 * `importing` from registration until the last record is stored, `ready` after. A failed or
+	 * aborted import removes the document; one left `importing` by an import that no longer runs is
+	 * removed when the store opens. A document is never opened, listed or served while `importing`.
 	 */
 	status: DocumentStatus
-	/** While `importing`: the last time the importing realm said it was alive (ms since epoch). */
-	importingAt?: number
+	/** The id of the import that wrote the document - what `Store.getWriteOutcome` is asked by. */
+	writeId?: string
 }
 
 export type DocumentStatus = 'importing' | 'ready'
@@ -166,39 +158,10 @@ export type InitEmptyDocumentResult = {
 	documentState: DocumentEntry
 }
 
-// ── importDocument ───────────────────────────────────────────────────────────────
+// ── import ───────────────────────────────────────────────────────────────────
 
-export type ImportDocumentOptions = {
-	/** Key into configs registry. Defaults to defaultConfigKey. */
-	configKey?: string
-	/** Extensible per-file metadata */
-	metadata?: Record<string, unknown>
-	/** Override chunking defaults for SAX streaming */
-	chunkOptions?: Partial<ChunkOptions>
-	/** Use custom record IDs from XML attributes instead of generating UUIDs */
-	useCustomRecordsIds?: boolean
-}
-
-export type ImportDocumentParams = {
-	file: File
-	store: Store
-	configs: Record<string, AnyDialecteConfig>
-	defaultConfigKey: string
-	options?: ImportDocumentOptions
-	/** Hooks from the Project instance (erased); io hooks + standardization at import */
-	hooks?: DialecteHooks<AnyDialecteConfig>
-	/** Dev perf helper (shared project instance); defaults to a no-op. */
-	perf?: Perf
-}
-
-export type ImportDocumentResult = {
-	documentId: string
-	record: DocumentRecord
-	documentState: DocumentEntry
-	recordCount: number
-	/** What the import had to say about the file; `[]` when nothing */
-	diagnostics: Diagnostic[]
-}
+/** How to import a file: what the store is asked to do, and what the caller holds over it. */
+export type ImportDocumentOptions = ImportFileOptions & ImportControl
 
 /** A file `Project.importFile` imported: the document it is now, and what the import had to say. */
 export type ImportedDocument = {

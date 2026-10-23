@@ -1,13 +1,14 @@
 import { ParseSession } from './parse-session'
 import { setSaxParser } from './parser'
 
+import { throwDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
 
 import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
 import type { Diagnostic } from '@/diagnostics'
 import type { Perf } from '@/perf'
-import type { Store } from '@/store/store.types'
+import type { ImportControl, ImportProgress, Store } from '@/store/store.types'
 import type { ImportSession } from '@/types'
 
 export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
@@ -26,8 +27,14 @@ const DEFAULT_BATCH_SIZE = 2000
  * - Batches records and flushes to Store.bulkWrite in chunks
  * - ParseSession encapsulates parent-child resolution state (no module globals)
  * - Database-agnostic: only calls Store.bulkWrite(documentId, ops)
+ * - `control`: progress told after each stored batch (never awaited), an abort honoured before each
+ *   batch and before the session's writes (`IMPORT_ABORTED`; the records already stored are the
+ *   caller's to remove)
  */
-export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXmlFileResult> {
+export async function parseXmlFile(
+	params: ParseXmlFileParams,
+	control: ImportControl = {},
+): Promise<ParseXmlFileResult> {
 	const {
 		documentId,
 		configKey,
@@ -73,24 +80,26 @@ export async function parseXmlFile(params: ParseXmlFileParams): Promise<ParseXml
 		perf,
 	})
 
-	perf.start('core::import')
-	let parsedCount: number
-	try {
-		parsedCount = await streamFileInChunks({
-			file,
-			sax,
-			session,
-			store,
-			documentId,
-			chunkSize,
-			batchSize,
-			perf,
-		})
-	} finally {
-		perf.stop('core::import')
-	}
+	const parsedCount = await streamFileInChunks({
+		file,
+		sax,
+		session,
+		store,
+		documentId,
+		chunkSize,
+		batchSize,
+		perf,
+		control,
+	})
 
-	const { recordDelta, diagnostics } = await endImportSession({ importSession, store, documentId })
+	const { recordDelta, diagnostics } = await endImportSession({
+		importSession,
+		store,
+		documentId,
+		file,
+		perf,
+		signal: control.signal,
+	})
 
 	return { documentId, recordCount: parsedCount + recordDelta, diagnostics }
 }
@@ -106,10 +115,14 @@ async function streamFileInChunks(params: {
 	chunkSize: number
 	batchSize: number
 	perf: Perf
+	control: ImportControl
 }): Promise<number> {
-	const { file, sax, session, store, documentId, chunkSize, batchSize, perf } = params
+	const { file, sax, session, store, documentId, chunkSize, batchSize, perf, control } = params
 
+	const batchParams = { sax, session, store, documentId, file, perf, control }
 	let totalRecords = 0
+	// The bytes fed to the parser so far: what progress tells, the file's size once all is parsed.
+	let bytesRead = 0
 	const reader = file.stream().getReader()
 	const textDecoder = new TextDecoder()
 	// Bytes left over from the previous read (< chunkSize, or a split multi-byte char):
@@ -118,35 +131,27 @@ async function streamFileInChunks(params: {
 
 	let done = false
 	while (!done) {
-		perf.start('core::import::read')
 		const result = await reader.read()
-		perf.stop('core::import::read')
 		done = result.done
 
 		if (result.value) {
-			perf.start('core::import::bufferAppend')
 			const buffer = remainder.length === 0 ? result.value : appendToBuffer(remainder, result.value)
-			perf.stop('core::import::bufferAppend')
 
 			// Advance a cursor with subarray VIEWS (O(1), no copy) instead of re-slicing the
 			// tail every chunk (the old `buffer = buffer.slice(chunkSize)` was O(fileSize²)).
 			let offset = 0
 			while (offset + chunkSize <= buffer.length) {
-				perf.start('core::import::decode')
-				const chunk = textDecoder.decode(buffer.subarray(offset, offset + chunkSize), {
-					stream: true,
-				})
-				perf.stop('core::import::decode')
+				const chunk = perf.time('import::decode', () =>
+					textDecoder.decode(buffer.subarray(offset, offset + chunkSize), { stream: true }),
+				)
 				offset += chunkSize
-				perf.time('core::import::sax', () => sax.parser.write(chunk))
+				bytesRead += chunkSize
+				perf.time('import::parse', () => sax.parser.write(chunk))
 
 				totalRecords += await flushBatch({
-					sax,
-					session,
-					store,
-					documentId,
+					...batchParams,
 					threshold: batchSize,
-					perf,
+					progress: { bytesRead, totalBytes: file.size },
 				})
 			}
 			// Copy the small tail into a fresh array so the (possibly huge) read buffer is released.
@@ -155,13 +160,17 @@ async function streamFileInChunks(params: {
 
 		if (done) {
 			if (remainder.length > 0) {
-				perf.start('core::import::decode')
-				const tail = textDecoder.decode(remainder) // final flush of any pending multi-byte char
-				perf.stop('core::import::decode')
-				perf.time('core::import::sax', () => sax.parser.write(tail))
+				// final flush of any pending multi-byte char
+				const tail = perf.time('import::decode', () => textDecoder.decode(remainder))
+				bytesRead += remainder.length
+				perf.time('import::parse', () => sax.parser.write(tail))
 			}
-			sax.parser.close()
-			totalRecords += await flushBatch({ sax, session, store, documentId, threshold: 0, perf })
+			perf.time('import::parse', () => sax.parser.close())
+			totalRecords += await flushBatch({
+				...batchParams,
+				threshold: 0,
+				progress: { bytesRead, totalBytes: file.size },
+			})
 		}
 	}
 
@@ -174,16 +183,71 @@ async function endImportSession(params: {
 	importSession?: ImportSession
 	store: Store
 	documentId: string
+	file: File
+	perf: Perf
+	signal?: AbortSignal
 }): Promise<{ recordDelta: number; diagnostics: Diagnostic[] }> {
-	const { importSession, store, documentId } = params
+	const { importSession, store, documentId, file, perf, signal } = params
 
+	throwIfAborted({ signal, file })
 	if (!importSession?.afterImport) return { recordDelta: 0, diagnostics: [] }
 
-	const { creates, updates, deletes, diagnostics = [] } = await importSession.afterImport()
+	perf.start('import::hooks.after')
+	let result: Awaited<ReturnType<NonNullable<ImportSession['afterImport']>>>
+	try {
+		result = await importSession.afterImport()
+	} finally {
+		perf.stop('import::hooks.after')
+	}
+	const { creates, updates, deletes, diagnostics = [] } = result
 	const hasOps = creates?.length || updates?.length || deletes?.length
-	if (hasOps) await store.bulkWrite(documentId, { creates, updates, deletes })
+	if (hasOps) {
+		throwIfAborted({ signal, file })
+		perf.start('import::writes.after')
+		try {
+			await store.bulkWrite(documentId, { creates, updates, deletes })
+		} finally {
+			perf.stop('import::writes.after')
+		}
+	}
 
 	return { recordDelta: (creates?.length ?? 0) - (deletes?.length ?? 0), diagnostics }
+}
+
+/** An aborted import goes no further: `IMPORT_ABORTED`. */
+export function throwIfAborted(params: { signal?: AbortSignal; file: File }): void {
+	const { signal, file } = params
+	if (!signal?.aborted) return
+	throwDialecteError('IMPORT_ABORTED', {
+		detail: `The import of "${file.name}" was aborted`,
+		meta: { fileName: file.name },
+	})
+}
+
+/**
+ * Tell a progress listener, never waiting for it: a listener on the far side of a closed port may
+ * never answer, and its failure is not the import's.
+ */
+function tellProgress(params: { control: ImportControl; progress: ImportProgress }): void {
+	const { control, progress } = params
+	if (!control.onProgress) return
+	try {
+		const answer: unknown = control.onProgress(progress)
+		// a promise of another realm, or any thenable, is not `instanceof Promise` here
+		if (isThenable(answer)) Promise.resolve(answer).catch(ignoreListenerFailure)
+	} catch {
+		// a listener that throws is the listener's problem, not the import's
+	}
+}
+
+function ignoreListenerFailure(): void {}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		typeof (value as { then?: unknown }).then === 'function'
+	)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -195,26 +259,32 @@ function appendToBuffer(existing: Uint8Array, incoming: Uint8Array<ArrayBufferLi
 	return merged
 }
 
+/** Store the records parsed so far once there are `threshold` of them, then tell the progress. */
 async function flushBatch(params: {
 	sax: ReturnType<typeof setSaxParser>
 	session: ParseSession
 	store: Store
 	documentId: string
+	file: File
 	threshold: number
 	perf: Perf
+	control: ImportControl
+	progress: ImportProgress
 }): Promise<number> {
-	const { sax, session, store, documentId, threshold, perf } = params
+	const { sax, session, store, documentId, file, threshold, perf, control, progress } = params
 
 	if (sax.getSize() < threshold) return 0
+	throwIfAborted({ signal: control.signal, file })
 
-	const batch = sax.drainBatch()
-	perf.start('core::import::resolveChildren')
-	const resolved = session.resolveChildrenForBatch(batch)
-	perf.stop('core::import::resolveChildren')
-
-	perf.count('core::store::bulkWrite')
-	perf.start('core::store::bulkWrite')
-	await store.bulkWrite(documentId, { creates: resolved })
-	perf.stop('core::store::bulkWrite')
-	return resolved.length
+	perf.start('import::insert')
+	let stored: number
+	try {
+		const resolved = session.resolveChildrenForBatch(sax.drainBatch())
+		await store.bulkWrite(documentId, { creates: resolved })
+		stored = resolved.length
+	} finally {
+		perf.stop('import::insert')
+	}
+	tellProgress({ control, progress })
+	return stored
 }

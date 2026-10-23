@@ -40,19 +40,43 @@ perf.stop('demo::bulkInsert')
 
 ## API
 
-| Method              | Purpose                                                                                 |
-| ------------------- | --------------------------------------------------------------------------------------- |
-| `start(name)`       | Open a span (name-keyed, like `console.time`)                                           |
-| `stop(name)`        | Close the most recent open span for `name` (unmatched `stop` no-op)                     |
-| `count(name)`       | Tally an event (round-trips, cache hits/misses) — no timing, surfaced as `count`        |
-| `profile(name, fn)` | Run `fn` inside a DevTools CPU profile (no-op in node/headless)                         |
-| `report()`          | Aggregate the timeline **synchronously** — `{ calls, totalMs, avgMs, count? }` per name |
-| `log()`             | `console.table(report())`                                                               |
-| `reset()`           | Clear all marks + measures + counters (bound memory between scenarios)                  |
+| Method                      | Purpose                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `start(name)`               | Open a span (name-keyed, like `console.time`)                                                   |
+| `stop(name)`                | Close the most recent open span for `name` (unmatched `stop` no-op)                             |
+| `count(name)`               | Tally an event (round-trips, cache hits/misses) — no timing, surfaced as `count`                |
+| `profile(name, fn)`         | Run `fn` inside a DevTools CPU profile (no-op in node/headless)                                 |
+| `report()`                  | Aggregate the timeline **synchronously** — `{ calls, totalMs, avgMs, count? }` per name         |
+| `log()`                     | `console.table(report())`                                                                       |
+| `reset()`                   | Clear all marks + measures + counters (bound memory between scenarios)                          |
+| `snapshot()`                | This perf's spans (on its realm's clock), its tallies and its `timeOrigin`, as data             |
+| `merge({ report, prefix })` | Fold another realm's `snapshot()` in under `<prefix>::<name>`, spans shifted onto this timeline |
 
 `report()` reads the timeline fresh on demand — there is no `PerformanceObserver`,
 so `stop(); report()` in the same tick already sees the result. A counted-only name
 (no span) appears with zeroed timing and its `count`.
+
+`createPerf({ enabled, timeline: false })` keeps its spans in the perf only (`report()` and
+`snapshot()` read them): the perf of a realm whose spans another realm merges.
+
+## Import stages
+
+The store runs each import with a perf of its own and hands its `snapshot()` back; the project
+merges it under `store::` - whichever store ran it: in the page, in a worker or on a server - its
+spans placed on the page's timeline (shifted by the difference of the two realms' `timeOrigin`). With `dev.perf` on, `project.perf.report()` holds:
+
+| Name                          | Kind  | What                                                       |
+| ----------------------------- | ----- | ---------------------------------------------------------- |
+| `store::import`               | span  | the whole import, register to ready                        |
+| `store::import::register`     | span  | the document registered `importing`                        |
+| `store::import::decode`       | tally | bytes decoded to text, per chunk                           |
+| `store::import::parse`        | tally | the SAX pass, per chunk (holds the two per-record tallies) |
+| `store::import::standardize`  | tally | per record                                                 |
+| `store::import::hooks.record` | tally | the session's `beforeImportRecord`, per record handed      |
+| `store::import::insert`       | span  | one stored batch                                           |
+| `store::import::hooks.after`  | span  | the session's `afterImport`                                |
+| `store::import::writes.after` | span  | the writes `afterImport` returned                          |
+| `store::import::finalize`     | span  | the document set `ready`                                   |
 
 ## Example (core-agnostic)
 

@@ -2,8 +2,10 @@ import { InMemoryStore } from './in-memory-store'
 
 import { describe, it, expect, beforeEach } from 'vitest'
 
+import { TEST_DIALECTE_CONFIG } from '@/test/config'
+
 import type { DocumentRecord } from '@/project/types'
-import type { AnyRawRecord, BlobRecord } from '@/types'
+import type { AnyDialecteConfig, AnyRawRecord, BlobRecord } from '@/types'
 
 // What any store must do is in src/store/contract; here is what is InMemoryStore's own.
 
@@ -59,7 +61,7 @@ describe('InMemoryStore (non-writable)', () => {
 	it('reads return empty', async () => {
 		expect(await store.getDocuments()).toEqual([])
 		expect(await store.getByDocumentId('any')).toEqual([])
-		expect(await store.get('any')).toBeUndefined()
+		expect(await store.get('any', 'any')).toBeUndefined()
 		expect(await store.getByTagNameInDocument('X', 'any')).toEqual([])
 		expect(await store.getChangeLog('any')).toEqual([])
 	})
@@ -86,9 +88,51 @@ describe('InMemoryStore (non-writable)', () => {
 		['attachBlob', () => store.attachBlob('b1', { documentId: 'd', recordRef: 'r' })],
 		['detachBlob', () => store.detachBlob('b1', { documentId: 'd', recordRef: 'r' })],
 		['removeBlob', () => store.removeBlob('b1')],
+		['importFile', () => store.importFile({ file: new File(['<Root/>'], 'x.xml') })],
 	] as const
 
 	it.each(writeMethods)('%s throws STORE_NOT_WRITABLE', async (_name, fn) => {
 		await expect(fn()).rejects.toThrow(/read-only/i)
+	})
+})
+
+describe('InMemoryStore - opened again while it imports', () => {
+	it('an import running on the instance is kept by its own open', async () => {
+		let release: () => void = () => {}
+		const gate = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		let sessionReached: () => void = () => {}
+		const reached = new Promise<void>((resolve) => {
+			sessionReached = resolve
+		})
+		const store = new InMemoryStore('reopened-while-importing', {
+			importRuntime: {
+				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
+				defaultConfigKey: 'default',
+				hooks: {
+					createImportSession: () => ({
+						afterImport: async () => {
+							sessionReached()
+							await gate
+							return {}
+						},
+					}),
+				},
+			},
+		})
+		await store.open()
+		const namespace = TEST_DIALECTE_CONFIG.namespaces.default.uri
+		const importing = store.importFile({
+			file: new File([`<Root xmlns="${namespace}"><A/></Root>`], 'one.xml'),
+			writeId: 'w-running',
+		})
+		await reached
+
+		await store.open()
+		release()
+
+		await importing
+		expect(await store.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
 	})
 })

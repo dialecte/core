@@ -69,27 +69,23 @@ export function setSaxParser(params: {
 		},
 	)
 
-	// Self-time per handler (create-record / text / close+reconcile-children) via
-	// the O(1) time accumulator, NOT per-call spans — millions of nodes would
-	// otherwise flood the timeline. Surfaced as calls/totalMs/avgMs in report().
+	// The records the session asks for, when it names them: the others pass it by.
+	const sessionTags = importSession?.recordTagNames && new Set(importSession.recordTagNames)
+
 	parser.onopentag = (node: sax.QualifiedTag) => {
-		perf.time('core::import::onOpenTag', () =>
-			handleOpenTag({ node, state, dialecteConfig, useCustomRecordsIds }),
-		)
+		handleOpenTag({ node, state, dialecteConfig, useCustomRecordsIds })
 	}
 
 	parser.ontext = (text: string) => {
-		perf.time('core::import::onText', () => handleText({ text, state }))
+		handleText({ text, state })
 	}
 
 	parser.oncdata = (cdata: string) => {
-		perf.time('core::import::onText', () => handleText({ text: cdata, state }))
+		handleText({ text: cdata, state })
 	}
 
 	parser.onclosetag = () => {
-		perf.time('core::import::onCloseTag', () =>
-			handleCloseTag({ state, hooks, importSession, session, dialecteConfig, perf }),
-		)
+		handleCloseTag({ state, hooks, importSession, sessionTags, session, dialecteConfig, perf })
 	}
 
 	parser.onerror = handleError
@@ -196,6 +192,7 @@ function handleText(params: { text: string; state: ParserState }): void {
  * @param session Parse session
  * @param hooks Dialecte record hooks (standardization), from the Project instance
  * @param importSession This file's import session, when the dialecte creates one
+ * @param sessionTags The tag names the session asks for; absent, every record is handed to it
  * @returns Updated state
  */
 function handleCloseTag(params: {
@@ -203,10 +200,19 @@ function handleCloseTag(params: {
 	session: ParseSession
 	hooks?: TransactionHooks<AnyDialecteConfig>
 	importSession?: ImportSession
+	sessionTags?: ReadonlySet<string>
 	dialecteConfig: AnyDialecteConfig
 	perf?: Perf
 }): void {
-	const { state, hooks, importSession, session, dialecteConfig, perf = NOOP_PERF } = params
+	const {
+		state,
+		hooks,
+		importSession,
+		sessionTags,
+		session,
+		dialecteConfig,
+		perf = NOOP_PERF,
+	} = params
 
 	// Pop the closing record in place; the stack now holds only its ancestors.
 	const rawRecord = state.stack.pop()
@@ -222,7 +228,7 @@ function handleCloseTag(params: {
 	// Runs BEFORE beforeImportRecord so that hook receives the finalized record
 	// (canonical attributes + any hook-enforced uuid already present), letting
 	// it index / resolve references without re-implementing standardization.
-	const currentRecord = perf.time('core::import::onCloseTag::standardize', () =>
+	const currentRecord = perf.time('import::standardize', () =>
 		standardizeRecord({
 			dialecteConfig,
 			hooks,
@@ -231,26 +237,24 @@ function handleCloseTag(params: {
 	)
 
 	const beforeImportRecord = importSession?.beforeImportRecord
-	if (beforeImportRecord) {
-		perf.time('core::import::onCloseTag::beforeHook', () =>
+	if (beforeImportRecord && (!sessionTags || sessionTags.has(currentRecord.tagName))) {
+		perf.time('import::hooks.record', () =>
 			beforeImportRecord({ record: currentRecord, ancestry: state.stack }),
 		)
 	}
 
-	perf.time('core::import::onCloseTag::reconcileChildren', () => {
-		const parent = state.stack[state.stack.length - 1]
-		if (parent) {
-			// Mutate the still-open parent's children in place; it captures them when it
-			// standardizes on its own close.
-			parent.children.push({ id: currentRecord.id, tagName: currentRecord.tagName })
-		} else if (currentRecord.parent) {
-			// Parent already left the stack (drained in an earlier batch) → resolve later.
-			session.registerPendingChild(currentRecord.parent.id, {
-				id: currentRecord.id,
-				tagName: currentRecord.tagName,
-			})
-		}
-	})
+	const parent = state.stack[state.stack.length - 1]
+	if (parent) {
+		// Mutate the still-open parent's children in place; it captures them when it
+		// standardizes on its own close.
+		parent.children.push({ id: currentRecord.id, tagName: currentRecord.tagName })
+	} else if (currentRecord.parent) {
+		// Parent already left the stack (drained in an earlier batch) → resolve later.
+		session.registerPendingChild(currentRecord.parent.id, {
+			id: currentRecord.id,
+			tagName: currentRecord.tagName,
+		})
+	}
 
 	state.recordsBatch.push(currentRecord)
 }

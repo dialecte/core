@@ -5,13 +5,16 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import { createDiagnostic, isKnownDiagnostic } from '@/diagnostics'
 import { createDialecteError, defineErrors } from '@/errors'
 import { InMemoryStore } from '@/store/in-memory/in-memory-store'
+import { TABLE_DOCUMENTS } from '@/store/store.constants'
 import { runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
+import type { ImportRuntime } from './io/run-import.types'
 import type { ImportDocumentOptions, ImportedDocument, ImportEntry, StorageParam } from './types'
 import type { Diagnostic, DiagnosticCatalogue } from '@/diagnostics'
 import type { DialecteError } from '@/errors'
 import type { BaseTestCase } from '@/test'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
+import type Dexie from 'dexie'
 
 // Through the public Project API on an in-memory store: what `import` and `importFile` return,
 // what lands, what is broadcast - one entry per file, a failing file its own entry.
@@ -118,13 +121,19 @@ const HOOK_FAILURE: ImportEntry = {
 		key: 'IMPORT_FAILED',
 		message: 'Failed to import the file',
 		detail: 'hook failed',
-		// the first frame that is no raising function: the `catch` in `Project.import`. What precedes
-		// `/src/` is the file URL's (the dev-server port in a browser test, the package folder in node)
-		method: expect.stringMatching(/^[\w-]+\/src\/project\/project::Project\.import$/),
+		// the first frame that is no raising function: the `catch` in `runImport`, which the store
+		// ran. What precedes `/src/` is the file URL's (the dev-server port in a browser test, the
+		// package folder in node)
+		method: expect.stringMatching(/^[\w-]+\/src\/project\/io\/run-import::runImport$/),
 		ref: undefined,
 		meta: undefined,
 		cause: HOOK_ERROR,
 	},
+}
+
+/** What a custom store imports with: the project's configs and hooks. */
+function importRuntime(hooks?: DialecteHooks<AnyDialecteConfig>): ImportRuntime {
+	return { configs: { default: CONFIG, other: CONFIG }, defaultConfigKey: 'default', hooks }
 }
 
 async function openProject(
@@ -313,8 +322,9 @@ describe('Project - one file in flight per project', () => {
 	})
 
 	it('close() while an import is in flight → it lands, is in the store and broadcast once; only a call made after close rejects', async () => {
-		const store = new InMemoryStore('import-close', { writable: true })
-		const project = await openProject(recordingHooks([], 20), { type: 'custom', store })
+		const hooks = recordingHooks([], 20)
+		const store = new InMemoryStore('import-close', { importRuntime: importRuntime(hooks) })
+		const project = await openProject(hooks, { type: 'custom', store })
 		const listener = project.createChannel()
 		const broadcasts: unknown[] = []
 		listener.onmessage = (event) => broadcasts.push(event.data)
@@ -350,8 +360,9 @@ describe('Project - one file in flight per project', () => {
 	})
 
 	it('close() during an import of three files, the first in flight → it lands; the two after it are failed entries PROJECT_NOT_OPENED, nothing of them stored', async () => {
-		const store = new InMemoryStore('import-close-many', { writable: true })
-		const project = await openProject(recordingHooks([], 20), { type: 'custom', store })
+		const hooks = recordingHooks([], 20)
+		const store = new InMemoryStore('import-close-many', { importRuntime: importRuntime(hooks) })
+		const project = await openProject(hooks, { type: 'custom', store })
 		const listener = project.createChannel()
 		const broadcasts: unknown[] = []
 		listener.onmessage = (event) => broadcasts.push(event.data)
@@ -427,10 +438,12 @@ describe('Project.importFile - one file, the failure thrown', () => {
 		}
 	})
 
-	it('a session hook throws → the same Error object is thrown, nothing landed', async () => {
+	it('a session hook throws → IMPORT_FAILED thrown, the hook’s Error as its cause, nothing landed', async () => {
 		const project = await openProject(throwingHooks(HOOK_ERROR))
 		try {
-			await expect(project.importFile(xmlFile('<A/>', 'hook.xml'))).rejects.toBe(HOOK_ERROR)
+			await expect(project.importFile(xmlFile('<A/>', 'hook.xml'))).rejects.toMatchObject({
+				cause: { key: 'IMPORT_FAILED', cause: HOOK_ERROR },
+			})
 			expect([...project.state.documents.keys()]).toEqual([])
 			expect(await project.getDocuments()).toEqual([])
 		} finally {
@@ -447,6 +460,92 @@ describe('Project.importFile - one file, the failure thrown', () => {
 			expect(await project.getDocuments()).toEqual([])
 		} finally {
 			await project.close()
+		}
+	})
+})
+
+describe('Project.importFile - what the caller holds over it', () => {
+	it('options.onProgress is told per batch; the document is not listed while it imports', async () => {
+		const project = await openProject()
+		try {
+			const progress: number[] = []
+			let listedWhileImporting: Promise<string[]> | undefined
+			const document = await project.importFile(xmlFile('<A/><B/><C/>', 'one.xml'), {
+				chunkOptions: { chunkSize: 16, batchSize: 1 },
+				onProgress: ({ bytesRead }) => {
+					progress.push(bytesRead)
+					listedWhileImporting ??= project
+						.getDocuments()
+						.then((documents) => documents.map((listed) => listed.id))
+				},
+			})
+			expect(progress.length).toBeGreaterThan(1)
+			expect(await listedWhileImporting).toEqual([])
+			expect((await project.getDocuments()).map((listed) => listed.id)).toEqual([
+				document.documentId,
+			])
+		} finally {
+			await project.close()
+		}
+	})
+
+	it('options.signal aborted → IMPORT_ABORTED thrown, nothing landed, nothing broadcast', async () => {
+		const project = await openProject()
+		const listener = project.createChannel()
+		const broadcasts: unknown[] = []
+		listener.onmessage = (event) => broadcasts.push(event.data)
+		try {
+			const controller = new AbortController()
+			await expect(
+				project.importFile(xmlFile('<A/><B/><C/>', 'one.xml'), {
+					chunkOptions: { chunkSize: 16, batchSize: 1 },
+					onProgress: () => controller.abort(),
+					signal: controller.signal,
+				}),
+			).rejects.toMatchObject({ cause: { key: 'IMPORT_ABORTED', code: 'D5005' } })
+			expect([...project.state.documents.keys()]).toEqual([])
+			expect(await project.getDocuments()).toEqual([])
+			await new Promise((resolve) => setTimeout(resolve, 10))
+			expect(broadcasts).toEqual([])
+		} finally {
+			listener.close()
+			await project.close()
+		}
+	})
+
+	it('dev.perf on → the timings of the store’s import stages land on the project perf under store::', async () => {
+		const project = await new Project({
+			configs: { default: CONFIG },
+			storage: { type: 'inMemory' },
+			dev: { perf: true },
+		}).open(`import-perf-${crypto.randomUUID()}`)
+		try {
+			project.perf.reset()
+			await project.importFile(xmlFile('<A/>', 'one.xml'))
+			const report = project.perf.report()
+			for (const stage of ['store::import', 'store::import::insert', 'store::import::parse']) {
+				expect(report[stage]?.calls, stage).toBeGreaterThan(0)
+			}
+			expect(Object.keys(report).filter((name) => name.startsWith('import::'))).toEqual([])
+		} finally {
+			project.perf.reset()
+			await project.close()
+		}
+	})
+
+	it('on IndexedDB: a malformed file → PARSE_ERROR, no row, no record table', async () => {
+		const project = await openProject(undefined, { type: 'local' })
+		try {
+			await expect(project.importFile(xmlFile('<A>', 'broken.xml'))).rejects.toMatchObject({
+				cause: { key: 'PARSE_ERROR' },
+			})
+			expect(await project.getDocuments()).toEqual([])
+			expect([...project.state.documents.keys()]).toEqual([])
+			const dexie = project.getDatabaseInstance() as Dexie
+			expect(await dexie.table(TABLE_DOCUMENTS).toArray()).toEqual([])
+			expect(dexie.tables.map((t) => t.name).filter((n) => n.startsWith('xel_'))).toEqual([])
+		} finally {
+			await project.destroy()
 		}
 	})
 })

@@ -6,12 +6,22 @@ import {
 	throwRecordToUpdateNotFound,
 } from '../store-errors'
 import { recordTableName } from '../store.constants'
+import { removeUnfinishedImports } from '../unfinished-imports'
+import { importOutcomeOf } from '../write-outcome'
 import { EMPTY_TABLE } from './in-memory-store.constants'
 
 import { throwDialecteError } from '@/errors'
+import { requireImportRuntime, runImport } from '@/project/io/run-import'
 
-import type { Store, ChangeLogEntry } from '../store.types'
+import type {
+	Store,
+	ChangeLogEntry,
+	ImportFileParams,
+	ImportFileResult,
+	WriteOutcome,
+} from '../store.types'
 import type { InMemoryStoreOptions } from './types'
+import type { ImportRuntime } from '@/project/io/run-import.types'
 import type { DocumentRecord } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
@@ -48,10 +58,16 @@ function guardNoDuplicate(params: {
  *
  * When writable is false, any mutation throws STORE_NOT_WRITABLE.
  * Reads always return empty results.
+ *
+ * Its imports run in its own realm, the page's: `importFile` runs `runImport` with the import
+ * runtime it was built with.
  */
 export class InMemoryStore implements Store {
 	readonly name: string
 	private readonly writable: boolean
+	private readonly importRuntime?: ImportRuntime
+	/** The `writeId`s of the imports this instance runs: its own `open` keeps their documents. */
+	private readonly runningImports = new Set<string>()
 
 	/** Guard so the cross-realm no-op warning is emitted at most once per session. */
 	private static reconcileWarned = false
@@ -66,11 +82,19 @@ export class InMemoryStore implements Store {
 	constructor(name: string, options?: InMemoryStoreOptions) {
 		this.name = name
 		this.writable = options?.writable ?? true
+		this.importRuntime = options?.importRuntime
 	}
 
 	// --- Lifecycle ---
 
-	async open(): Promise<void> {}
+	/** Open: an import found unfinished - it never outlives the store - is removed; one it runs stays. */
+	async open(): Promise<void> {
+		await removeUnfinishedImports({
+			store: this,
+			isRunning: (document) =>
+				document.writeId !== undefined && this.runningImports.has(document.writeId),
+		})
+	}
 
 	close(): void {}
 
@@ -125,7 +149,7 @@ export class InMemoryStore implements Store {
 
 	async updateDocument(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
 	): Promise<void> {
 		this.guardWritable()
 		const existing = this.documents.get(documentId)
@@ -150,15 +174,8 @@ export class InMemoryStore implements Store {
 
 	// --- Record access ---
 
-	async get(id: string, documentId?: string): Promise<AnyRawRecord | undefined> {
-		if (documentId) {
-			return this.readTable(documentId).get(id)
-		}
-		for (const table of this.records.values()) {
-			const record = table.get(id)
-			if (record) return record
-		}
-		return undefined
+	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
+		return this.readTable(documentId).get(id)
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
@@ -180,6 +197,27 @@ export class InMemoryStore implements Store {
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
 		const table = this.readTable(documentId)
 		return ids.map((id) => table.get(id))
+	}
+
+	// --- Import ---
+
+	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
+		this.guardWritable()
+		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
+		const runtime = requireImportRuntime({ runtime: this.importRuntime, storeName: this.name })
+		this.runningImports.add(writeId)
+		try {
+			return await runImport(
+				{ store: this, runtime, file, options, writeId },
+				{ onProgress, signal },
+			)
+		} finally {
+			this.runningImports.delete(writeId)
+		}
+	}
+
+	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
+		return importOutcomeOf({ documents: [...this.documents.values()], writeId: params.writeId })
 	}
 
 	// --- Writes ---
