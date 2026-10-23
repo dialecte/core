@@ -194,3 +194,116 @@ describe('createPerf — time() accumulator', () => {
 		expect(perf.report()).toEqual({})
 	})
 })
+
+describe('createPerf — handing timings to another realm', () => {
+	it('snapshot() holds this perf’s spans on its own clock, its tallies and its timeOrigin', () => {
+		const perf = createPerf({ enabled: true })
+
+		perf.start('import::insert')
+		perf.stop('import::insert')
+		perf.time('import::parse', () => {})
+		perf.count('import::batch')
+
+		const snapshot = perf.snapshot()
+		expect(snapshot.timeOrigin).toBe(performance.timeOrigin)
+		expect(snapshot.spans).toEqual([
+			{ name: 'import::insert', startTime: expect.any(Number), duration: expect.any(Number) },
+		])
+		expect(snapshot.totals).toEqual({
+			'import::parse': { calls: 1, totalMs: expect.any(Number), avgMs: expect.any(Number) },
+			'import::batch': { calls: 0, totalMs: 0, avgMs: 0, count: 1 },
+		})
+	})
+
+	it('timeline: false keeps the spans off the shared timeline, in report() and snapshot() only', () => {
+		const perf = createPerf({ enabled: true, timeline: false })
+
+		perf.start('import::insert')
+		perf.stop('import::insert')
+
+		expect(performance.getEntriesByType('measure')).toHaveLength(0)
+		expect(perf.report()['import::insert'].calls).toBe(1)
+		expect(perf.snapshot().spans.map((span) => span.name)).toEqual(['import::insert'])
+	})
+
+	type MergeCase = {
+		/** how much later the other realm started than this one, in ms */
+		originShift: number
+		span: { startTime: number; duration: number }
+		expectedStartTime: number
+	}
+	const mergeCases: Record<string, MergeCase> = {
+		'a realm started 1000 ms later → its span lands 1000 ms later here': {
+			originShift: 1000,
+			span: { startTime: 50, duration: 20 },
+			expectedStartTime: 1050,
+		},
+		'a realm started earlier than this one → its span lands at 0, never before': {
+			originShift: -1000,
+			span: { startTime: 50, duration: 20 },
+			expectedStartTime: 0,
+		},
+		'the same realm → its span lands where it was': {
+			originShift: 0,
+			span: { startTime: 50, duration: 20 },
+			expectedStartTime: 50,
+		},
+	}
+	for (const [description, testCase] of Object.entries(mergeCases)) {
+		it(`merge() places spans on this timeline: ${description}`, () => {
+			const perf = createPerf({ enabled: true })
+
+			perf.merge({
+				report: {
+					timeOrigin: performance.timeOrigin + testCase.originShift,
+					spans: [{ name: 'import::insert', ...testCase.span }],
+					totals: {},
+				},
+				prefix: 'store',
+			})
+
+			const [measure] = performance.getEntriesByName('dialecte::store::import::insert', 'measure')
+			expect(measure.startTime).toBeCloseTo(testCase.expectedStartTime, 3)
+			expect(measure.duration).toBeCloseTo(testCase.span.duration, 3)
+			expect(perf.report()['store::import::insert']).toMatchObject({ calls: 1 })
+		})
+	}
+
+	it('merge() adds the tallies under the prefix to this perf’s own', () => {
+		const perf = createPerf({ enabled: true })
+		perf.time('store::import::parse', () => {})
+
+		perf.merge({
+			report: {
+				timeOrigin: performance.timeOrigin,
+				spans: [],
+				totals: {
+					'import::parse': { calls: 3, totalMs: 30, avgMs: 10 },
+					'import::batch': { calls: 0, totalMs: 0, avgMs: 0, count: 4 },
+				},
+			},
+			prefix: 'store',
+		})
+
+		const report = perf.report()
+		expect(report['store::import::parse'].calls).toBe(4)
+		expect(report['store::import::parse'].totalMs).toBeGreaterThanOrEqual(30)
+		expect(report['store::import::batch']).toMatchObject({ calls: 0, count: 4 })
+	})
+
+	it('disabled: snapshot() is empty and merge() records nothing', () => {
+		const perf = createPerf({ enabled: false })
+
+		perf.merge({
+			report: {
+				timeOrigin: performance.timeOrigin,
+				spans: [{ name: 'import::insert', startTime: 1, duration: 1 }],
+				totals: {},
+			},
+			prefix: 'store',
+		})
+
+		expect(perf.snapshot()).toEqual({ timeOrigin: performance.timeOrigin, spans: [], totals: {} })
+		expect(performance.getEntriesByType('measure')).toHaveLength(0)
+	})
+})

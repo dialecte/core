@@ -9,6 +9,19 @@ export type PerfReport = Record<
 	{ calls: number; totalMs: number; avgMs: number; count?: number }
 >
 
+/** One span a perf measured, on the clock of its realm (ms since that realm's `timeOrigin`). */
+export type PerfSpan = { name: string; startTime: number; duration: number }
+
+/**
+ * What a perf hands to another realm: its spans on its own clock, the realm's `timeOrigin` to shift
+ * them by, and its tallies (`time` and `count` names), keyed like `report()`. Plain data.
+ */
+export type PerfSnapshot = {
+	timeOrigin: number
+	spans: PerfSpan[]
+	totals: PerfReport
+}
+
 /**
  * Dev-only perf helper built on the platform User Timing API
  * (`performance.mark`/`measure`). Spans live on the standard `performance`
@@ -46,4 +59,11 @@ export type Perf = {
 	log(): void
 	/** Clear all marks + measures (bound memory between measured scenarios). */
 	reset(): void
+	/** This realm's spans (the shared timeline's; this perf's own with `timeline: false`) and this perf's tallies, to hand to another realm. */
+	snapshot(): PerfSnapshot
+	/**
+	 * Fold another realm's snapshot in under `<prefix>::<name>`: its spans placed on this realm's
+	 * timeline (shifted by the difference of the two `timeOrigin`s), its tallies added to this one's.
+	 */
+	merge(params: { report: PerfSnapshot; prefix: string }): void
 }
