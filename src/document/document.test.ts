@@ -122,7 +122,7 @@ describe('Document — a prepared change whose commit fails', () => {
 		projects.length = 0
 	})
 
-	it('the store is closed → the caller and doc.state.error get the store refusal', async () => {
+	it('the store is closed → the caller and doc.state.error get STORE_CLOSED', async () => {
 		const { project, source } = await createTestProject({ sourceXml: SIMPLE_XML })
 		projects.push(project)
 
@@ -137,7 +137,7 @@ describe('Document — a prepared change whose commit fails', () => {
 			(error: unknown) => error,
 		)
 
-		const expected = { key: 'STORE_COMMIT_FAILED' }
+		const expected = { key: 'STORE_CLOSED' }
 		expect({
 			thrown: { key: toDialecteError(thrown)?.key },
 			lastError: { key: source.document.state.error?.key },

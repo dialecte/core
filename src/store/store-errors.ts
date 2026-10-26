@@ -58,3 +58,12 @@ export function throwDuplicateRecordIds(params: {
 function unique(ids: string[]): string[] {
 	return [...new Set(ids)]
 }
+
+/** An operation through a store closed by `close()`: refused until the store is opened again. */
+export function throwStoreClosed(params: { storeName: string }): never {
+	const { storeName } = params
+	throwDialecteError('STORE_CLOSED', {
+		detail: `Store "${storeName}" is closed: open it again before using it`,
+		meta: { storeName },
+	})
+}

@@ -46,6 +46,10 @@ export const ERROR_CATALOG = {
 		code: 'D1009',
 		message: 'An id is already taken in the store',
 	},
+	STORE_CLOSED: {
+		code: 'D1010',
+		message: 'Store is closed',
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {

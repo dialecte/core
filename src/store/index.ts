@@ -8,6 +8,7 @@ export type {
 	ImportFileParams,
 	ImportFileResult,
 	ImportProgress,
+	ImportTarget,
 	WriteOutcome,
 } from './store.types'
 export { importOutcomeOf } from './write-outcome'

@@ -64,7 +64,7 @@ describe('Project.open - the documents it finds', () => {
 			configs: { default: CONFIG },
 			storage: { type: 'custom', store },
 		}).open('open-sweep')
-		cleanups.push(() => project.close())
+		cleanups.push(() => project.destroy())
 
 		expect([...project.state.documents.keys()]).toEqual(['ready'])
 		expect((await project.getDocuments()).map((d) => d.id)).toEqual(['ready'])
