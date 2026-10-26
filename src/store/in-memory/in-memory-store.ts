@@ -1,4 +1,5 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { compareById } from '../compare-by-id'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -79,14 +80,6 @@ function copyToWrite<GenericValue>(params: {
 			cause: error instanceof Error ? error : undefined,
 		})
 	}
-}
-
-/**
- * Id order, as an IndexedDB key range answers: strings compared by UTF-16 code unit, not by locale.
- */
-function compareById(left: { id: string }, right: { id: string }): number {
-	if (left.id < right.id) return -1
-	return left.id > right.id ? 1 : 0
 }
 
 /**

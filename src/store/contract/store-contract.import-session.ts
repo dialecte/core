@@ -35,6 +35,23 @@ export function holdContractImport(): ContractImportHold {
 	return { reached, release }
 }
 
+/**
+ * Wait until the held import has reached its hold. An import that fails first fails the case at once
+ * (never waits for the test's timeout); one that completes without reaching the hold fails it too.
+ */
+export function untilHeld(params: {
+	hold: ContractImportHold
+	importing: Promise<unknown>
+}): Promise<void> {
+	const { hold, importing } = params
+	return Promise.race([
+		hold.reached,
+		importing.then(function completedUnheld() {
+			throw new Error('the import completed without reaching the hold')
+		}),
+	])
+}
+
 /** Whether a record of the session's tag has `bB` set to `value`. */
 function hasMarkedRecord(params: { handed: { record: AnyRawRecord }[]; value: string }): boolean {
 	const { handed, value } = params

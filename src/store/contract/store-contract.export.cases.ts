@@ -1,3 +1,4 @@
+import { needing } from './store-contract.cases'
 import {
 	CONTRACT_EXPORT_FORMATTED,
 	CONTRACT_EXPORT_SOURCE,
@@ -108,7 +109,7 @@ const WRITES_DURING_AN_EXPORT: Record<string, WriteDuringExport> = {
 		write: ({ writer, documentId }) => writer.redo(documentId),
 	},
 	'a commit through another connection': {
-		needs: 'second-connection',
+		needs: ['second-connection'],
 		write: ({ writer, documentId, edited }) => commitEdits({ store: writer, documentId, edited }),
 	},
 }
@@ -123,7 +124,9 @@ const writesDuringAnExport: StoreContractCases = Object.fromEntries(
 				const documentId = await importSource({ store })
 				const edited = await editedAAndC({ store, documentId })
 				// a second connection is opened before the export, so the write only has to land
-				const writer = writeCase.needs === 'second-connection' ? await context.connect() : store
+				const writer = writeCase.needs?.includes('second-connection')
+					? await context.connect()
+					: store
 				await writeCase.arrange?.({ store, writer, documentId, edited })
 				const before = await exportedText({ store, documentId, indent: false })
 				let written: Promise<void> | undefined
@@ -331,7 +334,7 @@ const refusedExports: StoreContractCases = {
 
 /** What every store answers when it exports a document; merged into the store contract. */
 export const STORE_EXPORT_CONTRACT: StoreContractGroups = {
-	'exporting a document': exporting,
-	'a write during an export': writesDuringAnExport,
-	'refused exports': refusedExports,
+	'exporting a document': needing({ needs: ['export'], cases: exporting }),
+	'a write during an export': needing({ needs: ['export'], cases: writesDuringAnExport }),
+	'refused exports': needing({ needs: ['export'], cases: refusedExports }),
 }

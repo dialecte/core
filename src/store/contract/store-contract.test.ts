@@ -5,7 +5,25 @@ import { STORE_CONTRACT_FACTORIES } from './store-contract.factories'
 import { afterEach, beforeEach, describe, it } from 'vitest'
 
 import type { Store } from '../store.types'
-import type { StoreContractContext, StoreContractFactory } from './store-contract.types'
+import type {
+	StoreContractCase,
+	StoreContractContext,
+	StoreContractFactory,
+} from './store-contract.types'
+
+/** Why the leg cannot run the case yet: the reason of the first part of the port it needs and has pending. */
+function pendingReasonOf(params: {
+	factory: StoreContractFactory
+	testCase: StoreContractCase
+}): string | undefined {
+	const { factory, testCase } = params
+	for (const need of testCase.needs ?? []) {
+		if (need === 'second-connection') continue
+		const reason = factory.pending?.[need]
+		if (reason) return reason
+	}
+	return undefined
+}
 
 /**
  * What any store must do, run over every store the factories know. A case gets a fresh store and
@@ -58,7 +76,16 @@ function runStoreContract(factory: StoreContractFactory): void {
 		for (const [group, cases] of Object.entries({ ...STORE_CONTRACT, ...STORE_EXPORT_CONTRACT })) {
 			describe(group, () => {
 				for (const [description, testCase] of Object.entries(cases)) {
-					const skipped = testCase.needs === 'second-connection' && !factory.connect
+					const pendingReason = pendingReasonOf({ factory, testCase })
+					if (pendingReason) {
+						// expected to fail: once the leg serves the part, the case passes and this flags the stale entry
+						it.fails(`${description} (pending: ${pendingReason})`, () => {
+							if (!context) throw new Error(`${factory.name} gave no store`)
+							return testCase.act(context)
+						})
+						continue
+					}
+					const skipped = testCase.needs?.includes('second-connection') && !factory.connect
 					const testFn = skipped ? it.skip : testCase.only ? it.only : it
 					testFn(description, () => {
 						if (!context) throw new Error(`${factory.name} gave no store`)

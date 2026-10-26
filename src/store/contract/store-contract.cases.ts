@@ -16,7 +16,7 @@ import {
 	sessionRecords,
 	SMALL_BATCHES,
 } from './store-contract.fixtures'
-import { holdContractImport } from './store-contract.import-session'
+import { holdContractImport, untilHeld } from './store-contract.import-session'
 
 import { expect } from 'vitest'
 
@@ -25,12 +25,14 @@ import type {
 	AbsentDocumentRead,
 	AttributePatchCase,
 	OperationInFlight,
+	OrderedRead,
 	RefusedWrite,
 	StoreOperation,
 	SiblingOrderStep,
 	StoreContractCases,
 	StoreContractContext,
 	StoreContractGroups,
+	StoreContractNeed,
 	ValueRead,
 	ValueWrite,
 } from './store-contract.types'
@@ -308,6 +310,28 @@ const bulkWrites: StoreContractCases = {
 			expect(await store.get('r9', 'doc-1')).toEqual(makeRecord({ id: 'r9', value: 'patched' }))
 		},
 	},
+	'two patches of one record in one write → applied in the order given': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+			await store.bulkWrite('doc-1', {
+				updates: [
+					{ recordId: 'r1', attributes: [{ name: 'b', value: 'first' }], value: 'first' },
+					{ recordId: 'r1', attributes: [{ name: 'b', value: 'second' }] },
+				],
+			})
+			expect(await store.get('r1', 'doc-1')).toEqual(
+				makeRecord({
+					id: 'r1',
+					value: 'first',
+					attributes: [
+						{ name: 'a', value: '1' },
+						{ name: 'b', value: 'second' },
+					],
+				}),
+			)
+		},
+	},
 	'update patch of an absent record changes nothing': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
@@ -322,7 +346,19 @@ const bulkWrites: StoreContractCases = {
 			expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual(['r2'])
 		},
 	},
+	'count follows a bulk write creating and deleting, an id deleted twice': {
+		act: async ({ store }) => {
+			await seedTwoRecords(store)
+			await store.bulkWrite('doc-1', {
+				creates: [makeRecord({ id: 'r3' })],
+				deletes: ['r1', 'r3', 'r1'],
+			})
+			expect(await store.count('doc-1')).toBe(1)
+			expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual(['r2'])
+		},
+	},
 	'leaves no history: bulk writes are not undoable': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			expect(await store.getChangeLog('doc-1')).toEqual([])
@@ -511,6 +547,7 @@ const reopen: StoreContractCases = {
 		},
 	},
 	'history is there again after a reopen: undo still works': {
+		needs: ['history'],
 		act: async ({ store, reopen }) => {
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
@@ -694,6 +731,7 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 		expected: ['c', 'a', 'b'],
 	},
 	'a commit creating b between c and a': {
+		needs: ['history'],
 		run: async ({ store }) => {
 			await seedParentWithChildren({ store, childIds: ['c', 'a'] })
 			await commit({
@@ -706,6 +744,7 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 		expected: ['c', 'b', 'a'],
 	},
 	'a commit reordering the children': {
+		needs: ['history'],
 		run: async ({ store }) => {
 			await seedParentWithChildren({ store, childIds: ['a', 'b', 'c'] })
 			await commit({
@@ -717,6 +756,7 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 		expected: ['c', 'b', 'a'],
 	},
 	'a commit deleting b': {
+		needs: ['history'],
 		run: async ({ store }) => {
 			await seedParentWithChildren({ store, childIds: ['c', 'b', 'a'] })
 			await commit({
@@ -729,6 +769,7 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 		expected: ['c', 'a'],
 	},
 	'an undo of the create between': {
+		needs: ['history'],
 		run: async ({ store }) => {
 			await seedParentWithChildren({ store, childIds: ['c', 'a'] })
 			await commit({
@@ -742,6 +783,7 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 		expected: ['c', 'a'],
 	},
 	'a redo of the create between': {
+		needs: ['history'],
 		run: async ({ store }) => {
 			await seedParentWithChildren({ store, childIds: ['c', 'a'] })
 			await commit({
@@ -756,6 +798,7 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 		expected: ['c', 'b', 'a'],
 	},
 	'a reopen after the create between': {
+		needs: ['history'],
 		run: async (context) => {
 			await seedParentWithChildren({ store: context.store, childIds: ['c', 'a'] })
 			await commit({
@@ -774,6 +817,7 @@ const siblingOrder: StoreContractCases = Object.fromEntries(
 	Object.entries(siblingOrderSteps).map(([description, step]) => [
 		`children keep their order through ${description}`,
 		{
+			needs: step.needs,
 			act: async (context: StoreContractContext) => {
 				await step.run(context)
 				const seen = await childrenOfParent(context.store)
@@ -920,6 +964,7 @@ const uncopyableWrites: StoreContractCases = Object.fromEntries(
 	Object.entries(UNCOPYABLE_WRITES).map(([name, { write, key }]) => [
 		`${name} of a value the store cannot copy (a function) → ${key}, the record as it was, no history`,
 		{
+			needs: ['history'],
 			act: async ({ store }: StoreContractContext) => {
 				await store.registerDocument(makeDocument())
 				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
@@ -961,6 +1006,7 @@ const rejectedWrites: StoreContractCases = {
 		},
 	},
 	'a commit creating an id the document holds is rejected, nothing lands, no history entry': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			await expectRejectsWith({
@@ -1009,6 +1055,7 @@ const rejectedWrites: StoreContractCases = {
 		},
 	},
 	'a commit holding one id twice is rejected, nothing lands, no history entry': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
 			await expectRejectsWith({
@@ -1025,6 +1072,7 @@ const rejectedWrites: StoreContractCases = {
 		},
 	},
 	'a commit updating a record the document does not hold is rejected and nothing lands': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			await expectRejectsWith({
@@ -1043,6 +1091,7 @@ const rejectedWrites: StoreContractCases = {
 		},
 	},
 	'a commit with a taken id and an absent update is refused for the absent update': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			await expectRejectsWith({
@@ -1060,6 +1109,7 @@ const rejectedWrites: StoreContractCases = {
 		},
 	},
 	'a commit deleting an absent id deletes nothing of it and snapshots nothing of it': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			await commit({ store, documentId: 'doc-1', deletes: ['nope', 'r1'] })
@@ -1080,6 +1130,7 @@ const rejectedWrites: StoreContractCases = {
 		},
 	},
 	'a commit to an unregistered document is rejected': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await expectRejectsWith({
 				action: commit({ store, documentId: 'nope', creates: [makeRecord({ id: 'r1' })] }),
@@ -1107,12 +1158,18 @@ const readsOfAbsentDocument: Record<string, AbsentDocumentRead> = {
 		read: (store) => store.getMany(['r1', 'r2'], 'nope'),
 		expected: [undefined, undefined],
 	},
-	'getChangeLog reads []': { read: (store) => store.getChangeLog('nope'), expected: [] },
+	'getChangeLog reads []': {
+		needs: ['history'],
+		read: (store) => store.getChangeLog('nope'),
+		expected: [],
+	},
 	'getHistoryStatus reads neither undo nor redo': {
+		needs: ['history'],
 		read: (store) => store.getHistoryStatus('nope'),
 		expected: { canUndo: false, canRedo: false },
 	},
 	'getBlobsByDocument reads []': {
+		needs: ['blobs'],
 		read: (store) => store.getBlobsByDocument('nope'),
 		expected: [],
 	},
@@ -1120,9 +1177,10 @@ const readsOfAbsentDocument: Record<string, AbsentDocumentRead> = {
 
 const absentDocument: StoreContractCases = {
 	...Object.fromEntries(
-		Object.entries(readsOfAbsentDocument).map(([description, { read, expected }]) => [
+		Object.entries(readsOfAbsentDocument).map(([description, { needs, read, expected }]) => [
 			`never registered: ${description}`,
 			{
+				needs,
 				act: async ({ store }: StoreContractContext) => {
 					await seedTwoRecords(store)
 					expect(await read(store)).toEqual(expected)
@@ -1131,9 +1189,10 @@ const absentDocument: StoreContractCases = {
 		]),
 	),
 	...Object.fromEntries(
-		Object.entries(readsOfAbsentDocument).map(([description, { read, expected }]) => [
+		Object.entries(readsOfAbsentDocument).map(([description, { needs = [], read, expected }]) => [
 			`removed: ${description}`,
 			{
+				needs: ['history', ...needs],
 				act: async ({ store }: StoreContractContext) => {
 					await store.registerDocument(makeDocument({ id: 'nope' }))
 					await commit({
@@ -1162,6 +1221,7 @@ const absentDocument: StoreContractCases = {
 		},
 	},
 	'undo and redo of an unknown document resolve and write nothing': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await expect(store.undo('nope')).resolves.toBeUndefined()
 			await expect(store.redo('nope')).resolves.toBeUndefined()
@@ -1210,6 +1270,7 @@ const removedDocument: StoreContractCases = {
 
 const duringImport: StoreContractCases = {
 	'a commit on one document lands between the batches of another document being imported': {
+		needs: ['history'],
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument({ id: 'b' }))
 			await store.bulkWrite('b', { creates: [makeRecord({ id: 'rb' })] })
@@ -1285,6 +1346,7 @@ const failingImports: Record<string, FailingImport> = {
 
 const importing: StoreContractCases = {
 	'an import answers the ready document, its record count and its session diagnostics': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			const result = await store.importFile({
 				file: contractFile({ body: `<A/>${sessionRecords(2)}`, name: 'plant.xml' }),
@@ -1321,6 +1383,7 @@ const importing: StoreContractCases = {
 		},
 	},
 	'the session is handed the records of the tags it asks for only, with their open ancestors': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			const result = await store.importFile({
 				file: contractFile({ body: '<A><B aB="deep"/></A><C/><B aB="top"/>' }),
@@ -1332,6 +1395,7 @@ const importing: StoreContractCases = {
 		},
 	},
 	'the writes of the session are stored before the document is ready': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			const result = await store.importFile({ file: contractFile({ body: sessionRecords(2) }) })
 			const handed = await store.getByTagNameInDocument(CONTRACT_SESSION_TAG, result.record.id)
@@ -1348,6 +1412,7 @@ const importing: StoreContractCases = {
 		Object.entries(failingImports).map(([description, failing]) => [
 			`${description}, and leaves nothing: the documents there stay as they were`,
 			{
+				needs: ['import'],
 				act: async ({ store }: StoreContractContext) => {
 					await seedKeptDocument(store)
 					await expectRejectsWith({
@@ -1365,6 +1430,7 @@ const importing: StoreContractCases = {
 		]),
 	),
 	'progress is told after each batch, the bytes read growing to the size of the file': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			const file = contractFile({ body: sessionRecords(4) })
 			const progress: ImportProgress[] = []
@@ -1381,6 +1447,7 @@ const importing: StoreContractCases = {
 		},
 	},
 	'a progress listener that never answers, rejects or throws neither holds nor fails the import': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			const listeners: ((progress: ImportProgress) => unknown)[] = [
 				() => new Promise(() => {}),
@@ -1400,6 +1467,7 @@ const importing: StoreContractCases = {
 		},
 	},
 	'an import aborted while it runs is refused IMPORT_ABORTED and leaves nothing': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			await seedKeptDocument(store)
 			const controller = new AbortController()
@@ -1417,6 +1485,7 @@ const importing: StoreContractCases = {
 		},
 	},
 	'an import aborted before it starts is refused IMPORT_ABORTED and registers nothing': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			await seedKeptDocument(store)
 			await expectRejectsWith({
@@ -1443,6 +1512,7 @@ const importing: StoreContractCases = {
 		},
 	},
 	'the outcome of an import asked by its id: running while it runs, applied once ready': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			let whileRunning: Promise<WriteOutcome> | undefined
 			await store.importFile({
@@ -1458,12 +1528,22 @@ const importing: StoreContractCases = {
 			expect(await store.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
 		},
 	},
+	'the outcome of a write is read from the document carrying its id: importing → running, ready → applied':
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument({ id: 'a', status: 'importing', writeId: 'w-a' }))
+				await store.registerDocument(makeDocument({ id: 'b', writeId: 'w-b' }))
+				expect(await store.getWriteOutcome({ writeId: 'w-a' })).toBe('running')
+				expect(await store.getWriteOutcome({ writeId: 'w-b' })).toBe('applied')
+			},
+		},
 	'the outcome of an id no import carried is not-applied': {
 		act: async ({ store }) => {
 			expect(await store.getWriteOutcome({ writeId: 'never' })).toBe('not-applied')
 		},
 	},
 	'with perf on, the import hands back the timings of its stages': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			const result = await store.importFile({ file: contractFile({ body: sessionRecords(2) }) })
 			expect(result.perf?.timeOrigin).toEqual(expect.any(Number))
@@ -1494,7 +1574,7 @@ const importing: StoreContractCases = {
 
 const oneState: StoreContractCases = {
 	'a document registered and written through one connection is read through another': {
-		needs: 'second-connection',
+		needs: ['second-connection'],
 		act: async ({ store, connect }) => {
 			const other = await connect()
 			await store.registerDocument(makeDocument())
@@ -1504,7 +1584,7 @@ const oneState: StoreContractCases = {
 		},
 	},
 	'a document removed through one connection is gone through another': {
-		needs: 'second-connection',
+		needs: ['second-connection'],
 		act: async ({ store, connect }) => {
 			const other = await connect()
 			await store.registerDocument(makeDocument())
@@ -1518,7 +1598,7 @@ const oneState: StoreContractCases = {
 		},
 	},
 	'a commit through one connection is seen, and undone, through another': {
-		needs: 'second-connection',
+		needs: ['second-connection', 'history'],
 		act: async ({ store, connect }) => {
 			const other = await connect()
 			await store.registerDocument(makeDocument())
@@ -1531,7 +1611,7 @@ const oneState: StoreContractCases = {
 		},
 	},
 	'a write through one connection is refused the ids another connection took': {
-		needs: 'second-connection',
+		needs: ['second-connection'],
 		act: async ({ store, connect }) => {
 			const other = await connect()
 			await store.registerDocument(makeDocument())
@@ -1551,7 +1631,7 @@ const oneState: StoreContractCases = {
 const oneStateAfterDestroy: StoreContractCases = {
 	'destroy through one connection → the other reads empty; what it registers then, a new connection reads':
 		{
-			needs: 'second-connection',
+			needs: ['second-connection'],
 			act: async ({ store, connect }) => {
 				await store.registerDocument(makeDocument())
 				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
@@ -1566,7 +1646,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 		},
 	'an import running through one connection → kept when another connection opens, applied once done':
 		{
-			needs: 'second-connection',
+			needs: ['second-connection', 'import'],
 			act: async ({ store, connect }) => {
 				const hold = holdContractImport()
 				const importing = store.importFile({
@@ -1574,7 +1654,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 					writeId: 'w-held',
 				})
 				try {
-					await hold.reached
+					await untilHeld({ hold, importing })
 					const other = await connect()
 					hold.release()
 					const result = await importing
@@ -1617,50 +1697,68 @@ const UNORDERED_IDS = ['z', 'b', 'm', 'a']
 const ID_ORDER = ['a', 'b', 'm', 'z']
 
 /** A list read and the ids of what it answers, after its subject was written in `UNORDERED_IDS` order. */
-const ORDERED_READS: Record<string, (store: Store) => Promise<string[]>> = {
-	getByDocumentId: async (store) => {
-		await store.registerDocument(makeDocument())
-		for (const id of UNORDERED_IDS)
-			await store.bulkWrite('doc-1', { creates: [makeRecord({ id })] })
-		return (await store.getByDocumentId('doc-1')).map((record) => record.id)
+const ORDERED_READS: Record<string, OrderedRead> = {
+	getByDocumentId: {
+		read: async (store) => {
+			await store.registerDocument(makeDocument())
+			for (const id of UNORDERED_IDS)
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id })] })
+			return (await store.getByDocumentId('doc-1')).map((record) => record.id)
+		},
 	},
-	getByTagNameInDocument: async (store) => {
-		await store.registerDocument(makeDocument())
-		for (const id of UNORDERED_IDS)
-			await store.bulkWrite('doc-1', { creates: [makeRecord({ id })] })
-		return (await store.getByTagNameInDocument('A', 'doc-1')).map((record) => record.id)
+	getByTagNameInDocument: {
+		read: async (store) => {
+			await store.registerDocument(makeDocument())
+			for (const id of UNORDERED_IDS)
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id })] })
+			return (await store.getByTagNameInDocument('A', 'doc-1')).map((record) => record.id)
+		},
 	},
-	getDocuments: async (store) => {
-		for (const id of UNORDERED_IDS) await store.registerDocument(makeDocument({ id }))
-		return (await store.getDocuments()).map((document) => document.id)
+	getDocuments: {
+		read: async (store) => {
+			for (const id of UNORDERED_IDS) await store.registerDocument(makeDocument({ id }))
+			return (await store.getDocuments()).map((document) => document.id)
+		},
 	},
-	getBlobsByDocument: async (store) => {
-		await store.registerDocument(makeDocument())
-		for (const id of UNORDERED_IDS) {
-			const attachedTo = [{ documentId: 'doc-1', recordRef: 'r1' }]
-			await store.addBlob(makeBlobEntry({ id, attachedTo }), new Blob([id]))
-		}
-		return (await store.getBlobsByDocument('doc-1')).map((entry) => entry.id)
+	getBlobsByDocument: {
+		needs: ['blobs'],
+		read: async (store) => {
+			await store.registerDocument(makeDocument())
+			for (const id of UNORDERED_IDS) {
+				const attachedTo = [{ documentId: 'doc-1', recordRef: 'r1' }]
+				await store.addBlob(makeBlobEntry({ id, attachedTo }), new Blob([id]))
+			}
+			return (await store.getBlobsByDocument('doc-1')).map((entry) => entry.id)
+		},
 	},
-	getBlobsByRecord: async (store) => {
-		await store.registerDocument(makeDocument())
-		for (const id of UNORDERED_IDS) {
-			const attachedTo = [{ documentId: 'doc-1', recordRef: 'r1' }]
-			await store.addBlob(makeBlobEntry({ id, attachedTo }), new Blob([id]))
-		}
-		return (await store.getBlobsByRecord('doc-1', 'r1')).map((entry) => entry.id)
+	getBlobsByRecord: {
+		needs: ['blobs'],
+		read: async (store) => {
+			await store.registerDocument(makeDocument())
+			for (const id of UNORDERED_IDS) {
+				const attachedTo = [{ documentId: 'doc-1', recordRef: 'r1' }]
+				await store.addBlob(makeBlobEntry({ id, attachedTo }), new Blob([id]))
+			}
+			return (await store.getBlobsByRecord('doc-1', 'r1')).map((entry) => entry.id)
+		},
 	},
-	getStandaloneBlobs: async (store) => {
-		await store.registerDocument(makeDocument())
-		for (const id of UNORDERED_IDS) await store.addBlob(makeBlobEntry({ id }), new Blob([id]))
-		return (await store.getStandaloneBlobs()).map((entry) => entry.id)
+	getStandaloneBlobs: {
+		needs: ['blobs'],
+		read: async (store) => {
+			await store.registerDocument(makeDocument())
+			for (const id of UNORDERED_IDS) await store.addBlob(makeBlobEntry({ id }), new Blob([id]))
+			return (await store.getStandaloneBlobs()).map((entry) => entry.id)
+		},
 	},
 }
 
 const idOrder: StoreContractCases = Object.fromEntries(
-	Object.entries(ORDERED_READS).map(([name, read]) => [
+	Object.entries(ORDERED_READS).map(([name, { needs, read }]) => [
 		`${name}: written out of id order → answered in id order`,
-		{ act: async ({ store }: StoreContractContext) => expect(await read(store)).toEqual(ID_ORDER) },
+		{
+			needs,
+			act: async ({ store }: StoreContractContext) => expect(await read(store)).toEqual(ID_ORDER),
+		},
 	]),
 )
 
@@ -1901,6 +1999,7 @@ const closedStore: StoreContractCases = {
 		Object.entries(OPERATIONS_IN_FLIGHT).map(([name, { run, expected }]) => [
 			`${name} running when the store is closed → it completes; a later operation is refused`,
 			{
+				needs: ['history', 'blobs'],
 				act: async ({ store }: StoreContractContext) => {
 					await seedClosedStore(store)
 					const running = run(store)
@@ -1921,6 +2020,7 @@ const closedStore: StoreContractCases = {
 		Object.entries(OPERATIONS_IN_FLIGHT).map(([name, { run, expected }]) => [
 			`${name} running when the store is closed and opened again at once → it completes, then the store opens`,
 			{
+				needs: ['history', 'blobs'],
 				act: async ({ store }: StoreContractContext) => {
 					await seedClosedStore(store)
 					const running = run(store)
@@ -1937,6 +2037,7 @@ const closedStore: StoreContractCases = {
 		Object.entries(OPERATIONS_IN_FLIGHT).map(([name, { run }]) => [
 			`${name} running when the store is destroyed → it completes, then the name reads empty`,
 			{
+				needs: ['history', 'blobs'],
 				act: async ({ store, reopen }: StoreContractContext) => {
 					await seedClosedStore(store)
 					const running = run(store)
@@ -1950,6 +2051,7 @@ const closedStore: StoreContractCases = {
 		]),
 	),
 	'an import running when the store is destroyed → it completes, then the name reads empty': {
+		needs: ['import'],
 		act: async ({ store, reopen }) => {
 			const hold = holdContractImport()
 			const importing = store.importFile({
@@ -1957,7 +2059,7 @@ const closedStore: StoreContractCases = {
 				writeId: 'w-held',
 			})
 			try {
-				await hold.reached
+				await untilHeld({ hold, importing })
 				const destroying = store.destroy()
 				hold.release()
 				await importing
@@ -1971,6 +2073,7 @@ const closedStore: StoreContractCases = {
 		},
 	},
 	'an import running when the store is closed → it completes; reopened, its document is there': {
+		needs: ['import'],
 		act: async ({ store }) => {
 			const hold = holdContractImport()
 			const importing = store.importFile({
@@ -1978,7 +2081,7 @@ const closedStore: StoreContractCases = {
 				writeId: 'w-held',
 			})
 			try {
-				await hold.reached
+				await untilHeld({ hold, importing })
 				store.close()
 				await expectRejectsWith({ action: store.getDocuments(), key: 'STORE_CLOSED' })
 				hold.release()
@@ -1996,6 +2099,7 @@ const closedStore: StoreContractCases = {
 		Object.entries(OPERATIONS_ON_A_CLOSED_STORE).map(([name, operation]) => [
 			`${name} through a closed store → STORE_CLOSED; opened again, the store as it was`,
 			{
+				needs: ['history', 'blobs'],
 				act: async ({ store }: StoreContractContext) => {
 					await seedClosedStore(store)
 					store.close()
@@ -2014,6 +2118,7 @@ const closedStore: StoreContractCases = {
 		]),
 	),
 	'open() then close() at once → the store ends closed: the open refused, the next operation too': {
+		needs: ['history', 'blobs'],
 		act: async ({ store }) => {
 			await seedClosedStore(store)
 			store.close()
@@ -2026,6 +2131,7 @@ const closedStore: StoreContractCases = {
 		},
 	},
 	'a closed store closed again → nothing thrown; destroyed → the name reopens empty': {
+		needs: ['history', 'blobs'],
 		act: async ({ store, reopen }) => {
 			await seedClosedStore(store)
 			store.close()
@@ -2036,7 +2142,7 @@ const closedStore: StoreContractCases = {
 		},
 	},
 	'one connection closed → another connection of the name reads and writes on': {
-		needs: 'second-connection',
+		needs: ['second-connection', 'history', 'blobs'],
 		act: async ({ store, connect }) => {
 			await seedClosedStore(store)
 			const other = await connect()
@@ -2050,24 +2156,38 @@ const closedStore: StoreContractCases = {
 	},
 }
 
+/** Every case of the table, needing `needs` besides what it needs itself. */
+export function needing(params: {
+	needs: StoreContractNeed[]
+	cases: StoreContractCases
+}): StoreContractCases {
+	const { needs, cases } = params
+	return Object.fromEntries(
+		Object.entries(cases).map(([description, testCase]) => [
+			description,
+			{ ...testCase, needs: [...new Set([...(testCase.needs ?? []), ...needs])] },
+		]),
+	)
+}
+
 export const STORE_CONTRACT: StoreContractGroups = {
 	lifecycle,
 	'document registry': registry,
 	reads,
 	'bulk writes': bulkWrites,
-	'commit and history': history,
+	'commit and history': needing({ needs: ['history'], cases: history }),
 	reopen,
 	'sibling order': siblingOrder,
-	'changelog snapshots': snapshots,
+	'changelog snapshots': needing({ needs: ['history'], cases: snapshots }),
 	'rejected writes': { ...rejectedWrites, ...uncopyableWrites, ...uncopyablePatchOfAbsentRecord },
 	'a document that is not there': absentDocument,
-	'a removed document leaves no history': removedDocument,
+	'a removed document leaves no history': needing({ needs: ['history'], cases: removedDocument }),
 	'an edit during an import': duringImport,
 	'importing a file': importing,
 	'one state for every connection': { ...oneState, ...oneStateAfterDestroy },
 	'stores of other names': otherNames,
-	blobs,
-	'records are values': values,
+	blobs: needing({ needs: ['blobs'], cases: blobs }),
+	'records are values': needing({ needs: ['history', 'blobs'], cases: values }),
 	'list reads in id order': idOrder,
 	'a closed store': closedStore,
 }
