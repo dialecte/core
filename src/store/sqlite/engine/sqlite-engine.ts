@@ -1,4 +1,5 @@
 import { insertEncodedRows } from './bulk-insert'
+import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
 import { asStoreFailure } from './engine-errors'
 import { DEFAULT_ENGINE_OPTIONS } from './engine.constants'
 import {
@@ -45,12 +46,15 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const { sqlite3, db, dialecteId } = params
 	const options = { ...DEFAULT_ENGINE_OPTIONS, ...params.options }
+	const steadyCacheMiB =
+		options.steadyCacheMiB ??
+		deviceCacheMiB({ deviceMemoryGiB: reportedDeviceMemoryGiB(), rule: options.cacheRule })
 	try {
 		asStoreFailure({
 			key: 'STORE_CONNECTION_FAILED',
 			detail: 'The project file could not be opened',
 			work: function startOnFile() {
-				prepareFile({ sqlite3, db, dialecteId, options })
+				prepareFile({ sqlite3, db, dialecteId, steadyCacheMiB })
 				inWriteTransaction({
 					sqlite3,
 					db,

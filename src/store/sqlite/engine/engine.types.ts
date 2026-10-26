@@ -2,8 +2,8 @@ import type { DialecteErrorKey } from '@/errors'
 import type { Store } from '@/store/store.types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
-/** The page cache an import holds, sized on the device's memory: `clamp(gib * mibPerGiB, floorMiB, ceilingMiB)`. */
-export type ImportCacheRule = {
+/** How a page cache follows the device's memory: `mibPerGiB` per GiB, held between a floor and a ceiling. */
+export type DeviceCacheRule = {
 	mibPerGiB: number
 	floorMiB: number
 	ceilingMiB: number
@@ -11,10 +11,10 @@ export type ImportCacheRule = {
 
 /** What an engine may be told at start; a field left out takes its default. */
 export type SqliteEngineOptions = {
-	/** The page cache outside imports, in MiB. */
-	steadyCacheMiB: number
-	/** The page cache while an import runs. */
-	importCache: ImportCacheRule
+	/** The rule the steady cache and the import cache follow from the device's memory. */
+	cacheRule: DeviceCacheRule
+	/** A steady cache of this many MiB, instead of the one the rule gives. */
+	steadyCacheMiB?: number
 }
 
 export type OpenSqliteEngineParams = {

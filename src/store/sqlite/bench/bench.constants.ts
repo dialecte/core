@@ -43,8 +43,6 @@ export const WINDOW_SIZE_CAP_BYTES = 32 * 1024 * 1024
 export const SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 /** SQLite's own default `cache_size`: 2000 KiB. */
 export const SQLITE_DEFAULT_CACHE_PRAGMA = -2000
-/** `navigator.deviceMemory` is absent: size the cache for a 4 GiB device. */
-export const DEFAULT_DEVICE_MEMORY_GIB = 4
 export const POOL_DATABASE_PATH = '/bench.sqlite3'
 /** The `type` of the phase markers the worker posts besides Comlink's own messages. */
 export const BENCH_PHASE_MESSAGE = 'bench-phase'
@@ -101,8 +99,6 @@ export const PROFILE_SAMPLING_INTERVAL_US = 1000
 export const PROFILE_IDLE_NODES = ['(idle)', '(program)']
 export const PROFILE_GC_NODE = '(garbage collector)'
 export const KILL_RUNS = 20
-/** A cache this small spills inside every window: the kill lands after a spill. */
-export const KILL_CACHE_KIB = 2048
 export const KILL_DELAY_MIN_MS = 1500
 export const KILL_DELAY_SPREAD_MS = 2500
 /** A kill test's worker holds this long at the phase its kill aims for. */
@@ -136,7 +132,7 @@ export const AFTER_IMPORT_RATIOS = { setWritten: 0, pathNamed: 0.107 } as const
  * J1 rollback journal (TRUNCATE) in the import window / J2 journal off in the window;
  * W1 window transactions capped at about 1 s of work / W2 capped at about 32 MB of rows;
  * V1 no auto-vacuum / V2 incremental auto-vacuum (pages given back after a drop).
- * The base is L1 · I2 · J1 · W1 · V1, device-sized import cache, 64 MiB steady cache, JSON1 insert.
+ * The base is L1 · I2 · J1 · W1 · V1, device-sized import cache, the engine's steady cache (its device rule), JSON1 insert.
  */
 export const BASE_VARIANT: BenchVariant = {
 	id: 'base',
@@ -157,19 +153,23 @@ export const VARIANTS = {
 	J2: { ...BASE_VARIANT, id: 'J2', journal: 'off' },
 	W2: { ...BASE_VARIANT, id: 'W2', window: { kind: 'size', bytes: WINDOW_SIZE_CAP_BYTES } },
 	V2: { ...BASE_VARIANT, id: 'V2', vacuum: 'incremental' },
-	cacheDefault: { ...BASE_VARIANT, id: 'cache-default', cache: 'default' },
+	/** No raise for the import: it runs on the 64 MiB steady cache the recorded runs of this arm used. */
+	cacheDefault: {
+		...BASE_VARIANT,
+		id: 'cache-default',
+		cache: 'default',
+		steadyCache: { mib: 64 },
+	},
 	steadyDefault: { ...BASE_VARIANT, id: 'steady-default', steadyCache: 'default' },
-	steadyDevice: { ...BASE_VARIANT, id: 'steady-device', steadyCache: 'device' },
 	idFirst: { ...BASE_VARIANT, id: 'id-first', index: 'id-first' },
 	perRow: { ...BASE_VARIANT, id: 'per-row', insert: 'per-row' },
 	L2I1: { ...BASE_VARIANT, id: 'L2-I1', layout: 'derived-position', index: 'index-first' },
-	/** Three arms together: id index up front, reclaimed space, large steady cache. */
+	/** Two arms together: id index up front, reclaimed space (the steady cache is the base's, device-sized). */
 	combined: {
 		...BASE_VARIANT,
 		id: 'combined',
 		index: 'id-first',
 		vacuum: 'incremental',
-		steadyCache: 'device',
 	},
 	/** id-first with a 0.5 s window cap: shorter waits for a commit during the import, at an import-time cost. */
 	idFirstHalfWindow: {
@@ -179,6 +179,17 @@ export const VARIANTS = {
 		window: { kind: 'time', ms: WINDOW_TIME_CAP_MS / 2 },
 	},
 } as const satisfies Record<string, BenchVariant>
+
+/**
+ * The kill tests' variant: J2 (journal off in the import window, the id its recorded runs carry) with an
+ * import cache this small that it spills inside every window, so the kill lands after a spill, and the
+ * 64 MiB steady cache those runs used.
+ */
+export const KILL_VARIANT: BenchVariant = {
+	...VARIANTS.J2,
+	cache: { mib: 2 },
+	steadyCache: { mib: 64 },
+}
 
 /** Caches above the device-sized ceiling: a 500 MB question only, kept out of the 50 MB list of every variant. */
 export const CACHE_CEILING_VARIANTS = {
