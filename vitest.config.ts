@@ -65,7 +65,7 @@ export default mergeConfig(
 				{
 					// the store contract and the project's store switch in node, on the in-memory store
 					// and on IndexedDB through fake-indexeddb; the test files share their modules, as
-					// a mutation runner's workers do
+					// a mutation runner's workers do. The hub router needs no browser either.
 					resolve: viteConfig.resolve,
 					plugins: [],
 					test: {
@@ -75,6 +75,7 @@ export default mergeConfig(
 						include: [
 							'src/store/contract/store-contract.test.ts',
 							'src/project/store-switch.test.ts',
+							'src/store/sqlite/hub/hub-router.test.ts',
 						],
 						setupFiles: ['src/store/contract/store-contract.node.setup.ts'],
 						root,
