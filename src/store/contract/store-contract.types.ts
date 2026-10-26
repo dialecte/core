@@ -22,7 +22,22 @@ export type StoreContractFactory = {
 	 * realm sees. Absent when the store serves one realm only.
 	 */
 	connect?: (store: Store) => Promise<Store>
+	/**
+	 * The parts of the port this leg does not serve yet, each with the reason its waiting cases show:
+	 * a case needing one runs as expected to fail on this leg (never in a weaker form), so it turns red
+	 * once the leg serves the part and the entry is left behind.
+	 */
+	pending?: Partial<Record<StoreContractFeature, string>>
 }
+
+/** A part of the port a leg may not serve yet. */
+export type StoreContractFeature = 'history' | 'blobs' | 'import' | 'export'
+
+/**
+ * What a case needs of a leg beyond the registry, the reads and the bulk writes: a second connection
+ * (`connect`), or a part of the port.
+ */
+export type StoreContractNeed = 'second-connection' | StoreContractFeature
 
 /** What a case is given: the store under test and the factory's two ways to see its state again. */
 export type StoreContractContext = {
@@ -42,8 +57,11 @@ export type ContractImportHold = {
 }
 
 export type StoreContractCase = BaseTestCase & {
-	/** `second-connection`: the case needs `connect`; skipped on a leg that has none. */
-	needs?: 'second-connection'
+	/**
+	 * `second-connection`: skipped on a leg without `connect`; a part of the port: run as expected to
+	 * fail on a leg that has it pending.
+	 */
+	needs?: StoreContractNeed[]
 	act: (context: StoreContractContext) => Promise<void>
 }
 
@@ -58,18 +76,26 @@ export type AttributePatchCase = {
 
 /** A read of a document that is not in the store, and what it must answer. */
 export type AbsentDocumentRead = {
+	needs?: StoreContractFeature[]
 	read: (store: Store) => Promise<unknown>
 	expected: unknown
 }
 
 /** A sibling-order case: the steps taken, the order of the parent's children after them. */
 export type SiblingOrderStep = {
+	needs?: StoreContractFeature[]
 	run: (context: StoreContractContext) => Promise<void>
 	expected: string[]
 }
 
 /** The contract, one table of cases per concern. */
 export type StoreContractGroups = Record<string, StoreContractCases>
+
+/** A list read and the ids of what it answers, after its subject was written out of id order. */
+export type OrderedRead = {
+	needs?: StoreContractFeature[]
+	read: (store: Store) => Promise<string[]>
+}
 
 /** A read whose answer the caller then changes: the store must answer the next read as before. */
 export type ValueRead = (store: Store) => Promise<unknown>
@@ -84,10 +110,17 @@ export type ValueWrite<GenericGiven extends object = object> = {
 	read: ValueRead
 }
 
-/** A write breaking one or more rules (a value the store cannot copy among them), and the refusal it must answer. */
+/** A write breaking one or more rules (a value that is not JSON among them), and the refusal it must answer. */
 export type RefusedWrite = {
+	needs?: StoreContractNeed[]
 	write: (store: Store) => Promise<void>
 	key: DialecteErrorKey
+}
+
+/** A write handing the store `value` where it writes: one that is not JSON is refused there. */
+export type NonJsonPlace = {
+	needs?: StoreContractNeed[]
+	write: (params: { store: Store; value: unknown }) => Promise<void>
 }
 
 /** An operation through a store, run once the store is closed. */
@@ -107,7 +140,7 @@ export type EditedRecords = { a: AnyRawRecord; c: AnyRawRecord }
 
 /** A write on a document while it is exported: what is done before the export, and the write itself. */
 export type WriteDuringExport = {
-	needs?: 'second-connection'
+	needs?: StoreContractNeed[]
 	arrange?: (params: WriteDuringExportParams) => Promise<void>
 	write: (params: WriteDuringExportParams) => Promise<void>
 }

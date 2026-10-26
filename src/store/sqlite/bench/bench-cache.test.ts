@@ -1,5 +1,6 @@
+import { DEFAULT_ENGINE_OPTIONS } from '../engine/engine.constants'
 import { cachePragmas } from './bench-variants'
-import { CACHE_FLOOR_MIB, SQLITE_DEFAULT_CACHE_PRAGMA } from './bench.constants'
+import { SQLITE_DEFAULT_CACHE_PRAGMA } from './bench.constants'
 
 import { describe, expect, it } from 'vitest'
 
@@ -14,16 +15,22 @@ const cases: Array<{
 	expected: { importPragma: number; steadyPragma: number }
 }> = [
 	{
-		name: 'device-sized import cache, 64 MiB steady cache',
+		name: "device-sized import cache, the engine's steady cache",
 		cache: 'device',
-		steadyCache: 'floor',
-		expected: { importPragma: -DEVICE_KIB, steadyPragma: -CACHE_FLOOR_MIB * 1024 },
+		steadyCache: 'engine',
+		expected: {
+			importPragma: -DEVICE_KIB,
+			steadyPragma: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
+		},
 	},
 	{
 		name: 'no raise during the import: the import runs on the steady cache',
 		cache: 'default',
-		steadyCache: 'floor',
-		expected: { importPragma: -CACHE_FLOOR_MIB * 1024, steadyPragma: -CACHE_FLOOR_MIB * 1024 },
+		steadyCache: 'engine',
+		expected: {
+			importPragma: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
+			steadyPragma: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
+		},
 	},
 	{
 		name: "SQLite's own default as the steady cache",

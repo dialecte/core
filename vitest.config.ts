@@ -53,6 +53,8 @@ export default mergeConfig(
 			projects: [
 				{
 					resolve: viteConfig.resolve,
+					// sqlite-wasm resolves its wasm itself: a pre-bundled copy loses the file next to it
+					optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
 					plugins: [],
 					test: {
 						name: 'unit',

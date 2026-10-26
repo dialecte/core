@@ -1,4 +1,6 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { compareById } from '../compare-by-id'
+import { toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -60,33 +62,6 @@ function guardNoDuplicate(params: {
 	if (held.length > 0 || repeated.length > 0) {
 		throwDuplicateRecordIds({ documentId, held, repeated })
 	}
-}
-
-/**
- * The store's own copy of what a write hands it; a value no store can copy (a function, a proxy) is
- * refused with `key` before anything is written, as IndexedDB refuses it.
- */
-function copyToWrite<GenericValue>(params: {
-	value: GenericValue
-	key: 'STORE_BULK_ADD_FAILED' | 'STORE_BULK_UPDATE_FAILED'
-}): GenericValue {
-	const { value, key } = params
-	try {
-		return structuredClone(value)
-	} catch (error) {
-		throwDialecteError(key, {
-			detail: error instanceof Error ? error.message : String(error),
-			cause: error instanceof Error ? error : undefined,
-		})
-	}
-}
-
-/**
- * Id order, as an IndexedDB key range answers: strings compared by UTF-16 code unit, not by locale.
- */
-function compareById(left: { id: string }, right: { id: string }): number {
-	if (left.id < right.id) return -1
-	return left.id > right.id ? 1 : 0
 }
 
 /**
@@ -325,17 +300,17 @@ export class InMemoryStore implements Store {
 		const { state, table } = this.writeTarget(documentId)
 
 		// Nothing is written before the whole commit is known to apply, refused in the order every
-		// store answers in: an absent update, a create it cannot copy, a taken id, then an update it
-		// cannot copy. The store's own copies: the table and the changelog hold them, never the
+		// store answers in: an absent update, a create that is not JSON, a taken id, then an update
+		// that is not JSON. The store's own copies: the table and the changelog hold them, never the
 		// caller's objects
 		const beforeSnapshots = params.updates.map((record) => {
 			const before = table.get(record.id)
 			if (!before) throwRecordToUpdateNotFound({ documentId, recordId: record.id })
 			return before
 		})
-		const creates = copyToWrite({ value: params.creates, key: 'STORE_BULK_ADD_FAILED' })
+		const creates = toJsonCopy({ value: params.creates })
 		guardNoDuplicate({ table, creates, documentId })
-		const updates = copyToWrite({ value: params.updates, key: 'STORE_BULK_UPDATE_FAILED' })
+		const updates = toJsonCopy({ value: params.updates })
 		const total = creates.length + updates.length + deletes.length
 		let completed = 0
 		const deletedSnapshots = deletes.map((id) => table.get(id)).filter(Boolean) as AnyRawRecord[]
@@ -566,7 +541,7 @@ export class InMemoryStore implements Store {
 		this.guardWritable()
 		const state = ensureInMemoryState({ name: this.name })
 		if (state.documents.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
-		state.documents.set(file.id, structuredClone(file))
+		state.documents.set(file.id, toJsonCopy({ value: file }))
 		state.records.set(recordTableName(file.id), new Map())
 		state.blobData.set(file.id, new Map())
 	}
@@ -580,10 +555,11 @@ export class InMemoryStore implements Store {
 		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
 	): Promise<void> {
 		this.guardWritable()
+		const checked = toJsonCopy({ value: updates })
 		const state = this.writeState()
 		const existing = state?.documents.get(documentId)
 		if (state && existing) {
-			state.documents.set(documentId, { ...existing, ...structuredClone(updates) })
+			state.documents.set(documentId, { ...existing, ...checked })
 		}
 	}
 
@@ -611,16 +587,15 @@ export class InMemoryStore implements Store {
 		this.guardWritable()
 		const { state, table } = this.writeTarget(documentId)
 		// Nothing is written before the whole write is known to apply, refused in the order every
-		// store answers in: a create it cannot copy, a taken id, then an update it cannot copy - of the
-		// updates that apply: a patch of a record the document does not hold is skipped, as ever
-		const creates = copyToWrite({ value: ops.creates ?? [], key: 'STORE_BULK_ADD_FAILED' })
+		// store answers in: a create that is not JSON, a taken id, then an update that is not JSON - of
+		// the updates that apply: a patch of a record the document does not hold is skipped, as ever
+		const creates = toJsonCopy({ value: ops.creates ?? [] })
 		guardNoDuplicate({ table, creates, documentId })
 		const createdIds = new Set(creates.map((record) => record.id))
-		const updates = copyToWrite({
+		const updates = toJsonCopy({
 			value: (ops.updates ?? []).filter(
 				(patch) => table.has(patch.recordId) || createdIds.has(patch.recordId),
 			),
-			key: 'STORE_BULK_UPDATE_FAILED',
 		})
 
 		for (const record of creates) {

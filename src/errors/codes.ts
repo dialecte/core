@@ -50,6 +50,10 @@ export const ERROR_CATALOG = {
 		code: 'D1010',
 		message: 'Store is closed',
 	},
+	STORE_READ_FAILED: {
+		code: 'D1011',
+		message: 'Failed to read from database',
+	},
 	STORE_PROTOCOL_MISMATCH: {
 		code: 'D1012',
 		message: 'Another version of the library holds the shared store connection',
@@ -61,6 +65,10 @@ export const ERROR_CATALOG = {
 	STORE_REALM_UNKNOWN: {
 		code: 'D1014',
 		message: 'The shared store does not know this view',
+	},
+	STORE_VALUE_NOT_JSON: {
+		code: 'D1015',
+		message: 'A value handed to the store is not JSON',
 	},
 
 	// D2xxx — Element lookup
@@ -200,6 +208,10 @@ export const ERROR_CATALOG = {
 	BLOB_NOT_FOUND: {
 		code: 'D7004',
 		message: 'Blob not found in store',
+	},
+	PROJECT_LAYOUT_OUTDATED: {
+		code: 'D7005',
+		message: 'Project stored by another version of the library',
 	},
 	PROJECT_ENGINE_UNAVAILABLE: {
 		code: 'D7006',

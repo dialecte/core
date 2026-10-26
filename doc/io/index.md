@@ -132,6 +132,16 @@ const result = await runExport(
 
 `source` is an `ExportSource`: the store's reads (`getDocument`, `count`, `getMany`, `getByTagNameInDocument`) and `getExportVersion({ documentId })`, the number of writes the document has taken (`undefined` once it is not registered or not `ready`). A store bumps that version in the same transaction as every write, and passes its own unguarded source, as `InMemoryStore` and the local store do. A store built without a runtime refuses `exportFile` with `ASSERTION_FAILED`. With `perf`, the result carries the timings of `export`, `export::read`, `export::write` and `export::assemble`, merged by the project under `store::` ([Dev perf](/guide/development/dev-perf#export-stages)).
 
+## Values a store keeps
+
+A store keeps plain JSON values only, in records and in document metadata: strings, finite numbers, booleans, `null`, and arrays and plain objects of them. The `Store` interface states this rule on each write member; every store checks what a write hands it before anything lands, through the one check core shares between its stores:
+
+- A field holding `undefined` is dropped: it reads back absent. `updateDocument(id, { name: undefined })` leaves the name as it was, and `updateDocument(id, { metadata: undefined })` leaves the metadata: write the metadata you keep instead. A symbol key and a property that is not enumerable are dropped too, as JSON drops them.
+- Any other value is refused with `STORE_VALUE_NOT_JSON` (`D1015`): a `Date`, a `Map`, a `Set`, `NaN` or `Infinity`, a `BigInt`, a function, a symbol, an instance of a class, `undefined` in an array, a cycle. The write is refused whole; `detail` names the value and the field holding it (its own name, not its path).
+- Every store refuses in the same order. A bulk write: a document not registered, a create that is not JSON, a taken id, then a patch that is not JSON (a patch of a record the document does not hold is skipped, whatever it holds). A commit: an update of a record the document does not hold first. A document registered: a taken id, then its values. A document updated: its values, then the document looked up (one that is not registered is left alone).
+
+Write a date as its ISO string or a number. A store keeps its own copy of what it is handed: a caller changing a value after the write does not change the store.
+
 ## Cross-realm reconciliation
 
 A `Project` can be instantiated in more than one JS realm over the same persisted storage (e.g. an `iframe` running its own `Project`). Importing a document in one realm adds a per-document partition and bumps the store schema; other realms must catch up before they can read it.

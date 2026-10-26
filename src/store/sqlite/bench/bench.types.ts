@@ -29,8 +29,8 @@ export type BenchCacheSize = { mib: number }
 /** Page cache during an import: sized on the device's memory, no raise (the steady cache), or a size in MiB. */
 export type BenchCache = 'device' | 'default' | BenchCacheSize
 
-/** Page cache outside imports (commits, undo, reads): the 64 MiB floor, device-sized, SQLite's default 2 MiB, or a size in MiB. */
-export type BenchSteadyCache = 'floor' | 'device' | 'default' | BenchCacheSize
+/** Page cache outside imports (commits, undo, reads): the engine's steady cache, device-sized, SQLite's default 2 MiB, or a size in MiB. */
+export type BenchSteadyCache = 'engine' | 'device' | 'default' | BenchCacheSize
 
 /** One JSON1 bind per 1000 rows, or one prepared bind per row. */
 export type BenchInsert = 'json1' | 'per-row'

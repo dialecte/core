@@ -1,15 +1,17 @@
 import {
+	DEFAULT_ENGINE_OPTIONS,
+	ROW_SELECT_EXPRESSIONS,
+	ROWS_PER_BIND,
+} from '../engine/engine.constants'
+import { columnDefinitions, reclaimFreePages } from '../engine/schema'
+import {
 	AFTER_IMPORT_ATTRIBUTE,
-	CACHE_CEILING_MIB,
-	CACHE_FLOOR_MIB,
-	CACHE_MIB_PER_GIB,
 	COMMIT_GROUP_ITEMS,
-	JSON_INSERT_ROWS,
+	RECORD_LAYOUT_COLUMNS,
 	RECORD_ORDER_COLUMN,
 	RECORD_SHARED_COLUMNS,
 	SQLITE_DEFAULT_CACHE_PRAGMA,
 	SQL_IDENTIFIER,
-	UPDATE_CHUNK_PATCHES,
 } from './bench.constants'
 
 import { applyRecordPatch } from '@/store/apply-record-patch'
@@ -49,11 +51,7 @@ function layoutColumns(params: { layout: BenchLayout }): string[] {
 
 function tableDDL(params: { table: string; layout: BenchLayout; extraColumns?: string }): string {
 	const { table, layout, extraColumns = '' } = params
-	const order = layout === 'children-column' ? 'children TEXT' : 'position REAL'
-	return (
-		`CREATE TABLE IF NOT EXISTS ${quoteIdentifier({ name: table })} (${extraColumns}id TEXT NOT NULL, tagName TEXT NOT NULL, ` +
-		`nsPrefix TEXT, nsUri TEXT, value TEXT, parentId TEXT, parentTagName TEXT, attributes TEXT, ${order})`
-	)
+	return `CREATE TABLE IF NOT EXISTS ${quoteIdentifier({ name: table })} (${extraColumns}${columnDefinitions({ columns: RECORD_LAYOUT_COLUMNS[layout] })})`
 }
 
 /** The id index, and the read paths of the layout: tag name, plus the ordered parent edge for L2. */
@@ -75,22 +73,24 @@ function indexDDL(params: { table: string; layout: BenchLayout }): {
 	}
 }
 
-/** JSON1 select list: text columns as SQL values, the JSON columns kept as JSON text. */
+/**
+ * JSON1 select list: the engine's for L1 (text columns as SQL values, the JSON columns kept as JSON
+ * text); L2's position, its last column, as a value.
+ */
 function json1SelectList(params: { layout: BenchLayout }): string {
-	const order = params.layout === 'children-column' ? 'e.value->8' : 'e.value->>8'
-	return (
-		'e.value->>0, e.value->>1, e.value->>2, e.value->>3, e.value->>4, e.value->>5, e.value->>6, ' +
-		`e.value->7, ${order}`
-	)
+	if (params.layout === 'children-column') return ROW_SELECT_EXPRESSIONS.join(', ')
+	const shared = ROW_SELECT_EXPRESSIONS.slice(0, -1)
+	return [...shared, `e.value->>${shared.length}`].join(', ')
 }
 
 //====== CACHE ======//
 
 /** `cache_size` in KiB for the import window, sized on the device's memory. */
 export function deviceCacheKiB(params: { deviceMemoryGiB: number }): number {
+	const { mibPerGiB, floorMiB, ceilingMiB } = DEFAULT_ENGINE_OPTIONS.importCache
 	const mib = Math.min(
-		CACHE_CEILING_MIB,
-		Math.max(CACHE_FLOOR_MIB, Math.round(params.deviceMemoryGiB * CACHE_MIB_PER_GIB)),
+		ceilingMiB,
+		Math.max(floorMiB, Math.round(params.deviceMemoryGiB * mibPerGiB)),
 	)
 	return mib * 1024
 }
@@ -109,7 +109,7 @@ export function cachePragmas(params: {
 		typeof steadyCache === 'object'
 			? -steadyCache.mib * 1024
 			: {
-					floor: -CACHE_FLOOR_MIB * 1024,
+					engine: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
 					device: -deviceCacheKiB,
 					default: SQLITE_DEFAULT_CACHE_PRAGMA,
 				}[steadyCache]
@@ -330,9 +330,9 @@ export function createVariantSink(params: {
 			`INSERT INTO ${quoteIdentifier({ name: target })} (${seqColumn}${columnList}) SELECT ${seqValue}${json1SelectList({ layout })} FROM json_each(?) e`,
 		)
 		try {
-			for (let start = 0; start < rows.length; start += JSON_INSERT_ROWS) {
+			for (let start = 0; start < rows.length; start += ROWS_PER_BIND) {
 				const encodeStartedAt = performance.now()
-				const payload = JSON.stringify(rows.slice(start, start + JSON_INSERT_ROWS))
+				const payload = JSON.stringify(rows.slice(start, start + ROWS_PER_BIND))
 				const insertStartedAt = performance.now()
 				timings.encodeMs += insertStartedAt - encodeStartedAt
 				statement.bind([payload]).stepReset()
@@ -402,9 +402,9 @@ export function createVariantSink(params: {
 			`UPDATE ${quoteIdentifier({ name: table })} SET ${assignments} FROM (SELECT ${aliases} FROM json_each(?) e) AS u WHERE ${quoteIdentifier({ name: table })}.id = u.c0`,
 		)
 		try {
-			for (let start = 0; start < patches.length; start += UPDATE_CHUNK_PATCHES) {
+			for (let start = 0; start < patches.length; start += ROWS_PER_BIND) {
 				openWindow()
-				const chunk = patches.slice(start, start + UPDATE_CHUNK_PATCHES)
+				const chunk = patches.slice(start, start + ROWS_PER_BIND)
 				const readStartedAt = performance.now()
 				select.bind([JSON.stringify(chunk.map((patch) => patch.recordId))])
 				const stored = new Map<string, { record: AnyRawRecord; row: SqlValue[] }>()
@@ -523,21 +523,11 @@ export function createVariantSink(params: {
 			throw thrown
 		}
 		indexedTables.delete(table)
-		if (variant.vacuum === 'incremental') reclaimFreePages()
+		if (variant.vacuum === 'incremental') reclaimFreePages({ db })
 	}
 
 	function isTransactionActive(): boolean {
 		return sqlite3Capi.sqlite3_get_autocommit(db) === 0
-	}
-
-	/** `incremental_vacuum` frees one page per step: step it to the end. */
-	function reclaimFreePages(): void {
-		const statement = db.prepare('PRAGMA incremental_vacuum')
-		try {
-			while (statement.step());
-		} finally {
-			statement.finalize()
-		}
 	}
 
 	async function runOutsideWindow<GenericResult>(

@@ -1,6 +1,10 @@
 import { InMemoryStore } from '../in-memory'
 import { DexieStore } from '../local'
+import { createInProcessConnector } from '../sqlite/adapter/in-process-link'
+import { SqliteStore } from '../sqlite/adapter/sqlite-store'
 import { createContractRuntime } from './store-contract.import-session'
+
+import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { StoreContractFactory } from './store-contract.types'
 
@@ -54,8 +58,37 @@ const dexieStoreFactory: StoreContractFactory = {
 	},
 }
 
+/** An open SQLite store of that name, its engine run in this realm on an in-memory file of the name. */
+async function openSqliteStore(name: string): Promise<SqliteStore> {
+	const connector = createInProcessConnector({ name, dialecteId: TEST_DIALECTE.id })
+	const store = new SqliteStore({ name, connector })
+	await store.open()
+	return store
+}
+
+const sqliteInProcessStoreFactory: StoreContractFactory = {
+	name: 'SqliteStore in-process',
+	pending: {
+		history: 'the engine keeps no history yet',
+		blobs: 'the engine keeps no blobs yet',
+		import: 'the engine runs no import yet',
+		export: 'the engine runs no export yet',
+	},
+	create: async function createSqliteStore() {
+		return openSqliteStore(uniqueName('store-contract-sqlite'))
+	},
+	reopen: async function reopenSqliteStore(store) {
+		await store.close()
+		return openSqliteStore(store.name)
+	},
+	connect: async function connectSqliteStore(store) {
+		return openSqliteStore(store.name)
+	},
+}
+
 /** The stores the contract runs over today; a new kind of store joins by adding its factory here. */
 export const STORE_CONTRACT_FACTORIES: StoreContractFactory[] = [
 	inMemoryStoreFactory,
 	dexieStoreFactory,
+	sqliteInProcessStoreFactory,
 ]
