@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `perf.snapshot()` and `perf.merge({ report, prefix })`: a realm's spans, tallies and `timeOrigin` as data, folded into another realm's perf under `<prefix>::`, spans shifted onto its timeline. `createPerf({ enabled, timeline: false })` keeps spans off the shared timeline. Types `PerfSnapshot`, `PerfSpan`. With `dev.perf` on, each import's stages land on `project.perf` as `store::import`, `store::import::register`, `decode`, `parse`, `standardize`, `hooks.record`, `insert`, `hooks.after`, `writes.after`, `finalize`.
 - `removeUnfinishedImports({ store, isRunning? })`: what a store does as it opens - remove every document left `importing`, but those `isRunning` names (an import still running; it may answer asynchronously), each row read again before it goes so an import that ended meanwhile stays.
 - `createTestRunner` calls (`withExport` / `withoutExport`) and `createTestProject` take a `configKey`: the fixtures are imported under that declared config (they were always imported under the default one); a call's `dialecteConfig` replaces the config under that key.
+- Core's store contract suite and the project's store switch also run in node, on the in-memory store and on IndexedDB through `fake-indexeddb` (`npm run test:node`).
 
 ### Changed
 
