@@ -50,6 +50,18 @@ export const ERROR_CATALOG = {
 		code: 'D1010',
 		message: 'Store is closed',
 	},
+	STORE_PROTOCOL_MISMATCH: {
+		code: 'D1012',
+		message: 'Another version of the library holds the shared store connection',
+	},
+	STORE_REALM_ID_TAKEN: {
+		code: 'D1013',
+		message: 'A view with this id is already connected to the shared store',
+	},
+	STORE_REALM_UNKNOWN: {
+		code: 'D1014',
+		message: 'The shared store does not know this view',
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {
@@ -180,5 +192,21 @@ export const ERROR_CATALOG = {
 	BLOB_NOT_FOUND: {
 		code: 'D7004',
 		message: 'Blob not found in store',
+	},
+	PROJECT_ENGINE_UNAVAILABLE: {
+		code: 'D7006',
+		message: 'No view can start the project engine',
+	},
+	PROJECT_ENGINE_BUSY: {
+		code: 'D7007',
+		message: 'The project is still held by another engine',
+	},
+	PROJECT_DIALECTE_MISMATCH: {
+		code: 'D7008',
+		message: 'The project is open with another dialecte',
+	},
+	PROJECT_DIALECTE_VERSION_MISMATCH: {
+		code: 'D7009',
+		message: 'The project engine runs another version of the dialecte',
 	},
 } as const

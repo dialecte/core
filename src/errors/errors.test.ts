@@ -1,3 +1,4 @@
+import { ERROR_CATALOG } from './codes'
 import { defineErrors, isKnownDialecteError, throwDialecteError, toDialecteError } from './errors'
 
 import { describe, expect, expectTypeOf, it } from 'vitest'
@@ -18,6 +19,17 @@ function catchThrown(act: () => unknown): unknown {
 		return error
 	}
 	return undefined
+}
+
+/** Each code given to more than one key, with those keys. */
+function codesTakenTwice(params: { catalog: Record<string, { code: string }> }): string[] {
+	const keysByCode = new Map<string, string[]>()
+	for (const [key, entry] of Object.entries(params.catalog)) {
+		keysByCode.set(entry.code, [...(keysByCode.get(entry.code) ?? []), key])
+	}
+	return [...keysByCode]
+		.filter(([, keys]) => keys.length > 1)
+		.map(([code, keys]) => `${code}: ${keys.join(', ')}`)
 }
 
 describe('throwDialecteError', () => {
@@ -158,6 +170,18 @@ describe('defineErrors — a catalogue written out', () => {
 				NAME_TAKEN: { code: 'D2001', message: 'The name is already taken' },
 			}),
 		).toThrow()
+	})
+})
+
+describe('ERROR_CATALOG', () => {
+	type TestCase = BaseTestCase
+
+	const testCases: Record<string, TestCase> = {
+		'the core catalogue → each code given to one key only': {},
+	}
+
+	runTestCases.generic(testCases, () => {
+		expect(codesTakenTwice({ catalog: ERROR_CATALOG })).toEqual([])
 	})
 })
 
