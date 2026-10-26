@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 
+import { BENCH_COMMANDS } from './src/store/sqlite/bench/bench-commands'
 import viteConfig from './vite.config'
 
 import { playwright } from '@vitest/browser-playwright'
@@ -8,13 +9,40 @@ import { mergeConfig, defineConfig, configDefaults } from 'vitest/config'
 import type { BrowserConfigOptions } from 'vitest/node'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
-const createBrowser = (): BrowserConfigOptions => ({
+const createBrowser = (
+	instances: BrowserConfigOptions['instances'] = [{ browser: 'chromium' }],
+): BrowserConfigOptions => ({
 	provider: playwright(),
 	enabled: true,
 	headless: true,
-	instances: [{ browser: 'chromium' }],
+	instances,
 	screenshotFailures: false,
 })
+// Perf benches measure browser storage on disk: a default (off-the-record) context keeps OPFS and IndexedDB in
+// memory, under a small quota. One profile directory per browser, git-ignored under .tmp; benches remove what they create.
+// Playwright's patched Firefox does not start on every macOS: the bench's Firefox run uses stock Firefox over BiDi.
+const benchProfile = (browser: string): string =>
+	`${process.env.BENCH_PROFILE_DIR ?? `${root}.tmp/bench-profile`}-${browser}`
+const benchInstances = (): BrowserConfigOptions['instances'] =>
+	process.env.BENCH_FIREFOX_EXECUTABLE
+		? [
+				{
+					browser: 'firefox',
+					provider: playwright({
+						persistentContext: benchProfile('firefox'),
+						launchOptions: {
+							channel: 'moz-firefox',
+							executablePath: process.env.BENCH_FIREFOX_EXECUTABLE,
+						},
+					}),
+				},
+			]
+		: [
+				{
+					browser: 'chromium',
+					provider: playwright({ persistentContext: benchProfile('chromium') }),
+				},
+			]
 
 export default mergeConfig(
 	viteConfig,
@@ -36,11 +64,27 @@ export default mergeConfig(
 				},
 				{
 					resolve: viteConfig.resolve,
+					// workers discover their dependencies late: pre-bundle them up front; sqlite-wasm resolves its wasm itself
+					optimizeDeps: {
+						include: ['comlink', 'sax', 'xml-formatter'],
+						exclude: ['@sqlite.org/sqlite-wasm'],
+					},
+					// the layout bench reads fixtures from another checkout (BENCH_SCL_FIXTURES_DIR)
+					server: {
+						fs: {
+							allow: [
+								root,
+								...(process.env.BENCH_SCL_FIXTURES_DIR ? [process.env.BENCH_SCL_FIXTURES_DIR] : []),
+							],
+						},
+					},
 					plugins: [],
 					test: {
 						name: 'perf',
 						testTimeout: 180_000,
-						browser: createBrowser(),
+						// one headless tab per bench file: one at a time on a shared machine
+						fileParallelism: false,
+						browser: { ...createBrowser(benchInstances()), commands: BENCH_COMMANDS },
 						include: ['src/**/*.bench.test.{js,ts}'],
 						root,
 					},
