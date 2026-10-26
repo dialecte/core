@@ -1,8 +1,8 @@
-import { encodeJson } from './bulk-insert'
 import { DOCUMENT_COLUMN_LIST, DOCUMENT_COLUMNS } from './engine.constants'
 import { createRecordTable } from './schema'
 
 import { compareById } from '@/store/compare-by-id'
+import { toJsonCopy } from '@/store/json-values'
 import { throwDocumentAlreadyRegistered } from '@/store/store-errors'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
@@ -11,13 +11,15 @@ import type { Database, SqlValue } from '@sqlite.org/sqlite-wasm'
 
 /**
  * Register a document and create its record table, in the caller's transaction; an id already
- * registered is refused with `STORE_DUPLICATE_ID`, the registered one left as it was.
+ * registered is refused with `STORE_DUPLICATE_ID`, the registered one left as it was, then a value
+ * that is not JSON with `STORE_VALUE_NOT_JSON`.
  */
 export function insertDocument(params: { db: Database; document: DocumentRecord }): void {
-	const { db, document } = params
-	if (findSeq({ db, documentId: document.id }) !== undefined) {
-		throwDocumentAlreadyRegistered({ documentId: document.id })
+	const { db } = params
+	if (findSeq({ db, documentId: params.document.id }) !== undefined) {
+		throwDocumentAlreadyRegistered({ documentId: params.document.id })
 	}
+	const document = toJsonCopy({ value: params.document })
 	const placeholders = Object.keys(DOCUMENT_COLUMNS)
 		.map(() => '?')
 		.join(', ')
@@ -48,13 +50,17 @@ export function readDocuments(params: { db: Database }): DocumentRecord[] {
 	return rows.map((row) => documentOf({ row })).sort(compareById)
 }
 
-/** The name, metadata and status of a registered document, in the caller's transaction; an unknown one is left alone. */
+/**
+ * The name, metadata and status of a registered document, in the caller's transaction: a value that
+ * is not JSON is refused with `STORE_VALUE_NOT_JSON` first; an unknown document is then left alone.
+ */
 export function updateDocumentRow(params: {
 	db: Database
 	documentId: string
 	updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>
 }): void {
-	const { db, documentId, updates } = params
+	const { db, documentId } = params
+	const updates = toJsonCopy({ value: params.updates })
 	const held = readDocument({ db, documentId })
 	if (!held) return
 	const updated = { ...held, ...updates }
@@ -107,9 +113,10 @@ function documentRow(params: { document: DocumentRecord }): SqlValue[] {
 	]
 }
 
+/** The metadata of a document already checked as JSON. */
 function metadataColumn(params: { document: Pick<DocumentRecord, 'metadata'> }): string | null {
 	const { metadata } = params.document
-	return metadata === undefined ? null : encodeJson({ value: metadata })
+	return metadata === undefined ? null : JSON.stringify(metadata)
 }
 
 function documentOf(params: { row: SqlValue[] }): DocumentRecord {

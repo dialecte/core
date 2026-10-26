@@ -24,6 +24,7 @@ import type { ImportProgress, Store, WriteOutcome } from '../store.types'
 import type {
 	AbsentDocumentRead,
 	AttributePatchCase,
+	NonJsonPlace,
 	OperationInFlight,
 	OrderedRead,
 	RefusedWrite,
@@ -236,7 +237,11 @@ const bulkWrites: StoreContractCases = {
 	'creates land as given': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
-			const record = makeRecord({ id: 'r1', value: 'text', children: [{ id: 'c1', tagName: 'B' }] })
+			const record = makeRecord({
+				id: 'r1',
+				value: 'text',
+				children: [{ id: 'c1', tagName: 'B' }],
+			})
 			await store.bulkWrite('doc-1', { creates: [record] })
 			expect(await store.get('r1', 'doc-1')).toEqual(record)
 		},
@@ -870,37 +875,39 @@ const snapshots: StoreContractCases = {
 
 // ── Rejected writes ──────────────────────────────────────────────────────────
 
-/** A record holding a value no store can copy: a function. */
-function uncopyableRecord(id: string): AnyRawRecord {
-	return { ...makeRecord({ id }), value: (() => '') as unknown as string }
+/** A record holding a value that is not JSON: a function. */
+function nonJsonRecord(params: { id: string }): AnyRawRecord {
+	return { ...makeRecord({ id: params.id }), value: (() => '') as unknown as string }
 }
 
 /**
- * A write of a value the store cannot copy, alone or with another fault, and the refusal it must
- * answer, in the order a store that encodes what it is handed meets them: an absent update, then the
- * creates encoded (one it cannot copy refuses the batch), then a taken id, then the updates encoded.
- * "Cannot copy" is what structured clone refuses: a store whose encoding would drop such a value
- * silently (JSON drops a function) checks for it before writing.
+ * A write of a value that is not JSON, alone or with another fault, and the refusal it must answer,
+ * in the order every store meets them: an absent update, then the creates checked (one that is not
+ * JSON refuses the batch), then a taken id, then the updates checked.
  */
-const UNCOPYABLE_WRITES: Record<string, RefusedWrite> = {
+const NON_JSON_WRITES: Record<string, RefusedWrite> = {
 	'bulkWrite creates': {
-		write: (store) => store.bulkWrite('doc-1', { creates: [uncopyableRecord('r9')] }),
-		key: 'STORE_BULK_ADD_FAILED',
+		write: (store) => store.bulkWrite('doc-1', { creates: [nonJsonRecord({ id: 'r9' })] }),
+		key: 'STORE_VALUE_NOT_JSON',
 	},
 	'bulkWrite update patch': {
 		write: (store) =>
 			store.bulkWrite('doc-1', {
 				updates: [{ recordId: 'r1', value: (() => '') as unknown as string }],
 			}),
-		key: 'STORE_BULK_UPDATE_FAILED',
+		key: 'STORE_VALUE_NOT_JSON',
 	},
 	'commit creates': {
-		write: (store) => commit({ store, documentId: 'doc-1', creates: [uncopyableRecord('r9')] }),
-		key: 'STORE_BULK_ADD_FAILED',
+		needs: ['history'],
+		write: (store) =>
+			commit({ store, documentId: 'doc-1', creates: [nonJsonRecord({ id: 'r9' })] }),
+		key: 'STORE_VALUE_NOT_JSON',
 	},
 	'commit updates': {
-		write: (store) => commit({ store, documentId: 'doc-1', updates: [uncopyableRecord('r1')] }),
-		key: 'STORE_BULK_UPDATE_FAILED',
+		needs: ['history'],
+		write: (store) =>
+			commit({ store, documentId: 'doc-1', updates: [nonJsonRecord({ id: 'r1' })] }),
+		key: 'STORE_VALUE_NOT_JSON',
 	},
 	'bulkWrite creating a taken id with an update': {
 		write: (store) =>
@@ -911,43 +918,48 @@ const UNCOPYABLE_WRITES: Record<string, RefusedWrite> = {
 		key: 'STORE_DUPLICATE_ID',
 	},
 	'commit creating a taken id with an update': {
+		needs: ['history'],
 		write: (store) =>
 			commit({
 				store,
 				documentId: 'doc-1',
 				creates: [makeRecord({ id: 'r1' })],
-				updates: [uncopyableRecord('r1')],
+				updates: [nonJsonRecord({ id: 'r1' })],
 			}),
 		key: 'STORE_DUPLICATE_ID',
 	},
 	'bulkWrite creating a taken id and a create': {
 		write: (store) =>
-			store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' }), uncopyableRecord('r9')] }),
-		key: 'STORE_BULK_ADD_FAILED',
+			store.bulkWrite('doc-1', {
+				creates: [makeRecord({ id: 'r1' }), nonJsonRecord({ id: 'r9' })],
+			}),
+		key: 'STORE_VALUE_NOT_JSON',
 	},
 	'commit creating a taken id and a create': {
+		needs: ['history'],
 		write: (store) =>
 			commit({
 				store,
 				documentId: 'doc-1',
-				creates: [makeRecord({ id: 'r1' }), uncopyableRecord('r9')],
+				creates: [makeRecord({ id: 'r1' }), nonJsonRecord({ id: 'r9' })],
 			}),
-		key: 'STORE_BULK_ADD_FAILED',
+		key: 'STORE_VALUE_NOT_JSON',
 	},
 	'commit updating an absent record with a create': {
+		needs: ['history'],
 		write: (store) =>
 			commit({
 				store,
 				documentId: 'doc-1',
-				creates: [uncopyableRecord('r9')],
+				creates: [nonJsonRecord({ id: 'r9' })],
 				updates: [makeRecord({ id: 'absent' })],
 			}),
 		key: 'STORE_RECORD_NOT_FOUND',
 	},
 }
 
-const uncopyablePatchOfAbsentRecord: StoreContractCases = {
-	'bulkWrite update patch of an absent record holding a value the store cannot copy → skipped as every absent patch, nothing written':
+const nonJsonPatchOfAbsentRecord: StoreContractCases = {
+	'bulkWrite update patch of an absent record holding a value that is not JSON → skipped as every absent patch, nothing written':
 		{
 			act: async ({ store }) => {
 				await store.registerDocument(makeDocument())
@@ -960,20 +972,30 @@ const uncopyablePatchOfAbsentRecord: StoreContractCases = {
 		},
 }
 
-const uncopyableWrites: StoreContractCases = Object.fromEntries(
-	Object.entries(UNCOPYABLE_WRITES).map(([name, { write, key }]) => [
-		`${name} of a value the store cannot copy (a function) → ${key}, the record as it was, no history`,
-		{
-			needs: ['history'],
-			act: async ({ store }: StoreContractContext) => {
-				await store.registerDocument(makeDocument())
-				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
-				await expectRejectsWith({ action: write(store), key })
-				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
-				expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: false })
+const nonJsonWrites: StoreContractCases = Object.fromEntries(
+	Object.entries(NON_JSON_WRITES).map(([name, { needs, write, key }]) => {
+		const keepsHistory = needs?.includes('history') ?? false
+		return [
+			`${name} of a value that is not JSON (a function) → ${key}, the record and its count as they were${keepsHistory ? ', no history' : ''}`,
+			{
+				needs,
+				act: async ({ store }: StoreContractContext) => {
+					await store.registerDocument(makeDocument())
+					await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+					expect(await store.count('doc-1')).toBe(1)
+					await expectRejectsWith({ action: write(store), key })
+					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+					expect(await store.count('doc-1')).toBe(1)
+					if (keepsHistory) {
+						expect(await store.getHistoryStatus('doc-1')).toEqual({
+							canUndo: false,
+							canRedo: false,
+						})
+					}
+				},
 			},
-		},
-	]),
+		]
+	}),
 )
 
 const rejectedWrites: StoreContractCases = {
@@ -1143,6 +1165,215 @@ const rejectedWrites: StoreContractCases = {
 	},
 }
 
+// ── JSON values only ─────────────────────────────────────────────────────────
+
+/** An instance of a class: a store keeps plain objects only. */
+class HeldInstance {}
+
+/** Each value that is not plain JSON, built fresh for each case. */
+const NON_JSON_VALUES: Record<string, () => unknown> = {
+	'a Date': () => new Date(0),
+	'a Map': () => new Map([['k', 'v']]),
+	'a Set': () => new Set(['v']),
+	NaN: () => Number.NaN,
+	Infinity: () => Number.POSITIVE_INFINITY,
+	'a BigInt': () => BigInt(1),
+	'a function': () => () => '',
+	'a symbol': () => Symbol('held'),
+	'an instance of a class': () => new HeldInstance(),
+	'an array holding undefined': () => [undefined],
+}
+
+/** Where a write hands the store a value: every store refuses one that is not JSON there. */
+const NON_JSON_PLACES: Record<string, NonJsonPlace> = {
+	'a record created': {
+		write: ({ store, value }) =>
+			store.bulkWrite('doc-1', {
+				creates: [makeRecord({ id: 'r9', attributes: [{ name: 'a', value: value as string }] })],
+			}),
+	},
+	'the value of a record created': {
+		write: ({ store, value }) =>
+			store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r9', value: value as string })] }),
+	},
+	'a record patched': {
+		write: ({ store, value }) =>
+			store.bulkWrite('doc-1', {
+				updates: [{ recordId: 'r1', attributes: [{ name: 'a', value: value as string }] }],
+			}),
+	},
+	'the attributes a patch removes': {
+		write: ({ store, value }) =>
+			store.bulkWrite('doc-1', {
+				updates: [{ recordId: 'r1', removeAttributes: [value as string] }],
+			}),
+	},
+	'the first of two patches of one record': {
+		write: ({ store, value }) =>
+			store.bulkWrite('doc-1', {
+				updates: [
+					{ recordId: 'r1', value: value as string },
+					{ recordId: 'r1', value: 'x' },
+				],
+			}),
+	},
+	'a record created by a commit': {
+		needs: ['history'],
+		write: ({ store, value }) =>
+			commit({
+				store,
+				documentId: 'doc-1',
+				creates: [makeRecord({ id: 'r9', attributes: [{ name: 'a', value: value as string }] })],
+			}),
+	},
+	'a record updated by a commit': {
+		needs: ['history'],
+		write: ({ store, value }) =>
+			commit({
+				store,
+				documentId: 'doc-1',
+				updates: [makeRecord({ id: 'r1', attributes: [{ name: 'a', value: value as string }] })],
+			}),
+	},
+	'the metadata of a document registered': {
+		write: ({ store, value }) =>
+			store.registerDocument(makeDocument({ id: 'doc-2', metadata: { origin: { held: value } } })),
+	},
+	'the metadata of a document updated': {
+		write: ({ store, value }) =>
+			store.updateDocument('doc-1', { metadata: { origin: { held: value } } }),
+	},
+}
+
+const nonJsonValues: StoreContractCases = Object.fromEntries(
+	Object.entries(NON_JSON_PLACES).flatMap(([place, { needs, write }]) =>
+		Object.entries(NON_JSON_VALUES).map(([kind, value]) => [
+			`${kind} in ${place} → STORE_VALUE_NOT_JSON, nothing written`,
+			{
+				needs,
+				act: async ({ store }: StoreContractContext) => {
+					await store.registerDocument(makeDocument())
+					await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+					await expectRejectsWith({
+						action: write({ store, value: value() }),
+						key: 'STORE_VALUE_NOT_JSON',
+					})
+					expect(await store.getDocuments()).toEqual([makeDocument()])
+					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+				},
+			},
+		]),
+	),
+)
+
+const undefinedFieldsDropped: StoreContractCases = {
+	'a document registered with fields holding undefined → read without them': {
+		act: async ({ store }) => {
+			await store.registerDocument(
+				makeDocument({ metadata: { origin: 'test', gone: undefined }, writeId: undefined }),
+			)
+			expect(await store.getDocument('doc-1')).toStrictEqual(
+				makeDocument({ metadata: { origin: 'test' } }),
+			)
+		},
+	},
+	'a document updated with fields holding undefined → those fields as they were, undefined dropped from the metadata':
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument())
+				await store.updateDocument('doc-1', {
+					name: undefined,
+					metadata: { origin: 'test', gone: undefined },
+				})
+				expect(await store.getDocument('doc-1')).toStrictEqual(
+					makeDocument({ metadata: { origin: 'test' } }),
+				)
+			},
+		},
+	'a document updated with metadata undefined → its metadata kept': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument({ metadata: { origin: 'test' } }))
+			await store.updateDocument('doc-1', { metadata: undefined })
+			expect(await store.getDocument('doc-1')).toStrictEqual(
+				makeDocument({ metadata: { origin: 'test' } }),
+			)
+		},
+	},
+	'a record created with a field holding undefined → read without it': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			const attribute = { name: 'a', value: '1', gone: undefined }
+			await store.bulkWrite('doc-1', {
+				creates: [makeRecord({ id: 'r1', attributes: [attribute] })],
+			})
+			expect(await store.get('r1', 'doc-1')).toStrictEqual(makeRecord({ id: 'r1' }))
+		},
+	},
+	'a record patched with a field holding undefined → read without it': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+			const attribute = { name: 'b', value: '2', gone: undefined }
+			await store.bulkWrite('doc-1', { updates: [{ recordId: 'r1', attributes: [attribute] }] })
+			expect(await store.get('r1', 'doc-1')).toStrictEqual(
+				makeRecord({
+					id: 'r1',
+					attributes: [
+						{ name: 'a', value: '1' },
+						{ name: 'b', value: '2' },
+					],
+				}),
+			)
+		},
+	},
+}
+
+const nonJsonRefusalOrder: StoreContractCases = {
+	'a bulk write creating, deleting and handing a create that is not JSON → refused whole: the records, their count and the documents as they were':
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument())
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+				expect(await store.count('doc-1')).toBe(1)
+				await expectRejectsWith({
+					action: store.bulkWrite('doc-1', {
+						creates: [
+							makeRecord({ id: 'r2' }),
+							{ ...makeRecord({ id: 'r9' }), value: new Date(0) as unknown as string },
+						],
+						updates: [{ recordId: 'r1', value: 'changed' }],
+						deletes: ['r1'],
+					}),
+					key: 'STORE_VALUE_NOT_JSON',
+				})
+				expect(await store.count('doc-1')).toBe(1)
+				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+				expect(await store.getDocuments()).toEqual([makeDocument()])
+			},
+		},
+	'registering a taken id with metadata that is not JSON → STORE_DUPLICATE_ID: the id is checked first':
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument())
+				await expectRejectsWith({
+					action: store.registerDocument(makeDocument({ metadata: { at: new Date(0) } })),
+					key: 'STORE_DUPLICATE_ID',
+				})
+				expect(await store.getDocuments()).toEqual([makeDocument()])
+			},
+		},
+	'updating a document not registered with metadata that is not JSON → STORE_VALUE_NOT_JSON: the value is checked first':
+		{
+			act: async ({ store }) => {
+				await expectRejectsWith({
+					action: store.updateDocument('nope', { metadata: { at: new Date(0) } }),
+					key: 'STORE_VALUE_NOT_JSON',
+				})
+				expect(await store.getDocuments()).toEqual([])
+			},
+		},
+}
+
 // ── A document that is not there ─────────────────────────────────────────────
 
 /** Each read of a document that is not there, and what it answers. */
@@ -1277,7 +1508,11 @@ const duringImport: StoreContractCases = {
 			await store.registerDocument(makeDocument({ id: 'a', status: 'importing' }))
 			await store.bulkWrite('a', { creates: [makeRecord({ id: 'a1' })] })
 
-			await commit({ store, documentId: 'b', updates: [makeRecord({ id: 'rb', value: 'edited' })] })
+			await commit({
+				store,
+				documentId: 'b',
+				updates: [makeRecord({ id: 'rb', value: 'edited' })],
+			})
 
 			await store.bulkWrite('a', {
 				creates: [makeRecord({ id: 'a2' })],
@@ -2179,7 +2414,8 @@ export const STORE_CONTRACT: StoreContractGroups = {
 	reopen,
 	'sibling order': siblingOrder,
 	'changelog snapshots': needing({ needs: ['history'], cases: snapshots }),
-	'rejected writes': { ...rejectedWrites, ...uncopyableWrites, ...uncopyablePatchOfAbsentRecord },
+	'rejected writes': { ...rejectedWrites, ...nonJsonWrites, ...nonJsonPatchOfAbsentRecord },
+	'JSON values only': { ...nonJsonValues, ...undefinedFieldsDropped, ...nonJsonRefusalOrder },
 	'a document that is not there': absentDocument,
 	'a removed document leaves no history': needing({ needs: ['history'], cases: removedDocument }),
 	'an edit during an import': duringImport,

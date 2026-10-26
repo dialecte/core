@@ -110,10 +110,17 @@ export type ValueWrite<GenericGiven extends object = object> = {
 	read: ValueRead
 }
 
-/** A write breaking one or more rules (a value the store cannot copy among them), and the refusal it must answer. */
+/** A write breaking one or more rules (a value that is not JSON among them), and the refusal it must answer. */
 export type RefusedWrite = {
+	needs?: StoreContractNeed[]
 	write: (store: Store) => Promise<void>
 	key: DialecteErrorKey
+}
+
+/** A write handing the store `value` where it writes: one that is not JSON is refused there. */
+export type NonJsonPlace = {
+	needs?: StoreContractNeed[]
+	write: (params: { store: Store; value: unknown }) => Promise<void>
 }
 
 /** An operation through a store, run once the store is closed. */

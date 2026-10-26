@@ -58,7 +58,7 @@ const documentId = await project.initEmptyDocument({
 | `name`      | `string`                  | `'untitled'`                 | Filename without extension           |
 | `extension` | `string`                  | Config's first supported ext | File extension including leading dot |
 | `configKey` | `string`                  | `defaultConfigKey`           | Key into the configs registry        |
-| `metadata`  | `Record<string, unknown>` | -                            | Extensible per-file metadata         |
+| `metadata`  | `Record<string, unknown>` | -                            | Per-file metadata, JSON values only  |
 
 **Returns** `Promise<string>` - the new documentId.
 
@@ -85,7 +85,7 @@ if (last) setActiveDocument(last.documentId)
 | Param                 | Type                                 | Default            | Description                                                                                                           |
 | --------------------- | ------------------------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | `configKey`           | `string`                             | `defaultConfigKey` | Key into the configs registry                                                                                         |
-| `metadata`            | `Record<string, unknown>`            | -                  | Extensible per-file metadata                                                                                          |
+| `metadata`            | `Record<string, unknown>`            | -                  | Per-file metadata, JSON values only ([values a store keeps](/io/#values-a-store-keeps))                               |
 | `chunkOptions`        | `Partial<ChunkOptions>`              | -                  | Override chunking defaults for SAX streaming                                                                          |
 | `useCustomRecordsIds` | `boolean`                            | `false`            | Use IDs from XML attributes instead of generating UUIDs                                                               |
 | `onProgress`          | `(progress: ImportProgress) => void` | -                  | Told after each stored batch: `{ bytesRead, totalBytes }` of the file in progress; never awaited, its failure ignored |

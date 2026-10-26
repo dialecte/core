@@ -232,6 +232,37 @@ const exporting: StoreContractCases = {
 				expect([before, after, 'DOCUMENT_NOT_REGISTERED']).toContain(outcome)
 			},
 		},
+	'writes refused while it exports (values that are not JSON) -> the version unchanged: the export runs once, the file as it was':
+		{
+			act: async ({ store }) => {
+				const documentId = await importSource({ store })
+				const before = await exportedText({ store, documentId, indent: false })
+				const [a] = await store.getByTagNameInDocument('A', documentId)
+				const notJson = new Date(0) as unknown as string
+				let reached = 0
+				let refusals: Promise<unknown[]> | undefined
+				const { file } = await store.exportFile({
+					documentId,
+					options: { indent: false, batchSize: 1 },
+					onProgress: ({ recordsWritten }) => {
+						if (recordsWritten !== WRITE_AFTER_RECORDS) return
+						reached += 1
+						// two refused writes: had either moved the version, the export would restart, then conflict
+						refusals ??= Promise.all([
+							store
+								.bulkWrite(documentId, { creates: [makeRecord({ id: 'r-new', value: notJson })] })
+								.catch((error: unknown) => toDialecteError(error)?.key),
+							store
+								.bulkWrite(documentId, { updates: [{ recordId: a!.id, value: notJson }] })
+								.catch((error: unknown) => toDialecteError(error)?.key),
+						])
+					},
+				})
+				expect(await refusals).toEqual(['STORE_VALUE_NOT_JSON', 'STORE_VALUE_NOT_JSON'])
+				expect(reached).toBe(1)
+				expect(await file.text()).toBe(before)
+			},
+		},
 	'a write on another document while it exports -> the file as it was': {
 		act: async ({ store }) => {
 			const documentId = await importSource({ store })

@@ -6,9 +6,9 @@ import {
 	ROWS_PER_BIND,
 } from './engine.constants'
 
-import { throwDialecteError } from '@/errors'
 import { applyRecordPatch } from '@/store/apply-record-patch'
 import { compareById } from '@/store/compare-by-id'
+import { checkJsonValues } from '@/store/json-values'
 import { throwDuplicateRecordIds } from '@/store/store-errors'
 
 import type { EncodedRows } from './engine.types'
@@ -68,11 +68,12 @@ export function countRecords(params: { db: Database; table: string }): number {
 }
 
 /**
- * The creates of a bulk write encoded, before anything else is checked: a value the file cannot keep
- * refuses the whole write with `STORE_BULK_ADD_FAILED`.
+ * The creates of a bulk write encoded, before anything else is checked: a value that is not JSON
+ * refuses the whole write with `STORE_VALUE_NOT_JSON`.
  */
 export function encodeCreates(params: { creates: AnyRawRecord[] }): EncodedRows {
-	return encodeOrRefuse({ records: params.creates, key: 'STORE_BULK_ADD_FAILED' })
+	checkJsonValues({ value: params.creates })
+	return encodeRecords({ records: params.creates })
 }
 
 /**
@@ -103,9 +104,10 @@ export function refuseTakenIds(params: {
 
 /**
  * Apply bulk-write patches, in the caller's transaction, in the order given: per batch of ids the
- * records are read in one statement, patched (`applyRecordPatch`, a record patched twice in turn),
- * encoded - a value the file cannot keep refuses with `STORE_BULK_UPDATE_FAILED` - and written back
- * in one statement, one row per record. A patch of a record the table does not hold is skipped.
+ * records are read in one statement; the patches of the records held are checked - a value that is
+ * not JSON refuses with `STORE_VALUE_NOT_JSON` - then applied (`applyRecordPatch`, a record patched
+ * twice in turn), encoded and written back in one statement, one row per record. A patch of a
+ * record the table does not hold is skipped.
  */
 export function patchRecords(params: {
 	db: Database
@@ -122,16 +124,14 @@ export function patchRecords(params: {
 		for (let start = 0; start < patches.length; start += ROWS_PER_BIND) {
 			const chunk = patches.slice(start, start + ROWS_PER_BIND)
 			const records = readRecordsById({ db, table, ids: chunk.map((patch) => patch.recordId) })
+			const applying = chunk.filter((patch) => records.has(patch.recordId))
+			checkJsonValues({ value: applying })
 			const patched = new Map<string, AnyRawRecord>()
-			for (const patch of chunk) {
+			for (const patch of applying) {
 				const record = patched.get(patch.recordId) ?? records.get(patch.recordId)
-				if (!record) continue
-				patched.set(patch.recordId, applyRecordPatch({ record, patch }))
+				if (record) patched.set(patch.recordId, applyRecordPatch({ record, patch }))
 			}
-			const rows = encodeOrRefuse({
-				records: [...patched.values()],
-				key: 'STORE_BULK_UPDATE_FAILED',
-			})
+			const rows = encodeRecords({ records: [...patched.values()] })
 			for (const payload of rows.payloads) update.bind([payload]).stepReset()
 		}
 	} finally {
@@ -152,19 +152,6 @@ export function deleteRecords(params: {
 		bind: [JSON.stringify(ids)],
 	})
 	return db.changes()
-}
-
-function encodeOrRefuse(params: {
-	records: AnyRawRecord[]
-	key: 'STORE_BULK_ADD_FAILED' | 'STORE_BULK_UPDATE_FAILED'
-}): EncodedRows {
-	const { records, key } = params
-	try {
-		return encodeRecords({ records })
-	} catch (thrown) {
-		const cause = thrown instanceof Error ? thrown : undefined
-		throwDialecteError(key, { detail: cause?.message ?? String(thrown), cause })
-	}
 }
 
 function recordOf(params: { row: SqlValue[] }): AnyRawRecord {

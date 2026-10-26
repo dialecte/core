@@ -66,6 +66,10 @@ export const ERROR_CATALOG = {
 		code: 'D1014',
 		message: 'The shared store does not know this view',
 	},
+	STORE_VALUE_NOT_JSON: {
+		code: 'D1015',
+		message: 'A value handed to the store is not JSON',
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {

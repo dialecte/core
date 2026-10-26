@@ -142,40 +142,40 @@ describe('openSqliteEngine', () => {
 		})
 	})
 
-	describe('a bulk write of a value the file cannot keep (a function), refused whole', () => {
+	describe('a bulk write of a value that is not JSON (a function), refused whole', () => {
 		type TestCase = {
 			ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[] }
 			expectedKey: DialecteErrorKey
 		}
-		const uncopyable = (() => '') as unknown as string
+		const notJson = (() => '') as unknown as string
 		const testCases: Record<string, TestCase> = {
-			'a create holding it → STORE_BULK_ADD_FAILED, nothing written': {
-				ops: { creates: [{ ...makeRecord({ id: 'r9' }), value: uncopyable }] },
-				expectedKey: 'STORE_BULK_ADD_FAILED',
+			'a create holding it → STORE_VALUE_NOT_JSON, nothing written': {
+				ops: { creates: [{ ...makeRecord({ id: 'r9' }), value: notJson }] },
+				expectedKey: 'STORE_VALUE_NOT_JSON',
 			},
-			'a patch holding it → STORE_BULK_UPDATE_FAILED, nothing written': {
-				ops: { updates: [{ recordId: 'r1', value: uncopyable }] },
-				expectedKey: 'STORE_BULK_UPDATE_FAILED',
+			'a patch holding it → STORE_VALUE_NOT_JSON, nothing written': {
+				ops: { updates: [{ recordId: 'r1', value: notJson }] },
+				expectedKey: 'STORE_VALUE_NOT_JSON',
 			},
 			'a taken id and a patch holding it → the taken id refused first: STORE_DUPLICATE_ID': {
 				ops: {
 					creates: [makeRecord({ id: 'r1' })],
-					updates: [{ recordId: 'r1', value: uncopyable }],
+					updates: [{ recordId: 'r1', value: notJson }],
 				},
 				expectedKey: 'STORE_DUPLICATE_ID',
 			},
-			'a create and a patch holding it → STORE_BULK_UPDATE_FAILED, the create rolled back': {
+			'a create and a patch holding it → STORE_VALUE_NOT_JSON, the create rolled back': {
 				ops: {
 					creates: [makeRecord({ id: 'r9' })],
-					updates: [{ recordId: 'r1', value: uncopyable }],
+					updates: [{ recordId: 'r1', value: notJson }],
 				},
-				expectedKey: 'STORE_BULK_UPDATE_FAILED',
+				expectedKey: 'STORE_VALUE_NOT_JSON',
 			},
-			'a taken id and a create holding it → the creates encoded first: STORE_BULK_ADD_FAILED': {
+			'a taken id and a create holding it → the creates checked first: STORE_VALUE_NOT_JSON': {
 				ops: {
-					creates: [makeRecord({ id: 'r1' }), { ...makeRecord({ id: 'r9' }), value: uncopyable }],
+					creates: [makeRecord({ id: 'r1' }), { ...makeRecord({ id: 'r9' }), value: notJson }],
 				},
-				expectedKey: 'STORE_BULK_ADD_FAILED',
+				expectedKey: 'STORE_VALUE_NOT_JSON',
 			},
 		}
 
@@ -335,12 +335,12 @@ describe('openSqliteEngine', () => {
 			await expectRejectsWith({ action: startEngine({ db }), key: 'STORE_CONNECTION_FAILED' })
 		})
 
-		it('registerDocument of metadata the file cannot keep (a function) → STORE_COMMIT_FAILED, nothing registered', async () => {
+		it('registerDocument of metadata that is not JSON (a function) → STORE_VALUE_NOT_JSON, nothing registered', async () => {
 			const file = await openFile()
 			const engine = await startEngine({ db: file.connect() })
 			await expectRejectsWith({
 				action: engine.registerDocument(makeDocument({ metadata: { hook: () => undefined } })),
-				key: 'STORE_COMMIT_FAILED',
+				key: 'STORE_VALUE_NOT_JSON',
 			})
 			expect(await engine.getDocuments()).toEqual([])
 		})

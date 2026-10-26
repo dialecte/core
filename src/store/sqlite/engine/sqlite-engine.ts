@@ -203,8 +203,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			})
 		},
 		/**
-		 * Refused whole, in the order every store answers in: a document not registered, a create the
-		 * file cannot keep, a taken id; then, in the transaction, a patch the file cannot keep.
+		 * Refused whole, in the order every store answers in: a document not registered, a create that
+		 * is not JSON, a taken id; then, in the transaction, a patch that is not JSON.
 		 */
 		bulkWrite: async function bulkWrite(documentId, ops) {
 			const { creates = [], updates = [], deletes = [] } = ops

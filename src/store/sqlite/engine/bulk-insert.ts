@@ -4,16 +4,13 @@ import type { EncodedRows } from './engine.types'
 import type { AnyRawRecord } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
-/**
- * The records as rows, in batches of one bind each. A value JSON would drop or change silently and
- * a structured clone refuses - a function, a symbol - is refused here, before anything is written.
- */
+/** The records as rows, in batches of one bind each: records already checked as JSON. */
 export function encodeRecords(params: { records: AnyRawRecord[] }): EncodedRows {
 	const { records } = params
 	const payloads: string[] = []
 	for (let start = 0; start < records.length; start += ROWS_PER_BIND) {
 		const rows = records.slice(start, start + ROWS_PER_BIND).map((record) => recordRow({ record }))
-		payloads.push(encodeJson({ value: rows }))
+		payloads.push(JSON.stringify(rows))
 	}
 	return { payloads }
 }
@@ -50,21 +47,4 @@ function recordRow(params: { record: AnyRawRecord }): unknown[] {
 		record.attributes,
 		record.children,
 	]
-}
-
-/**
- * JSON text of a value. A function or a symbol is refused (a structured clone refuses them, JSON
- * would drop them silently). Any other value JSON does not keep as given is changed as JSON changes
- * it: a Date becomes its ISO string, a Map or a Set an empty object, NaN and Infinity null, an
- * `undefined` field is dropped; a BigInt throws.
- */
-export function encodeJson(params: { value: unknown }): string {
-	return JSON.stringify(params.value, refuseUncopyable)
-}
-
-function refuseUncopyable(_key: string, value: unknown): unknown {
-	if (typeof value === 'function' || typeof value === 'symbol') {
-		throw new TypeError(`A ${typeof value} cannot be stored`)
-	}
-	return value
 }

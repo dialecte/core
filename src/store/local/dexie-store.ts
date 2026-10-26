@@ -1,4 +1,5 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -361,15 +362,19 @@ export class DexieStore implements Store {
 							const deletedSnapshots: (AnyRawRecord | undefined)[] =
 								deletes.length > 0 ? await table.bulkGet(deletes) : []
 
-							if (creates.length > 0) {
-								await addRecords({ table, creates, documentId })
-								completed += creates.length
+							// every refusal before the first progress: a create that is not JSON, a taken id,
+							// then an update that is not JSON
+							const created = toJsonCopy({ value: creates })
+							if (created.length > 0) await addRecords({ table, creates: created, documentId })
+							const updated = toJsonCopy({ value: updates })
+							if (created.length > 0) {
+								completed += created.length
 								onProgress(completed, total)
 							}
 
-							if (updates.length > 0) {
+							if (updated.length > 0) {
 								try {
-									await table.bulkPut(updates)
+									await table.bulkPut(updated)
 									completed += updates.length
 									onProgress(completed, total)
 								} catch (error) {
@@ -410,8 +415,8 @@ export class DexieStore implements Store {
 								sequenceNumber: newSeq,
 								timestamp: Date.now(),
 								operations: {
-									creates,
-									updates: updates.map((after, i) => ({ before: beforeSnapshots[i], after })),
+									creates: created,
+									updates: updated.map((after, i) => ({ before: beforeSnapshots[i], after })),
 									deletes: deletedSnapshots.filter(Boolean) as AnyRawRecord[],
 								},
 							}
@@ -698,9 +703,10 @@ export class DexieStore implements Store {
 			// Best effort on one connection: two connections registering the same id at the same time
 			// are not serialised here (core registers fresh uuids only).
 			if (this.knownDocuments.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
-			this.knownDocuments.set(file.id, file)
+			const document = toJsonCopy({ value: file })
+			this.knownDocuments.set(document.id, document)
 			await this.reopenWithNewSchema()
-			await this.db.table(TABLE_DOCUMENTS).add(file)
+			await this.db.table(TABLE_DOCUMENTS).add(document)
 		})
 	}
 
@@ -714,11 +720,12 @@ export class DexieStore implements Store {
 		documentId: string,
 		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
 	): Promise<void> {
+		const checked = toJsonCopy({ value: updates })
 		await this.ensureCurrentSchema()
-		await this.db.table(TABLE_DOCUMENTS).update(documentId, updates)
+		await this.db.table(TABLE_DOCUMENTS).update(documentId, checked)
 		const existing = this.knownDocuments.get(documentId)
 		if (existing) {
-			this.knownDocuments.set(documentId, { ...existing, ...updates })
+			this.knownDocuments.set(documentId, { ...existing, ...checked })
 		}
 	}
 
@@ -760,11 +767,15 @@ export class DexieStore implements Store {
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
 		try {
-			const { creates, updates, deletes } = ops
+			const { updates, deletes } = ops
 			const table = await this.writeTable(documentId)
+			// refused in the order every store answers in: a create that is not JSON, a taken id, then
+			// a patch that is not JSON - of the patches that apply: one of a record the document does
+			// not hold is skipped
+			const creates = toJsonCopy({ value: ops.creates ?? [] })
 
 			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
-				if (creates?.length) {
+				if (creates.length > 0) {
 					this.perf.start('core::store::bulkWrite::add')
 					await addRecords({ table, creates, documentId })
 					this.perf.stop('core::store::bulkWrite::add')
@@ -776,9 +787,11 @@ export class DexieStore implements Store {
 						for (const patch of updates) {
 							const record = await table.get(patch.recordId)
 							if (!record) continue
-							await table.put(applyRecordPatch({ record, patch }))
+							const checked = toJsonCopy({ value: patch })
+							await table.put(applyRecordPatch({ record, patch: checked }))
 						}
 					} catch (error) {
+						if (toDialecteError(error)) throw error
 						throwDialecteError('STORE_BULK_UPDATE_FAILED', {
 							detail: error instanceof Error ? error.message : String(error),
 							cause: error instanceof Error ? error : undefined,

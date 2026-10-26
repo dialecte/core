@@ -41,6 +41,13 @@ export type RecordSchema = {
  * id order - `getDocuments`, `getByDocumentId`, `getByTagNameInDocument`, the blob lists - ids compared
  * by UTF-16 code unit, as an IndexedDB key range orders them; `getMany` answers in the order asked,
  * `getChangeLog` in sequence order.
+ *
+ * A store holds JSON values only, in records and in document metadata: strings, finite numbers,
+ * booleans, null, and arrays and plain objects of them. A field holding `undefined` is dropped: a
+ * record or a document created with one reads back without it, and an update leaves that field as it
+ * was. Any other value - a Date, a Map, a Set, NaN or Infinity, a BigInt, a function, a symbol, an
+ * instance of a class, `undefined` in an array, a cycle - refuses the write whole with
+ * `STORE_VALUE_NOT_JSON`, nothing of it written; each write says where that comes in its order.
  */
 export interface Store {
 	/** The name of the state this store reads and writes; also scopes the BroadcastChannel */
@@ -93,7 +100,8 @@ export interface Store {
 
 	/**
 	 * Register a new document — creates its backing storage partition. An id already registered is
-	 * refused with `STORE_DUPLICATE_ID`, the registered document left as it was.
+	 * refused with `STORE_DUPLICATE_ID`, the registered document left as it was; then a value that is
+	 * not JSON with `STORE_VALUE_NOT_JSON`.
 	 */
 	registerDocument(file: DocumentRecord): Promise<void>
 
@@ -103,7 +111,11 @@ export interface Store {
 	/** Get all registered documents */
 	getDocuments(): Promise<DocumentRecord[]>
 
-	/** Update document metadata (name, metadata, import status) */
+	/**
+	 * Update a document's name, metadata or import status: a value that is not JSON is refused first
+	 * (`STORE_VALUE_NOT_JSON`); a field given as `undefined` is left as it was; a document that is not
+	 * registered is then left alone.
+	 */
 	updateDocument(
 		documentId: string,
 		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
@@ -170,9 +182,10 @@ export interface Store {
 
 	/**
 	 * Bulk write - atomic creates/updates/deletes bypassing changelog. For import pipeline. Refused
-	 * whole: a document not registered (`DOCUMENT_NOT_REGISTERED`), a create of an id the document
-	 * holds or the batch holds twice (`STORE_DUPLICATE_ID`, `meta.recordIds`). An update patch of an
-	 * absent record and a delete of an absent id are ignored.
+	 * whole, in this order: a document not registered (`DOCUMENT_NOT_REGISTERED`), a create that is
+	 * not JSON (`STORE_VALUE_NOT_JSON`), a create of an id the document holds or the batch holds twice
+	 * (`STORE_DUPLICATE_ID`, `meta.recordIds`), an update patch that is not JSON. An update patch of an
+	 * absent record (whatever it holds) and a delete of an absent id are ignored.
 	 */
 	bulkWrite(
 		documentId: string,
@@ -183,8 +196,10 @@ export interface Store {
 	 * Atomic commit — all-or-nothing write scoped to a document, one undoable history entry holding
 	 * the whole records before and after. Refused whole, nothing written and no entry kept: a document
 	 * not registered (`DOCUMENT_NOT_REGISTERED`), then an update of a record the document does not hold
-	 * (`STORE_RECORD_NOT_FOUND`, `meta.recordId`), then a create of an id the document holds or the
-	 * commit holds twice (`STORE_DUPLICATE_ID`, `meta.recordIds`). A delete of an absent id is ignored.
+	 * (`STORE_RECORD_NOT_FOUND`, `meta.recordId`), then a create that is not JSON
+	 * (`STORE_VALUE_NOT_JSON`), then a create of an id the document holds or the commit holds twice
+	 * (`STORE_DUPLICATE_ID`, `meta.recordIds`), then an update that is not JSON. A delete of an absent
+	 * id is ignored.
 	 */
 	commit(params: {
 		documentId: string
