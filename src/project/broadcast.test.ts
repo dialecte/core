@@ -170,7 +170,7 @@ describe('Project BroadcastChannel', () => {
 		// The other realm can now open + export the document without throwing
 		// (export reads the xel_<id> table — the Failure B path).
 		iframe.openDocument(documentId)
-		const { xmlDocument } = await iframe.export(documentId)
+		const { xmlDocument } = await iframe.export({ documentId, indent: false, xmlDocument: true })
 		expect(xmlDocument.documentElement).toBeTruthy()
 	})
 

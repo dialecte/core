@@ -5,7 +5,7 @@ import { createPerf } from '@/perf'
 import { parseXmlFile } from '@/xml'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
-import type { ImportRuntime, RunImportParams } from './run-import.types'
+import type { RunImportParams } from './run-import.types'
 import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project/types'
 import type { ImportControl, ImportFileResult } from '@/store/store.types'
@@ -120,20 +120,6 @@ async function importRegistered(
 		await removeQuietly({ store, documentId: registered.id })
 		throw failure
 	}
-}
-
-/** The import runtime of a store, or `IMPORT_FAILED` when it was built without one. */
-export function requireImportRuntime(params: {
-	runtime: ImportRuntime | undefined
-	storeName: string
-}): ImportRuntime {
-	const { runtime, storeName } = params
-	if (!runtime) {
-		throwDialecteError('IMPORT_FAILED', {
-			detail: `Store "${storeName}" has no dialecte to import with: build it with an import runtime`,
-		})
-	}
-	return runtime
 }
 
 /** Remove what an import left; its own failure is the one to report, so this one is not thrown. */

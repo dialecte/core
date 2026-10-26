@@ -169,6 +169,14 @@ export const ERROR_CATALOG = {
 		code: 'D5005',
 		message: 'The import was aborted',
 	},
+	EXPORT_CONFLICT: {
+		code: 'D5006',
+		message: 'The document changed while it was exported',
+	},
+	EXPORT_ABORTED: {
+		code: 'D5007',
+		message: 'The export was aborted',
+	},
 
 	// D6xxx — Config
 	EXTENSION_METHOD_COLLISION: {

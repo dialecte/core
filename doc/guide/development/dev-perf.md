@@ -78,6 +78,18 @@ spans placed on the page's timeline (shifted by the difference of the two realms
 | `store::import::writes.after` | span  | the writes `afterImport` returned                          |
 | `store::import::finalize`     | span  | the document set `ready`                                   |
 
+## Export stages
+
+Each store export is measured the same way and merged under `store::` (a `Project.export` that makes two store exports
+merges both):
+
+| Name                      | Kind  | What                                                  |
+| ------------------------- | ----- | ----------------------------------------------------- |
+| `store::export`           | span  | the whole export, a restart included                  |
+| `store::export::read`     | span  | one read of a parent's children (`batchSize` at most) |
+| `store::export::write`    | tally | the XML written, per element opened or closed         |
+| `store::export::assemble` | span  | the file put together from its parts                  |
+
 ## Example (core-agnostic)
 
 ```ts

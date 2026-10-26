@@ -1,5 +1,7 @@
 import { makeRecord as makeContractRecord } from '../contract/store-contract.fixtures'
+import { TABLE_META } from '../store.constants'
 import { DexieStore, buildDexieSchema } from './dexie-store'
+import { VERSION_KEY_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -194,7 +196,7 @@ describe('DexieStore - an import running in another connection', () => {
 			documentRegistered = resolve
 		})
 		const importer = new DexieStore(name, {
-			importRuntime: {
+			runtime: {
 				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
 				defaultConfigKey: 'default',
 				// the session is created once the document is registered; it ends once the second
@@ -286,5 +288,41 @@ describe('DexieStore - the connection of a closed store', () => {
 
 		expect(store.getDatabaseInstance().isOpen()).toBe(false)
 		await store.destroy()
+	})
+})
+
+describe('DexieStore - the write version of a document', () => {
+	it('a document removed and registered again under its id -> its version goes on from the old value', async () => {
+		const store = new DexieStore(`version-${crypto.randomUUID()}`)
+		await store.open()
+		try {
+			const document: DocumentRecord = {
+				id: 'again',
+				name: 'again',
+				extension: '.xml',
+				configKey: 'default',
+				createdAt: 0,
+				status: 'ready',
+			}
+			async function versionOf(): Promise<number | undefined> {
+				const row = await store
+					.getDatabaseInstance()
+					.table(TABLE_META)
+					.get(`${VERSION_KEY_PREFIX}again`)
+				return row?.value
+			}
+			await store.registerDocument(document)
+			await store.bulkWrite('again', { creates: [makeContractRecord({ id: 'r1' })] })
+			await store.bulkWrite('again', { creates: [makeContractRecord({ id: 'r2' })] })
+			expect(await versionOf()).toBe(2)
+
+			await store.removeDocument('again')
+			await store.registerDocument(document)
+			await store.bulkWrite('again', { creates: [makeContractRecord({ id: 'r1' })] })
+
+			expect(await versionOf()).toBe(3)
+		} finally {
+			await store.destroy()
+		}
 	})
 })

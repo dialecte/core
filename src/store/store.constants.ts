@@ -7,6 +7,11 @@
 
 import type { RecordSchema } from './store.types'
 
+// --- Export ---
+
+/** Records an export reads per call and writes per batch, unless asked otherwise. */
+export const EXPORT_BATCH_SIZE = 2000
+
 // --- Table names ---
 
 /** System table: file registry */

@@ -15,8 +15,11 @@ import type {
 	ImportDocumentOptions,
 	ImportedDocument,
 	ImportEntry,
-	ExportDocumentOptions,
-	ExportBlobOptions,
+	ProjectExportParams,
+	ProjectExportResult,
+	ProjectExportResultMaybeDocument,
+	ProjectExportResultWithDocument,
+	ProjectExportBlobParams,
 	ExportBlobResult,
 	ProjectChannelMessage,
 	ProjectParams,
@@ -436,19 +439,23 @@ export class Project<
 	}
 
 	/**
-	 * Export a document as an XMLDocument built from stored records.
+	 * Export a document through the store: its file (`Blob`, formatted unless `indent: false`) and filename. On the
+	 * page, `xmlDocument: true` also answers its DOM (parsed from the compact file: pass `indent: false` to export
+	 * once) and `download` saves the formatted file (the save dialog is asked first). Two store exports made for one
+	 * call may see two states of the document if a commit lands between them.
 	 */
 	async export(
-		documentId: string,
-		options?: ExportDocumentOptions,
-	): Promise<{ xmlDocument: XMLDocument; filename: string }> {
+		params: ProjectExportParams & { xmlDocument: true },
+	): Promise<ProjectExportResultWithDocument>
+	async export(params: ProjectExportParams & { xmlDocument?: false }): Promise<ProjectExportResult>
+	async export(params: ProjectExportParams): Promise<ProjectExportResultMaybeDocument>
+	async export(params: ProjectExportParams): Promise<ProjectExportResultMaybeDocument> {
 		return exportDocument({
-			documentId,
-			state: this.state,
-			configs: this.configs,
 			store: this.store,
+			state: this.state,
 			projectName: this.name,
-			options,
+			request: params,
+			perf: this.perf,
 		})
 	}
 
@@ -590,12 +597,11 @@ export class Project<
 	}
 
 	/**
-	 * Export a blob from the store. Mirrors `export(documentId)` for blobs:
-	 * returns `{ entry, data, filename }` and optionally triggers a download via
-	 * `options.withDownload`.
+	 * Export a blob from the store: `{ entry, data, filename }`; `download` also saves it (the save dialog, or a
+	 * browser download), under its name or the one given.
 	 */
-	async exportBlob(blobId: string, options?: ExportBlobOptions): Promise<ExportBlobResult> {
-		return exportBlob({ blobId, store: this.store, options })
+	async exportBlob(params: ProjectExportBlobParams): Promise<ExportBlobResult> {
+		return exportBlob({ store: this.store, request: params })
 	}
 
 	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {

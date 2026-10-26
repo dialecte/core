@@ -148,9 +148,12 @@ await doc.transaction(async (tx) => {
 ## Step 7 - Export to XML
 
 ```ts
-const { xmlDocument, filename } = await project.export(documentId, {
-	withDatabaseIds: false,
-})
+// the file (a Blob, formatted) and its name
+const { file, filename } = await project.export({ documentId })
+
+// in the page: save it (the save dialog in Chrome, a download elsewhere), or read its DOM
+await project.export({ documentId, download: true })
+const { xmlDocument } = await project.export({ documentId, indent: false, xmlDocument: true })
 ```
 
 ## Step 8 - Undo / Redo

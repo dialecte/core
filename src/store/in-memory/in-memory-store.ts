@@ -10,22 +10,32 @@ import {
 import { recordTableName } from '../store.constants'
 import { removeUnfinishedImports } from '../unfinished-imports'
 import { importOutcomeOf } from '../write-outcome'
-import { dropInMemoryState, ensureInMemoryState, findInMemoryState } from './in-memory-state'
+import {
+	bumpVersion,
+	dropInMemoryState,
+	ensureInMemoryState,
+	findInMemoryState,
+} from './in-memory-state'
 import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
 
 import { throwDialecteError } from '@/errors'
-import { requireImportRuntime, runImport } from '@/project/io/run-import'
+import { runExport } from '@/project/io/run-export'
+import { runImport } from '@/project/io/run-import'
+import { requireStoreRuntime } from '@/project/io/store-runtime'
 
 import type {
 	Store,
 	ChangeLogEntry,
+	ExportFileParams,
+	ExportFileResult,
+	ExportSource,
 	ImportFileParams,
 	ImportFileResult,
 	ImportTarget,
 	WriteOutcome,
 } from '../store.types'
 import type { InMemoryState, InMemoryStoreOptions, ReadonlyInMemoryState } from './types'
-import type { ImportRuntime } from '@/project/io/run-import.types'
+import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentRecord } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
@@ -105,7 +115,7 @@ function compareById(left: { id: string }, right: { id: string }): number {
 export class InMemoryStore implements Store {
 	readonly name: string
 	private readonly writable: boolean
-	private readonly importRuntime?: ImportRuntime
+	private readonly runtime?: StoreRuntime
 
 	/** Guard so the cross-realm no-op warning is emitted at most once per session. */
 	private static reconcileWarned = false
@@ -120,7 +130,7 @@ export class InMemoryStore implements Store {
 	constructor(name: string, options?: InMemoryStoreOptions) {
 		this.name = name
 		this.writable = options?.writable ?? true
-		this.importRuntime = options?.importRuntime
+		this.runtime = options?.runtime
 	}
 
 	// --- Lifecycle ---
@@ -225,22 +235,17 @@ export class InMemoryStore implements Store {
 
 	async count(documentId: string): Promise<number> {
 		this.guardOpen()
-		return this.readTable(documentId).size
+		return this.countUnguarded(documentId)
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
 		this.guardOpen()
-		const results: AnyRawRecord[] = []
-		for (const record of this.readTable(documentId).values()) {
-			if (record.tagName === tagName) results.push(record)
-		}
-		return structuredClone(results.sort(compareById))
+		return this.getByTagNameInDocumentUnguarded(tagName, documentId)
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
 		this.guardOpen()
-		const table = this.readTable(documentId)
-		return structuredClone(ids.map((id) => table.get(id)))
+		return this.getManyUnguarded(ids, documentId)
 	}
 
 	// --- Import ---
@@ -249,7 +254,11 @@ export class InMemoryStore implements Store {
 		this.guardOpen()
 		this.guardWritable()
 		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
-		const runtime = requireImportRuntime({ runtime: this.importRuntime, storeName: this.name })
+		const runtime = requireStoreRuntime({
+			runtime: this.runtime,
+			storeName: this.name,
+			operation: 'import',
+		})
 		const { runningImports } = ensureInMemoryState({ name: this.name })
 		runningImports.add(writeId)
 		this.operations.start()
@@ -260,6 +269,27 @@ export class InMemoryStore implements Store {
 			)
 		} finally {
 			runningImports.delete(writeId)
+			this.operations.end()
+		}
+	}
+
+	// --- Export ---
+
+	async exportFile(params: ExportFileParams): Promise<ExportFileResult> {
+		this.guardOpen()
+		const { documentId, options, onProgress, signal } = params
+		const runtime = requireStoreRuntime({
+			runtime: this.runtime,
+			storeName: this.name,
+			operation: 'export',
+		})
+		this.operations.start()
+		try {
+			return await runExport(
+				{ source: this.ownExportSource(), runtime, documentId, options },
+				{ onProgress, signal },
+			)
+		} finally {
 			this.operations.end()
 		}
 	}
@@ -310,6 +340,8 @@ export class InMemoryStore implements Store {
 		let completed = 0
 		const deletedSnapshots = deletes.map((id) => table.get(id)).filter(Boolean) as AnyRawRecord[]
 
+		// the version moves with the first write: `onProgress` below runs while the commit is half applied
+		bumpVersion({ state, documentId })
 		for (const record of creates) {
 			table.set(record.id, record)
 		}
@@ -380,6 +412,7 @@ export class InMemoryStore implements Store {
 		}
 
 		state.heads.set(documentId, head - 1)
+		bumpVersion({ state, documentId })
 	}
 
 	async redo(documentId: string): Promise<void> {
@@ -408,6 +441,7 @@ export class InMemoryStore implements Store {
 		}
 
 		state.heads.set(documentId, next)
+		bumpVersion({ state, documentId })
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
@@ -561,6 +595,7 @@ export class InMemoryStore implements Store {
 		state.records.delete(recordTableName(documentId))
 		state.changelog.delete(documentId)
 		state.heads.delete(documentId)
+		// the version stays: a document registered again under the id goes on from it, never back to a past value
 		state.blobData.delete(documentId)
 		for (const [blobId, entry] of state.blobs) {
 			if (entry.documentId === documentId) {
@@ -574,7 +609,7 @@ export class InMemoryStore implements Store {
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
 		this.guardWritable()
-		const { table } = this.writeTarget(documentId)
+		const { state, table } = this.writeTarget(documentId)
 		// Nothing is written before the whole write is known to apply, refused in the order every
 		// store answers in: a create it cannot copy, a taken id, then an update it cannot copy - of the
 		// updates that apply: a patch of a record the document does not hold is skipped, as ever
@@ -603,6 +638,7 @@ export class InMemoryStore implements Store {
 				table.delete(id)
 			}
 		}
+		bumpVersion({ state, documentId })
 	}
 
 	// --- Private ---
@@ -656,6 +692,52 @@ export class InMemoryStore implements Store {
 			removeDocument: (documentId) => this.removeDocumentUnguarded(documentId),
 			bulkWrite: (documentId, ops) => this.bulkWriteUnguarded(documentId, ops),
 		}
+	}
+
+	/**
+	 * The source the store's own export reads through: the export is one operation, so a `close()` after it
+	 * started does not refuse the calls it makes.
+	 */
+	private ownExportSource(): ExportSource {
+		return {
+			getDocument: (documentId) => this.getDocumentUnguarded(documentId),
+			count: (documentId) => this.countUnguarded(documentId),
+			getByTagNameInDocument: (tagName, documentId) =>
+				this.getByTagNameInDocumentUnguarded(tagName, documentId),
+			getMany: (ids, documentId) => this.getManyUnguarded(ids, documentId),
+			getExportVersion: (params) => this.getExportVersion(params),
+		}
+	}
+
+	/** How many writes a `ready` document has taken; `undefined` for one not registered or not ready. */
+	private async getExportVersion(params: { documentId: string }): Promise<number | undefined> {
+		const { documentId } = params
+		const { documents, versions } = this.readState()
+		if (documents.get(documentId)?.status !== 'ready') return undefined
+		return versions.get(documentId) ?? 0
+	}
+
+	private async countUnguarded(documentId: string): Promise<number> {
+		return this.readTable(documentId).size
+	}
+
+	private async getByTagNameInDocumentUnguarded(
+		tagName: string,
+		documentId: string,
+	): Promise<AnyRawRecord[]> {
+		const results: AnyRawRecord[] = []
+		for (const record of this.readTable(documentId).values()) {
+			if (record.tagName === tagName) results.push(record)
+		}
+		return structuredClone(results.sort(compareById))
+	}
+
+	private async getManyUnguarded(
+		ids: string[],
+		documentId: string,
+	): Promise<(AnyRawRecord | undefined)[]> {
+		const table = this.readTable(documentId)
+		return structuredClone(ids.map((id) => table.get(id)))
 	}
 
 	private guardWritable(): void {

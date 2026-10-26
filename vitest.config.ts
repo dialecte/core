@@ -85,7 +85,7 @@ export default mergeConfig(
 					resolve: viteConfig.resolve,
 					// workers discover their dependencies late: pre-bundle them up front; sqlite-wasm resolves its wasm itself
 					optimizeDeps: {
-						include: ['comlink', 'sax', 'xml-formatter'],
+						include: ['comlink', 'sax'],
 						exclude: ['@sqlite.org/sqlite-wasm'],
 					},
 					// the layout bench reads fixtures from another checkout (BENCH_SCL_FIXTURES_DIR)

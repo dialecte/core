@@ -1,7 +1,8 @@
 import { splitXpathIntoSteps } from './xpath-parser'
 
 import { expect } from 'vitest'
-import xmlFormat from 'xml-formatter'
+
+import { formatXml as formatXmlSource } from '@/utils/format-xml'
 
 import type { NsResolver } from './types'
 import type { Namespace } from '@/types'
@@ -118,13 +119,9 @@ function assertExpectedXPath(params: {
 	}
 }
 
+/** A failure message's XML, indented by depth for reading. */
 function formatXml(params: { xml: string }): string {
-	const { xml } = params
-	try {
-		return xmlFormat(xml, { indentation: '  ', collapseContent: true })
-	} catch {
-		return xml
-	}
+	return formatXmlSource(params.xml, { indent: '  ' })
 }
 
 function assertUnexpectedXPath(params: {

@@ -1,9 +1,9 @@
 export { Project } from './project'
 export { buildDocumentState, reconcileDocumentState } from './state/document-state'
-export { exportDocument } from './io/export-document'
 export { exportBlob } from './io/export-blob'
 export { initEmptyDocument } from './io/init-empty-document'
 export { runImport } from './io/run-import'
+export { runExport } from './io/run-export'
 export { resolveStore } from '../store/resolve-store'
 export type {
 	ProjectParams,
@@ -11,8 +11,11 @@ export type {
 	ImportDocumentOptions,
 	ImportedDocument,
 	ImportEntry,
-	ExportDocumentOptions,
-	ExportBlobOptions,
+	ProjectExportParams,
+	ProjectExportResult,
+	ProjectExportResultMaybeDocument,
+	ProjectExportResultWithDocument,
+	ProjectExportBlobParams,
 	StorageParam,
 	DocumentRecord,
 	DocumentStatus,
@@ -23,9 +26,9 @@ export type {
 export type {
 	InitEmptyDocumentParams,
 	InitEmptyDocumentResult,
-	ExportDocumentParams,
-	ExportDocumentResult,
 	ExportBlobParams,
 	ExportBlobResult,
 } from './types'
-export type { ImportRuntime, RunImportParams } from './io/run-import.types'
+export type { RunImportParams } from './io/run-import.types'
+export type { StoreRuntime } from './io/store-runtime.types'
+export type { RunExportParams } from './io/run-export.types'

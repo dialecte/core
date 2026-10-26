@@ -21,7 +21,7 @@ XML file
        +- project.openDocument(id)  <- API (IndexedDB -> Document)
              +- doc.query.*           (reads)
              +- doc.transaction()     (writes)
-                   +- project.export(id)  <- IO (IndexedDB -> XMLDocument)
+                   +- project.export({ documentId })  <- IO (store -> XML file)
 ```
 
 IO is stateless - it reads/writes the store directly without going through transactions. The API never reads from XML files - it always operates on an already-imported database partition.
@@ -47,7 +47,7 @@ await doc.transaction(async (tx) => {
 })
 
 // 4. Export
-const { xmlDocument } = await project.export(documentId, { withDatabaseIds: false })
+const { file, filename } = await project.export({ documentId })
 ```
 
 ## Schema-value materialization
@@ -57,7 +57,7 @@ The store is **faithful**: `standardizeRecord` canonicalizes attribute names, or
 Schema values are resolved only at the edges, from one source of truth ([`resolveSchemaAttributeValue`](/guide/development/utils#resolveschemaattributevalue)):
 
 - **Read** — `getAttribute` / `getAttributes` surface an absent attribute's `fixed` or non-empty `default` (the `'optional'` [`defaults`](/api/query#schema-defaults-the-defaults-option) view). Pass `{ defaults: 'none' }` for the stored-only set.
-- **Export** — `buildXmlDocument` materializes `required` (as `""` when no value) and `fixed` attributes on every element for XSD validity; optional `default`-only attributes are not reintroduced.
+- **Export** — the store's export writes the `required` (as `""` when no value) and `fixed` attributes an element does not hold, for XSD validity (on the root, those of each namespace the document declares); optional `default`-only attributes are not reintroduced.
 
 A write that sets an attribute to a value differing from its schema `fixed` is rejected with `FIXED_VALUE_VIOLATION` (`D3008`); import is unaffected, so an existing document that already violates a fixed value still loads.
 
@@ -65,9 +65,9 @@ A write that sets an attribute to a value differing from its schema `fixed` is r
 
 The lower-level building blocks are still exported for advanced use cases:
 
-- `buildXmlDocument` - serializes raw records into an `XMLDocument`
 - `parseXmlFile` / `ParseSession` - SAX-based streaming parser (`runImport` around it registers, finalizes and cleans up)
-- `downloadFile` - triggers a browser file download
+- `runExport` - the export every store runs (below)
+- `parseXmlDocument` - the DOM of an exported file, in the page
 
 ## Extending IO
 
@@ -102,7 +102,35 @@ const result = await runImport(
 
 `store` is an `ImportTarget`: the reads and writes the import needs (`registerDocument`, `getDocument`, `updateDocument`, `removeDocument`, `bulkWrite`); every `Store` is one. A store that refuses operations once closed passes its own unguarded target, as `InMemoryStore` and the local store do, so its own import is not refused while it runs: an operation already running completes.
 
-`runtime` is what the store imports with: the dialecte's configs, its hooks (IO and record), and `perf` to hand back the timings of each stage (a `PerfSnapshot`, merged by the project under `store::`). `InMemoryStore` and the local store take it as `importRuntime` (the project passes its own); a `{ type: 'custom' }` store imports with its own runtime, answers `getWriteOutcome` from its registry (`importOutcomeOf`) and removes leftovers as it opens (`removeUnfinishedImports({ store, isRunning? })`, `isRunning` naming the imports another connection still runs). A store built without a runtime refuses `importFile` with `IMPORT_FAILED`.
+`runtime` (`StoreRuntime`) is what the store imports and exports with: the dialecte's configs, its hooks (IO and record), and `perf` to hand back the timings of each stage (a `PerfSnapshot`, merged by the project under `store::`). `InMemoryStore` and the local store take it as `runtime` (the project passes its own); a `{ type: 'custom' }` store imports with its own runtime, answers `getWriteOutcome` from its registry (`importOutcomeOf`) and removes leftovers as it opens (`removeUnfinishedImports({ store, isRunning? })`, `isRunning` naming the imports another connection still runs). A store built without a runtime refuses `importFile` with `IMPORT_FAILED`.
+
+## Export inside the store
+
+A store exports a document next to its data and answers one file: `Project.export` asks `Store.exportFile` and keeps only what the page adds (the DOM, the save). A store behind a worker writes the XML there; only the `Blob` crosses.
+
+| Member                                                       | What                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `exportFile({ documentId, options?, onProgress?, signal? })` | Read the document's records parent by parent, `batchSize` children per call, and write them as XML. Answers `{ file, filename, perf? }`: `file` a `Blob` of UTF-8 XML (`application/xml`), formatted or compact (`options.indent: false`). |
+
+- `options`: `indent` (default `true`), `withDatabaseIds`, `batchSize` (records read per call and written per batch, `EXPORT_BATCH_SIZE` = 2000 by default; a whole number from 1, else `ASSERTION_FAILED`).
+- The whole document is never read in one call: at most one batch per open element is held, whatever its width.
+- A write on the document while it is exported (a commit, an undo, a redo, a bulk write, through any connection) restarts the export once from the start; a write in the second pass fails it with `EXPORT_CONFLICT` (D5006): export again. Commits are never held behind an export: the export yields between batches.
+- `onProgress({ recordsWritten, totalRecords })` is told after each written batch and never awaited; a restart tells it from the start again. `signal` aborts at the next batch: `EXPORT_ABORTED` (D5007), nothing answered.
+- A document not registered, or still `importing`, is refused with `DOCUMENT_NOT_REGISTERED`; one removed while it is exported too.
+- `close()` while an export runs: the export completes; an export started after it is refused with `STORE_CLOSED`.
+
+Every store runs the one export core exports, `runExport(params, control)`:
+
+```ts
+import { runExport } from '@dialecte/core'
+
+const result = await runExport(
+	{ source, runtime: { configs, defaultConfigKey, perf }, documentId, options },
+	{ onProgress, signal },
+)
+```
+
+`source` is an `ExportSource`: the store's reads (`getDocument`, `count`, `getMany`, `getByTagNameInDocument`) and `getExportVersion({ documentId })`, the number of writes the document has taken (`undefined` once it is not registered or not `ready`). A store bumps that version in the same transaction as every write, and passes its own unguarded source, as `InMemoryStore` and the local store do. A store built without a runtime refuses `exportFile` with `ASSERTION_FAILED`. With `perf`, the result carries the timings of `export`, `export::read`, `export::write` and `export::assemble`, merged by the project under `store::` ([Dev perf](/guide/development/dev-perf#export-stages)).
 
 ## Cross-realm reconciliation
 
@@ -123,12 +151,12 @@ Backend behaviour:
 `Project.getDocumentStatus` builds on these to report a document's [`live` / `ready`](/api/project#getdocumentstatus) status regardless of cross-realm signal ordering.
 
 ::: warning Custom stores
-`reconcile` and `isDocumentReadable` are **required** members of the `Store` interface. A `{ type: 'custom' }` store must implement both — return a resolved no-op / liveness check when the backend has no cross-realm concern. It also implements `importFile` and `getWriteOutcome`: see [Import inside the store](#import-inside-the-store).
+`reconcile` and `isDocumentReadable` are **required** members of the `Store` interface. A `{ type: 'custom' }` store must implement both — return a resolved no-op / liveness check when the backend has no cross-realm concern. It also implements `importFile`, `getWriteOutcome` and `exportFile`: see [Import inside the store](#import-inside-the-store) and [Export inside the store](#export-inside-the-store).
 :::
 
 ## Further reading
 
-- [IO reference](/io/xml) - `buildXmlDocument`, `parseXmlFile`, `IOConfig`
+- [IO reference](/io/xml) - `parseXmlDocument`, `parseXmlFile`, `IOConfig`
 - [IO hooks](/io/hooks) - `beforeImport`, `createImportSession` (`beforeImportRecord`, `afterImport`, diagnostics)
 - [API overview](/api/) - Document, Query, Transaction
 - [Transaction hooks](/api/hooks) - mutation lifecycle hooks

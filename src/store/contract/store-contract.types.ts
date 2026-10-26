@@ -1,7 +1,7 @@
 import type { Store } from '../store.types'
 import type { DialecteErrorKey } from '@/errors'
 import type { BaseTestCase } from '@/test'
-import type { AnyAttribute } from '@/types'
+import type { AnyAttribute, AnyRawRecord } from '@/types'
 
 /**
  * One leg of the store contract: how to get a store of that kind, and how to see its state again
@@ -100,4 +100,22 @@ export type StoreOperation = (store: Store) => Promise<unknown>
 export type OperationInFlight = {
 	run: (store: Store) => Promise<unknown>
 	expected: (store: Store) => Promise<void>
+}
+
+/** The source's records `A` and `C`, each with its attribute edited. */
+export type EditedRecords = { a: AnyRawRecord; c: AnyRawRecord }
+
+/** A write on a document while it is exported: what is done before the export, and the write itself. */
+export type WriteDuringExport = {
+	needs?: 'second-connection'
+	arrange?: (params: WriteDuringExportParams) => Promise<void>
+	write: (params: WriteDuringExportParams) => Promise<void>
+}
+
+export type WriteDuringExportParams = {
+	store: Store
+	/** The store the write goes through: the exporting one, or a second connection opened before the export */
+	writer: Store
+	documentId: string
+	edited: EditedRecords
 }

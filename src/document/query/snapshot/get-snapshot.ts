@@ -3,7 +3,7 @@ import { collectSnapshotRecords } from './collect-snapshot'
 import { recordsToTree } from './records-to-tree'
 
 import { toRef } from '@/helpers'
-import { buildXmlDocument, xmlDocumentToString } from '@/xml'
+import { writeXmlRecords } from '@/xml/build/write-xml-records'
 
 import type { CollectedSnapshot, GetSnapshotOptions, SnapshotResult } from './snapshot.types'
 import type { Context } from '@/document'
@@ -94,11 +94,11 @@ function toXmlString<GenericConfig extends AnyDialecteConfig>(
 	declareNamespaces?: boolean,
 	includeXmlDeclaration?: boolean,
 ): string {
-	const xmlDocument = buildXmlDocument({
+	return writeXmlRecords({
 		records: collected.liveRecords,
 		config: context.dialecteConfig,
 		rootId: collected.rootId,
 		declareNamespaces,
+		includeXmlDeclaration,
 	})
-	return xmlDocumentToString(xmlDocument, { includeXmlDeclaration })
 }

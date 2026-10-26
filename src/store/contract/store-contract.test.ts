@@ -1,4 +1,5 @@
 import { STORE_CONTRACT } from './store-contract.cases'
+import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_CONTRACT_FACTORIES } from './store-contract.factories'
 
 import { afterEach, beforeEach, describe, it } from 'vitest'
@@ -54,7 +55,7 @@ function runStoreContract(factory: StoreContractFactory): void {
 			others = []
 		})
 
-		for (const [group, cases] of Object.entries(STORE_CONTRACT)) {
+		for (const [group, cases] of Object.entries({ ...STORE_CONTRACT, ...STORE_EXPORT_CONTRACT })) {
 			describe(group, () => {
 				for (const [description, testCase] of Object.entries(cases)) {
 					const skipped = testCase.needs === 'second-connection' && !factory.connect

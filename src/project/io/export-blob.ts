@@ -1,26 +1,28 @@
-import { invariant, saveToDisk } from '@/utils'
+import { invariant } from '@/utils'
+import { openSaveTarget } from '@/utils/save-to-disk'
 
 import type { ExportBlobParams, ExportBlobResult } from '../types'
 
 /**
- * Export a blob from the project store. Optionally triggers a browser download
- * via `saveToDisk` (mirrors `exportDocument`'s `withDownload` option).
+ * Export a blob from the project store, and save it when asked: under another filename the save dialog is opened
+ * first, while the user's gesture still counts; under the blob's own name, once the blob is read (its name is known
+ * then).
  */
 export async function exportBlob(params: ExportBlobParams): Promise<ExportBlobResult> {
-	const { blobId, store, options } = params
+	const { store, request } = params
+	const { blobId, download } = request
 
+	const namedTarget =
+		typeof download === 'object' ? await openSaveTarget({ filename: download.filename }) : undefined
 	const result = await store.getBlob(blobId)
-
 	invariant(result, {
 		key: 'BLOB_NOT_FOUND',
 		detail: `Blob "${blobId}" not found in store`,
 	})
 
 	const filename = result.entry.name
-
-	if (options?.withDownload) {
-		await saveToDisk({ data: result.data, filename })
-	}
+	const target = download === true ? await openSaveTarget({ filename }) : namedTarget
+	await target?.write(result.data)
 
 	return { entry: result.entry, data: result.data, filename }
 }

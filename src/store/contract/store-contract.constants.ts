@@ -19,3 +19,23 @@ export const CONTRACT_SESSION_DIAGNOSTICS = {
 		seen: { severity: 'information', family: 'import', message: 'Record handed to the session' },
 	},
 } as const satisfies DiagnosticCatalogue
+
+/** What the export cases import: a document every element of which keeps what it was written with. */
+export const CONTRACT_EXPORT_SOURCE =
+	'<A aA="1"><AA_1 aAA_1="x">text value</AA_1></A><C aC="2"><CC_1 aCC_1="fixed_val"/></C>'
+
+/** `CONTRACT_EXPORT_SOURCE` in the download layout: 4 spaces, CRLF, a text value on its element's line. */
+export const CONTRACT_EXPORT_FORMATTED = [
+	'<?xml version="1.0" encoding="UTF-8"?>',
+	'<Root xmlns="http://dialecte.dev/XML/DEFAULT">',
+	'    <A aA="1">',
+	'        <AA_1 aAA_1="x">text value</AA_1>',
+	'    </A>',
+	'    <C aC="2">',
+	'        <CC_1 aCC_1="fixed_val"/>',
+	'    </C>',
+	'</Root>',
+].join('\r\n')
+
+/** A write during an export lands once this many records are written: the root, `A` and `AA_1`, before `C` is read. */
+export const WRITE_AFTER_RECORDS = 3

@@ -1,34 +1,25 @@
 ---
-description: Reference for @dialecte/core IO utilities - buildXmlDocument, parseXmlFile, downloadFile, and IOConfig.
+description: Reference for @dialecte/core IO utilities - parseXmlDocument, parseXmlFile and IOConfig.
 ---
 
 # IO Reference
 
 Low-level IO utilities for streaming XML in/out of the store. In most cases, use `project.import` and `project.export` instead of calling these directly.
 
-## `buildXmlDocument`
+## `parseXmlDocument`
 
-Serializes an array of raw records into an `XMLDocument`.
+The DOM of an XML file, in the page (`DOMParser`; a worker or Node has none).
 
 ```ts
-import { buildXmlDocument } from '@dialecte/core'
+import { parseXmlDocument } from '@dialecte/core'
 
-const xmlDocument = buildXmlDocument({
-	records,
-	config: dialecteConfig,
-	withDatabaseIds: false,
-})
+const { file } = await project.export({ documentId, indent: false })
+const xmlDocument = await parseXmlDocument({ file })
 ```
 
-**Params**
+Parse the compact export (`indent: false`): the DOM then holds no whitespace-only text node, the document the stored records make. `project.export({ documentId, indent: false, xmlDocument: true })` does this for you.
 
-| Param             | Type                | Description                                                     |
-| ----------------- | ------------------- | --------------------------------------------------------------- |
-| `records`         | `AnyRawRecord[]`    | Raw records to serialize                                        |
-| `config`          | `AnyDialecteConfig` | Dialecte config — determines namespaces and element definitions |
-| `withDatabaseIds` | `boolean`           | Include internal database IDs in the output. Default: `false`   |
-
-**Returns** `XMLDocument`
+**Throws** `PARSE_ERROR` when the file is not well-formed, its `detail` what the parser said.
 
 ---
 
@@ -54,18 +45,6 @@ const { documentId, recordCount, diagnostics } = await parseXmlFile({
 A second argument, `{ onProgress, signal }`, is told the progress after each stored batch (`{ bytesRead, totalBytes }`, never awaited) and aborts before the next batch or before the session's writes (`IMPORT_ABORTED`).
 
 **Throws** `PARSE_ERROR` on a malformed file - its `detail` names what the parser saw (a tag not closed, text outside the root, a second root element); `meta.reason` is `'malformed-xml'` (with `meta.parser`, the parser's words) or `'second-root'` (with `meta.tagName`). The records stored before the error are the caller's to remove: [`runImport`](/io/#import-inside-the-store) (and so every store's `importFile`, `project.importFile` and `project.import`) does it.
-
----
-
-## `downloadFile`
-
-Triggers a browser file download for an `XMLDocument`.
-
-```ts
-import { downloadFile } from '@dialecte/core'
-
-downloadFile({ xmlDocument, filename: 'export.xml' })
-```
 
 ---
 

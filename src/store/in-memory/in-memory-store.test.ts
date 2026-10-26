@@ -3,6 +3,7 @@ import { InMemoryStore } from './in-memory-store'
 
 import { describe, it, expect, beforeEach } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
 import type { DocumentRecord } from '@/project/types'
@@ -108,7 +109,7 @@ describe('InMemoryStore - opened again while it imports', () => {
 			sessionReached = resolve
 		})
 		const store = new InMemoryStore('reopened-while-importing', {
-			importRuntime: {
+			runtime: {
 				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
 				defaultConfigKey: 'default',
 				hooks: {
@@ -165,5 +166,27 @@ describe('InMemoryStore - the state of its name', () => {
 		expect(await store.get('r1', 'doc-1')).toEqual(makeRecord('r1'))
 
 		await store.destroy()
+	})
+})
+
+describe('InMemoryStore built without a dialecte', () => {
+	it('an import -> IMPORT_FAILED; an export -> ASSERTION_FAILED', async () => {
+		const store = new InMemoryStore(`no-runtime-${crypto.randomUUID()}`)
+		await store.open()
+		try {
+			const imported = await store
+				.importFile({ file: new File(['<Root/>'], 'a.xml') })
+				.catch((error: unknown) => toDialecteError(error)?.key)
+			await store.registerDocument(makeDocument())
+			const exported = await store
+				.exportFile({ documentId: 'doc-1' })
+				.catch((error: unknown) => toDialecteError(error)?.key)
+			expect({ imported, exported }).toEqual({
+				imported: 'IMPORT_FAILED',
+				exported: 'ASSERTION_FAILED',
+			})
+		} finally {
+			await store.destroy()
+		}
 	})
 })

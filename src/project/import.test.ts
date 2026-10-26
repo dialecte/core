@@ -8,7 +8,7 @@ import { InMemoryStore } from '@/store/in-memory/in-memory-store'
 import { TABLE_DOCUMENTS } from '@/store/store.constants'
 import { runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
-import type { ImportRuntime } from './io/run-import.types'
+import type { StoreRuntime } from './io/store-runtime.types'
 import type { ImportDocumentOptions, ImportedDocument, ImportEntry, StorageParam } from './types'
 import type { Diagnostic, DiagnosticCatalogue } from '@/diagnostics'
 import type { DialecteError } from '@/errors'
@@ -132,7 +132,7 @@ const HOOK_FAILURE: ImportEntry = {
 }
 
 /** What a custom store imports with: the project's configs and hooks. */
-function importRuntime(hooks?: DialecteHooks<AnyDialecteConfig>): ImportRuntime {
+function runtime(hooks?: DialecteHooks<AnyDialecteConfig>): StoreRuntime {
 	return { configs: { default: CONFIG, other: CONFIG }, defaultConfigKey: 'default', hooks }
 }
 
@@ -324,7 +324,7 @@ describe('Project - one file in flight per project', () => {
 
 	it('close() while an import is in flight → it lands, is in the store and broadcast once; only a call made after close rejects', async () => {
 		const hooks = recordingHooks([], 20)
-		const store = new InMemoryStore('import-close', { importRuntime: importRuntime(hooks) })
+		const store = new InMemoryStore('import-close', { runtime: runtime(hooks) })
 		const project = await openProject(hooks, { type: 'custom', store })
 		const listener = project.createChannel()
 		const broadcasts: unknown[] = []
@@ -365,7 +365,7 @@ describe('Project - one file in flight per project', () => {
 
 	it('close() during an import of three files, the first in flight → it lands; the two after it are failed entries PROJECT_NOT_OPENED, nothing of them stored', async () => {
 		const hooks = recordingHooks([], 20)
-		const store = new InMemoryStore('import-close-many', { importRuntime: importRuntime(hooks) })
+		const store = new InMemoryStore('import-close-many', { runtime: runtime(hooks) })
 		const project = await openProject(hooks, { type: 'custom', store })
 		const listener = project.createChannel()
 		const broadcasts: unknown[] = []
