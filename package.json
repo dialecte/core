@@ -70,11 +70,13 @@
 	},
 	"devDependencies": {
 		"@dialecte/cli": "0.0.3",
+		"@sqlite.org/sqlite-wasm": "3.53.4-build2",
 		"@tsconfig/node24": "^24.0.4",
 		"@types/node": "^24.12.4",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"@vitest/browser-playwright": "^4.1.10",
 		"@xmldom/xmldom": "^0.8.11",
+		"comlink": "4.4.2",
 		"husky": "^9.1.7",
 		"jiti": "^2.4.2",
 		"npm-run-all2": "^8.0.4",
