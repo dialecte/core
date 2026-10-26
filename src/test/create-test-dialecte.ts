@@ -57,8 +57,9 @@ export async function createTestProject(
 }
 
 /**
- * Create a Context directly for testing FP query functions: on `store` when given, else on the
- * local store named `databaseName`, opened to discover its tables.
+ * Create a Context directly for testing FP query functions: on `store` when given, else on the store
+ * of the project named `databaseName` - of the kind `storage` names, the local store by default -
+ * opened to discover its tables.
  */
 export async function createTestContext<GenericConfig extends AnyDialecteConfig>(
 	params: TestContextParams<GenericConfig>,
@@ -68,7 +69,7 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 		params.store === undefined
 			? resolveStore({
 					name: params.databaseName,
-					storage: { type: 'local' },
+					storage: params.storage ?? { type: 'local' },
 					runtime: {
 						configs: { [TEST_CONFIG_KEY]: dialecteConfig },
 						defaultConfigKey: TEST_CONFIG_KEY,
