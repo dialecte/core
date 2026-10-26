@@ -11,6 +11,7 @@
  *     nice -n 10 npx vitest run --project perf --mode bench src/store/sqlite/bench/layout.bench.test.ts
  */
 import { BENCH_CELLS } from './bench-matrix'
+import { realmMemory } from './bench-memory'
 import { buildCommitRecords } from './bench-variants'
 import {
 	BENCH_PHASE_MESSAGE,
@@ -52,6 +53,7 @@ import type {
 	BenchDevice,
 	BenchFixture,
 	BenchFixtureName,
+	BenchMemoryPoint,
 	BenchPhase,
 	BenchPhaseMessage,
 	BenchRun,
@@ -195,22 +197,35 @@ async function roundTrip<GenericSteps extends EditSteps>(
 	return { ...steps, roundTripMs: performance.now() - startedAt }
 }
 
-/** The 100K-record commit built on the page and sent over the port, then the 10 % delete, undo and redo. */
-async function measureEdits(params: { api: BenchWorkerApi }): Promise<EditTimings> {
+/**
+ * The 100K-record commit built on the page and sent over the port, then the 10 % delete, undo and redo; the
+ * memory is read right after the delete.
+ */
+async function measureEdits(params: {
+	api: BenchWorkerApi
+}): Promise<{ timings: EditTimings; afterDelete: BenchMemoryPoint }> {
 	const { api } = params
 	const rootId = await api.rootOf({ documentId: DOCUMENT_ID })
 	const records = buildCommitRecords({ parentId: rootId, count: COMMIT_CREATES_RECORDS })
-	return {
-		commitCreates: await roundTrip(() => api.commitRecords({ documentId: DOCUMENT_ID, records })),
-		// the pick walks the subtrees it chooses before the timed delete: their pages are warm, as after browsing them
-		deleteSubtrees: await api
-			.pickDeleteRoots({ documentId: DOCUMENT_ID, share: EDIT_DELETE_SHARE })
-			.then(({ rootIds }) =>
-				roundTrip(() => api.deleteRoots({ documentId: DOCUMENT_ID, rootIds })),
-			),
-		undo: await roundTrip(() => api.undo({ documentId: DOCUMENT_ID })),
-		redo: await roundTrip(() => api.redo({ documentId: DOCUMENT_ID })),
-	}
+	const commitCreates = await roundTrip(() =>
+		api.commitRecords({ documentId: DOCUMENT_ID, records }),
+	)
+	// the pick walks the subtrees it chooses before the timed delete: their pages are warm, as after browsing them
+	const { rootIds } = await api.pickDeleteRoots({
+		documentId: DOCUMENT_ID,
+		share: EDIT_DELETE_SHARE,
+	})
+	const deleteSubtrees = await roundTrip(() =>
+		api.deleteRoots({ documentId: DOCUMENT_ID, rootIds }),
+	)
+	const afterDelete = await bothMemories({ api })
+	const undo = await roundTrip(() => api.undo({ documentId: DOCUMENT_ID }))
+	const redo = await roundTrip(() => api.redo({ documentId: DOCUMENT_ID }))
+	return { timings: { commitCreates, deleteSubtrees, undo, redo }, afterDelete }
+}
+
+async function bothMemories(params: { api: BenchWorkerApi }): Promise<BenchMemoryPoint> {
+	return { worker: await params.api.memory(), page: await realmMemory() }
 }
 
 async function measureReads(params: { api: BenchWorkerApi }): Promise<BenchRun['reads']> {
@@ -289,10 +304,15 @@ async function runCell(params: {
 		partial.mainLongestTaskMs = longestMs
 		partial.recordsPerSecond = (fixture.records / dropToReadyMs) * 1000
 		partial.sizesAfterImport = await api.sizes()
+		partial.memory = { afterImport: await bothMemories({ api }) }
 		if (!imported.result.failed && !instrumented) {
 			if (measures.order) partial.order = await api.checkOrder({ documentId: DOCUMENT_ID, file })
 			if (measures.reads) partial.reads = await measureReads({ api })
-			if (measures.edits) partial.edits = await measureEdits({ api })
+			if (measures.edits) {
+				const { timings, afterDelete } = await measureEdits({ api })
+				partial.edits = timings
+				partial.memory = { ...partial.memory, afterDelete }
+			}
 			if (measures.prepared)
 				partial.prepared = await api.preparedDatabase({ project: `${project}-prepared` })
 			if (measures.removal) {
@@ -303,6 +323,9 @@ async function runCell(params: {
 	} catch (thrown) {
 		partial.error = thrown instanceof Error ? `${thrown.name}: ${thrown.message}` : String(thrown)
 	} finally {
+		// also after a failure: an allocation that fails shows how far the wasm memory grew
+		const atEnd = await bothMemories({ api }).catch(() => undefined)
+		if (atEnd) partial.memory = { ...partial.memory, atEnd }
 		await api.destroy().catch(() => undefined)
 		worker.terminate()
 	}

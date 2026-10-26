@@ -1,3 +1,4 @@
+import { realmMemory } from './bench-memory'
 import {
 	buildCommitRecords,
 	createVariantSink,
@@ -659,6 +660,11 @@ const api: BenchWorkerApi = {
 	async exportSignatures({ documentId }) {
 		const { sink } = requireOpened()
 		return sink.readOrderedSignatures({ table: tableOf({ documentId }) })
+	},
+
+	async memory() {
+		const sqlite3 = await loadSqlite()
+		return { wasmBytes: sqlite3.wasm.heap8u().byteLength, ...(await realmMemory()) }
 	},
 
 	async destroy() {

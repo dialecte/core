@@ -6,6 +6,7 @@ import {
 	AFTER_IMPORT_RATIOS,
 	ALL_MEASURES,
 	BOTH_RATIOS,
+	CACHE_CEILING_VARIANTS,
 	MAIN_DIMENSIONS,
 	RUNS_PER_CELL,
 	STRUCTURAL,
@@ -107,6 +108,18 @@ export const BENCH_CELLS: readonly BenchCell[] = [
 				suffix: 'commits',
 				measures: { commitsDuringImport: true, edits: true },
 			}),
+	),
+	// caches above the device-sized ceiling against the locked layout (V2), commits during the import and the edits
+	// one run each: the question is whether a big cache pays at all
+	...[VARIANTS.V2, ...Object.values(CACHE_CEILING_VARIANTS)].map((variant) =>
+		cell({
+			variant,
+			fixture: 'composed-500-compact',
+			afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
+			runs: 1,
+			suffix: 'commits',
+			measures: { commitsDuringImport: true, edits: true },
+		}),
 	),
 	// edits and reads at 500 MB with SQLite's default steady cache (2 MiB) against the 64 MiB base
 	cell({
