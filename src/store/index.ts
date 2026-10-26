@@ -1,4 +1,17 @@
-export type { Store, ChangeLogEntry, ChangeLogMeta, RecordSchema } from './store.types'
+export type {
+	Store,
+	ChangeLogEntry,
+	ChangeLogMeta,
+	RecordSchema,
+	ImportControl,
+	ImportFileOptions,
+	ImportFileParams,
+	ImportFileResult,
+	ImportProgress,
+	WriteOutcome,
+} from './store.types'
+export { importOutcomeOf } from './write-outcome'
+export { removeUnfinishedImports } from './unfinished-imports'
 export * from './local'
 export * from './in-memory'
 export {

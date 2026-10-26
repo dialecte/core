@@ -1,3 +1,4 @@
+import { TEST_CONFIG_KEY } from './constant'
 import { openTestProject, resolveTestDialecte } from './test-dialecte-setup'
 
 import { createStagedOperations } from '@/document'
@@ -65,7 +66,14 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 	const { dialecteConfig, documentId } = params
 	const store =
 		params.store === undefined
-			? resolveStore(params.databaseName, { type: 'local' }, dialecteConfig)
+			? resolveStore({
+					name: params.databaseName,
+					storage: { type: 'local' },
+					runtime: {
+						configs: { [TEST_CONFIG_KEY]: dialecteConfig },
+						defaultConfigKey: TEST_CONFIG_KEY,
+					},
+				})
 			: params.store
 	await store.open()
 	return {

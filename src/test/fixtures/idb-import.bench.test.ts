@@ -93,16 +93,15 @@ function breakdown(label: string, storage: string, importMs: number, r: PerfRepo
 	const ms = (n: string): string => r[n]?.totalMs?.toFixed(0) ?? '·'
 	const calls = (n: string): string => r[n]?.calls?.toLocaleString() ?? '·'
 	const accounted =
-		(r['core::import::sax']?.totalMs ?? 0) +
-		(r['core::import::resolveChildren']?.totalMs ?? 0) +
-		(r['core::store::bulkWrite']?.totalMs ?? 0) +
+		(r['store::import::parse']?.totalMs ?? 0) +
+		(r['store::import::insert']?.totalMs ?? 0) +
 		(r['core::store::reopenSchema']?.totalMs ?? 0)
 	const unaccounted = Math.max(0, importMs - accounted)
 	return [
 		`[LOAD] ${label} (${storage}): import ${importMs.toFixed(0)}ms  (unaccounted ~${unaccounted.toFixed(0)}ms)`,
-		`  sax ${ms('core::import::sax')} | resolveChildren ${ms('core::import::resolveChildren')} | reopenSchema ${ms('core::store::reopenSchema')} | commit ${ms('core::commit')} ms`,
-		`  bulkWrite ${ms('core::store::bulkWrite')}ms = add ${ms('core::store::bulkWrite::add')} / update ${ms('core::store::bulkWrite::update')} / delete ${ms('core::store::bulkWrite::delete')} ms`,
-		`  sax handlers (self ms/calls): onOpenTag ${ms('core::import::onOpenTag')}/${calls('core::import::onOpenTag')} | onText ${ms('core::import::onText')}/${calls('core::import::onText')} | onCloseTag ${ms('core::import::onCloseTag')}/${calls('core::import::onCloseTag')}`,
+		`  parse ${ms('store::import::parse')} | reopenSchema ${ms('core::store::reopenSchema')} | commit ${ms('core::commit')} ms`,
+		`  insert ${ms('store::import::insert')}ms = add ${ms('core::store::bulkWrite::add')} / update ${ms('core::store::bulkWrite::update')} / delete ${ms('core::store::bulkWrite::delete')} ms`,
+		`  per record (ms/calls): standardize ${ms('store::import::standardize')}/${calls('store::import::standardize')} | hooks.record ${ms('store::import::hooks.record')}/${calls('store::import::hooks.record')}`,
 	].join('\n')
 }
 
@@ -120,8 +119,8 @@ describe('import load harness — breakdown + generated-vs-real (browser)', () =
 			`generated ${mb}MB — inMemory`,
 			async () => {
 				const report = await run(`generated ${mb}MB`, await fetchText(stressUrl(mb)), 'inMemory')
-				// The SAX handlers must fire (one call per element) — proves the parser wiring.
-				expect(report['core::import::onOpenTag']?.calls ?? 0).toBeGreaterThan(0)
+				// Standardization runs once per element — proves the parser wiring.
+				expect(report['store::import::standardize']?.calls ?? 0).toBeGreaterThan(0)
 			},
 			600_000,
 		)

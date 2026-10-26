@@ -82,12 +82,14 @@ if (last) setActiveDocument(last.documentId)
 
 **ImportDocumentOptions**
 
-| Param                 | Type                      | Default            | Description                                             |
-| --------------------- | ------------------------- | ------------------ | ------------------------------------------------------- |
-| `configKey`           | `string`                  | `defaultConfigKey` | Key into the configs registry                           |
-| `metadata`            | `Record<string, unknown>` | -                  | Extensible per-file metadata                            |
-| `chunkOptions`        | `Partial<ChunkOptions>`   | -                  | Override chunking defaults for SAX streaming            |
-| `useCustomRecordsIds` | `boolean`                 | `false`            | Use IDs from XML attributes instead of generating UUIDs |
+| Param                 | Type                                 | Default            | Description                                                                                                           |
+| --------------------- | ------------------------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `configKey`           | `string`                             | `defaultConfigKey` | Key into the configs registry                                                                                         |
+| `metadata`            | `Record<string, unknown>`            | -                  | Extensible per-file metadata                                                                                          |
+| `chunkOptions`        | `Partial<ChunkOptions>`              | -                  | Override chunking defaults for SAX streaming                                                                          |
+| `useCustomRecordsIds` | `boolean`                            | `false`            | Use IDs from XML attributes instead of generating UUIDs                                                               |
+| `onProgress`          | `(progress: ImportProgress) => void` | -                  | Told after each stored batch: `{ bytesRead, totalBytes }` of the file in progress; never awaited, its failure ignored |
+| `signal`              | `AbortSignal`                        | -                  | Aborts the import at the next batch: nothing of the file remains, `IMPORT_ABORTED`                                    |
 
 **Returns** `Promise<ImportEntry[]>` - one entry per file, in the order given.
 
@@ -104,7 +106,7 @@ type ImportEntry =
 	| { status: 'failed'; fileName: string; error: DialecteError }
 ```
 
-A failed entry's `error` is the structured error of what failed, as data: `PARSE_ERROR` for a malformed file, a dialecte's own error when one of its import hooks threw it, or `IMPORT_FAILED` wrapping anything else (a plain `Error` from a hook, a store that refused a write) - its `detail` the message, its `cause` what was thrown. An entry is plain data, `cause` excepted: the thrown `Error`, kept for a console, crosses a structured clone as a bare `Error`. `diagnostics` is an open union, `code: string`: narrow it to the catalogues you know with [`isKnownDiagnostic`](/io/hooks#diagnostics).
+A failed entry's `error` is the structured error of what failed, as data: `PARSE_ERROR` for a malformed file, `IMPORT_ABORTED` (D5005) for an import aborted through `signal`, a dialecte's own error when one of its import hooks threw it, or `IMPORT_FAILED` wrapping anything else (a plain `Error` from a hook, a store that refused a write) - its `detail` the message, its `cause` what was thrown. An entry is plain data, `cause` excepted: the thrown `Error`, kept for a console, crosses a structured clone as a bare `Error`. `diagnostics` is an open union, `code: string`: narrow it to the catalogues you know with [`isKnownDiagnostic`](/io/hooks#diagnostics).
 
 A project imports one file at a time: `import` and `importFile` calls made while another import runs wait for it, in call order, so two imports never interleave on the registry. `close()` and `destroy()` wait for the file in flight before closing, so it lands, is in the store and is broadcast; an `importFile` call made after `close()` rejects `PROJECT_NOT_OPENED`. In an `import` of several files, the project closed while one file is in flight means that file lands and the files after it are `failed` entries keyed `PROJECT_NOT_OPENED` - nothing of them is stored; the call itself still resolves with its entries.
 
@@ -118,9 +120,9 @@ const { documentId, recordCount, diagnostics } = await project.importFile(file, 
 })
 ```
 
-Same options as `import`. **Returns** `Promise<ImportedDocument>`. **Throws** what `import` would have put in the file's failed entry, as it was thrown: `PARSE_ERROR`, a hook's error, a store's error as is (`IMPORT_FAILED` is the entry's wrapping only). `import` is `importFile` in a loop with a `catch`: one code path.
+Same options as `import`. **Returns** `Promise<ImportedDocument>`. **Throws** what `import` would have put in the file's failed entry: `PARSE_ERROR`, `IMPORT_ABORTED`, a hook's structured error, `IMPORT_FAILED` wrapping a plain `Error` (its `cause`). `import` is `importFile` in a loop with a `catch`: one code path.
 
-**A document is whole or absent.** Files are imported one after the other, in the order given; each lands in `project.state` and is broadcast as soon as it is in. A file is registered with `status: 'importing'` before its first record is stored and set to `'ready'` once the last one is. Whatever fails in between - a malformed file (`PARSE_ERROR`, its `detail` naming what the parser saw and `meta.reason` saying `'malformed-xml'` or `'second-root'`), an import hook that throws, a store write that fails - removes the document again: `importFile` throws it, `import` makes it the file's `failed` entry and goes on with the next file. Nothing is broadcast for a failed file. A document still `importing` is never opened, listed or hydrated, here or in another tab. While it imports, a document says it is alive every `IMPORT_HEARTBEAT_MS` (2 s, `importingAt`); `open()` removes the ones whose heartbeat is older than `STALE_IMPORT_MS` (5 min - generous on purpose: a hidden tab's timers are throttled, and a false "dead" would lose a running import) - left by a tab that closed mid-import - and leaves a live import of another tab alone; an open project sweeps again every `STALE_IMPORT_MS`. Both constants are exported.
+**A document is whole or absent.** Files are imported one after the other, in the order given; each lands in `project.state` and is broadcast as soon as it is in. The import itself runs in the store, next to the data (`Store.importFile`, see [Import inside the store](/io/#import-inside-the-store)): the file is registered with `status: 'importing'` before its first record is stored and set to `'ready'` once the last one is. Whatever fails in between - a malformed file (`PARSE_ERROR`, its `detail` naming what the parser saw and `meta.reason` saying `'malformed-xml'` or `'second-root'`), an import hook that throws, a store write that fails, an abort - removes the document again: `importFile` throws it, `import` makes it the file's `failed` entry and goes on with the next file. Nothing is broadcast for a failed file. A document still `importing` is never opened, listed or hydrated, here or in another tab. An import never outlives the store that runs it: a document a closed tab left `importing` is removed when the store next opens. With `dev.perf` on, the timings of the import's stages land on `project.perf` under `store::import::*` ([Dev perf](/guide/development/dev-perf#import-stages)).
 
 ## export
 
@@ -157,7 +159,7 @@ const file: DocumentRecord | undefined = await project.getDocument(documentId)
 await project.removeDocument(documentId)
 ```
 
-`DocumentRecord.status` (`DocumentStatus`) is `'importing'` while a file's records are being stored and `'ready'` after; a record stored before the field existed reads as `'ready'`. `getDocuments` and `getDocument` never return an importing document.
+`DocumentRecord.status` (`DocumentStatus`) is `'importing'` while a file's records are being stored and `'ready'` after; a record stored before the field existed reads as `'ready'`. `getDocuments` and `getDocument` never return an importing document. `DocumentRecord.writeId` is the id of the import that wrote the document - what [`Store.getWriteOutcome`](/io/#import-inside-the-store) is asked by.
 
 ## Document access
 

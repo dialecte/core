@@ -55,6 +55,11 @@ export type AfterImportResult<GenericDiagnostic extends Diagnostic = Diagnostic>
  */
 export type ImportSession<GenericDiagnostic extends Diagnostic = Diagnostic> = {
 	/**
+	 * The tag names whose records `beforeImportRecord` is handed; absent, every record is. A record of
+	 * another tag passes the session by, its ancestry not built for it: the cheaper the fewer tags.
+	 */
+	recordTagNames?: readonly string[]
+	/**
 	 * Called once per record as its closing tag is parsed, AFTER the record has
 	 * been standardized (attributes canonicalized, `afterStandardizedRecord`
 	 * applied). The record is finalized so this hook can index it or collect

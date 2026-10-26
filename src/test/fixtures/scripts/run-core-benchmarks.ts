@@ -238,24 +238,19 @@ async function benchmarkFixture(mb: number, dataDir: string): Promise<void> {
 		}
 
 		const report = doc.perf.report()
-		const importSpan = report['core::import']
+		const importSpan = report['store::import']
 		if (importSpan) {
 			console.log(`  import phases: total ${importSpan.totalMs.toFixed(0)} ms`)
 			for (const name of [
-				'core::import::registerDocument',
-				'core::import::read',
-				'core::import::bufferAppend',
-				'core::import::decode',
-				'core::import::sax',
-				'core::import::onOpenTag',
-				'core::import::onText',
-				'core::import::onCloseTag',
-				'core::import::onCloseTag::batchCopy',
-				'core::import::onCloseTag::standardize',
-				'core::import::onCloseTag::beforeHook',
-				'core::import::onCloseTag::reconcileChildren',
-				'core::import::resolveChildren',
-				'core::store::bulkWrite',
+				'store::import::register',
+				'store::import::decode',
+				'store::import::parse',
+				'store::import::standardize',
+				'store::import::hooks.record',
+				'store::import::insert',
+				'store::import::hooks.after',
+				'store::import::writes.after',
+				'store::import::finalize',
 			]) {
 				const s = report[name]
 				if (s) console.log(`    ${name.padEnd(44)} ${s.totalMs.toFixed(0)} ms (${s.calls} calls)`)

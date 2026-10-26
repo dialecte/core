@@ -149,6 +149,10 @@ export const ERROR_CATALOG = {
 		code: 'D5004',
 		message: 'Failed to import the file',
 	},
+	IMPORT_ABORTED: {
+		code: 'D5005',
+		message: 'The import was aborted',
+	},
 
 	// D6xxx — Config
 	EXTENSION_METHOD_COLLISION: {

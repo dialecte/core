@@ -74,6 +74,8 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 		getChangeLog: vi.fn().mockResolvedValue([]),
 		getDatabaseInstance: vi.fn(),
 		destroy: vi.fn(),
+		importFile: vi.fn(),
+		getWriteOutcome: vi.fn(),
 	}
 
 	return { store, calls }
@@ -97,6 +99,8 @@ describe('commitTransaction', () => {
 			open: vi.fn(),
 			close: vi.fn(),
 			destroy: vi.fn(),
+			importFile: vi.fn(),
+			getWriteOutcome: vi.fn(),
 			reconcile: vi.fn(),
 			isDocumentReadable: vi.fn(),
 			registerDocument: vi.fn(),

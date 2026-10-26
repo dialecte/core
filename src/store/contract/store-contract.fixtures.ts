@@ -1,6 +1,7 @@
 import { expect } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
 import type { Store } from '../store.types'
 import type { DialecteErrorKey } from '@/errors'
@@ -81,3 +82,19 @@ export async function expectRejectsWith(params: {
 	if (meta) expect(error?.meta, `meta of ${key}`).toEqual(meta)
 	if (detail) expect(error?.detail, `detail of ${key}`).toMatch(detail)
 }
+
+/** An XML file of core's test dialecte: `body` inside its root. `truncated` cuts the root's close. */
+export function contractFile(params: { body: string; name?: string; truncated?: boolean }): File {
+	const { body, name = 'contract.xml', truncated = false } = params
+	const namespace = TEST_DIALECTE_CONFIG.namespaces.default.uri
+	const xml = `<Root xmlns="${namespace}">${body}${truncated ? '' : '</Root>'}`
+	return new File([xml], name, { type: 'text/xml' })
+}
+
+/** `count` records of the contract session's tag, `B0`.. as their `aB`. */
+export function sessionRecords(count: number): string {
+	return Array.from({ length: count }, (_, index) => `<B aB="B${index}"/>`).join('')
+}
+
+/** Chunks and batches small enough that a file of a few records is stored in several batches. */
+export const SMALL_BATCHES = { chunkSize: 16, batchSize: 1 } as const

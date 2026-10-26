@@ -3,72 +3,78 @@ import { resolveStore } from './resolve-store'
 import { describe, it, expect, vi } from 'vitest'
 
 import { DexieStore, InMemoryStore } from '@/store'
+import { TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { StorageParam } from '../project/types'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
 
-// ── Mock Config ──────────────────────────────────────────────────────────────
+const CONFIG = TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig
+const NS = CONFIG.namespaces.default.uri
 
-function mockConfig(): AnyDialecteConfig {
-	return {
-		database: {
-			recordSchema: {
-				primaryKey: 'id',
-				indexes: ['tagName'],
-				compoundIndexes: [],
-				arrayIndexes: [],
-			},
-		},
-	} as unknown as AnyDialecteConfig
+/** The runtime given: core's test config, an import session with one thing to say. */
+const RUNTIME = {
+	configs: { default: CONFIG },
+	defaultConfigKey: 'default',
+	hooks: {
+		createImportSession: () => ({
+			afterImport: async () => ({
+				diagnostics: [
+					{
+						code: 'said',
+						severity: 'information' as const,
+						source: 'resolve-store',
+						message: 'The runtime given was used',
+						ref: { tagName: 'Root', id: 'root' },
+					},
+				],
+			}),
+		}),
+	},
 }
 
-// ── Test Cases ───────────────────────────────────────────────────────────────
-
 describe('resolveStore', () => {
-	const config = mockConfig()
+	const custom = { open: vi.fn() } as unknown as Store
 
-	const cases: Record<
-		string,
-		{
-			storage: StorageParam
-			expectedType: 'dexie' | 'custom'
-		}
-	> = {
-		'local storage -> returns DexieStore': {
+	type TestCase = {
+		storage: StorageParam
+		expected: (store: Store) => void
+	}
+	const testCases: Record<string, TestCase> = {
+		'local storage → a DexieStore': {
 			storage: { type: 'local' },
-			expectedType: 'dexie',
+			expected: (store) => expect(store).toBeInstanceOf(DexieStore),
 		},
-		'custom storage -> returns provided store': {
-			storage: { type: 'custom', store: { open: vi.fn() } as unknown as Store },
-			expectedType: 'custom',
+		'inMemory storage → an InMemoryStore': {
+			storage: { type: 'inMemory', writable: false },
+			expected: (store) => expect(store).toBeInstanceOf(InMemoryStore),
+		},
+		'custom storage → the store given': {
+			storage: { type: 'custom', store: custom },
+			expected: (store) => expect(store).toBe(custom),
 		},
 	}
 
-	it.each(Object.entries(cases))('%s', (_label, { storage, expectedType }) => {
-		const result = resolveStore('test-project', storage, config)
+	for (const [description, testCase] of Object.entries(testCases)) {
+		it(description, () => {
+			testCase.expected(
+				resolveStore({ name: 'resolve-store', storage: testCase.storage, runtime: RUNTIME }),
+			)
+		})
+	}
 
-		if (expectedType === 'dexie') {
-			expect(result).toBeInstanceOf(DexieStore)
-		} else {
-			expect(result).toBe((storage as { type: 'custom'; store: Store }).store)
-		}
-	})
+	it('the store it builds imports with the runtime given', async () => {
+		const store = resolveStore({
+			name: `resolve-store-${crypto.randomUUID()}`,
+			storage: { type: 'inMemory' },
+			runtime: RUNTIME,
+		})
+		await store.open()
 
-	it('DexieStore receives recordSchema from config', () => {
-		const store = resolveStore('schema-test', { type: 'local' }, config) as DexieStore
+		const result = await store.importFile({
+			file: new File([`<Root xmlns="${NS}"/>`], 'given.xml', { type: 'text/xml' }),
+		})
 
-		// DexieStore was constructed with the name and options
-		expect(store).toBeInstanceOf(DexieStore)
-	})
-
-	it('inMemory storage -> returns InMemoryStore', () => {
-		const result = resolveStore('test-mem', { type: 'inMemory' }, config)
-		expect(result).toBeInstanceOf(InMemoryStore)
-	})
-
-	it('inMemory storage respects writable option', () => {
-		const store = resolveStore('test-ro', { type: 'inMemory', writable: false }, config)
-		expect(store).toBeInstanceOf(InMemoryStore)
+		expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(['said'])
 	})
 })

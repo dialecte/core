@@ -4,8 +4,11 @@ import { DexieStore, buildDexieSchema } from './dexie-store'
 import Dexie from 'dexie'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 
+import { TEST_DIALECTE_CONFIG } from '@/test/config'
+
 import type { RecordSchema } from '../store.types'
 import type { DocumentRecord } from '@/project'
+import type { AnyDialecteConfig } from '@/types'
 import type { AnyRawRecord } from '@/types/records'
 
 describe('buildDexieSchema', () => {
@@ -172,5 +175,121 @@ describe('DexieStore cross-instance reconciliation', () => {
 	it('isDocumentReadable is false for an unknown document', async () => {
 		const { b } = await openPair()
 		expect(await b.isDocumentReadable(crypto.randomUUID())).toBe(false)
+	})
+})
+
+describe('DexieStore - an import running in another connection', () => {
+	const NS = TEST_DIALECTE_CONFIG.namespaces.default.uri
+
+	it('a connection opening while another one imports leaves that import running', async () => {
+		const name = uniqueName()
+		let release: () => void = () => {}
+		const gate = new Promise<void>((resolve) => {
+			release = resolve
+		})
+		let sessionReached: () => void = () => {}
+		const reached = new Promise<void>((resolve) => {
+			sessionReached = resolve
+		})
+		const importer = new DexieStore(name, {
+			importRuntime: {
+				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
+				defaultConfigKey: 'default',
+				hooks: {
+					createImportSession: () => ({
+						afterImport: async () => {
+							sessionReached()
+							await gate
+							return {}
+						},
+					}),
+				},
+			},
+		})
+		await importer.open()
+		const importing = importer.importFile({
+			file: new File([`<Root xmlns="${NS}"><A/></Root>`], 'one.xml', { type: 'text/xml' }),
+			writeId: 'w-running',
+		})
+		await reached
+
+		const other = new DexieStore(name)
+		await other.open()
+		release()
+
+		const result = await importing
+		expect(await other.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
+		expect(await other.count(result.record.id)).toBe(2)
+		other.close()
+		await importer.destroy()
+	})
+
+	it('a connection that lists the registry while another one registers its import leaves that import running', async () => {
+		const name = uniqueName()
+		let markOtherOpened: () => void = () => {}
+		const otherOpened = new Promise<void>((resolve) => {
+			markOtherOpened = resolve
+		})
+		let documentRegistered: () => void = () => {}
+		const registered = new Promise<void>((resolve) => {
+			documentRegistered = resolve
+		})
+		const importer = new DexieStore(name, {
+			importRuntime: {
+				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
+				defaultConfigKey: 'default',
+				// the session is created once the document is registered; it ends once the second
+				// connection has opened, so the document is `importing` all along that open
+				hooks: {
+					createImportSession: () => {
+						documentRegistered()
+						return {
+							afterImport: async () => {
+								await otherOpened
+								return {}
+							},
+						}
+					},
+				},
+			},
+		})
+		await importer.open()
+		const file = new File([`<Root xmlns="${NS}"><A/><B aB="1"/></Root>`], 'one.xml', {
+			type: 'text/xml',
+		})
+
+		// the second connection starts opening; its first registry read waits until the first
+		// connection, which starts importing only then, has taken its lock and registered the document
+		const other = new DexieStore(name)
+		let readingStarted: () => void = () => {}
+		const reading = new Promise<void>((resolve) => {
+			readingStarted = resolve
+		})
+		const listDocuments = other.getDocuments.bind(other)
+		let gated = false
+		other.getDocuments = async () => {
+			if (!gated) {
+				gated = true
+				readingStarted()
+				await registered
+			}
+			return listDocuments()
+		}
+		const opening = other.open()
+		await reading
+		const importing = importer.importFile({ file, writeId: 'w-concurrent' })
+		await opening
+		markOtherOpened()
+
+		const result = await importing
+		expect(await other.getWriteOutcome({ writeId: 'w-concurrent' })).toBe('applied')
+		// a fresh connection reads it whole (the one opened mid-upgrade keeps its old schema: an
+		// IndexedDB-store limit of its own, not the import's)
+		const fresh = new DexieStore(name)
+		await fresh.open()
+		expect(await fresh.getByDocumentId(result.record.id)).toHaveLength(3)
+		fresh.close()
+		other.close()
+		await importer.destroy()
 	})
 })

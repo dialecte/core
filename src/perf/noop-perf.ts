@@ -16,4 +16,8 @@ export const NOOP_PERF: Perf = Object.freeze({
 	},
 	log() {},
 	reset() {},
+	snapshot() {
+		return { timeOrigin: performance.timeOrigin, spans: [], totals: {} }
+	},
+	merge() {},
 })

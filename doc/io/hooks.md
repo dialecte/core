@@ -17,6 +17,7 @@ type IOHooks = {
 }
 
 type ImportSession<GenericDiagnostic extends Diagnostic = Diagnostic> = {
+	recordTagNames?: readonly string[] // the records beforeImportRecord is handed; absent = all
 	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void
 	afterImport?: () => Promise<AfterImportResult<GenericDiagnostic>>
 }
@@ -104,6 +105,19 @@ beforeImportRecord?: (params: {
 
 `ancestry` is top-down: `[root, ..., parent]` (still-open parents, not yet standardized). No return value — keep what you need in the session.
 
+A session that needs only some records names their tags: with `recordTagNames`, `beforeImportRecord` is handed the records of those tags only; the others pass it by and no ancestry is handed for them. Absent, every record is handed.
+
+```ts
+return {
+	recordTagNames: ['LNode', 'FunctionRef'],
+	beforeImportRecord: ({ record, ancestry }) => {
+		/* only LNode and FunctionRef records */
+	},
+}
+```
+
+Hooks run wherever the store imports - a worker, later a server next to the data - so a session never reads the store: it keeps what it needs from the records it is handed.
+
 **Example**
 
 ```ts
@@ -126,7 +140,7 @@ function createImportSession(): ImportSession {
 
 ## `afterImport`
 
-Fires **once** after all records are stored. Return batched creates, updates, and deletes — applied atomically by core in order: creates → updates → deletes — and the diagnostics of the file. The writes are applied whether or not there are diagnostics, and the diagnostics come back to the caller of the import with the document (`parseXmlFile` and `importDocument` return `diagnostics: Diagnostic[]`, `[]` when there is nothing to say).
+Fires **once** after all records are stored. Return batched creates, updates, and deletes — applied atomically by core in order: creates → updates → deletes — and the diagnostics of the file. The writes are applied whether or not there are diagnostics, and the diagnostics come back to the caller of the import with the document (`parseXmlFile`, `runImport` and every store's `importFile` return `diagnostics: Diagnostic[]`, `[]` when there is nothing to say). A hook that throws fails the import and removes the document: a structured error as thrown, anything else as `IMPORT_FAILED` with the thrown value as its `cause`.
 
 ```ts
 afterImport?: () => Promise<AfterImportResult>

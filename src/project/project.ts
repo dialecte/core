@@ -1,13 +1,8 @@
 import { resolveStore } from '../store/resolve-store'
-import { exportBlob, exportDocument, importDocument, initEmptyDocument } from './io'
+import { exportBlob, exportDocument, initEmptyDocument } from './io'
 import { resolveConfig } from './io/resolve-config'
 import { buildDocumentState, reconcileDocumentState } from './state'
-import {
-	isImporting,
-	isStaleImport,
-	openableDocuments,
-	STALE_IMPORT_MS,
-} from './state/document-lifecycle'
+import { isImporting, openableDocuments } from './state/document-lifecycle'
 
 import { Document } from '@/document'
 import { createDialecteError, toDialecteError } from '@/errors'
@@ -58,8 +53,6 @@ export class Project<
 	private _channel?: BroadcastChannel
 	/** Set once close()/destroy() begins, to stop new channel-triggered store work. */
 	private closing = false
-	/** While open: the imports whose heartbeat went stale are swept every `STALE_IMPORT_MS`. */
-	private staleSweep?: ReturnType<typeof setInterval>
 	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
 	private readonly pendingBroadcastWork = new Set<Promise<void>>()
 	private readonly storage: ProjectParams<GenericConfig>['storage']
@@ -69,6 +62,8 @@ export class Project<
 	private hooks?: DialecteHooks<GenericConfig>
 	/** Single project-lived dev perf helper; frozen no-op unless `dev.perf`. */
 	readonly perf: Perf
+	/** Whether `dev.perf` is on: the store then hands back the timings of each import it runs. */
+	private readonly perfEnabled: boolean
 
 	get name(): string {
 		invariant(this._name !== undefined, {
@@ -182,7 +177,8 @@ export class Project<
 		this.configs = params.configs
 		this.defaultConfigKey = params.defaultConfigKey ?? configKeys[0]
 		this.hooks = params.hooks
-		this.perf = createPerf({ enabled: params.dev?.perf ?? false })
+		this.perfEnabled = params.dev?.perf ?? false
+		this.perf = createPerf({ enabled: this.perfEnabled })
 		this.mergedExtensions = params.extensions
 			? (mergeExtensions({
 					base: params.extensions.base,
@@ -205,21 +201,29 @@ export class Project<
 			this.onChannelMessage(event.data)
 		})
 
-		const store = resolveStore(name, this.storage, this.configs[this.defaultConfigKey], this.perf)
+		const store = resolveStore({
+			name,
+			storage: this.storage,
+			runtime: {
+				configs: this.configs,
+				defaultConfigKey: this.defaultConfigKey,
+				// Erase to the config-agnostic pipeline shape at this single core-internal boundary
+				// (the import pipeline is registry-driven).
+				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
+				perf: this.perfEnabled,
+			},
+			perf: this.perf,
+		})
+		// The store removes, as it opens, any import left unfinished.
 		await store.open()
 		this._store = store as GenericStore
 
-		// A document still `importing` with a stale heartbeat was left by a realm that died: removed.
-		// One with a live heartbeat is another realm's import in progress: left alone, not opened.
-		const files = await sweepStaleImports(store)
+		// A document still `importing` is an import in progress elsewhere: not opened.
+		const files = openableDocuments(await store.getDocuments())
 		for (const file of files) {
 			this.state.documents.set(file.id, buildDocumentState(file))
 		}
 		await Promise.all(files.map((file) => this.refreshHistoryStatus(file.id)))
-		// A realm that dies while this one is open leaves the same leftover: swept periodically too.
-		this.staleSweep = setInterval(() => {
-			this.trackBroadcastWork(sweepStaleImports(store).then(() => {}))
-		}, STALE_IMPORT_MS)
 
 		return this
 	}
@@ -292,7 +296,6 @@ export class Project<
 	async close(): Promise<void> {
 		this.closing = true
 		await this.settledImports()
-		clearInterval(this.staleSweep)
 		this._channel?.close()
 		this._store?.close()
 	}
@@ -397,10 +400,12 @@ export class Project<
 	}
 
 	/**
-	 * Import one File into the project: register, parse XML, persist records. The document is in
-	 * the project state and broadcast once its last record is stored; whatever fails before that
-	 * removes it again and is thrown (`PARSE_ERROR` for a malformed file). One file is in flight
-	 * per project: a call made while another import runs waits for it.
+	 * Import one File into the project: the store registers, parses and stores it next to the data.
+	 * The document is in the project state and broadcast once the store answers it `ready`; whatever
+	 * fails before that, or an abort through `options.signal`, leaves nothing and is thrown
+	 * (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign
+	 * error). `options.onProgress` is told after each stored batch, never awaited. One file is in
+	 * flight per project: a call made while another import runs waits for it.
 	 */
 	async importFile(file: File, options?: ImportDocumentOptions): Promise<ImportedDocument> {
 		const store = this.importStore(options)
@@ -412,27 +417,19 @@ export class Project<
 		options?: ImportDocumentOptions
 		store: GenericStore
 	}): Promise<ImportedDocument> {
-		const { file, options, store } = params
-		const result = await importDocument({
-			file,
-			store,
-			configs: this.configs,
-			defaultConfigKey: this.defaultConfigKey,
-			options,
-			// Erase to the config-agnostic pipeline shape at this single
-			// core-internal boundary (the import pipeline is registry-driven).
-			hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
-			perf: this.perf,
-		})
-		this.state.documents.set(result.documentId, result.documentState)
+		const { file, options = {}, store } = params
+		const { onProgress, signal, ...fileOptions } = options
+		const result = await store.importFile({ file, options: fileOptions, onProgress, signal })
+		if (result.perf) this.perf.merge({ report: result.perf, prefix: 'store' })
+		this.state.documents.set(result.record.id, buildDocumentState(result.record))
 		this.broadcast({
 			type: 'document-imported',
-			documentId: result.documentId,
+			documentId: result.record.id,
 			timestamp: Date.now(),
 		})
 		return {
 			fileName: file.name,
-			documentId: result.documentId,
+			documentId: result.record.id,
 			recordCount: result.recordCount,
 			diagnostics: result.diagnostics,
 		}
@@ -688,13 +685,4 @@ export class Project<
 		await this.store.reconcile(documentId)
 		await this.refreshState()
 	}
-}
-
-/** Remove the imports nobody runs any more and return the documents to open. */
-async function sweepStaleImports(store: Store): Promise<DocumentRecord[]> {
-	const files = await store.getDocuments()
-	const now = Date.now()
-	const stale = files.filter((file) => isStaleImport(file, now))
-	await Promise.all(stale.map((file) => store.removeDocument(file.id)))
-	return openableDocuments(files)
 }

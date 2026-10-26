@@ -18,18 +18,50 @@ import {
 	BLOBS_SCHEMA,
 	BLOB_DATA_SCHEMA,
 } from '../store.constants'
+import { removeUnfinishedImports } from '../unfinished-imports'
+import { importOutcomeOf } from '../write-outcome'
+import { IMPORT_LOCK_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
 
 import { throwDialecteError, toDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
+import { requireImportRuntime, runImport } from '@/project/io/run-import'
 
-import type { Store, ChangeLogEntry, ChangeLogMeta, RecordSchema } from '../store.types'
+import type {
+	Store,
+	ChangeLogEntry,
+	ChangeLogMeta,
+	ImportFileParams,
+	ImportFileResult,
+	RecordSchema,
+	WriteOutcome,
+} from '../store.types'
 import type { DexieStoreOptions, StoredDocumentRow } from './types'
 import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project'
+import type { ImportRuntime } from '@/project/io/run-import.types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 import type { Table } from 'dexie'
+
+function importLockName(params: { storeName: string; writeId: string }): string {
+	return `${IMPORT_LOCK_PREFIX}${params.storeName}:${params.writeId}`
+}
+
+/**
+ * Whether an import still runs in some connection of this origin: its lock is held. The lock is
+ * asked for, not listed, so an import that takes it after the registry was read is not missed; one
+ * without a `writeId` (stored before imports carried one), or where Web Locks are missing, runs nowhere.
+ */
+async function isImportRunning(params: {
+	storeName: string
+	document: DocumentRecord
+}): Promise<boolean> {
+	const { storeName, document } = params
+	if (!navigator.locks || document.writeId === undefined) return false
+	const name = importLockName({ storeName, writeId: document.writeId })
+	return navigator.locks.request(name, { ifAvailable: true }, (lock) => lock === null)
+}
 
 /**
  * Translate a backend-agnostic RecordSchema into Dexie's schema DSL string.
@@ -76,6 +108,8 @@ export class DexieStore implements Store {
 	private readonly dexieRecordSchema: string
 	/** Dev-only perf helper from the owning Project (no-op unless dev.perf is on). */
 	private readonly perf: Perf
+	/** The dialecte `importFile` imports with; its imports run in this realm, through `runImport`. */
+	private readonly importRuntime?: ImportRuntime
 	/** In-memory file registry - avoids bootstrap connections during close/reopen */
 	private knownDocuments: Map<string, DocumentRecord> = new Map()
 	/** Serialization lock for schema-changing operations */
@@ -96,13 +130,22 @@ export class DexieStore implements Store {
 		this.name = projectName
 		this.dexieRecordSchema = buildDexieSchema(options?.recordSchema ?? DEFAULT_RECORD_SCHEMA)
 		this.perf = options?.perf ?? NOOP_PERF
+		this.importRuntime = options?.importRuntime
 		this.db = new Dexie(projectName)
 	}
 
 	// --- Lifecycle ---
 
+	/**
+	 * Open: an import found unfinished is removed - unless a connection still runs it (its Web Lock
+	 * is held). Where Web Locks are missing, every unfinished import is removed.
+	 */
 	async open(): Promise<void> {
 		await this.reloadFromPersisted()
+		await removeUnfinishedImports({
+			store: this,
+			isRunning: (document) => isImportRunning({ storeName: this.name, document }),
+		})
 	}
 
 	close(): void {
@@ -169,7 +212,7 @@ export class DexieStore implements Store {
 
 	async updateDocument(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status' | 'importingAt'>>,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
 	): Promise<void> {
 		await this.ensureCurrentSchema()
 		await this.db.table(TABLE_DOCUMENTS).update(documentId, updates)
@@ -218,18 +261,9 @@ export class DexieStore implements Store {
 
 	// --- Record access ---
 
-	async get(id: string, documentId?: string): Promise<AnyRawRecord | undefined> {
-		if (documentId) {
-			const table = await this.recordTable(documentId)
-			return table?.get(id)
-		}
-		await this.ensureCurrentSchema()
-		// Cross-file lookup: search all xel_ tables
-		for (const fId of this.knownDocuments.keys()) {
-			const record = await this.db.table<AnyRawRecord>(this.resolveTableName(fId)).get(id)
-			if (record) return record
-		}
-		return undefined
+	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
+		const table = await this.recordTable(documentId)
+		return table?.get(id)
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
@@ -257,6 +291,22 @@ export class DexieStore implements Store {
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
 		const table = await this.recordTable(documentId)
 		return table ? table.bulkGet(ids) : ids.map(() => undefined)
+	}
+
+	// --- Import ---
+
+	/** Runs in this realm, holding a Web Lock for the import so another connection's `open` keeps it. */
+	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
+		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
+		const runtime = requireImportRuntime({ runtime: this.importRuntime, storeName: this.name })
+		const run = () =>
+			runImport({ store: this, runtime, file, options, writeId }, { onProgress, signal })
+		if (!navigator.locks) return run()
+		return navigator.locks.request(importLockName({ storeName: this.name, writeId }), run)
+	}
+
+	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
+		return importOutcomeOf({ documents: await this.getDocuments(), writeId: params.writeId })
 	}
 
 	// --- Writes ---
