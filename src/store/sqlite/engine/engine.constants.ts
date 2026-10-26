@@ -5,14 +5,18 @@ export const LAYOUT_VERSION = 1
 
 export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	/**
-	 * Known limit of this size: deleting a tenth of a 500 MB document (about 430,000 records) takes
-	 * about 10 s, its undo and redo about 2 s each; a 512 MiB cache brings the delete under 5 s, but
-	 * holds 512 MiB per open project for its whole life. An edit under 1 % of such a document stays
-	 * under a second. SQLite's own 2 MiB default makes a 100,000-record commit 2.6 s instead of 1.6 s.
+	 * Both page caches, the steady one and the import one, take `deviceMemoryGiB * 64` MiB, held
+	 * between 64 and 512 MiB. A worker's wasm memory never shrinks, so after a large import (826 MiB
+	 * measured at 500 MB) the memory is already taken; above 512 MiB nothing is gained, and this sqlite-wasm build
+	 * caps its memory at 2 GiB. Known limit: deleting a tenth of a 500 MB document (about 430,000
+	 * records) takes about 10 s on a device given 64 MiB (1 GiB of memory reported or less) and about
+	 * 4.5 s at 512 MiB (8 GiB and more); an edit under 1 % of such a document stays under a second.
 	 */
-	steadyCacheMiB: 64,
-	importCache: { mibPerGiB: 64, floorMiB: 64, ceilingMiB: 512 },
+	cacheRule: { mibPerGiB: 64, floorMiB: 64, ceilingMiB: 512 },
 }
+
+/** The device's memory when the realm does not report it (Firefox, node): a 4 GiB device. */
+export const DEFAULT_DEVICE_MEMORY_GIB = 4
 
 /** The keys of the `_meta` table: what the file says of itself. */
 export const META_KEY = {

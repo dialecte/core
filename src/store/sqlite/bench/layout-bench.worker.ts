@@ -1,15 +1,10 @@
+import { deviceCacheMiB, reportedDeviceMemoryGiB } from '../engine/device-cache'
 import { realmMemory } from './bench-memory'
-import {
-	buildCommitRecords,
-	createVariantSink,
-	deviceCacheKiB,
-	recordSignature,
-} from './bench-variants'
+import { buildCommitRecords, createVariantSink, recordSignature } from './bench-variants'
 import {
 	AFTER_IMPORT_ATTRIBUTE,
 	BENCH_PHASE_MESSAGE,
 	KILL_HOLD_MS,
-	DEFAULT_DEVICE_MEMORY_GIB,
 	ORDER_COMMIT_RECORDS,
 	POOL_DATABASE_PATH,
 	READ_TARGET_CANDIDATES,
@@ -404,12 +399,7 @@ const api: BenchWorkerApi = {
 		const pool = await installPool({ sqlite3, project })
 		const db = openDatabase({ pool, variant })
 		const resolvedCacheKiB =
-			cacheKiB ??
-			deviceCacheKiB({
-				deviceMemoryGiB:
-					(navigator as Navigator & { deviceMemory?: number }).deviceMemory ??
-					DEFAULT_DEVICE_MEMORY_GIB,
-			})
+			cacheKiB ?? deviceCacheMiB({ deviceMemoryGiB: reportedDeviceMemoryGiB() }) * 1024
 		const sink = createVariantSink({
 			db,
 			sqlite3Capi: sqlite3.capi,
@@ -629,7 +619,12 @@ const api: BenchWorkerApi = {
 			const tablesAfterSweep = db
 				.selectArrays("SELECT name FROM sqlite_master WHERE type = 'table'")
 				.map(([name]) => String(name))
-			const sink = createVariantSink({ db, sqlite3Capi: sqlite3.capi, variant, cacheKiB: 0 })
+			const sink = createVariantSink({
+				db,
+				sqlite3Capi: sqlite3.capi,
+				variant,
+				cacheKiB: deviceCacheMiB({ deviceMemoryGiB: reportedDeviceMemoryGiB() }) * 1024,
+			})
 			const otherSignatures = sink.readOrderedSignatures({
 				table: tableOf({ documentId: otherDocumentId }),
 			})

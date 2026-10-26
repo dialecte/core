@@ -1,6 +1,5 @@
-import { DEFAULT_ENGINE_OPTIONS } from '../engine/engine.constants'
 import { cachePragmas } from './bench-variants'
-import { SQLITE_DEFAULT_CACHE_PRAGMA } from './bench.constants'
+import { KILL_VARIANT, SQLITE_DEFAULT_CACHE_PRAGMA, VARIANTS } from './bench.constants'
 
 import { describe, expect, it } from 'vitest'
 
@@ -15,34 +14,37 @@ const cases: Array<{
 	expected: { importPragma: number; steadyPragma: number }
 }> = [
 	{
-		name: "device-sized import cache, the engine's steady cache",
+		name: "device-sized import cache, the engine's steady cache: the same device rule",
 		cache: 'device',
 		steadyCache: 'engine',
 		expected: {
 			importPragma: -DEVICE_KIB,
-			steadyPragma: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
+			steadyPragma: -DEVICE_KIB,
 		},
 	},
 	{
-		name: 'no raise during the import: the import runs on the steady cache',
-		cache: 'default',
-		steadyCache: 'engine',
-		expected: {
-			importPragma: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
-			steadyPragma: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
-		},
+		name: 'the cache-default arm: no raise, the import on the 64 MiB steady cache its recorded runs used',
+		cache: VARIANTS.cacheDefault.cache,
+		steadyCache: VARIANTS.cacheDefault.steadyCache,
+		expected: { importPragma: -64 * 1024, steadyPragma: -64 * 1024 },
+	},
+	{
+		name: 'the kill arm: a 2 MiB import cache that spills in every window, the 64 MiB steady cache',
+		cache: KILL_VARIANT.cache,
+		steadyCache: KILL_VARIANT.steadyCache,
+		expected: { importPragma: -2 * 1024, steadyPragma: -64 * 1024 },
+	},
+	{
+		name: 'the kill arm reopened after the kill (the device size passed): the same 64 MiB steady cache',
+		cache: KILL_VARIANT.cache,
+		steadyCache: KILL_VARIANT.steadyCache,
+		expected: { importPragma: -2 * 1024, steadyPragma: -64 * 1024 },
 	},
 	{
 		name: "SQLite's own default as the steady cache",
 		cache: 'device',
 		steadyCache: 'default',
 		expected: { importPragma: -DEVICE_KIB, steadyPragma: SQLITE_DEFAULT_CACHE_PRAGMA },
-	},
-	{
-		name: 'device-sized steady cache',
-		cache: 'device',
-		steadyCache: 'device',
-		expected: { importPragma: -DEVICE_KIB, steadyPragma: -DEVICE_KIB },
 	},
 	{
 		name: 'explicit sizes in MiB for both caches',

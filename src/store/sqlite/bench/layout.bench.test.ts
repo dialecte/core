@@ -10,6 +10,7 @@
  *   BENCH_SCL_FIXTURES_DIR=<dir> VITE_BENCH=1 VITE_BENCH_CELLS='^composed-50-compact' \
  *     nice -n 10 npx vitest run --project perf --mode bench src/store/sqlite/bench/layout.bench.test.ts
  */
+import { reportedDeviceMemoryGiB } from '../engine/device-cache'
 import { BENCH_CELLS } from './bench-matrix'
 import { realmMemory } from './bench-memory'
 import { buildCommitRecords } from './bench-variants'
@@ -21,7 +22,7 @@ import {
 	EDIT_DELETE_SHARE,
 	FIXTURE_ROOTS,
 	KILL_AFTER_FAILURE_SPREAD_MS,
-	KILL_CACHE_KIB,
+	KILL_VARIANT,
 	KILL_DELAY_MIN_MS,
 	KILL_DELAY_SPREAD_MS,
 	KILL_FAILURE_SHARE_MIN,
@@ -123,7 +124,7 @@ async function benchDevice(): Promise<BenchDevice> {
 	return {
 		...node,
 		hardwareConcurrency: navigator.hardwareConcurrency,
-		deviceMemoryGiB: (navigator as Navigator & { deviceMemory?: number }).deviceMemory,
+		deviceMemoryGiB: reportedDeviceMemoryGiB(),
 	}
 }
 
@@ -379,7 +380,7 @@ function trackPhases(params: { worker: Worker }): {
 /** Kill the engine mid-import (journal off), reopen: the dead document drops, the other one is intact. */
 async function runKill(params: { scenario: KillScenario; run: number }): Promise<KillRun> {
 	const { scenario, run } = params
-	const variant = VARIANTS.J2
+	const variant = KILL_VARIANT
 	const other = await commands.benchFixture({ name: 'composed-catalogue-small' })
 	const victim = await commands.benchFixture({ name: 'composed-50-compact' })
 	const project = `kill-${scenario}-${run}-${crypto.randomUUID().slice(0, 8)}`
@@ -390,7 +391,6 @@ async function runKill(params: { scenario: KillScenario; run: number }): Promise
 	await first.api.open({
 		project,
 		variant,
-		cacheKiB: KILL_CACHE_KIB,
 		reportPhases: true,
 		holdAtPhase: scenario === 'kill-after-parse-failure' ? 'dropping' : undefined,
 	})

@@ -49,46 +49,50 @@ function metaOf(params: { db: Database }): Record<string, string> {
 
 describe('openSqliteEngine', () => {
 	describe('a fresh file', () => {
+		afterEach(() => {
+			// the device memory a case reports, dropped: the browser's own reads again
+			Reflect.deleteProperty(navigator, 'deviceMemory')
+		})
+
 		type TestCase = {
+			/** what `navigator.deviceMemory` reports while the engine starts (`undefined`: not reported) */
+			deviceMemoryGiB: number | undefined
 			options?: Partial<SqliteEngineOptions>
-			expected: {
-				userVersion: number
-				autoVacuum: number
-				meta: Record<string, string>
-				cacheSizeKiB: number
-			}
+			expectedCacheMiB: number
 		}
 		const testCases: Record<string, TestCase> = {
-			'no options → layout 1 in the header and the meta table, the dialecte id kept, incremental auto-vacuum, a 64 MiB cache':
-				{
-					expected: {
-						userVersion: 1,
-						autoVacuum: 2,
-						meta: { dialecteId: DIALECTE_ID, layoutVersion: '1' },
-						cacheSizeKiB: 64 * 1024,
-					},
-				},
-			'a steady cache of 256 MiB asked → a 256 MiB cache, the rest as without options': {
-				options: { steadyCacheMiB: 256 },
-				expected: {
-					userVersion: 1,
-					autoVacuum: 2,
-					meta: { dialecteId: DIALECTE_ID, layoutVersion: '1' },
-					cacheSizeKiB: 256 * 1024,
-				},
+			'no options, a 2 GiB device → layout 1 in the header and the meta table, the dialecte id kept, incremental auto-vacuum, a 128 MiB cache':
+				{ deviceMemoryGiB: 2, expectedCacheMiB: 128 },
+			'no options, the device memory not reported → the cache of a 4 GiB device: 256 MiB': {
+				deviceMemoryGiB: undefined,
+				expectedCacheMiB: 256,
+			},
+			'a steady cache of 100 MiB asked → 100 MiB, whatever the device': {
+				deviceMemoryGiB: 2,
+				options: { steadyCacheMiB: 100 },
+				expectedCacheMiB: 100,
+			},
+			'a cache rule of its own → the steady cache follows it': {
+				deviceMemoryGiB: 2,
+				options: { cacheRule: { mibPerGiB: 1, floorMiB: 3, ceilingMiB: 3 } },
+				expectedCacheMiB: 3,
 			},
 		}
 
 		for (const [description, testCase] of Object.entries(testCases)) {
 			it(description, async () => {
+				Object.defineProperty(navigator, 'deviceMemory', {
+					value: testCase.deviceMemoryGiB,
+					configurable: true,
+				})
 				const file = await openFile()
 				const db = file.connect()
 				await startEngine({ db, options: testCase.options })
-				expect(db.selectValue('PRAGMA user_version')).toBe(testCase.expected.userVersion)
-				expect(db.selectValue('PRAGMA auto_vacuum')).toBe(testCase.expected.autoVacuum)
-				expect(metaOf({ db })).toEqual(testCase.expected.meta)
+				expect(db.selectValue('PRAGMA user_version')).toBe(1)
+				expect(db.selectValue('PRAGMA auto_vacuum')).toBe(2)
+				expect(metaOf({ db })).toEqual({ dialecteId: DIALECTE_ID, layoutVersion: '1' })
 				// a negative cache_size is a size in KiB
-				expect(db.selectValue('PRAGMA cache_size')).toBe(-testCase.expected.cacheSizeKiB)
+				expect(db.selectValue('PRAGMA cache_size')).toBe(-testCase.expectedCacheMiB * 1024)
 			})
 		}
 	})

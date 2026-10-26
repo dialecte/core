@@ -4,19 +4,18 @@ import { inWriteTransaction } from './transaction'
 import { throwDialecteError } from '@/errors'
 import { TABLE_DOCUMENTS, TABLE_META } from '@/store/store.constants'
 
-import type { SqliteEngineOptions } from './engine.types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
  * What every connection of the engine runs with: it is the file's only user (exclusive lock),
- * every write durable (rollback journal, full sync), the steady page cache.
+ * every write durable (rollback journal, full sync), the steady page cache of `steadyCacheMiB`.
  */
-function applyConnectionPragmas(params: { db: Database; options: SqliteEngineOptions }): void {
-	const { db, options } = params
+function applyConnectionPragmas(params: { db: Database; steadyCacheMiB: number }): void {
+	const { db, steadyCacheMiB } = params
 	db.exec(
 		'PRAGMA locking_mode=EXCLUSIVE; PRAGMA temp_store=MEMORY; ' +
 			'PRAGMA journal_mode=TRUNCATE; PRAGMA synchronous=FULL; ' +
-			`PRAGMA cache_size=${-options.steadyCacheMiB * 1024};`,
+			`PRAGMA cache_size=${-steadyCacheMiB * 1024};`,
 	)
 }
 
@@ -51,14 +50,14 @@ export function prepareFile(params: {
 	sqlite3: Sqlite3Static
 	db: Database
 	dialecteId: string
-	options: SqliteEngineOptions
+	steadyCacheMiB: number
 }): void {
-	const { sqlite3, db, dialecteId, options } = params
+	const { sqlite3, db, dialecteId, steadyCacheMiB } = params
 	// read before any pragma: a refused file is never written, nor locked by this connection
 	const layoutVersion = Number(db.selectValue('PRAGMA user_version'))
 	const tables = Number(db.selectValue('SELECT count(*) FROM sqlite_schema'))
 	if (layoutVersion === LAYOUT_VERSION || (layoutVersion === 0 && tables === 0)) {
-		applyConnectionPragmas({ db, options })
+		applyConnectionPragmas({ db, steadyCacheMiB })
 		if (layoutVersion === 0) createFile({ sqlite3, db, dialecteId })
 		return
 	}

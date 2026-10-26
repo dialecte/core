@@ -80,7 +80,6 @@ export const BENCH_CELLS: readonly BenchCell[] = [
 		VARIANTS.W2,
 		VARIANTS.V2,
 		VARIANTS.idFirst,
-		VARIANTS.steadyDevice,
 	].map((variant) =>
 		cell({
 			variant,
@@ -121,7 +120,7 @@ export const BENCH_CELLS: readonly BenchCell[] = [
 			measures: { commitsDuringImport: true, edits: true },
 		}),
 	),
-	// edits and reads at 500 MB with SQLite's default steady cache (2 MiB) against the 64 MiB base
+	// edits and reads at 500 MB with SQLite's default steady cache (2 MiB) against the base's device-sized steady cache
 	cell({
 		variant: VARIANTS.steadyDefault,
 		fixture: 'composed-500-compact',

@@ -1,8 +1,4 @@
-import {
-	DEFAULT_ENGINE_OPTIONS,
-	ROW_SELECT_EXPRESSIONS,
-	ROWS_PER_BIND,
-} from '../engine/engine.constants'
+import { ROW_SELECT_EXPRESSIONS, ROWS_PER_BIND } from '../engine/engine.constants'
 import { columnDefinitions, reclaimFreePages } from '../engine/schema'
 import {
 	AFTER_IMPORT_ATTRIBUTE,
@@ -85,19 +81,11 @@ function json1SelectList(params: { layout: BenchLayout }): string {
 
 //====== CACHE ======//
 
-/** `cache_size` in KiB for the import window, sized on the device's memory. */
-export function deviceCacheKiB(params: { deviceMemoryGiB: number }): number {
-	const { mibPerGiB, floorMiB, ceilingMiB } = DEFAULT_ENGINE_OPTIONS.importCache
-	const mib = Math.min(
-		ceilingMiB,
-		Math.max(floorMiB, Math.round(params.deviceMemoryGiB * mibPerGiB)),
-	)
-	return mib * 1024
-}
-
 /**
  * A variant's two caches as SQLite `cache_size` values (negative = KiB): the import cache and the steady
- * cache. An import without a raise runs on the steady cache.
+ * cache. An import without a raise runs on the steady cache. `deviceCacheKiB` is the engine's rule for
+ * the device (`deviceCacheMiB`), which both of the engine's caches follow; a caller that passes its own
+ * size simulates another device, for both.
  */
 export function cachePragmas(params: {
 	cache: BenchCache
@@ -109,8 +97,7 @@ export function cachePragmas(params: {
 		typeof steadyCache === 'object'
 			? -steadyCache.mib * 1024
 			: {
-					engine: -DEFAULT_ENGINE_OPTIONS.steadyCacheMiB * 1024,
-					device: -deviceCacheKiB,
+					engine: -deviceCacheKiB,
 					default: SQLITE_DEFAULT_CACHE_PRAGMA,
 				}[steadyCache]
 	if (typeof cache === 'object') return { importPragma: -cache.mib * 1024, steadyPragma }
