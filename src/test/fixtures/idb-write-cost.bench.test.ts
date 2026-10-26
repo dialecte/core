@@ -11,6 +11,9 @@ import { afterAll, describe, expect, it } from 'vitest'
  *   across batchSize          = transaction/flush overhead (the sweep)
  * Wall-clock only (no perf timers), so nothing skews the tuning numbers. Gated by VITE_BENCH:
  *   VITE_BENCH=1 npx vitest run --mode bench src/test/fixtures/idb-write-cost.bench.test.ts
+ *
+ * Runs on the perf project's disk-backed browser profile (vitest.config.ts): IndexedDB here is on disk, as
+ * for a user, not the in-memory store of a default Playwright context.
  */
 import { buildDexieSchema } from '@/store/local/dexie-store'
 import { TEST_DIALECTE_CONFIG } from '@/test'
@@ -90,17 +93,19 @@ async function timeBulkAdd(
 
 	const step = batchSize > 0 ? batchSize : records.length // 0 → single transaction
 	const start = performance.now()
-	for (let i = 0; i < records.length; i += step) {
-		const batch = records.slice(i, i + step)
-		await db.transaction('rw', table, async () => {
-			await table.bulkAdd(batch)
-		})
+	try {
+		for (let i = 0; i < records.length; i += step) {
+			const batch = records.slice(i, i + step)
+			await db.transaction('rw', table, async () => {
+				await table.bulkAdd(batch)
+			})
+		}
+		return performance.now() - start
+	} finally {
+		// the profile is persistent: a failed run must not leave its database behind
+		db.close()
+		await Dexie.delete(name)
 	}
-	const ms = performance.now() - start
-
-	db.close()
-	await Dexie.delete(name)
-	return ms
 }
 
 function beginStep(label: string): void {

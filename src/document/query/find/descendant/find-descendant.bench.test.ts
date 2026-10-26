@@ -17,6 +17,9 @@ import { afterAll, describe, expect, it } from 'vitest'
  * Read the `[FIND]` lines from the browser console. Fixtures: `src/test/fixtures/data/stress-*.xml`
  * (generate them with `generate-stress-fixtures.ts`). Every block of a stress fixture is a `D`
  * branch of depth 11 and breadth 2: 1,024 `DDDDDDDDDDD_1` leaves ten levels under `D`.
+ *
+ * Runs on the perf project's disk-backed browser profile (vitest.config.ts): IndexedDB here is on disk, as
+ * for a user, not the in-memory store of a default Playwright context.
  */
 import { Project } from '@/project/project'
 import { TEST_DIALECTE_CONFIG } from '@/test'

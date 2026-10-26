@@ -16,6 +16,9 @@ import { afterAll, describe, expect, it } from 'vitest'
  *   npx vitest run --mode bench src/test/fixtures/idb-read-cost.bench.test.ts
  *
  * Read the `[READ]` lines from the browser console. Keep sizes small — IndexedDB is slow.
+ *
+ * Runs on the perf project's disk-backed browser profile (vitest.config.ts): IndexedDB here is on disk, as
+ * for a user, not the in-memory store of a default Playwright context.
  */
 import { Project } from '@/project/project'
 import { TEST_DIALECTE_CONFIG } from '@/test'
