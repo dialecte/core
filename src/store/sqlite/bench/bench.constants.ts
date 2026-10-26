@@ -1,3 +1,5 @@
+import { RECORD_COLUMNS } from '../engine/engine.constants'
+
 import type {
 	BenchFixtureName,
 	BenchLayout,
@@ -8,36 +10,35 @@ import type {
 
 //====== RECORD TABLE ======//
 
-/** The columns every layout stores, in binding order. */
-export const RECORD_SHARED_COLUMNS = [
-	'id',
-	'tagName',
-	'nsPrefix',
-	'nsUri',
-	'value',
-	'parentId',
-	'parentTagName',
-	'attributes',
-] as const
-
 /** The column that carries sibling order: the children list (L1) or the record's position (L2). */
 export const RECORD_ORDER_COLUMN: Record<BenchLayout, string> = {
 	'children-column': 'children',
 	'derived-position': 'position',
 }
 
+/** The columns every layout stores, in binding order: the engine's, but its order column. */
+export const RECORD_SHARED_COLUMNS = Object.keys(RECORD_COLUMNS).filter(
+	(column) => column !== RECORD_ORDER_COLUMN['children-column'],
+)
+
+/** Each layout's columns with their SQL types: the engine's (L1), its order column swapped for the position (L2). */
+export const RECORD_LAYOUT_COLUMNS: Record<BenchLayout, Record<string, string>> = {
+	'children-column': RECORD_COLUMNS,
+	'derived-position': {
+		...Object.fromEntries(
+			RECORD_SHARED_COLUMNS.map((column) => [
+				column,
+				RECORD_COLUMNS[column as keyof typeof RECORD_COLUMNS],
+			]),
+		),
+		[RECORD_ORDER_COLUMN['derived-position']]: 'REAL',
+	},
+}
+
 //====== ENGINE KNOBS ======//
 
-/** Rows per JSON1 bind: bounds one statement's JSON payload, not a parameter count. */
-export const JSON_INSERT_ROWS = 1000
-/** Patches per JSON1 read and write, and between two checks of the window cap. */
-export const UPDATE_CHUNK_PATCHES = 1000
 export const WINDOW_TIME_CAP_MS = 1000
 export const WINDOW_SIZE_CAP_BYTES = 32 * 1024 * 1024
-/** Device-sized cache: `clamp(gib * 64, 64, 512)` MiB, while an import runs. */
-export const CACHE_MIB_PER_GIB = 64
-export const CACHE_FLOOR_MIB = 64
-export const CACHE_CEILING_MIB = 512
 /** The table and index names the engine builds (quoted, never escaped). */
 export const SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 /** SQLite's own default `cache_size`: 2000 KiB. */
@@ -145,7 +146,7 @@ export const BASE_VARIANT: BenchVariant = {
 	window: { kind: 'time', ms: WINDOW_TIME_CAP_MS },
 	vacuum: 'none',
 	cache: 'device',
-	steadyCache: 'floor',
+	steadyCache: 'engine',
 	insert: 'json1',
 }
 

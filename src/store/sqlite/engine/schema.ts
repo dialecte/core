@@ -83,7 +83,8 @@ export function createRecordTable(params: { db: Database; table: string }): void
 	)
 }
 
-function columnDefinitions(params: { columns: Record<string, string> }): string {
+/** Columns with their SQL types as the body of a `CREATE TABLE`, in the order given. */
+export function columnDefinitions(params: { columns: Record<string, string> }): string {
 	return Object.entries(params.columns)
 		.map(([column, type]) => `${column} ${type}`)
 		.join(', ')
