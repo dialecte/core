@@ -15,10 +15,12 @@ import {
 import { applyRecordPatch } from '@/store/apply-record-patch'
 
 import type {
+	BenchCache,
 	BenchChangeEntry,
 	BenchLayout,
 	BenchParentChange,
 	BenchPhase,
+	BenchSteadyCache,
 	BenchVariant,
 	BenchWindowState,
 	CommitCreatesParams,
@@ -93,6 +95,28 @@ export function deviceCacheKiB(params: { deviceMemoryGiB: number }): number {
 	return mib * 1024
 }
 
+/**
+ * A variant's two caches as SQLite `cache_size` values (negative = KiB): the import cache and the steady
+ * cache. An import without a raise runs on the steady cache.
+ */
+export function cachePragmas(params: {
+	cache: BenchCache
+	steadyCache: BenchSteadyCache
+	deviceCacheKiB: number
+}): { importPragma: number; steadyPragma: number } {
+	const { cache, steadyCache, deviceCacheKiB } = params
+	const steadyPragma =
+		typeof steadyCache === 'object'
+			? -steadyCache.mib * 1024
+			: {
+					floor: -CACHE_FLOOR_MIB * 1024,
+					device: -deviceCacheKiB,
+					default: SQLITE_DEFAULT_CACHE_PRAGMA,
+				}[steadyCache]
+	if (typeof cache === 'object') return { importPragma: -cache.mib * 1024, steadyPragma }
+	return { importPragma: cache === 'device' ? -deviceCacheKiB : steadyPragma, steadyPragma }
+}
+
 //====== ORDER SIGNATURES ======//
 
 /** FNV-1a over a record's place and content: depth, tag, attribute values, text. */
@@ -157,12 +181,11 @@ export function createVariantSink(params: {
 	let head = 0
 	let scratchTables = 0
 	let mode: 'window' | 'durable' = 'durable'
-	const steadyCachePragma = {
-		floor: -CACHE_FLOOR_MIB * 1024,
-		device: -cacheKiB,
-		default: SQLITE_DEFAULT_CACHE_PRAGMA,
-	}[variant.steadyCache]
-	const importCachePragma = variant.cache === 'device' ? -cacheKiB : steadyCachePragma
+	const { importPragma: importCachePragma, steadyPragma: steadyCachePragma } = cachePragmas({
+		cache: variant.cache,
+		steadyCache: variant.steadyCache,
+		deviceCacheKiB: cacheKiB,
+	})
 	let importCacheRaised = false
 	db.exec(`PRAGMA cache_size=${steadyCachePragma}`)
 

@@ -23,11 +23,14 @@ export type BenchWindowCap = { kind: 'time'; ms: number } | { kind: 'size'; byte
 /** `auto_vacuum` set at file creation. */
 export type BenchVacuum = 'none' | 'incremental'
 
-/** Page cache during an import: sized on the device's memory, or no raise (the steady cache). */
-export type BenchCache = 'device' | 'default'
+/** A cache size given in MiB, past the device-sized ceiling if need be. */
+export type BenchCacheSize = { mib: number }
 
-/** Page cache outside imports (commits, undo, reads): the 64 MiB floor, device-sized, or SQLite's default 2 MiB. */
-export type BenchSteadyCache = 'floor' | 'device' | 'default'
+/** Page cache during an import: sized on the device's memory, no raise (the steady cache), or a size in MiB. */
+export type BenchCache = 'device' | 'default' | BenchCacheSize
+
+/** Page cache outside imports (commits, undo, reads): the 64 MiB floor, device-sized, SQLite's default 2 MiB, or a size in MiB. */
+export type BenchSteadyCache = 'floor' | 'device' | 'default' | BenchCacheSize
 
 /** One JSON1 bind per 1000 rows, or one prepared bind per row. */
 export type BenchInsert = 'json1' | 'per-row'
@@ -314,6 +317,7 @@ export type BenchWorkerApi = {
 	}) => Promise<EditSteps & { roots: number }>
 	undo: (params: { documentId: string }) => Promise<EditSteps>
 	redo: (params: { documentId: string }) => Promise<EditSteps>
+	memory: () => Promise<BenchMemory>
 	pickReadTargets: (params: {
 		documentId: string
 	}) => Promise<{ rootId: string; tagName: string; subtreeRecords: number }>
@@ -368,6 +372,33 @@ export type GcShare = {
 	top: Array<{ name: string; ms: number }>
 }
 
+/** Memory of one realm at one point of a run; what the browser does not expose stays undefined. */
+export type BenchMemory = {
+	/** the sqlite3 WebAssembly.Memory buffer (worker only; wasm memory grows, it never shrinks) */
+	wasmBytes?: number
+	/** `performance.memory.usedJSHeapSize` (Chromium) */
+	jsHeapUsedBytes?: number
+	/** `performance.measureUserAgentSpecificMemory()`, or why it could not run */
+	userAgentBytes?: number
+	userAgentError?: string
+}
+
+/** The DOM lib lacks both: Chromium's `performance.memory` and the cross-origin-isolated user-agent measure. */
+export type PerformanceWithMemory = Performance & {
+	memory?: { usedJSHeapSize: number }
+	measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>
+}
+
+/** The worker's and the page's memory read at the same point of a run. */
+export type BenchMemoryPoint = { worker: BenchMemory; page: BenchMemory }
+
+/** Memory after the import, after the delete, and at the end of the run. */
+export type BenchRunMemory = {
+	afterImport?: BenchMemoryPoint
+	afterDelete?: BenchMemoryPoint
+	atEnd?: BenchMemoryPoint
+}
+
 export type BenchRun = {
 	cell: string
 	run: number
@@ -397,6 +428,7 @@ export type BenchRun = {
 		tagName: string
 	}
 	order?: OrderCheck
+	memory?: BenchRunMemory
 	removal?: { removeMs: number; sizes: DatabaseSizes }
 	prepared?: PreparedDatabaseTimings
 	error?: string

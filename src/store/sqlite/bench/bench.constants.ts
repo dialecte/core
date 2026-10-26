@@ -179,6 +179,26 @@ export const VARIANTS = {
 	},
 } as const satisfies Record<string, BenchVariant>
 
+/** Caches above the device-sized ceiling: a 500 MB question only, kept out of the 50 MB list of every variant. */
+export const CACHE_CEILING_VARIANTS = {
+	/** The locked layout (L1 · I2 · J1 · W1 · V2 · JSON1) with both caches at 1,536 MiB: a 500 MB database fits whole. */
+	bigCache1536: {
+		...BASE_VARIANT,
+		id: 'big-1536',
+		vacuum: 'incremental',
+		cache: { mib: 1536 },
+		steadyCache: { mib: 1536 },
+	},
+	/** The same with 3,072 MiB, past the database size (and past what this sqlite-wasm build can grow to). */
+	bigCache3072: {
+		...BASE_VARIANT,
+		id: 'big-3072',
+		vacuum: 'incremental',
+		cache: { mib: 3072 },
+		steadyCache: { mib: 3072 },
+	},
+} as const satisfies Record<string, BenchVariant>
+
 //====== MATRIX DIMENSIONS ======//
 
 /** What a full cell measures beyond the import. */
