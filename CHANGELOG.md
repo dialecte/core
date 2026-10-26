@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `@sqlite.org/sqlite-wasm` (`3.53.4-build2`) and `comlink` (`4.4.2`) are dependencies of `@dialecte/core`, pinned to exact versions: the SQLite project store runs on them. An install of core now brings them.
 - **Breaking:** `project.export` takes one object and answers the file: `project.export({ documentId, indent?, withDatabaseIds?, xmlDocument?, download? })` returns `{ file: Blob, filename }`, the store's export. `xmlDocument: true` also answers the DOM, parsed from the compact file in the page (pass `indent: false` to export once); `download: true` (or `{ filename }`) also saves the formatted file - the save dialog is asked before the export runs, while the click still counts as the user's gesture, a dialog refused for a lapsed gesture falls back to a download, and any other failing save is thrown. Was `project.export(documentId, { withDatabaseIds, withDownload })` returning `{ xmlDocument, filename }`. The parsed DOM is the document the records make; its attributes also hold the namespace declarations written into the file; the compact file writes a text value's carriage return as `&#13;`, so the DOM keeps it.
 - **Breaking:** a document still `importing` cannot be exported: `exportFile` refuses it with `DOCUMENT_NOT_REGISTERED`, as a document not registered.
 - **Breaking:** the `Store` port has a required member more, `exportFile`: a `{ type: 'custom' }` store runs `runExport` with a source of its own (its reads and the per-document write version).
