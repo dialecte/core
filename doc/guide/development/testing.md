@@ -61,7 +61,7 @@ describe('isNonEmpty', () => {
 
 ## runTestCases.withoutExport / runTestCases.withExport
 
-Run async table-driven tests backed by a real in-memory database. Import `sourceXml` (and optional `targetXml`), call `act` with the mounted document contexts, then clean up.
+Run async table-driven tests backed by a real store (the local one unless [another is chosen](#choosing-the-store)). Import `sourceXml` (and optional `targetXml`), call `act` with the mounted document contexts, then clean up.
 
 Two methods enforce the right contract at call-site.
 
@@ -412,7 +412,7 @@ async function createTestProject<
 }>
 ```
 
-The project is the declaration's: every config, the default key, the dialecte's extensions and its own hooks instance. The source (and the target) are imported under the default config.
+The project is the declaration's: every config, the default key, the dialecte's extensions and its own hooks instance. The source (and the target) are imported under the default config. Opened inside a running test, the project is destroyed when the test ends ([Teardown](#teardown)).
 
 Without a `dialecte`, the project is core's own test dialecte (`TEST_DIALECTE`, its one config under the key `default`). Passing `dialecteConfig`, `extensions` and `hooks` one by one still works and is deprecated: the one config goes under the key `default` and the hooks instance given is shared by every project.
 
@@ -671,9 +671,69 @@ const DIALECTE_NAMESPACES = {
 
 ---
 
-## In-Memory Store for tests
+## Choosing the store
 
-For tests that don't need XML import/export but do need a working `Document` instance, use `{ type: 'inMemory' }` storage. This avoids IndexedDB entirely and runs synchronously in-memory.
+Every helper of this page opens its projects on the local store (IndexedDB) unless it is given another one: `storage` on `createTestHelpers`, `createTestRunner`, `createTestProject` and `createTestContext`. `{ type: 'inMemory' }` is the fast choice for unit and mutation runs; the local store is the one storage paths and end-to-end runs need.
+
+### The store is a switch
+
+A test gives the same result on every store; only its speed changes. A difference is a store bug, and the store contract suite of core (`src/store/contract`) runs every case on every store to keep it so. What a test may rely on, whichever the store:
+
+- **One state per name.** Every store, and every project, opened under a name reads and writes one state: a project closed and opened again under its name finds its documents. `close()` keeps that state; `destroy()` frees it. In memory the state is the page's (a test worker's), as an IndexedDB database is the origin's.
+- **Records are values.** What a test reads or hands the store is its own copy: changing it never changes the store.
+- **List reads in id order.** `getDocuments`, `getByDocumentId`, `getByTagNameInDocument` and the blob lists answer in record-id order, and so do the queries built on them. With random ids (an import without `useCustomRecordsIds`, `initEmptyDocument`) that order is random: compare such lists as sets.
+
+### Picking the store for a package's runs
+
+The store is the runner's choice, not each test's: a package passes `storage` once, in the one helper call its tests go through, and reads it from its runner however it likes. With vitest, a project of the config provides the choice and the helpers read it with `inject`, in node and in the browser alike:
+
+```ts
+// vitest.config.ts - each project says which store its tests run on
+projects: [
+	{ test: { name: 'unit', browser: { ... }, provide: { dialecteTestStore: 'local' } } },
+	{
+		test: {
+			name: 'mutation',
+			environment: 'node',
+			setupFiles: ['fake-indexeddb/auto'], // only for the local store in node
+			provide: { dialecteTestStore: process.env.DIALECTE_TEST_STORE ?? 'memory' },
+		},
+	},
+]
+```
+
+```ts
+// the package's test helpers
+import { createTestHelpers } from '@dialecte/core/test'
+import { inject } from 'vitest'
+
+declare module 'vitest' {
+	export interface ProvidedContext {
+		dialecteTestStore: 'memory' | 'local'
+	}
+}
+
+export const helpers = createTestHelpers({
+	dialecte: MY_DIALECTE,
+	storage: inject('dialecteTestStore') === 'memory' ? { type: 'inMemory' } : { type: 'local' },
+})
+```
+
+A test that needs a given store whatever the run (an IndexedDB path, a store's own behaviour) opens its own project on it: `createTestProject({ sourceXml, storage: { type: 'local' } })`.
+
+### Teardown
+
+- `runTestCases` destroys the project of each case.
+- `createTestProject` called inside a running test (its body or a `beforeEach`) destroys its project when that test ends; called outside one (`beforeAll`, module scope), the project is the caller's to destroy. A project several tests share is therefore opened in `beforeAll` or at module scope: one opened in a test is gone in the next. So is one a vitest fixture opens (`test.extend`), even with `scope: 'file'` or `'worker'`: the fixture is set up inside the first test that uses it, and its project is destroyed when that test ends. Destroying it yourself as well is harmless. Under `test.concurrent` the end of another test may come first: destroy such projects yourself.
+- A `Project` or a store a test builds itself is the test's to destroy. Under a fixed name (`open('test')`) a project never destroyed leaves its documents to the next one of that name - in memory for the rest of the test worker, on IndexedDB for the rest of the browser run, across test files: use a new name per test (`crypto.randomUUID()`), or destroy it.
+
+### In node
+
+The in-memory store runs anywhere; the local store needs IndexedDB, given to node by `fake-indexeddb` (`import 'fake-indexeddb/auto'` in a setup file). Core runs its store contract suite and the project's store switch in node on both stores (`npm run test:node`); export and the XML assertions need a DOM, which node lacks.
+
+### In-memory projects
+
+For tests that don't need XML import/export but do need a working `Document` instance, a project on `{ type: 'inMemory' }` storage is enough:
 
 ```ts
 import { Project, TEST_DIALECTE_CONFIG } from '@dialecte/core'
@@ -681,7 +741,7 @@ import { Project, TEST_DIALECTE_CONFIG } from '@dialecte/core'
 const project = await new Project({
 	configs: { test: TEST_DIALECTE_CONFIG },
 	storage: { type: 'inMemory' },
-}).open('test')
+}).open(`test-${crypto.randomUUID()}`)
 
 const docId = await project.initEmptyDocument({ name: 'fixture' })
 const doc = project.openDocument(docId)
@@ -691,12 +751,12 @@ await doc.transaction(async (tx) => {
 	await tx.addChild({ tagName: 'Root' }, { tagName: 'A', attributes: { aA: 'value' } })
 })
 
-await project.destroy() // instant cleanup, no IndexedDB teardown
+await project.destroy() // frees the state of its name
 ```
 
-### Non-writable placeholder
+#### Non-writable placeholder
 
-Use `{ type: 'inMemory', writable: false }` to create a Document that throws on any mutation. Useful for testing UI components that receive a `Document` but should not write during a specific phase:
+Use `{ type: 'inMemory', writable: false }` to create a Document that throws on any mutation; it reads empty, even under the name of a project holding data, and never frees that data. Useful for testing UI components that receive a `Document` but should not write during a specific phase:
 
 ```ts
 const project = await new Project({

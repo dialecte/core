@@ -1,6 +1,6 @@
 import { READS_BEFORE_SIZING, createRecordSource } from './record-source'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { createStagedOperations } from '@/document'
 import { NOOP_PROGRESS_REPORTER } from '@/document/progress'
@@ -11,6 +11,7 @@ import { TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { Context, Ref } from '@/document'
 import type { Perf } from '@/perf'
+import type { Store } from '@/store'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyRawRecord, ElementsOf } from '@/types'
 
@@ -41,11 +42,19 @@ function flatDocument(tags: string[]): AnyRawRecord[] {
 	return [root, ...children] as unknown as AnyRawRecord[]
 }
 
-/** A context over a real in-memory store holding `records`, its store reads counted. */
+/** The stores the cases opened, destroyed after each. */
+const opened: Store[] = []
+
+afterEach(async () => {
+	for (const store of opened.splice(0)) await store.destroy()
+})
+
+/** A context over a real in-memory store of its own holding `records`, its store reads counted. */
 async function createSourceContext(
 	records: AnyRawRecord[],
 ): Promise<{ context: Context<TestDialecteConfig>; perf: Perf }> {
-	const store = new InMemoryStore('record-source', { writable: true })
+	const store = new InMemoryStore(`record-source-${crypto.randomUUID()}`, { writable: true })
+	opened.push(store)
 	await store.registerDocument({
 		id: DOCUMENT_ID,
 		name: 'doc',

@@ -1,4 +1,4 @@
-import type { Store } from '@/store/store.types'
+import type { ImportTarget } from '@/store/store.types'
 import type { ImportFileOptions } from '@/store/store.types'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
@@ -17,7 +17,7 @@ export type ImportRuntime = {
 
 export type RunImportParams = {
 	/** The store the records are written to */
-	store: Store
+	store: ImportTarget
 	runtime: ImportRuntime
 	file: File
 	options?: ImportFileOptions

@@ -57,7 +57,7 @@ const project = await new Project({
 ```
 
 ::: tip In-memory mode
-Replace `{ type: 'local' }` with `{ type: 'inMemory' }` for tests or demos that don't need IndexedDB persistence. Add `writable: false` for a read-only placeholder that throws on mutations.
+Replace `{ type: 'local' }` with `{ type: 'inMemory' }` for tests or demos that don't need IndexedDB persistence: the project behaves the same, held in the page's memory until `destroy()`. Add `writable: false` for a read-only placeholder that throws on mutations.
 :::
 
 ## Step 3 - Import an XML file

@@ -3,10 +3,11 @@ import { createTestContext, createTestProject } from './create-test-dialecte'
 import { TEST_DIALECTE } from './test-dialecte'
 
 import Dexie from 'dexie'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
 import { InMemoryStore } from '@/store'
+import { findInMemoryState } from '@/store/in-memory/in-memory-state'
 
 import type { TestProjectResult } from './create-test-dialecte.types'
 import type { AnyRawRecord } from '@/types'
@@ -121,6 +122,23 @@ describe('createTestContext', () => {
 		expect(context.stagedOperations.log).toHaveLength(0)
 	})
 
+	it('an in-memory project named, its storage given → the context reads that project’s records', async () => {
+		const { project, source } = await createTestProject({
+			sourceXml: SIMPLE_XML,
+			storage: { type: 'inMemory' },
+		})
+		projects.push(project)
+
+		const context = await createTestContext({
+			databaseName: project.name,
+			storage: { type: 'inMemory' },
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+			documentId: source.documentId,
+		})
+
+		expect(await context.store.getByTagNameInDocument('A', context.documentId)).toHaveLength(2)
+	})
+
 	it('reads the store given instead of the local one', async () => {
 		const store = new InMemoryStore('context-store', { writable: true })
 		await store.open()
@@ -146,6 +164,7 @@ describe('createTestContext', () => {
 		expect(context.store).toBe(store)
 		expect(await context.store.getByTagNameInDocument('A', 'doc')).toHaveLength(1)
 		expect(await Dexie.exists('context-store')).toBe(false)
+		await store.destroy()
 	})
 })
 
@@ -205,5 +224,56 @@ describe('createTestProject from a declaration', () => {
 
 		expect(TEST_DIALECTE.defaultConfigKey).toBe('default')
 		expect((await project.getDocument(source.documentId))?.configKey).toBe('default')
+	})
+})
+
+describe('createTestProject - a project the test leaves undestroyed', () => {
+	// the cases of this block run in order: each one checks what the one before it left
+	const left: { inMemory?: string; local?: string } = {}
+	const openedInBeforeEach: string[] = []
+	let fromBeforeAll: TestProjectResult<typeof TEST_DIALECTE_CONFIG> | undefined
+
+	beforeAll(async () => {
+		fromBeforeAll = await createTestProject({
+			sourceXml: SIMPLE_XML,
+			storage: { type: 'inMemory' },
+		})
+	})
+
+	beforeEach(async () => {
+		const { project } = await createTestProject({
+			sourceXml: SIMPLE_XML,
+			storage: { type: 'inMemory' },
+		})
+		openedInBeforeEach.push(project.name)
+	})
+
+	it('projects opened in the test, one destroyed by the test itself → nothing thrown at its end', async () => {
+		const inMemory = await createTestProject({
+			sourceXml: SIMPLE_XML,
+			storage: { type: 'inMemory' },
+		})
+		const local = await createTestProject({ sourceXml: SIMPLE_XML, storage: { type: 'local' } })
+		const destroyedByTheTest = await createTestProject({ sourceXml: SIMPLE_XML })
+		left.inMemory = inMemory.project.name
+		left.local = local.project.name
+		await destroyedByTheTest.project.destroy()
+		expect(findInMemoryState({ name: inMemory.project.name })).toBeDefined()
+	})
+
+	it('the test before has ended → its projects and the one of its beforeEach are destroyed', async () => {
+		// run alone (`-t`, `.only`) the test before has left nothing to check
+		expect(left.inMemory).toBeDefined()
+		expect(left.local).toBeDefined()
+		expect(findInMemoryState({ name: left.inMemory ?? '' })).toBeUndefined()
+		expect(await Dexie.exists(left.local ?? '')).toBe(false)
+		expect(findInMemoryState({ name: openedInBeforeEach[0] ?? '' })).toBeUndefined()
+	})
+
+	it('a project opened in beforeAll → still open in the later tests, its records read', async () => {
+		const project = fromBeforeAll?.project
+		if (!project) throw new Error('beforeAll opened no project')
+		expect(await project.getDocuments()).toHaveLength(1)
+		await project.destroy()
 	})
 })

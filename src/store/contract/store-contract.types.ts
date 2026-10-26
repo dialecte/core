@@ -1,4 +1,5 @@
 import type { Store } from '../store.types'
+import type { DialecteErrorKey } from '@/errors'
 import type { BaseTestCase } from '@/test'
 import type { AnyAttribute } from '@/types'
 
@@ -30,6 +31,14 @@ export type StoreContractContext = {
 	reopen: () => Promise<Store>
 	/** A second open connection to the same state; closed after the case. */
 	connect: () => Promise<Store>
+	/** A fresh, open store of another name; destroyed after the case. */
+	createOther: () => Promise<Store>
+}
+
+/** An import the case holds at the end of its parse: `reached` once it waits, `release` lets it go on. */
+export type ContractImportHold = {
+	reached: Promise<void>
+	release: () => void
 }
 
 export type StoreContractCase = BaseTestCase & {
@@ -61,3 +70,34 @@ export type SiblingOrderStep = {
 
 /** The contract, one table of cases per concern. */
 export type StoreContractGroups = Record<string, StoreContractCases>
+
+/** A read whose answer the caller then changes: the store must answer the next read as before. */
+export type ValueRead = (store: Store) => Promise<unknown>
+
+/**
+ * A write of a value the caller then changes: `write` hands the store `given`, `read` reads back what
+ * the write left; the store must answer that read as it did right after the write.
+ */
+export type ValueWrite<GenericGiven extends object = object> = {
+	given: () => GenericGiven
+	write: (params: { store: Store; given: GenericGiven }) => Promise<void>
+	read: ValueRead
+}
+
+/** A write breaking one or more rules (a value the store cannot copy among them), and the refusal it must answer. */
+export type RefusedWrite = {
+	write: (store: Store) => Promise<void>
+	key: DialecteErrorKey
+}
+
+/** An operation through a store, run once the store is closed. */
+export type StoreOperation = (store: Store) => Promise<unknown>
+
+/**
+ * An operation started on a store and running when `close()` is called: it completes, `expected`
+ * reads (once the store is opened again) what it did.
+ */
+export type OperationInFlight = {
+	run: (store: Store) => Promise<unknown>
+	expected: (store: Store) => Promise<void>
+}

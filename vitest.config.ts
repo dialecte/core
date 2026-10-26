@@ -35,6 +35,24 @@ export default mergeConfig(
 					},
 				},
 				{
+					// the store contract and the project's store switch in node, on the in-memory store
+					// and on IndexedDB through fake-indexeddb; the test files share their modules, as
+					// a mutation runner's workers do
+					resolve: viteConfig.resolve,
+					plugins: [],
+					test: {
+						name: 'node',
+						environment: 'node',
+						isolate: false,
+						include: [
+							'src/store/contract/store-contract.test.ts',
+							'src/project/store-switch.test.ts',
+						],
+						setupFiles: ['src/store/contract/store-contract.node.setup.ts'],
+						root,
+					},
+				},
+				{
 					resolve: viteConfig.resolve,
 					plugins: [],
 					test: {

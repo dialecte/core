@@ -8,7 +8,7 @@ import { invariant } from '@/utils'
 import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
 import type { Diagnostic } from '@/diagnostics'
 import type { Perf } from '@/perf'
-import type { ImportControl, ImportProgress, Store } from '@/store/store.types'
+import type { ImportControl, ImportProgress, ImportTarget } from '@/store/store.types'
 import type { ImportSession } from '@/types'
 
 export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
@@ -110,7 +110,7 @@ async function streamFileInChunks(params: {
 	file: File
 	sax: ReturnType<typeof setSaxParser>
 	session: ParseSession
-	store: Store
+	store: ImportTarget
 	documentId: string
 	chunkSize: number
 	batchSize: number
@@ -181,7 +181,7 @@ async function streamFileInChunks(params: {
 
 async function endImportSession(params: {
 	importSession?: ImportSession
-	store: Store
+	store: ImportTarget
 	documentId: string
 	file: File
 	perf: Perf
@@ -263,7 +263,7 @@ function appendToBuffer(existing: Uint8Array, incoming: Uint8Array<ArrayBufferLi
 async function flushBatch(params: {
 	sax: ReturnType<typeof setSaxParser>
 	session: ParseSession
-	store: Store
+	store: ImportTarget
 	documentId: string
 	file: File
 	threshold: number

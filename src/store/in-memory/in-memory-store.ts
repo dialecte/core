@@ -1,14 +1,17 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
 	throwDocumentNotRegistered,
 	throwDuplicateRecordIds,
 	throwRecordToUpdateNotFound,
+	throwStoreClosed,
 } from '../store-errors'
 import { recordTableName } from '../store.constants'
 import { removeUnfinishedImports } from '../unfinished-imports'
 import { importOutcomeOf } from '../write-outcome'
-import { EMPTY_TABLE } from './in-memory-store.constants'
+import { dropInMemoryState, ensureInMemoryState, findInMemoryState } from './in-memory-state'
+import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
 
 import { throwDialecteError } from '@/errors'
 import { requireImportRuntime, runImport } from '@/project/io/run-import'
@@ -18,9 +21,10 @@ import type {
 	ChangeLogEntry,
 	ImportFileParams,
 	ImportFileResult,
+	ImportTarget,
 	WriteOutcome,
 } from '../store.types'
-import type { InMemoryStoreOptions } from './types'
+import type { InMemoryState, InMemoryStoreOptions, ReadonlyInMemoryState } from './types'
 import type { ImportRuntime } from '@/project/io/run-import.types'
 import type { DocumentRecord } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
@@ -49,6 +53,33 @@ function guardNoDuplicate(params: {
 }
 
 /**
+ * The store's own copy of what a write hands it; a value no store can copy (a function, a proxy) is
+ * refused with `key` before anything is written, as IndexedDB refuses it.
+ */
+function copyToWrite<GenericValue>(params: {
+	value: GenericValue
+	key: 'STORE_BULK_ADD_FAILED' | 'STORE_BULK_UPDATE_FAILED'
+}): GenericValue {
+	const { value, key } = params
+	try {
+		return structuredClone(value)
+	} catch (error) {
+		throwDialecteError(key, {
+			detail: error instanceof Error ? error.message : String(error),
+			cause: error instanceof Error ? error : undefined,
+		})
+	}
+}
+
+/**
+ * Id order, as an IndexedDB key range answers: strings compared by UTF-16 code unit, not by locale.
+ */
+function compareById(left: { id: string }, right: { id: string }): number {
+	if (left.id < right.id) return -1
+	return left.id > right.id ? 1 : 0
+}
+
+/**
  * InMemoryStore - Map-backed Store implementation with no persistence.
  *
  * Use cases:
@@ -56,8 +87,17 @@ function guardNoDuplicate(params: {
  * - Test fixtures (writable: true)
  * - Demos and playground (writable: true)
  *
- * When writable is false, any mutation throws STORE_NOT_WRITABLE.
- * Reads always return empty results.
+ * Every instance of a name reads and writes one state, as every connection to an IndexedDB database
+ * of a name does: a store closed and built again under its name finds what was written. `close` keeps
+ * it; `destroy` drops it. The state is the realm's (and the loaded copy of core's): nothing crosses
+ * realms.
+ *
+ * Records are values: the store copies what it is handed and what it hands out, so a caller changing
+ * its objects never changes the store, as with a store whose records cross a serialisation. Blob data
+ * is immutable and is not copied. List reads answer in id order, as an IndexedDB key range does.
+ *
+ * When writable is false, the store is a placeholder: any mutation throws STORE_NOT_WRITABLE, reads
+ * answer empty, and it never reads, keeps or drops the state of its name.
  *
  * Its imports run in its own realm, the page's: `importFile` runs `runImport` with the import
  * runtime it was built with.
@@ -66,18 +106,16 @@ export class InMemoryStore implements Store {
 	readonly name: string
 	private readonly writable: boolean
 	private readonly importRuntime?: ImportRuntime
-	/** The `writeId`s of the imports this instance runs: its own `open` keeps their documents. */
-	private readonly runningImports = new Set<string>()
 
 	/** Guard so the cross-realm no-op warning is emitted at most once per session. */
 	private static reconcileWarned = false
 
-	private documents = new Map<string, DocumentRecord>()
-	private records = new Map<string, Map<string, AnyRawRecord>>()
-	private changelog = new Map<string, ChangeLogEntry[]>()
-	private heads = new Map<string, number>()
-	private blobs = new Map<string, BlobRecord>()
-	private blobData = new Map<string, Map<string, Blob>>()
+	/** Set by `close()`, cleared by `open()`: a closed store refuses every operation started after it. */
+	private closed = false
+	/** How many times `close()` was called: an `open()` refuses when one came after it was called. */
+	private closings = 0
+	/** The imports this instance runs (its only operations that span awaits): `open()` and `destroy()` wait for them. */
+	private readonly operations = createRunningOperations()
 
 	constructor(name: string, options?: InMemoryStoreOptions) {
 		this.name = name
@@ -89,32 +127,45 @@ export class InMemoryStore implements Store {
 
 	/** Open: an import found unfinished - it never outlives the store - is removed; one it runs stays. */
 	async open(): Promise<void> {
+		const closingsAtCall = this.closings
+		// an import still running completes first
+		await this.operations.whenIdle()
+		// a close() called after this open() wins: the store stays closed
+		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
+		this.closed = false
 		await removeUnfinishedImports({
 			store: this,
 			isRunning: (document) =>
-				document.writeId !== undefined && this.runningImports.has(document.writeId),
+				document.writeId !== undefined && this.readState().runningImports.has(document.writeId),
 		})
 	}
 
-	close(): void {}
+	/**
+	 * Refuse every operation started from now on until opened again; one running completes (only an
+	 * import spans more than a call). The state of the name stays.
+	 */
+	close(): void {
+		this.closed = true
+		this.closings += 1
+	}
 
+	/** Drop the state of the name, for every instance of it; a placeholder has none to drop. */
 	async destroy(): Promise<void> {
-		this.documents.clear()
-		this.records.clear()
-		this.changelog.clear()
-		this.heads.clear()
-		this.blobs.clear()
-		this.blobData.clear()
+		if (!this.writable) return
+		// an import still running completes before the state goes
+		await this.operations.whenIdle()
+		dropInMemoryState({ name: this.name })
 	}
 
 	// --- Cross-realm reconciliation ---
 
 	/**
-	 * No-op: in-memory data is not shared across realms/tabs, so there is nothing
-	 * to reconcile. Warns once to flag that a cross-realm setup (e.g. iframe
+	 * No-op: in-memory data is the realm's (one state per name there), not shared across realms/tabs, so
+	 * there is nothing to reconcile. Warns once to flag that a cross-realm setup (e.g. iframe
 	 * extensions) will not see documents imported in another realm with this store.
 	 */
 	async reconcile(): Promise<void> {
+		this.guardOpen()
 		if (!InMemoryStore.reconcileWarned) {
 			InMemoryStore.reconcileWarned = true
 			console.warn(
@@ -126,98 +177,99 @@ export class InMemoryStore implements Store {
 
 	/** Readiness reduces to liveness for in-memory: readable iff registered. */
 	async isDocumentReadable(documentId: string): Promise<boolean> {
-		return this.documents.has(documentId)
+		this.guardOpen()
+		return this.readState().documents.has(documentId)
 	}
 
 	// --- File registry ---
 
 	async registerDocument(file: DocumentRecord): Promise<void> {
-		this.guardWritable()
-		if (this.documents.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
-		this.documents.set(file.id, file)
-		this.records.set(recordTableName(file.id), new Map())
-		this.blobData.set(file.id, new Map())
+		this.guardOpen()
+		return this.registerDocumentUnguarded(file)
 	}
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
-		return this.documents.get(documentId)
+		this.guardOpen()
+		return this.getDocumentUnguarded(documentId)
 	}
 
 	async getDocuments(): Promise<DocumentRecord[]> {
-		return [...this.documents.values()]
+		this.guardOpen()
+		return structuredClone([...this.readState().documents.values()].sort(compareById))
 	}
 
 	async updateDocument(
 		documentId: string,
 		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
 	): Promise<void> {
-		this.guardWritable()
-		const existing = this.documents.get(documentId)
-		if (existing) {
-			this.documents.set(documentId, { ...existing, ...updates })
-		}
+		this.guardOpen()
+		return this.updateDocumentUnguarded(documentId, updates)
 	}
 
 	async removeDocument(documentId: string): Promise<void> {
-		this.guardWritable()
-		this.documents.delete(documentId)
-		this.records.delete(recordTableName(documentId))
-		this.changelog.delete(documentId)
-		this.heads.delete(documentId)
-		this.blobData.delete(documentId)
-		for (const [blobId, entry] of this.blobs) {
-			if (entry.documentId === documentId) {
-				this.blobs.delete(blobId)
-			}
-		}
+		this.guardOpen()
+		return this.removeDocumentUnguarded(documentId)
 	}
 
 	// --- Record access ---
 
 	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
-		return this.readTable(documentId).get(id)
+		this.guardOpen()
+		return structuredClone(this.readTable(documentId).get(id))
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
-		return [...this.readTable(documentId).values()]
+		this.guardOpen()
+		return structuredClone([...this.readTable(documentId).values()].sort(compareById))
 	}
 
 	async count(documentId: string): Promise<number> {
+		this.guardOpen()
 		return this.readTable(documentId).size
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
+		this.guardOpen()
 		const results: AnyRawRecord[] = []
 		for (const record of this.readTable(documentId).values()) {
 			if (record.tagName === tagName) results.push(record)
 		}
-		return results
+		return structuredClone(results.sort(compareById))
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
+		this.guardOpen()
 		const table = this.readTable(documentId)
-		return ids.map((id) => table.get(id))
+		return structuredClone(ids.map((id) => table.get(id)))
 	}
 
 	// --- Import ---
 
 	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
+		this.guardOpen()
 		this.guardWritable()
 		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
 		const runtime = requireImportRuntime({ runtime: this.importRuntime, storeName: this.name })
-		this.runningImports.add(writeId)
+		const { runningImports } = ensureInMemoryState({ name: this.name })
+		runningImports.add(writeId)
+		this.operations.start()
 		try {
 			return await runImport(
-				{ store: this, runtime, file, options, writeId },
+				{ store: this.ownImportTarget(), runtime, file, options, writeId },
 				{ onProgress, signal },
 			)
 		} finally {
-			this.runningImports.delete(writeId)
+			runningImports.delete(writeId)
+			this.operations.end()
 		}
 	}
 
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
-		return importOutcomeOf({ documents: [...this.documents.values()], writeId: params.writeId })
+		this.guardOpen()
+		return importOutcomeOf({
+			documents: [...this.readState().documents.values()],
+			writeId: params.writeId,
+		})
 	}
 
 	// --- Writes ---
@@ -226,29 +278,8 @@ export class InMemoryStore implements Store {
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
-		this.guardWritable()
-		const table = this.writeTable(documentId)
-
-		if (ops.creates) {
-			guardNoDuplicate({ table, creates: ops.creates, documentId })
-			for (const record of ops.creates) {
-				table.set(record.id, record)
-			}
-		}
-
-		if (ops.updates) {
-			for (const patch of ops.updates) {
-				const record = table.get(patch.recordId)
-				if (!record) continue
-				table.set(patch.recordId, applyRecordPatch({ record, patch }))
-			}
-		}
-
-		if (ops.deletes) {
-			for (const id of ops.deletes) {
-				table.delete(id)
-			}
-		}
+		this.guardOpen()
+		return this.bulkWriteUnguarded(documentId, ops)
 	}
 
 	async commit(params: {
@@ -258,20 +289,25 @@ export class InMemoryStore implements Store {
 		deletes: string[]
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
+		this.guardOpen()
 		this.guardWritable()
-		const { documentId, creates, updates, deletes, onProgress } = params
-		const table = this.writeTable(documentId)
-		const total = creates.length + updates.length + deletes.length
-		let completed = 0
+		const { documentId, deletes, onProgress } = params
+		const { state, table } = this.writeTarget(documentId)
 
-		// Nothing is written before the whole commit is known to apply: updates are checked first,
-		// then creates, the order every store answers in
-		const beforeSnapshots = updates.map((record) => {
+		// Nothing is written before the whole commit is known to apply, refused in the order every
+		// store answers in: an absent update, a create it cannot copy, a taken id, then an update it
+		// cannot copy. The store's own copies: the table and the changelog hold them, never the
+		// caller's objects
+		const beforeSnapshots = params.updates.map((record) => {
 			const before = table.get(record.id)
 			if (!before) throwRecordToUpdateNotFound({ documentId, recordId: record.id })
 			return before
 		})
+		const creates = copyToWrite({ value: params.creates, key: 'STORE_BULK_ADD_FAILED' })
 		guardNoDuplicate({ table, creates, documentId })
+		const updates = copyToWrite({ value: params.updates, key: 'STORE_BULK_UPDATE_FAILED' })
+		const total = creates.length + updates.length + deletes.length
+		let completed = 0
 		const deletedSnapshots = deletes.map((id) => table.get(id)).filter(Boolean) as AnyRawRecord[]
 
 		for (const record of creates) {
@@ -292,9 +328,10 @@ export class InMemoryStore implements Store {
 		completed += deletes.length
 		onProgress(completed, total)
 
-		// Changelog
-		const head = this.heads.get(documentId) ?? 0
-		const entries = this.changelog.get(documentId) ?? []
+		// Changelog, in the state the records went to
+		const { heads, changelog } = state
+		const head = heads.get(documentId) ?? 0
+		const entries = changelog.get(documentId) ?? []
 
 		// Trim redoable future
 		const trimmed = entries.filter((e) => e.sequenceNumber <= head)
@@ -312,22 +349,24 @@ export class InMemoryStore implements Store {
 			},
 		}
 		trimmed.push(entry)
-		this.changelog.set(documentId, trimmed)
-		this.heads.set(documentId, newSeq)
+		changelog.set(documentId, trimmed)
+		heads.set(documentId, newSeq)
 	}
 
 	// --- History ---
 
 	async undo(documentId: string): Promise<void> {
+		this.guardOpen()
 		this.guardWritable()
-		const head = this.heads.get(documentId) ?? 0
-		if (head === 0) return
+		const state = this.writeState()
+		const head = state?.heads.get(documentId) ?? 0
+		if (!state || head === 0) return
 
-		const entries = this.changelog.get(documentId) ?? []
+		const entries = state.changelog.get(documentId) ?? []
 		const entry = entries.find((e) => e.sequenceNumber === head)
 		if (!entry) return
 
-		const table = this.writeTable(documentId)
+		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
 
 		for (const record of creates) {
@@ -340,19 +379,22 @@ export class InMemoryStore implements Store {
 			table.set(record.id, record)
 		}
 
-		this.heads.set(documentId, head - 1)
+		state.heads.set(documentId, head - 1)
 	}
 
 	async redo(documentId: string): Promise<void> {
+		this.guardOpen()
 		this.guardWritable()
-		const head = this.heads.get(documentId) ?? 0
+		const state = this.writeState()
+		if (!state) return
+		const head = state.heads.get(documentId) ?? 0
 		const next = head + 1
 
-		const entries = this.changelog.get(documentId) ?? []
+		const entries = state.changelog.get(documentId) ?? []
 		const entry = entries.find((e) => e.sequenceNumber === next)
 		if (!entry) return
 
-		const table = this.writeTable(documentId)
+		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
 
 		for (const record of creates) {
@@ -365,12 +407,14 @@ export class InMemoryStore implements Store {
 			table.delete(record.id)
 		}
 
-		this.heads.set(documentId, next)
+		state.heads.set(documentId, next)
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
-		const head = this.heads.get(documentId) ?? 0
-		const entries = this.changelog.get(documentId) ?? []
+		this.guardOpen()
+		const { heads, changelog } = this.readState()
+		const head = heads.get(documentId) ?? 0
+		const entries = changelog.get(documentId) ?? []
 		return {
 			canUndo: head > 0,
 			canRedo: entries.some((entry) => entry.sequenceNumber === head + 1),
@@ -378,7 +422,8 @@ export class InMemoryStore implements Store {
 	}
 
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
-		return this.changelog.get(documentId) ?? []
+		this.guardOpen()
+		return structuredClone([...(this.readState().changelog.get(documentId) ?? [])])
 	}
 
 	getDatabaseInstance(): unknown {
@@ -388,42 +433,62 @@ export class InMemoryStore implements Store {
 	// --- Blob storage ---
 
 	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
+		this.guardOpen()
 		this.guardWritable()
-		if (!this.documents.has(entry.documentId)) {
+		const state = this.writeState()
+		if (!state?.documents.has(entry.documentId)) {
 			throwDocumentNotRegistered({ documentId: entry.documentId, what: 'a blob' })
 		}
-		this.blobs.set(entry.id, entry)
-		this.getBlobTable(entry.documentId).set(entry.id, data)
+		state.blobs.set(entry.id, structuredClone(entry))
+		const blobData = state.blobData.get(entry.documentId) ?? new Map<string, Blob>()
+		state.blobData.set(entry.documentId, blobData.set(entry.id, data))
 	}
 
 	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
-		const entry = this.blobs.get(blobId)
+		this.guardOpen()
+		const { blobs, blobData } = this.readState()
+		const entry = blobs.get(blobId)
 		if (!entry) return undefined
-		const data = this.getBlobTable(entry.documentId).get(blobId)
+		const data = blobData.get(entry.documentId)?.get(blobId)
 		if (!data) return undefined
-		return { entry, data }
+		return { entry: structuredClone(entry), data }
 	}
 
 	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
-		return [...this.blobs.values()].filter((b) =>
-			b.attachedTo.some((a) => a.documentId === documentId),
+		this.guardOpen()
+		return structuredClone(
+			[...this.readState().blobs.values()]
+				.filter((b) => b.attachedTo.some((a) => a.documentId === documentId))
+				.sort(compareById),
 		)
 	}
 
 	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
-		return [...this.blobs.values()].filter((b) =>
-			b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
+		this.guardOpen()
+		return structuredClone(
+			[...this.readState().blobs.values()]
+				.filter((b) =>
+					b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
+				)
+				.sort(compareById),
 		)
 	}
 
 	async getStandaloneBlobs(): Promise<BlobRecord[]> {
-		return [...this.blobs.values()].filter((b) => b.attachedTo.length === 0)
+		this.guardOpen()
+		return structuredClone(
+			[...this.readState().blobs.values()]
+				.filter((b) => b.attachedTo.length === 0)
+				.sort(compareById),
+		)
 	}
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
+		this.guardOpen()
 		this.guardWritable()
-		const entry = this.blobs.get(blobId)
-		if (!entry) {
+		const state = this.writeState()
+		const entry = state?.blobs.get(blobId)
+		if (!state || !entry) {
 			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
 		}
 		const exists = entry.attachedTo.some(
@@ -433,50 +498,164 @@ export class InMemoryStore implements Store {
 				a.attribute === ref.attribute,
 		)
 		if (exists) return
-		this.blobs.set(blobId, { ...entry, attachedTo: [...entry.attachedTo, ref] })
+		state.blobs.set(blobId, {
+			...entry,
+			attachedTo: [...entry.attachedTo, structuredClone(ref)],
+		})
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
+		this.guardOpen()
 		this.guardWritable()
-		const entry = this.blobs.get(blobId)
-		if (!entry) {
+		const state = this.writeState()
+		const entry = state?.blobs.get(blobId)
+		if (!state || !entry) {
 			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
 		}
 		const attachedTo = entry.attachedTo.filter(
 			(a) => !(a.documentId === ref.documentId && a.recordRef === ref.recordRef),
 		)
-		this.blobs.set(blobId, { ...entry, attachedTo })
+		state.blobs.set(blobId, { ...entry, attachedTo })
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
+		this.guardOpen()
 		this.guardWritable()
-		const entry = this.blobs.get(blobId)
-		if (!entry) return
-		this.blobs.delete(blobId)
-		this.getBlobTable(entry.documentId).delete(blobId)
+		const state = this.writeState()
+		const entry = state?.blobs.get(blobId)
+		if (!state || !entry) return
+		state.blobs.delete(blobId)
+		state.blobData.get(entry.documentId)?.delete(blobId)
+	}
+
+	private async registerDocumentUnguarded(file: DocumentRecord): Promise<void> {
+		this.guardWritable()
+		const state = ensureInMemoryState({ name: this.name })
+		if (state.documents.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
+		state.documents.set(file.id, structuredClone(file))
+		state.records.set(recordTableName(file.id), new Map())
+		state.blobData.set(file.id, new Map())
+	}
+
+	private async getDocumentUnguarded(documentId: string): Promise<DocumentRecord | undefined> {
+		return structuredClone(this.readState().documents.get(documentId))
+	}
+
+	private async updateDocumentUnguarded(
+		documentId: string,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
+	): Promise<void> {
+		this.guardWritable()
+		const state = this.writeState()
+		const existing = state?.documents.get(documentId)
+		if (state && existing) {
+			state.documents.set(documentId, { ...existing, ...structuredClone(updates) })
+		}
+	}
+
+	private async removeDocumentUnguarded(documentId: string): Promise<void> {
+		this.guardWritable()
+		const state = this.writeState()
+		if (!state) return
+		state.documents.delete(documentId)
+		state.records.delete(recordTableName(documentId))
+		state.changelog.delete(documentId)
+		state.heads.delete(documentId)
+		state.blobData.delete(documentId)
+		for (const [blobId, entry] of state.blobs) {
+			if (entry.documentId === documentId) {
+				state.blobs.delete(blobId)
+			}
+		}
+	}
+
+	private async bulkWriteUnguarded(
+		documentId: string,
+		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
+	): Promise<void> {
+		this.guardWritable()
+		const { table } = this.writeTarget(documentId)
+		// Nothing is written before the whole write is known to apply, refused in the order every
+		// store answers in: a create it cannot copy, a taken id, then an update it cannot copy - of the
+		// updates that apply: a patch of a record the document does not hold is skipped, as ever
+		const creates = copyToWrite({ value: ops.creates ?? [], key: 'STORE_BULK_ADD_FAILED' })
+		guardNoDuplicate({ table, creates, documentId })
+		const createdIds = new Set(creates.map((record) => record.id))
+		const updates = copyToWrite({
+			value: (ops.updates ?? []).filter(
+				(patch) => table.has(patch.recordId) || createdIds.has(patch.recordId),
+			),
+			key: 'STORE_BULK_UPDATE_FAILED',
+		})
+
+		for (const record of creates) {
+			table.set(record.id, record)
+		}
+
+		for (const patch of updates) {
+			const record = table.get(patch.recordId)
+			if (!record) continue
+			table.set(patch.recordId, applyRecordPatch({ record, patch }))
+		}
+
+		if (ops.deletes) {
+			for (const id of ops.deletes) {
+				table.delete(id)
+			}
+		}
 	}
 
 	// --- Private ---
 
-	private getBlobTable(documentId: string): Map<string, Blob> {
-		let table = this.blobData.get(documentId)
-		if (!table) {
-			table = new Map()
-			this.blobData.set(documentId, table)
-		}
-		return table
+	/**
+	 * The state of the name to read, resolved on every operation: empty when it has none, and always
+	 * for a placeholder. Read-only: a write goes through `writeState`.
+	 */
+	private readState(): ReadonlyInMemoryState {
+		if (!this.writable) return EMPTY_STATE
+		return findInMemoryState({ name: this.name }) ?? EMPTY_STATE
+	}
+
+	/** The state of the name to write, resolved on every operation; none when nothing is held under it. */
+	private writeState(): InMemoryState | undefined {
+		return findInMemoryState({ name: this.name })
 	}
 
 	/** The records of a document; a document that is not in the store reads empty. */
 	private readTable(documentId: string): ReadonlyMap<string, AnyRawRecord> {
-		return this.records.get(recordTableName(documentId)) ?? EMPTY_TABLE
+		return this.readState().records.get(recordTableName(documentId)) ?? EMPTY_TABLE
 	}
 
-	/** The records of a document to write; a document that is not registered takes no write. */
-	private writeTable(documentId: string): Map<string, AnyRawRecord> {
-		const table = this.records.get(recordTableName(documentId))
-		if (!table) throwDocumentNotRegistered({ documentId, what: 'records' })
-		return table
+	/**
+	 * The state and the records of a document to write, both of one resolution; a document that is not
+	 * registered takes no write.
+	 */
+	private writeTarget(documentId: string): {
+		state: InMemoryState
+		table: Map<string, AnyRawRecord>
+	} {
+		const state = this.writeState()
+		const table = state?.records.get(recordTableName(documentId))
+		if (!state || !table) throwDocumentNotRegistered({ documentId, what: 'records' })
+		return { state, table }
+	}
+
+	private guardOpen(): void {
+		if (this.closed) throwStoreClosed({ storeName: this.name })
+	}
+
+	/**
+	 * The target the store's own import writes through: the import is one operation, so a `close()`
+	 * after it started does not refuse the calls it makes.
+	 */
+	private ownImportTarget(): ImportTarget {
+		return {
+			registerDocument: (file) => this.registerDocumentUnguarded(file),
+			getDocument: (documentId) => this.getDocumentUnguarded(documentId),
+			updateDocument: (documentId, updates) => this.updateDocumentUnguarded(documentId, updates),
+			removeDocument: (documentId) => this.removeDocumentUnguarded(documentId),
+			bulkWrite: (documentId, ops) => this.bulkWriteUnguarded(documentId, ops),
+		}
 	}
 
 	private guardWritable(): void {

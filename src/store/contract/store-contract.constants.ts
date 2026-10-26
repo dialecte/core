@@ -6,6 +6,9 @@ export const CONTRACT_SESSION_TAG = 'B'
 /** A record of the session's tag whose `bB` attribute holds this value makes the session fail. */
 export const CONTRACT_SESSION_FAIL_VALUE = 'fail'
 
+/** A record of the session's tag whose `bB` holds this value makes the session wait for the case's release. */
+export const CONTRACT_SESSION_HOLD_VALUE = 'hold'
+
 /** The attribute the contract's import session writes on every record of its tag, after the parse. */
 export const CONTRACT_SESSION_SEEN_ATTRIBUTE = 'seen'
 

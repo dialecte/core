@@ -247,8 +247,9 @@ describe('Project.import - one entry per file', () => {
 
 			const landed = entries.filter((entry) => entry.status === 'imported')
 			expect([...project.state.documents.keys()]).toEqual(landed.map((e) => e.documentId))
+			// the registry lists in id order, and the ids are random: the names compared as a set
 			const documents = await project.getDocuments()
-			expect(documents.map((d) => d.name)).toEqual(testCase.expectedDocuments)
+			expect(documents.map((d) => d.name).sort()).toEqual([...testCase.expectedDocuments].sort())
 			expect(documents.map((d) => d.configKey)).toEqual(
 				documents.map(() => testCase.expectedConfigKey ?? 'default'),
 			)
@@ -286,7 +287,7 @@ describe('Project.import - what is about the call rejects, before any file', () 
 			expect([...project.state.documents.keys()]).toEqual([])
 			expect(events).toEqual([])
 		} finally {
-			await project.close()
+			await project.destroy()
 		}
 	})
 
@@ -315,7 +316,7 @@ describe('Project - one file in flight per project', () => {
 				`start ${two.documentId}`,
 				`end ${two.documentId}`,
 			])
-			expect((await project.getDocuments()).map((d) => d.name)).toEqual(['one', 'two'])
+			expect((await project.getDocuments()).map((d) => d.name).sort()).toEqual(['one', 'two'])
 		} finally {
 			await project.close()
 		}
@@ -343,6 +344,8 @@ describe('Project - one file in flight per project', () => {
 				recordCount: 2,
 				diagnostics: [],
 			})
+			// the project closed its store: opened again to read what landed
+			await store.open()
 			expect(await store.getDocuments()).toEqual([
 				expect.objectContaining({ id: document.documentId, name: 'one', status: 'ready' }),
 			])
@@ -356,6 +359,7 @@ describe('Project - one file in flight per project', () => {
 			])
 		} finally {
 			listener.close()
+			await store.destroy()
 		}
 	})
 
@@ -386,6 +390,8 @@ describe('Project - one file in flight per project', () => {
 			}
 			expect(entries.map((entry) => entry.fileName)).toEqual(['one.xml', 'two.xml', 'three.xml'])
 			const landed = entries[0]?.status === 'imported' ? entries[0].documentId : ''
+			// the project closed its store: opened again to read what landed
+			await store.open()
 			expect(await store.getDocuments()).toEqual([
 				expect.objectContaining({ id: landed, name: 'one', status: 'ready' }),
 			])
@@ -395,6 +401,7 @@ describe('Project - one file in flight per project', () => {
 			])
 		} finally {
 			listener.close()
+			await store.destroy()
 		}
 	})
 

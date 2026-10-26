@@ -1,9 +1,11 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
 	throwDocumentNotRegistered,
 	throwDuplicateRecordIds,
 	throwRecordToUpdateNotFound,
+	throwStoreClosed,
 } from '../store-errors'
 import {
 	TABLE_DOCUMENTS,
@@ -34,6 +36,7 @@ import type {
 	ChangeLogMeta,
 	ImportFileParams,
 	ImportFileResult,
+	ImportTarget,
 	RecordSchema,
 	WriteOutcome,
 } from '../store.types'
@@ -125,6 +128,12 @@ export class DexieStore implements Store {
 	 * makes to the document (IndexedDB counts by iterating: about 50 ms for 90,000 records).
 	 */
 	private readonly recordCounts = new Map<string, number>()
+	/** Set by `close()`, cleared by `open()`: a closed store refuses every operation started after it. */
+	private closed = false
+	/** How many times `close()` was called: an `open()` refuses when one came after it was called. */
+	private closings = 0
+	/** The operations running: `close()` closes the connection, `open()` and `destroy()` go on, once none is left. */
+	private readonly operations = createRunningOperations()
 
 	constructor(projectName: string, options?: DexieStoreOptions) {
 		this.name = projectName
@@ -141,18 +150,35 @@ export class DexieStore implements Store {
 	 * is held). Where Web Locks are missing, every unfinished import is removed.
 	 */
 	async open(): Promise<void> {
-		await this.reloadFromPersisted()
-		await removeUnfinishedImports({
-			store: this,
-			isRunning: (document) => isImportRunning({ storeName: this.name, document }),
+		const closingsAtCall = this.closings
+		// an operation still running keeps its connection: the store opens once it is done
+		await this.operations.whenIdle()
+		// a close() called after this open() wins: the store stays closed
+		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
+		this.closed = false
+		// counted as an operation: a close() meanwhile closes the connection this reopens
+		await this.tracked(async () => {
+			await this.reloadFromPersisted()
+			await removeUnfinishedImports({
+				store: this,
+				isRunning: (document) => isImportRunning({ storeName: this.name, document }),
+			})
 		})
 	}
 
+	/**
+	 * Refuse every operation started from now on until opened again; the connection itself closes once
+	 * the operations running complete. The database stays.
+	 */
 	close(): void {
-		this.db.close()
+		this.closed = true
+		this.closings += 1
+		if (this.operations.count === 0) this.db.close()
 	}
 
 	async destroy(): Promise<void> {
+		// an operation still running completes before the database goes
+		await this.operations.whenIdle()
 		if (this.db.isOpen()) {
 			this.db.close()
 			await tick()
@@ -170,7 +196,9 @@ export class DexieStore implements Store {
 	 * removal broadcast arrives, so a subsequent read sees the new partition.
 	 */
 	async reconcile(): Promise<void> {
-		await this.ensureCurrentSchema()
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+		})
 	}
 
 	/**
@@ -179,14 +207,458 @@ export class DexieStore implements Store {
 	 * in the current schema. Does not mutate - call reconcile() first to self-heal.
 	 */
 	async isDocumentReadable(documentId: string): Promise<boolean> {
-		if (!this.knownDocuments.has(documentId)) return false
-		const tableName = this.resolveTableName(documentId)
-		return this.db.isOpen() && this.db.tables.some((t) => t.name === tableName)
+		return this.operation(async () => {
+			if (!this.knownDocuments.has(documentId)) return false
+			const tableName = this.resolveTableName(documentId)
+			return this.db.isOpen() && this.db.tables.some((t) => t.name === tableName)
+		})
 	}
 
 	// --- File registry ---
 
 	async registerDocument(file: DocumentRecord): Promise<void> {
+		return this.operation(() => this.registerDocumentUnguarded(file))
+	}
+
+	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
+		return this.operation(() => this.getDocumentUnguarded(documentId))
+	}
+
+	async getDocuments(): Promise<DocumentRecord[]> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const rows = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+			return rows.map(withStatus)
+		})
+	}
+
+	async updateDocument(
+		documentId: string,
+		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
+	): Promise<void> {
+		return this.operation(() => this.updateDocumentUnguarded(documentId, updates))
+	}
+
+	async removeDocument(documentId: string): Promise<void> {
+		return this.operation(() => this.removeDocumentUnguarded(documentId))
+	}
+
+	// --- Record access ---
+
+	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
+		return this.operation(async () => {
+			const table = await this.recordTable(documentId)
+			return table?.get(id)
+		})
+	}
+
+	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
+		return this.operation(async () => {
+			const table = await this.recordTable(documentId)
+			return table ? table.toArray() : []
+		})
+	}
+
+	async count(documentId: string): Promise<number> {
+		return this.operation(async () => {
+			// a connection made stale by another one forgets its counts before answering from them
+			await this.ensureCurrentSchema()
+			const known = this.recordCounts.get(documentId)
+			if (known !== undefined) return known
+			const table = await this.recordTable(documentId)
+			if (!table) return 0
+			const count = await table.count()
+			this.recordCounts.set(documentId, count)
+			return count
+		})
+	}
+
+	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
+		return this.operation(async () => {
+			const table = await this.recordTable(documentId)
+			return table ? table.where({ tagName }).toArray() : []
+		})
+	}
+
+	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
+		return this.operation(async () => {
+			const table = await this.recordTable(documentId)
+			return table ? table.bulkGet(ids) : ids.map(() => undefined)
+		})
+	}
+
+	// --- Import ---
+
+	/** Runs in this realm, holding a Web Lock for the import so another connection's `open` keeps it. */
+	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
+		return this.operation(async () => {
+			const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
+			const runtime = requireImportRuntime({ runtime: this.importRuntime, storeName: this.name })
+			const run = () =>
+				runImport(
+					{ store: this.ownImportTarget(), runtime, file, options, writeId },
+					{ onProgress, signal },
+				)
+			if (!navigator.locks) return run()
+			return navigator.locks.request(importLockName({ storeName: this.name, writeId }), run)
+		})
+	}
+
+	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
+		return this.operation(async () => {
+			return importOutcomeOf({ documents: await this.getDocuments(), writeId: params.writeId })
+		})
+	}
+
+	// --- Writes ---
+
+	async bulkWrite(
+		documentId: string,
+		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
+	): Promise<void> {
+		return this.operation(() => this.bulkWriteUnguarded(documentId, ops))
+	}
+
+	async commit(params: {
+		documentId: string
+		creates: AnyRawRecord[]
+		updates: AnyRawRecord[]
+		deletes: string[]
+		onProgress: (current: number, total: number) => void
+	}): Promise<void> {
+		return this.operation(async () => {
+			try {
+				const { documentId, creates, updates, deletes, onProgress } = params
+				const table = await this.writeTable(documentId)
+				const total = creates.length + updates.length + deletes.length
+				let completed = 0
+
+				try {
+					await this.db.transaction(
+						'rw',
+						table,
+						this.db.table(TABLE_CHANGELOG),
+						this.db.table(TABLE_META),
+						async () => {
+							// Snapshot before-state for undo; an update of a record the document does not
+							// hold aborts the commit before anything is written
+							const beforeSnapshots = await snapshotBefore({ table, updates, documentId })
+							const deletedSnapshots: (AnyRawRecord | undefined)[] =
+								deletes.length > 0 ? await table.bulkGet(deletes) : []
+
+							if (creates.length > 0) {
+								await addRecords({ table, creates, documentId })
+								completed += creates.length
+								onProgress(completed, total)
+							}
+
+							if (updates.length > 0) {
+								try {
+									await table.bulkPut(updates)
+									completed += updates.length
+									onProgress(completed, total)
+								} catch (error) {
+									throwDialecteError('STORE_BULK_UPDATE_FAILED', {
+										detail: error instanceof Error ? error.message : String(error),
+										cause: error instanceof Error ? error : undefined,
+									})
+								}
+							}
+
+							if (deletes.length > 0) {
+								try {
+									await table.bulkDelete(deletes)
+									completed += deletes.length
+									onProgress(completed, total)
+								} catch (error) {
+									throwDialecteError('STORE_DELETE_FAILED', {
+										detail: error instanceof Error ? error.message : String(error),
+										cause: error instanceof Error ? error : undefined,
+									})
+								}
+							}
+
+							// Trim redoable future for this file
+							const head = await this.getHead(documentId)
+							const allForFile = await this.db
+								.table<ChangeLogEntry>(TABLE_CHANGELOG)
+								.where({ documentId })
+								.filter((e) => e.sequenceNumber > head)
+								.toArray()
+							if (allForFile.length > 0) {
+								await this.db.table(TABLE_CHANGELOG).bulkDelete(allForFile.map((e) => e.id))
+							}
+
+							const newSeq = head + 1
+							const entry: Omit<ChangeLogEntry, 'id'> = {
+								documentId,
+								sequenceNumber: newSeq,
+								timestamp: Date.now(),
+								operations: {
+									creates,
+									updates: updates.map((after, i) => ({ before: beforeSnapshots[i], after })),
+									deletes: deletedSnapshots.filter(Boolean) as AnyRawRecord[],
+								},
+							}
+							await this.db.table(TABLE_CHANGELOG).add(entry)
+							await this.setHead(documentId, newSeq)
+						},
+					)
+				} catch (error) {
+					if (toDialecteError(error)) throw error
+					throwDialecteError('STORE_COMMIT_FAILED', {
+						detail: error instanceof Error ? error.message : String(error),
+						cause: error instanceof Error ? error : undefined,
+					})
+				}
+			} finally {
+				this.recordCounts.delete(params.documentId)
+			}
+		})
+	}
+
+	// --- History ---
+
+	async undo(documentId: string): Promise<void> {
+		return this.operation(async () => {
+			try {
+				await this.ensureCurrentSchema()
+				const head = await this.getHead(documentId)
+				if (head === 0) return
+
+				const entry = await this.db
+					.table<ChangeLogEntry>(TABLE_CHANGELOG)
+					.where({ documentId, sequenceNumber: head })
+					.first()
+				if (!entry) return
+
+				const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+
+				await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
+					const { creates, updates, deletes } = entry.operations
+
+					if (creates.length > 0) {
+						await table.bulkDelete(creates.map((r) => r.id))
+					}
+					if (updates.length > 0) {
+						await table.bulkPut(updates.map((u) => u.before))
+					}
+					if (deletes.length > 0) {
+						await table.bulkAdd(deletes)
+					}
+
+					await this.setHead(documentId, head - 1)
+				})
+			} finally {
+				this.recordCounts.delete(documentId)
+			}
+		})
+	}
+
+	async redo(documentId: string): Promise<void> {
+		return this.operation(async () => {
+			try {
+				await this.ensureCurrentSchema()
+				const head = await this.getHead(documentId)
+				const next = head + 1
+
+				const entry = await this.db
+					.table<ChangeLogEntry>(TABLE_CHANGELOG)
+					.where({ documentId, sequenceNumber: next })
+					.first()
+				if (!entry) return
+
+				const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
+
+				await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
+					const { creates, updates, deletes } = entry.operations
+
+					if (creates.length > 0) {
+						await table.bulkAdd(creates)
+					}
+					if (updates.length > 0) {
+						await table.bulkPut(updates.map((update) => update.after))
+					}
+					if (deletes.length > 0) {
+						await table.bulkDelete(deletes.map((record) => record.id))
+					}
+
+					await this.setHead(documentId, next)
+				})
+			} finally {
+				this.recordCounts.delete(documentId)
+			}
+		})
+	}
+
+	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const head = await this.getHead(documentId)
+			const next = await this.db
+				.table<ChangeLogEntry>(TABLE_CHANGELOG)
+				.where({ documentId, sequenceNumber: head + 1 })
+				.first()
+			return { canUndo: head > 0, canRedo: next !== undefined }
+		})
+	}
+
+	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			return this.db
+				.table<ChangeLogEntry>(TABLE_CHANGELOG)
+				.where({ documentId })
+				.sortBy('sequenceNumber')
+		})
+	}
+
+	// --- Blob storage ---
+
+	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			invariantBlobOwnerKnown(this.knownDocuments, entry.documentId)
+			const blobTable = this.db.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
+			await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
+				await this.db.table<BlobRecord>(TABLE_BLOBS).put(entry)
+				await blobTable.put({ id: entry.id, data })
+			})
+		})
+	}
+
+	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+			if (!entry) return undefined
+			const row = await this.db
+				.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
+				.get(blobId)
+			if (!row) return undefined
+			return { entry, data: row.data }
+		})
+	}
+
+	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
+			return all.filter((b) => b.attachedTo.some((a) => a.documentId === documentId))
+		})
+	}
+
+	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
+			return all.filter((b) =>
+				b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
+			)
+		})
+	}
+
+	async getStandaloneBlobs(): Promise<BlobRecord[]> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
+			return all.filter((b) => b.attachedTo.length === 0)
+		})
+	}
+
+	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+			if (!entry) {
+				throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+			}
+			const exists = entry.attachedTo.some(
+				(a) =>
+					a.documentId === ref.documentId &&
+					a.recordRef === ref.recordRef &&
+					a.attribute === ref.attribute,
+			)
+			if (exists) return
+			const attachedTo = [...entry.attachedTo, ref]
+			await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
+		})
+	}
+
+	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+			if (!entry) {
+				throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+			}
+			const attachedTo = entry.attachedTo.filter(
+				(a) => !(a.documentId === ref.documentId && a.recordRef === ref.recordRef),
+			)
+			await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
+		})
+	}
+
+	async removeBlob(blobId: string): Promise<void> {
+		return this.operation(async () => {
+			await this.ensureCurrentSchema()
+			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+			if (!entry) return
+			const blobTable = this.db.table<{ id: string }>(blobTableName(entry.documentId))
+			await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
+				await blobTable.delete(blobId)
+				await this.db.table(TABLE_BLOBS).delete(blobId)
+			})
+		})
+	}
+
+	/**
+	 * Expose the underlying Dexie instance.
+	 * Useful for legacy compatibility layers and advanced testing.
+	 */
+	getDatabaseInstance(): Dexie {
+		return this.db
+	}
+
+	/**
+	 * One operation of the port: refused once the store is closed; counted while it runs, so a
+	 * `close()` meanwhile lets it complete and closes the connection after it.
+	 */
+	private async operation<GenericResult>(
+		run: () => Promise<GenericResult>,
+	): Promise<GenericResult> {
+		if (this.closed) throwStoreClosed({ storeName: this.name })
+		return this.tracked(run)
+	}
+
+	/** Counted while it runs; the last one to end on a closed store closes the connection. */
+	private async tracked<GenericResult>(run: () => Promise<GenericResult>): Promise<GenericResult> {
+		this.operations.start()
+		try {
+			return await run()
+		} finally {
+			// closed before `end` resolves a waiting open(), which then reopens
+			if (this.operations.count === 1 && this.closed) this.db.close()
+			this.operations.end()
+		}
+	}
+
+	/**
+	 * The target the store's own import writes through: the import is one operation, so a `close()`
+	 * after it started does not refuse the calls it makes (each still counted while it runs).
+	 */
+	private ownImportTarget(): ImportTarget {
+		return {
+			registerDocument: (file) => this.tracked(() => this.registerDocumentUnguarded(file)),
+			getDocument: (documentId) => this.tracked(() => this.getDocumentUnguarded(documentId)),
+			updateDocument: (documentId, updates) =>
+				this.tracked(() => this.updateDocumentUnguarded(documentId, updates)),
+			removeDocument: (documentId) => this.tracked(() => this.removeDocumentUnguarded(documentId)),
+			bulkWrite: (documentId, ops) => this.tracked(() => this.bulkWriteUnguarded(documentId, ops)),
+		}
+	}
+
+	private async registerDocumentUnguarded(file: DocumentRecord): Promise<void> {
 		await this.withSchemaLock(async () => {
 			if (this.stale) await this.reloadFromPersisted()
 			// Best effort on one connection: two connections registering the same id at the same time
@@ -198,19 +670,13 @@ export class DexieStore implements Store {
 		})
 	}
 
-	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
+	private async getDocumentUnguarded(documentId: string): Promise<DocumentRecord | undefined> {
 		await this.ensureCurrentSchema()
 		const row = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
 		return row && withStatus(row)
 	}
 
-	async getDocuments(): Promise<DocumentRecord[]> {
-		await this.ensureCurrentSchema()
-		const rows = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
-		return rows.map(withStatus)
-	}
-
-	async updateDocument(
+	private async updateDocumentUnguarded(
 		documentId: string,
 		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
 	): Promise<void> {
@@ -222,7 +688,7 @@ export class DexieStore implements Store {
 		}
 	}
 
-	async removeDocument(documentId: string): Promise<void> {
+	private async removeDocumentUnguarded(documentId: string): Promise<void> {
 		try {
 			await this.withSchemaLock(async () => {
 				if (this.stale) await this.reloadFromPersisted()
@@ -259,59 +725,7 @@ export class DexieStore implements Store {
 		}
 	}
 
-	// --- Record access ---
-
-	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
-		const table = await this.recordTable(documentId)
-		return table?.get(id)
-	}
-
-	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
-		const table = await this.recordTable(documentId)
-		return table ? table.toArray() : []
-	}
-
-	async count(documentId: string): Promise<number> {
-		// a connection made stale by another one forgets its counts before answering from them
-		await this.ensureCurrentSchema()
-		const known = this.recordCounts.get(documentId)
-		if (known !== undefined) return known
-		const table = await this.recordTable(documentId)
-		if (!table) return 0
-		const count = await table.count()
-		this.recordCounts.set(documentId, count)
-		return count
-	}
-
-	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
-		const table = await this.recordTable(documentId)
-		return table ? table.where({ tagName }).toArray() : []
-	}
-
-	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
-		const table = await this.recordTable(documentId)
-		return table ? table.bulkGet(ids) : ids.map(() => undefined)
-	}
-
-	// --- Import ---
-
-	/** Runs in this realm, holding a Web Lock for the import so another connection's `open` keeps it. */
-	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
-		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
-		const runtime = requireImportRuntime({ runtime: this.importRuntime, storeName: this.name })
-		const run = () =>
-			runImport({ store: this, runtime, file, options, writeId }, { onProgress, signal })
-		if (!navigator.locks) return run()
-		return navigator.locks.request(importLockName({ storeName: this.name, writeId }), run)
-	}
-
-	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
-		return importOutcomeOf({ documents: await this.getDocuments(), writeId: params.writeId })
-	}
-
-	// --- Writes ---
-
-	async bulkWrite(
+	private async bulkWriteUnguarded(
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
@@ -328,10 +742,17 @@ export class DexieStore implements Store {
 
 				if (updates?.length) {
 					this.perf.start('core::store::bulkWrite::update')
-					for (const patch of updates) {
-						const record = await table.get(patch.recordId)
-						if (!record) continue
-						await table.put(applyRecordPatch({ record, patch }))
+					try {
+						for (const patch of updates) {
+							const record = await table.get(patch.recordId)
+							if (!record) continue
+							await table.put(applyRecordPatch({ record, patch }))
+						}
+					} catch (error) {
+						throwDialecteError('STORE_BULK_UPDATE_FAILED', {
+							detail: error instanceof Error ? error.message : String(error),
+							cause: error instanceof Error ? error : undefined,
+						})
 					}
 					this.perf.stop('core::store::bulkWrite::update')
 				}
@@ -345,281 +766,6 @@ export class DexieStore implements Store {
 		} finally {
 			this.recordCounts.delete(documentId)
 		}
-	}
-
-	async commit(params: {
-		documentId: string
-		creates: AnyRawRecord[]
-		updates: AnyRawRecord[]
-		deletes: string[]
-		onProgress: (current: number, total: number) => void
-	}): Promise<void> {
-		try {
-			const { documentId, creates, updates, deletes, onProgress } = params
-			const table = await this.writeTable(documentId)
-			const total = creates.length + updates.length + deletes.length
-			let completed = 0
-
-			try {
-				await this.db.transaction(
-					'rw',
-					table,
-					this.db.table(TABLE_CHANGELOG),
-					this.db.table(TABLE_META),
-					async () => {
-						// Snapshot before-state for undo; an update of a record the document does not
-						// hold aborts the commit before anything is written
-						const beforeSnapshots = await snapshotBefore({ table, updates, documentId })
-						const deletedSnapshots: (AnyRawRecord | undefined)[] =
-							deletes.length > 0 ? await table.bulkGet(deletes) : []
-
-						if (creates.length > 0) {
-							await addRecords({ table, creates, documentId })
-							completed += creates.length
-							onProgress(completed, total)
-						}
-
-						if (updates.length > 0) {
-							try {
-								await table.bulkPut(updates)
-								completed += updates.length
-								onProgress(completed, total)
-							} catch (error) {
-								throwDialecteError('STORE_BULK_UPDATE_FAILED', {
-									detail: error instanceof Error ? error.message : String(error),
-									cause: error instanceof Error ? error : undefined,
-								})
-							}
-						}
-
-						if (deletes.length > 0) {
-							try {
-								await table.bulkDelete(deletes)
-								completed += deletes.length
-								onProgress(completed, total)
-							} catch (error) {
-								throwDialecteError('STORE_DELETE_FAILED', {
-									detail: error instanceof Error ? error.message : String(error),
-									cause: error instanceof Error ? error : undefined,
-								})
-							}
-						}
-
-						// Trim redoable future for this file
-						const head = await this.getHead(documentId)
-						const allForFile = await this.db
-							.table<ChangeLogEntry>(TABLE_CHANGELOG)
-							.where({ documentId })
-							.filter((e) => e.sequenceNumber > head)
-							.toArray()
-						if (allForFile.length > 0) {
-							await this.db.table(TABLE_CHANGELOG).bulkDelete(allForFile.map((e) => e.id))
-						}
-
-						const newSeq = head + 1
-						const entry: Omit<ChangeLogEntry, 'id'> = {
-							documentId,
-							sequenceNumber: newSeq,
-							timestamp: Date.now(),
-							operations: {
-								creates,
-								updates: updates.map((after, i) => ({ before: beforeSnapshots[i], after })),
-								deletes: deletedSnapshots.filter(Boolean) as AnyRawRecord[],
-							},
-						}
-						await this.db.table(TABLE_CHANGELOG).add(entry)
-						await this.setHead(documentId, newSeq)
-					},
-				)
-			} catch (error) {
-				if (toDialecteError(error)) throw error
-				throwDialecteError('STORE_COMMIT_FAILED', {
-					detail: error instanceof Error ? error.message : String(error),
-					cause: error instanceof Error ? error : undefined,
-				})
-			}
-		} finally {
-			this.recordCounts.delete(params.documentId)
-		}
-	}
-
-	// --- History ---
-
-	async undo(documentId: string): Promise<void> {
-		try {
-			await this.ensureCurrentSchema()
-			const head = await this.getHead(documentId)
-			if (head === 0) return
-
-			const entry = await this.db
-				.table<ChangeLogEntry>(TABLE_CHANGELOG)
-				.where({ documentId, sequenceNumber: head })
-				.first()
-			if (!entry) return
-
-			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
-
-			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
-				const { creates, updates, deletes } = entry.operations
-
-				if (creates.length > 0) {
-					await table.bulkDelete(creates.map((r) => r.id))
-				}
-				if (updates.length > 0) {
-					await table.bulkPut(updates.map((u) => u.before))
-				}
-				if (deletes.length > 0) {
-					await table.bulkAdd(deletes)
-				}
-
-				await this.setHead(documentId, head - 1)
-			})
-		} finally {
-			this.recordCounts.delete(documentId)
-		}
-	}
-
-	async redo(documentId: string): Promise<void> {
-		try {
-			await this.ensureCurrentSchema()
-			const head = await this.getHead(documentId)
-			const next = head + 1
-
-			const entry = await this.db
-				.table<ChangeLogEntry>(TABLE_CHANGELOG)
-				.where({ documentId, sequenceNumber: next })
-				.first()
-			if (!entry) return
-
-			const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
-
-			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
-				const { creates, updates, deletes } = entry.operations
-
-				if (creates.length > 0) {
-					await table.bulkAdd(creates)
-				}
-				if (updates.length > 0) {
-					await table.bulkPut(updates.map((update) => update.after))
-				}
-				if (deletes.length > 0) {
-					await table.bulkDelete(deletes.map((record) => record.id))
-				}
-
-				await this.setHead(documentId, next)
-			})
-		} finally {
-			this.recordCounts.delete(documentId)
-		}
-	}
-
-	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
-		await this.ensureCurrentSchema()
-		const head = await this.getHead(documentId)
-		const next = await this.db
-			.table<ChangeLogEntry>(TABLE_CHANGELOG)
-			.where({ documentId, sequenceNumber: head + 1 })
-			.first()
-		return { canUndo: head > 0, canRedo: next !== undefined }
-	}
-
-	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
-		await this.ensureCurrentSchema()
-		return this.db
-			.table<ChangeLogEntry>(TABLE_CHANGELOG)
-			.where({ documentId })
-			.sortBy('sequenceNumber')
-	}
-
-	// --- Blob storage ---
-
-	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
-		await this.ensureCurrentSchema()
-		invariantBlobOwnerKnown(this.knownDocuments, entry.documentId)
-		const blobTable = this.db.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
-		await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
-			await this.db.table<BlobRecord>(TABLE_BLOBS).put(entry)
-			await blobTable.put({ id: entry.id, data })
-		})
-	}
-
-	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
-		await this.ensureCurrentSchema()
-		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-		if (!entry) return undefined
-		const row = await this.db
-			.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
-			.get(blobId)
-		if (!row) return undefined
-		return { entry, data: row.data }
-	}
-
-	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
-		await this.ensureCurrentSchema()
-		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
-		return all.filter((b) => b.attachedTo.some((a) => a.documentId === documentId))
-	}
-
-	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
-		await this.ensureCurrentSchema()
-		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
-		return all.filter((b) =>
-			b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
-		)
-	}
-
-	async getStandaloneBlobs(): Promise<BlobRecord[]> {
-		await this.ensureCurrentSchema()
-		const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
-		return all.filter((b) => b.attachedTo.length === 0)
-	}
-
-	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
-		await this.ensureCurrentSchema()
-		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-		if (!entry) {
-			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
-		}
-		const exists = entry.attachedTo.some(
-			(a) =>
-				a.documentId === ref.documentId &&
-				a.recordRef === ref.recordRef &&
-				a.attribute === ref.attribute,
-		)
-		if (exists) return
-		const attachedTo = [...entry.attachedTo, ref]
-		await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
-	}
-
-	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
-		await this.ensureCurrentSchema()
-		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-		if (!entry) {
-			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
-		}
-		const attachedTo = entry.attachedTo.filter(
-			(a) => !(a.documentId === ref.documentId && a.recordRef === ref.recordRef),
-		)
-		await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
-	}
-
-	async removeBlob(blobId: string): Promise<void> {
-		await this.ensureCurrentSchema()
-		const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-		if (!entry) return
-		const blobTable = this.db.table<{ id: string }>(blobTableName(entry.documentId))
-		await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
-			await blobTable.delete(blobId)
-			await this.db.table(TABLE_BLOBS).delete(blobId)
-		})
-	}
-
-	/**
-	 * Expose the underlying Dexie instance.
-	 * Useful for legacy compatibility layers and advanced testing.
-	 */
-	getDatabaseInstance(): Dexie {
-		return this.db
 	}
 
 	// --- Private helpers ---

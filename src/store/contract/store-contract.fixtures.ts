@@ -98,3 +98,24 @@ export function sessionRecords(count: number): string {
 
 /** Chunks and batches small enough that a file of a few records is stored in several batches. */
 export const SMALL_BATCHES = { chunkSize: 16, batchSize: 1 } as const
+
+/**
+ * Change everything the caller holds of a value in place: every plain object gets a field it did not
+ * have, every array an element. A store that shares its objects with the caller then shows it.
+ */
+export function scribble(value: unknown): void {
+	if (Array.isArray(value)) {
+		for (const item of value) scribble(item)
+		value.push('scribbled')
+		return
+	}
+	if (
+		value === null ||
+		typeof value !== 'object' ||
+		Object.getPrototypeOf(value) !== Object.prototype
+	) {
+		return
+	}
+	for (const field of Object.values(value)) scribble(field)
+	Object.assign(value, { scribbled: true })
+}

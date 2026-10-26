@@ -179,50 +179,9 @@ describe('DexieStore cross-instance reconciliation', () => {
 })
 
 describe('DexieStore - an import running in another connection', () => {
+	// a connection opening while another one imports is the store contract's; here the race with
+	// the registry read is IndexedDB's own
 	const NS = TEST_DIALECTE_CONFIG.namespaces.default.uri
-
-	it('a connection opening while another one imports leaves that import running', async () => {
-		const name = uniqueName()
-		let release: () => void = () => {}
-		const gate = new Promise<void>((resolve) => {
-			release = resolve
-		})
-		let sessionReached: () => void = () => {}
-		const reached = new Promise<void>((resolve) => {
-			sessionReached = resolve
-		})
-		const importer = new DexieStore(name, {
-			importRuntime: {
-				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
-				defaultConfigKey: 'default',
-				hooks: {
-					createImportSession: () => ({
-						afterImport: async () => {
-							sessionReached()
-							await gate
-							return {}
-						},
-					}),
-				},
-			},
-		})
-		await importer.open()
-		const importing = importer.importFile({
-			file: new File([`<Root xmlns="${NS}"><A/></Root>`], 'one.xml', { type: 'text/xml' }),
-			writeId: 'w-running',
-		})
-		await reached
-
-		const other = new DexieStore(name)
-		await other.open()
-		release()
-
-		const result = await importing
-		expect(await other.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
-		expect(await other.count(result.record.id)).toBe(2)
-		other.close()
-		await importer.destroy()
-	})
 
 	it('a connection that lists the registry while another one registers its import leaves that import running', async () => {
 		const name = uniqueName()
@@ -291,5 +250,41 @@ describe('DexieStore - an import running in another connection', () => {
 		fresh.close()
 		other.close()
 		await importer.destroy()
+	})
+})
+
+describe('DexieStore - the connection of a closed store', () => {
+	it('a commit running when the store is closed → the connection stays open until it ends, then closes', async () => {
+		const store = new DexieStore(uniqueName())
+		await store.open()
+		await store.registerDocument(makeFile({ id: 'file-1' }))
+		const committing = store.commit({
+			documentId: 'file-1',
+			creates: [makeContractRecord({ id: 'r1' })],
+			updates: [],
+			deletes: [],
+			onProgress: () => {},
+		})
+
+		store.close()
+		expect(store.getDatabaseInstance().isOpen()).toBe(true)
+		await committing
+
+		expect(store.getDatabaseInstance().isOpen()).toBe(false)
+		await store.destroy()
+	})
+
+	it('a store closed while it opens → no connection left open behind the close', async () => {
+		const store = new DexieStore(uniqueName())
+		await store.open()
+		await store.registerDocument(makeFile({ id: 'file-1' }))
+		store.close()
+
+		const opening = store.open()
+		store.close()
+		await opening.catch(() => undefined)
+
+		expect(store.getDatabaseInstance().isOpen()).toBe(false)
+		await store.destroy()
 	})
 })

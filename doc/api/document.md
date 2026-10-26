@@ -173,6 +173,8 @@ doc.close() // close the store connection
 await doc.destroy() // delete the database entirely
 ```
 
+The store is the project's, shared by every document of the project: once closed, every operation started through it - by this document or any other taken from the project before - is refused with `STORE_CLOSED`; one already running completes. Those documents stay refused: once the project is opened again, take them again with `project.openDocument`.
+
 ## Subclassing
 
 A dialecte package typically subclasses `Document` to wire domain-specific `Query` and `Transaction`:

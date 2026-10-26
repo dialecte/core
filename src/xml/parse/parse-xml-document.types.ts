@@ -1,6 +1,6 @@
 import type { Diagnostic } from '@/diagnostics'
 import type { Perf } from '@/perf'
-import type { Store } from '@/store/store.types'
+import type { ImportTarget } from '@/store/store.types'
 import type { AnyDialecteConfig, ChunkOptions, DialecteHooks } from '@/types'
 
 export type ParseXmlFileParams = {
@@ -8,7 +8,7 @@ export type ParseXmlFileParams = {
 	documentId: string
 	/** The key the config is registered under; given to the import session */
 	configKey: string
-	store: Store
+	store: ImportTarget
 	config: AnyDialecteConfig
 	/** Use custom record IDs from XML attributes (testing) */
 	useCustomRecordsIds?: boolean

@@ -372,6 +372,8 @@ Once `close()` or `destroy()` is called the project is closed: `import`, `import
 
 Use `{ type: 'inMemory' }` for tests, demos, or UI placeholder documents that need a valid `Document` instance without IndexedDB.
 
+An in-memory project behaves as a local one, held in memory: every project opened under a name in the same page (realm) reads and writes one state, so a project closed and opened again under its name finds its documents. `close()` keeps that state; `destroy()` frees it. A store closed by `close()` refuses every operation started after it with `STORE_CLOSED` until it is opened again, in memory as on IndexedDB; one already running completes. A project that is never destroyed keeps its memory until the page goes.
+
 ```ts
 const project = await new Project({
 	configs: { scl: sclConfig },
@@ -385,7 +387,7 @@ const project = await new Project({
 | ---------- | --------- | ------- | ---------------------------------------------------------- |
 | `writable` | `boolean` | `true`  | When `false`, mutations throw `STORE_NOT_WRITABLE` (D1007) |
 
-A non-writable in-memory store is useful as a **null-object placeholder** in UI frameworks: reads return empty results, writes throw loudly. This prevents silent failures when code accidentally mutates before a real document is loaded.
+A non-writable in-memory store is useful as a **null-object placeholder** in UI frameworks: reads return empty results, writes throw loudly. This prevents silent failures when code accidentally mutates before a real document is loaded. A placeholder never reads, keeps or frees the state of its name: it reads empty even under the name of a project holding data, and its `destroy()` leaves that data.
 
 ```ts
 // Read-only placeholder for UI boot phase

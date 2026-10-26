@@ -1,5 +1,6 @@
 import {
 	CONTRACT_SESSION_DIAGNOSTICS,
+	CONTRACT_SESSION_HOLD_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
 } from './store-contract.constants'
@@ -11,9 +12,11 @@ import {
 	makeBlobEntry,
 	makeDocument,
 	makeRecord,
+	scribble,
 	sessionRecords,
 	SMALL_BATCHES,
 } from './store-contract.fixtures'
+import { holdContractImport } from './store-contract.import-session'
 
 import { expect } from 'vitest'
 
@@ -21,12 +24,18 @@ import type { ImportProgress, Store, WriteOutcome } from '../store.types'
 import type {
 	AbsentDocumentRead,
 	AttributePatchCase,
+	OperationInFlight,
+	RefusedWrite,
+	StoreOperation,
 	SiblingOrderStep,
 	StoreContractCases,
 	StoreContractContext,
 	StoreContractGroups,
+	ValueRead,
+	ValueWrite,
 } from './store-contract.types'
 import type { DocumentRecord } from '@/project/types'
+import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -73,7 +82,7 @@ const registry: StoreContractCases = {
 			await store.registerDocument(makeDocument({ id: 'a' }))
 			await store.registerDocument(makeDocument({ id: 'b' }))
 			const documents = await store.getDocuments()
-			expect(documents.map((document) => document.id).sort()).toEqual(['a', 'b'])
+			expect(documents.map((document) => document.id)).toEqual(['a', 'b'])
 		},
 	},
 	'an unknown document reads undefined': {
@@ -132,7 +141,7 @@ const reads: StoreContractCases = {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			const records = await store.getByDocumentId('doc-1')
-			expect(records.map((record) => record.id).sort()).toEqual(['r1', 'r2'])
+			expect(records.map((record) => record.id)).toEqual(['r1', 'r2'])
 		},
 	},
 	'count is the number of records of the document': {
@@ -150,7 +159,7 @@ const reads: StoreContractCases = {
 			await seedTwoRecords(store)
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r3', tagName: 'LNode' })] })
 			const records = await store.getByTagNameInDocument('LNode', 'doc-1')
-			expect(records.map((record) => record.id).sort()).toEqual(['r1', 'r3'])
+			expect(records.map((record) => record.id)).toEqual(['r1', 'r3'])
 		},
 	},
 	'getMany answers in the order asked, undefined for a missing id': {
@@ -287,6 +296,16 @@ const bulkWrites: StoreContractCases = {
 			expect(await store.get('r1', 'doc-1')).toEqual(
 				makeRecord({ id: 'r1', value: 'new', tagName: 'Z' }),
 			)
+		},
+	},
+	'update patch of a record created by the same write → applied to it': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await store.bulkWrite('doc-1', {
+				creates: [makeRecord({ id: 'r9' })],
+				updates: [{ recordId: 'r9', value: 'patched' }],
+			})
+			expect(await store.get('r9', 'doc-1')).toEqual(makeRecord({ id: 'r9', value: 'patched' }))
 		},
 	},
 	'update patch of an absent record changes nothing': {
@@ -485,7 +504,7 @@ const reopen: StoreContractCases = {
 			await seedTwoRecords(store)
 			const reopened = await reopen()
 			expect((await reopened.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
-			expect((await reopened.getByDocumentId('doc-1')).map((record) => record.id).sort()).toEqual([
+			expect((await reopened.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
 				'r1',
 				'r2',
 			])
@@ -806,6 +825,111 @@ const snapshots: StoreContractCases = {
 }
 
 // ── Rejected writes ──────────────────────────────────────────────────────────
+
+/** A record holding a value no store can copy: a function. */
+function uncopyableRecord(id: string): AnyRawRecord {
+	return { ...makeRecord({ id }), value: (() => '') as unknown as string }
+}
+
+/**
+ * A write of a value the store cannot copy, alone or with another fault, and the refusal it must
+ * answer, in the order a store that encodes what it is handed meets them: an absent update, then the
+ * creates encoded (one it cannot copy refuses the batch), then a taken id, then the updates encoded.
+ * "Cannot copy" is what structured clone refuses: a store whose encoding would drop such a value
+ * silently (JSON drops a function) checks for it before writing.
+ */
+const UNCOPYABLE_WRITES: Record<string, RefusedWrite> = {
+	'bulkWrite creates': {
+		write: (store) => store.bulkWrite('doc-1', { creates: [uncopyableRecord('r9')] }),
+		key: 'STORE_BULK_ADD_FAILED',
+	},
+	'bulkWrite update patch': {
+		write: (store) =>
+			store.bulkWrite('doc-1', {
+				updates: [{ recordId: 'r1', value: (() => '') as unknown as string }],
+			}),
+		key: 'STORE_BULK_UPDATE_FAILED',
+	},
+	'commit creates': {
+		write: (store) => commit({ store, documentId: 'doc-1', creates: [uncopyableRecord('r9')] }),
+		key: 'STORE_BULK_ADD_FAILED',
+	},
+	'commit updates': {
+		write: (store) => commit({ store, documentId: 'doc-1', updates: [uncopyableRecord('r1')] }),
+		key: 'STORE_BULK_UPDATE_FAILED',
+	},
+	'bulkWrite creating a taken id with an update': {
+		write: (store) =>
+			store.bulkWrite('doc-1', {
+				creates: [makeRecord({ id: 'r1' })],
+				updates: [{ recordId: 'r1', value: (() => '') as unknown as string }],
+			}),
+		key: 'STORE_DUPLICATE_ID',
+	},
+	'commit creating a taken id with an update': {
+		write: (store) =>
+			commit({
+				store,
+				documentId: 'doc-1',
+				creates: [makeRecord({ id: 'r1' })],
+				updates: [uncopyableRecord('r1')],
+			}),
+		key: 'STORE_DUPLICATE_ID',
+	},
+	'bulkWrite creating a taken id and a create': {
+		write: (store) =>
+			store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' }), uncopyableRecord('r9')] }),
+		key: 'STORE_BULK_ADD_FAILED',
+	},
+	'commit creating a taken id and a create': {
+		write: (store) =>
+			commit({
+				store,
+				documentId: 'doc-1',
+				creates: [makeRecord({ id: 'r1' }), uncopyableRecord('r9')],
+			}),
+		key: 'STORE_BULK_ADD_FAILED',
+	},
+	'commit updating an absent record with a create': {
+		write: (store) =>
+			commit({
+				store,
+				documentId: 'doc-1',
+				creates: [uncopyableRecord('r9')],
+				updates: [makeRecord({ id: 'absent' })],
+			}),
+		key: 'STORE_RECORD_NOT_FOUND',
+	},
+}
+
+const uncopyablePatchOfAbsentRecord: StoreContractCases = {
+	'bulkWrite update patch of an absent record holding a value the store cannot copy → skipped as every absent patch, nothing written':
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument())
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+				await store.bulkWrite('doc-1', {
+					updates: [{ recordId: 'absent', value: (() => '') as unknown as string }],
+				})
+				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+			},
+		},
+}
+
+const uncopyableWrites: StoreContractCases = Object.fromEntries(
+	Object.entries(UNCOPYABLE_WRITES).map(([name, { write, key }]) => [
+		`${name} of a value the store cannot copy (a function) → ${key}, the record as it was, no history`,
+		{
+			act: async ({ store }: StoreContractContext) => {
+				await store.registerDocument(makeDocument())
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+				await expectRejectsWith({ action: write(store), key })
+				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+				expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: false })
+			},
+		},
+	]),
+)
 
 const rejectedWrites: StoreContractCases = {
 	'registering an id already registered is rejected and the first stays': {
@@ -1424,6 +1548,507 @@ const oneState: StoreContractCases = {
 	},
 }
 
+const oneStateAfterDestroy: StoreContractCases = {
+	'destroy through one connection → the other reads empty; what it registers then, a new connection reads':
+		{
+			needs: 'second-connection',
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+				const other = await connect()
+				await store.destroy()
+				expect(await other.getDocuments()).toEqual([])
+				expect(await other.get('r1', 'doc-1')).toBeUndefined()
+				await other.registerDocument(makeDocument({ id: 'doc-2' }))
+				const fresh = await connect()
+				expect((await fresh.getDocuments()).map((document) => document.id)).toEqual(['doc-2'])
+			},
+		},
+	'an import running through one connection → kept when another connection opens, applied once done':
+		{
+			needs: 'second-connection',
+			act: async ({ store, connect }) => {
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+					writeId: 'w-held',
+				})
+				try {
+					await hold.reached
+					const other = await connect()
+					hold.release()
+					const result = await importing
+					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('applied')
+					expect(await other.count(result.record.id)).toBe(2)
+				} finally {
+					// a failure above must not leave the import waiting for the rest of the worker
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
+}
+
+// ── Stores of other names ────────────────────────────────────────────────────
+
+const otherNames: StoreContractCases = {
+	'two stores of other names holding the same ids → neither sees the other’s records, documents or removal':
+		{
+			act: async ({ store, createOther }) => {
+				const other = await createOther()
+				await store.registerDocument(makeDocument())
+				await other.registerDocument(makeDocument())
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+				await other.bulkWrite('doc-1', {
+					creates: [makeRecord({ id: 'r1', attributes: [{ name: 'a', value: '2' }] })],
+				})
+				expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
+				await other.removeDocument('doc-1')
+				expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
+				expect(await store.count('doc-1')).toBe(1)
+			},
+		},
+}
+
+// ── List reads in id order ───────────────────────────────────────────────────
+
+/** Ids handed to the store out of id order: every list read must answer them sorted. */
+const UNORDERED_IDS = ['z', 'b', 'm', 'a']
+const ID_ORDER = ['a', 'b', 'm', 'z']
+
+/** A list read and the ids of what it answers, after its subject was written in `UNORDERED_IDS` order. */
+const ORDERED_READS: Record<string, (store: Store) => Promise<string[]>> = {
+	getByDocumentId: async (store) => {
+		await store.registerDocument(makeDocument())
+		for (const id of UNORDERED_IDS)
+			await store.bulkWrite('doc-1', { creates: [makeRecord({ id })] })
+		return (await store.getByDocumentId('doc-1')).map((record) => record.id)
+	},
+	getByTagNameInDocument: async (store) => {
+		await store.registerDocument(makeDocument())
+		for (const id of UNORDERED_IDS)
+			await store.bulkWrite('doc-1', { creates: [makeRecord({ id })] })
+		return (await store.getByTagNameInDocument('A', 'doc-1')).map((record) => record.id)
+	},
+	getDocuments: async (store) => {
+		for (const id of UNORDERED_IDS) await store.registerDocument(makeDocument({ id }))
+		return (await store.getDocuments()).map((document) => document.id)
+	},
+	getBlobsByDocument: async (store) => {
+		await store.registerDocument(makeDocument())
+		for (const id of UNORDERED_IDS) {
+			const attachedTo = [{ documentId: 'doc-1', recordRef: 'r1' }]
+			await store.addBlob(makeBlobEntry({ id, attachedTo }), new Blob([id]))
+		}
+		return (await store.getBlobsByDocument('doc-1')).map((entry) => entry.id)
+	},
+	getBlobsByRecord: async (store) => {
+		await store.registerDocument(makeDocument())
+		for (const id of UNORDERED_IDS) {
+			const attachedTo = [{ documentId: 'doc-1', recordRef: 'r1' }]
+			await store.addBlob(makeBlobEntry({ id, attachedTo }), new Blob([id]))
+		}
+		return (await store.getBlobsByRecord('doc-1', 'r1')).map((entry) => entry.id)
+	},
+	getStandaloneBlobs: async (store) => {
+		await store.registerDocument(makeDocument())
+		for (const id of UNORDERED_IDS) await store.addBlob(makeBlobEntry({ id }), new Blob([id]))
+		return (await store.getStandaloneBlobs()).map((entry) => entry.id)
+	},
+}
+
+const idOrder: StoreContractCases = Object.fromEntries(
+	Object.entries(ORDERED_READS).map(([name, read]) => [
+		`${name}: written out of id order → answered in id order`,
+		{ act: async ({ store }: StoreContractContext) => expect(await read(store)).toEqual(ID_ORDER) },
+	]),
+)
+
+// ── Records are values ───────────────────────────────────────────────────────
+
+/** A document with a parent and a child, one commit and one update in its history, two blobs. */
+async function seedValues(store: Store): Promise<void> {
+	await store.registerDocument(makeDocument({ metadata: { origin: { kind: 'seed' } } }))
+	await commit({
+		store,
+		documentId: 'doc-1',
+		creates: [
+			makeRecord({ id: 'r1', children: [childRef('r2')] }),
+			makeRecord({ id: 'r2', parent: childRef('r1') }),
+		],
+	})
+	await commit({
+		store,
+		documentId: 'doc-1',
+		updates: [
+			makeRecord({ id: 'r1', attributes: [{ name: 'a', value: '2' }], children: [childRef('r2')] }),
+		],
+	})
+	await store.addBlob(
+		makeBlobEntry({ id: 'b-attached', attachedTo: [{ documentId: 'doc-1', recordRef: 'r1' }] }),
+		new Blob(['attached']),
+	)
+	await store.addBlob(makeBlobEntry({ id: 'b-standalone' }), new Blob(['standalone']))
+}
+
+const VALUE_READS: Record<string, ValueRead> = {
+	get: (store) => store.get('r1', 'doc-1'),
+	getByDocumentId: (store) => store.getByDocumentId('doc-1'),
+	getByTagNameInDocument: (store) => store.getByTagNameInDocument('A', 'doc-1'),
+	getMany: (store) => store.getMany(['r1', 'r2'], 'doc-1'),
+	getDocument: (store) => store.getDocument('doc-1'),
+	getDocuments: (store) => store.getDocuments(),
+	getChangeLog: (store) => store.getChangeLog('doc-1'),
+	getBlob: (store) => store.getBlob('b-attached'),
+	getBlobsByDocument: (store) => store.getBlobsByDocument('doc-1'),
+	getBlobsByRecord: (store) => store.getBlobsByRecord('doc-1', 'r1'),
+	getStandaloneBlobs: (store) => store.getStandaloneBlobs(),
+}
+
+/** Undo then redo the last commit, then read the record `id`: what the history holds of it. */
+async function throughHistory(params: { store: Store; id: string }): Promise<unknown> {
+	const { store, id } = params
+	await store.undo('doc-1')
+	await store.redo('doc-1')
+	return store.get(id, 'doc-1')
+}
+
+const VALUE_WRITES: Record<string, ValueWrite> = {
+	'bulkWrite creates': {
+		given: () => [makeRecord({ id: 'r9', children: [childRef('r2')] })],
+		write: ({ store, given }) => store.bulkWrite('doc-1', { creates: given as AnyRawRecord[] }),
+		read: (store) => store.get('r9', 'doc-1'),
+	},
+	'bulkWrite update patch': {
+		given: () => [
+			{ recordId: 'r2', attributes: [{ name: 'b', value: '2' }], children: [childRef('r9')] },
+		],
+		write: ({ store, given }) => store.bulkWrite('doc-1', { updates: given as RecordPatch[] }),
+		read: (store) => store.get('r2', 'doc-1'),
+	},
+	'commit creates': {
+		given: () => [makeRecord({ id: 'r9', children: [childRef('r2')] })],
+		write: ({ store, given }) =>
+			commit({ store, documentId: 'doc-1', creates: given as AnyRawRecord[] }),
+		read: (store) => store.get('r9', 'doc-1'),
+	},
+	'commit creates, read through undo and redo': {
+		given: () => [makeRecord({ id: 'r9', children: [childRef('r2')] })],
+		write: ({ store, given }) =>
+			commit({ store, documentId: 'doc-1', creates: given as AnyRawRecord[] }),
+		read: (store) => throughHistory({ store, id: 'r9' }),
+	},
+	'commit creates, read through the changelog': {
+		given: () => [makeRecord({ id: 'r9', children: [childRef('r2')] })],
+		write: ({ store, given }) =>
+			commit({ store, documentId: 'doc-1', creates: given as AnyRawRecord[] }),
+		read: (store) => store.getChangeLog('doc-1'),
+	},
+	'commit updates': {
+		given: () => [
+			makeRecord({ id: 'r2', attributes: [{ name: 'a', value: '3' }], parent: childRef('r1') }),
+		],
+		write: ({ store, given }) =>
+			commit({ store, documentId: 'doc-1', updates: given as AnyRawRecord[] }),
+		read: (store) => store.get('r2', 'doc-1'),
+	},
+	'commit updates, read through undo and redo': {
+		given: () => [
+			makeRecord({ id: 'r2', attributes: [{ name: 'a', value: '3' }], parent: childRef('r1') }),
+		],
+		write: ({ store, given }) =>
+			commit({ store, documentId: 'doc-1', updates: given as AnyRawRecord[] }),
+		read: (store) => throughHistory({ store, id: 'r2' }),
+	},
+	registerDocument: {
+		given: () => makeDocument({ id: 'doc-3', metadata: { origin: { kind: 'given' } } }),
+		write: ({ store, given }) => store.registerDocument(given as DocumentRecord),
+		read: (store) => store.getDocument('doc-3'),
+	},
+	updateDocument: {
+		given: () => ({ metadata: { origin: { kind: 'updated' } } }),
+		write: ({ store, given }) => store.updateDocument('doc-1', given as Partial<DocumentRecord>),
+		read: (store) => store.getDocument('doc-1'),
+	},
+	addBlob: {
+		given: () =>
+			makeBlobEntry({ id: 'b9', attachedTo: [{ documentId: 'doc-1', recordRef: 'r2' }] }),
+		write: ({ store, given }) => store.addBlob(given as BlobRecord, new Blob(['given'])),
+		read: async (store) => (await store.getBlob('b9'))?.entry,
+	},
+	attachBlob: {
+		given: () => ({ documentId: 'doc-1', recordRef: 'r2', attribute: 'a' }),
+		write: ({ store, given }) => store.attachBlob('b-attached', given as BlobAttachment),
+		read: async (store) => (await store.getBlob('b-attached'))?.entry,
+	},
+}
+
+const values: StoreContractCases = {
+	...Object.fromEntries(
+		Object.entries(VALUE_READS).map(([name, read]) => [
+			`${name}: the caller changes what it read → the next ${name} answers as before`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await seedValues(store)
+					const first = await read(store)
+					const asRead = structuredClone(first)
+					scribble(first)
+					expect(await read(store)).toEqual(asRead)
+				},
+			},
+		]),
+	),
+	...Object.fromEntries(
+		Object.entries(VALUE_WRITES).map(([name, { given, write, read }]) => [
+			`${name}: the caller changes what it handed the store → the store keeps what was written`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await seedValues(store)
+					const handed = given()
+					await write({ store, given: handed })
+					const asWritten = structuredClone(await read(store))
+					scribble(handed)
+					expect(await read(store)).toEqual(asWritten)
+				},
+			},
+		]),
+	),
+}
+
+// ── A closed store ───────────────────────────────────────────────────────────
+
+/** Every operation of the port but the lifecycle ones; through a closed store each is refused. */
+const OPERATIONS_ON_A_CLOSED_STORE: Record<string, StoreOperation> = {
+	reconcile: (store) => store.reconcile(),
+	isDocumentReadable: (store) => store.isDocumentReadable('doc-1'),
+	registerDocument: (store) => store.registerDocument(makeDocument({ id: 'doc-2' })),
+	getDocument: (store) => store.getDocument('doc-1'),
+	getDocuments: (store) => store.getDocuments(),
+	updateDocument: (store) => store.updateDocument('doc-1', { name: 'renamed' }),
+	removeDocument: (store) => store.removeDocument('doc-1'),
+	get: (store) => store.get('r1', 'doc-1'),
+	getByDocumentId: (store) => store.getByDocumentId('doc-1'),
+	count: (store) => store.count('doc-1'),
+	getByTagNameInDocument: (store) => store.getByTagNameInDocument('A', 'doc-1'),
+	getMany: (store) => store.getMany(['r1'], 'doc-1'),
+	importFile: (store) => store.importFile({ file: contractFile({ body: sessionRecords(1) }) }),
+	getWriteOutcome: (store) => store.getWriteOutcome({ writeId: 'w-any' }),
+	bulkWrite: (store) => store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r9' })] }),
+	commit: (store) => commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r9' })] }),
+	undo: (store) => store.undo('doc-1'),
+	redo: (store) => store.redo('doc-1'),
+	getHistoryStatus: (store) => store.getHistoryStatus('doc-1'),
+	getChangeLog: (store) => store.getChangeLog('doc-1'),
+	addBlob: (store) => store.addBlob(makeBlobEntry({ id: 'b9' }), new Blob(['b9'])),
+	getBlob: (store) => store.getBlob('b1'),
+	getBlobsByDocument: (store) => store.getBlobsByDocument('doc-1'),
+	getBlobsByRecord: (store) => store.getBlobsByRecord('doc-1', 'r1'),
+	getStandaloneBlobs: (store) => store.getStandaloneBlobs(),
+	attachBlob: (store) => store.attachBlob('b1', { documentId: 'doc-1', recordRef: 'r1' }),
+	detachBlob: (store) => store.detachBlob('b1', { documentId: 'doc-1', recordRef: 'r1' }),
+	removeBlob: (store) => store.removeBlob('b1'),
+}
+
+/** A document with one record, one commit in its history and one blob: what a closed store keeps. */
+async function seedClosedStore(store: Store): Promise<void> {
+	await store.registerDocument(makeDocument())
+	await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
+	await store.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['b1']))
+}
+
+/** Operations that span several steps of a store, each running when `close()` is called. */
+const OPERATIONS_IN_FLIGHT: Record<string, OperationInFlight> = {
+	registerDocument: {
+		run: (store) => store.registerDocument(makeDocument({ id: 'doc-2' })),
+		expected: async (store) =>
+			expect((await store.getDocuments()).map((document) => document.id)).toEqual([
+				'doc-1',
+				'doc-2',
+			]),
+	},
+	removeDocument: {
+		run: (store) => store.removeDocument('doc-1'),
+		expected: async (store) => expect(await store.getDocuments()).toEqual([]),
+	},
+	bulkWrite: {
+		run: (store) => store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r9' })] }),
+		expected: async (store) =>
+			expect(await store.get('r9', 'doc-1')).toEqual(makeRecord({ id: 'r9' })),
+	},
+	commit: {
+		run: (store) => commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r9' })] }),
+		expected: async (store) =>
+			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false }),
+	},
+	undo: {
+		run: (store) => store.undo('doc-1'),
+		expected: async (store) => expect(await store.get('r1', 'doc-1')).toBeUndefined(),
+	},
+	getByDocumentId: {
+		run: async (store) =>
+			expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })]),
+		expected: async () => {},
+	},
+	addBlob: {
+		run: (store) => store.addBlob(makeBlobEntry({ id: 'b9' }), new Blob(['b9'])),
+		expected: async (store) => expect((await store.getBlob('b9'))?.entry.id).toBe('b9'),
+	},
+}
+
+const closedStore: StoreContractCases = {
+	...Object.fromEntries(
+		Object.entries(OPERATIONS_IN_FLIGHT).map(([name, { run, expected }]) => [
+			`${name} running when the store is closed → it completes; a later operation is refused`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await seedClosedStore(store)
+					const running = run(store)
+					store.close()
+					await running
+					await expectRejectsWith({
+						action: store.getDocuments(),
+						key: 'STORE_CLOSED',
+						meta: { storeName: store.name },
+					})
+					await store.open()
+					await expected(store)
+				},
+			},
+		]),
+	),
+	...Object.fromEntries(
+		Object.entries(OPERATIONS_IN_FLIGHT).map(([name, { run, expected }]) => [
+			`${name} running when the store is closed and opened again at once → it completes, then the store opens`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await seedClosedStore(store)
+					const running = run(store)
+					store.close()
+					const opening = store.open()
+					await running
+					await opening
+					await expected(store)
+				},
+			},
+		]),
+	),
+	...Object.fromEntries(
+		Object.entries(OPERATIONS_IN_FLIGHT).map(([name, { run }]) => [
+			`${name} running when the store is destroyed → it completes, then the name reads empty`,
+			{
+				act: async ({ store, reopen }: StoreContractContext) => {
+					await seedClosedStore(store)
+					const running = run(store)
+					const destroying = store.destroy()
+					await running
+					await destroying
+					const reopened = await reopen()
+					expect(await reopened.getDocuments()).toEqual([])
+				},
+			},
+		]),
+	),
+	'an import running when the store is destroyed → it completes, then the name reads empty': {
+		act: async ({ store, reopen }) => {
+			const hold = holdContractImport()
+			const importing = store.importFile({
+				file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+				writeId: 'w-held',
+			})
+			try {
+				await hold.reached
+				const destroying = store.destroy()
+				hold.release()
+				await importing
+				await destroying
+				const reopened = await reopen()
+				expect(await reopened.getDocuments()).toEqual([])
+			} finally {
+				hold.release()
+				await importing.catch(() => undefined)
+			}
+		},
+	},
+	'an import running when the store is closed → it completes; reopened, its document is there': {
+		act: async ({ store }) => {
+			const hold = holdContractImport()
+			const importing = store.importFile({
+				file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+				writeId: 'w-held',
+			})
+			try {
+				await hold.reached
+				store.close()
+				await expectRejectsWith({ action: store.getDocuments(), key: 'STORE_CLOSED' })
+				hold.release()
+				const result = await importing
+				await store.open()
+				expect(await store.getWriteOutcome({ writeId: 'w-held' })).toBe('applied')
+				expect(await store.count(result.record.id)).toBe(2)
+			} finally {
+				hold.release()
+				await importing.catch(() => undefined)
+			}
+		},
+	},
+	...Object.fromEntries(
+		Object.entries(OPERATIONS_ON_A_CLOSED_STORE).map(([name, operation]) => [
+			`${name} through a closed store → STORE_CLOSED; opened again, the store as it was`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await seedClosedStore(store)
+					store.close()
+					await expectRejectsWith({
+						action: operation(store),
+						key: 'STORE_CLOSED',
+						meta: { storeName: store.name },
+					})
+					await store.open()
+					expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
+					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+					expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+					expect((await store.getStandaloneBlobs()).map((entry) => entry.id)).toEqual(['b1'])
+				},
+			},
+		]),
+	),
+	'open() then close() at once → the store ends closed: the open refused, the next operation too': {
+		act: async ({ store }) => {
+			await seedClosedStore(store)
+			store.close()
+			const opening = store.open()
+			store.close()
+			await expectRejectsWith({ action: opening, key: 'STORE_CLOSED' })
+			await expectRejectsWith({ action: store.getDocuments(), key: 'STORE_CLOSED' })
+			await store.open()
+			expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
+		},
+	},
+	'a closed store closed again → nothing thrown; destroyed → the name reopens empty': {
+		act: async ({ store, reopen }) => {
+			await seedClosedStore(store)
+			store.close()
+			expect(() => store.close()).not.toThrow()
+			await store.destroy()
+			const reopened = await reopen()
+			expect(await reopened.getDocuments()).toEqual([])
+		},
+	},
+	'one connection closed → another connection of the name reads and writes on': {
+		needs: 'second-connection',
+		act: async ({ store, connect }) => {
+			await seedClosedStore(store)
+			const other = await connect()
+			store.close()
+			await other.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r2' })] })
+			expect((await other.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
+				'r1',
+				'r2',
+			])
+		},
+	},
+}
+
 export const STORE_CONTRACT: StoreContractGroups = {
 	lifecycle,
 	'document registry': registry,
@@ -1433,11 +2058,15 @@ export const STORE_CONTRACT: StoreContractGroups = {
 	reopen,
 	'sibling order': siblingOrder,
 	'changelog snapshots': snapshots,
-	'rejected writes': rejectedWrites,
+	'rejected writes': { ...rejectedWrites, ...uncopyableWrites, ...uncopyablePatchOfAbsentRecord },
 	'a document that is not there': absentDocument,
 	'a removed document leaves no history': removedDocument,
 	'an edit during an import': duringImport,
 	'importing a file': importing,
-	'one state for every connection': oneState,
+	'one state for every connection': { ...oneState, ...oneStateAfterDestroy },
+	'stores of other names': otherNames,
 	blobs,
+	'records are values': values,
+	'list reads in id order': idOrder,
+	'a closed store': closedStore,
 }

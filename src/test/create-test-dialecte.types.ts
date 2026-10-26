@@ -81,7 +81,15 @@ export type LegacyTestRunnerParams<GenericConfig extends AnyDialecteConfig> =
 export type TestContextParams<GenericConfig extends AnyDialecteConfig> = {
 	dialecteConfig: GenericConfig
 	documentId: string
-} & ({ store: Store; databaseName?: undefined } | { databaseName: string; store?: undefined })
+} & (
+	| { store: Store; databaseName?: undefined; storage?: undefined }
+	| {
+			databaseName: string
+			/** The store of the project named; the local store when absent. */
+			storage?: StorageParam
+			store?: undefined
+	  }
+)
 
 export type TestProjectOptions = {
 	sourceXml: string

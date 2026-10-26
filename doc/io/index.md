@@ -100,6 +100,8 @@ const result = await runImport(
 )
 ```
 
+`store` is an `ImportTarget`: the reads and writes the import needs (`registerDocument`, `getDocument`, `updateDocument`, `removeDocument`, `bulkWrite`); every `Store` is one. A store that refuses operations once closed passes its own unguarded target, as `InMemoryStore` and the local store do, so its own import is not refused while it runs: an operation already running completes.
+
 `runtime` is what the store imports with: the dialecte's configs, its hooks (IO and record), and `perf` to hand back the timings of each stage (a `PerfSnapshot`, merged by the project under `store::`). `InMemoryStore` and the local store take it as `importRuntime` (the project passes its own); a `{ type: 'custom' }` store imports with its own runtime, answers `getWriteOutcome` from its registry (`importOutcomeOf`) and removes leftovers as it opens (`removeUnfinishedImports({ store, isRunning? })`, `isRunning` naming the imports another connection still runs). A store built without a runtime refuses `importFile` with `IMPORT_FAILED`.
 
 ## Cross-realm reconciliation
@@ -116,7 +118,7 @@ The `Store` port carries this concern:
 Backend behaviour:
 
 - **`DexieStore`** self-heals transparently: it listens for IndexedDB `versionchange` (fired when another connection upgrades the schema), releases its connection, and rebuilds it from the persisted schema version on the next access — so reads never miss the partition because of an import in another realm. `reconcile` performs this catch-up on demand.
-- **`InMemoryStore`** is a no-op (its data is not shared across realms); readiness reduces to liveness. It warns once if `reconcile` is called.
+- **`InMemoryStore`** is a no-op (its data is the realm's, shared by every in-memory store of the same name there, never across realms); readiness reduces to liveness. It warns once if `reconcile` is called.
 
 `Project.getDocumentStatus` builds on these to report a document's [`live` / `ready`](/api/project#getdocumentstatus) status regardless of cross-realm signal ordering.
 

@@ -14,6 +14,7 @@ function runStoreContract(factory: StoreContractFactory): void {
 	describe(factory.name, () => {
 		let context: StoreContractContext | undefined
 		let opened: Store[] = []
+		let others: Store[] = []
 
 		beforeEach(async () => {
 			const store = await factory.create()
@@ -32,6 +33,11 @@ function runStoreContract(factory: StoreContractFactory): void {
 					opened.push(other)
 					return other
 				},
+				createOther: async function createOtherStore() {
+					const other = await factory.create()
+					others.push(other)
+					return other
+				},
 			}
 			context = current
 		})
@@ -42,8 +48,10 @@ function runStoreContract(factory: StoreContractFactory): void {
 				if (store !== context.store) await store.close()
 			}
 			await context.store.destroy()
+			for (const other of others) await other.destroy()
 			context = undefined
 			opened = []
+			others = []
 		})
 
 		for (const [group, cases] of Object.entries(STORE_CONTRACT)) {

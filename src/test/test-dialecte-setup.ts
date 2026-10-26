@@ -2,6 +2,8 @@ import { TEST_DIALECTE_CONFIG } from './config'
 import { TEST_CONFIG_KEY } from './constant'
 import { TEST_DIALECTE } from './test-dialecte'
 
+import { onTestFinished } from 'vitest'
+
 import { defineDialecte } from '@/dialecte'
 import { createDialecteProject } from '@/dialecte/create-dialecte-project'
 import { createDialecteError } from '@/errors'
@@ -93,7 +95,9 @@ export function overrideTestDialecte<GenericConfig extends AnyDialecteConfig>(pa
 
 /**
  * Open a test project on the setup, with the source (and the target, when given) imported under
- * the default config. The caller owns the lifecycle: `project.destroy()`.
+ * the default config. Opened inside a running test (its body or a `beforeEach`), the project is
+ * destroyed when that test ends; opened outside one (`beforeAll`, module scope), the caller owns
+ * its lifecycle: `project.destroy()`. A destroy by the caller as well is harmless.
  */
 export async function openTestProject<
 	GenericConfig extends AnyDialecteConfig,
@@ -109,6 +113,7 @@ export async function openTestProject<
 	const project = (await createDialecteProject({ dialecte, storage, extensions: custom, dev }).open(
 		`test-${crypto.randomUUID()}`,
 	)) as unknown as Project<GenericConfig, GenericModules>
+	destroyWhenTestEnds({ project })
 
 	const source = await importTestDocument({
 		project,
@@ -138,4 +143,17 @@ async function importTestDocument<
 		useCustomRecordsIds: true,
 	})
 	return { documentId, document: project.openDocument(documentId) }
+}
+
+/**
+ * Destroy the project when the running test ends, so a test that forgets it leaves no store behind.
+ * Outside a running test vitest refuses the hook (it throws): the caller then owns the teardown.
+ */
+function destroyWhenTestEnds(params: { project: { destroy: () => Promise<void> } }): void {
+	const { project } = params
+	try {
+		onTestFinished(() => project.destroy())
+	} catch {
+		// not inside a running test
+	}
 }

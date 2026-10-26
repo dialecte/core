@@ -1,3 +1,4 @@
+import { findInMemoryState } from './in-memory-state'
 import { InMemoryStore } from './in-memory-store'
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -97,7 +98,7 @@ describe('InMemoryStore (non-writable)', () => {
 })
 
 describe('InMemoryStore - opened again while it imports', () => {
-	it('an import running on the instance is kept by its own open', async () => {
+	it('an import running on the instance, opened again → the open waits for it; the import is kept and applied', async () => {
 		let release: () => void = () => {}
 		const gate = new Promise<void>((resolve) => {
 			release = resolve
@@ -129,10 +130,40 @@ describe('InMemoryStore - opened again while it imports', () => {
 		})
 		await reached
 
-		await store.open()
+		const opening = store.open()
 		release()
 
 		await importing
+		await opening
 		expect(await store.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
+		await store.destroy()
+	})
+})
+
+describe('InMemoryStore - the state of its name', () => {
+	it('a store destroyed → its name holds no state', async () => {
+		const name = `state-${crypto.randomUUID()}`
+		const store = new InMemoryStore(name)
+		await store.registerDocument(makeDocument())
+
+		await store.destroy()
+
+		expect(findInMemoryState({ name })).toBeUndefined()
+	})
+
+	it('a placeholder of a name holding data → reads empty, its destroy leaves the data', async () => {
+		const name = `state-${crypto.randomUUID()}`
+		const store = new InMemoryStore(name)
+		await store.registerDocument(makeDocument())
+		await store.bulkWrite('doc-1', { creates: [makeRecord('r1')] })
+		const placeholder = new InMemoryStore(name, { writable: false })
+		await placeholder.open()
+
+		expect(await placeholder.getDocuments()).toEqual([])
+		expect(await placeholder.get('r1', 'doc-1')).toBeUndefined()
+		await placeholder.destroy()
+		expect(await store.get('r1', 'doc-1')).toEqual(makeRecord('r1'))
+
+		await store.destroy()
 	})
 })

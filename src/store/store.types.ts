@@ -31,20 +31,41 @@ export type RecordSchema = {
  * All record operations are document-scoped via documentId.
  * Not generic on Config — stores raw records as-is.
  * Type narrowing lives in Document/Transaction, not here.
+ *
+ * What every store answers to, whichever its backend (the store contract suite checks it): a name is
+ * one state for every store of that name in its scope - a store built again under the name finds
+ * what was written, until a store of that name is destroyed. The scope is the backend's: an IndexedDB
+ * database is the origin's, an in-memory state the realm's. Records are values: once a write or a read
+ * returns, the caller's objects and the store are apart - changing one never changes the other
+ * (documents, records, changelog entries, blob entries; Blob data is immutable). List reads answer in
+ * id order - `getDocuments`, `getByDocumentId`, `getByTagNameInDocument`, the blob lists - ids compared
+ * by UTF-16 code unit, as an IndexedDB key range orders them; `getMany` answers in the order asked,
+ * `getChangeLog` in sequence order.
  */
 export interface Store {
-	/** Unique identifier for this store — used to scope the BroadcastChannel */
+	/** The name of the state this store reads and writes; also scopes the BroadcastChannel */
 	readonly name: string
 
 	// --- Lifecycle ---
 
-	/** Open the connection (if not already open) */
+	/**
+	 * Open the connection (if not already open), once the operations still running have completed;
+	 * refused with `STORE_CLOSED` when a `close()` was called after it (the close wins)
+	 */
 	open(): Promise<void>
 
-	/** Close the connection */
+	/**
+	 * Close this connection: every operation started through it from now on is refused with
+	 * `STORE_CLOSED` until `open()` again (`destroy()` excepted); an operation already running
+	 * completes. The state of the name stays for the next store of that name and its other connections
+	 */
 	close(): void
 
-	/** Delete the database entirely (not just clear — remove from browser) */
+	/**
+	 * Delete the state of the name entirely (the database, not just its content), once the operations
+	 * still running have completed: every store of the name then reads empty, until something is
+	 * registered again.
+	 */
 	destroy(): Promise<void>
 
 	// --- Cross-realm reconciliation ---
@@ -281,3 +302,13 @@ export type ChangeLogMeta = {
 	key: string // 'head:{documentId}'
 	value: number
 }
+
+/**
+ * What an import writes through: the store operations `runImport` and the parser call. A store runs
+ * its own import against a target of its own, which a `close()` after the import started does not
+ * refuse - the import is one operation and completes.
+ */
+export type ImportTarget = Pick<
+	Store,
+	'registerDocument' | 'getDocument' | 'updateDocument' | 'removeDocument' | 'bulkWrite'
+>

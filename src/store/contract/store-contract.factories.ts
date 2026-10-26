@@ -8,20 +8,27 @@ function uniqueName(prefix: string): string {
 	return `${prefix}-${crypto.randomUUID()}`
 }
 
+/** An open in-memory store of that name: a new instance, the name's state. */
+async function openInMemoryStore(name: string): Promise<InMemoryStore> {
+	const store = new InMemoryStore(name, {
+		writable: true,
+		importRuntime: createContractImportRuntime(),
+	})
+	await store.open()
+	return store
+}
+
 const inMemoryStoreFactory: StoreContractFactory = {
 	name: 'InMemoryStore',
 	create: async function createInMemoryStore() {
-		const store = new InMemoryStore(uniqueName('store-contract-memory'), {
-			writable: true,
-			importRuntime: createContractImportRuntime(),
-		})
-		await store.open()
-		return store
+		return openInMemoryStore(uniqueName('store-contract-memory'))
 	},
 	reopen: async function reopenInMemoryStore(store) {
 		await store.close()
-		await store.open()
-		return store
+		return openInMemoryStore(store.name)
+	},
+	connect: async function connectInMemoryStore(store) {
+		return openInMemoryStore(store.name)
 	},
 }
 
