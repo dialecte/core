@@ -26,6 +26,7 @@
 		"**/__tests__/**",
 		"src/test/fixtures/scripts/**",
 		"src/store/contract/**",
-		"src/store/sqlite/bench/**"
+		"src/store/sqlite/bench/**",
+		"src/project/io/bench/**"
 	]
 }
