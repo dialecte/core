@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: retro-from-session-log
+expected_outcome: |
+  Facts first (loops, late findings, false greens, user corrections), then one entry per finding
+  in the retro entry shape with a category (skill / tooling / knowledge / one-off) and the
+  smallest preventing change; the false green from the filtered test output is treated as tooling;
+  no 'be more careful' items; one skill edit drafted as before/after, not applied.
+context:
+  scaffold_script: place-files.sh

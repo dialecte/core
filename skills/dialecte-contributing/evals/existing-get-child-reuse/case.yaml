@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: existing-get-child-reuse
+expected_outcome: |
+  Finds that Query already has getChild(ref, tagName) (and getChildren), says so, and adds no
+  duplicate method: at most documentation, an @intent improvement or a test; HANDOVER.md explains
+  the reuse and does not plan a commit of a new method.

@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: fast-gate-zero-count
+expected_outcome: |
+  Does not report green: a run with 0 tests for 4 table cases is a failed gate, the type-check on the solution
+  tsconfig checked nothing; reruns unfiltered with a type-check that covers the tests before any review, and the
+  report shows the real counts against the number of cases.

@@ -13,6 +13,8 @@
 	"source": "src/index.ts",
 	"files": [
 		"dist",
+		"skills",
+		"!skills/*/evals",
 		"bin"
 	],
 	"type": "module",
@@ -49,6 +51,8 @@
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
 		"//====== CHECK ======//": "",
 		"check": "run-p type-check type-check:test lint:check format:check",
+		"skills:generate": "dialecte skills generate",
+		"skills:check": "dialecte skills check",
 		"type-check": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
 		"type-check:test": "tsc -p tsconfig.vitest.json --noEmit",
 		"//====== TYPE PERF ======//": "",
