@@ -119,6 +119,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	/**
 	 * Get the full metadata record of this document.
 	 *
+	 * @intent read the document name or extension, get document metadata, find which config a document uses
+	 *
 	 * @returns The document record: `id`, `name`, `extension`, `configKey`,
 	 *   `createdAt`, and optional `metadata`.
 	 *
@@ -140,6 +142,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 
 	/**
 	 * Get the root element of the document.
+	 *
+	 * @intent get the root element, start a walk from the top of the document
 	 *
 	 * @returns The root record.
 	 *
@@ -165,7 +169,9 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get a single record by ref, record, or relationship.
+	 * Get a single record by ref, record, or relationship, in one store read.
+	 *
+	 * @intent load one element by id, resolve a ref or parent/child relationship to its record, refresh a record
 	 *
 	 * @param refOrRecord - A ref `{ tagName, id }`, or any record/relationship.
 	 * @returns The tracked record, or `undefined` if not found.
@@ -185,6 +191,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * The definition of an element in its context: the declaration its parent holds when the schema
 	 * declares the tag several ways, and what the type it names with xsi:type lets it hold.
 	 *
+	 * @intent read the schema definition of an element, list allowed attributes or enumeration values, know what an xsi:type lets an element hold
+	 *
 	 * @param refOrRecord - The element to describe; its record is fetched, so its parent is known.
 	 * @returns The `ResolvedDefinition`, or `undefined` when nothing is found.
 	 *
@@ -203,6 +211,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	/**
 	 * Get multiple records in a single call.
 	 *
+	 * @intent load several elements by ref at once, resolve a list of children or relationships in one batched read
+	 *
 	 * @param refsOrRecords - Array of refs, records, or relationships.
 	 * @returns Array of tracked records (same order, `undefined` for missing).
 	 *
@@ -219,7 +229,9 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get the first direct child of an element matching a given tag name.
+	 * Get the first direct child of an element matching a given tag name; it looks one level down only.
+	 *
+	 * @intent get one direct child by tag name, check whether a child exists
 	 *
 	 * @param refOrRecord - The parent element.
 	 * @param tagName - The child element type to look for.
@@ -242,7 +254,9 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get all direct children of an element matching a given tag name.
+	 * Get all direct children of an element matching a given tag name; it looks one level down only, no recursion.
+	 *
+	 * @intent list direct children of one tag name, iterate one level below an element
 	 *
 	 * @param refOrRecord - The parent element.
 	 * @param tagName - The child element type to look for.
@@ -265,7 +279,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get all records of a given tag name.
+	 * Get all records of a given tag name in the whole document, read from the tag index: the cheapest
+	 * whole-document scan.
+	 *
+	 * @intent list every element of a tag in the whole document, scan all elements of one type regardless of position
 	 *
 	 * @param tagName - The element type to retrieve.
 	 * @returns All tracked records matching that tag name.
@@ -282,11 +299,11 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Find all descendants of an element, grouped by tag name.
+	 * Find all descendants of an element, grouped by tag name, in no guaranteed order: walk a `getTree`
+	 * result for document order.
 	 *
-	 * The groups are keyed by tag name; the records of a group come in no guaranteed order (the
-	 * store's own; it is not guaranteed to be document order) - walk a `getTree` result for
-	 * document order.
+	 * The groups are keyed by tag name; the records of a group come in the store's own order, which is
+	 * not document order.
 	 *
 	 * Reads: a flat collect reads each tag name's candidates from the store's tag index and
 	 * climbs their parent chains, each ancestor read once per call; the path form reads level
@@ -294,6 +311,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * this document (never before 128), it reads the document once and serves the rest from
 	 * memory - a large collect costs one `getByDocumentId`, never one read per ancestor step. A
 	 * flat collect under the document root with no `omit` climbs nothing.
+	 *
+	 * @intent collect descendants of given tag names under an element, find nested elements at any depth below a scope
 	 *
 	 * @param refOrRecord - The ancestor element.
 	 * @param options - Collect spec and optional omit list. When omitted, collects all descendant tag names.
@@ -353,7 +372,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Walk the parent chain from an element upward.
+	 * Walk the parent chain from an element upward, one store read per step; for the parent alone,
+	 * `getRecord(record.parent)` is enough.
+	 *
+	 * @intent list the ancestors of an element, find the enclosing element of a tag, build a path from the root
 	 *
 	 * @param refOrRecord - The starting element (not included in results).
 	 * @param options - Optional depth limit or stop-at tag name.
@@ -374,7 +396,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Build a full tree structure from an element down.
+	 * Build a full tree structure from an element down. It loads the whole document unless it is a
+	 * committed read with an id and a depth.
+	 *
+	 * @intent read a subtree in document order, walk children recursively, project a filtered tree with select or omit, read a subtree to copy it with deepClone
 	 *
 	 * @param refOrRecord - The root of the subtree.
 	 * @param options - Optional depth/filter controls.
@@ -398,11 +423,14 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Snapshot the (uncommitted) document state as a tree, XML string, or both.
+	 * Snapshot the (uncommitted) document state as a tree, XML string, or both: a view that includes
+	 * staged changes. The stored file, to save or download, comes from `project.export`.
 	 *
 	 * Reads overlay staged operations, so calling this on a live transaction or a
 	 * prepared transaction's `query` reflects exactly what `commit()` would write.
 	 * Scope is controlled by `ref`/`ancestors`/`siblings`/`depth`; output by `as`.
+	 *
+	 * @intent preview what a transaction would commit, read staged changes as XML or as a tree, show what a prepared transaction would produce
 	 *
 	 * @example
 	 * ```ts
@@ -429,6 +457,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 
 	/**
 	 * Get a single attribute value from a record.
+	 *
+	 * @intent read one attribute value, read a namespaced attribute, read an attribute with its schema default
 	 *
 	 * @param refOrRecord - The element to read from.
 	 * @param params - Attribute `name` and an optional `namespace` scope. Without a
@@ -481,6 +511,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	/**
 	 * Get a record's attributes as a destructurable value object, each under the name it is stored by - what a write
 	 * takes back.
+	 *
+	 * @intent read all attribute values of an element, destructure several attributes at once, read attributes of one namespace
 	 *
 	 * @param refOrRecord - The element to read from.
 	 * @returns A `{ aA, bA, 'ext:cA', 'xsi:type', ... }` object: unprefixed in the default namespace, prefixed otherwise.
@@ -549,7 +581,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	//== Find queries
 
 	/**
-	 * Find records matching specific attribute values.
+	 * Find records of one tag matching specific attribute values; it scans every element of that tag in
+	 * the document.
+	 *
+	 * @intent find elements by attribute value, look up an element by an identifying attribute, filter one tag's elements by attribute
 	 *
 	 * @param params - Tag name and attribute filter criteria.
 	 * @returns All matching tracked records.

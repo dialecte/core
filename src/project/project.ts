@@ -126,6 +126,8 @@ export class Project<
 	/**
 	 * Convenience: a fresh BroadcastChannel on this project's channel.
 	 * The caller owns it — call channel.close() when done listening.
+	 *
+	 * @intent listen to project events, receive commits and imports made in other tabs
 	 */
 	createChannel(): BroadcastChannel {
 		return new BroadcastChannel(this.channelName)
@@ -195,6 +197,8 @@ export class Project<
 	/**
 	 * Open a named project: resolve store, open DB connection, hydrate state.
 	 * Must be called before import/export/openDocument.
+	 *
+	 * @intent open or create a project database, start working on a project, reopen a project after close
 	 */
 	async open(name: string): Promise<this> {
 		this._name = name
@@ -294,7 +298,9 @@ export class Project<
 	/**
 	 * Close the store and release resources, once the imports in flight have landed - they
 	 * broadcast on the live channel. From the call on, the project is closed: a new call throws
-	 * `PROJECT_NOT_OPENED`.
+	 * `PROJECT_NOT_OPENED`. The stored documents stay.
+	 *
+	 * @intent close a project, release the database connection when leaving a page
 	 */
 	async close(): Promise<void> {
 		this.closing = true
@@ -304,7 +310,10 @@ export class Project<
 	}
 
 	/**
-	 * Destroy the project - deletes the database entirely, once the imports in flight have landed.
+	 * Destroy the project - deletes the database entirely, every document with its history and blobs,
+	 * once the imports in flight have landed. To delete one document, use `removeDocument`.
+	 *
+	 * @intent delete a whole project, wipe the project database with every document
 	 */
 	async destroy(): Promise<void> {
 		this.closing = true
@@ -322,6 +331,8 @@ export class Project<
 	/**
 	 * Register a new empty document in the project.
 	 * Returns the new documentId. Records are added later via import or transactions.
+	 *
+	 * @intent create a new empty document, start a document from scratch without a file
 	 */
 	async initEmptyDocument(options?: InitEmptyDocumentOptions): Promise<string> {
 		const result = await initEmptyDocument({
@@ -345,7 +356,10 @@ export class Project<
 	}
 
 	/**
-	 * Remove a file and all its records.
+	 * Remove one document from the project - its records, history and blobs - and tell other tabs. The
+	 * other documents stay.
+	 *
+	 * @intent delete a document from the project, remove one file and its records
 	 */
 	async removeDocument(documentId: string): Promise<void> {
 		await this.store.removeDocument(documentId)
@@ -376,6 +390,8 @@ export class Project<
 	 * and a file that fails is its own `failed` entry, the next file still attempted: nothing of a
 	 * failed file lands. The call itself rejects only for what is about the call: an unknown
 	 * `configKey`, a project not open.
+	 *
+	 * @intent import several XML files at once, get one result per file without a throw for a failed file
 	 */
 	async import(files: File[], options?: ImportDocumentOptions): Promise<ImportEntry[]> {
 		this.importStore(options)
@@ -409,6 +425,8 @@ export class Project<
 	 * (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign
 	 * error). `options.onProgress` is told after each stored batch, never awaited. One file is in
 	 * flight per project: a call made while another import runs waits for it.
+	 *
+	 * @intent import an XML file, load a file into the project, parse XML into records
 	 */
 	async importFile(file: File, options?: ImportDocumentOptions): Promise<ImportedDocument> {
 		const store = this.importStore(options)
@@ -443,6 +461,8 @@ export class Project<
 	 * page, `xmlDocument: true` also answers its DOM (parsed from the compact file: pass `indent: false` to export
 	 * once) and `download` saves the formatted file (the save dialog is asked first). Two store exports made for one
 	 * call may see two states of the document if a commit lands between them.
+	 *
+	 * @intent export a document to an XML file, get a document as a Blob, download a document, save a document as XML, read the exported XML as a DOM
 	 */
 	async export(
 		params: ProjectExportParams & { xmlDocument: true },
@@ -461,11 +481,20 @@ export class Project<
 
 	// ── File registry ────────────────────────────────────────────────────────
 
-	/** The documents of the project; one still importing - here or in another realm - is not among them. */
+	/**
+	 * The documents of the project; one still importing - here or in another realm - is not among them.
+	 *
+	 * @intent list the documents of a project, show the files a project holds
+	 */
 	async getDocuments(): Promise<DocumentRecord[]> {
 		return openableDocuments(await this.store.getDocuments())
 	}
 
+	/**
+	 * The metadata record of one document of the project, or `undefined` when it is unknown or still importing.
+	 *
+	 * @intent check a document exists, read a document's name or config key by id
+	 */
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
 		const record = await this.store.getDocument(documentId)
 		return record && !isImporting(record) ? record : undefined
@@ -475,6 +504,8 @@ export class Project<
 
 	/**
 	 * Open a file-scoped Document for querying and mutating a specific file.
+	 *
+	 * @intent open a document to read or write it, get the Document of an id
 	 */
 	openDocument(documentId: string): Document<GenericConfig, MergedExtensions<GenericModules>> {
 		const documentState = this.state.documents.get(documentId)
@@ -513,6 +544,8 @@ export class Project<
 	 * arrives in another realm, even before the import broadcast has been folded
 	 * in. Returns `{ live: false, ready: false }` for an unknown document rather
 	 * than throwing.
+	 *
+	 * @intent check that a document imported in another tab can be opened, wait for a document from another realm
 	 */
 	async getDocumentStatus(documentId: string): Promise<{ live: boolean; ready: boolean }> {
 		await this.store.reconcile(documentId)
@@ -523,7 +556,9 @@ export class Project<
 	}
 
 	/**
-	 * Get the config for a specific file.
+	 * Get the dialecte config a document uses, or `undefined` for a document the project does not know.
+	 *
+	 * @intent get the dialecte config of a document, know which schema a document uses
 	 */
 	getDocumentConfig(documentId: string): GenericConfig | undefined {
 		const documentState = this.state.documents.get(documentId)
@@ -533,6 +568,11 @@ export class Project<
 
 	// ── Undo / Redo ──────────────────────────────────────────────────────────
 
+	/**
+	 * Revert the last committed transaction of a document and tell other tabs. Does nothing when there is nothing to undo.
+	 *
+	 * @intent undo the last change to a document, roll back a commit
+	 */
 	async undo(documentId: string): Promise<void> {
 		const documentState = this.state.documents.get(documentId)
 
@@ -551,6 +591,11 @@ export class Project<
 		this.broadcast({ type: 'commit', documentId, timestamp })
 	}
 
+	/**
+	 * Re-apply the last undone transaction of a document and tell other tabs. Does nothing when there is nothing to redo.
+	 *
+	 * @intent redo an undone change to a document
+	 */
 	async redo(documentId: string): Promise<void> {
 		const documentState = this.state.documents.get(documentId)
 
@@ -572,6 +617,8 @@ export class Project<
 	/**
 	 * Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`.
 	 * Returns the generated blob id.
+	 *
+	 * @intent store a binary file in the project, add an attachment owned by a document
 	 */
 	async addBlob(
 		documentId: string,
@@ -592,6 +639,11 @@ export class Project<
 		return entry.id
 	}
 
+	/**
+	 * Read a stored blob: its metadata entry and its binary data, or `undefined` when the id is unknown.
+	 *
+	 * @intent read an attached file's content, load a blob by id
+	 */
 	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
 		return this.store.getBlob(blobId)
 	}
@@ -599,33 +651,65 @@ export class Project<
 	/**
 	 * Export a blob from the store: `{ entry, data, filename }`; `download` also saves it (the save dialog, or a
 	 * browser download), under its name or the one given.
+	 *
+	 * @intent download a stored file, save a blob to disk, read a blob with its file name
 	 */
 	async exportBlob(params: ProjectExportBlobParams): Promise<ExportBlobResult> {
 		return exportBlob({ store: this.store, request: params })
 	}
 
+	/**
+	 * The blobs referenced from a document (any of their attachments points into it).
+	 *
+	 * @intent list the files attached to a document
+	 */
 	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
 		return this.store.getBlobsByDocument(documentId)
 	}
 
+	/**
+	 * The blobs referenced from one element of a document.
+	 *
+	 * @intent list the files attached to one element
+	 */
 	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
 		return this.store.getBlobsByRecord(documentId, recordRef)
 	}
 
+	/**
+	 * The blobs of the project that no document references (no attachment).
+	 *
+	 * @intent list unattached files, find orphan blobs to clean up
+	 */
 	async getStandaloneBlobs(): Promise<BlobRecord[]> {
 		return this.store.getStandaloneBlobs()
 	}
 
+	/**
+	 * Reference an existing blob from an element of a document (optionally from one of its attributes) and tell other tabs.
+	 *
+	 * @intent link a stored file to an element, attach a blob to a record
+	 */
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
 		await this.store.attachBlob(blobId, ref)
 		this.broadcast({ type: 'blob-attached', blobId, ref, timestamp: Date.now() })
 	}
 
+	/**
+	 * Drop the reference from an element of a document to a blob; the blob itself stays stored.
+	 *
+	 * @intent unlink a file from an element, detach a blob from a record
+	 */
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
 		await this.store.detachBlob(blobId, ref)
 		this.broadcast({ type: 'blob-detached', blobId, ref, timestamp: Date.now() })
 	}
 
+	/**
+	 * Delete a blob and its binary data from the project and tell other tabs. Does nothing when the id is unknown.
+	 *
+	 * @intent delete a stored file, remove a blob for good
+	 */
 	async removeBlob(blobId: string): Promise<void> {
 		await this.store.removeBlob(blobId)
 		this.broadcast({ type: 'blob-removed', blobId, timestamp: Date.now() })
@@ -636,6 +720,8 @@ export class Project<
 	/**
 	 * Run a query function across all documents, return the first non-undefined result.
 	 * Iterates documents sequentially; stops at the first match.
+	 *
+	 * @intent find the first match across every document, search all documents of a project
 	 */
 	async queryFirst<Result>(
 		queryFunction: (
@@ -653,6 +739,8 @@ export class Project<
 	/**
 	 * Run a query function across all documents, collect and flatten results.
 	 * Iterates documents sequentially; merges all non-empty arrays.
+	 *
+	 * @intent collect results from every document, run one query over all documents
 	 */
 	async queryAll<Result>(
 		queryFunction: (
@@ -670,7 +758,11 @@ export class Project<
 
 	// ── Internal ─────────────────────────────────────────────────────────────
 
-	/** Expose the underlying database instance. Return type is inferred from the store (Dexie for local storage). */
+	/**
+	 * Expose the underlying database instance. Return type is inferred from the store (Dexie for local storage).
+	 *
+	 * @intent inspect the underlying database, debug what the store holds
+	 */
 	getDatabaseInstance(): ReturnType<GenericStore['getDatabaseInstance']> {
 		return this.store.getDatabaseInstance() as ReturnType<GenericStore['getDatabaseInstance']>
 	}

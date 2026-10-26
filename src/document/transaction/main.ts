@@ -118,7 +118,9 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	//== Mutation methods
 
 	/**
-	 * Add a child element to a parent.
+	 * Add a child element to a parent. It always creates one; `ensureChild` reuses an existing child.
+	 *
+	 * @intent create a new element under a parent, insert a child with attributes, build new content in a transaction
 	 *
 	 * @param parentRefOrRecord - The parent element (ref, record, or relationship). `undefined` for root.
 	 * @param params - Child tagName, attributes and optional namespace, value, id.
@@ -152,23 +154,28 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	/**
 	 * Get an existing child record or create it under the given parent.
 	 *
-	 * Lookup strategy:
-	 * - Singleton child (id absent in params): resolves by tagName.
-	 * - Non-singleton child (id present in params): resolves by tagName + id.
-	 * - Non-singleton child without id: no lookup, always creates.
+	 * The lookup reads only the direct children of the parent with `params.tagName` (never the whole
+	 * document), in this order:
+	 * 1. Attributes with a non-empty value given: the first of those children whose attributes match them
+	 *    (`params.id` is then not used for the lookup).
+	 * 2. Otherwise, `params.id` given: the child with that id.
+	 * 3. Otherwise: the first of those children.
+	 * 4. No match: the child is created from `params`, as `addChild` would.
+	 *
+	 * @intent get or create a child, make sure a singleton container exists before adding under it, add a child without duplicating it
 	 *
 	 * @param parentRefOrRecord - The parent element (ref, record, or relationship). `undefined` for root.
 	 * @param params - Child tagName, attributes and optional namespace, value, id.
-	 * @returns Ref to the existing or created child.
+	 * @returns The record of the existing or created child.
 	 *
 	 * @example
 	 * ```ts
-	 * const aRef = await tx.ensureChild(root, {
+	 * const a = await tx.ensureChild(root, {
 	 *   tagName: 'A',
 	 *   attributes: {},
 	 * })
 	 * ```
-	 * If A already exists under root, returns its ref. Otherwise, creates it and returns the new ref.
+	 * If an A already exists under root, returns its record. Otherwise, creates it and returns the new record.
 	 */
 	async ensureChild<
 		GenericElement extends ElementsOf<GenericConfig>,
@@ -189,6 +196,8 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 
 	/**
 	 * Update attributes of an existing element.
+	 *
+	 * @intent change attribute values, set or clear an attribute, rename an element through its name attribute, set an element's text value
 	 *
 	 * @param refOrRecord - The element to update (ref, record, or relationship).
 	 * @param params - New attribute values.
@@ -218,6 +227,8 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	/**
 	 * Delete an element and its entire subtree.
 	 *
+	 * @intent remove an element, delete a subtree, prune a child from its parent
+	 *
 	 * @param refOrRecord - The element to delete (ref, record, or relationship).
 	 * @returns RawRecord of the deleted element's parent.
 	 *
@@ -240,14 +251,17 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	/**
 	 * Deep-clone a subtree under a new parent.
 	 *
+	 * @intent copy a subtree with fresh ids, duplicate an element under another parent, paste a tree read with getTree, map old ids to new ids
+	 *
 	 * @param parentRefOrRecord - The target parent for the clone.
 	 * @param record - The tree record to clone (from `getTree`).
-	 * @returns The cloned root raw record and an ID mapping from old to new.
+	 * @returns `{ record, mappings }`: the cloned root raw record and, per cloned node, its source and
+	 *   target refs.
 	 *
 	 * @example
 	 * ```ts
-	 * const tree = await tx.getTree(aRecord)
-	 * const { ref, idMap } = await tx.deepClone(substation, tree)
+	 * const tree = await tx.getTree(aa1) // an AA_1 to copy
+	 * const { record, mappings } = await tx.deepClone(a, tree) // under an A
 	 * ```
 	 */
 	async deepClone<
@@ -271,7 +285,9 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 
 	/**
 	 * Run the `beforeCommit` hook once, when the transaction's work is done, and stage
-	 * what it returns. Called by Document.transaction() / prepare() after the callback.
+	 * what it returns. Called by Document.transaction() / prepare() after the callback; not meant for callers.
+	 *
+	 * @internal Used by Document.transaction and Document.prepare to run beforeCommit hooks.
 	 */
 	async finishStaging(): Promise<void> {
 		if (this.stagingFinished) return
@@ -279,27 +295,41 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 		await stageBeforeCommit({ hooks: this.hooks, context: this.context, query: this })
 	}
 
-	/** Returns a read-only view of staged operations (for prepare/preview) */
+	/**
+	 * Returns a read-only view of the staged operations (for prepare/preview). Called by Document, not meant for callers.
+	 *
+	 * @internal Used by Document.prepare to list pending operations.
+	 */
 	getStagedOperations(): ReadonlyArray<Operation<GenericConfig>> {
 		return this.stagedOperations.log
 	}
 
-	/** Free staged operations from memory */
+	/**
+	 * Free staged operations from memory. Called by Document after commit or discard, not meant for callers.
+	 *
+	 * @internal Used by Document.transaction to release staged writes.
+	 */
 	clearStagedOperations(): void {
 		this.stagedOperations = createStagedOperations()
 	}
 
-	/** Free cached records from memory */
+	/**
+	 * Free cached records from memory. Called by Document after commit or discard, not meant for callers.
+	 *
+	 * @internal Used by Document.transaction to release the record cache.
+	 */
 	clearRecordCache(): void {
 		this.recordCache.clear()
 	}
 
 	/**
 	 * Commit all staged operations to the store atomically.
-	 * Called by Document.transaction() after user callback completes.
+	 * Called by Document.transaction() after user callback completes; not meant for callers.
 	 *
 	 * Updates documentState (loading, progress, lastCommit).
 	 * Merges operations by ID to optimize database writes.
+	 *
+	 * @internal Used by Document.transaction to write staged operations to the store.
 	 */
 	async commit(): Promise<void> {
 		await commitTransaction({
