@@ -22,18 +22,23 @@ import {
 } from '../store.constants'
 import { removeUnfinishedImports } from '../unfinished-imports'
 import { importOutcomeOf } from '../write-outcome'
-import { IMPORT_LOCK_PREFIX } from './dexie-store.constants'
+import { IMPORT_LOCK_PREFIX, VERSION_KEY_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
 
 import { throwDialecteError, toDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
-import { requireImportRuntime, runImport } from '@/project/io/run-import'
+import { runExport } from '@/project/io/run-export'
+import { runImport } from '@/project/io/run-import'
+import { requireStoreRuntime } from '@/project/io/store-runtime'
 
 import type {
 	Store,
 	ChangeLogEntry,
 	ChangeLogMeta,
+	ExportFileParams,
+	ExportFileResult,
+	ExportSource,
 	ImportFileParams,
 	ImportFileResult,
 	ImportTarget,
@@ -43,9 +48,14 @@ import type {
 import type { DexieStoreOptions, StoredDocumentRow } from './types'
 import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project'
-import type { ImportRuntime } from '@/project/io/run-import.types'
+import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 import type { Table } from 'dexie'
+
+/** The `_meta` row of a document's version: how many writes it has taken. */
+function versionKey(documentId: string): string {
+	return `${VERSION_KEY_PREFIX}${documentId}`
+}
 
 function importLockName(params: { storeName: string; writeId: string }): string {
 	return `${IMPORT_LOCK_PREFIX}${params.storeName}:${params.writeId}`
@@ -112,7 +122,7 @@ export class DexieStore implements Store {
 	/** Dev-only perf helper from the owning Project (no-op unless dev.perf is on). */
 	private readonly perf: Perf
 	/** The dialecte `importFile` imports with; its imports run in this realm, through `runImport`. */
-	private readonly importRuntime?: ImportRuntime
+	private readonly runtime?: StoreRuntime
 	/** In-memory file registry - avoids bootstrap connections during close/reopen */
 	private knownDocuments: Map<string, DocumentRecord> = new Map()
 	/** Serialization lock for schema-changing operations */
@@ -139,7 +149,7 @@ export class DexieStore implements Store {
 		this.name = projectName
 		this.dexieRecordSchema = buildDexieSchema(options?.recordSchema ?? DEFAULT_RECORD_SCHEMA)
 		this.perf = options?.perf ?? NOOP_PERF
-		this.importRuntime = options?.importRuntime
+		this.runtime = options?.runtime
 		this.db = new Dexie(projectName)
 	}
 
@@ -260,31 +270,15 @@ export class DexieStore implements Store {
 	}
 
 	async count(documentId: string): Promise<number> {
-		return this.operation(async () => {
-			// a connection made stale by another one forgets its counts before answering from them
-			await this.ensureCurrentSchema()
-			const known = this.recordCounts.get(documentId)
-			if (known !== undefined) return known
-			const table = await this.recordTable(documentId)
-			if (!table) return 0
-			const count = await table.count()
-			this.recordCounts.set(documentId, count)
-			return count
-		})
+		return this.operation(() => this.countUnguarded(documentId))
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
-		return this.operation(async () => {
-			const table = await this.recordTable(documentId)
-			return table ? table.where({ tagName }).toArray() : []
-		})
+		return this.operation(() => this.getByTagNameInDocumentUnguarded(tagName, documentId))
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
-		return this.operation(async () => {
-			const table = await this.recordTable(documentId)
-			return table ? table.bulkGet(ids) : ids.map(() => undefined)
-		})
+		return this.operation(() => this.getManyUnguarded(ids, documentId))
 	}
 
 	// --- Import ---
@@ -293,7 +287,11 @@ export class DexieStore implements Store {
 	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
 		return this.operation(async () => {
 			const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
-			const runtime = requireImportRuntime({ runtime: this.importRuntime, storeName: this.name })
+			const runtime = requireStoreRuntime({
+				runtime: this.runtime,
+				storeName: this.name,
+				operation: 'import',
+			})
 			const run = () =>
 				runImport(
 					{ store: this.ownImportTarget(), runtime, file, options, writeId },
@@ -301,6 +299,23 @@ export class DexieStore implements Store {
 				)
 			if (!navigator.locks) return run()
 			return navigator.locks.request(importLockName({ storeName: this.name, writeId }), run)
+		})
+	}
+
+	// --- Export ---
+
+	async exportFile(params: ExportFileParams): Promise<ExportFileResult> {
+		return this.operation(async () => {
+			const { documentId, options, onProgress, signal } = params
+			const runtime = requireStoreRuntime({
+				runtime: this.runtime,
+				storeName: this.name,
+				operation: 'export',
+			})
+			return runExport(
+				{ source: this.ownExportSource(), runtime, documentId, options },
+				{ onProgress, signal },
+			)
 		})
 	}
 
@@ -402,6 +417,7 @@ export class DexieStore implements Store {
 							}
 							await this.db.table(TABLE_CHANGELOG).add(entry)
 							await this.setHead(documentId, newSeq)
+							await this.bumpVersion(documentId)
 						},
 					)
 				} catch (error) {
@@ -448,6 +464,7 @@ export class DexieStore implements Store {
 					}
 
 					await this.setHead(documentId, head - 1)
+					await this.bumpVersion(documentId)
 				})
 			} finally {
 				this.recordCounts.delete(documentId)
@@ -484,6 +501,7 @@ export class DexieStore implements Store {
 					}
 
 					await this.setHead(documentId, next)
+					await this.bumpVersion(documentId)
 				})
 			} finally {
 				this.recordCounts.delete(documentId)
@@ -658,6 +676,22 @@ export class DexieStore implements Store {
 		}
 	}
 
+	/**
+	 * The source the store's own export reads through: the export is one operation, so a `close()` after it
+	 * started does not refuse the reads it makes (each still counted while it runs).
+	 */
+	private ownExportSource(): ExportSource {
+		return {
+			getDocument: (documentId) => this.tracked(() => this.getDocumentUnguarded(documentId)),
+			// counted afresh: a write through another connection is not in this connection's count
+			count: (documentId) => this.tracked(() => this.countStored(documentId)),
+			getByTagNameInDocument: (tagName, documentId) =>
+				this.tracked(() => this.getByTagNameInDocumentUnguarded(tagName, documentId)),
+			getMany: (ids, documentId) => this.tracked(() => this.getManyUnguarded(ids, documentId)),
+			getExportVersion: (params) => this.tracked(() => this.getExportVersion(params)),
+		}
+	}
+
 	private async registerDocumentUnguarded(file: DocumentRecord): Promise<void> {
 		await this.withSchemaLock(async () => {
 			if (this.stale) await this.reloadFromPersisted()
@@ -692,29 +726,25 @@ export class DexieStore implements Store {
 		try {
 			await this.withSchemaLock(async () => {
 				if (this.stale) await this.reloadFromPersisted()
-				// Clear records first (O(1) table clear)
+				// One transaction: a reader sees the document whole or not registered, never half cleared
 				const tableName = this.resolveTableName(documentId)
-				if (this.db.tables.some((t) => t.name === tableName)) {
-					await this.db.table(tableName).clear()
-				}
-
-				// Clear blob data table owned by this document
 				const blobTable = blobTableName(documentId)
-				if (this.db.tables.some((t) => t.name === blobTable)) {
-					await this.db.table(blobTable).clear()
-				}
-
-				// Remove blob registry entries owned by this document
-				await this.db.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
-
-				// Remove changelog entries for this file
-				await this.db.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
-
-				// Remove head
-				await this.db.table(TABLE_META).delete(`head:${documentId}`)
-
-				// Remove from _files
-				await this.db.table(TABLE_DOCUMENTS).delete(documentId)
+				const ownTables = [tableName, blobTable].filter((name) =>
+					this.db.tables.some((table) => table.name === name),
+				)
+				await this.db.transaction(
+					'rw',
+					[...ownTables, TABLE_BLOBS, TABLE_CHANGELOG, TABLE_META, TABLE_DOCUMENTS],
+					async () => {
+						// records and blob data first (O(1) table clears)
+						for (const name of ownTables) await this.db.table(name).clear()
+						await this.db.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
+						await this.db.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
+						// the version row stays: a document registered again under the id goes on from it
+						await this.db.table(TABLE_META).delete(`head:${documentId}`)
+						await this.db.table(TABLE_DOCUMENTS).delete(documentId)
+					},
+				)
 
 				// Remove from memory and reopen (null table = Dexie drop)
 				this.knownDocuments.delete(documentId)
@@ -733,7 +763,7 @@ export class DexieStore implements Store {
 			const { creates, updates, deletes } = ops
 			const table = await this.writeTable(documentId)
 
-			await this.db.transaction('rw', table, async () => {
+			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
 				if (creates?.length) {
 					this.perf.start('core::store::bulkWrite::add')
 					await addRecords({ table, creates, documentId })
@@ -762,6 +792,7 @@ export class DexieStore implements Store {
 					await table.bulkDelete(deletes)
 					this.perf.stop('core::store::bulkWrite::delete')
 				}
+				await this.bumpVersion(documentId)
 			})
 		} finally {
 			this.recordCounts.delete(documentId)
@@ -777,6 +808,59 @@ export class DexieStore implements Store {
 
 	private async setHead(documentId: string, value: number): Promise<void> {
 		await this.db.table<ChangeLogMeta>(TABLE_META).put({ key: `head:${documentId}`, value })
+	}
+
+	/** A write landed on the document: its version moves on, inside the write's transaction. */
+	private async bumpVersion(documentId: string): Promise<void> {
+		const meta = this.db.table<ChangeLogMeta>(TABLE_META)
+		const current = await meta.get(versionKey(documentId))
+		await meta.put({ key: versionKey(documentId), value: (current?.value ?? 0) + 1 })
+	}
+
+	/** How many writes a `ready` document has taken, read with its registry row in one transaction. */
+	private async getExportVersion(params: { documentId: string }): Promise<number | undefined> {
+		const { documentId } = params
+		await this.ensureCurrentSchema()
+		const documents = this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+		const meta = this.db.table<ChangeLogMeta>(TABLE_META)
+		return this.db.transaction('r', documents, meta, async () => {
+			const row = await documents.get(documentId)
+			if (!row || withStatus(row).status !== 'ready') return undefined
+			return (await meta.get(versionKey(documentId)))?.value ?? 0
+		})
+	}
+
+	private async countUnguarded(documentId: string): Promise<number> {
+		// a connection made stale by another one forgets its counts before answering from them
+		await this.ensureCurrentSchema()
+		const known = this.recordCounts.get(documentId)
+		if (known !== undefined) return known
+		const table = await this.recordTable(documentId)
+		if (!table) return 0
+		const count = await table.count()
+		this.recordCounts.set(documentId, count)
+		return count
+	}
+
+	private async countStored(documentId: string): Promise<number> {
+		const table = await this.recordTable(documentId)
+		return table ? table.count() : 0
+	}
+
+	private async getByTagNameInDocumentUnguarded(
+		tagName: string,
+		documentId: string,
+	): Promise<AnyRawRecord[]> {
+		const table = await this.recordTable(documentId)
+		return table ? table.where({ tagName }).toArray() : []
+	}
+
+	private async getManyUnguarded(
+		ids: string[],
+		documentId: string,
+	): Promise<(AnyRawRecord | undefined)[]> {
+		const table = await this.recordTable(documentId)
+		return table ? table.bulkGet(ids) : ids.map(() => undefined)
 	}
 
 	/** Build Dexie stores object from current knownDocuments */

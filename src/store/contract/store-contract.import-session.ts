@@ -11,7 +11,7 @@ import { TEST_DIALECTE_CONFIG } from '@/test/config'
 import { TEST_CONFIG_KEY } from '@/test/constant'
 
 import type { ContractImportHold } from './store-contract.types'
-import type { ImportRuntime } from '@/project/io/run-import.types'
+import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { AnyDialecteConfig, AnyRawRecord, DialecteHooks, ImportSession } from '@/types'
 
 /** The hold a case took: the next session handed a record holding the hold value waits for it. */
@@ -87,7 +87,7 @@ function createContractImportSession(): ImportSession {
 }
 
 /** What every contract leg imports with: core's test config, the contract session, perf on. */
-export function createContractImportRuntime(): ImportRuntime {
+export function createContractRuntime(): StoreRuntime {
 	const hooks: DialecteHooks<AnyDialecteConfig> = {
 		createImportSession: createContractImportSession,
 	}

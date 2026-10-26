@@ -36,5 +36,12 @@ export function createInMemoryState(): InMemoryState {
 		blobs: new Map(),
 		blobData: new Map(),
 		runningImports: new Set(),
+		versions: new Map(),
 	}
+}
+
+/** A write landed on the document: its version moves on (in the write's synchronous section, so an export reading it sees the write). */
+export function bumpVersion(params: { state: InMemoryState; documentId: string }): void {
+	const { state, documentId } = params
+	state.versions.set(documentId, (state.versions.get(documentId) ?? 0) + 1)
 }

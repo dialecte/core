@@ -30,8 +30,8 @@ async function exported(params: {
 	project: ActParams<TestDialecteConfig, TestCase>['project']
 	documentId: string
 }): Promise<string> {
-	const { xmlDocument } = await params.project.export(params.documentId)
-	return new XMLSerializer().serializeToString(xmlDocument)
+	const { file } = await params.project.export({ documentId: params.documentId, indent: false })
+	return file.text()
 }
 
 type TestCase = BaseXmlTestCase & {

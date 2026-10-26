@@ -320,7 +320,12 @@ const { project, source } = await createTestProject({
 
 try {
 	// ...transactions on source.document...
-	const { xmlDocument } = await project.export(source.documentId, { withDatabaseIds: true })
+	const { xmlDocument } = await project.export({
+		documentId: source.documentId,
+		indent: false,
+		withDatabaseIds: true,
+		xmlDocument: true,
+	})
 	assertExpectedElementQueries({
 		xmlDocument,
 		queries: ['//default:A[@aA="parent"]/default:AA_1[@aAA_1="updated"]'],
@@ -441,7 +446,12 @@ try {
 		await tx.update({ tagName: 'A', id: '2' }, { attributes: { aA: 'updated' } })
 	})
 
-	const { xmlDocument } = await project.export(source.documentId, { withDatabaseIds: true })
+	const { xmlDocument } = await project.export({
+		documentId: source.documentId,
+		indent: false,
+		withDatabaseIds: true,
+		xmlDocument: true,
+	})
 	// assert manually on xmlDocument...
 } finally {
 	await project.destroy()

@@ -1,6 +1,6 @@
 import { InMemoryStore } from '../in-memory'
 import { DexieStore } from '../local'
-import { createContractImportRuntime } from './store-contract.import-session'
+import { createContractRuntime } from './store-contract.import-session'
 
 import type { StoreContractFactory } from './store-contract.types'
 
@@ -12,7 +12,7 @@ function uniqueName(prefix: string): string {
 async function openInMemoryStore(name: string): Promise<InMemoryStore> {
 	const store = new InMemoryStore(name, {
 		writable: true,
-		importRuntime: createContractImportRuntime(),
+		runtime: createContractRuntime(),
 	})
 	await store.open()
 	return store
@@ -36,19 +36,19 @@ const dexieStoreFactory: StoreContractFactory = {
 	name: 'DexieStore',
 	create: async function createDexieStore() {
 		const store = new DexieStore(uniqueName('store-contract-dexie'), {
-			importRuntime: createContractImportRuntime(),
+			runtime: createContractRuntime(),
 		})
 		await store.open()
 		return store
 	},
 	reopen: async function reopenDexieStore(store) {
 		await store.close()
-		const reopened = new DexieStore(store.name, { importRuntime: createContractImportRuntime() })
+		const reopened = new DexieStore(store.name, { runtime: createContractRuntime() })
 		await reopened.open()
 		return reopened
 	},
 	connect: async function connectDexieStore(store) {
-		const other = new DexieStore(store.name, { importRuntime: createContractImportRuntime() })
+		const other = new DexieStore(store.name, { runtime: createContractRuntime() })
 		await other.open()
 		return other
 	},

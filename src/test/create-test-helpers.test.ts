@@ -187,7 +187,11 @@ describe('createTestHelpers', () => {
 	it('the XML assertions resolve the default config namespaces', async () => {
 		const { project, source } = await helpers.createTestProject({ sourceXml: VALID_XML })
 		projects.push(project)
-		const { xmlDocument } = await project.export(source.documentId)
+		const { xmlDocument } = await project.export({
+			documentId: source.documentId,
+			indent: false,
+			xmlDocument: true,
+		})
 
 		helpers.assertExpectedElementQueries({ xmlDocument, queries: ['//default:A[@aA="ONE"]'] })
 		helpers.assertUnexpectedElementQueries({ xmlDocument, queries: ['//default:C'] })

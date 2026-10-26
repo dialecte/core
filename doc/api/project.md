@@ -126,25 +126,37 @@ Same options as `import`. **Returns** `Promise<ImportedDocument>`. **Throws** wh
 
 ## export
 
-Serializes a document's records back to XML.
+Exports a document through the store: the store reads its records in batches next to the data and answers one file.
 
 ```ts
-const { xmlDocument, filename } = await project.export(documentId, {
-	withDatabaseIds: false,
-	withDownload: false,
-})
+const { file, filename } = await project.export({ documentId })
+
+// on the page: the DOM too (parse the compact file: one store export)
+const { xmlDocument } = await project.export({ documentId, indent: false, xmlDocument: true })
+
+// on the page: save the formatted file (the save dialog in Chrome, a download elsewhere)
+await project.export({ documentId, download: true })
 ```
 
-**ExportDocumentOptions**
+**ProjectExportParams**
 
-| Param             | Type      | Default | Description                                                                           |
-| ----------------- | --------- | ------- | ------------------------------------------------------------------------------------- |
-| `withDatabaseIds` | `boolean` | `false` | Include internal database IDs in exported XML                                         |
-| `withDownload`    | `boolean` | `false` | Trigger a browser file download via the File System Access API (with anchor fallback) |
+| Param             | Type                              | Default | Description                                                                                                                                                                        |
+| ----------------- | --------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `documentId`      | `string`                          | -       | The document to export                                                                                                                                                             |
+| `indent`          | `boolean`                         | `true`  | The layout of `file`: formatted (4 spaces, CRLF, a text value on its element's line) or compact                                                                                    |
+| `withDatabaseIds` | `boolean`                         | `false` | Each element carries its record id as `_temp-idb-id` (`TEMP_IDB_ID_ATTRIBUTE_NAME`)                                                                                                |
+| `xmlDocument`     | `boolean`                         | `false` | Also answer the DOM, parsed from the compact file with [`parseXmlDocument`](/io/xml#parsexmldocument): no whitespace-only text node                                                |
+| `download`        | `boolean \| { filename: string }` | `false` | Also save the formatted file under the document's filename (or the one given); the save dialog is asked before the export runs, while the click still counts as the user's gesture |
 
-**Returns** `Promise<{ xmlDocument: XMLDocument; filename: string }>`
+**Returns** `Promise<{ file: Blob; filename: string; xmlDocument?: XMLDocument }>` - `file` is UTF-8 XML (`application/xml`); `xmlDocument` is typed present when `xmlDocument: true` is passed.
 
-The downloaded file is indented by depth; an element that holds text is written as is on its line, children included (`<Item>2025-08-04 10:59:16</Item>`): no whitespace is added to a value. `getSnapshot({ as: 'xml' })` writes its XML the same way.
+- One store export per call when the options agree; a second one when `xmlDocument` is asked with a formatted `file` (the DOM is parsed from the compact layout) or `download` with a compact one (the saved file is formatted). Two exports may see two states of the document if a commit lands between them: pass `indent: false` with `xmlDocument: true` to export once.
+- The DOM and the save happen in the calling page; the store never builds them, so a store behind a worker exports the same way.
+- A cancelled save dialog saves nothing and the call still answers; a dialog refused because the user's gesture lapsed falls back to a download of the formatted file; any other save failure is thrown. The browser may create the chosen file as the dialog closes: an export that then fails (`EXPORT_CONFLICT`, an abort) can leave it empty.
+- A document not in the project throws `DOCUMENT_NOT_REGISTERED`; a commit on the document while it is exported restarts the export once, a second one throws `EXPORT_CONFLICT` (see [Export inside the store](/io/#export-inside-the-store)).
+- The DOM equals the document the records make, element by element; its attributes also hold the namespace declarations written into the file (the root `xmlns` is an attribute of the xmlns namespace). The compact file writes a carriage return of a text value as `&#13;`, so the DOM keeps it (a raw one would be read as a line feed).
+
+The formatted file is indented by depth; an element that holds text is written as is on its line, children included (`<Item>2025-08-04 10:59:16</Item>`): no whitespace is added to a value. `getSnapshot({ as: 'xml' })` writes its XML the same way. The bytes are the same in every browser.
 
 ## File registry
 
@@ -184,7 +196,7 @@ const config = project.getDocumentConfig(documentId)
 const { live, ready } = await project.getDocumentStatus(documentId)
 if (ready) {
 	const doc = project.openDocument(documentId)
-	const { xmlDocument } = await project.export(documentId) // safe
+	const { file } = await project.export({ documentId }) // safe
 }
 ```
 
@@ -281,19 +293,18 @@ Each mutation broadcasts a corresponding `blob-added` / `blob-attached` / `blob-
 
 ## exportBlob
 
-Fetch a blob from the store and optionally trigger a browser download. Mirrors `export(documentId)` for binary attachments.
+Fetch a blob from the store and, on request, save it. Takes one object, as `export` does.
 
 ```ts
-const { entry, data, filename } = await project.exportBlob(blobId, {
-	withDownload: true,
-})
+const { entry, data, filename } = await project.exportBlob({ blobId, download: true })
 ```
 
-**ExportBlobOptions**
+**ProjectExportBlobParams**
 
-| Param          | Type      | Default | Description                                                                           |
-| -------------- | --------- | ------- | ------------------------------------------------------------------------------------- |
-| `withDownload` | `boolean` | `false` | Trigger a browser file download via the File System Access API (with anchor fallback) |
+| Param      | Type                              | Default | Description                                                                                                                                                                                                                                                                                                  |
+| ---------- | --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `blobId`   | `string`                          | -       | The blob to fetch                                                                                                                                                                                                                                                                                            |
+| `download` | `boolean \| { filename: string }` | `false` | Also save it: the save dialog where the browser has one, a download otherwise. Under its own name the dialog opens once the blob is read; under `{ filename }` it opens first. A cancelled dialog saves nothing; a dialog refused for a lapsed gesture falls back to a download; any other failure is thrown |
 
 **Returns** `Promise<{ entry: BlobRecord; data: Blob; filename: string }>`
 

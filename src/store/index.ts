@@ -3,6 +3,12 @@ export type {
 	ChangeLogEntry,
 	ChangeLogMeta,
 	RecordSchema,
+	ExportControl,
+	ExportFileOptions,
+	ExportFileParams,
+	ExportFileResult,
+	ExportProgress,
+	ExportSource,
 	ImportControl,
 	ImportFileOptions,
 	ImportFileParams,
@@ -29,4 +35,5 @@ export {
 	META_SCHEMA,
 	BLOBS_SCHEMA,
 	BLOB_DATA_SCHEMA,
+	EXPORT_BATCH_SIZE,
 } from './store.constants'

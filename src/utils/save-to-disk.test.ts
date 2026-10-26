@@ -2,6 +2,10 @@ import { saveToDisk } from './save-to-disk'
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
+import { runTestCases } from '@/test'
+
+import type { BaseTestCase } from '@/test'
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 type MockWritable = { write: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }
@@ -61,14 +65,39 @@ describe('saveToDisk', () => {
 		expect(consoleError).not.toHaveBeenCalled()
 	})
 
-	it('logs non-Abort picker errors via console.error', async () => {
+	describe('a picker refused for a lapsed user gesture -> the same Blob downloaded', () => {
+		type LapsedCase = BaseTestCase & { errorName: string }
+		const testCases: Record<string, LapsedCase> = {
+			'SecurityError -> downloaded': { errorName: 'SecurityError' },
+			'NotAllowedError -> downloaded': { errorName: 'NotAllowedError' },
+		}
+
+		runTestCases.generic(testCases, async (testCase) => {
+			stubPicker(() => {
+				throw new DOMException('the gesture lapsed', testCase.errorName)
+			})
+			const click = vi.fn()
+			const anchor = document.createElement('a')
+			anchor.click = click
+			vi.spyOn(document, 'createElement').mockReturnValue(anchor)
+			const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:lapsed')
+			vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+			const data = new Blob(['x'])
+
+			await saveToDisk({ data, filename: 'a.txt' })
+
+			expect(createObjectURL).toHaveBeenCalledWith(data)
+			expect(anchor.download).toBe('a.txt')
+			expect(click).toHaveBeenCalled()
+		})
+	})
+
+	it('a picker failing otherwise than by a cancel -> the failure thrown', async () => {
 		stubPicker(() => {
 			throw new Error('boom')
 		})
-		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-		await expect(saveToDisk({ data: new Blob(['x']), filename: 'a.txt' })).resolves.toBeUndefined()
-		expect(consoleError).toHaveBeenCalled()
+		await expect(saveToDisk({ data: new Blob(['x']), filename: 'a.txt' })).rejects.toThrow('boom')
 	})
 
 	it('falls back to anchor download when showSaveFilePicker is unavailable', async () => {

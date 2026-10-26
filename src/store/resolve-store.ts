@@ -2,19 +2,19 @@ import { DexieStore, InMemoryStore } from '@/store'
 
 import type { StorageParam } from '../project/types'
 import type { Perf } from '@/perf'
-import type { ImportRuntime } from '@/project/io/run-import.types'
+import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { Store } from '@/store'
 
 /**
  * Resolve the Store instance from open params.
- * 'local' creates a DexieStore; 'inMemory' creates an InMemoryStore - both import with `runtime`;
- * 'custom' passes through the user-provided store, which imports with its own.
+ * 'local' creates a DexieStore; 'inMemory' creates an InMemoryStore - both import and export with `runtime`;
+ * 'custom' passes through the user-provided store, which imports and exports with its own.
  */
 export function resolveStore(params: {
 	name: string
 	storage: StorageParam
-	/** The dialecte the store imports with; its default config gives the local store's record schema */
-	runtime: ImportRuntime
+	/** The dialecte the store imports and exports with; its default config gives the local store's record schema */
+	runtime: StoreRuntime
 	perf?: Perf
 }): Store {
 	const { name, storage, runtime, perf } = params
@@ -23,11 +23,11 @@ export function resolveStore(params: {
 		return new DexieStore(name, {
 			recordSchema: config.database.recordSchema,
 			perf,
-			importRuntime: runtime,
+			runtime,
 		})
 	}
 	if (storage.type === 'inMemory') {
-		return new InMemoryStore(name, { writable: storage.writable ?? true, importRuntime: runtime })
+		return new InMemoryStore(name, { writable: storage.writable ?? true, runtime })
 	}
 	return storage.store
 }

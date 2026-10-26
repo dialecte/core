@@ -1,6 +1,7 @@
 import type { Diagnostic } from '@/diagnostics'
 import type { DocumentState, ExtensionModules } from '@/document'
 import type { DialecteError } from '@/errors'
+import type { Perf } from '@/perf'
 import type { ImportControl, ImportFileOptions, Store } from '@/store/store.types'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
@@ -183,38 +184,71 @@ export type ImportEntry =
 
 // ── exportDocument ───────────────────────────────────────────────────────────
 
-export type ExportDocumentParams = {
+/** What `Project.export` is asked: the document, its layout, and what to make of it on the page. */
+export type ProjectExportParams = {
 	documentId: string
-	state: ProjectState
-	configs: Record<string, AnyDialecteConfig>
-	store: Store
-	projectName: string
-	options?: ExportDocumentOptions
-}
-
-export type ExportDocumentOptions = {
-	/** Include internal database IDs in exported XML */
+	/** The file formatted (4 spaces, CRLF, a text value on its element's line); `false` = compact. Default `true`. */
+	indent?: boolean
+	/** The record id as `_temp-idb-id` on every element (and in the DOM). Default `false`. */
 	withDatabaseIds?: boolean
-	/** Trigger a browser file download after export */
-	withDownload?: boolean
+	/** Also answer the DOM of the document, parsed from the compact file in the page. */
+	xmlDocument?: boolean
+	/**
+	 * Also save the formatted file: the save dialog where the browser has one (asked before the export runs), a
+	 * download otherwise; under the document's filename unless one is given.
+	 */
+	download?: boolean | { filename: string }
 }
 
-export type ExportDocumentResult = {
-	xmlDocument: XMLDocument
+/** A document `Project.export` exported. */
+export type ProjectExportResult = {
+	/** The document as UTF-8 XML, in the layout `indent` asked */
+	file: Blob
+	/** The document's name and extension */
 	filename: string
+}
+
+/** A document `Project.export` exported with its DOM. */
+export type ProjectExportResultWithDocument = ProjectExportResult & { xmlDocument: XMLDocument }
+
+/** A document `Project.export` exported, with its DOM when it was asked. */
+export type ProjectExportResultMaybeDocument = ProjectExportResult & { xmlDocument?: XMLDocument }
+
+/** What `exportDocument` runs on: the project's store and state. */
+export type ExportDocumentParams = {
+	store: Store
+	state: ProjectState
+	projectName: string
+	/** What the project was asked */
+	request: ProjectExportParams
+	/** The project's perf: the store's export timings are merged into it under `store::` */
+	perf?: Perf
+}
+
+/** One store export in a layout, its timings merged into the project's perf. */
+export type ExportLayoutParams = Pick<ExportDocumentParams, 'store' | 'perf'> & {
+	documentId: string
+	indent: boolean
+	withDatabaseIds: boolean | undefined
 }
 
 // ── exportBlob ───────────────────────────────────────────────────────────────
 
-export type ExportBlobParams = {
+/** What `Project.exportBlob` is asked: the blob, and whether to save it. */
+export type ProjectExportBlobParams = {
 	blobId: string
-	store: Store
-	options?: ExportBlobOptions
+	/**
+	 * Also save the blob: the save dialog where the browser has one, a download otherwise; under the blob's name
+	 * (the dialog opened once the blob is read) or the one given (the dialog opened first). The result's
+	 * `filename` stays the blob's own name.
+	 */
+	download?: boolean | { filename: string }
 }
 
-export type ExportBlobOptions = {
-	/** Trigger a browser file download after fetching the blob */
-	withDownload?: boolean
+/** What `exportBlob` runs on: the project's store. */
+export type ExportBlobParams = {
+	store: Store
+	request: ProjectExportBlobParams
 }
 
 export type ExportBlobResult = {

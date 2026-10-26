@@ -184,7 +184,11 @@ describe('xsi:type - one stored form', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const { xmlDocument } = await project.export(source.documentId, { withDatabaseIds: false })
+			const { xmlDocument } = await project.export({
+				documentId: source.documentId,
+				indent: false,
+				xmlDocument: true,
+			})
 			const shape = xmlDocument.getElementsByTagNameNS(DEFAULT_URI, 'DD_1')[0]
 			const value = shape.getAttributeNS(XSI_NAMESPACE.uri, 'type') ?? ''
 			if (testCase.expectedValue !== undefined) expect(value).toBe(testCase.expectedValue)

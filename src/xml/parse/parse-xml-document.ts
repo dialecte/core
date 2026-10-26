@@ -4,6 +4,7 @@ import { setSaxParser } from './parser'
 import { throwDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
+import { tellListener } from '@/utils/tell-listener'
 
 import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
 import type { Diagnostic } from '@/diagnostics'
@@ -224,32 +225,6 @@ export function throwIfAborted(params: { signal?: AbortSignal; file: File }): vo
 	})
 }
 
-/**
- * Tell a progress listener, never waiting for it: a listener on the far side of a closed port may
- * never answer, and its failure is not the import's.
- */
-function tellProgress(params: { control: ImportControl; progress: ImportProgress }): void {
-	const { control, progress } = params
-	if (!control.onProgress) return
-	try {
-		const answer: unknown = control.onProgress(progress)
-		// a promise of another realm, or any thenable, is not `instanceof Promise` here
-		if (isThenable(answer)) Promise.resolve(answer).catch(ignoreListenerFailure)
-	} catch {
-		// a listener that throws is the listener's problem, not the import's
-	}
-}
-
-function ignoreListenerFailure(): void {}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		typeof (value as { then?: unknown }).then === 'function'
-	)
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function appendToBuffer(existing: Uint8Array, incoming: Uint8Array<ArrayBufferLike>): Uint8Array {
@@ -285,6 +260,6 @@ async function flushBatch(params: {
 	} finally {
 		perf.stop('import::insert')
 	}
-	tellProgress({ control, progress })
+	tellListener({ listener: control.onProgress, value: progress })
 	return stored
 }

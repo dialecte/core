@@ -53,7 +53,7 @@ describe('Project.open - the documents it finds', () => {
 	})
 
 	it('in memory: a ready document and an import left unfinished → ready opened, the leftover removed with its records', async () => {
-		const store = new InMemoryStore('open-sweep', { importRuntime: RUNTIME })
+		const store = new InMemoryStore('open-sweep', { runtime: RUNTIME })
 		await store.open()
 		for (const record of [READY, LEFT]) {
 			await store.registerDocument(record)

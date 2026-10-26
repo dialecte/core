@@ -76,6 +76,7 @@ function makeStore(options?: { shouldThrow?: Error }): { store: Store; calls: St
 		destroy: vi.fn(),
 		importFile: vi.fn(),
 		getWriteOutcome: vi.fn(),
+		exportFile: vi.fn(),
 	}
 
 	return { store, calls }
@@ -101,6 +102,7 @@ describe('commitTransaction', () => {
 			destroy: vi.fn(),
 			importFile: vi.fn(),
 			getWriteOutcome: vi.fn(),
+			exportFile: vi.fn(),
 			reconcile: vi.fn(),
 			isDocumentReadable: vi.fn(),
 			registerDocument: vi.fn(),

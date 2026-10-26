@@ -1833,6 +1833,7 @@ const OPERATIONS_ON_A_CLOSED_STORE: Record<string, StoreOperation> = {
 	getMany: (store) => store.getMany(['r1'], 'doc-1'),
 	importFile: (store) => store.importFile({ file: contractFile({ body: sessionRecords(1) }) }),
 	getWriteOutcome: (store) => store.getWriteOutcome({ writeId: 'w-any' }),
+	exportFile: (store) => store.exportFile({ documentId: 'doc-1' }),
 	bulkWrite: (store) => store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r9' })] }),
 	commit: (store) => commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r9' })] }),
 	undo: (store) => store.undo('doc-1'),

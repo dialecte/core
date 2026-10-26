@@ -66,8 +66,7 @@
 	"dependencies": {
 		"@types/sax": "1.2.7",
 		"dexie": "4.4.6",
-		"sax": "^1.4.3",
-		"xml-formatter": "^3.6.7"
+		"sax": "^1.4.3"
 	},
 	"devDependencies": {
 		"@dialecte/cli": "0.0.3",

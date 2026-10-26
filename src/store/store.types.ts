@@ -148,6 +148,17 @@ export interface Store {
 	 */
 	importFile(params: ImportFileParams): Promise<ImportFileResult>
 
+	// --- Export ---
+
+	/**
+	 * Export one document next to the data: its records read in batches, written as formatted XML (or compact with `indent: false`), answered as one UTF-8 `Blob` and its filename.
+	 * Never reads the whole document in one call. A write on the document while it is exported restarts
+	 * the export once from the start; a second one fails it with `EXPORT_CONFLICT`. An abort fails it with
+	 * `EXPORT_ABORTED`; nothing is left either way. A document that is not registered, or still
+	 * `importing`, is refused with `DOCUMENT_NOT_REGISTERED`. `onProgress` is never awaited.
+	 */
+	exportFile(params: ExportFileParams): Promise<ExportFileResult>
+
 	/**
 	 * What became of a write, asked by its id - after a lost connection, before reading again:
 	 * `running`, `applied` (the document is ready) or `not-applied` (it failed, was aborted, never
@@ -281,6 +292,48 @@ export type ImportFileResult = {
 	perf?: PerfSnapshot
 }
 
+/** How a document is written: plain data, it crosses a worker boundary as is. */
+export type ExportFileOptions = {
+	/** Formatted (4 spaces, CRLF, a text value on its element's line); `false` = compact. Default `true`. */
+	indent?: boolean
+	/** The record id as `_temp-idb-id` on every element. Default `false`. */
+	withDatabaseIds?: boolean
+	/** Records read per call and written per batch. Default `EXPORT_BATCH_SIZE`. */
+	batchSize?: number
+}
+
+/** How far an export is: the records written so far, out of the document's. */
+export type ExportProgress = {
+	recordsWritten: number
+	totalRecords: number
+}
+
+/** What a caller holds over an export that runs, kept apart from its data as for an import. */
+export type ExportControl = {
+	/**
+	 * Told after each written batch; never awaited, its failure ignored. An export restarted by a write on its
+	 * document tells its progress from the start again.
+	 */
+	onProgress?: (progress: ExportProgress) => void
+	/** Aborts the export at the next batch: `EXPORT_ABORTED`, nothing answered. */
+	signal?: AbortSignal
+}
+
+export type ExportFileParams = ExportControl & {
+	documentId: string
+	options?: ExportFileOptions
+}
+
+/** A document the store exported. */
+export type ExportFileResult = {
+	/** The document as UTF-8 XML (`application/xml`) */
+	file: Blob
+	/** The document's name and extension */
+	filename: string
+	/** The timings of the export's stages, on the clock of the realm that ran it; with perf on only */
+	perf?: PerfSnapshot
+}
+
 /** What became of a write asked by its id. */
 export type WriteOutcome = 'applied' | 'running' | 'not-applied'
 
@@ -312,3 +365,15 @@ export type ImportTarget = Pick<
 	Store,
 	'registerDocument' | 'getDocument' | 'updateDocument' | 'removeDocument' | 'bulkWrite'
 >
+
+/**
+ * What an export reads through: the store's reads, and the version of a document - how many writes it
+ * has taken, `undefined` once it is not registered or not `ready`. A store runs its own export against a
+ * source of its own, which a `close()` after the export started does not refuse.
+ */
+export type ExportSource = Pick<
+	Store,
+	'getDocument' | 'count' | 'getMany' | 'getByTagNameInDocument'
+> & {
+	getExportVersion(params: { documentId: string }): Promise<number | undefined>
+}

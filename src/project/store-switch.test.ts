@@ -79,7 +79,7 @@ const CASES: Record<
 			const project = await openProject({ storage, hooks: TEXT_WRITING_HOOKS })
 			const { documentId } = await project.importFile(leafFile())
 
-			const { xmlDocument } = await project.export(documentId)
+			const { xmlDocument } = await project.export({ documentId, indent: false, xmlDocument: true })
 
 			expect(xmlDocument.getElementsByTagName('CCCC_1')[0]?.textContent).toBe(HOOK_TEXT)
 		},

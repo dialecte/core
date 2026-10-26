@@ -7,7 +7,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { InMemoryStore } from '@/store/in-memory/in-memory-store'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEV_NAMESPACE } from '@/test'
 
-import type { ImportRuntime } from './run-import.types'
+import type { StoreRuntime } from './store-runtime.types'
 import type { DialecteErrorKey } from '@/errors'
 import type { ImportFileOptions, Store } from '@/store/store.types'
 import type { AnyDialecteConfig, AnyRawRecord, DialecteHooks } from '@/types'
@@ -28,7 +28,7 @@ function xmlFile(params: { body: string; name?: string; closed?: boolean }): Fil
 	})
 }
 
-function runtime(hooks?: DialecteHooks<AnyDialecteConfig>): ImportRuntime {
+function runtime(hooks?: DialecteHooks<AnyDialecteConfig>): StoreRuntime {
 	return { configs: { default: CONFIG, alt: ALT_CONFIG }, defaultConfigKey: 'default', hooks }
 }
 

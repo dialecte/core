@@ -369,7 +369,7 @@ invariant(record, { detail: `record ${ref.tagName}#${ref.id} not found` })
 
 ### `saveToDisk`
 
-Saves a `Blob` to disk using the native File System Access API when available (Chrome/Edge) and falling back to a hidden-anchor download (Safari/Firefox). Browser-only — relies on `window`/`document`/`URL`. Used by `project.export`.
+Saves a `Blob` to disk using the native File System Access API when available (Chrome/Edge) and falling back to a hidden-anchor download (Safari/Firefox). Browser-only — relies on `window`/`document`/`URL`. `project.export` and `project.exportBlob` save through the same dialog-then-write steps, the dialog asked before the work when they can.
 
 ```ts
 import { saveToDisk } from '@dialecte/core/utils'
@@ -381,7 +381,7 @@ await saveToDisk({
 })
 ```
 
-A cancelled save-file picker (`AbortError`) resolves silently.
+A cancelled save-file picker (`AbortError`) resolves and saves nothing; a picker refused because the user's gesture lapsed (`SecurityError`, `NotAllowedError`: work awaited before the save) falls back to the anchor download; any other failure of the picker or the write is thrown.
 
 ## XML formatting
 
