@@ -25,6 +25,7 @@
 		"**/*.test.ts",
 		"**/__tests__/**",
 		"src/test/fixtures/scripts/**",
-		"src/store/contract/**"
+		"src/store/contract/**",
+		"src/store/sqlite/bench/**"
 	]
 }

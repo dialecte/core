@@ -10,6 +10,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
  * Gated by VITE_BENCH=1. Stream live (no file redirect), poll the terminal:
  *   VITE_BENCH=1 npx vitest run --mode bench --reporter=verbose \
  *     src/test/fixtures/idb-read-floor.spike.bench.test.ts
+ *
+ * Runs on the perf project's disk-backed browser profile (vitest.config.ts): IndexedDB here is on disk, as
+ * for a user, not the in-memory store of a default Playwright context.
  */
 import { Project } from '@/project/project'
 import { recordTableName } from '@/store'

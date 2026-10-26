@@ -1,0 +1,211 @@
+import type {
+	BenchFixtureName,
+	BenchLayout,
+	BenchPhase,
+	BenchVariant,
+	KillScenario,
+} from './bench.types'
+
+//====== RECORD TABLE ======//
+
+/** The columns every layout stores, in binding order. */
+export const RECORD_SHARED_COLUMNS = [
+	'id',
+	'tagName',
+	'nsPrefix',
+	'nsUri',
+	'value',
+	'parentId',
+	'parentTagName',
+	'attributes',
+] as const
+
+/** The column that carries sibling order: the children list (L1) or the record's position (L2). */
+export const RECORD_ORDER_COLUMN: Record<BenchLayout, string> = {
+	'children-column': 'children',
+	'derived-position': 'position',
+}
+
+//====== ENGINE KNOBS ======//
+
+/** Rows per JSON1 bind: bounds one statement's JSON payload, not a parameter count. */
+export const JSON_INSERT_ROWS = 1000
+/** Patches per JSON1 read and write, and between two checks of the window cap. */
+export const UPDATE_CHUNK_PATCHES = 1000
+export const WINDOW_TIME_CAP_MS = 1000
+export const WINDOW_SIZE_CAP_BYTES = 32 * 1024 * 1024
+/** Device-sized cache: `clamp(gib * 64, 64, 512)` MiB, while an import runs. */
+export const CACHE_MIB_PER_GIB = 64
+export const CACHE_FLOOR_MIB = 64
+export const CACHE_CEILING_MIB = 512
+/** The table and index names the engine builds (quoted, never escaped). */
+export const SQL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
+/** SQLite's own default `cache_size`: 2000 KiB. */
+export const SQLITE_DEFAULT_CACHE_PRAGMA = -2000
+/** `navigator.deviceMemory` is absent: size the cache for a 4 GiB device. */
+export const DEFAULT_DEVICE_MEMORY_GIB = 4
+export const POOL_DATABASE_PATH = '/bench.sqlite3'
+/** The `type` of the phase markers the worker posts besides Comlink's own messages. */
+export const BENCH_PHASE_MESSAGE = 'bench-phase'
+export const VFS_ERRORS_KEPT = 5
+export const SIDE_DOCUMENT_ID = 'side'
+/** Records a small commit writes into the side document. */
+export const SMALL_COMMIT_RECORDS = 10
+/** The deepClone-sized commit of the edit measures. */
+export const COMMIT_CREATES_RECORDS = 100_000
+/** Items per group in a created subtree. */
+export const COMMIT_GROUP_ITEMS = 999
+/** Records of the commit the order check makes between two root children. */
+export const ORDER_COMMIT_RECORDS = 1_000
+/** Share of the document the edit measures delete (whole root-child subtrees). */
+export const EDIT_DELETE_SHARE = 0.1
+/** Attribute the synthetic import session writes back, like a dialecte filling a uuid. */
+export const AFTER_IMPORT_ATTRIBUTE = 'benchRef'
+
+//====== PROTOCOL ======//
+
+export const RUNS_PER_CELL = 3
+export const CELL_TIMEOUT_MS = 6 * 60 * 60_000
+export const DOCUMENT_ID = 'doc'
+/** The document a kill test keeps intact next to the one it kills. */
+export const OTHER_DOCUMENT_ID = 'other'
+/** How the profiler finds the bench worker among the page's targets. */
+export const WORKER_URL_PART = 'layout-bench.worker'
+/** Functions whose self time the profile reports: the synthetic session's per-record hook and its build. */
+export const PROFILED_FUNCTIONS = ['benchSessionBeforeRecord', 'benchSessionAfterImport']
+export const PROFILE_TOP_FUNCTIONS = 25
+/** Bytes the fixture scanner looks at (record count, compact arm). */
+export const XML_BYTES = {
+	lt: 0x3c,
+	gt: 0x3e,
+	slash: 0x2f,
+	bang: 0x21,
+	question: 0x3f,
+	quote: 0x22,
+	apostrophe: 0x27,
+} as const
+/** The machine is shared: a run starts once the 1-minute load average is below this. */
+export const QUIET_LOAD = 10
+export const QUIET_WAIT_MAX_MS = 60 * 60_000
+/** One load-wait command lasts at most this long (well under vitest's browser RPC timeout). */
+export const QUIET_SLICE_MS = 20_000
+/** Small commits from the page while an import runs, one every this many ms. */
+export const SMALL_COMMIT_INTERVAL_MS = 1000
+export const READ_REPEATS = 5
+/** getTree reads the root child whose subtree is closest to this size (an IED-sized view); getByTagName the tag closest to it. */
+export const READ_TARGET_RECORDS = 5000
+export const READ_TARGET_CANDIDATES = 300
+export const PROFILE_SAMPLING_INTERVAL_US = 1000
+/** CPU-profile node names that are not the worker's work. */
+export const PROFILE_IDLE_NODES = ['(idle)', '(program)']
+export const PROFILE_GC_NODE = '(garbage collector)'
+export const KILL_RUNS = 20
+/** A cache this small spills inside every window: the kill lands after a spill. */
+export const KILL_CACHE_KIB = 2048
+export const KILL_DELAY_MIN_MS = 1500
+export const KILL_DELAY_SPREAD_MS = 2500
+/** A kill test's worker holds this long at the phase its kill aims for. */
+export const KILL_HOLD_MS = 500
+/** The kill after a parse failure lands this long (at most) after the worker says it is dropping. */
+export const KILL_AFTER_FAILURE_SPREAD_MS = 5
+/** The parse failure happens between these shares of the records, so the drop has a table to work on. */
+export const KILL_FAILURE_SHARE_MIN = 0.7
+export const KILL_FAILURE_SHARE_SPREAD = 0.25
+/**
+ * At least this many kills must land where the scenario aims, or the test says nothing: in the
+ * phase (the last marker the page saw, a lower bound) with the dead document still registered at
+ * reopen (the kill came before its cleanup finished).
+ */
+export const KILL_MIN_IN_PHASE = 5
+/** The phases (last marker seen by the page) a scenario's kill must land in to test anything. */
+export const KILL_TARGET_PHASES: Record<KillScenario, ReadonlyArray<BenchPhase | 'none'>> = {
+	'kill-after-spill': ['window-open'],
+	'kill-after-parse-failure': ['dropping'],
+}
+
+/** The afterImport write-back of a file SET wrote (0) and of a file named by paths only (worst case). */
+export const AFTER_IMPORT_RATIOS = { setWritten: 0, pathNamed: 0.107 } as const
+
+//====== VARIANTS ======//
+
+/**
+ * The base variant: every other arm changes one dimension of it. Dimension ids (they key the recorded runs):
+ * L1 children list as a JSON column / L2 children derived from parent id + REAL position;
+ * I1 every index before the first insert / I2 lazy id index (at the first afterImport write), others at finalize;
+ * J1 rollback journal (TRUNCATE) in the import window / J2 journal off in the window;
+ * W1 window transactions capped at about 1 s of work / W2 capped at about 32 MB of rows;
+ * V1 no auto-vacuum / V2 incremental auto-vacuum (pages given back after a drop).
+ * The base is L1 · I2 · J1 · W1 · V1, device-sized import cache, 64 MiB steady cache, JSON1 insert.
+ */
+export const BASE_VARIANT: BenchVariant = {
+	id: 'base',
+	layout: 'children-column',
+	index: 'lazy-id',
+	journal: 'truncate',
+	window: { kind: 'time', ms: WINDOW_TIME_CAP_MS },
+	vacuum: 'none',
+	cache: 'device',
+	steadyCache: 'floor',
+	insert: 'json1',
+}
+
+export const VARIANTS = {
+	base: BASE_VARIANT,
+	L2: { ...BASE_VARIANT, id: 'L2', layout: 'derived-position' },
+	I1: { ...BASE_VARIANT, id: 'I1', index: 'index-first' },
+	J2: { ...BASE_VARIANT, id: 'J2', journal: 'off' },
+	W2: { ...BASE_VARIANT, id: 'W2', window: { kind: 'size', bytes: WINDOW_SIZE_CAP_BYTES } },
+	V2: { ...BASE_VARIANT, id: 'V2', vacuum: 'incremental' },
+	cacheDefault: { ...BASE_VARIANT, id: 'cache-default', cache: 'default' },
+	steadyDefault: { ...BASE_VARIANT, id: 'steady-default', steadyCache: 'default' },
+	steadyDevice: { ...BASE_VARIANT, id: 'steady-device', steadyCache: 'device' },
+	idFirst: { ...BASE_VARIANT, id: 'id-first', index: 'id-first' },
+	perRow: { ...BASE_VARIANT, id: 'per-row', insert: 'per-row' },
+	L2I1: { ...BASE_VARIANT, id: 'L2-I1', layout: 'derived-position', index: 'index-first' },
+	/** Three arms together: id index up front, reclaimed space, large steady cache. */
+	combined: {
+		...BASE_VARIANT,
+		id: 'combined',
+		index: 'id-first',
+		vacuum: 'incremental',
+		steadyCache: 'device',
+	},
+	/** id-first with a 0.5 s window cap: shorter waits for a commit during the import, at an import-time cost. */
+	idFirstHalfWindow: {
+		...BASE_VARIANT,
+		id: 'id-first-w500',
+		index: 'id-first',
+		window: { kind: 'time', ms: WINDOW_TIME_CAP_MS / 2 },
+	},
+} as const satisfies Record<string, BenchVariant>
+
+//====== MATRIX DIMENSIONS ======//
+
+/** What a full cell measures beyond the import. */
+export const ALL_MEASURES = {
+	instrumented: true,
+	edits: true,
+	reads: true,
+	removal: true,
+} as const
+
+export const BOTH_RATIOS = [AFTER_IMPORT_RATIOS.setWritten, AFTER_IMPORT_RATIOS.pathNamed]
+/** The indented and compact inputs hold the same records: only the parse differs, so the indented arm runs the main dimensions. */
+export const MAIN_DIMENSIONS = [VARIANTS.base, VARIANTS.L2, VARIANTS.I1, VARIANTS.J2]
+export const STRUCTURAL: BenchFixtureName[] = ['structural-50', 'structural-100', 'structural-500']
+
+//====== FIXTURES ======//
+
+/** How to get a fixture the bench reads (said when one is missing). */
+export const FIXTURE_SOURCES = {
+	structural: 'generate it with src/test/fixtures/generate-stress-fixtures.ts',
+	composed: 'composed fixtures are read from the folder named by BENCH_SCL_FIXTURES_DIR',
+	compact:
+		'write it from its indented source: drop every whitespace-only text run, trim every text value, copy markup as is (the record count must not change)',
+} as const
+
+/** Root element and default namespace per fixture family (the bench config parses every element as unknown). */
+export const FIXTURE_ROOTS = {
+	composed: { rootElementName: 'SCL', namespaceUri: 'http://www.iec.ch/61850/2003/SCL' },
+	structural: { rootElementName: 'Root', namespaceUri: 'http://dialecte.dev/XML/DEFAULT' },
+} as const

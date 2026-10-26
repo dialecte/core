@@ -17,6 +17,9 @@ import { afterAll, describe, expect, it } from 'vitest'
  *
  * Read the `[LOAD]` lines from the browser console. Big sizes (100+ MB) may exceed browser
  * memory/quota — keep the IndexedDB sizes small.
+ *
+ * Runs on the perf project's disk-backed browser profile (vitest.config.ts): IndexedDB here is on disk, as
+ * for a user, not the in-memory store of a default Playwright context.
  */
 import { Project } from '@/project/project'
 import { TEST_DIALECTE_CONFIG } from '@/test'
