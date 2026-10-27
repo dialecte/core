@@ -72,9 +72,6 @@ async function openSqliteStore(name: string): Promise<SqliteStore> {
 
 const sqliteInProcessStoreFactory: StoreContractFactory = {
 	name: 'SqliteStore in-process',
-	pending: {
-		export: 'the engine runs no export yet',
-	},
 	create: async function createSqliteStore() {
 		return openSqliteStore(uniqueName('store-contract-sqlite'))
 	},

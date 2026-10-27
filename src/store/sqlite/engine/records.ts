@@ -12,6 +12,7 @@ import { compareById } from '@/store/compare-by-id'
 import { checkJsonValues } from '@/store/json-values'
 import { throwDuplicateRecordIds } from '@/store/store-errors'
 
+import type { RecordReadsById } from './engine.types'
 import type { AnyRawRecord, AnyRelationship, RecordPatch } from '@/types'
 import type { Database, Sqlite3Static, SqlValue } from '@sqlite.org/sqlite-wasm'
 
@@ -61,6 +62,35 @@ export function readRecordsById(params: {
 		[JSON.stringify(ids)],
 	)
 	return new Map(rows.map((row) => [String(row[0]), recordOf({ row })]))
+}
+
+/**
+ * Reads by id on one table through one prepared statement, for a caller that reads many times (an
+ * export): `read` answers the records of the ids the table holds, `finalize` releases the statement.
+ */
+export function prepareReadsById(params: { db: Database; table: string }): RecordReadsById {
+	const { db, table } = params
+	const statement = db.prepare(
+		`SELECT ${RECORD_COLUMN_LIST} FROM ${table} WHERE id IN (SELECT value FROM json_each(?))`,
+	)
+	return {
+		read: function read(ids) {
+			const records = new Map<string, AnyRawRecord>()
+			try {
+				statement.bind([JSON.stringify(ids)])
+				while (statement.step()) {
+					const record = recordOf({ row: statement.get([]) })
+					records.set(record.id, record)
+				}
+			} finally {
+				statement.reset(true)
+			}
+			return records
+		},
+		finalize: function finalize() {
+			statement.finalize()
+		},
+	}
 }
 
 /** The ids among these the table holds: one statement, no record read. */

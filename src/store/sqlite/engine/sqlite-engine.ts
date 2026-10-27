@@ -20,6 +20,7 @@ import {
 	countRecords,
 	deleteRecords,
 	patchRecords,
+	prepareReadsById,
 	readAllRecords,
 	readRecord,
 	readRecordsById,
@@ -30,6 +31,7 @@ import {
 	deleteDocument,
 	deleteUnfinishedImports,
 	documentTablesOf,
+	readDocumentState,
 	insertDocument,
 	readDocument,
 	readDocuments,
@@ -42,25 +44,37 @@ import { inWriteTransaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
+import { runExport, throwIfExportAborted } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
 import { requireStoreRuntime } from '@/project/io/store-runtime'
 import { tellCommitProgress } from '@/store/commit-progress'
 import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwStoreClosed } from '@/store/store-errors'
 import { writeOutcomeOf } from '@/store/write-outcome'
+import { invariant } from '@/utils'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
 import type {
 	EncodedRows,
+	ExportReads,
+	RunningExport,
 	HistoryDirection,
+	RecordReadsById,
 	SqliteEngineBlobMembers,
+	SqliteEngineExportParams,
 	OpenSqliteEngineParams,
 	RunningImport,
 	SqliteEngine,
 	SqliteEngineImportParams,
 	SqliteEngineMembers,
 } from './engine.types'
-import type { ImportControl, ImportFileResult } from '@/store/store.types'
+import type {
+	ExportControl,
+	ExportFileResult,
+	ExportSource,
+	ImportControl,
+	ImportFileResult,
+} from '@/store/store.types'
 import type { AnyRawRecord, BlobRecord, RecordPatch } from '@/types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
@@ -109,6 +123,15 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	 * is the file's only writer.
 	 */
 	const counts = new Map<string, number>()
+	/**
+	 * How many writes each document has taken since the engine started (an export never outlives it);
+	 * kept for a removed document, so one registered again under its id goes on from it.
+	 */
+	const versions = new Map<string, number>()
+	/** The exports running, by the caller's id: each one's abort and the statement it reads through. */
+	const exports = new Map<string, RunningExport>()
+	/** How many removals the engine ran: a statement prepared on a document's table before one is prepared again. */
+	const removals = { count: 0 }
 	const queue = createImportQueue()
 	/** The window of the import that runs: every other write settles it first. */
 	const importing: RunningImport = { window: undefined }
@@ -278,7 +301,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		 */
 		removeDocument: async function removeDocument(documentId) {
 			refuseClosed({ state, name })
-			removeDocumentFromFile({ sqlite3, db, documentId, counts, importing })
+			removeDocumentFromFile({ sqlite3, db, documentId, counts, importing, removals, versions })
 		},
 		get: async function get(id, documentId) {
 			refuseClosed({ state, name })
@@ -365,7 +388,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				deletes,
 				importing,
 			})
-			countWrite({ documentId, gained: creates.length - deleted })
+			noteWrite({ documentId, gained: creates.length - deleted })
 		},
 		/**
 		 * Refused whole, nothing written and no history entry kept, in the order every store answers in;
@@ -382,7 +405,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					settleImport({ importing })
 				},
 			})
-			countWrite({ documentId, gained })
+			noteWrite({ documentId, gained })
 			tellCommitProgress({ onProgress, parts: [creates.length, updates.length, deletes.length] })
 		},
 		undo: async function undo(documentId) {
@@ -451,11 +474,68 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		})
 	}
 
-	/** A write landed on the document: its count kept in step when the engine holds it. */
-	function countWrite(params: { documentId: string; gained: number }): void {
+	/**
+	 * A write landed on the document (a bulk write, a commit, an undo, a redo): its count kept in step
+	 * when the engine holds it, its version moved on - an export reading it starts again.
+	 */
+	function noteWrite(params: { documentId: string; gained: number }): void {
 		const { documentId, gained } = params
 		const held = counts.get(documentId)
 		if (held !== undefined) counts.set(documentId, held + gained)
+		versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
+	}
+
+	/**
+	 * What an export reads through: the engine's own reads, refused `EXPORT_ABORTED` once the export
+	 * is aborted (a `close()` aborts it), and the document's version - `undefined` unless it is ready.
+	 */
+	function exportSourceOf(params: {
+		signal: AbortSignal
+		documentId: string
+		reads: ExportReads
+	}): ExportSource {
+		const { signal, documentId, reads } = params
+		function refuseAborted(): void {
+			throwIfExportAborted({ signal, documentId })
+		}
+		return {
+			getDocument: async function getDocument(id) {
+				refuseAborted()
+				return members.getDocument(id)
+			},
+			count: async function count(id) {
+				refuseAborted()
+				return members.count(id)
+			},
+			/** Through one statement on the document's table, prepared again after any removal. */
+			getMany: async function getMany(ids, id) {
+				refuseAborted()
+				refuseClosed({ state, name })
+				return asReadFailure({
+					detail: `Records of document "${id}"`,
+					work: function readManyPrepared() {
+						const records = readsOf({ reads, documentId: id })?.read(ids)
+						return ids.map((recordId) => records?.get(recordId))
+					},
+				})
+			},
+			getByTagNameInDocument: async function getByTagNameInDocument(tagName, id) {
+				refuseAborted()
+				return members.getByTagNameInDocument(tagName, id)
+			},
+			getExportVersion: async function getExportVersion({ documentId: id }) {
+				refuseAborted()
+				refuseClosed({ state, name })
+				const document = asReadFailure({
+					detail: `Document "${id}"`,
+					work: function readState() {
+						return readDocumentState({ db, documentId: id })
+					},
+				})
+				if (document?.status !== 'ready') return undefined
+				return versions.get(id) ?? 0
+			},
+		}
 	}
 
 	/** An undo or a redo; nothing to do at either end of the history, nor for a document not registered. */
@@ -471,7 +551,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			},
 		})
 		if (gained === undefined) return
-		countWrite({ documentId, gained })
+		noteWrite({ documentId, gained })
 	}
 
 	/** The import runs here, next to the data, in its turn; it writes through the engine's own members. */
@@ -507,7 +587,15 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					file,
 					counts,
 					removeDocument: function removeFailedImport({ documentId }) {
-						removeDocumentFromFile({ sqlite3, db, documentId, counts, importing })
+						removeDocumentFromFile({
+							sqlite3,
+							db,
+							documentId,
+							counts,
+							importing,
+							removals,
+							versions,
+						})
 					},
 					window,
 					windowMs: engineOptions.importWindowMs,
@@ -540,10 +628,77 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		queue.abort(params)
 	}
 
+	/** The export runs here, next to the data; a write on its document meanwhile restarts it once. */
+	async function exportFile(
+		exportParams: SqliteEngineExportParams,
+		onProgress?: ExportControl['onProgress'],
+	): Promise<ExportFileResult> {
+		refuseClosed({ state, name })
+		const exportRuntime = requireStoreRuntime({ runtime, storeName: name, operation: 'export' })
+		const { documentId, options, exportId, clientId } = exportParams
+		// one export per id: a second would take the first one's abort and statement from the engine
+		invariant(!exports.has(exportId), {
+			detail: `An export of id "${exportId}" runs already: give each export an id of its own`,
+		})
+		const controller = new AbortController()
+		const reads: ExportReads = { current: undefined }
+		exports.set(exportId, { clientId, controller, reads })
+		try {
+			return await runExport(
+				{
+					source: exportSourceOf({ signal: controller.signal, documentId, reads }),
+					runtime: exportRuntime,
+					documentId,
+					options,
+				},
+				{ onProgress, signal: controller.signal },
+			)
+		} finally {
+			exports.delete(exportId)
+			// a close() has finalized it already: the connection cannot close while a statement lives
+			if (db.isOpen()) finalizeReads({ reads })
+		}
+	}
+
+	/**
+	 * The export's reads by id on the document's table: prepared once, again after a removal (a table
+	 * may have gone, or another document taken its number); none while the document is not registered.
+	 */
+	function readsOf(params: {
+		reads: ExportReads
+		documentId: string
+	}): RecordReadsById | undefined {
+		const { reads, documentId } = params
+		const held = reads.current
+		if (held && held.documentId === documentId && held.removals === removals.count)
+			return held.statement
+		held?.statement.finalize()
+		reads.current = undefined
+		const table = recordTableOf({ db, documentId })
+		if (!table) return undefined
+		reads.current = {
+			documentId,
+			removals: removals.count,
+			statement: prepareReadsById({ db, table }),
+		}
+		return reads.current.statement
+	}
+
+	async function abortExport(params: { exportId: string }): Promise<void> {
+		exports.get(params.exportId)?.controller.abort()
+	}
+
 	return {
 		...members,
 		importFile: importAsOwner,
 		abortImport,
+		exportFile,
+		abortExport,
+		abortExportsOf: function abortExportsOf({ clientId }) {
+			for (const running of exports.values()) {
+				if (running.clientId === clientId) running.controller.abort()
+			}
+		},
 		abortImportsOf: function abortImportsOf(params) {
 			queue.abortOwnedBy(params)
 		},
@@ -554,11 +709,20 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					return importAsOwner({ ...importParams, clientId }, clientProgress)
 				},
 				abortImport,
+				exportFile: function exportAsClient(exportParams, clientProgress) {
+					return exportFile({ ...exportParams, clientId }, clientProgress)
+				},
+				abortExport,
 			}
 		},
 		close: function closeEngine() {
 			state.closed = true
 			queue.abortAll()
+			// every statement finalized before the connection closes: one left open keeps the file held
+			for (const { controller, reads } of exports.values()) {
+				controller.abort()
+				finalizeReads({ reads })
+			}
 			db.close()
 		},
 	}
@@ -576,29 +740,45 @@ function removeDocumentFromFile(params: {
 	documentId: string
 	counts: Map<string, number>
 	importing: RunningImport
+	removals: { count: number }
+	versions: Map<string, number>
 }): void {
-	const { sqlite3, db, documentId, counts, importing } = params
-	asStoreFailure({
-		key: 'STORE_DELETE_FAILED',
-		detail: `Document "${documentId}" could not be removed`,
-		work: function removeAndReclaim() {
-			settleImport({ importing })
-			inWriteTransaction({
-				sqlite3,
-				db,
-				work: function deleteRowAndTable() {
-					deleteDocument({ db, documentId })
-				},
-			})
-			counts.delete(documentId)
-			reclaimFreePages({ db })
-		},
-	})
+	const { sqlite3, db, documentId, counts, importing, removals, versions } = params
+	try {
+		asStoreFailure({
+			key: 'STORE_DELETE_FAILED',
+			detail: `Document "${documentId}" could not be removed`,
+			work: function removeAndReclaim() {
+				settleImport({ importing })
+				inWriteTransaction({
+					sqlite3,
+					db,
+					work: function deleteRowAndTable() {
+						deleteDocument({ db, documentId })
+					},
+				})
+				counts.delete(documentId)
+				reclaimFreePages({ db })
+			},
+		})
+	} finally {
+		// a table may be gone: what reads it through a statement of its own prepares it again, and an
+		// export of the id - which may be registered and imported again - starts again
+		removals.count += 1
+		versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
+	}
 }
 
 /** The import that runs, if any, committed and made durable before another write: that write stands on its own. */
 function settleImport(params: { importing: RunningImport }): void {
 	params.importing.window?.settle()
+}
+
+/** The statement an export reads through, finalized; none held after. */
+function finalizeReads(params: { reads: ExportReads }): void {
+	const { reads } = params
+	reads.current?.statement.finalize()
+	reads.current = undefined
 }
 
 /** A call on a closed engine: `STORE_CLOSED`, never a failure of the closed database. */

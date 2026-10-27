@@ -4,6 +4,9 @@ import type { Perf } from '@/perf'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentStatus } from '@/project/types'
 import type {
+	ExportControl,
+	ExportFileOptions,
+	ExportFileResult,
 	ImportControl,
 	ImportFileOptions,
 	ImportFileResult,
@@ -74,6 +77,19 @@ export type SqliteImportParams = {
 	writeId: string
 }
 
+/** An export as a client asks the engine for it: plain data, the progress listener apart. */
+export type SqliteExportParams = {
+	documentId: string
+	options?: ExportFileOptions
+	/** The caller's id for this export, by which it is aborted; one export of an id runs at a time. */
+	exportId: string
+}
+
+/** An export as the engine runs it: the client that asked for it owns it. */
+export type SqliteEngineExportParams = SqliteExportParams & {
+	clientId: string
+}
+
 /** A commit as a client hands it to the engine: plain data, the progress listener apart. */
 export type SqliteCommitParams = {
 	documentId: string
@@ -138,10 +154,16 @@ export type SqliteEngineApi = SqliteEngineMembers & {
 	) => Promise<ImportFileResult>
 	/** Abort the import of that id: it is refused `IMPORT_ABORTED` and leaves nothing; an id no import runs is ignored. */
 	abortImport: (params: { writeId: string }) => Promise<void>
+	exportFile: (
+		params: SqliteExportParams,
+		onProgress?: ExportControl['onProgress'],
+	) => Promise<ExportFileResult>
+	/** Abort the export of that id: it is refused `EXPORT_ABORTED`; an id no export runs is ignored. */
+	abortExport: (params: { exportId: string }) => Promise<void>
 }
 
 /** One project's database behind the store port: the single writer of its file, serving every client. */
-export type SqliteEngine = Omit<SqliteEngineApi, 'importFile'> & {
+export type SqliteEngine = Omit<SqliteEngineApi, 'importFile' | 'exportFile'> & {
 	/** An import owned by the client that asked for it; one import runs at a time, the others wait their turn. */
 	importFile: (
 		params: SqliteEngineImportParams,
@@ -149,9 +171,19 @@ export type SqliteEngine = Omit<SqliteEngineApi, 'importFile'> & {
 	) => Promise<ImportFileResult>
 	/** Abort every import the client owns, running or waiting: its connection is gone. */
 	abortImportsOf: (params: { clientId: string }) => void
+	/** An export owned by the client that asked for it; an id that runs already is refused (`ASSERTION_FAILED`). */
+	exportFile: (
+		params: SqliteEngineExportParams,
+		onProgress?: ExportControl['onProgress'],
+	) => Promise<ExportFileResult>
+	/** Abort every export the client owns: its connection is gone. */
+	abortExportsOf: (params: { clientId: string }) => void
 	/** The engine as that client reaches it: its imports owned by it, nothing more than the port. */
 	clientView: (params: { clientId: string }) => SqliteEngineApi
-	/** Abort every import, then close the database; the engine refuses every call after (`STORE_CLOSED`). */
+	/**
+	 * Abort every import and every export, then close the database; the engine refuses every call after
+	 * (`STORE_CLOSED`).
+	 */
 	close: () => void
 }
 
@@ -307,6 +339,24 @@ export type ImportTargetState = {
 	 * setups give their own ids.
 	 */
 	givenIds: Set<string> | undefined
+}
+
+/** Reads by id on one table through one prepared statement. */
+export type RecordReadsById = {
+	read: (ids: readonly string[]) => Map<string, AnyRawRecord>
+	finalize: () => void
+}
+
+/** The statement an export reads its document's records through, with what it was prepared for. */
+export type ExportReads = {
+	current: { documentId: string; removals: number; statement: RecordReadsById } | undefined
+}
+
+/** An export the engine runs: its owner, its abort, the statement it reads through. */
+export type RunningExport = {
+	clientId: string
+	controller: AbortController
+	reads: ExportReads
 }
 
 /** Columns of one value on every row an insert writes, before the record's own. */

@@ -253,7 +253,7 @@ function throwDocumentGone(params: { documentId: string }): never {
 }
 
 /** An aborted export goes no further: `EXPORT_ABORTED`. */
-function throwIfExportAborted(params: { signal?: AbortSignal; documentId: string }): void {
+export function throwIfExportAborted(params: { signal?: AbortSignal; documentId: string }): void {
 	const { signal, documentId } = params
 	if (!signal?.aborted) return
 	throwDialecteError('EXPORT_ABORTED', {

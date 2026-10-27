@@ -161,8 +161,27 @@ export class SqliteStore implements Store {
 
 	// --- Export ---
 
-	async exportFile(_params: ExportFileParams): Promise<ExportFileResult> {
-		return this.notServed('exportFile')
+	/**
+	 * The export runs in the engine; its progress listener crosses as an argument of its own and its
+	 * abort as a call of its own, by an id of this call.
+	 */
+	async exportFile(params: ExportFileParams): Promise<ExportFileResult> {
+		const { documentId, options, onProgress, signal } = params
+		const exportId = crypto.randomUUID()
+		return this.operation(async (engine) => {
+			const exporting = engine.exportFile({ documentId, options, exportId }, onProgress)
+			const stopForwarding = forwardAbort({
+				signal,
+				abort: function abortInEngine() {
+					return engine.abortExport({ exportId })
+				},
+			})
+			try {
+				return await exporting
+			} finally {
+				stopForwarding()
+			}
+		})
 	}
 
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
@@ -308,17 +327,12 @@ export class SqliteStore implements Store {
 		this.link = undefined
 		this.connecting = undefined
 	}
-
-	/** A member of the port the engine does not serve yet. */
-	private async notServed(member: keyof Store): Promise<never> {
-		if (this.closed) throwStoreClosed({ storeName: this.name })
-		throw new Error(`SqliteStore does not serve ${member} yet`)
-	}
 }
 
 /**
- * Forward the caller's abort to the engine until the import settles; answers the function that stops
- * it. The abort call's own failure is not reported: the import's answer says what became of it.
+ * Forward the caller's abort to the engine until the call (an import, an export) settles; answers the
+ * function that stops it. The abort call's own failure is not reported: the call's answer says what
+ * became of it.
  */
 function forwardAbort(params: { signal?: AbortSignal; abort: () => Promise<void> }): () => void {
 	const { signal, abort } = params
