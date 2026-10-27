@@ -1,4 +1,6 @@
+import type { SqliteEngine } from '../engine/engine.types'
 import type { BENCH_PHASE_MESSAGE } from './bench.constants'
+import type { ImportPhase } from '@/store/store.types'
 import type { AnyRawRecord, AnyRelationship, RecordPatch } from '@/types'
 import type { Database, SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 import type { CDPSession } from 'playwright'
@@ -526,6 +528,77 @@ export type EngineStartRun = {
 	restartMs: number
 }
 
+/** A commit of another view while an import runs: when it was sent, how long until it resolved, whether an index build overlapped it. */
+export type CommitDuringImport = {
+	/** When it was sent, from the import's start (ms) */
+	sentMs: number
+	/** From sent to resolved, as the sending view sees it (ms) */
+	waitMs: number
+	/** Whether an index build of the import overlapped its wait */
+	duringIndexing: boolean
+}
+
+/** The waits of the commits sent during an import, apart for those an index build overlapped. */
+export type CommitWaits = {
+	commits: number
+	outsideIndexing: { count: number; p50Ms: number; maxMs: number }
+	duringIndexing: { count: number; maxMs: number }
+	/** Every commit, in the order sent */
+	all: CommitDuringImport[]
+}
+
+/** A change of an import's phase, on the clock both realms share (`timeOrigin + now`, ms). */
+export type PhaseChange = {
+	atEpochMs: number
+	phase: ImportPhase
+}
+
+/** An import of the history cell: its run, its document, its phase changes. */
+export type HistoryImport = {
+	run: EngineImportRun
+	documentId: string
+	startedAtEpochMs: number
+	endedAtEpochMs: number
+	phases: PhaseChange[]
+}
+
+/** A delete of a subtree by one commit, its undo and its redo, each timed through the engine. */
+export type SubtreeEditRun = {
+	/** The page cache the engine runs with (MiB) */
+	cacheMiB: number
+	records: number
+	deleteMs: number
+	undoMs: number
+	redoMs: number
+}
+
+/** An export through the engine: its time, the file's size, its stages. */
+export type EngineExportRun = {
+	exportMs: number
+	fileBytes: number
+	recordCount: number
+	stages: Record<string, StageTiming>
+}
+
+/** The engine's history and export cell on one file. */
+export type EngineHistoryExportRun = {
+	/** The file imported alone (no commit meanwhile), then removed */
+	importAlone: EngineImportRun
+	/** The file imported again while the page commits on another document every `COMMIT_EVERY_MS` */
+	importWithCommits: EngineImportRun
+	commitWaits: CommitWaits
+	export: EngineExportRun
+	/** The largest voltage level deleted, undone, redone: at the device's cache, then at the gate's 64 MiB */
+	voltageLevel: { atDeviceCache: SubtreeEditRun; atGateCache: SubtreeEditRun }
+}
+
+/** What the history cell's calls share in the worker: one pool and one engine, the subtree its edits delete. */
+export type HistoryCellState = {
+	pool?: SAHPoolUtil
+	opened?: { engine: SqliteEngine; db: Database }
+	subtree?: { root: AnyRawRecord; ids: string[] }
+}
+
 /** The engine bench's worker: the engine on a real OPFS pool. */
 export type EngineBenchWorkerApi = {
 	importOnOpfs: (params: {
@@ -539,4 +612,25 @@ export type EngineBenchWorkerApi = {
 		deadRows: number
 		readyRows: number
 	}) => Promise<EngineStartRun>
+	/** The history cell's engine on a pool of its own (installed at the first call), at the device's cache or the one given. */
+	historyOpen: (params: {
+		project: string
+		root: FixtureRoot
+		afterImportRatio: number
+		steadyCacheMiB?: number
+	}) => Promise<void>
+	historyImport: (params: { file: File; writeId: string }) => Promise<HistoryImport>
+	historyRemove: (params: { documentId: string }) => Promise<void>
+	/** A ready document `other` of one record, the one the page commits on. */
+	historySeedOther: () => Promise<void>
+	/** One commit on `other`, as another view's edit: its record's value set to `value`. */
+	historyCommitOther: (params: { value: string }) => Promise<void>
+	historyExport: (params: { documentId: string }) => Promise<EngineExportRun>
+	/** The largest subtree of a tag found and kept for the edits; answers its record count. */
+	historyFindSubtree: (params: { documentId: string; tagName: string }) => Promise<number>
+	/** The kept subtree deleted by one commit, undone, redone. */
+	historyEditSubtree: (params: { documentId: string }) => Promise<SubtreeEditRun>
+	historyUndo: (params: { documentId: string }) => Promise<void>
+	/** The engine closed, the pool removed. */
+	historyClose: () => Promise<void>
 }
