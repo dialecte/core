@@ -1,18 +1,24 @@
-import { DOCUMENT_COLUMN_LIST, DOCUMENT_COLUMNS } from './engine.constants'
-import { createRecordTable } from './schema'
+import { deleteBlobsOf } from './blobs'
+import {
+	DOCUMENT_COLUMN_LIST,
+	DOCUMENT_COLUMNS,
+	TABLE_HISTORY_ROWS_PREFIX,
+} from './engine.constants'
+import { deleteHistoryOf } from './history'
+import { createHistoryRowsTable, createRecordTable } from './schema'
 
 import { compareById } from '@/store/compare-by-id'
 import { toJsonCopy } from '@/store/json-values'
 import { throwDocumentAlreadyRegistered } from '@/store/store-errors'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
-import type { DocumentTable } from './engine.types'
+import type { DocumentTable, DocumentTables } from './engine.types'
 import type { DocumentRecord, DocumentStatus } from '@/project/types'
 import type { Database, SqlValue } from '@sqlite.org/sqlite-wasm'
 
 /**
- * Register a document and create its record table without indexes, in the caller's transaction;
- * answers the row's number and the table. An id already registered is refused with
+ * Register a document and create its record table without indexes and its history-rows table, in the
+ * caller's transaction; answers the row's number and the record table. An id already registered is refused with
  * `STORE_DUPLICATE_ID`, the registered one left as it was, then a value that is not JSON with
  * `STORE_VALUE_NOT_JSON`.
  */
@@ -32,6 +38,7 @@ export function insertDocument(params: { db: Database; document: DocumentRecord 
 	const seq = Number(db.selectValue('SELECT last_insert_rowid()'))
 	const table = recordTableOfSeq({ seq })
 	createRecordTable({ db, table })
+	createHistoryRowsTable({ db, table: historyTableOfSeq({ seq }) })
 	return { seq, table }
 }
 
@@ -99,19 +106,41 @@ export function updateDocumentRow(params: {
 	})
 }
 
-/** A document's registry row and its record table gone, in the caller's transaction; an unknown one is ignored. */
+/**
+ * A document gone, in the caller's transaction: its record table, its history (its history-rows table
+ * and its entries), the blobs it owns, its registry row. An unknown one is ignored.
+ */
 export function deleteDocument(params: { db: Database; documentId: string }): void {
 	const { db, documentId } = params
 	const seq = findSeq({ db, documentId })
 	if (seq === undefined) return
-	db.exec(`DROP TABLE ${recordTableOfSeq({ seq })}`)
-	db.exec({ sql: `DELETE FROM ${TABLE_DOCUMENTS} WHERE seq = ?`, bind: [seq] })
+	purgeDocument({ db, documentId, seq })
 }
 
 /** The record table of a registered document; none for a document that is not registered. */
 export function recordTableOf(params: { db: Database; documentId: string }): string | undefined {
 	const seq = findSeq(params)
 	return seq === undefined ? undefined : recordTableOfSeq({ seq })
+}
+
+/** The record and history-rows tables of a registered document; none for a document that is not registered. */
+export function documentTablesOf(params: {
+	db: Database
+	documentId: string
+}): DocumentTables | undefined {
+	const state = readDocumentState(params)
+	if (!state) return undefined
+	const { seq, status } = state
+	return { seq, status, records: recordTableOfSeq({ seq }), history: historyTableOfSeq({ seq }) }
+}
+
+/** Everything of a document, its registry row last: one function for every removal. */
+function purgeDocument(params: { db: Database; documentId: string; seq: number }): void {
+	const { db, documentId, seq } = params
+	db.exec(`DROP TABLE ${recordTableOfSeq({ seq })}`)
+	deleteHistoryOf({ db, documentId, table: historyTableOfSeq({ seq }) })
+	deleteBlobsOf({ db, documentId })
+	db.exec({ sql: `DELETE FROM ${TABLE_DOCUMENTS} WHERE seq = ?`, bind: [seq] })
 }
 
 function findSeq(params: { db: Database; documentId: string }): number | undefined {
@@ -126,6 +155,11 @@ function findSeq(params: { db: Database; documentId: string }): number | undefin
  */
 function recordTableOfSeq(params: { seq: number }): string {
 	return `${TABLE_RECORD_PREFIX}${params.seq}`
+}
+
+/** A document's history-rows table, numbered as its record table. */
+function historyTableOfSeq(params: { seq: number }): string {
+	return `${TABLE_HISTORY_ROWS_PREFIX}${params.seq}`
 }
 
 function documentRow(params: { document: DocumentRecord }): SqlValue[] {
@@ -168,14 +202,17 @@ function statusOf(params: { value: SqlValue }): DocumentStatus {
 }
 
 /**
- * Every document left `importing` gone with its table, in the caller's transaction: no import
+ * Every document left `importing` gone with all it has, in the caller's transaction: no import
  * outlives its engine, so at an engine start such a document is a leftover (a closed tab, a crash).
  */
 export function deleteUnfinishedImports(params: { db: Database }): void {
 	const { db } = params
-	const seqs = db.selectArrays(`SELECT seq FROM ${TABLE_DOCUMENTS} WHERE status = ?`, ['importing'])
-	for (const [seq] of seqs) db.exec(`DROP TABLE ${recordTableOfSeq({ seq: Number(seq) })}`)
-	db.exec({ sql: `DELETE FROM ${TABLE_DOCUMENTS} WHERE status = ?`, bind: ['importing'] })
+	const rows = db.selectArrays(`SELECT seq, id FROM ${TABLE_DOCUMENTS} WHERE status = ?`, [
+		'importing',
+	])
+	for (const [seq, documentId] of rows) {
+		purgeDocument({ db, documentId: String(documentId), seq: Number(seq) })
+	}
 }
 
 /** The documents written by the write of that id (one at most). */

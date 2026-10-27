@@ -289,7 +289,7 @@ type BlobAttachment = {
 
 Each mutation broadcasts a corresponding `blob-added` / `blob-attached` / `blob-detached` / `blob-removed` event (each carrying a `timestamp`) over the project's `BroadcastChannel` for cross-tab sync.
 
-`getBlob` throws `STORE_BLOB_NOT_FOUND` (D1008) if the blob id is unknown.
+`getBlob` throws `STORE_BLOB_NOT_FOUND` (D1008) if the blob id is unknown. A blob entry and an attached reference hold JSON values only ([values a store keeps](/io/#values-a-store-keeps)): `STORE_VALUE_NOT_JSON` otherwise.
 
 ## exportBlob
 

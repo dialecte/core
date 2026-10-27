@@ -12,6 +12,7 @@ import { compareById } from '@/store/compare-by-id'
 import { checkJsonValues } from '@/store/json-values'
 import { throwDuplicateRecordIds } from '@/store/store-errors'
 
+import type { RecordReadsById } from './engine.types'
 import type { AnyRawRecord, AnyRelationship, RecordPatch } from '@/types'
 import type { Database, Sqlite3Static, SqlValue } from '@sqlite.org/sqlite-wasm'
 
@@ -63,6 +64,51 @@ export function readRecordsById(params: {
 	return new Map(rows.map((row) => [String(row[0]), recordOf({ row })]))
 }
 
+/**
+ * Reads by id on one table through one prepared statement, for a caller that reads many times (an
+ * export): `read` answers the records of the ids the table holds, `finalize` releases the statement.
+ */
+export function prepareReadsById(params: { db: Database; table: string }): RecordReadsById {
+	const { db, table } = params
+	const statement = db.prepare(
+		`SELECT ${RECORD_COLUMN_LIST} FROM ${table} WHERE id IN (SELECT value FROM json_each(?))`,
+	)
+	return {
+		read: function read(ids) {
+			const records = new Map<string, AnyRawRecord>()
+			try {
+				statement.bind([JSON.stringify(ids)])
+				while (statement.step()) {
+					const record = recordOf({ row: statement.get([]) })
+					records.set(record.id, record)
+				}
+			} finally {
+				statement.reset(true)
+			}
+			return records
+		},
+		finalize: function finalize() {
+			statement.finalize()
+		},
+	}
+}
+
+/** The ids among these the table holds: one statement, no record read. */
+export function readHeldIds(params: {
+	db: Database
+	table: string
+	ids: readonly string[]
+}): Set<string> {
+	const { db, table, ids } = params
+	return new Set(
+		db
+			.selectValues(`SELECT id FROM ${table} WHERE id IN (SELECT value FROM json_each(?))`, [
+				JSON.stringify(ids),
+			])
+			.map(String),
+	)
+}
+
 export function countRecords(params: { db: Database; table: string }): number {
 	return Number(params.db.selectValue(`SELECT count(*) FROM ${params.table}`))
 }
@@ -80,8 +126,7 @@ export function refuseTakenIds(params: {
 	const { db, table, documentId, creates } = params
 	if (creates.length === 0) return
 	const ids = creates.map((record) => record.id)
-	const heldIds = new Set(readRecordsById({ db, table, ids }).keys())
-	refuseDuplicateIds({ documentId, ids, heldIds })
+	refuseDuplicateIds({ documentId, ids, heldIds: readHeldIds({ db, table, ids }) })
 }
 
 /**
@@ -136,11 +181,45 @@ export function refuseRepeatedIds(params: {
 }
 
 /**
- * Apply bulk-write patches, in the caller's transaction, in the order given: per batch of ids the
- * records are read in one statement; the patches of the records held are checked - a value that is
- * not JSON refuses with `STORE_VALUE_NOT_JSON` - then applied (`applyRecordPatch`, a record patched
- * twice in turn), encoded and written back in one statement, one row per record. A patch of a
- * record the table does not hold is skipped.
+ * The patches of a write that apply - those of the records the table holds (one statement per batch
+ * of ids) - checked as one list, as every store checks them: a value that is not JSON refuses the
+ * write with `STORE_VALUE_NOT_JSON`, its place counted among them. A patch of a record the table does
+ * not hold is not checked: it is skipped.
+ */
+export function checkApplyingPatches(params: {
+	db: Database
+	table: string
+	patches: readonly RecordPatch[]
+}): void {
+	const { db, table, patches } = params
+	if (patches.length === 0) return
+	const held = new Set<string>()
+	for (let start = 0; start < patches.length; start += ROWS_PER_BIND) {
+		const ids = patches.slice(start, start + ROWS_PER_BIND).map((patch) => patch.recordId)
+		for (const id of readHeldIds({ db, table, ids })) held.add(id)
+	}
+	checkHeldPatches({ patches, held })
+}
+
+/**
+ * The patches of the records `held` checked as one list: a value that is not JSON refuses, its place
+ * counted among them. Answers them: the write applies those and no other, as one write would.
+ */
+export function checkHeldPatches(params: {
+	patches: readonly RecordPatch[]
+	held: ReadonlySet<string>
+}): RecordPatch[] {
+	const { patches, held } = params
+	const applying = patches.filter((patch) => held.has(patch.recordId))
+	checkJsonValues({ value: applying })
+	return applying
+}
+
+/**
+ * Apply bulk-write patches already checked (`checkApplyingPatches`), in the caller's transaction, in
+ * the order given: per batch of ids the records are read in one statement, the patches of the records
+ * held applied (`applyRecordPatch`, a record patched twice in turn), encoded and written back in one
+ * statement, one row per record. A patch of a record the table does not hold is skipped.
  */
 export function patchRecords(params: {
 	db: Database
@@ -157,10 +236,8 @@ export function patchRecords(params: {
 		for (let start = 0; start < patches.length; start += ROWS_PER_BIND) {
 			const chunk = patches.slice(start, start + ROWS_PER_BIND)
 			const records = readRecordsById({ db, table, ids: chunk.map((patch) => patch.recordId) })
-			const applying = chunk.filter((patch) => records.has(patch.recordId))
-			checkJsonValues({ value: applying })
 			const patched = new Map<string, AnyRawRecord>()
-			for (const patch of applying) {
+			for (const patch of chunk) {
 				const record = patched.get(patch.recordId) ?? records.get(patch.recordId)
 				if (record) patched.set(patch.recordId, applyRecordPatch({ record, patch }))
 			}
@@ -187,7 +264,8 @@ export function deleteRecords(params: {
 	return db.changes()
 }
 
-function recordOf(params: { row: SqlValue[] }): AnyRawRecord {
+/** A record from its row, the columns in the order of `RECORD_COLUMNS`. */
+export function recordOf(params: { row: SqlValue[] }): AnyRawRecord {
 	const [id, tagName, nsPrefix, nsUri, value, parentId, parentTagName, attributes, children] =
 		params.row
 	return {

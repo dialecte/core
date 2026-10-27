@@ -2,6 +2,8 @@ import { importOutcomeOf } from './write-outcome'
 
 import { describe, expect, it } from 'vitest'
 
+import { writeOutcomeOf } from '@/index'
+
 import type { WriteOutcome } from './store.types'
 import type { DocumentRecord, DocumentStatus } from '@/project/types'
 
@@ -45,6 +47,39 @@ describe('importOutcomeOf', () => {
 			expect(importOutcomeOf({ documents: testCase.documents, writeId: 'w' })).toBe(
 				testCase.expected,
 			)
+		})
+	}
+})
+
+describe('writeOutcomeOf (what a custom store answers, from the package)', () => {
+	type TestCase = { documents: DocumentRecord[]; committed: boolean; expected: WriteOutcome }
+	const testCases: Record<string, TestCase> = {
+		'an import running under the id → running, whatever the history says': {
+			documents: [documentRecord({ id: 'a', status: 'importing', writeId: 'w' })],
+			committed: true,
+			expected: 'running',
+		},
+		'an imported document ready under the id → applied': {
+			documents: [documentRecord({ id: 'a', status: 'ready', writeId: 'w' })],
+			committed: false,
+			expected: 'applied',
+		},
+		'no document carries the id, a history entry does → applied': {
+			documents: [documentRecord({ id: 'a', status: 'ready', writeId: 'other' })],
+			committed: true,
+			expected: 'applied',
+		},
+		'neither a document nor a history entry carries the id → not-applied': {
+			documents: [documentRecord({ id: 'a', status: 'ready', writeId: 'other' })],
+			committed: false,
+			expected: 'not-applied',
+		},
+	}
+
+	for (const [description, testCase] of Object.entries(testCases)) {
+		it(description, () => {
+			const { documents, committed, expected } = testCase
+			expect(writeOutcomeOf({ documents, writeId: 'w', committed })).toBe(expected)
 		})
 	}
 })

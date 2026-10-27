@@ -1,8 +1,11 @@
 /**
  * Engine bench: the SQLite engine as built, timed on the composed 50 MB compact file (the write-back
  * session at the path-named ratio) through `SqliteStore.importFile` in the page (in-memory file) and
- * through the engine in a worker on a real OPFS pool (the layout bench's setting); and the engine's
- * start on a file holding a dead import in front of a ready 500 MB document. Runs only under
+ * through the engine in a worker on a real OPFS pool (the layout bench's setting); the engine's
+ * start on a file holding a dead import in front of a ready 500 MB document; and, on the composed
+ * 50 MB and 500 MB compact files in a worker on OPFS, the import alone and with another view
+ * committing meanwhile (each commit's wait), the export, and the largest voltage level deleted,
+ * undone and redone (`engine-history-export-<size>`). Runs only under
  * `--mode bench`, a cell at a time below a 1-minute load of 8; pick cells with `VITE_BENCH_CELLS`.
  *
  *   BENCH_SCL_FIXTURES_DIR=<dir> VITE_BENCH=1 VITE_BENCH_CELLS='^engine-import' \
@@ -15,27 +18,39 @@ import { createBenchImportRuntime, stagesOf } from './bench-import-session'
 import { fetchFixtureFile, waitForQuietMachine } from './bench-page'
 import {
 	AFTER_IMPORT_RATIOS,
+	COMMIT_EVERY_MS,
 	DEAD_IMPORT_ROWS,
 	ENGINE_BENCH_CELL_TIMEOUT_MS,
 	ENGINE_BENCH_DIALECTE_ID,
 	ENGINE_BENCH_QUIET_LOAD,
 	FIXTURE_ROOTS,
+	GATE_STEADY_CACHE_MIB,
+	HISTORY_EXPORT_FIXTURES,
 	QUIET_WAIT_MAX_MS,
 	READY_500_RECORDS,
+	VOLTAGE_LEVEL_TAG,
 } from './bench.constants'
 
 import * as Comlink from 'comlink'
 import { describe, expect, it } from 'vitest'
 import { commands } from 'vitest/browser'
 
-import type { EngineBenchWorkerApi, EngineImportRun } from './bench.types'
+import type {
+	BenchFixtureName,
+	CommitDuringImport,
+	CommitWaits,
+	EngineBenchWorkerApi,
+	EngineHistoryExportRun,
+	EngineImportRun,
+	HistoryImport,
+} from './bench.types'
 
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
 const CELL_FILTER = new RegExp(import.meta.env.VITE_BENCH_CELLS ?? '^$')
 const IMPORT_FIXTURE = 'composed-50-compact'
 
-async function fixtureFile(): Promise<File> {
-	const fixture = await commands.benchFixture({ name: IMPORT_FIXTURE })
+async function fixtureFile(params: { name?: BenchFixtureName } = {}): Promise<File> {
+	const fixture = await commands.benchFixture({ name: params.name ?? IMPORT_FIXTURE })
 	return fetchFixtureFile({ fixture })
 }
 
@@ -89,6 +104,134 @@ async function importInProcess(params: { file: File }): Promise<EngineImportRun>
 	}
 }
 
+/**
+ * One file, one engine in a worker on OPFS: imported alone then removed (the import's own time); a
+ * ready document `other`; the file imported again while this page commits on `other` every
+ * `COMMIT_EVERY_MS` through the worker's port, as another view's edits reach the engine (each
+ * commit's wait as this page sees it, apart when an index build overlapped it); the document
+ * exported; its largest voltage level deleted by one commit, undone, redone - at the device's cache,
+ * then on an engine started again at the gate's 64 MiB.
+ */
+async function measureHistoryAndExport(params: {
+	api: EngineBenchWorkerApi
+	file: File
+	project: string
+}): Promise<EngineHistoryExportRun> {
+	const { api, file, project } = params
+	const setting = {
+		project,
+		root: FIXTURE_ROOTS.composed,
+		afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
+	}
+	await api.historyOpen(setting)
+	const alone = await api.historyImport({ file, writeId: 'w-alone' })
+	await api.historyRemove({ documentId: alone.documentId })
+	await api.historySeedOther()
+	const committing = commitEvery({ api })
+	const withCommits = await api.historyImport({ file, writeId: 'w-with-commits' })
+	const commitWaits = await committing.stop({ imported: withCommits })
+	const { documentId } = withCommits
+	const exported = await api.historyExport({ documentId })
+	await api.historyFindSubtree({ documentId, tagName: VOLTAGE_LEVEL_TAG })
+	const atDeviceCache = await api.historyEditSubtree({ documentId })
+	await api.historyOpen({ ...setting, steadyCacheMiB: GATE_STEADY_CACHE_MIB })
+	// the subtree is deleted (the last redo): brought back first, then deleted again from scratch
+	await api.historyUndo({ documentId })
+	const atGateCache = await api.historyEditSubtree({ documentId })
+	return {
+		importAlone: alone.run,
+		importWithCommits: withCommits.run,
+		commitWaits,
+		export: exported,
+		voltageLevel: { atDeviceCache, atGateCache },
+	}
+}
+
+/**
+ * A commit on `other` sent every `COMMIT_EVERY_MS` (none while one is waiting, as a view waits for
+ * its save), each one's wait from sent to resolved; `stop` waits for the one still under way, then
+ * sorts them by the import's index builds. A refused commit fails the cell.
+ */
+function commitEvery(params: { api: EngineBenchWorkerApi }): {
+	stop: (params: { imported: HistoryImport }) => Promise<CommitWaits>
+} {
+	const { api } = params
+	const sent: { sentAt: number; resolvedAt: number }[] = []
+	const refused: unknown[] = []
+	let waiting: Promise<void> | undefined
+	const timer = setInterval(function sendCommit() {
+		if (waiting) return
+		const sentAt = epochNow()
+		waiting = api
+			.historyCommitOther({ value: String(sent.length + 1) })
+			.then(
+				function keepWait() {
+					sent.push({ sentAt, resolvedAt: epochNow() })
+				},
+				function keepRefusal(thrown: unknown) {
+					refused.push(thrown)
+				},
+			)
+			.finally(function sendNext() {
+				waiting = undefined
+			})
+	}, COMMIT_EVERY_MS)
+	return {
+		stop: async function stop({ imported }) {
+			clearInterval(timer)
+			await waiting
+			if (refused.length > 0)
+				throw new Error(`${refused.length} commits refused`, { cause: refused[0] })
+			return commitWaitsOf({ sent, imported })
+		},
+	}
+}
+
+/** The commits sent during the import, each against the import's index builds (a phase `indexing` until the next change). */
+function commitWaitsOf(params: {
+	sent: { sentAt: number; resolvedAt: number }[]
+	imported: HistoryImport
+}): CommitWaits {
+	const { sent, imported } = params
+	const { phases, startedAtEpochMs, endedAtEpochMs } = imported
+	const indexing = phases.flatMap(({ atEpochMs, phase }, index) =>
+		phase === 'indexing'
+			? [{ from: atEpochMs, to: phases[index + 1]?.atEpochMs ?? endedAtEpochMs }]
+			: [],
+	)
+	const all: CommitDuringImport[] = sent
+		.filter(({ sentAt }) => sentAt <= endedAtEpochMs)
+		.map(({ sentAt, resolvedAt }) => ({
+			sentMs: sentAt - startedAtEpochMs,
+			waitMs: resolvedAt - sentAt,
+			duringIndexing: indexing.some(({ from, to }) => from < resolvedAt && to > sentAt),
+		}))
+	const outside = all.filter((commit) => !commit.duringIndexing).map((commit) => commit.waitMs)
+	const during = all.filter((commit) => commit.duringIndexing).map((commit) => commit.waitMs)
+	return {
+		commits: all.length,
+		outsideIndexing: {
+			count: outside.length,
+			p50Ms: medianOf({ values: outside }),
+			maxMs: Math.max(0, ...outside),
+		},
+		duringIndexing: { count: during.length, maxMs: Math.max(0, ...during) },
+		all,
+	}
+}
+
+function medianOf(params: { values: number[] }): number {
+	const sorted = [...params.values].sort((left, right) => left - right)
+	if (sorted.length === 0) return 0
+	const middle = Math.floor(sorted.length / 2)
+	return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
+}
+
+/** The time on the clock every realm of the page shares. */
+function epochNow(): number {
+	return performance.timeOrigin + performance.now()
+}
+
 describe('engine bench (the SQLite engine as built)', () => {
 	it.runIf(RUN && CELL_FILTER.test('engine-import-50-in-process'))(
 		'engine-import-50-in-process',
@@ -126,6 +269,28 @@ describe('engine bench (the SQLite engine as built)', () => {
 		},
 		ENGINE_BENCH_CELL_TIMEOUT_MS,
 	)
+
+	for (const [size, name] of Object.entries(HISTORY_EXPORT_FIXTURES)) {
+		const cell = `engine-history-export-${size}`
+		it.runIf(RUN && CELL_FILTER.test(cell))(
+			cell,
+			async () => {
+				const file = await fixtureFile({ name })
+				const { worker, api } = spawnEngineWorker()
+				try {
+					const result = (await recordCell({
+						name: cell,
+						run: () => measureHistoryAndExport({ api, file, project: cell }),
+					})) as EngineHistoryExportRun
+					expect(result.export.fileBytes).toBeGreaterThan(0)
+				} finally {
+					await api.historyClose().catch(() => undefined)
+					worker.terminate()
+				}
+			},
+			ENGINE_BENCH_CELL_TIMEOUT_MS,
+		)
+	}
 
 	for (const [dead, deadRows] of Object.entries(DEAD_IMPORT_ROWS)) {
 		const cell = `engine-start-${dead}-before-ready-500`

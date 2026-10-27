@@ -1,4 +1,5 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { tellCommitProgress } from '../commit-progress'
 import { compareById } from '../compare-by-id'
 import { toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
@@ -10,8 +11,9 @@ import {
 	throwStoreClosed,
 } from '../store-errors'
 import { recordTableName } from '../store.constants'
+import { toStoredRecords } from '../stored-record'
 import { removeUnfinishedImports } from '../unfinished-imports'
-import { importOutcomeOf } from '../write-outcome'
+import { writeOutcomeOf } from '../write-outcome'
 import {
 	bumpVersion,
 	dropInMemoryState,
@@ -271,10 +273,13 @@ export class InMemoryStore implements Store {
 
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
 		this.guardOpen()
-		return importOutcomeOf({
-			documents: [...this.readState().documents.values()],
-			writeId: params.writeId,
-		})
+		const { writeId } = params
+		const { documents, changelog, discardedCommits } = this.readState()
+		const committed =
+			[...changelog.values()].some((entries) =>
+				entries.some((entry) => entry.writeId === writeId),
+			) || [...discardedCommits.values()].some((discarded) => discarded.has(writeId))
+		return writeOutcomeOf({ documents: [...documents.values()], writeId, committed })
 	}
 
 	// --- Writes ---
@@ -289,6 +294,7 @@ export class InMemoryStore implements Store {
 
 	async commit(params: {
 		documentId: string
+		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: string[]
@@ -296,8 +302,11 @@ export class InMemoryStore implements Store {
 	}): Promise<void> {
 		this.guardOpen()
 		this.guardWritable()
-		const { documentId, deletes, onProgress } = params
+		const { documentId, writeId = crypto.randomUUID(), deletes, onProgress } = params
 		const { state, table } = this.writeTarget(documentId)
+		if (state.documents.get(documentId)?.status === 'importing') {
+			throwDocumentNotRegistered({ documentId, what: 'a commit' })
+		}
 
 		// Nothing is written before the whole commit is known to apply, refused in the order every
 		// store answers in: an absent update, a create that is not JSON, a taken id, then an update
@@ -308,40 +317,30 @@ export class InMemoryStore implements Store {
 			if (!before) throwRecordToUpdateNotFound({ documentId, recordId: record.id })
 			return before
 		})
-		const creates = toJsonCopy({ value: params.creates })
+		const creates = toStoredRecords({ records: params.creates })
 		guardNoDuplicate({ table, creates, documentId })
-		const updates = toJsonCopy({ value: params.updates })
-		const total = creates.length + updates.length + deletes.length
-		let completed = 0
-		const deletedSnapshots = deletes.map((id) => table.get(id)).filter(Boolean) as AnyRawRecord[]
+		const updates = toStoredRecords({ records: params.updates })
 
-		// the version moves with the first write: `onProgress` below runs while the commit is half applied
 		bumpVersion({ state, documentId })
-		for (const record of creates) {
-			table.set(record.id, record)
-		}
-		completed += creates.length
-		onProgress(completed, total)
+		for (const record of creates) table.set(record.id, record)
+		for (const record of updates) table.set(record.id, record)
+		// the deleted records as they are at this step: one the commit created or updated is kept so
+		const deletedSnapshots = deletes.flatMap((id) => {
+			const record = table.get(id)
+			return record ? [record] : []
+		})
+		for (const id of deletes) table.delete(id)
 
-		for (const record of updates) {
-			table.set(record.id, record)
-		}
-		completed += updates.length
-		onProgress(completed, total)
-
-		for (const id of deletes) {
-			table.delete(id)
-		}
-		completed += deletes.length
-		onProgress(completed, total)
-
-		// Changelog, in the state the records went to
-		const { heads, changelog } = state
+		// Changelog, in the state the records went to; the undone entries are discarded, their ids kept
+		const { heads, changelog, discardedCommits } = state
 		const head = heads.get(documentId) ?? 0
 		const entries = changelog.get(documentId) ?? []
-
-		// Trim redoable future
-		const trimmed = entries.filter((e) => e.sequenceNumber <= head)
+		const trimmed = entries.filter((entry) => entry.sequenceNumber <= head)
+		const discarded = discardedCommits.get(documentId) ?? new Set<string>()
+		for (const entry of entries) {
+			if (entry.sequenceNumber > head) discarded.add(entry.writeId)
+		}
+		discardedCommits.set(documentId, discarded)
 
 		const newSeq = head + 1
 		const entry: ChangeLogEntry = {
@@ -349,6 +348,7 @@ export class InMemoryStore implements Store {
 			documentId,
 			sequenceNumber: newSeq,
 			timestamp: Date.now(),
+			writeId,
 			operations: {
 				creates,
 				updates: updates.map((after, i) => ({ before: beforeSnapshots[i], after })),
@@ -358,10 +358,15 @@ export class InMemoryStore implements Store {
 		trimmed.push(entry)
 		changelog.set(documentId, trimmed)
 		heads.set(documentId, newSeq)
+		tellCommitProgress({
+			onProgress,
+			parts: [creates.length, updates.length, deletes.length],
+		})
 	}
 
 	// --- History ---
 
+	/** Undo the last applied entry, its parts in reverse: the deleted records back, the befores, the creates gone. */
 	async undo(documentId: string): Promise<void> {
 		this.guardOpen()
 		this.guardWritable()
@@ -376,15 +381,9 @@ export class InMemoryStore implements Store {
 		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
 
-		for (const record of creates) {
-			table.delete(record.id)
-		}
-		for (const u of updates) {
-			table.set(u.before.id, u.before)
-		}
-		for (const record of deletes) {
-			table.set(record.id, record)
-		}
+		for (const record of deletes) table.set(record.id, record)
+		for (const u of updates) table.set(u.before.id, u.before)
+		for (const record of creates) table.delete(record.id)
 
 		state.heads.set(documentId, head - 1)
 		bumpVersion({ state, documentId })
@@ -405,15 +404,9 @@ export class InMemoryStore implements Store {
 		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
 
-		for (const record of creates) {
-			table.set(record.id, record)
-		}
-		for (const u of updates) {
-			table.set(u.after.id, u.after)
-		}
-		for (const record of deletes) {
-			table.delete(record.id)
-		}
+		for (const record of creates) table.set(record.id, record)
+		for (const u of updates) table.set(u.after.id, u.after)
+		for (const record of deletes) table.delete(record.id)
 
 		state.heads.set(documentId, next)
 		bumpVersion({ state, documentId })
@@ -448,7 +441,7 @@ export class InMemoryStore implements Store {
 		if (!state?.documents.has(entry.documentId)) {
 			throwDocumentNotRegistered({ documentId: entry.documentId, what: 'a blob' })
 		}
-		state.blobs.set(entry.id, structuredClone(entry))
+		state.blobs.set(entry.id, toJsonCopy({ value: entry }))
 		const blobData = state.blobData.get(entry.documentId) ?? new Map<string, Blob>()
 		state.blobData.set(entry.documentId, blobData.set(entry.id, data))
 	}
@@ -500,6 +493,7 @@ export class InMemoryStore implements Store {
 		if (!state || !entry) {
 			throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
 		}
+		const checked = toJsonCopy({ value: ref })
 		const exists = entry.attachedTo.some(
 			(a) =>
 				a.documentId === ref.documentId &&
@@ -509,7 +503,7 @@ export class InMemoryStore implements Store {
 		if (exists) return
 		state.blobs.set(blobId, {
 			...entry,
-			attachedTo: [...entry.attachedTo, structuredClone(ref)],
+			attachedTo: [...entry.attachedTo, checked],
 		})
 	}
 
@@ -571,6 +565,7 @@ export class InMemoryStore implements Store {
 		state.records.delete(recordTableName(documentId))
 		state.changelog.delete(documentId)
 		state.heads.delete(documentId)
+		state.discardedCommits.delete(documentId)
 		// the version stays: a document registered again under the id goes on from it, never back to a past value
 		state.blobData.delete(documentId)
 		for (const [blobId, entry] of state.blobs) {
@@ -589,7 +584,7 @@ export class InMemoryStore implements Store {
 		// Nothing is written before the whole write is known to apply, refused in the order every
 		// store answers in: a create that is not JSON, a taken id, then an update that is not JSON - of
 		// the updates that apply: a patch of a record the document does not hold is skipped, as ever
-		const creates = toJsonCopy({ value: ops.creates ?? [] })
+		const creates = toStoredRecords({ records: ops.creates ?? [] })
 		guardNoDuplicate({ table, creates, documentId })
 		const createdIds = new Set(creates.map((record) => record.id))
 		const updates = toJsonCopy({

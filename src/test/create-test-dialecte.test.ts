@@ -152,8 +152,16 @@ describe('createTestContext', () => {
 		})
 		await store.bulkWrite('doc', {
 			creates: [
-				{ id: 'a1', tagName: 'A', attributes: { aA: 'a1' }, parent: null, children: [] },
-			] as unknown as AnyRawRecord[],
+				{
+					id: 'a1',
+					tagName: 'A',
+					namespace: { prefix: '', uri: '' },
+					attributes: [{ name: 'aA', value: 'a1' }],
+					value: '',
+					parent: null,
+					children: [],
+				},
+			] as AnyRawRecord[],
 		})
 
 		const context = await createTestContext({

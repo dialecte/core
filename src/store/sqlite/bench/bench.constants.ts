@@ -265,3 +265,18 @@ export const DEAD_IMPORT_ROWS = { 'dead-50': 486_333, 'dead-450': 3_780_000 } as
 
 /** The dialecte the engine bench's files say they belong to. */
 export const ENGINE_BENCH_DIALECTE_ID = 'bench/engine'
+
+/** How often another view commits while the engine bench's history cell imports (the budget: each lands within 2 s outside an index build). */
+export const COMMIT_EVERY_MS = 250
+
+/** The steady cache the history gate (a voltage level's delete, undo, redo each <= 5 s at 500 MB) was set at. */
+export const GATE_STEADY_CACHE_MIB = 64
+
+/** The tag whose largest subtree the history cell deletes. */
+export const VOLTAGE_LEVEL_TAG = 'VoltageLevel'
+
+/** The files of the engine bench's history-and-export cells, by the size in their cell's name. */
+export const HISTORY_EXPORT_FIXTURES: Record<string, BenchFixtureName> = {
+	'50': 'composed-50-compact',
+	'500': 'composed-500-compact',
+}

@@ -2,17 +2,17 @@ import { RECORD_COLUMN_LIST, ROW_SELECT_EXPRESSIONS, ROWS_PER_BIND } from './eng
 
 import { checkJsonValues } from '@/store/json-values'
 
-import type { EncodedRows, RecordSinkParams } from './engine.types'
+import type { EncodedRows, LeadColumns, RecordSinkParams } from './engine.types'
 import type { AnyRawRecord } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /**
- * The creates of a write encoded, before anything else is checked: a value that is not JSON
+ * Records a caller hands a write (its creates, a commit's updates) encoded: a value that is not JSON
  * refuses the whole write with `STORE_VALUE_NOT_JSON` (whole records, as every store checks them).
  */
-export function encodeCreates(params: { creates: AnyRawRecord[] }): EncodedRows {
-	checkJsonValues({ value: params.creates })
-	return encodeRecords({ records: params.creates })
+export function encodeCheckedRecords(params: { records: AnyRawRecord[] }): EncodedRows {
+	checkJsonValues({ value: params.records })
+	return encodeRecords({ records: params.records })
 }
 
 /** The records as rows, in batches of one bind each: records already checked as JSON. */
@@ -26,19 +26,28 @@ export function encodeRecords(params: { records: AnyRawRecord[] }): EncodedRows 
 	return { payloads }
 }
 
-/** The encoded rows into the document table: one JSON1 `INSERT ... SELECT` per batch. */
+/**
+ * The encoded rows into a table of record rows: one JSON1 `INSERT ... SELECT` per batch. `lead` gives
+ * columns of the same value on every row, written before the record's (a history row's entry and
+ * part); such rows are written in the order given.
+ */
 export function insertEncodedRows(params: {
 	db: Database
 	table: string
 	rows: EncodedRows
+	lead?: LeadColumns
 }): void {
-	const { db, table, rows } = params
+	const { db, table, rows, lead } = params
 	if (rows.payloads.length === 0) return
 	const statement = db.prepare(
-		`INSERT INTO ${table} (${RECORD_COLUMN_LIST}) SELECT ${ROW_SELECT_EXPRESSIONS.join(', ')} FROM json_each(?) e`,
+		lead
+			? `INSERT INTO ${table} (${[...lead.columns, RECORD_COLUMN_LIST].join(', ')}) ` +
+					`SELECT ${[...lead.columns.map(() => '?'), ...ROW_SELECT_EXPRESSIONS].join(', ')} FROM json_each(?) e ORDER BY e.key`
+			: `INSERT INTO ${table} (${RECORD_COLUMN_LIST}) SELECT ${ROW_SELECT_EXPRESSIONS.join(', ')} FROM json_each(?) e`,
 	)
 	try {
-		for (const payload of rows.payloads) statement.bind([payload]).stepReset()
+		for (const payload of rows.payloads)
+			statement.bind([...(lead?.values ?? []), payload]).stepReset()
 	} finally {
 		statement.finalize()
 	}

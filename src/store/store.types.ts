@@ -42,10 +42,12 @@ export type RecordSchema = {
  * by UTF-16 code unit, as an IndexedDB key range orders them; `getMany` answers in the order asked,
  * `getChangeLog` in sequence order.
  *
- * A store holds JSON values only, in records and in document metadata: strings, finite numbers,
- * booleans, null, and arrays and plain objects of them, nested at most 512 levels counted from what
- * a write hands (its list of records or patches, or the document; a record's attribute value may
- * then nest 508 levels, a metadata field's 510). A field holding `undefined` is dropped: a record
+ * A store holds JSON values only, in records, in document metadata and in blob entries (an added
+ * entry, an attached reference): strings, finite numbers, booleans, null, and arrays and plain
+ * objects of them, nested at most 512 levels counted from what a write hands (its list of records
+ * or patches, or the document; a record's attribute value may then nest 508 levels, a metadata
+ * field's 510). A record is kept as its type has it: a field it carries beyond the type's - at its
+ * top, in its namespace or in its parent - is dropped. A field holding `undefined` is dropped: a record
  * or a document created with one reads back without it, and an update leaves that field as it was.
  * Any other value - a Date, a Map, a Set, NaN or Infinity, a BigInt, a function, a symbol, an
  * instance of a class, a raw JSON value, an object with a `toJSON` method, `undefined` in an array,
@@ -177,9 +179,11 @@ export interface Store {
 	exportFile(params: ExportFileParams): Promise<ExportFileResult>
 
 	/**
-	 * What became of a write, asked by its id - after a lost connection, before reading again:
-	 * `running`, `applied` (the document is ready) or `not-applied` (it failed, was aborted, never
-	 * started, or its document was removed since).
+	 * What became of a write - an import or a commit - asked by its id, after a lost connection, before
+	 * reading again: `running` (an import still under way), `applied` (an import whose document is
+	 * ready; a commit once committed - also after its undo, and after a later commit discarded it) or
+	 * `not-applied` (it was refused, failed, was aborted or never started; or its document was removed
+	 * since).
 	 */
 	getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome>
 
@@ -204,10 +208,12 @@ export interface Store {
 	 * (`STORE_RECORD_NOT_FOUND`, `meta.recordId`), then a create that is not JSON
 	 * (`STORE_VALUE_NOT_JSON`), then a create of an id the document holds or the commit holds twice
 	 * (`STORE_DUPLICATE_ID`, `meta.recordIds`), then an update that is not JSON. A delete of an absent
-	 * id is ignored.
+	 * id is ignored. `writeId` is the caller's id for the commit, kept on its history entry and asked by
+	 * `getWriteOutcome`; generated when absent.
 	 */
 	commit(params: {
 		documentId: string
+		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: string[]
@@ -371,6 +377,8 @@ export type ChangeLogEntry = {
 	documentId: string
 	sequenceNumber: number
 	timestamp: number
+	/** The id of the commit that wrote the entry */
+	writeId: string
 	operations: {
 		creates: AnyRawRecord[]
 		updates: { before: AnyRawRecord; after: AnyRawRecord }[]
