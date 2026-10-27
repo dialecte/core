@@ -65,6 +65,7 @@ function writeElement(params: {
 		parentTagName: record.tagName,
 		children: record.children,
 		childrenConfig: config.children,
+		definition: config.definition,
 	})
 	for (const child of children) {
 		const childRecord = index.get(child.id)

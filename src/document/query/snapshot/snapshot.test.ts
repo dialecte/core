@@ -4,6 +4,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
+	XMLNS_EXT_NAMESPACE,
 	createTestProject,
 	runTestCases,
 	TEST_DIALECTE_CONFIG,
@@ -221,6 +222,20 @@ describe('getSnapshot — tree reads (table)', () => {
 			expectRootTag: 'Root',
 			expectChildTags: ['A'],
 			expectChildless: ['A'],
+		},
+		'a child the leading wildcard admits → first, before the declared children': {
+			sourceXml: /* xml */ `
+				<Root ${ns} ${XMLNS_EXT_NAMESPACE}>
+					<C aC="v">
+						<CC_2 ${customId}="cc2" aCC_2="v">
+							<CCC_1 aCCC_1="v" />
+							<ext:CCCC_3 ext:aCCCC_3="v" />
+						</CC_2>
+					</C>
+				</Root>
+			`,
+			options: { ref: { tagName: 'CC_2', id: 'cc2' } },
+			expectChildTags: ['CCCC_3', 'CCC_1'],
 		},
 		'omit → drops the matching tagName': {
 			sourceXml: FILTER,

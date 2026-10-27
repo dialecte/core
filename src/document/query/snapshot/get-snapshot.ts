@@ -83,7 +83,11 @@ function toTree<GenericConfig extends AnyDialecteConfig>(
 	}
 
 	// Final post-pass: order children by the config sequence (matches XML order).
-	tree = applyOrder({ tree, childrenConfig: context.dialecteConfig.children })
+	tree = applyOrder({
+		tree,
+		childrenConfig: context.dialecteConfig.children,
+		definition: context.dialecteConfig.definition,
+	})
 
 	return tree
 }

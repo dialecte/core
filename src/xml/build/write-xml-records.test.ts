@@ -251,6 +251,59 @@ describe('writeXmlRecords', () => {
 					childRecord({ id: 'b-1', tagName: 'B', attributes: [{ name: 'aB', value: 'x' }] }),
 				],
 			},
+			'a child the leading wildcard admits -> written at the wildcard, before the declared children':
+				{
+					expected: {
+						formatted: crlf([
+							'<?xml version="1.0" encoding="UTF-8"?>',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT">',
+							'    <C aC="x">',
+							'        <CC_2 aCC_2="x">',
+							'            <ext:CCCC_3 ext:aCCCC_3="x"/>',
+							'            <CCC_1 aCCC_1="x"/>',
+							'        </CC_2>',
+							'    </C>',
+							'</Root>',
+						]),
+						compact:
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT"><C aC="x"><CC_2 aCC_2="x"><ext:CCCC_3 ext:aCCCC_3="x"/><CCC_1 aCCC_1="x"/></CC_2></C></Root>',
+					},
+					records: [
+						rootOf(['c-1']),
+						childRecord({
+							id: 'c-1',
+							tagName: 'C',
+							attributes: [{ name: 'aC', value: 'x' }],
+							children: [ref({ id: 'cc2-1', tagName: 'CC_2' })],
+						}),
+						childRecord({
+							id: 'cc2-1',
+							tagName: 'CC_2',
+							parentId: 'c-1',
+							parentTag: 'C',
+							attributes: [{ name: 'aCC_2', value: 'x' }],
+							children: [
+								ref({ id: 'ccc1-1', tagName: 'CCC_1' }),
+								ref({ id: 'cccc3-1', tagName: 'CCCC_3' }),
+							],
+						}),
+						childRecord({
+							id: 'ccc1-1',
+							tagName: 'CCC_1',
+							parentId: 'cc2-1',
+							parentTag: 'CC_2',
+							attributes: [{ name: 'aCCC_1', value: 'x' }],
+						}),
+						childRecord({
+							id: 'cccc3-1',
+							tagName: 'CCCC_3',
+							parentId: 'cc2-1',
+							parentTag: 'CC_2',
+							namespace: NS.ext,
+							attributes: [{ name: 'aCCCC_3', value: 'x', namespace: NS.ext }],
+						}),
+					],
+				},
 			'database ids asked -> on every element': {
 				expected: {
 					formatted: crlf([

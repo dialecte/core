@@ -139,6 +139,43 @@ function addLevel(params: {
 	return refs
 }
 
+/** A root holding C, its CC_2 holding a CCC_1 then an ext:CCCC_3 that only CC_2's leading wildcard admits. */
+function wildcardTree(): AnyRawRecord[] {
+	return [
+		record({ id: 'root', tagName: 'Root', children: [{ id: 'c', tagName: 'C' }] }),
+		record({
+			id: 'c',
+			tagName: 'C',
+			parent: { id: 'root', tagName: 'Root' },
+			attributes: [{ name: 'aC', value: 'x' }],
+			children: [{ id: 'cc2', tagName: 'CC_2' }],
+		}),
+		record({
+			id: 'cc2',
+			tagName: 'CC_2',
+			parent: { id: 'c', tagName: 'C' },
+			attributes: [{ name: 'aCC_2', value: 'x' }],
+			children: [
+				{ id: 'ccc1', tagName: 'CCC_1' },
+				{ id: 'cccc3', tagName: 'CCCC_3' },
+			],
+		}),
+		record({
+			id: 'ccc1',
+			tagName: 'CCC_1',
+			parent: { id: 'cc2', tagName: 'CC_2' },
+			attributes: [{ name: 'aCCC_1', value: 'x' }],
+		}),
+		record({
+			id: 'cccc3',
+			tagName: 'CCCC_3',
+			namespace: DIALECTE_TEST_NAMESPACES.ext,
+			parent: { id: 'cc2', tagName: 'CC_2' },
+			attributes: [{ name: 'aCCCC_3', value: 'x', namespace: DIALECTE_TEST_NAMESPACES.ext }],
+		}),
+	]
+}
+
 async function textOf(blob: Blob): Promise<string> {
 	return blob.text()
 }
@@ -166,6 +203,9 @@ describe('runExport', () => {
 			'the document exactly one batch -> the same bytes': {
 				records: wideTree({ width: 3 }),
 				options: { batchSize: 7 },
+			},
+			'a child a wildcard admits -> written at the wildcard, the same bytes': {
+				records: wildcardTree(),
 			},
 		}
 

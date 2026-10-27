@@ -104,6 +104,23 @@ describe('stageAddChild', () => {
 			childPayload: { tagName: 'AAAA_1', attributes: { aAAAA_1: 'leaf' } },
 			expectedQueries: ['//default:AAA_1[@aAAA_1="l2"]/default:AAAA_1[@aAAAA_1="leaf"]'],
 		},
+		'a child only the leading wildcard admits → exported first, before the declared children': {
+			sourceXml: /* xml */ `
+				<Root ${nsExt}>
+					<C aC="c">
+						<CC_2 ${customId}="cc2" aCC_2="parent">
+							<CCC_1 aCCC_1="declared" />
+						</CC_2>
+					</C>
+				</Root>
+			`,
+			parentRef: { tagName: 'CC_2', id: 'cc2' },
+			childPayload: { tagName: 'CCCC_3', attributes: { 'ext:aCCCC_3': 'admitted' } },
+			expectedQueries: [
+				'//default:CC_2/*[1][self::ext:CCCC_3[@ext:aCCCC_3="admitted"]]',
+				'//default:CC_2/*[2][self::default:CCC_1]',
+			],
+		},
 		'throws when parent does not exist': {
 			sourceXml: /* xml */ `<Root ${ns} />`,
 			parentRef: { tagName: 'A', id: 'non-existent' },

@@ -4,6 +4,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
+	XMLNS_EXT_NAMESPACE,
 	runTestCases,
 	TEST_DIALECTE_CONFIG,
 	createTestRunner,
@@ -77,6 +78,27 @@ describe('getTree', () => {
 				tree: [
 					{ tagName: 'AA_1', tree: [] },
 					{ tagName: 'AA_2', tree: [] },
+				],
+			},
+		},
+		'no options - a child the leading wildcard admits first, before the declared children': {
+			sourceXml: /* xml */ `
+				<Root ${ns} ${XMLNS_EXT_NAMESPACE}>
+					<C aC="v">
+						<CC_2 ${customId}="cc2" aCC_2="v">
+							<CCC_1 aCCC_1="v" />
+							<ext:CCCC_3 ext:aCCCC_3="v" />
+						</CC_2>
+					</C>
+				</Root>
+			`,
+			ref: { tagName: 'CC_2', id: 'cc2' },
+			// CC_2 → (any ##other, CCC_1, CCC_2, ext:CCC_3); ext:CCCC_3 is not declared, the wildcard admits it
+			expectedShape: {
+				tagName: 'CC_2',
+				tree: [
+					{ tagName: 'CCCC_3', tree: [] },
+					{ tagName: 'CCC_1', tree: [] },
 				],
 			},
 		},
