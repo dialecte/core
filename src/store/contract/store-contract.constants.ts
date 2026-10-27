@@ -39,3 +39,12 @@ export const CONTRACT_EXPORT_FORMATTED = [
 
 /** A write during an export lands once this many records are written: the root, `A` and `AA_1`, before `C` is read. */
 export const WRITE_AFTER_RECORDS = 3
+
+/**
+ * Arrays and objects above an attribute's value in a write of records or patches: the write's list,
+ * the record or the patch, its attributes, the attribute.
+ */
+export const CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE = 4
+
+/** Arrays and objects above a metadata field's value in a document registered or updated: the document, its metadata. */
+export const CONTRACT_LEVELS_ABOVE_METADATA_VALUE = 2

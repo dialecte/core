@@ -119,3 +119,10 @@ export function scribble(value: unknown): void {
 	for (const field of Object.values(value)) scribble(field)
 	Object.assign(value, { scribbled: true })
 }
+
+/** `levels` arrays, each holding the next; the innermost holds 1. */
+export function nestedArrays(params: { levels: number }): unknown {
+	let value: unknown = 1
+	for (let level = 0; level < params.levels; level++) value = [value]
+	return value
+}

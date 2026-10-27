@@ -1,4 +1,7 @@
+import { JSON_MAX_DEPTH } from '../json-values.constants'
 import {
+	CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE,
+	CONTRACT_LEVELS_ABOVE_METADATA_VALUE,
 	CONTRACT_SESSION_DIAGNOSTICS,
 	CONTRACT_SESSION_FAIL_VALUE,
 	CONTRACT_SESSION_HOLD_VALUE,
@@ -13,6 +16,7 @@ import {
 	makeBlobEntry,
 	makeDocument,
 	makeRecord,
+	nestedArrays,
 	scribble,
 	sessionRecords,
 	SMALL_BATCHES,
@@ -24,10 +28,12 @@ import { expect } from 'vitest'
 import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE, DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
 
+import type { JsonWithRawJson } from '../json-values.types'
 import type { ImportProgress, Store, WriteOutcome } from '../store.types'
 import type {
 	AbsentDocumentRead,
 	AttributePatchCase,
+	NestingPlace,
 	NonJsonPlace,
 	OperationInFlight,
 	OrderedRead,
@@ -1186,6 +1192,7 @@ const NON_JSON_VALUES: Record<string, () => unknown> = {
 	'a symbol': () => Symbol('held'),
 	'an instance of a class': () => new HeldInstance(),
 	'an array holding undefined': () => [undefined],
+	'a raw JSON value': () => (JSON as JsonWithRawJson).rawJSON?.('1'),
 }
 
 /** Where a write hands the store a value: every store refuses one that is not JSON there. */
@@ -1377,6 +1384,74 @@ const nonJsonRefusalOrder: StoreContractCases = {
 			},
 		},
 }
+
+// ── JSON nesting depth ───────────────────────────────────────────────────────
+
+/** Where a write hands the store a nested value, counted from the top of what the write hands. */
+const NESTING_PLACES: Record<string, NestingPlace> = {
+	'an attribute of a record created': {
+		levelsAbove: CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE,
+		write: ({ store, value }) =>
+			store.bulkWrite('doc-1', {
+				creates: [makeRecord({ id: 'r9', attributes: [{ name: 'a', value: value as string }] })],
+			}),
+		read: async (store) => (await store.get('r9', 'doc-1'))?.attributes[0]?.value,
+	},
+	'an attribute of a record patched': {
+		levelsAbove: CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE,
+		write: ({ store, value }) =>
+			store.bulkWrite('doc-1', {
+				updates: [{ recordId: 'r1', attributes: [{ name: 'a', value: value as string }] }],
+			}),
+		read: async (store) => (await store.get('r1', 'doc-1'))?.attributes[0]?.value,
+	},
+	'the metadata of a document registered': {
+		levelsAbove: CONTRACT_LEVELS_ABOVE_METADATA_VALUE,
+		write: ({ store, value }) =>
+			store.registerDocument(makeDocument({ id: 'doc-2', metadata: { held: value } })),
+		read: async (store) => (await store.getDocument('doc-2'))?.metadata?.held,
+	},
+	'the metadata of a document updated': {
+		levelsAbove: CONTRACT_LEVELS_ABOVE_METADATA_VALUE,
+		write: ({ store, value }) => store.updateDocument('doc-1', { metadata: { held: value } }),
+		read: async (store) => (await store.getDocument('doc-1'))?.metadata?.held,
+	},
+}
+
+const jsonNestingDepth: StoreContractCases = Object.fromEntries(
+	Object.entries(NESTING_PLACES).flatMap(([place, { levelsAbove, write, read }]) => [
+		[
+			`a value in ${place} reaching the nesting limit → kept`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await store.registerDocument(makeDocument())
+					await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+					const value = nestedArrays({ levels: JSON_MAX_DEPTH - levelsAbove })
+					await write({ store, value })
+					expect(await read(store)).toEqual(value)
+				},
+			},
+		],
+		[
+			`a value in ${place} one level past the nesting limit → STORE_VALUE_NOT_JSON, nothing written`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await store.registerDocument(makeDocument())
+					await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+					await expectRejectsWith({
+						action: write({
+							store,
+							value: nestedArrays({ levels: JSON_MAX_DEPTH - levelsAbove + 1 }),
+						}),
+						key: 'STORE_VALUE_NOT_JSON',
+					})
+					expect(await store.getDocuments()).toEqual([makeDocument()])
+					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+				},
+			},
+		],
+	]),
+)
 
 // ── A document that is not there ─────────────────────────────────────────────
 
@@ -2514,4 +2589,5 @@ export const STORE_CONTRACT: StoreContractGroups = {
 	'records are values': needing({ needs: ['history', 'blobs'], cases: values }),
 	'list reads in id order': idOrder,
 	'a closed store': closedStore,
+	'JSON nesting depth': jsonNestingDepth,
 }
