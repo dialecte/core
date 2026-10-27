@@ -784,12 +784,17 @@ export class DexieStore implements Store {
 				if (updates?.length) {
 					this.perf.start('core::store::bulkWrite::update')
 					try {
-						for (const patch of updates) {
-							const record = await table.get(patch.recordId)
-							if (!record) continue
-							const checked = toJsonCopy({ value: patch })
-							await table.put(applyRecordPatch({ record, patch: checked }))
+						// the patches that apply are checked as one list, as every store checks them
+						const held = await table.bulkGet(updates.map((patch) => patch.recordId))
+						const applying = updates.filter((_patch, index) => held[index] !== undefined)
+						const checked = toJsonCopy({ value: applying })
+						const patched = new Map<string, AnyRawRecord>()
+						for (const record of held) if (record) patched.set(record.id, record)
+						for (const patch of checked) {
+							const record = patched.get(patch.recordId)
+							if (record) patched.set(patch.recordId, applyRecordPatch({ record, patch }))
 						}
+						await table.bulkPut([...patched.values()])
 					} catch (error) {
 						if (toDialecteError(error)) throw error
 						throwDialecteError('STORE_BULK_UPDATE_FAILED', {

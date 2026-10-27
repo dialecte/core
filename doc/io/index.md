@@ -143,13 +143,13 @@ const result = await runExport(
 
 ## Values a store keeps
 
-A store keeps plain JSON values only, in records and in document metadata: strings, finite numbers, booleans, `null`, and arrays and plain objects of them. The `Store` interface states this rule on each write member; every store checks what a write hands it before anything lands, through the one check core shares between its stores:
+A store keeps plain JSON values only, in records and in document metadata: strings, finite numbers, booleans, `null`, and arrays and plain objects of them, nested at most 512 levels counted from what a write hands: its list of records or patches, or the document (so an attribute's value may nest 508 levels, a metadata field's 510). The `Store` interface states this rule on each write member; every store checks what a write hands it before anything lands, through the one check core shares between its stores:
 
-- A field holding `undefined` is dropped: it reads back absent. `updateDocument(id, { name: undefined })` leaves the name as it was, and `updateDocument(id, { metadata: undefined })` leaves the metadata: write the metadata you keep instead. A symbol key and a property that is not enumerable are dropped too, as JSON drops them.
-- Any other value is refused with `STORE_VALUE_NOT_JSON` (`D1015`): a `Date`, a `Map`, a `Set`, `NaN` or `Infinity`, a `BigInt`, a function, a symbol, an instance of a class, `undefined` in an array, a cycle. The write is refused whole; `detail` names the value and the field holding it (its own name, not its path).
+- A field holding `undefined` is dropped: it reads back absent. `updateDocument(id, { name: undefined })` leaves the name as it was, and `updateDocument(id, { metadata: undefined })` leaves the metadata: write the metadata you keep instead. A symbol key and a property that is not enumerable are dropped too, as JSON drops them (a `toJSON` method is refused, enumerable or not).
+- Any other value is refused with `STORE_VALUE_NOT_JSON` (`D1015`): a `Date`, a `Map`, a `Set`, `NaN` or `Infinity`, a `BigInt`, a function, a symbol, an instance of a class, a raw JSON value (`JSON.rawJSON`: JSON would write its text), an object with a `toJSON` method (JSON would keep what it answers, not the object; it is never called), `undefined` in an array, a cycle, a value nested more than 512 levels deep. The write is refused whole; `detail` names the value and the field holding it (its own name, not its path).
 - Every store refuses in the same order. A bulk write: a document not registered, a create that is not JSON, a taken id, then a patch that is not JSON (a patch of a record the document does not hold is skipped, whatever it holds). A commit: an update of a record the document does not hold first. A document registered: a taken id, then its values. A document updated: its values, then the document looked up (one that is not registered is left alone).
 
-Write a date as its ISO string or a number. A store keeps its own copy of what it is handed: a caller changing a value after the write does not change the store.
+Write a date as its ISO string or a number. A store keeps its own copy of what it is handed: a caller changing a value after the write does not change the store. Each value is read once, so hand values that read the same each time: a getter answering something new at each read is kept as it read for one store and may be read again by another.
 
 ## The SQLite project store's page cache
 

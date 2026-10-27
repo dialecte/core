@@ -43,11 +43,16 @@ export type RecordSchema = {
  * `getChangeLog` in sequence order.
  *
  * A store holds JSON values only, in records and in document metadata: strings, finite numbers,
- * booleans, null, and arrays and plain objects of them. A field holding `undefined` is dropped: a
- * record or a document created with one reads back without it, and an update leaves that field as it
- * was. Any other value - a Date, a Map, a Set, NaN or Infinity, a BigInt, a function, a symbol, an
- * instance of a class, `undefined` in an array, a cycle - refuses the write whole with
- * `STORE_VALUE_NOT_JSON`, nothing of it written; each write says where that comes in its order.
+ * booleans, null, and arrays and plain objects of them, nested at most 512 levels counted from what
+ * a write hands (its list of records or patches, or the document; a record's attribute value may
+ * then nest 508 levels, a metadata field's 510). A field holding `undefined` is dropped: a record
+ * or a document created with one reads back without it, and an update leaves that field as it was.
+ * Any other value - a Date, a Map, a Set, NaN or Infinity, a BigInt, a function, a symbol, an
+ * instance of a class, a raw JSON value, an object with a `toJSON` method, `undefined` in an array,
+ * a cycle, a value nested deeper - refuses the write whole with `STORE_VALUE_NOT_JSON`, nothing of
+ * it written; each write says where that comes in its order. Hand values that read the same each
+ * time: one that does not (a getter answering something new) is kept as it read for one store and
+ * may be read again by another.
  */
 export interface Store {
 	/** The name of the state this store reads and writes; also scopes the BroadcastChannel */

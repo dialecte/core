@@ -123,6 +123,16 @@ export type NonJsonPlace = {
 	write: (params: { store: Store; value: unknown }) => Promise<void>
 }
 
+/**
+ * A write handing the store `value` under `levelsAbove` arrays and objects of its own, and the read
+ * answering it back: every store keeps a value nested to the depth limit and refuses one level more.
+ */
+export type NestingPlace = {
+	levelsAbove: number
+	write: (params: { store: Store; value: unknown }) => Promise<void>
+	read: (store: Store) => Promise<unknown>
+}
+
 /** An operation through a store, run once the store is closed. */
 export type StoreOperation = (store: Store) => Promise<unknown>
 
