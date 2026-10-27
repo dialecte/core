@@ -1,4 +1,5 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { tellCommitProgress } from '../commit-progress'
 import { toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
@@ -21,9 +22,10 @@ import {
 	BLOBS_SCHEMA,
 	BLOB_DATA_SCHEMA,
 } from '../store.constants'
+import { toStoredRecords } from '../stored-record'
 import { removeUnfinishedImports } from '../unfinished-imports'
-import { importOutcomeOf } from '../write-outcome'
-import { IMPORT_LOCK_PREFIX, VERSION_KEY_PREFIX } from './dexie-store.constants'
+import { writeOutcomeOf } from '../write-outcome'
+import { DISCARDED_SEQUENCE, IMPORT_LOCK_PREFIX, VERSION_KEY_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
 
@@ -320,9 +322,17 @@ export class DexieStore implements Store {
 		})
 	}
 
+	/** The registry first, then the changelog: no index carries the id there, so it is scanned (a rare call). */
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
 		return this.operation(async () => {
-			return importOutcomeOf({ documents: await this.getDocuments(), writeId: params.writeId })
+			const { writeId } = params
+			const documents = await this.getDocuments()
+			await this.ensureCurrentSchema()
+			const committed = await this.db
+				.table<ChangeLogEntry>(TABLE_CHANGELOG)
+				.filter((entry) => entry.writeId === writeId)
+				.first()
+			return writeOutcomeOf({ documents, writeId, committed: committed !== undefined })
 		})
 	}
 
@@ -337,6 +347,7 @@ export class DexieStore implements Store {
 
 	async commit(params: {
 		documentId: string
+		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: string[]
@@ -344,10 +355,19 @@ export class DexieStore implements Store {
 	}): Promise<void> {
 		return this.operation(async () => {
 			try {
-				const { documentId, creates, updates, deletes, onProgress } = params
+				const {
+					documentId,
+					writeId = crypto.randomUUID(),
+					creates,
+					updates,
+					deletes,
+					onProgress,
+				} = params
 				const table = await this.writeTable(documentId)
-				const total = creates.length + updates.length + deletes.length
-				let completed = 0
+				const document = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+				if (document && withStatus(document).status === 'importing') {
+					throwDocumentNotRegistered({ documentId, what: 'a commit' })
+				}
 
 				try {
 					await this.db.transaction(
@@ -359,24 +379,16 @@ export class DexieStore implements Store {
 							// Snapshot before-state for undo; an update of a record the document does not
 							// hold aborts the commit before anything is written
 							const beforeSnapshots = await snapshotBefore({ table, updates, documentId })
-							const deletedSnapshots: (AnyRawRecord | undefined)[] =
-								deletes.length > 0 ? await table.bulkGet(deletes) : []
 
-							// every refusal before the first progress: a create that is not JSON, a taken id,
+							// every refusal before anything is written: a create that is not JSON, a taken id,
 							// then an update that is not JSON
-							const created = toJsonCopy({ value: creates })
+							const created = toStoredRecords({ records: creates })
 							if (created.length > 0) await addRecords({ table, creates: created, documentId })
-							const updated = toJsonCopy({ value: updates })
-							if (created.length > 0) {
-								completed += created.length
-								onProgress(completed, total)
-							}
+							const updated = toStoredRecords({ records: updates })
 
 							if (updated.length > 0) {
 								try {
 									await table.bulkPut(updated)
-									completed += updates.length
-									onProgress(completed, total)
 								} catch (error) {
 									throwDialecteError('STORE_BULK_UPDATE_FAILED', {
 										detail: error instanceof Error ? error.message : String(error),
@@ -385,11 +397,11 @@ export class DexieStore implements Store {
 								}
 							}
 
+							// the deleted records as they are at this step: one the commit created or updated is kept so
+							const deletedSnapshots = deletes.length > 0 ? await table.bulkGet(deletes) : []
 							if (deletes.length > 0) {
 								try {
 									await table.bulkDelete(deletes)
-									completed += deletes.length
-									onProgress(completed, total)
 								} catch (error) {
 									throwDialecteError('STORE_DELETE_FAILED', {
 										detail: error instanceof Error ? error.message : String(error),
@@ -398,22 +410,23 @@ export class DexieStore implements Store {
 								}
 							}
 
-							// Trim redoable future for this file
+							// the undone entries discarded: no sequence, no operations, their ids kept for the outcome
 							const head = await this.getHead(documentId)
-							const allForFile = await this.db
+							await this.db
 								.table<ChangeLogEntry>(TABLE_CHANGELOG)
 								.where({ documentId })
 								.filter((e) => e.sequenceNumber > head)
-								.toArray()
-							if (allForFile.length > 0) {
-								await this.db.table(TABLE_CHANGELOG).bulkDelete(allForFile.map((e) => e.id))
-							}
+								.modify(function discard(discarded) {
+									discarded.sequenceNumber = DISCARDED_SEQUENCE
+									discarded.operations = { creates: [], updates: [], deletes: [] }
+								})
 
 							const newSeq = head + 1
 							const entry: Omit<ChangeLogEntry, 'id'> = {
 								documentId,
 								sequenceNumber: newSeq,
 								timestamp: Date.now(),
+								writeId,
 								operations: {
 									creates: created,
 									updates: updated.map((after, i) => ({ before: beforeSnapshots[i], after })),
@@ -425,6 +438,10 @@ export class DexieStore implements Store {
 							await this.bumpVersion(documentId)
 						},
 					)
+					tellCommitProgress({
+						onProgress,
+						parts: [creates.length, updates.length, deletes.length],
+					})
 				} catch (error) {
 					if (toDialecteError(error)) throw error
 					throwDialecteError('STORE_COMMIT_FAILED', {
@@ -456,16 +473,17 @@ export class DexieStore implements Store {
 				const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 
 				await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
+					// in reverse: the deleted records back, the records as they were before, the creates gone
 					const { creates, updates, deletes } = entry.operations
 
-					if (creates.length > 0) {
-						await table.bulkDelete(creates.map((r) => r.id))
+					if (deletes.length > 0) {
+						await table.bulkPut(deletes)
 					}
 					if (updates.length > 0) {
 						await table.bulkPut(updates.map((u) => u.before))
 					}
-					if (deletes.length > 0) {
-						await table.bulkAdd(deletes)
+					if (creates.length > 0) {
+						await table.bulkDelete(creates.map((r) => r.id))
 					}
 
 					await this.setHead(documentId, head - 1)
@@ -496,7 +514,7 @@ export class DexieStore implements Store {
 					const { creates, updates, deletes } = entry.operations
 
 					if (creates.length > 0) {
-						await table.bulkAdd(creates)
+						await table.bulkPut(creates)
 					}
 					if (updates.length > 0) {
 						await table.bulkPut(updates.map((update) => update.after))
@@ -529,10 +547,11 @@ export class DexieStore implements Store {
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
 		return this.operation(async () => {
 			await this.ensureCurrentSchema()
-			return this.db
+			const entries = await this.db
 				.table<ChangeLogEntry>(TABLE_CHANGELOG)
 				.where({ documentId })
 				.sortBy('sequenceNumber')
+			return entries.filter((entry) => entry.sequenceNumber !== DISCARDED_SEQUENCE)
 		})
 	}
 
@@ -542,9 +561,10 @@ export class DexieStore implements Store {
 		return this.operation(async () => {
 			await this.ensureCurrentSchema()
 			invariantBlobOwnerKnown(this.knownDocuments, entry.documentId)
+			const checked = toJsonCopy({ value: entry })
 			const blobTable = this.db.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
 			await this.db.transaction('rw', this.db.table(TABLE_BLOBS), blobTable, async () => {
-				await this.db.table<BlobRecord>(TABLE_BLOBS).put(entry)
+				await this.db.table<BlobRecord>(TABLE_BLOBS).put(checked)
 				await blobTable.put({ id: entry.id, data })
 			})
 		})
@@ -596,6 +616,7 @@ export class DexieStore implements Store {
 			if (!entry) {
 				throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
 			}
+			const checked = toJsonCopy({ value: ref })
 			const exists = entry.attachedTo.some(
 				(a) =>
 					a.documentId === ref.documentId &&
@@ -603,7 +624,7 @@ export class DexieStore implements Store {
 					a.attribute === ref.attribute,
 			)
 			if (exists) return
-			const attachedTo = [...entry.attachedTo, ref]
+			const attachedTo = [...entry.attachedTo, checked]
 			await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
 		})
 	}
@@ -772,7 +793,7 @@ export class DexieStore implements Store {
 			// refused in the order every store answers in: a create that is not JSON, a taken id, then
 			// a patch that is not JSON - of the patches that apply: one of a record the document does
 			// not hold is skipped
-			const creates = toJsonCopy({ value: ops.creates ?? [] })
+			const creates = toStoredRecords({ records: ops.creates ?? [] })
 
 			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
 				if (creates.length > 0) {

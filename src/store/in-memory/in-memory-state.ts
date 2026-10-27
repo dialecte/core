@@ -33,6 +33,7 @@ export function createInMemoryState(): InMemoryState {
 		records: new Map(),
 		changelog: new Map(),
 		heads: new Map(),
+		discardedCommits: new Map(),
 		blobs: new Map(),
 		blobData: new Map(),
 		runningImports: new Set(),

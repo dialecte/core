@@ -23,7 +23,16 @@ function makeFile(): DocumentRecord {
 }
 
 function makeRecord(overrides?: Partial<AnyRawRecord>): AnyRawRecord {
-	return { id: crypto.randomUUID(), tagName: 'LNode', parentId: null, ...overrides } as AnyRawRecord
+	return {
+		id: crypto.randomUUID(),
+		tagName: 'LNode',
+		namespace: { prefix: '', uri: '' },
+		attributes: [],
+		value: '',
+		parent: null,
+		children: [],
+		...overrides,
+	}
 }
 
 describe('DexieStore perf instrumentation', () => {

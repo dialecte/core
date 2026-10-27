@@ -52,16 +52,17 @@ export function childRef(id: string): AnyRelationship {
 	return { id, tagName: 'A' }
 }
 
-/** A commit of creates, updates and deletes on one document, progress ignored. */
+/** A commit of creates, updates and deletes on one document, progress ignored; its id when given. */
 export function commit(params: {
 	store: Store
 	documentId: string
+	writeId?: string
 	creates?: AnyRawRecord[]
 	updates?: AnyRawRecord[]
 	deletes?: string[]
 }): Promise<void> {
-	const { store, documentId, creates = [], updates = [], deletes = [] } = params
-	return store.commit({ documentId, creates, updates, deletes, onProgress: () => {} })
+	const { store, documentId, writeId, creates = [], updates = [], deletes = [] } = params
+	return store.commit({ documentId, writeId, creates, updates, deletes, onProgress: () => {} })
 }
 
 /** The action rejects with the structured error of that key, and that `meta` and `detail` when given. */

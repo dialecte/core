@@ -18,7 +18,7 @@ export type {
 	ImportTarget,
 	WriteOutcome,
 } from './store.types'
-export { importOutcomeOf } from './write-outcome'
+export { importOutcomeOf, writeOutcomeOf } from './write-outcome'
 export { removeUnfinishedImports } from './unfinished-imports'
 export * from './local'
 export * from './in-memory'

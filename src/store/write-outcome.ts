@@ -15,3 +15,19 @@ export function importOutcomeOf(params: {
 	if (!document) return 'not-applied'
 	return document.status === 'importing' ? 'running' : 'applied'
 }
+
+/**
+ * What became of a write - an import or a commit - read from the registry first, then from the
+ * history: `committed` says whether a history entry carries the id (a commit is applied whole or not
+ * at all, never running).
+ */
+export function writeOutcomeOf(params: {
+	documents: readonly DocumentRecord[]
+	writeId: string
+	committed: boolean
+}): WriteOutcome {
+	const { documents, writeId, committed } = params
+	const imported = importOutcomeOf({ documents, writeId })
+	if (imported !== 'not-applied') return imported
+	return committed ? 'applied' : 'not-applied'
+}

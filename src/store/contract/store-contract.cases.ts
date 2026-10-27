@@ -386,6 +386,14 @@ const bulkWrites: StoreContractCases = {
 
 // ── Commit and history ───────────────────────────────────────────────────────
 
+/** Progress listeners that fail: a store ignores their failure, as it never awaits them. */
+const FAILING_PROGRESS_LISTENERS: Record<string, (current: number, total: number) => unknown> = {
+	throws: () => {
+		throw new Error('listener failed')
+	},
+	rejects: () => Promise.reject(new Error('listener failed')),
+}
+
 const history: StoreContractCases = {
 	'commit creates records': {
 		act: async ({ store }) => {
@@ -530,6 +538,239 @@ const history: StoreContractCases = {
 			expect(log.map((entry) => entry.sequenceNumber)).toEqual([1, 2])
 			expect(log.every((entry) => entry.documentId === 'doc-1')).toBe(true)
 			expect(log[0].operations.creates.map((record) => record.id)).toEqual(['r1'])
+		},
+	},
+	'a commit asked by its id → applied once committed, still applied after its undo': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await commit({
+				store,
+				documentId: 'doc-1',
+				writeId: 'w1',
+				creates: [makeRecord({ id: 'r1' })],
+			})
+			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('applied')
+			await store.undo('doc-1')
+			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('applied')
+		},
+	},
+	'a commit undone, then discarded by a later commit, asked by its id → still applied': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await commit({
+				store,
+				documentId: 'doc-1',
+				writeId: 'w1',
+				creates: [makeRecord({ id: 'r1' })],
+			})
+			await store.undo('doc-1')
+			await commit({
+				store,
+				documentId: 'doc-1',
+				writeId: 'w2',
+				creates: [makeRecord({ id: 'r2' })],
+			})
+			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('applied')
+			expect(await store.getWriteOutcome({ writeId: 'w2' })).toBe('applied')
+			expect((await store.getChangeLog('doc-1')).map((entry) => entry.writeId)).toEqual(['w2'])
+			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+		},
+	},
+	'a refused commit asked by its id → not-applied': {
+		act: async ({ store }) => {
+			await seedTwoRecords(store)
+			await expectRejectsWith({
+				action: commit({
+					store,
+					documentId: 'doc-1',
+					writeId: 'w-refused',
+					creates: [makeRecord({ id: 'r1' })],
+				}),
+				key: 'STORE_DUPLICATE_ID',
+			})
+			expect(await store.getWriteOutcome({ writeId: 'w-refused' })).toBe('not-applied')
+		},
+	},
+	'a commit whose document was removed since, asked by its id → not-applied': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await commit({
+				store,
+				documentId: 'doc-1',
+				writeId: 'w1',
+				creates: [makeRecord({ id: 'r1' })],
+			})
+			await store.removeDocument('doc-1')
+			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('not-applied')
+		},
+	},
+	'a history entry carries the id of its commit, one of its own when none was given': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await commit({
+				store,
+				documentId: 'doc-1',
+				writeId: 'w1',
+				creates: [makeRecord({ id: 'r1' })],
+			})
+			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r2' })] })
+			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
+			const [given, ...generated] = (await store.getChangeLog('doc-1')).map(
+				(entry) => entry.writeId,
+			)
+			expect(given).toBe('w1')
+			expect(generated.every((writeId) => typeof writeId === 'string')).toBe(true)
+			expect(new Set(generated).size).toBe(2)
+			expect(generated).not.toContain('w1')
+			for (const writeId of generated) {
+				expect(await store.getWriteOutcome({ writeId })).toBe('applied')
+			}
+		},
+	},
+	'a commit creating and deleting one id → nothing of it after the commit, its undo or its redo': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await commit({
+				store,
+				documentId: 'doc-1',
+				creates: [makeRecord({ id: 'r1' })],
+				deletes: ['r1'],
+			})
+			expect(await store.get('r1', 'doc-1'), 'after the commit').toBeUndefined()
+			await store.undo('doc-1')
+			expect(await store.get('r1', 'doc-1'), 'after its undo').toBeUndefined()
+			await store.redo('doc-1')
+			expect(await store.get('r1', 'doc-1'), 'after its redo').toBeUndefined()
+			expect(await store.count('doc-1')).toBe(0)
+		},
+	},
+	'a commit updating and deleting one id → undo gives it back as before, redo leaves nothing': {
+		act: async ({ store }) => {
+			await seedTwoRecords(store)
+			await commit({
+				store,
+				documentId: 'doc-1',
+				updates: [makeRecord({ id: 'r1', value: 'v' })],
+				deletes: ['r1'],
+			})
+			expect(await store.get('r1', 'doc-1')).toBeUndefined()
+			await store.undo('doc-1')
+			expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
+			await store.redo('doc-1')
+			expect(await store.get('r1', 'doc-1')).toBeUndefined()
+			expect(await store.count('doc-1')).toBe(1)
+		},
+	},
+	'a commit updating one record twice → the last update stands, undo gives the record as before': {
+		act: async ({ store }) => {
+			await seedTwoRecords(store)
+			await commit({
+				store,
+				documentId: 'doc-1',
+				updates: [
+					makeRecord({ id: 'r1', value: 'first' }),
+					makeRecord({ id: 'r1', value: 'last' }),
+				],
+			})
+			expect((await store.get('r1', 'doc-1'))?.value).toBe('last')
+			await store.undo('doc-1')
+			expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
+			await store.redo('doc-1')
+			expect((await store.get('r1', 'doc-1'))?.value).toBe('last')
+		},
+	},
+	...Object.fromEntries(
+		Object.entries(FAILING_PROGRESS_LISTENERS).map(([name, listener]) => [
+			`a commit whose progress listener ${name} → the commit lands whole, undoable`,
+			{
+				act: async ({ store }: StoreContractContext) => {
+					await seedTwoRecords(store)
+					await store.commit({
+						documentId: 'doc-1',
+						creates: [makeRecord({ id: 'r3' })],
+						updates: [makeRecord({ id: 'r1', value: 'v' })],
+						deletes: ['r2'],
+						onProgress: listener,
+					})
+					expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
+						'r1',
+						'r3',
+					])
+					expect((await store.get('r1', 'doc-1'))?.value).toBe('v')
+					await store.undo('doc-1')
+					expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
+						'r1',
+						'r2',
+					])
+				},
+			},
+		]),
+	),
+	'a commit deleting a record, a bulk write creating it again, then the undo → the record as the commit deleted it, counted once':
+		{
+			act: async ({ store }) => {
+				await seedTwoRecords(store)
+				await commit({ store, documentId: 'doc-1', deletes: ['r1'] })
+				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1', value: 'again' })] })
+				await store.undo('doc-1')
+				expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
+				expect(await store.count('doc-1')).toBe(2)
+				expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
+					'r1',
+					'r2',
+				])
+			},
+		},
+	'a commit creating a record, a bulk write deleting it, then the undo and the redo → the record back after the redo, counted once':
+		{
+			act: async ({ store }) => {
+				await seedTwoRecords(store)
+				await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
+				await store.bulkWrite('doc-1', { deletes: ['r3'] })
+				await store.undo('doc-1')
+				expect(await store.get('r3', 'doc-1')).toBeUndefined()
+				expect(await store.count('doc-1')).toBe(2)
+				await store.redo('doc-1')
+				expect(await store.get('r3', 'doc-1')).toEqual(makeRecord({ id: 'r3' }))
+				expect(await store.count('doc-1')).toBe(3)
+			},
+		},
+	'a commit’s progress listener reading the store → it reads the whole commit': {
+		act: async ({ store }) => {
+			await seedTwoRecords(store)
+			const reads: Promise<string[]>[] = []
+			await store.commit({
+				documentId: 'doc-1',
+				creates: [makeRecord({ id: 'r3' })],
+				updates: [],
+				deletes: ['r2'],
+				onProgress: () => {
+					reads.push(
+						store.getByDocumentId('doc-1').then((records) => records.map((record) => record.id)),
+					)
+				},
+			})
+			expect(reads.length).toBeGreaterThan(0)
+			for (const read of reads) expect(await read).toEqual(['r1', 'r3'])
+		},
+	},
+	'a commit on a document still importing → DOCUMENT_NOT_REGISTERED, nothing written, no entry': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument({ status: 'importing' }))
+			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+			await expectRejectsWith({
+				action: commit({
+					store,
+					documentId: 'doc-1',
+					writeId: 'w-importing',
+					creates: [makeRecord({ id: 'r2' })],
+				}),
+				key: 'DOCUMENT_NOT_REGISTERED',
+				meta: { documentId: 'doc-1' },
+			})
+			expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual(['r1'])
+			expect(await store.getChangeLog('doc-1')).toEqual([])
+			expect(await store.getWriteOutcome({ writeId: 'w-importing' })).toBe('not-applied')
 		},
 	},
 	'history is document-scoped': {
@@ -1277,6 +1518,90 @@ const nonJsonValues: StoreContractCases = Object.fromEntries(
 	),
 )
 
+/** A record object carrying fields its type does not have: at the top, in its namespace, in its parent. */
+function recordWithExtras(params: { id: string; value?: string }): AnyRawRecord {
+	const { id, value = '' } = params
+	return {
+		...makeRecord({ id, value }),
+		namespace: { prefix: '', uri: '', extra: 'n' },
+		parent: { ...childRef('r0'), extra: 'p' },
+		extra: 'r',
+	} as unknown as AnyRawRecord
+}
+
+/** The same record as every store keeps it: the fields of the record type only. */
+function recordKept(params: { id: string; value?: string }): AnyRawRecord {
+	const { id, value = '' } = params
+	return makeRecord({ id, value, parent: childRef('r0') })
+}
+
+/** Writes handing records (or patches) with fields their type does not have, and the record each leaves. */
+const EXTRA_FIELD_WRITES: Record<
+	string,
+	{
+		needs?: StoreContractNeed[]
+		write: (store: Store) => Promise<void>
+		id: string
+		value?: string
+	}
+> = {
+	'a bulk write creating it': {
+		write: (store) => store.bulkWrite('doc-1', { creates: [recordWithExtras({ id: 'r9' })] }),
+		id: 'r9',
+	},
+	'a bulk write patching it': {
+		write: async (store) => {
+			await store.bulkWrite('doc-1', { creates: [recordKept({ id: 'r9' })] })
+			await store.bulkWrite('doc-1', {
+				updates: [{ recordId: 'r9', value: 'v', extra: 'r' } as RecordPatch],
+			})
+		},
+		id: 'r9',
+		value: 'v',
+	},
+	'a commit creating it': {
+		needs: ['history'],
+		write: (store) =>
+			commit({ store, documentId: 'doc-1', creates: [recordWithExtras({ id: 'r9' })] }),
+		id: 'r9',
+	},
+	'a commit updating it': {
+		needs: ['history'],
+		write: async (store) => {
+			await store.bulkWrite('doc-1', { creates: [recordKept({ id: 'r9' })] })
+			await commit({
+				store,
+				documentId: 'doc-1',
+				updates: [recordWithExtras({ id: 'r9', value: 'v' })],
+			})
+		},
+		id: 'r9',
+		value: 'v',
+	},
+}
+
+const extraFieldsDropped: StoreContractCases = Object.fromEntries(
+	Object.entries(EXTRA_FIELD_WRITES).map(([write, { needs, write: run, id, value }]) => [
+		`${write} with fields the record type does not have (at its top, in its namespace, in its parent) → read without them`,
+		{
+			needs,
+			act: async ({ store }: StoreContractContext) => {
+				await store.registerDocument(makeDocument())
+				await run(store)
+				const kept = recordKept({ id, value })
+				expect(await store.get(id, 'doc-1')).toStrictEqual(kept)
+				expect(await store.getMany([id], 'doc-1')).toStrictEqual([kept])
+				expect(await store.getByDocumentId('doc-1')).toStrictEqual([kept])
+				if (needs?.includes('history')) {
+					await store.undo('doc-1')
+					await store.redo('doc-1')
+					expect(await store.get(id, 'doc-1')).toStrictEqual(kept)
+				}
+			},
+		},
+	]),
+)
+
 const undefinedFieldsDropped: StoreContractCases = {
 	'a document registered with fields holding undefined → read without them': {
 		act: async ({ store }) => {
@@ -1337,6 +1662,75 @@ const undefinedFieldsDropped: StoreContractCases = {
 			)
 		},
 	},
+}
+
+/** Where a write hands the store a value in a blob entry: every store refuses one that is not JSON there. */
+const NON_JSON_BLOB_PLACES: Record<
+	string,
+	(params: { store: Store; value: unknown }) => Promise<void>
+> = {
+	'a blob entry added': ({ store, value }) =>
+		store.addBlob(
+			makeBlobEntry({
+				id: 'b9',
+				attachedTo: [{ documentId: 'doc-1', recordRef: 'r1', attribute: value as string }],
+			}),
+			new Blob(['b9']),
+		),
+	'a reference attached to a blob': ({ store, value }) =>
+		store.attachBlob('b1', { documentId: 'doc-1', recordRef: value as string }),
+}
+
+const nonJsonBlobValues: StoreContractCases = Object.fromEntries(
+	Object.entries(NON_JSON_BLOB_PLACES).flatMap(([place, write]) =>
+		Object.entries(NON_JSON_VALUES).map(([kind, value]) => [
+			`${kind} in ${place} → STORE_VALUE_NOT_JSON, the blobs as they were`,
+			{
+				needs: ['blobs'],
+				act: async ({ store }: StoreContractContext) => {
+					await store.registerDocument(makeDocument())
+					const held = makeBlobEntry({ id: 'b1' })
+					await store.addBlob(held, new Blob(['b1']))
+					await expectRejectsWith({
+						action: write({ store, value: value() }),
+						key: 'STORE_VALUE_NOT_JSON',
+					})
+					expect(await store.getStandaloneBlobs()).toEqual([held])
+					expect(await store.getBlob('b9')).toBeUndefined()
+				},
+			},
+		]),
+	),
+)
+
+const nonJsonBlobRefusalOrder: StoreContractCases = {
+	'a blob of an owner not registered with an entry that is not JSON → DOCUMENT_NOT_REGISTERED: the owner is checked first':
+		{
+			needs: ['blobs'],
+			act: async ({ store }) => {
+				await expectRejectsWith({
+					action: store.addBlob(
+						makeBlobEntry({ documentId: 'nope', createdAt: Number.NaN }),
+						new Blob(['x']),
+					),
+					key: 'DOCUMENT_NOT_REGISTERED',
+					meta: { documentId: 'nope' },
+				})
+			},
+		},
+	'an unknown blob attached a reference that is not JSON → STORE_BLOB_NOT_FOUND: the blob is checked first':
+		{
+			needs: ['blobs'],
+			act: async ({ store }) => {
+				await expectRejectsWith({
+					action: store.attachBlob('nope', {
+						documentId: 'doc-1',
+						recordRef: new Date(0) as unknown as string,
+					}),
+					key: 'STORE_BLOB_NOT_FOUND',
+				})
+			},
+		},
 }
 
 const nonJsonRefusalOrder: StoreContractCases = {
@@ -2578,7 +2972,14 @@ export const STORE_CONTRACT: StoreContractGroups = {
 	'sibling order': siblingOrder,
 	'changelog snapshots': needing({ needs: ['history'], cases: snapshots }),
 	'rejected writes': { ...rejectedWrites, ...nonJsonWrites, ...nonJsonPatchOfAbsentRecord },
-	'JSON values only': { ...nonJsonValues, ...undefinedFieldsDropped, ...nonJsonRefusalOrder },
+	'JSON values only': {
+		...nonJsonValues,
+		...nonJsonBlobValues,
+		...undefinedFieldsDropped,
+		...extraFieldsDropped,
+		...nonJsonRefusalOrder,
+		...nonJsonBlobRefusalOrder,
+	},
 	'a document that is not there': absentDocument,
 	'a removed document leaves no history': needing({ needs: ['history'], cases: removedDocument }),
 	'an edit during an import': duringImport,

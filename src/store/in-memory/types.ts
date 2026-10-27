@@ -24,6 +24,8 @@ export type InMemoryState = {
 	changelog: Map<string, ChangeLogEntry[]>
 	/** The sequence number of each document's last applied changelog entry. */
 	heads: Map<string, number>
+	/** The ids of the commits each document's undone entries carried when a later commit discarded them. */
+	discardedCommits: Map<string, Set<string>>
 	blobs: Map<string, BlobRecord>
 	blobData: Map<string, Map<string, Blob>>
 	/** The `writeId`s of the imports running on a store of this name: an `open` keeps their documents. */
@@ -38,6 +40,7 @@ export type ReadonlyInMemoryState = {
 	records: ReadonlyMap<string, ReadonlyMap<string, AnyRawRecord>>
 	changelog: ReadonlyMap<string, readonly ChangeLogEntry[]>
 	heads: ReadonlyMap<string, number>
+	discardedCommits: ReadonlyMap<string, ReadonlySet<string>>
 	blobs: ReadonlyMap<string, BlobRecord>
 	blobData: ReadonlyMap<string, ReadonlyMap<string, Blob>>
 	runningImports: ReadonlySet<string>

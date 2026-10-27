@@ -1,10 +1,13 @@
+import { storedRecordOf } from './stored-record'
+
 import type { AnyRawRecord, RecordPatch } from '@/types'
 
 /**
  * A record with a bulk-write patch applied, the record given left unchanged: each field the patch
  * gives replaces the record's (a field given as `undefined` is not given); attributes merge by name
  * (a held one replaced in place, a new one appended), then `removeAttributes` drops the names
- * listed; children merge by id the same way. Every store applies a patch through this.
+ * listed; children merge by id the same way. A field the record type does not have is dropped, as a
+ * store keeps it. Every store applies a patch through this.
  */
 export function applyRecordPatch(params: {
 	record: AnyRawRecord
@@ -30,7 +33,7 @@ export function applyRecordPatch(params: {
 		patched.children = mergeByKey({ held: record.children, given: children, key: 'id' })
 	}
 
-	return patched
+	return storedRecordOf({ record: patched })
 }
 
 /** The held items with each given one replacing the held one of the same key, new ones appended. */
