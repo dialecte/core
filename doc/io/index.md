@@ -153,6 +153,18 @@ Write a date as its ISO string or a number. A store keeps its own copy of what i
 
 A record is kept as its type has it: `id`, `tagName`, `namespace` (`prefix`, `uri`), `attributes`, `value`, `parent` (`id`, `tagName`, or `null`) and `children`. A field the object carries beyond those - at its top, in its namespace or in its parent - is dropped, once the whole record has passed the JSON check (a value that is not JSON is refused even there); attributes and children are kept as given. A bulk-write patch merged into a record keeps the same fields. A refused patch is named by its place among the patches that apply (those of records the document holds), however many the write hands.
 
+## A document's path
+
+A document's path is its place in the project: its folders, then its file name, joined by `/` (`substations/north.scd`). `parseDocumentPath({ path })` reads one apart into `{ folders, fileName }` and refuses, with `DOCUMENT_PATH_INVALID` (`D7030`, `meta.path` the path as given, `detail` naming the rule), a path that is not written the one way a path is written:
+
+- relative, every folder and the file name non-empty: no leading or trailing `/`, no `//`;
+- no folder or file name `.` or `..`;
+- no backslash (a folder separator on Windows) and no character that is invisible or breaks a line in a tree: a control (Unicode Cc: U+0000-U+001F, U+007F-U+009F), a format character (Cf: a bidi override or isolate such as U+202E, which would show `north\u202Edcs.xml` as `northlmx.scd`, a zero-width character, the byte order mark) or a line or paragraph separator (Zl, Zp: U+2028, U+2029);
+- well-formed UTF-16 (no lone surrogate) and in Unicode NFC (a name given in NFD, as macOS hands some, is normalised by the caller: `path.normalize('NFC')`);
+- each folder or file name at most 255 UTF-8 bytes (`DOCUMENT_PATH_SEGMENT_MAX_BYTES`, what APFS, ext4 and NTFS take), the whole path at most 1024 (`DOCUMENT_PATH_MAX_BYTES`, macOS's `PATH_MAX`).
+
+Nothing is rewritten: a path breaking a rule is refused, never normalised. A file name without an extension (`README`) is a valid form: whether a file name ends with the document's extension is checked against the document. The parts carry no name and extension split: a document's own `extension` says where its file name's extension starts (`.tar.gz`, or an extension without a dot), so read it from the document rather than splitting at the last dot. Names a file system of one platform refuses (`<>:"|?*` or `AUX` on Windows) and names that differ by case only are valid paths: whoever writes the files to such a system handles them.
+
 ## The SQLite project store's page cache
 
 The SQLite project store sizes its page cache on the device's memory, as the browser reports it (`navigator.deviceMemory`, in a page and in a worker; a device that does not report it, Firefox for one, is sized as a 4 GiB one): 64 MiB per GiB, held between 64 and 512 MiB. The cache outside imports and the cache of an import follow the same rule. A worker's wasm memory never shrinks, so after a large import (826 MiB measured at 500 MB) the memory is already taken; above 512 MiB nothing is gained, and the SQLite build caps its memory at 2 GiB. Deleting a tenth of a 500 MB document takes about 10 s on a device given 64 MiB (1 GiB reported or less) and about 4.5 s at 512 MiB (8 GiB and more).

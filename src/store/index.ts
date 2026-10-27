@@ -19,6 +19,14 @@ export type {
 	WriteOutcome,
 } from './store.types'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'
+export { parseDocumentPath } from './document-path'
+export type { DocumentPathParts } from './document-path.types'
+export {
+	DOCUMENT_PATH_INVISIBLE_CHARACTER,
+	DOCUMENT_PATH_MAX_BYTES,
+	DOCUMENT_PATH_SEGMENT_MAX_BYTES,
+	DOCUMENT_PATH_SEPARATOR,
+} from './document-path.constants'
 export { removeUnfinishedImports } from './unfinished-imports'
 export * from './local'
 export * from './in-memory'

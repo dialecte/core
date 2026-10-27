@@ -12,6 +12,15 @@ export function throwDocumentAlreadyRegistered(params: { documentId: string }): 
 	})
 }
 
+/** A document path refused for breaking a rule: `reason` says which, `meta.path` is the path as given. */
+export function throwDocumentPathInvalid(params: { path: unknown; reason: string }): never {
+	const { path, reason } = params
+	throwDialecteError('DOCUMENT_PATH_INVALID', {
+		detail: `The document path ${JSON.stringify(path)} is refused: ${reason}`,
+		meta: { path },
+	})
+}
+
 /** A write to a document that is not registered: `what` says what was to be written. */
 export function throwDocumentNotRegistered(params: { documentId: string; what: string }): never {
 	const { documentId, what } = params
