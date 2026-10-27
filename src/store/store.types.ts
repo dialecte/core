@@ -1,6 +1,6 @@
 import type { Diagnostic } from '@/diagnostics'
 import type { PerfSnapshot } from '@/perf'
-import type { DocumentRecord } from '@/project/types'
+import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, ChunkOptions, RecordPatch } from '@/types'
 
 /**
@@ -108,7 +108,9 @@ export interface Store {
 	/**
 	 * Register a new document — creates its backing storage partition. An id already registered is
 	 * refused with `STORE_DUPLICATE_ID`, the registered document left as it was; then a value that is
-	 * not JSON with `STORE_VALUE_NOT_JSON`.
+	 * not JSON with `STORE_VALUE_NOT_JSON`; then a `path` that is not valid or does not end with the
+	 * document's file name (`name` + `extension`) with `DOCUMENT_PATH_INVALID`; then a place another
+	 * document holds - the same path, or one a folder of the other's - with `DOCUMENT_PATH_TAKEN`.
 	 */
 	registerDocument(file: DocumentRecord): Promise<void>
 
@@ -119,14 +121,16 @@ export interface Store {
 	getDocuments(): Promise<DocumentRecord[]>
 
 	/**
-	 * Update a document's name, metadata or import status: a value that is not JSON is refused first
-	 * (`STORE_VALUE_NOT_JSON`); a field given as `undefined` is left as it was; a document that is not
-	 * registered is then left alone.
+	 * Update a document's name, path, metadata or import status: a value that is not JSON is refused
+	 * first (`STORE_VALUE_NOT_JSON`); a field given as `undefined` is left as it was; a document that is
+	 * not registered is then left alone. Its file name and its path stay one fact: a `path` moves and
+	 * renames it (the name follows the file name, which must end with the document's extension), a
+	 * `name` on a document with a path renames the file name in it; a result breaking a path rule, or
+	 * a `name` and a `path` that disagree, is refused with `DOCUMENT_PATH_INVALID`, then a place another
+	 * document holds with `DOCUMENT_PATH_TAKEN` - nothing changed (`applyDocumentUpdates`,
+	 * `assertDocumentPlace`).
 	 */
-	updateDocument(
-		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
-	): Promise<void>
+	updateDocument(documentId: string, updates: DocumentUpdates): Promise<void>
 
 	/** Remove a document, all its records, its history entries and the blobs it owns (O(1) table clear) */
 	removeDocument(documentId: string): Promise<void>
@@ -281,6 +285,13 @@ export type ImportFileOptions = {
 	chunkOptions?: Partial<ChunkOptions>
 	/** Use custom record IDs from XML attributes instead of generating UUIDs */
 	useCustomRecordsIds?: boolean
+	/**
+	 * Where the document sits in the project (`substations/north.scd`): it takes its name and its extension from the
+	 * path's file name, not from the file's, and the extension must be one its config reads. Refused before anything
+	 * is registered: `DOCUMENT_PATH_INVALID` for a path breaking a rule or of another extension,
+	 * `DOCUMENT_PATH_TAKEN` for a place another document holds.
+	 */
+	path?: string
 }
 
 /**

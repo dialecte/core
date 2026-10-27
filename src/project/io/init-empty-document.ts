@@ -2,9 +2,15 @@ import { buildDocumentState } from '../state/document-state'
 import { resolveConfig } from './resolve-config'
 
 import { standardizeRecord } from '@/helpers'
+import { parseDocumentPath, splitFileName } from '@/store/document-path'
 
-import type { InitEmptyDocumentParams, InitEmptyDocumentResult, DocumentRecord } from '../types'
-import type { AnyRawRecord } from '@/types'
+import type {
+	InitEmptyDocumentOptions,
+	InitEmptyDocumentParams,
+	InitEmptyDocumentResult,
+	DocumentRecord,
+} from '../types'
+import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
 /**
  * Build a DocumentRecord, persist it, and create a root record in the store.
@@ -21,18 +27,15 @@ export async function initEmptyDocument(
 		configKey: options?.configKey,
 	})
 
-	const extension = options?.extension ?? config.io.supportedFileExtensions[0]
-	const name = options?.name ?? 'untitled'
 	const documentId = crypto.randomUUID()
-
 	const doc: DocumentRecord = {
 		id: documentId,
-		name,
-		extension,
+		...emptyDocumentNameOf({ options, config }),
 		configKey,
 		createdAt: Date.now(),
 		status: 'ready',
 		metadata: options?.metadata,
+		...(options?.path !== undefined && { path: options.path }),
 	}
 
 	await store.registerDocument(doc)
@@ -55,4 +58,32 @@ export async function initEmptyDocument(
 	await store.bulkWrite(documentId, { creates: [rootRecord] })
 
 	return { documentId, record: doc, documentState: buildDocumentState(doc) }
+}
+
+/**
+ * The name and extension of a new document: the options', else its path's file name's (the extension one its config
+ * reads, unless the options give one), else 'untitled' and the config's first extension. Whether the path then
+ * names the document's file is the store's to check.
+ */
+function emptyDocumentNameOf(params: {
+	options: InitEmptyDocumentOptions | undefined
+	config: AnyDialecteConfig
+}): Pick<DocumentRecord, 'name' | 'extension'> {
+	const { options, config } = params
+	const { path, name, extension } = options ?? {}
+	if (path === undefined) {
+		return {
+			name: name ?? 'untitled',
+			extension: extension ?? config.io.supportedFileExtensions[0],
+		}
+	}
+	if (extension === undefined) {
+		const split = splitFileName({ path, extensions: config.io.supportedFileExtensions })
+		return { name: name ?? split.name, extension: split.extension }
+	}
+	const { fileName } = parseDocumentPath({ path })
+	const named = fileName.endsWith(extension)
+		? fileName.slice(0, fileName.length - extension.length)
+		: fileName
+	return { name: name ?? named, extension }
 }

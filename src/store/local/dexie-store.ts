@@ -1,5 +1,6 @@
 import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
+import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
@@ -50,7 +51,7 @@ import type {
 } from '../store.types'
 import type { DexieStoreOptions, StoredDocumentRow } from './types'
 import type { Perf } from '@/perf'
-import type { DocumentRecord } from '@/project'
+import type { DocumentRecord, DocumentUpdates } from '@/project'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 import type { Table } from 'dexie'
@@ -245,10 +246,7 @@ export class DexieStore implements Store {
 		})
 	}
 
-	async updateDocument(
-		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
-	): Promise<void> {
+	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
 		return this.operation(() => this.updateDocumentUnguarded(documentId, updates))
 	}
 
@@ -721,14 +719,53 @@ export class DexieStore implements Store {
 	private async registerDocumentUnguarded(file: DocumentRecord): Promise<void> {
 		await this.withSchemaLock(async () => {
 			if (this.stale) await this.reloadFromPersisted()
-			// Best effort on one connection: two connections registering the same id at the same time
-			// are not serialised here (core registers fresh uuids only).
+			// refused here for an id this connection knows; an id another connection registers meanwhile is
+			// refused again in the add's transaction
 			if (this.knownDocuments.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
 			const document = toJsonCopy({ value: file })
+			// refused before the schema changes; checked again with the add, which no other write interleaves
+			await this.assertPlaceFree({ document })
 			this.knownDocuments.set(document.id, document)
 			await this.reopenWithNewSchema()
-			await this.db.table(TABLE_DOCUMENTS).add(document)
+			try {
+				await this.db.transaction('rw', TABLE_DOCUMENTS, async () => {
+					// the id first, as every registration refuses: a place refused below then names no other
+					// connection's document of this id
+					if (await this.db.table(TABLE_DOCUMENTS).get(document.id)) {
+						throwDocumentAlreadyRegistered({ documentId: document.id })
+					}
+					await this.assertPlaceFree({ document })
+					await this.db.table(TABLE_DOCUMENTS).add(document)
+				})
+			} catch (failure) {
+				if (toDialecteError(failure)?.key === 'DOCUMENT_PATH_TAKEN') {
+					// a place taken meanwhile, no document of this id registered (checked in the same transaction):
+					// the document and the table made for it go again; the refusal is what the caller is told,
+					// whatever the drop does
+					this.knownDocuments.delete(document.id)
+					await this.reopenWithNewSchema({ drop: document.id }).catch(() => undefined)
+				} else {
+					// any other failure (an id another connection registered meanwhile, refused STORE_DUPLICATE_ID)
+					// may name that document's tables: nothing is forgotten or dropped here, the registry is read
+					// again at the next operation
+					this.stale = true
+				}
+				throw failure
+			}
 		})
+	}
+
+	/**
+	 * The document's path valid and its place free among the registered documents, read in the caller's transaction
+	 * when there is one.
+	 */
+	private async assertPlaceFree(params: { document: DocumentRecord }): Promise<void> {
+		const { document } = params
+		const documents =
+			document.path === undefined
+				? []
+				: await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+		assertDocumentPlace({ document, documents })
 	}
 
 	private async getDocumentUnguarded(documentId: string): Promise<DocumentRecord | undefined> {
@@ -739,14 +776,24 @@ export class DexieStore implements Store {
 
 	private async updateDocumentUnguarded(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
+		updates: DocumentUpdates,
 	): Promise<void> {
 		const checked = toJsonCopy({ value: updates })
 		await this.ensureCurrentSchema()
-		await this.db.table(TABLE_DOCUMENTS).update(documentId, checked)
-		const existing = this.knownDocuments.get(documentId)
-		if (existing) {
-			this.knownDocuments.set(documentId, { ...existing, ...checked })
+		const documents = this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+		// read, checked and written in one transaction: no other write of the registry lands in between
+		const updated = await this.db.transaction('rw', documents, async () => {
+			const held = await documents.get(documentId)
+			if (!held) return undefined
+			const document = applyDocumentUpdates({ document: withStatus(held), updates: checked })
+			if (document.path !== held.path) {
+				assertDocumentPlace({ document, documents: await documents.toArray() })
+			}
+			await documents.put(document)
+			return document
+		})
+		if (updated && this.knownDocuments.has(documentId)) {
+			this.knownDocuments.set(documentId, updated)
 		}
 	}
 

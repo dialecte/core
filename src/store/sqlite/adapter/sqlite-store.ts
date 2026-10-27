@@ -16,7 +16,7 @@ import type {
 	SqliteEngineLink,
 	SqliteStoreParams,
 } from './sqlite-store.types'
-import type { DocumentRecord } from '@/project/types'
+import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
@@ -100,10 +100,7 @@ export class SqliteStore implements Store {
 		return this.operation((engine) => engine.getDocuments())
 	}
 
-	async updateDocument(
-		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
-	): Promise<void> {
+	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
 		return this.operation((engine) => engine.updateDocument(documentId, updates))
 	}
 

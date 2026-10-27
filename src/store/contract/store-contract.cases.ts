@@ -47,7 +47,7 @@ import type {
 	ValueRead,
 	ValueWrite,
 } from './store-contract.types'
-import type { DocumentRecord } from '@/project/types'
+import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
@@ -73,10 +73,7 @@ const lifecycle: StoreContractCases = {
 
 // ── Document registry ────────────────────────────────────────────────────────
 
-const documentUpdates: Record<
-	string,
-	Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>
-> = {
+const documentUpdates: Record<string, DocumentUpdates> = {
 	name: { name: 'renamed' },
 	metadata: { metadata: { origin: 'test' } },
 	status: { status: 'importing' },

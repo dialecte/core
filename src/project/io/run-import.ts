@@ -2,6 +2,7 @@ import { resolveConfig } from './resolve-config'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
+import { splitFileName } from '@/store/document-path'
 import { parseXmlFile } from '@/xml'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
@@ -33,18 +34,15 @@ export async function runImport(
 		configKey: options?.configKey,
 	})
 
-	const extension = file.name.includes('.')
-		? `.${file.name.split('.').pop()!}`
-		: config.io.supportedFileExtensions[0]
 	const registered: DocumentRecord = {
 		id: crypto.randomUUID(),
-		name: file.name.replace(/\.[^.]+$/, '') || 'untitled',
-		extension,
+		...documentNameOf({ file, path: options?.path, config }),
 		configKey,
 		createdAt: Date.now(),
 		metadata: options?.metadata,
 		status: 'importing',
 		writeId,
+		...(options?.path !== undefined && { path: options.path }),
 	}
 
 	perf.start('import')
@@ -62,6 +60,26 @@ export async function runImport(
 		perf.stop('import')
 	}
 	return { ...imported, ...(runtime.perf && { perf: perf.snapshot() }) }
+}
+
+/**
+ * The name and extension of the document a file becomes: its path's file name when it is given one (an extension
+ * its config reads), else the file's own name.
+ */
+function documentNameOf(params: {
+	file: File
+	path: string | undefined
+	config: AnyDialecteConfig
+}): Pick<DocumentRecord, 'name' | 'extension'> {
+	const { file, path, config } = params
+	const { supportedFileExtensions } = config.io
+	if (path !== undefined) return splitFileName({ path, extensions: supportedFileExtensions })
+	return {
+		name: file.name.replace(/\.[^.]+$/, '') || 'untitled',
+		extension: file.name.includes('.')
+			? `.${file.name.split('.').pop()!}`
+			: supportedFileExtensions[0],
+	}
 }
 
 /** Register the document, store the file into it and mark it ready; removed again on any failure. */

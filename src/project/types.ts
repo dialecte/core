@@ -2,6 +2,7 @@ import type { Diagnostic } from '@/diagnostics'
 import type { DocumentState, ExtensionModules } from '@/document'
 import type { DialecteError } from '@/errors'
 import type { Perf } from '@/perf'
+import type { DOCUMENT_UPDATE_FIELDS } from '@/store/document-path.constants'
 import type { ImportControl, ImportFileOptions, Store } from '@/store/store.types'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
@@ -34,9 +35,21 @@ export type DocumentRecord = {
 	status: DocumentStatus
 	/** The id of the import that wrote the document - what `Store.getWriteOutcome` is asked by. */
 	writeId?: string
+	/**
+	 * Where the document sits in the project: its folders, then its file name, joined by `/` (`substations/north.scd`).
+	 * Its file name is always `name` + `extension`; one document only holds a place, and a document's path is never
+	 * a folder of another's. Absent: the document has no place yet.
+	 */
+	path?: string
 }
 
 export type DocumentStatus = 'importing' | 'ready'
+
+/**
+ * What a document's registry entry may be updated with (`DOCUMENT_UPDATE_FIELDS`): a field given as `undefined` is
+ * left as it was, a key beyond these is ignored.
+ */
+export type DocumentUpdates = Partial<Pick<DocumentRecord, (typeof DOCUMENT_UPDATE_FIELDS)[number]>>
 
 // ── DocumentState ────────────────────────────────────────────────────────────
 
@@ -134,10 +147,19 @@ export type ResolvedConfig = {
 // ── createDocument ───────────────────────────────────────────────────────────────
 
 export type InitEmptyDocumentOptions = {
-	/** Filename without extension. Defaults to 'untitled'. */
+	/** Filename without extension. Defaults to the path's file name less its extension, else 'untitled'. */
 	name?: string
-	/** File extension including leading dot. Defaults to config's first supported extension. */
+	/**
+	 * File extension including leading dot. Defaults to the path's file name's (one the config reads), else the
+	 * config's first supported extension.
+	 */
 	extension?: string
+	/**
+	 * Where the document sits in the project (`substations/north.scd`), its file name the document's name and
+	 * extension: `DOCUMENT_PATH_INVALID` for a path breaking a rule or naming another file, `DOCUMENT_PATH_TAKEN`
+	 * for a place another document holds.
+	 */
+	path?: string
 	/** Key into configs registry. Defaults to defaultConfigKey or first key. */
 	configKey?: string
 	/** Extensible per-file metadata */
@@ -163,6 +185,9 @@ export type InitEmptyDocumentResult = {
 
 /** How to import a file: what the store is asked to do, and what the caller holds over it. */
 export type ImportDocumentOptions = ImportFileOptions & ImportControl
+
+/** How to import several files: as one file, without a path (a path names one file). */
+export type ImportFilesOptions = Omit<ImportDocumentOptions, 'path'>
 
 /** A file `Project.importFile` imported: the document it is now, and what the import had to say. */
 export type ImportedDocument = {

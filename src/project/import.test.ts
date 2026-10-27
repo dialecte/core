@@ -598,3 +598,88 @@ describe('ImportEntry.diagnostics - an open union a consumer narrows', () => {
 		}
 	})
 })
+
+describe('Project - a document given a path', () => {
+	it('importFile at a path → the state’s document carries it, named after its file name', async () => {
+		const project = await openProject()
+		try {
+			const { documentId } = await project.importFile(xmlFile('<A/>', 'plant.xml'), {
+				path: 'substations/north.xml',
+			})
+			expect(project.state.documents.get(documentId)?.record).toMatchObject({
+				path: 'substations/north.xml',
+				name: 'north',
+				extension: '.xml',
+			})
+		} finally {
+			await project.close()
+		}
+	})
+
+	it('import of several files takes no path: one path names one file', async () => {
+		const project = await openProject()
+		try {
+			// @ts-expect-error a path names one file: `import` takes none
+			await project.import([], { path: 'substations/north.xml' }).catch(() => undefined)
+		} finally {
+			await project.close()
+		}
+	})
+
+	it('import of several files handed a path anyway → DOCUMENT_PATH_INVALID for the call, no file touched', async () => {
+		const project = await openProject()
+		try {
+			const options: ImportDocumentOptions = { path: 'substations/north.xml' }
+			await expect(
+				project.import([xmlFile('<A/>', 'one.xml'), xmlFile('<A/>', 'two.xml')], options),
+			).rejects.toMatchObject({
+				cause: { key: 'DOCUMENT_PATH_INVALID', meta: { path: 'substations/north.xml' } },
+			})
+			expect(await project.getDocuments()).toEqual([])
+		} finally {
+			await project.close()
+		}
+	})
+
+	type EmptyDocumentCase = BaseTestCase & {
+		options: { path: string; name?: string; extension?: string }
+		/** the document registered; none when refused */
+		expected?: { name: string; extension: string }
+	}
+
+	const emptyDocumentCases: Record<string, EmptyDocumentCase> = {
+		'initEmptyDocument at a path → named after its file name, the extension the path’s': {
+			options: { path: 'substations/north.xml' },
+			expected: { name: 'north', extension: '.xml' },
+		},
+		'initEmptyDocument at a path with its own extension → that extension, the name the rest': {
+			options: { path: 'substations/north.icd', extension: '.icd' },
+			expected: { name: 'north', extension: '.icd' },
+		},
+		'initEmptyDocument at a path with a name it does not end with → DOCUMENT_PATH_INVALID, nothing registered':
+			{
+				options: { path: 'substations/north.xml', name: 'south' },
+			},
+		'initEmptyDocument at a path of an extension its config does not read → DOCUMENT_PATH_INVALID, nothing registered':
+			{ options: { path: 'substations/north.scd' } },
+	}
+
+	runTestCases.generic(emptyDocumentCases, async (testCase) => {
+		const project = await openProject()
+		try {
+			const creating = project.initEmptyDocument(testCase.options)
+			if (!testCase.expected) {
+				await expect(creating).rejects.toMatchObject({ cause: { key: 'DOCUMENT_PATH_INVALID' } })
+				expect(await project.getDocuments()).toEqual([])
+				expect([...project.state.documents.keys()]).toEqual([])
+				return
+			}
+			const documentId = await creating
+			const expected = { ...testCase.expected, path: testCase.options.path }
+			expect(project.state.documents.get(documentId)?.record).toMatchObject(expected)
+			expect(await project.getDocument(documentId)).toMatchObject(expected)
+		} finally {
+			await project.close()
+		}
+	})
+})

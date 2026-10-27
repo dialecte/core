@@ -5,7 +5,7 @@ import { buildDocumentState, reconcileDocumentState } from './state'
 import { isImporting, openableDocuments } from './state/document-lifecycle'
 
 import { Document } from '@/document'
-import { createDialecteError, toDialecteError } from '@/errors'
+import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
 import { invariant } from '@/utils'
@@ -13,6 +13,7 @@ import { invariant } from '@/utils'
 import type {
 	InitEmptyDocumentOptions,
 	ImportDocumentOptions,
+	ImportFilesOptions,
 	ImportedDocument,
 	ImportEntry,
 	ProjectExportParams,
@@ -375,10 +376,12 @@ export class Project<
 	 * one after the other - memory is bounded by one file's batches, the registry sees one import -
 	 * and a file that fails is its own `failed` entry, the next file still attempted: nothing of a
 	 * failed file lands. The call itself rejects only for what is about the call: an unknown
-	 * `configKey`, a project not open.
+	 * `configKey`, a project not open, a `path` (`DOCUMENT_PATH_INVALID`: a path names one file,
+	 * `importFile` takes it).
 	 */
-	async import(files: File[], options?: ImportDocumentOptions): Promise<ImportEntry[]> {
+	async import(files: File[], options?: ImportFilesOptions): Promise<ImportEntry[]> {
 		this.importStore(options)
+		refuseBatchPath({ options })
 
 		const entries: ImportEntry[] = []
 		for (const file of files) {
@@ -690,5 +693,17 @@ export class Project<
 		if (this.closing) return
 		await this.store.reconcile(documentId)
 		await this.refreshState()
+	}
+}
+
+/** A path handed to an import of several files, refused for the call: a path names one file. */
+function refuseBatchPath(params: { options: ImportFilesOptions | undefined }): void {
+	const { options } = params
+	if (options && 'path' in options && options.path !== undefined) {
+		throwDialecteError('DOCUMENT_PATH_INVALID', {
+			detail:
+				'An import of several files takes no path: a path names one file, give it to importFile',
+			meta: { path: options.path },
+		})
 	}
 }

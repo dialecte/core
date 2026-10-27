@@ -1,6 +1,7 @@
 import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
 import { compareById } from '../compare-by-id'
+import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
@@ -40,7 +41,7 @@ import type {
 } from '../store.types'
 import type { InMemoryState, InMemoryStoreOptions, ReadonlyInMemoryState } from './types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
-import type { DocumentRecord } from '@/project/types'
+import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
@@ -185,10 +186,7 @@ export class InMemoryStore implements Store {
 		return structuredClone([...this.readState().documents.values()].sort(compareById))
 	}
 
-	async updateDocument(
-		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
-	): Promise<void> {
+	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
 		this.guardOpen()
 		return this.updateDocumentUnguarded(documentId, updates)
 	}
@@ -535,7 +533,9 @@ export class InMemoryStore implements Store {
 		this.guardWritable()
 		const state = ensureInMemoryState({ name: this.name })
 		if (state.documents.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
-		state.documents.set(file.id, toJsonCopy({ value: file }))
+		const document = toJsonCopy({ value: file })
+		assertDocumentPlace({ document, documents: [...state.documents.values()] })
+		state.documents.set(file.id, document)
 		state.records.set(recordTableName(file.id), new Map())
 		state.blobData.set(file.id, new Map())
 	}
@@ -546,15 +546,18 @@ export class InMemoryStore implements Store {
 
 	private async updateDocumentUnguarded(
 		documentId: string,
-		updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>,
+		updates: DocumentUpdates,
 	): Promise<void> {
 		this.guardWritable()
 		const checked = toJsonCopy({ value: updates })
 		const state = this.writeState()
 		const existing = state?.documents.get(documentId)
-		if (state && existing) {
-			state.documents.set(documentId, { ...existing, ...checked })
+		if (!state || !existing) return
+		const updated = applyDocumentUpdates({ document: existing, updates: checked })
+		if (updated.path !== existing.path) {
+			assertDocumentPlace({ document: updated, documents: [...state.documents.values()] })
 		}
+		state.documents.set(documentId, updated)
 	}
 
 	private async removeDocumentUnguarded(documentId: string): Promise<void> {

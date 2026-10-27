@@ -1,7 +1,7 @@
 import type { SqliteEngineOptions } from './engine.types'
 
 /** The layout of the project file this engine reads and writes, kept in the file's header (`user_version`). */
-export const LAYOUT_VERSION = 2
+export const LAYOUT_VERSION = 3
 
 export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	/**
@@ -39,6 +39,8 @@ export const DOCUMENT_COLUMNS = {
 	metadata: 'TEXT',
 	status: 'TEXT NOT NULL',
 	writeId: 'TEXT',
+	/** One document per path: SQLite lets any number of documents without one through. */
+	path: 'TEXT UNIQUE',
 } as const
 
 /**
