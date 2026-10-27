@@ -1191,6 +1191,7 @@ export const DEFINITION = {
 		},
 		children: {
 			sequence: ['CCC_1', 'CCC_2', 'CCC_3'],
+			any: true,
 			details: {},
 		},
 		contentModel: {
@@ -1198,6 +1199,11 @@ export const DEFINITION = {
 			minOccurs: 1,
 			maxOccurs: 1,
 			particles: [
+				{
+					kind: 'any',
+					notNamespace: ['', 'http://dialecte.dev/XML/DEFAULT'],
+					processContents: 'lax',
+				},
 				{ kind: 'element', name: 'CCC_1', minOccurs: 1, maxOccurs: 1 },
 				{ kind: 'element', name: 'CCC_2', maxOccurs: 2 },
 				{
