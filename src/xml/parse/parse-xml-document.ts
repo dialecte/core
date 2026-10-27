@@ -1,4 +1,5 @@
 import { ParseSession } from './parse-session'
+import { DEFAULT_BATCH_SIZE, DEFAULT_CHUNK_SIZE } from './parse-xml-document.constants'
 import { setSaxParser } from './parser'
 
 import { throwDialecteError } from '@/errors'
@@ -13,11 +14,6 @@ import type { ImportControl, ImportProgress, ImportTarget } from '@/store/store.
 import type { ImportSession } from '@/types'
 
 export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
-
-// ── Defaults ─────────────────────────────────────────────────────────────────
-
-const DEFAULT_CHUNK_SIZE = 32 * 1024 // 32KB
-const DEFAULT_BATCH_SIZE = 2000
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
