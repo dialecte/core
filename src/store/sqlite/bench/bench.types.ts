@@ -495,3 +495,48 @@ declare module 'vitest/browser' {
 		}) => Promise<GcShare>
 	}
 }
+
+/** What a stage of an import took: its calls and its total, from the run's perf (spans and tallies alike). */
+export type StageTiming = { calls: number; totalMs: number }
+
+/** One import through the engine: drop to ready and its stages. */
+export type EngineImportRun = {
+	dropToReadyMs: number
+	recordCount: number
+	stages: Record<string, StageTiming>
+	/** The database file's size once the document is ready (pages times page size). */
+	databaseBytes: number
+}
+
+/** A database file's pages, as SQLite counts them. */
+export type FilePages = { pages: number; freePages: number; pageSize: number }
+
+/** An engine start on a file holding a dead import in front of a ready document. */
+export type EngineStartRun = {
+	deadRows: number
+	readyRows: number
+	fillMs: { dead: number; ready: number }
+	before: FilePages
+	/** The engine's start as it runs: layout check, the dead import swept, its pages given back. */
+	startMs: number
+	/** The page cache the engine started with (the device's), in MiB. */
+	cacheMiB: number
+	after: FilePages
+	/** A start on the file then (nothing left to sweep). */
+	restartMs: number
+}
+
+/** The engine bench's worker: the engine on a real OPFS pool. */
+export type EngineBenchWorkerApi = {
+	importOnOpfs: (params: {
+		file: File
+		project: string
+		root: FixtureRoot
+		afterImportRatio: number
+	}) => Promise<EngineImportRun>
+	measureStart: (params: {
+		project: string
+		deadRows: number
+		readyRows: number
+	}) => Promise<EngineStartRun>
+}

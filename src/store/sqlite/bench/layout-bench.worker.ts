@@ -1,8 +1,9 @@
 import { deviceCacheMiB, reportedDeviceMemoryGiB } from '../engine/device-cache'
+import { benchConfig, createWriteBackSession } from './bench-import-session'
 import { realmMemory } from './bench-memory'
+import { directoryBytes, findDirectory, installPool } from './bench-pool'
 import { buildCommitRecords, createVariantSink, recordSignature } from './bench-variants'
 import {
-	AFTER_IMPORT_ATTRIBUTE,
 	BENCH_PHASE_MESSAGE,
 	KILL_HOLD_MS,
 	ORDER_COMMIT_RECORDS,
@@ -18,7 +19,6 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import * as Comlink from 'comlink'
 import * as sax from 'sax'
 
-import { TEST_DIALECTE_CONFIG } from '@/test/config'
 import { parseXmlFile } from '@/xml'
 
 import type {
@@ -27,13 +27,12 @@ import type {
 	BenchWorkerApi,
 	OpenedBenchPool,
 	DatabaseSizes,
-	SyncAccessFileHandle,
 	ImportFileParams,
 	ImportFileResult,
 	OrderComparison,
 } from './bench.types'
 import type { Store } from '@/store/store.types'
-import type { AnyDialecteConfig, AnyRawRecord, ImportSession, RecordPatch } from '@/types'
+import type { AnyRawRecord } from '@/types'
 import type { Database, SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** The DOM lib types `self` as a window; this worker only posts plain messages to its page. */
@@ -69,68 +68,6 @@ function tableOf(params: { documentId: string }): string {
 	return `records_${params.documentId.replaceAll(/[^A-Za-z0-9_]/g, '_')}`
 }
 
-/** One pool per run: its own directory, removed by `destroy`. */
-async function installPool(params: {
-	sqlite3: Sqlite3Static
-	project: string
-}): Promise<SAHPoolUtil> {
-	const { sqlite3, project } = params
-	await waitForFreePool({ project })
-	return sqlite3.installOpfsSAHPoolVfs({ name: `bench-${project}`, directory: `bench/${project}` })
-}
-
-/**
- * A killed worker's sync handles close a little after it is gone; a failed install would remove the
- * pool directory, so every pool file is probed free before the install.
- */
-async function waitForFreePool(params: { project: string }): Promise<void> {
-	const deadline = performance.now() + 10_000
-	for (;;) {
-		const busy = await isPoolBusy({ project: params.project })
-		if (!busy) return
-		if (performance.now() > deadline) throw new Error(`pool of ${params.project} still busy`)
-		await new Promise((resolve) => setTimeout(resolve, 100))
-	}
-}
-
-async function isPoolBusy(params: { project: string }): Promise<boolean> {
-	const opaque = await findDirectory({ path: ['bench', params.project, '.opaque'] })
-	if (!opaque) return false
-	for await (const handle of opaque.values()) {
-		if (handle.kind !== 'file') continue
-		try {
-			const access = await (handle as SyncAccessFileHandle).createSyncAccessHandle()
-			access.close()
-		} catch {
-			return true
-		}
-	}
-	return false
-}
-
-async function findDirectory(params: {
-	path: string[]
-}): Promise<FileSystemDirectoryHandle | undefined> {
-	let directory = await navigator.storage.getDirectory()
-	for (const name of params.path) {
-		try {
-			directory = await directory.getDirectoryHandle(name)
-		} catch {
-			return undefined
-		}
-	}
-	return directory
-}
-
-async function directoryBytes(params: { directory: FileSystemDirectoryHandle }): Promise<number> {
-	let bytes = 0
-	for await (const handle of params.directory.values()) {
-		if (handle.kind === 'file') bytes += (await (handle as FileSystemFileHandle).getFile()).size
-		else bytes += await directoryBytes({ directory: handle as FileSystemDirectoryHandle })
-	}
-	return bytes
-}
-
 function openDatabase(params: { pool: SAHPoolUtil; variant: BenchVariant }): Database {
 	const db = new params.pool.OpfsSAHPoolDb(POOL_DATABASE_PATH)
 	const vacuum = params.variant.vacuum === 'incremental' ? 'INCREMENTAL' : 'NONE'
@@ -141,56 +78,6 @@ function openDatabase(params: { pool: SAHPoolUtil; variant: BenchVariant }): Dat
 			'CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, tableName TEXT, status TEXT);',
 	)
 	return db
-}
-
-/** The core test config parsing every element of the file as unknown (returned verbatim). */
-function benchConfig(params: { rootElementName: string; namespaceUri: string }): AnyDialecteConfig {
-	return {
-		...TEST_DIALECTE_CONFIG,
-		rootElementName: params.rootElementName,
-		namespaces: {
-			...TEST_DIALECTE_CONFIG.namespaces,
-			default: { uri: params.namespaceUri, prefix: '' },
-		},
-	} as unknown as AnyDialecteConfig
-}
-
-/**
- * Replays a dialecte's write-back volume: `ratio` of the records get one attribute patched after the
- * import, as a reference fill does. Also stops the import with a parse failure when asked.
- */
-function createWriteBackSession(params: {
-	ratio: number
-	failAfterRecords?: number
-	onRoot: (id: string) => void
-	timings: { afterImportBuildMs: number }
-}): ImportSession {
-	const { ratio, failAfterRecords, onRoot, timings } = params
-	const picked: string[] = []
-	let credit = 0
-	let seen = 0
-	return {
-		beforeImportRecord: function benchSessionBeforeRecord({ record }) {
-			seen += 1
-			if (failAfterRecords !== undefined && seen >= failAfterRecords)
-				throw new Error(`bench failure after ${seen} records`)
-			if (record.parent === null) onRoot(record.id)
-			credit += ratio
-			if (credit >= 1) {
-				credit -= 1
-				picked.push(record.id)
-			}
-		},
-		afterImport: async function benchSessionAfterImport() {
-			const startedAt = performance.now()
-			const updates: RecordPatch[] = picked.map((recordId, index) => ({
-				recordId,
-				attributes: [{ name: AFTER_IMPORT_ATTRIBUTE, value: `ref-${index}` }],
-			}))
-			timings.afterImportBuildMs += performance.now() - startedAt
-			return { updates }
-		},
-	}
 }
 
 async function importFile(params: ImportFileParams): Promise<ImportFileResult> {

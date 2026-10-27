@@ -1,5 +1,6 @@
 import { encodeRecords } from './bulk-insert'
 import {
+	DUPLICATE_IDS_REPORTED,
 	RECORD_COLUMN_LIST,
 	RECORD_UPDATE_ASSIGNMENTS,
 	ROW_SELECT_ALIASES,
@@ -11,9 +12,8 @@ import { compareById } from '@/store/compare-by-id'
 import { checkJsonValues } from '@/store/json-values'
 import { throwDuplicateRecordIds } from '@/store/store-errors'
 
-import type { EncodedRows } from './engine.types'
 import type { AnyRawRecord, AnyRelationship, RecordPatch } from '@/types'
-import type { Database, SqlValue } from '@sqlite.org/sqlite-wasm'
+import type { Database, Sqlite3Static, SqlValue } from '@sqlite.org/sqlite-wasm'
 
 export function readRecord(params: {
 	db: Database
@@ -68,15 +68,6 @@ export function countRecords(params: { db: Database; table: string }): number {
 }
 
 /**
- * The creates of a bulk write encoded, before anything else is checked: a value that is not JSON
- * refuses the whole write with `STORE_VALUE_NOT_JSON`.
- */
-export function encodeCreates(params: { creates: AnyRawRecord[] }): EncodedRows {
-	checkJsonValues({ value: params.creates })
-	return encodeRecords({ records: params.creates })
-}
-
-/**
  * A create of an id the table holds, or that the write gives twice, refuses the write
  * (`STORE_DUPLICATE_ID`): the held ids are looked up in one statement.
  */
@@ -90,6 +81,19 @@ export function refuseTakenIds(params: {
 	if (creates.length === 0) return
 	const ids = creates.map((record) => record.id)
 	const heldIds = new Set(readRecordsById({ db, table, ids }).keys())
+	refuseDuplicateIds({ documentId, ids, heldIds })
+}
+
+/**
+ * Ids to create refused (`STORE_DUPLICATE_ID`) when one is held already or given twice among them;
+ * answers the set of the ids given.
+ */
+export function refuseDuplicateIds(params: {
+	documentId: string
+	ids: readonly string[]
+	heldIds: ReadonlySet<string>
+}): Set<string> {
+	const { documentId, ids, heldIds } = params
 	const seen = new Set<string>()
 	const held: string[] = []
 	const repeated: string[] = []
@@ -100,6 +104,35 @@ export function refuseTakenIds(params: {
 	}
 	if (held.length > 0 || repeated.length > 0)
 		throwDuplicateRecordIds({ documentId, held, repeated })
+	return seen
+}
+
+/**
+ * A unique id index that could not be built for ids the table holds twice: refused
+ * `STORE_DUPLICATE_ID`, naming them (up to `DUPLICATE_IDS_REPORTED`, read on this failure only).
+ * Any other failure is left as it is.
+ */
+export function refuseRepeatedIds(params: {
+	sqlite3: Sqlite3Static
+	db: Database
+	table: string
+	documentId: string
+	thrown: unknown
+}): void {
+	const { sqlite3, db, table, documentId, thrown } = params
+	const resultCode = (thrown as { resultCode?: number } | undefined)?.resultCode
+	if (resultCode !== sqlite3.capi.SQLITE_CONSTRAINT_UNIQUE) return
+	const repeated = db
+		.selectValues(`SELECT id FROM ${table} GROUP BY id HAVING count(*) > 1 LIMIT ?`, [
+			DUPLICATE_IDS_REPORTED,
+		])
+		.map(String)
+	throwDuplicateRecordIds({
+		documentId,
+		held: [],
+		repeated,
+		cause: thrown instanceof Error ? thrown : undefined,
+	})
 }
 
 /**

@@ -13,6 +13,7 @@ export type {
 	ImportFileOptions,
 	ImportFileParams,
 	ImportFileResult,
+	ImportPhase,
 	ImportProgress,
 	ImportTarget,
 	WriteOutcome,

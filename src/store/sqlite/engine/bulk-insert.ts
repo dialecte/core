@@ -1,8 +1,19 @@
 import { RECORD_COLUMN_LIST, ROW_SELECT_EXPRESSIONS, ROWS_PER_BIND } from './engine.constants'
 
-import type { EncodedRows } from './engine.types'
+import { checkJsonValues } from '@/store/json-values'
+
+import type { EncodedRows, RecordSinkParams } from './engine.types'
 import type { AnyRawRecord } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
+
+/**
+ * The creates of a write encoded, before anything else is checked: a value that is not JSON
+ * refuses the whole write with `STORE_VALUE_NOT_JSON` (whole records, as every store checks them).
+ */
+export function encodeCreates(params: { creates: AnyRawRecord[] }): EncodedRows {
+	checkJsonValues({ value: params.creates })
+	return encodeRecords({ records: params.creates })
+}
 
 /** The records as rows, in batches of one bind each: records already checked as JSON. */
 export function encodeRecords(params: { records: AnyRawRecord[] }): EncodedRows {
@@ -31,6 +42,18 @@ export function insertEncodedRows(params: {
 	} finally {
 		statement.finalize()
 	}
+}
+
+/**
+ * The row sink: one bind of records into a document table, in the caller's transaction - encoded
+ * (timed as `import::encode`), inserted. The caller has checked them (values, ids) first.
+ */
+export function insertRecords(params: RecordSinkParams): void {
+	const { db, table, records, perf } = params
+	const rows = perf.time('import::encode', function encode() {
+		return encodeRecords({ records })
+	})
+	insertEncodedRows({ db, table, rows })
 }
 
 /** A record as a row, in the order of `RECORD_COLUMNS`. */

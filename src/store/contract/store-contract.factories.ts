@@ -60,7 +60,11 @@ const dexieStoreFactory: StoreContractFactory = {
 
 /** An open SQLite store of that name, its engine run in this realm on an in-memory file of the name. */
 async function openSqliteStore(name: string): Promise<SqliteStore> {
-	const connector = createInProcessConnector({ name, dialecteId: TEST_DIALECTE.id })
+	const connector = createInProcessConnector({
+		name,
+		dialecteId: TEST_DIALECTE.id,
+		runtime: createContractRuntime(),
+	})
 	const store = new SqliteStore({ name, connector })
 	await store.open()
 	return store
@@ -71,7 +75,6 @@ const sqliteInProcessStoreFactory: StoreContractFactory = {
 	pending: {
 		history: 'the engine keeps no history yet',
 		blobs: 'the engine keeps no blobs yet',
-		import: 'the engine runs no import yet',
 		export: 'the engine runs no export yet',
 	},
 	create: async function createSqliteStore() {

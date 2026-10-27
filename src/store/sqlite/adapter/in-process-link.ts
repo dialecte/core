@@ -36,12 +36,14 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Sqlite
 	const { name } = params
 	const clients = CLIENTS.get(name) ?? new Set<SqliteEngineLink>()
 	CLIENTS.set(name, clients)
+	const clientId = crypto.randomUUID()
 	let released = false
 	const link: SqliteEngineLink = {
 		engine: async function currentEngine() {
 			// a released connection is not counted: it must not start an engine nobody would close
 			if (released) throwStoreClosed({ storeName: name })
-			return engineOf(params)
+			const engine = await engineOf(params)
+			return engine.clientView({ clientId })
 		},
 		close: function releaseEngine() {
 			released = true
@@ -58,14 +60,14 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Sqlite
 
 /** The engine running on the name's file, started first (on a new file when the name has none). */
 async function engineOf(params: InProcessConnectorParams): Promise<SqliteEngine> {
-	const { name, dialecteId, options } = params
+	const { name, dialecteId, runtime, options } = params
 	const sqlite3 = await loadSqlite()
 	const file = FILES.get(name) ?? { keeper: new sqlite3.oo1.DB(fileName({ name }), 'c') }
 	FILES.set(name, file)
 	if (!file.engine) {
 		// the engine owns its connection, closed by it when its start fails
 		const db = new sqlite3.oo1.DB(fileName({ name }), 'c')
-		file.engine = openSqliteEngine({ sqlite3, db, dialecteId, options })
+		file.engine = openSqliteEngine({ sqlite3, db, dialecteId, name, runtime, options })
 	}
 	return file.engine
 }

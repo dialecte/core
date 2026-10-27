@@ -1,5 +1,6 @@
 import {
 	CONTRACT_SESSION_DIAGNOSTICS,
+	CONTRACT_SESSION_FAIL_VALUE,
 	CONTRACT_SESSION_HOLD_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
@@ -19,6 +20,9 @@ import {
 import { holdContractImport, untilHeld } from './store-contract.import-session'
 
 import { expect } from 'vitest'
+
+import { toDialecteError } from '@/errors'
+import { CUSTOM_RECORD_ID_ATTRIBUTE, DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
 
 import type { ImportProgress, Store, WriteOutcome } from '../store.types'
 import type {
@@ -1664,23 +1668,31 @@ const importing: StoreContractCases = {
 			},
 		]),
 	),
-	'progress is told after each batch, the bytes read growing to the size of the file': {
-		needs: ['import'],
-		act: async ({ store }) => {
-			const file = contractFile({ body: sessionRecords(4) })
-			const progress: ImportProgress[] = []
-			await store.importFile({
-				file,
-				options: { chunkOptions: SMALL_BATCHES },
-				onProgress: (step) => progress.push(step),
-			})
-			expect(progress.length).toBeGreaterThan(1)
-			const bytes = progress.map((step) => step.bytesRead)
-			expect(bytes).toEqual([...bytes].sort((left, right) => left - right))
-			expect(progress.every((step) => step.totalBytes === file.size)).toBe(true)
-			expect(progress.at(-1)).toEqual({ bytesRead: file.size, totalBytes: file.size })
+	'progress is told after each batch, with its phase, the bytes read growing to the size of the file':
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				const file = contractFile({ body: sessionRecords(4) })
+				const progress: ImportProgress[] = []
+				await store.importFile({
+					file,
+					options: { chunkOptions: SMALL_BATCHES },
+					onProgress: (step) => progress.push(step),
+				})
+				// a store that builds indexes says so between batches (`indexing`); one that builds none never does
+				expect(progress.every((step) => ['storing', 'indexing'].includes(step.phase))).toBe(true)
+				const storing = progress.filter((step) => step.phase === 'storing')
+				expect(storing.length).toBeGreaterThan(1)
+				const bytes = storing.map((step) => step.bytesRead)
+				expect(bytes).toEqual([...bytes].sort((left, right) => left - right))
+				expect(progress.every((step) => step.totalBytes === file.size)).toBe(true)
+				expect(progress.at(-1)).toEqual({
+					phase: 'storing',
+					bytesRead: file.size,
+					totalBytes: file.size,
+				})
+			},
 		},
-	},
 	'a progress listener that never answers, rejects or throws neither holds nor fails the import': {
 		needs: ['import'],
 		act: async ({ store }) => {
@@ -1775,6 +1787,82 @@ const importing: StoreContractCases = {
 	'the outcome of an id no import carried is not-applied': {
 		act: async ({ store }) => {
 			expect(await store.getWriteOutcome({ writeId: 'never' })).toBe('not-applied')
+		},
+	},
+	'the importing document removed through another connection, a new one registered → DOCUMENT_NOT_REGISTERED, not applied; the new one untouched':
+		{
+			needs: ['second-connection', 'import'],
+			act: async ({ store, connect }) => {
+				const other = await connect()
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+					writeId: 'w-held',
+				})
+				try {
+					await untilHeld({ hold, importing })
+					const [imported] = await other.getDocuments()
+					await other.removeDocument(imported!.id)
+					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('not-applied')
+					await other.registerDocument(makeDocument({ id: 'new' }))
+					await other.bulkWrite('new', { creates: [makeRecord({ id: 'n1' })] })
+					hold.release()
+					await expectRejectsWith({ action: importing, key: 'DOCUMENT_NOT_REGISTERED' })
+					expect(await other.getByDocumentId('new')).toEqual([makeRecord({ id: 'n1' })])
+					expect((await other.getDocuments()).map((document) => document.id)).toEqual(['new'])
+					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('not-applied')
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
+	'a write through another connection while an import runs → kept when the import then fails': {
+		needs: ['second-connection', 'import'],
+		act: async ({ store, connect }) => {
+			const other = await connect()
+			const hold = holdContractImport()
+			const importing = store.importFile({
+				file: contractFile({
+					body:
+						`<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` +
+						`<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
+				}),
+				writeId: 'w-failing',
+			})
+			try {
+				await untilHeld({ hold, importing })
+				await other.registerDocument(makeDocument({ id: 'written' }))
+				await other.bulkWrite('written', { creates: [makeRecord({ id: 'w1' })] })
+				hold.release()
+				await expectRejectsWith({ action: importing, key: 'IMPORT_FAILED' })
+				expect((await store.getDocuments()).map((document) => document.id)).toEqual(['written'])
+				expect(await store.getByDocumentId('written')).toEqual([makeRecord({ id: 'w1' })])
+			} finally {
+				hold.release()
+				await importing.catch(() => undefined)
+			}
+		},
+	},
+	'a file giving one of its own ids twice → STORE_DUPLICATE_ID naming it, and leaves nothing': {
+		needs: ['import'],
+		act: async ({ store }) => {
+			await seedKeptDocument(store)
+			const withId = `xmlns:${DIALECTE_DEV_NAMESPACE.prefix}="${DIALECTE_DEV_NAMESPACE.uri}" ${CUSTOM_RECORD_ID_ATTRIBUTE}="twice"`
+			const thrown = await store
+				.importFile({
+					file: contractFile({ body: `<A ${withId}/><C ${withId}/>` }),
+					options: { useCustomRecordsIds: true, chunkOptions: SMALL_BATCHES },
+					writeId: 'w-twice',
+				})
+				.then(
+					() => undefined,
+					(error: unknown) => error,
+				)
+			const error = toDialecteError(thrown)
+			expect(error?.key).toBe('STORE_DUPLICATE_ID')
+			expect(error?.meta?.recordIds).toContain('twice')
+			await expectOnlyKeptDocument({ store, writeId: 'w-twice' })
 		},
 	},
 	'with perf on, the import hands back the timings of its stages': {

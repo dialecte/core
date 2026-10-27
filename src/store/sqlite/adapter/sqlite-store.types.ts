@@ -1,4 +1,5 @@
 import type { SqliteEngine, SqliteEngineApi, SqliteEngineOptions } from '../engine/engine.types'
+import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /** One connection of a store to its project's engine. */
@@ -30,6 +31,8 @@ export type InProcessConnectorParams = {
 	name: string
 	/** The dialecte kept in a new file. */
 	dialecteId: string
+	/** What the name's engine imports with, when this connection starts it. */
+	runtime?: StoreRuntime
 	options?: Partial<SqliteEngineOptions>
 }
 

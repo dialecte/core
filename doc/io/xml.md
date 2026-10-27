@@ -42,7 +42,7 @@ const { documentId, recordCount, diagnostics } = await parseXmlFile({
 
 **Returns** `Promise<{ documentId: string; recordCount: number; diagnostics: Diagnostic[] }>` - `diagnostics` is what the file's [import session](/io/hooks#afterimport) had to say, `[]` when nothing.
 
-A second argument, `{ onProgress, signal }`, is told the progress after each stored batch (`{ bytesRead, totalBytes }`, never awaited) and aborts before the next batch or before the session's writes (`IMPORT_ABORTED`).
+A second argument, `{ onProgress, signal }`, is told the progress after each stored batch (`{ phase: 'storing', bytesRead, totalBytes }`, never awaited) and aborts before the next batch or before the session's writes (`IMPORT_ABORTED`).
 
 **Throws** `PARSE_ERROR` on a malformed file - its `detail` names what the parser saw (a tag not closed, text outside the root, a second root element); `meta.reason` is `'malformed-xml'` (with `meta.parser`, the parser's words) or `'second-root'` (with `meta.tagName`). The records stored before the error are the caller's to remove: [`runImport`](/io/#import-inside-the-store) (and so every store's `importFile`, `project.importFile` and `project.import`) does it.
 

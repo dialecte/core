@@ -20,3 +20,12 @@ export function asStoreFailure<GenericResult>(params: {
 		throwDialecteError(key, { detail: `${detail}: ${cause.message}`, cause })
 	}
 }
+
+/** A read: a failure of SQLite is thrown as `STORE_READ_FAILED`, `detail` naming what was read. */
+export function asReadFailure<GenericResult>(params: {
+	detail: string
+	work: () => GenericResult
+}): GenericResult {
+	const { detail, work } = params
+	return asStoreFailure({ key: 'STORE_READ_FAILED', detail: `${detail} could not be read`, work })
+}

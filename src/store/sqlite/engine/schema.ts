@@ -1,9 +1,16 @@
-import { DOCUMENT_COLUMNS, LAYOUT_VERSION, META_KEY, RECORD_COLUMNS } from './engine.constants'
+import {
+	DOCUMENT_COLUMNS,
+	LAYOUT_VERSION,
+	META_KEY,
+	RECORD_COLUMNS,
+	RECORD_INDEXES,
+} from './engine.constants'
 import { inWriteTransaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
 import { TABLE_DOCUMENTS, TABLE_META } from '@/store/store.constants'
 
+import type { RecordIndex } from './engine.types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
@@ -69,17 +76,28 @@ export function prepareFile(params: {
 	})
 }
 
-/**
- * A document's record table: a rowid table holding one row per record (its children listed on it),
- * the id index (unique: a taken id is refused) and the tag-name index - the read paths of the port.
- */
+/** A document's record table, without its indexes: a rowid table holding one row per record (its children listed on it). */
 export function createRecordTable(params: { db: Database; table: string }): void {
 	const { db, table } = params
-	db.exec(
-		`CREATE TABLE ${table} (${columnDefinitions({ columns: RECORD_COLUMNS })});` +
-			`CREATE UNIQUE INDEX ${table}_id ON ${table}(id);` +
-			`CREATE INDEX ${table}_tag ON ${table}(tagName);`,
-	)
+	db.exec(`CREATE TABLE ${table} (${columnDefinitions({ columns: RECORD_COLUMNS })})`)
+}
+
+/** One index of a record table, named after the table and the index. */
+export function createRecordIndex(params: {
+	db: Database
+	table: string
+	index: RecordIndex
+}): void {
+	const { db, table, index } = params
+	const { column, unique } = RECORD_INDEXES[index]
+	db.exec(`CREATE ${unique ? 'UNIQUE ' : ''}INDEX ${table}_${index} ON ${table}(${column})`)
+}
+
+/** Every index of a record table: the ones a registered document has from the start. */
+export function createRecordIndexes(params: { db: Database; table: string }): void {
+	for (const index of Object.keys(RECORD_INDEXES) as RecordIndex[]) {
+		createRecordIndex({ ...params, index })
+	}
 }
 
 /** Columns with their SQL types as the body of a `CREATE TABLE`, in the order given. */
