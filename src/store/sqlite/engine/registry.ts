@@ -6,15 +6,17 @@ import { toJsonCopy } from '@/store/json-values'
 import { throwDocumentAlreadyRegistered } from '@/store/store-errors'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
+import type { DocumentTable } from './engine.types'
 import type { DocumentRecord, DocumentStatus } from '@/project/types'
 import type { Database, SqlValue } from '@sqlite.org/sqlite-wasm'
 
 /**
- * Register a document and create its record table, in the caller's transaction; an id already
- * registered is refused with `STORE_DUPLICATE_ID`, the registered one left as it was, then a value
- * that is not JSON with `STORE_VALUE_NOT_JSON`.
+ * Register a document and create its record table without indexes, in the caller's transaction;
+ * answers the row's number and the table. An id already registered is refused with
+ * `STORE_DUPLICATE_ID`, the registered one left as it was, then a value that is not JSON with
+ * `STORE_VALUE_NOT_JSON`.
  */
-export function insertDocument(params: { db: Database; document: DocumentRecord }): void {
+export function insertDocument(params: { db: Database; document: DocumentRecord }): DocumentTable {
 	const { db } = params
 	if (findSeq({ db, documentId: params.document.id }) !== undefined) {
 		throwDocumentAlreadyRegistered({ documentId: params.document.id })
@@ -28,7 +30,34 @@ export function insertDocument(params: { db: Database; document: DocumentRecord 
 		bind: documentRow({ document }),
 	})
 	const seq = Number(db.selectValue('SELECT last_insert_rowid()'))
-	createRecordTable({ db, table: recordTableOfSeq({ seq }) })
+	const table = recordTableOfSeq({ seq })
+	createRecordTable({ db, table })
+	return { seq, table }
+}
+
+/** A document's row number and status, read by its id; none when it is not registered. */
+export function readDocumentState(params: {
+	db: Database
+	documentId: string
+}): { seq: number; status: DocumentStatus } | undefined {
+	const { db, documentId } = params
+	const [row] = db.selectArrays(`SELECT seq, status FROM ${TABLE_DOCUMENTS} WHERE id = ?`, [
+		documentId,
+	])
+	return row ? { seq: Number(row[0]), status: statusOf({ value: row[1]! }) } : undefined
+}
+
+/**
+ * Mark an imported document ready, in the caller's transaction; answers whether it was there, still
+ * `importing` - a document removed meanwhile is never marked.
+ */
+export function markImportReady(params: { db: Database; documentId: string }): boolean {
+	const { db, documentId } = params
+	db.exec({
+		sql: `UPDATE ${TABLE_DOCUMENTS} SET status = ? WHERE id = ? AND status = ?`,
+		bind: ['ready', documentId, 'importing'],
+	})
+	return db.changes() === 1
 }
 
 export function readDocument(params: {

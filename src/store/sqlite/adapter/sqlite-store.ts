@@ -135,8 +135,28 @@ export class SqliteStore implements Store {
 
 	// --- Import ---
 
-	async importFile(_params: ImportFileParams): Promise<ImportFileResult> {
-		return this.notServed('importFile')
+	/**
+	 * The import runs in the engine; its progress listener crosses as an argument of its own and its
+	 * abort as a call of its own, by `writeId`: made only once the import was asked for, so the engine
+	 * knows it (a signal already aborted is told at once), and the engine answers in every store's
+	 * order (a store with no dialecte refuses first).
+	 */
+	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
+		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
+		return this.operation(async (engine) => {
+			const importing = engine.importFile({ file, options, writeId }, onProgress)
+			const stopForwarding = forwardAbort({
+				signal,
+				abort: function abortInEngine() {
+					return engine.abortImport({ writeId })
+				},
+			})
+			try {
+				return await importing
+			} finally {
+				stopForwarding()
+			}
+		})
 	}
 
 	// --- Export ---
@@ -286,3 +306,27 @@ export class SqliteStore implements Store {
 		throw new Error(`SqliteStore does not serve ${member} yet`)
 	}
 }
+
+/**
+ * Forward the caller's abort to the engine until the import settles; answers the function that stops
+ * it. The abort call's own failure is not reported: the import's answer says what became of it.
+ */
+function forwardAbort(params: { signal?: AbortSignal; abort: () => Promise<void> }): () => void {
+	const { signal, abort } = params
+	if (!signal) return stopNothing
+	function abortQuietly(): void {
+		abort().catch(ignoreAbortFailure)
+	}
+	if (signal.aborted) {
+		abortQuietly()
+		return stopNothing
+	}
+	signal.addEventListener('abort', abortQuietly, { once: true })
+	return function stopForwarding() {
+		signal.removeEventListener('abort', abortQuietly)
+	}
+}
+
+function stopNothing(): void {}
+
+function ignoreAbortFailure(): void {}

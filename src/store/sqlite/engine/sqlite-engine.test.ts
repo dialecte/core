@@ -1,6 +1,6 @@
 import { expectRejectsWith, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import { loadSqlite } from '../load-sqlite'
-import { openSqliteEngine } from './sqlite-engine'
+import { ENGINE_TEST_DIALECTE_ID, openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -11,8 +11,6 @@ import type { DialecteErrorKey } from '@/errors'
 import type { AnyRawRecord, RecordPatch } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
-const DIALECTE_ID = 'core/test'
-
 /** The databases a case opened, closed after it (an in-memory file goes with its last connection). */
 const opened: Database[] = []
 
@@ -20,26 +18,8 @@ afterEach(() => {
 	for (const db of opened.splice(0)) db.close()
 })
 
-/** An in-memory file of its own, empty: a keeper connection holds it, `connect` opens another one. */
-async function openFile(): Promise<{ keeper: Database; connect: () => Database }> {
-	const sqlite3 = await loadSqlite()
-	const name = `file:/engine-${crypto.randomUUID()}?vfs=memdb`
-	const keeper = new sqlite3.oo1.DB(name, 'c')
-	opened.push(keeper)
-	return {
-		keeper,
-		connect: function connect() {
-			const db = new sqlite3.oo1.DB(name, 'c')
-			opened.push(db)
-			return db
-		},
-	}
-}
-
-async function startEngine(params: { db: Database; options?: Partial<SqliteEngineOptions> }) {
-	const { db, options } = params
-	const sqlite3 = await loadSqlite()
-	return openSqliteEngine({ sqlite3, db, dialecteId: DIALECTE_ID, options })
+function openFile(): ReturnType<typeof openMemoryFile> {
+	return openMemoryFile({ opened })
 }
 
 function metaOf(params: { db: Database }): Record<string, string> {
@@ -90,7 +70,7 @@ describe('openSqliteEngine', () => {
 				await startEngine({ db, options: testCase.options })
 				expect(db.selectValue('PRAGMA user_version')).toBe(1)
 				expect(db.selectValue('PRAGMA auto_vacuum')).toBe(2)
-				expect(metaOf({ db })).toEqual({ dialecteId: DIALECTE_ID, layoutVersion: '1' })
+				expect(metaOf({ db })).toEqual({ dialecteId: ENGINE_TEST_DIALECTE_ID, layoutVersion: '1' })
 				// a negative cache_size is a size in KiB
 				expect(db.selectValue('PRAGMA cache_size')).toBe(-testCase.expectedCacheMiB * 1024)
 			})

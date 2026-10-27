@@ -13,6 +13,11 @@ export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	 * 4.5 s at 512 MiB (8 GiB and more); an edit under 1 % of such a document stays under a second.
 	 */
 	cacheRule: { mibPerGiB: 64, floorMiB: 64, ceilingMiB: 512 },
+	/**
+	 * An import commits about once a second (a commit with synchronous off costs little), so calls of
+	 * other connections run between two of its transactions within about a second.
+	 */
+	importWindowMs: 1000,
 }
 
 /** The device's memory when the realm does not report it (Firefox, node): a 4 GiB device. */
@@ -48,6 +53,19 @@ export const RECORD_COLUMNS = {
 	attributes: 'TEXT',
 	children: 'TEXT',
 } as const
+
+/**
+ * The indexes of a record table, in the order an import builds them: the id (unique: a taken id is
+ * refused) and the tag name - the read paths of the port. A registered document has them from the
+ * start; an imported one gets them as its import goes (the id index at its first update or delete).
+ */
+export const RECORD_INDEXES = {
+	id: { column: 'id', unique: true },
+	tag: { column: 'tagName', unique: false },
+} as const
+
+/** The repeated ids a refused index build names at most: enough to find them, bounded for a file of many. */
+export const DUPLICATE_IDS_REPORTED = 100
 
 /** Records per JSON1 bind of an insert or an update: bounds one statement's JSON payload. */
 export const ROWS_PER_BIND = 1000

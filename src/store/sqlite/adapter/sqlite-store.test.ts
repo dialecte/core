@@ -1,4 +1,10 @@
-import { expectRejectsWith, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
+import {
+	contractFile,
+	expectRejectsWith,
+	makeDocument,
+	makeRecord,
+	sessionRecords,
+} from '../../contract/store-contract.fixtures'
 import { createInProcessConnector } from './in-process-link'
 import { SqliteStore } from './sqlite-store'
 
@@ -149,5 +155,17 @@ describe('SqliteStore', () => {
 		const link = await connector.connect()
 		link.close()
 		await expectRejectsWith({ action: link.engine(), key: 'STORE_CLOSED' })
+	})
+
+	it('a store with no dialecte asked an import with a signal already aborted → IMPORT_FAILED, as every store answers', async () => {
+		const store = await seededStore()
+		await expectRejectsWith({
+			action: store.importFile({
+				file: contractFile({ body: sessionRecords(1) }),
+				signal: AbortSignal.abort(),
+			}),
+			key: 'IMPORT_FAILED',
+		})
+		expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
 	})
 })
