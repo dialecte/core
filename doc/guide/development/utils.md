@@ -335,7 +335,7 @@ const isValid = patterns.every((pattern) => pattern.test(value))
 
 ### `orderByConfigSequence`
 
-Orders a parent's child nodes by the config-declared child `sequence`. Generic over node type (anything with a `tagName`), so the same logic serves XML building and `TreeRecord` post-processing. Children whose tag is not in the sequence are appended last (relative order preserved); a parent with no declared sequence returns its input unchanged. Pure — no side effects.
+Orders a parent's child nodes by the config-declared child `sequence`. Generic over node type (anything with a `tagName`), so the same logic serves XML building and `TreeRecord` post-processing. Given the dialecte's `definition`, a child whose tag is not in the sequence but that a wildcard of the parent's content model admits (by the namespace of its declared tag: nodes carry no namespace) takes that wildcard's place: before the declared child that follows the wildcard (after that child's group when the model declares it before the wildcard too), or after them all for a trailing one; with several wildcards, the first admitting it with room left (its `maxOccurs` times those of the groups holding it). Children no particle admits, children whose tag the definition does not declare — or every child outside the sequence, without `definition` — are appended last (relative order preserved); a parent with no declared sequence returns its input unchanged. Pure — no side effects.
 
 ```ts
 import { orderByConfigSequence } from '@dialecte/core/utils'
@@ -344,6 +344,7 @@ const ordered = orderByConfigSequence({
 	parentTagName: 'Root',
 	children, // e.g. [{ tagName: 'C' }, { tagName: 'A' }, { tagName: 'B' }]
 	childrenConfig: dialecteConfig.children,
+	definition: dialecteConfig.definition, // optional: a child a wildcard admits at the wildcard
 })
 // → reordered to the parent's declared sequence, e.g. ['A', 'B', 'C']
 ```

@@ -188,6 +188,7 @@ function openFrame(params: {
 			parentTagName: record.tagName,
 			children: record.children,
 			childrenConfig: config.children,
+			definition: config.definition,
 		}),
 		next: 0,
 		chunk: [],

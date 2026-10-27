@@ -3,8 +3,8 @@ import { orderByConfigSequence } from '@/utils'
 import type { AnyDialecteConfig, AnyTreeRecord, ElementsOf, TreeRecord } from '@/types'
 
 /**
- * Order every node's children by the config-declared child sequence
- * (pure `TreeRecord → TreeRecord`).
+ * Order every node's children by the config-declared child sequence, a child a
+ * wildcard admits at that wildcard (pure `TreeRecord → TreeRecord`).
  *
  * Reuses the same `orderByConfigSequence` comparator as XML building, so a tree
  * and its XML serialization share one ordering. Apply as the final post-pass
@@ -16,8 +16,9 @@ export function applyOrder<
 >(params: {
 	tree: TreeRecord<GenericConfig, GenericElement>
 	childrenConfig: GenericConfig['children']
+	definition?: GenericConfig['definition']
 }): TreeRecord<GenericConfig, GenericElement> {
-	const { tree, childrenConfig } = params
+	const { tree, childrenConfig, definition } = params
 
 	function orderNode(node: AnyTreeRecord): AnyTreeRecord {
 		if (node.tree.length === 0) return node
@@ -26,6 +27,7 @@ export function applyOrder<
 			parentTagName: node.tagName,
 			children: node.tree.map(orderNode),
 			childrenConfig,
+			definition,
 		})
 		return { ...node, tree: children }
 	}

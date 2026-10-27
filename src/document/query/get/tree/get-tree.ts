@@ -76,6 +76,7 @@ export async function getTree<
 	return applyOrder({
 		tree: unwrapped,
 		childrenConfig: context.dialecteConfig.children,
+		definition: context.dialecteConfig.definition,
 	}) as TreeRecord<GenericConfig, GenericElement>
 }
 

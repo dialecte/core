@@ -212,7 +212,7 @@ An `xsi:type` filter compares the type the record names, whatever form either si
 
 Returns a tree-shaped record (with nested `tree[]` instead of flat `children[]`).
 
-Children are returned in **config order** (`config.children[parent]` sequence, unknown tags last) — the same ordering the export writes, so a tree matches its XML serialization. Ordering is the final step, after `omit`/`unwrap`.
+Children are returned in **config order** (`config.children[parent]` sequence, a child a wildcard admits at the wildcard's place, the rest last) — the same ordering the export writes, so a tree matches its XML serialization. Ordering is the final step, after `omit`/`unwrap`.
 
 ```ts
 const tree = await doc.query.getTree(ref)

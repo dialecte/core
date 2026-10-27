@@ -370,10 +370,11 @@ in the ext namespace sharing a local name, one only the ext namespace has, an el
 		</xs:complexType>
 	</xs:element>
 
-	<!-- CC_2: plain -->
+	<!-- CC_2: a wildcard before its declared children (admits ext elements CC_2 does not declare) -->
 	<xs:element name="CC_2">
 		<xs:complexType>
 			<xs:sequence>
+				<xs:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
 				<xs:element ref="CCC_1" />
 				<xs:element ref="CCC_2" minOccurs="0" maxOccurs="2" />
 				<xs:element ref="ext:CCC_3" minOccurs="0" maxOccurs="3" />
