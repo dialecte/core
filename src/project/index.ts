@@ -19,6 +19,8 @@ export type {
 	StorageParam,
 	DocumentRecord,
 	DocumentStatus,
+	DocumentUpdates,
+	ImportFilesOptions,
 	DocumentEntry,
 	ProjectState,
 	ProjectChannelMessage,

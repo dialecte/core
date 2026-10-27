@@ -1,6 +1,7 @@
 import { STORE_CONTRACT } from './store-contract.cases'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_CONTRACT_FACTORIES } from './store-contract.factories'
+import { STORE_PATH_CONTRACT } from './store-contract.path.cases'
 
 import { afterEach, beforeEach, describe, it } from 'vitest'
 
@@ -73,7 +74,11 @@ function runStoreContract(factory: StoreContractFactory): void {
 			others = []
 		})
 
-		for (const [group, cases] of Object.entries({ ...STORE_CONTRACT, ...STORE_EXPORT_CONTRACT })) {
+		for (const [group, cases] of Object.entries({
+			...STORE_CONTRACT,
+			...STORE_EXPORT_CONTRACT,
+			...STORE_PATH_CONTRACT,
+		})) {
 			describe(group, () => {
 				for (const [description, testCase] of Object.entries(cases)) {
 					const pendingReason = pendingReasonOf({ factory, testCase })

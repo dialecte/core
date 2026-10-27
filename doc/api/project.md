@@ -53,12 +53,15 @@ const documentId = await project.initEmptyDocument({
 
 **InitEmptyDocumentOptions**
 
-| Param       | Type                      | Default                      | Description                          |
-| ----------- | ------------------------- | ---------------------------- | ------------------------------------ |
-| `name`      | `string`                  | `'untitled'`                 | Filename without extension           |
-| `extension` | `string`                  | Config's first supported ext | File extension including leading dot |
-| `configKey` | `string`                  | `defaultConfigKey`           | Key into the configs registry        |
-| `metadata`  | `Record<string, unknown>` | -                            | Per-file metadata, JSON values only  |
+| Param       | Type                      | Default                      | Description                                          |
+| ----------- | ------------------------- | ---------------------------- | ---------------------------------------------------- |
+| `name`      | `string`                  | `'untitled'`                 | Filename without extension                           |
+| `extension` | `string`                  | Config's first supported ext | File extension including leading dot                 |
+| `configKey` | `string`                  | `defaultConfigKey`           | Key into the configs registry                        |
+| `metadata`  | `Record<string, unknown>` | -                            | Per-file metadata, JSON values only                  |
+| `path`      | `string`                  | -                            | Where the document sits ([path](#a-document-s-path)) |
+
+With a `path`, `name` defaults to its file name less the extension and `extension` to the file name's (one the config reads, else `DOCUMENT_PATH_INVALID`); a `name` or `extension` given must make that file name.
 
 **Returns** `Promise<string>` - the new documentId.
 
@@ -80,7 +83,7 @@ const last = entries.findLast((entry) => entry.status === 'imported')
 if (last) setActiveDocument(last.documentId)
 ```
 
-**ImportDocumentOptions**
+**ImportFilesOptions** (`importFile` takes `ImportDocumentOptions`: these and `path`)
 
 | Param                 | Type                                 | Default            | Description                                                                                                                                                                                                                                   |
 | --------------------- | ------------------------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -120,7 +123,7 @@ const { documentId, recordCount, diagnostics } = await project.importFile(file, 
 })
 ```
 
-Same options as `import`. **Returns** `Promise<ImportedDocument>`. **Throws** what `import` would have put in the file's failed entry: `PARSE_ERROR`, `IMPORT_ABORTED`, a hook's structured error, `IMPORT_FAILED` wrapping a plain `Error` (its `cause`). `import` is `importFile` in a loop with a `catch`: one code path.
+Same options as `import`, and `path`: where the document sits in the project ([a document's path](#a-document-s-path)) - it then takes its name and extension from the path's file name, not from `file.name`, and the extension must be one its config reads. `import` takes no `path` (`ImportFilesOptions`): a path names one file, and one handed anyway rejects the call with `DOCUMENT_PATH_INVALID` before any file is touched. **Returns** `Promise<ImportedDocument>`. **Throws** what `import` would have put in the file's failed entry: `PARSE_ERROR`, `IMPORT_ABORTED`, a hook's structured error, `IMPORT_FAILED` wrapping a plain `Error` (its `cause`). `import` is `importFile` in a loop with a `catch`: one code path.
 
 **A document is whole or absent.** Files are imported one after the other, in the order given; each lands in `project.state` and is broadcast as soon as it is in. The import itself runs in the store, next to the data (`Store.importFile`, see [Import inside the store](/io/#import-inside-the-store)): the file is registered with `status: 'importing'` before its first record is stored and set to `'ready'` once the last one is. Whatever fails in between - a malformed file (`PARSE_ERROR`, its `detail` naming what the parser saw and `meta.reason` saying `'malformed-xml'` or `'second-root'`), an import hook that throws, a store write that fails, an abort - removes the document again: `importFile` throws it, `import` makes it the file's `failed` entry and goes on with the next file. Nothing is broadcast for a failed file. A document still `importing` is never opened, listed or hydrated, here or in another tab. An import never outlives the store that runs it: a document a closed tab left `importing` is removed when the store next opens. With `dev.perf` on, the timings of the import's stages land on `project.perf` under `store::import::*` ([Dev perf](/guide/development/dev-perf#import-stages)).
 
@@ -170,6 +173,18 @@ const file: DocumentRecord | undefined = await project.getDocument(documentId)
 // Remove a file and all its records
 await project.removeDocument(documentId)
 ```
+
+### A document's path
+
+`DocumentRecord.path` is where a document sits in the project: its folders, then its file name, joined by `/` (`substations/north.scd`). A folder tree reads it, whether the documents came one by one or from an archive. Its file name is always the document's `name` + `extension` - one fact, kept so by every store:
+
+- `importFile(file, { path })` and `initEmptyDocument({ path })` place a document as it is registered, its name (and, for an import, its extension) taken from the path;
+- the store's `updateDocument(id, { path })` moves and renames it (the name follows the file name, which must end with the document's own extension: a move never changes the format); `updateDocument(id, { name })` on a document with a path renames the file name in it, its folders kept; both given must agree;
+- a path breaking a rule ([the rules](/io/#a-document-s-path)) or naming another file is refused with `DOCUMENT_PATH_INVALID` (D7030), nothing written;
+- one document holds a place, and a document's path is never a folder of another's (`subs/north.scd` and `subs/north.scd/x.scd` cannot both be there): a clash is refused with `DOCUMENT_PATH_TAKEN` (D7031, `meta.takenBy` the document holding the place), nothing written. Paths compare exactly; a document without a path holds no place, and removing or moving a document frees its place;
+- an export is named after the path's file name (`result.filename`, which is `name` + `extension`).
+
+Moving and renaming go through the store (`updateDocument` on a store you hold, e.g. one given as a custom `storage`): the project has no member for it yet. `project.state` holds the document as it was registered or imported, so after such an update its record - and `export({ download: true })`'s save dialog - keeps the old name until the project is opened again; `getDocument` reads the store.
 
 `DocumentRecord.status` (`DocumentStatus`) is `'importing'` while a file's records are being stored and `'ready'` after; a record stored before the field existed reads as `'ready'`. `getDocuments` and `getDocument` never return an importing document. `DocumentRecord.writeId` is the id of the import that wrote the document - what [`Store.getWriteOutcome`](/io/#import-inside-the-store) is asked by.
 

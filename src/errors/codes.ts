@@ -233,4 +233,8 @@ export const ERROR_CATALOG = {
 		code: 'D7030',
 		message: "A document's path is not valid",
 	},
+	DOCUMENT_PATH_TAKEN: {
+		code: 'D7031',
+		message: "A document's path is another document's place",
+	},
 } as const

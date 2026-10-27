@@ -13,3 +13,6 @@ export const DOCUMENT_PATH_MAX_BYTES = 1024
  * paragraph separators (Zl, Zp). A right-to-left override would show `north\u202Edcs.xml` as `northlmx.scd`.
  */
 export const DOCUMENT_PATH_INVISIBLE_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u
+
+/** The fields of a document's registry entry an update may change; any other key handed is ignored. */
+export const DOCUMENT_UPDATE_FIELDS = ['name', 'path', 'metadata', 'status'] as const

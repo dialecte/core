@@ -8,19 +8,22 @@ import { deleteHistoryOf } from './history'
 import { createHistoryRowsTable, createRecordTable } from './schema'
 
 import { compareById } from '@/store/compare-by-id'
+import { applyDocumentUpdates, assertDocumentPlace } from '@/store/document-path'
 import { toJsonCopy } from '@/store/json-values'
 import { throwDocumentAlreadyRegistered } from '@/store/store-errors'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
 import type { DocumentTable, DocumentTables } from './engine.types'
-import type { DocumentRecord, DocumentStatus } from '@/project/types'
+import type { DocumentRecord, DocumentStatus, DocumentUpdates } from '@/project/types'
+import type { PathHolderCandidate } from '@/store/document-path.types'
 import type { Database, SqlValue } from '@sqlite.org/sqlite-wasm'
 
 /**
  * Register a document and create its record table without indexes and its history-rows table, in the
  * caller's transaction; answers the row's number and the record table. An id already registered is refused with
  * `STORE_DUPLICATE_ID`, the registered one left as it was, then a value that is not JSON with
- * `STORE_VALUE_NOT_JSON`.
+ * `STORE_VALUE_NOT_JSON`, then a path that is not valid or not the document's with `DOCUMENT_PATH_INVALID`, then a
+ * place another document holds with `DOCUMENT_PATH_TAKEN`.
  */
 export function insertDocument(params: { db: Database; document: DocumentRecord }): DocumentTable {
 	const { db } = params
@@ -28,6 +31,9 @@ export function insertDocument(params: { db: Database; document: DocumentRecord 
 		throwDocumentAlreadyRegistered({ documentId: params.document.id })
 	}
 	const document = toJsonCopy({ value: params.document })
+	if (document.path !== undefined) {
+		assertDocumentPlace({ document, documents: readPlacedDocuments({ db }) })
+	}
 	const placeholders = Object.keys(DOCUMENT_COLUMNS)
 		.map(() => '?')
 		.join(', ')
@@ -87,22 +93,32 @@ export function readDocuments(params: { db: Database }): DocumentRecord[] {
 }
 
 /**
- * The name, metadata and status of a registered document, in the caller's transaction: a value that
- * is not JSON is refused with `STORE_VALUE_NOT_JSON` first; an unknown document is then left alone.
+ * The name, path, metadata and status of a registered document, in the caller's transaction: a value that
+ * is not JSON is refused with `STORE_VALUE_NOT_JSON` first; an unknown document is then left alone; then the
+ * path rules (`DOCUMENT_PATH_INVALID`, `DOCUMENT_PATH_TAKEN`), as every store applies them.
  */
 export function updateDocumentRow(params: {
 	db: Database
 	documentId: string
-	updates: Partial<Pick<DocumentRecord, 'name' | 'metadata' | 'status'>>
+	updates: DocumentUpdates
 }): void {
 	const { db, documentId } = params
 	const updates = toJsonCopy({ value: params.updates })
 	const held = readDocument({ db, documentId })
 	if (!held) return
-	const updated = { ...held, ...updates }
+	const updated = applyDocumentUpdates({ document: held, updates })
+	if (updated.path !== held.path) {
+		assertDocumentPlace({ document: updated, documents: readPlacedDocuments({ db }) })
+	}
 	db.exec({
-		sql: `UPDATE ${TABLE_DOCUMENTS} SET name = ?, metadata = ?, status = ? WHERE id = ?`,
-		bind: [updated.name, metadataColumn({ document: updated }), updated.status, documentId],
+		sql: `UPDATE ${TABLE_DOCUMENTS} SET name = ?, metadata = ?, status = ?, path = ? WHERE id = ?`,
+		bind: [
+			updated.name,
+			metadataColumn({ document: updated }),
+			updated.status,
+			updated.path ?? null,
+			documentId,
+		],
 	})
 }
 
@@ -143,6 +159,13 @@ function purgeDocument(params: { db: Database; documentId: string; seq: number }
 	db.exec({ sql: `DELETE FROM ${TABLE_DOCUMENTS} WHERE seq = ?`, bind: [seq] })
 }
 
+/** The registered documents that have a path, with it: what a place is checked against. */
+function readPlacedDocuments(params: { db: Database }): PathHolderCandidate[] {
+	return params.db
+		.selectArrays(`SELECT id, path FROM ${TABLE_DOCUMENTS} WHERE path IS NOT NULL`)
+		.map(([id, path]) => ({ id: String(id), path: String(path) }))
+}
+
 function findSeq(params: { db: Database; documentId: string }): number | undefined {
 	const { db, documentId } = params
 	const seq = db.selectValue(`SELECT seq FROM ${TABLE_DOCUMENTS} WHERE id = ?`, [documentId])
@@ -173,6 +196,7 @@ function documentRow(params: { document: DocumentRecord }): SqlValue[] {
 		metadataColumn({ document }),
 		document.status,
 		document.writeId ?? null,
+		document.path ?? null,
 	]
 }
 
@@ -183,7 +207,7 @@ function metadataColumn(params: { document: Pick<DocumentRecord, 'metadata'> }):
 }
 
 function documentOf(params: { row: SqlValue[] }): DocumentRecord {
-	const [id, name, extension, configKey, createdAt, metadata, status, writeId] = params.row
+	const [id, name, extension, configKey, createdAt, metadata, status, writeId, path] = params.row
 	const document: DocumentRecord = {
 		id: String(id),
 		name: String(name),
@@ -194,6 +218,7 @@ function documentOf(params: { row: SqlValue[] }): DocumentRecord {
 	}
 	if (metadata !== null) document.metadata = JSON.parse(String(metadata))
 	if (writeId !== null) document.writeId = String(writeId)
+	if (path !== null) document.path = String(path)
 	return document
 }
 

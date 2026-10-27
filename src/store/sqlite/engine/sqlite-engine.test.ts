@@ -110,6 +110,19 @@ describe('openSqliteEngine', () => {
 						),
 					expectedLayoutVersion: 1,
 				},
+			'layout 2 (no document path) in the header → refused PROJECT_LAYOUT_OUTDATED, the file unchanged, the connection closed':
+				{
+					prepare: (db) =>
+						db.exec(
+							'CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); ' +
+								"INSERT INTO _meta VALUES ('dialecteId', 'core/test'), ('layoutVersion', '2'); " +
+								'CREATE TABLE _documents (seq INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, ' +
+								'name TEXT NOT NULL, extension TEXT NOT NULL, configKey TEXT NOT NULL, ' +
+								'createdAt INTEGER NOT NULL, metadata TEXT, status TEXT NOT NULL, writeId TEXT); ' +
+								'PRAGMA user_version=2',
+						),
+					expectedLayoutVersion: 2,
+				},
 			'no layout in the header but tables → refused PROJECT_LAYOUT_OUTDATED, the file unchanged, the connection closed':
 				{
 					prepare: (db) => db.exec('CREATE TABLE other (x)'),
@@ -147,6 +160,29 @@ describe('openSqliteEngine', () => {
 			const second = await startEngine({ db: file.connect() })
 			second.close()
 			expect(sqlite3.capi.sqlite3_js_db_export(file.keeper)).toEqual(before)
+		})
+
+		it('a document at a path → the file itself refuses a second row at that path, any number without one', async () => {
+			const file = await openFile()
+			const db = file.connect()
+			const engine = await startEngine({ db })
+			await engine.registerDocument(
+				makeDocument({ id: 'a', name: 'north', path: 'subs/north.xml' }),
+			)
+			await engine.registerDocument(makeDocument({ id: 'b' }))
+			function insert(params: { id: string; path: string | null }): void {
+				db.exec({
+					sql:
+						'INSERT INTO _documents (id, name, extension, configKey, createdAt, status, path) ' +
+						"VALUES (?, 'north', '.xml', 'test', 0, 'ready', ?)",
+					bind: [params.id, params.path],
+				})
+			}
+			expect(() => insert({ id: 'c', path: 'subs/north.xml' })).toThrow(
+				/UNIQUE constraint failed: _documents\.path/,
+			)
+			insert({ id: 'd', path: null })
+			engine.close()
 		})
 	})
 

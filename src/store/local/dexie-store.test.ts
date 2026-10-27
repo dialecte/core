@@ -1,5 +1,5 @@
 import { makeRecord as makeContractRecord } from '../contract/store-contract.fixtures'
-import { TABLE_META } from '../store.constants'
+import { recordTableName, TABLE_META } from '../store.constants'
 import { DexieStore, buildDexieSchema } from './dexie-store'
 import { VERSION_KEY_PREFIX } from './dexie-store.constants'
 
@@ -323,6 +323,112 @@ describe('DexieStore - the write version of a document', () => {
 			expect(await versionOf()).toBe(3)
 		} finally {
 			await store.destroy()
+		}
+	})
+})
+
+describe('DexieStore - a place taken while a registration ran', () => {
+	it('two connections registering one id at once, then the refused one registering another → the first one’s records kept', async () => {
+		const name = uniqueName()
+		const first = new DexieStore(name)
+		const second = new DexieStore(name)
+		await first.open()
+		await second.open()
+		try {
+			const outcomes = await Promise.allSettled([
+				first.registerDocument(makeFile({ id: 'x' })),
+				second.registerDocument(makeFile({ id: 'x' })),
+			])
+			expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1)
+			const [winner, refused] =
+				outcomes[0].status === 'fulfilled' ? [first, second] : [second, first]
+			await winner.bulkWrite('x', { creates: [makeContractRecord({ id: 'r1' })] })
+			await refused.registerDocument(makeFile({ id: 'y' }))
+			const fresh = new DexieStore(name)
+			await fresh.open()
+			try {
+				expect((await fresh.getByDocumentId('x')).map((record) => record.id)).toEqual(['r1'])
+			} finally {
+				fresh.close()
+			}
+		} finally {
+			second.close()
+			await first.destroy()
+		}
+	})
+
+	it('an id registered by another connection meanwhile, then a place refused → that document’s records kept', async () => {
+		const name = uniqueName()
+		const [placer, owner, refused] = [
+			new DexieStore(name),
+			new DexieStore(name),
+			new DexieStore(name),
+		]
+		await Promise.all([placer.open(), owner.open(), refused.open()])
+		// once the refused registration has passed its early checks, the other connections register the same id
+		// (records written) and a document holding a folder of its place
+		const checked = refused as unknown as { assertPlaceFree: (params: object) => Promise<void> }
+		const earlyCheck = checked.assertPlaceFree.bind(refused)
+		checked.assertPlaceFree = async function checkThenLetOthersWrite(params) {
+			await earlyCheck(params)
+			checked.assertPlaceFree = earlyCheck
+			await owner.registerDocument(makeFile({ id: 'x', name: 'm', path: 'b/m.scd' }))
+			await owner.bulkWrite('x', { creates: [makeContractRecord({ id: 'r1' })] })
+			await placer.registerDocument(makeFile({ id: 'z', name: 'inner', path: 'z/n.scd/inner.scd' }))
+		}
+		// the tables a schema change of the refused connection drops: never those of an id another one holds
+		const reopened = refused as unknown as {
+			reopenWithNewSchema: (options?: { drop?: string }) => Promise<void>
+		}
+		const reopen = reopened.reopenWithNewSchema.bind(refused)
+		const dropped: string[] = []
+		reopened.reopenWithNewSchema = async function recordDrop(options) {
+			if (options?.drop) dropped.push(options.drop)
+			return reopen(options)
+		}
+		try {
+			await expect(
+				refused.registerDocument(makeFile({ id: 'x', name: 'n', path: 'z/n.scd' })),
+			).rejects.toThrow()
+			expect(dropped).toEqual([])
+			const fresh = new DexieStore(name)
+			await fresh.open()
+			try {
+				expect((await fresh.getDocument('x'))?.path).toBe('b/m.scd')
+				expect((await fresh.getByDocumentId('x')).map((record) => record.id)).toEqual(['r1'])
+			} finally {
+				fresh.close()
+			}
+		} finally {
+			owner.close()
+			refused.close()
+			await placer.destroy()
+		}
+	})
+
+	it('two connections registering one path at once → the refused one leaves no table behind', async () => {
+		const name = uniqueName()
+		const first = new DexieStore(name)
+		const second = new DexieStore(name)
+		await first.open()
+		await second.open()
+		try {
+			const outcomes = await Promise.allSettled([
+				first.registerDocument(makeFile({ id: 'a', name: 'north', path: 'subs/north.scd' })),
+				second.registerDocument(makeFile({ id: 'b', name: 'north', path: 'subs/north.scd' })),
+			])
+			const refusedId = outcomes[0].status === 'rejected' ? 'a' : 'b'
+			expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1)
+			const check = new Dexie(name)
+			await check.open()
+			try {
+				expect(check.tables.map((table) => table.name)).not.toContain(recordTableName(refusedId))
+			} finally {
+				check.close()
+			}
+		} finally {
+			second.close()
+			await first.destroy()
 		}
 	})
 })
