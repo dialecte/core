@@ -24,7 +24,7 @@ export async function runImport(
 	control: ImportControl = {},
 ): Promise<ImportFileResult> {
 	const { runtime, file, options, writeId } = params
-	const perf = createPerf({ enabled: runtime.perf ?? false, timeline: false })
+	const perf = params.perf ?? createPerf({ enabled: runtime.perf ?? false, timeline: false })
 
 	throwIfAborted({ signal: control.signal, file })
 	const { configKey, config } = resolveConfig({

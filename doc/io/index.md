@@ -85,7 +85,7 @@ A store imports a file next to its data: `Project.importFile` hands the file to 
 | `getWriteOutcome({ writeId })`                               | What became of an import asked by its id - after a lost connection, before reading again: `'running'`, `'applied'` (ready) or `'not-applied'` (failed, aborted, never started, or removed since).                                                                                        |
 
 - `writeId` is the caller's id for the import (generated when absent), kept on the document as `DocumentRecord.writeId`.
-- `onProgress({ bytesRead, totalBytes })` is told after each stored batch and never awaited: a listener that never answers, rejects or throws neither holds nor fails the import.
+- `onProgress({ phase, bytesRead, totalBytes })` is told after each stored batch (`phase: 'storing'`) and never awaited: a listener that never answers, rejects or throws neither holds nor fails the import. A store that builds the document's indexes while it imports (the SQLite project store) also tells `phase: 'indexing'` before each index build and `'storing'` once it is built: the edits of other views wait while it says `indexing` (a few seconds on a 500 MB file), and land between its batches otherwise.
 - `signal` aborts at the next batch: `IMPORT_ABORTED` (D5005), the document removed. Across a worker, where a signal cannot travel, the abort is a call of its own by `writeId`, and the listener an argument of its own.
 - A store removes, as it opens, every document left `importing`: an import never outlives the store that ran it. The local store, which several tabs and frames open at once, keeps the imports another connection still runs: each import holds a Web Lock while it runs.
 
@@ -95,10 +95,19 @@ Every store runs the one pipeline core exports, `runImport(params, control)`:
 import { runImport } from '@dialecte/core'
 
 const result = await runImport(
-	{ store, runtime: { configs, defaultConfigKey, hooks, perf }, file, options, writeId },
+	{
+		store,
+		runtime: { configs, defaultConfigKey, hooks, perf: true },
+		file,
+		options,
+		writeId,
+		perf: storePerf,
+	},
 	{ onProgress, signal }, // kept apart from the data, as a worker call carries them
 )
 ```
+
+`perf` (optional, `storePerf` above) is the `Perf` the import's stages are timed on, for a store whose target times stages of its own on it too (the SQLite project store's `import::encode`, `import::commit`, `import::index`); without it the import makes one from `runtime.perf`, and the result carries the snapshot when `runtime.perf` is on.
 
 `store` is an `ImportTarget`: the reads and writes the import needs (`registerDocument`, `getDocument`, `updateDocument`, `removeDocument`, `bulkWrite`); every `Store` is one. A store that refuses operations once closed passes its own unguarded target, as `InMemoryStore` and the local store do, so its own import is not refused while it runs: an operation already running completes.
 

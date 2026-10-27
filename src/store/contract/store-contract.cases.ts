@@ -1664,23 +1664,31 @@ const importing: StoreContractCases = {
 			},
 		]),
 	),
-	'progress is told after each batch, the bytes read growing to the size of the file': {
-		needs: ['import'],
-		act: async ({ store }) => {
-			const file = contractFile({ body: sessionRecords(4) })
-			const progress: ImportProgress[] = []
-			await store.importFile({
-				file,
-				options: { chunkOptions: SMALL_BATCHES },
-				onProgress: (step) => progress.push(step),
-			})
-			expect(progress.length).toBeGreaterThan(1)
-			const bytes = progress.map((step) => step.bytesRead)
-			expect(bytes).toEqual([...bytes].sort((left, right) => left - right))
-			expect(progress.every((step) => step.totalBytes === file.size)).toBe(true)
-			expect(progress.at(-1)).toEqual({ bytesRead: file.size, totalBytes: file.size })
+	'progress is told after each batch, with its phase, the bytes read growing to the size of the file':
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				const file = contractFile({ body: sessionRecords(4) })
+				const progress: ImportProgress[] = []
+				await store.importFile({
+					file,
+					options: { chunkOptions: SMALL_BATCHES },
+					onProgress: (step) => progress.push(step),
+				})
+				// a store that builds indexes says so between batches (`indexing`); one that builds none never does
+				expect(progress.every((step) => ['storing', 'indexing'].includes(step.phase))).toBe(true)
+				const storing = progress.filter((step) => step.phase === 'storing')
+				expect(storing.length).toBeGreaterThan(1)
+				const bytes = storing.map((step) => step.bytesRead)
+				expect(bytes).toEqual([...bytes].sort((left, right) => left - right))
+				expect(progress.every((step) => step.totalBytes === file.size)).toBe(true)
+				expect(progress.at(-1)).toEqual({
+					phase: 'storing',
+					bytesRead: file.size,
+					totalBytes: file.size,
+				})
+			},
 		},
-	},
 	'a progress listener that never answers, rejects or throws neither holds nor fails the import': {
 		needs: ['import'],
 		act: async ({ store }) => {

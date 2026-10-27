@@ -152,7 +152,7 @@ async function streamFileInChunks(params: {
 				totalRecords += await flushBatch({
 					...batchParams,
 					threshold: batchSize,
-					progress: { bytesRead, totalBytes: file.size },
+					progress: { phase: 'storing', bytesRead, totalBytes: file.size },
 				})
 			}
 			// Copy the small tail into a fresh array so the (possibly huge) read buffer is released.
@@ -170,7 +170,7 @@ async function streamFileInChunks(params: {
 			totalRecords += await flushBatch({
 				...batchParams,
 				threshold: 0,
-				progress: { bytesRead, totalBytes: file.size },
+				progress: { phase: 'storing', bytesRead, totalBytes: file.size },
 			})
 		}
 	}

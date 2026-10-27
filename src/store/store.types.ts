@@ -272,8 +272,16 @@ export type ImportFileOptions = {
 	useCustomRecordsIds?: boolean
 }
 
-/** How far an import is: the bytes of the file parsed so far, out of its size. */
+/**
+ * What an import is doing: `storing` while it reads the file and stores it (the edits of other views
+ * are served between its transactions), `indexing` while it builds an index of the document (they
+ * wait until it is built). A store that builds no index only ever says `storing`.
+ */
+export type ImportPhase = 'storing' | 'indexing'
+
+/** How far an import is: what it is doing, and the bytes of the file parsed so far, out of its size. */
 export type ImportProgress = {
+	phase: ImportPhase
 	bytesRead: number
 	totalBytes: number
 }

@@ -82,14 +82,14 @@ if (last) setActiveDocument(last.documentId)
 
 **ImportDocumentOptions**
 
-| Param                 | Type                                 | Default            | Description                                                                                                           |
-| --------------------- | ------------------------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `configKey`           | `string`                             | `defaultConfigKey` | Key into the configs registry                                                                                         |
-| `metadata`            | `Record<string, unknown>`            | -                  | Per-file metadata, JSON values only ([values a store keeps](/io/#values-a-store-keeps))                               |
-| `chunkOptions`        | `Partial<ChunkOptions>`              | -                  | Override chunking defaults for SAX streaming                                                                          |
-| `useCustomRecordsIds` | `boolean`                            | `false`            | Use IDs from XML attributes instead of generating UUIDs                                                               |
-| `onProgress`          | `(progress: ImportProgress) => void` | -                  | Told after each stored batch: `{ bytesRead, totalBytes }` of the file in progress; never awaited, its failure ignored |
-| `signal`              | `AbortSignal`                        | -                  | Aborts the import at the next batch: nothing of the file remains, `IMPORT_ABORTED`                                    |
+| Param                 | Type                                 | Default            | Description                                                                                                                                                                                                                                   |
+| --------------------- | ------------------------------------ | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configKey`           | `string`                             | `defaultConfigKey` | Key into the configs registry                                                                                                                                                                                                                 |
+| `metadata`            | `Record<string, unknown>`            | -                  | Per-file metadata, JSON values only ([values a store keeps](/io/#values-a-store-keeps))                                                                                                                                                       |
+| `chunkOptions`        | `Partial<ChunkOptions>`              | -                  | Override chunking defaults for SAX streaming                                                                                                                                                                                                  |
+| `useCustomRecordsIds` | `boolean`                            | `false`            | Use IDs from XML attributes instead of generating UUIDs                                                                                                                                                                                       |
+| `onProgress`          | `(progress: ImportProgress) => void` | -                  | Told after each stored batch: `{ phase, bytesRead, totalBytes }` of the file in progress - `phase` is `'storing'`, or `'indexing'` while the store builds an index of the document (edits wait meanwhile); never awaited, its failure ignored |
+| `signal`              | `AbortSignal`                        | -                  | Aborts the import at the next batch: nothing of the file remains, `IMPORT_ABORTED`                                                                                                                                                            |
 
 **Returns** `Promise<ImportEntry[]>` - one entry per file, in the order given.
 
