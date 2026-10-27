@@ -1,7 +1,8 @@
-import type { RECORD_INDEXES } from './engine.constants'
+import type { HISTORY_ENTRY_STATE, HISTORY_PART, RECORD_INDEXES } from './engine.constants'
 import type { DialecteErrorKey } from '@/errors'
 import type { Perf } from '@/perf'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
+import type { DocumentStatus } from '@/project/types'
 import type {
 	ImportControl,
 	ImportFileOptions,
@@ -11,7 +12,7 @@ import type {
 	Store,
 } from '@/store/store.types'
 import type { AnyRawRecord } from '@/types'
-import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
+import type { Database, Sqlite3Static, SqlValue } from '@sqlite.org/sqlite-wasm'
 
 /** How a page cache follows the device's memory: `mibPerGiB` per GiB, held between a floor and a ceiling. */
 export type DeviceCacheRule = {
@@ -60,6 +61,10 @@ export type SqliteEngineMember =
 	| 'getMany'
 	| 'bulkWrite'
 	| 'getWriteOutcome'
+	| 'undo'
+	| 'redo'
+	| 'getHistoryStatus'
+	| 'getChangeLog'
 
 /** A file to import, as a client hands it to the engine: plain data, the progress listener apart. */
 export type SqliteImportParams = {
@@ -69,13 +74,61 @@ export type SqliteImportParams = {
 	writeId: string
 }
 
+/** A commit as a client hands it to the engine: plain data, the progress listener apart. */
+export type SqliteCommitParams = {
+	documentId: string
+	/** The caller's id for this commit, kept on its history entry. */
+	writeId: string
+	creates: AnyRawRecord[]
+	updates: AnyRawRecord[]
+	deletes: string[]
+}
+
+/** How far a commit is, as the port tells it: the operations written, out of all of them. */
+export type CommitProgressListener = (current: number, total: number) => void
+
+/** A commit on the engine's file; `settle` commits the running import's window first. */
+export type CommitRecordsParams = SqliteCommitParams & {
+	sqlite3: Sqlite3Static
+	db: Database
+	settle: () => void
+}
+
+/** An undo or a redo on the engine's file; `settle` commits the running import's window first. */
+export type HistoryStepParams = {
+	sqlite3: Sqlite3Static
+	db: Database
+	documentId: string
+	direction: HistoryDirection
+	settle: () => void
+}
+
 /** An import as the engine runs it: the client that asked for it owns it. */
 export type SqliteEngineImportParams = SqliteImportParams & {
 	clientId: string
 }
 
-/** The port members an engine serves alike to every client: registry, reads, bulk writes, write outcomes. */
-export type SqliteEngineMembers = Pick<Store, SqliteEngineMember>
+/**
+ * The port members an engine serves alike to every client, with the port's signatures: registry,
+ * reads, bulk writes, write outcomes, history; and a commit, its progress listener an argument of its own.
+ */
+export type SqliteEngineMembers = Pick<Store, SqliteEngineMember> &
+	SqliteEngineBlobMembers & {
+		commit: (params: SqliteCommitParams, onProgress?: CommitProgressListener) => Promise<void>
+	}
+
+/** The blob members of the port an engine serves, with the port's signatures (a `Blob` crosses a port as it is). */
+export type SqliteEngineBlobMember =
+	| 'addBlob'
+	| 'getBlob'
+	| 'getBlobsByDocument'
+	| 'getBlobsByRecord'
+	| 'getStandaloneBlobs'
+	| 'attachBlob'
+	| 'detachBlob'
+	| 'removeBlob'
+
+export type SqliteEngineBlobMembers = Pick<Store, SqliteEngineBlobMember>
 
 /** The store port as one client of an engine reaches it: an import's progress listener is an argument of its own. */
 export type SqliteEngineApi = SqliteEngineMembers & {
@@ -137,6 +190,28 @@ export type RecordIndex = keyof typeof RECORD_INDEXES
 export type DocumentTable = {
 	seq: number
 	table: string
+}
+
+/** A part of a history entry: what a commit created, each updated record before and after it, what it deleted. */
+export type HistoryPart = keyof typeof HISTORY_PART
+
+/** Where a history entry stands. */
+export type HistoryEntryState = keyof typeof HISTORY_ENTRY_STATE
+
+/** Which way an entry is applied: as committed (a commit, a redo), or reverted (an undo). */
+export type HistoryDirection = 'forward' | 'back'
+
+/** A history entry, by its row id. */
+export type HistoryEntryRef = {
+	id: number
+}
+
+/** A registered document's row number, its status, its record table and its history-rows table. */
+export type DocumentTables = {
+	seq: number
+	status: DocumentStatus
+	records: string
+	history: string
 }
 
 /** One bind for the row sink: records already checked, into the document's table, timed on the import's perf. */
@@ -208,6 +283,8 @@ export type ImportTargetParams = {
 	removeDocument: (params: { documentId: string }) => void
 	/** The import's transactions. */
 	window: ImportWindow
+	/** How long the import works before the engine's queue gets a turn (its window's time). */
+	windowMs: number
 	/** Tell the caller what the import does now (`indexing` around an index build). */
 	tellPhase: (params: { phase: ImportPhase }) => void
 	/** Whether the file gives its own record ids (they may repeat); generated ids never do. */
@@ -230,6 +307,12 @@ export type ImportTargetState = {
 	 * setups give their own ids.
 	 */
 	givenIds: Set<string> | undefined
+}
+
+/** Columns of one value on every row an insert writes, before the record's own. */
+export type LeadColumns = {
+	columns: string[]
+	values: SqlValue[]
 }
 
 /** Records encoded as rows of a document table: JSON arrays of up to `ROWS_PER_BIND` rows each. */

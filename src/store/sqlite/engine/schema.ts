@@ -1,14 +1,18 @@
 import {
+	BLOB_COLUMNS,
+	BLOB_DATA_COLUMNS,
+	CHANGELOG_COLUMNS,
 	DOCUMENT_COLUMNS,
 	LAYOUT_VERSION,
 	META_KEY,
 	RECORD_COLUMNS,
 	RECORD_INDEXES,
+	TABLE_BLOB_DATA,
 } from './engine.constants'
 import { inWriteTransaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
-import { TABLE_DOCUMENTS, TABLE_META } from '@/store/store.constants'
+import { TABLE_BLOBS, TABLE_CHANGELOG, TABLE_DOCUMENTS, TABLE_META } from '@/store/store.constants'
 
 import type { RecordIndex } from './engine.types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
@@ -28,7 +32,8 @@ function applyConnectionPragmas(params: { db: Database; steadyCacheMiB: number }
 
 /**
  * A new file: incremental auto-vacuum (it only takes on a file without tables), then the meta
- * table, the document registry and the layout version in the header, in one transaction.
+ * table, the document registry, the history entries, the blob registry and the blobs' bytes, and the
+ * layout version in the header, in one transaction.
  */
 function createFile(params: { sqlite3: Sqlite3Static; db: Database; dialecteId: string }): void {
 	const { sqlite3, db, dialecteId } = params
@@ -38,7 +43,14 @@ function createFile(params: { sqlite3: Sqlite3Static; db: Database; dialecteId: 
 	function writeLayout(): void {
 		db.exec(
 			`CREATE TABLE ${TABLE_META} (key TEXT PRIMARY KEY, value TEXT NOT NULL);` +
-				`CREATE TABLE ${TABLE_DOCUMENTS} (seq INTEGER PRIMARY KEY, ${columnDefinitions({ columns: DOCUMENT_COLUMNS })});`,
+				`CREATE TABLE ${TABLE_DOCUMENTS} (seq INTEGER PRIMARY KEY, ${columnDefinitions({ columns: DOCUMENT_COLUMNS })});` +
+				`CREATE TABLE ${TABLE_CHANGELOG} (${columnDefinitions({ columns: CHANGELOG_COLUMNS })});` +
+				`CREATE UNIQUE INDEX ${TABLE_CHANGELOG}_sequence ON ${TABLE_CHANGELOG}(documentId, sequenceNumber);` +
+				`CREATE INDEX ${TABLE_CHANGELOG}_state ON ${TABLE_CHANGELOG}(documentId, state, sequenceNumber);` +
+				`CREATE INDEX ${TABLE_CHANGELOG}_writeId ON ${TABLE_CHANGELOG}(writeId);` +
+				`CREATE TABLE ${TABLE_BLOBS} (${columnDefinitions({ columns: BLOB_COLUMNS })});` +
+				`CREATE INDEX ${TABLE_BLOBS}_documentId ON ${TABLE_BLOBS}(documentId);` +
+				`CREATE TABLE ${TABLE_BLOB_DATA} (${columnDefinitions({ columns: BLOB_DATA_COLUMNS })});`,
 		)
 		db.exec({
 			sql: `INSERT INTO ${TABLE_META} (key, value) VALUES (?, ?), (?, ?)`,
@@ -80,6 +92,19 @@ export function prepareFile(params: {
 export function createRecordTable(params: { db: Database; table: string }): void {
 	const { db, table } = params
 	db.exec(`CREATE TABLE ${table} (${columnDefinitions({ columns: RECORD_COLUMNS })})`)
+}
+
+/**
+ * A document's history-rows table: one row per record of a part of an entry (`HISTORY_PART`), the
+ * record whole in the record table's columns, numbered in the order written; read by entry and part.
+ */
+export function createHistoryRowsTable(params: { db: Database; table: string }): void {
+	const { db, table } = params
+	db.exec(
+		`CREATE TABLE ${table} (rowNo INTEGER PRIMARY KEY, entry INTEGER NOT NULL, part INTEGER NOT NULL, ` +
+			`${columnDefinitions({ columns: RECORD_COLUMNS })});` +
+			`CREATE INDEX ${table}_entry ON ${table}(entry, part);`,
+	)
 }
 
 /** One index of a record table, named after the table and the index. */

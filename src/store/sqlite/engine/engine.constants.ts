@@ -1,7 +1,7 @@
 import type { SqliteEngineOptions } from './engine.types'
 
 /** The layout of the project file this engine reads and writes, kept in the file's header (`user_version`). */
-export const LAYOUT_VERSION = 1
+export const LAYOUT_VERSION = 2
 
 export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	/**
@@ -41,6 +41,45 @@ export const DOCUMENT_COLUMNS = {
 	writeId: 'TEXT',
 } as const
 
+/**
+ * A history entry: one row per commit of a document, in a `HISTORY_ENTRY_STATE`. An id is never given
+ * twice, a removed document's entries included.
+ */
+export const CHANGELOG_COLUMNS = {
+	id: 'INTEGER PRIMARY KEY AUTOINCREMENT',
+	documentId: 'TEXT NOT NULL',
+	/** Its place in the document's history; none once discarded. */
+	sequenceNumber: 'INTEGER',
+	timestamp: 'INTEGER NOT NULL',
+	writeId: 'TEXT NOT NULL',
+	state: 'INTEGER NOT NULL',
+} as const
+
+/**
+ * Where a history entry stands: applied (the document's first entries, in sequence), undone (the
+ * ones after, a redo applies the first of them again), or discarded (undone, then a commit came: no
+ * place and no records any more, only its write id, so the commit's outcome stays known).
+ */
+export const HISTORY_ENTRY_STATE = {
+	applied: 1,
+	undone: 0,
+	discarded: -1,
+} as const
+
+/** A blob's entry, by its id and its owner document; its bytes are kept apart. */
+export const BLOB_COLUMNS = {
+	id: 'TEXT PRIMARY KEY',
+	documentId: 'TEXT NOT NULL',
+	entry: 'TEXT NOT NULL',
+} as const
+
+/** A blob's bytes and their type. */
+export const BLOB_DATA_COLUMNS = {
+	id: 'TEXT PRIMARY KEY',
+	type: 'TEXT NOT NULL',
+	bytes: 'BLOB NOT NULL',
+} as const
+
 /** A record row: each column with its SQL type, in binding order; a record's children listed on it. */
 export const RECORD_COLUMNS = {
 	id: 'TEXT NOT NULL',
@@ -64,6 +103,23 @@ export const RECORD_INDEXES = {
 	tag: { column: 'tagName', unique: false },
 } as const
 
+/**
+ * Each part of a history entry, as kept on its rows: the records a commit created, each updated one
+ * before and after it, the records it deleted.
+ */
+export const HISTORY_PART = {
+	create: 0,
+	before: 1,
+	after: 2,
+	delete: 3,
+} as const
+
+/** Prefix of a document's history-rows table, numbered as its record table (`xch_<seq>`). */
+export const TABLE_HISTORY_ROWS_PREFIX = 'xch_'
+
+/** The bytes of every blob, by blob id; their entries are in the shared blob registry. */
+export const TABLE_BLOB_DATA = '_blobData'
+
 /** The repeated ids a refused index build names at most: enough to find them, bounded for a file of many. */
 export const DUPLICATE_IDS_REPORTED = 100
 
@@ -73,7 +129,10 @@ export const ROWS_PER_BIND = 1000
 /** The record columns that hold JSON (kept as JSON text by an insert or an update). */
 export const RECORD_JSON_COLUMNS: readonly string[] = ['attributes', 'children']
 
-export const RECORD_COLUMN_LIST = Object.keys(RECORD_COLUMNS).join(', ')
+/** The record columns' names, in binding order. */
+export const RECORD_COLUMN_NAMES = Object.keys(RECORD_COLUMNS)
+
+export const RECORD_COLUMN_LIST = RECORD_COLUMN_NAMES.join(', ')
 
 export const DOCUMENT_COLUMN_LIST = Object.keys(DOCUMENT_COLUMNS).join(', ')
 

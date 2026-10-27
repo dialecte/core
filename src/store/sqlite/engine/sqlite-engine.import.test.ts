@@ -26,7 +26,7 @@ import type { SqliteEngine, SqliteEngineOptions } from './engine.types'
 import type { PerfSpan } from '@/perf'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { ImportProgress } from '@/store/store.types'
-import type { AnyRawRecord } from '@/types'
+import type { AnyRawRecord, RecordPatch } from '@/types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** The databases a case opened, closed after it (an in-memory file goes with its last connection). */
@@ -118,6 +118,9 @@ async function startHeldImport(params: {
 	await untilHeld({ hold, importing })
 	return { importing, release: hold.release }
 }
+
+/** An instance of a class: a patch a store refuses whole. */
+class PatchInstance {}
 
 /** Below the device's cache: the import raises it, the steady one comes back after. */
 const STEADY_CACHE_MIB = 8
@@ -421,6 +424,137 @@ describe('an engine importing files', () => {
 		expect(await engine.getDocuments()).toEqual([])
 	})
 
+	it('a session patching more records than one bind holds, one patch not JSON past the first bind → STORE_VALUE_NOT_JSON naming its place among all the patches, nothing left', async () => {
+		const patchCount = ROWS_PER_BIND + 500
+		const refusedAt = ROWS_PER_BIND + 200
+		const runtime: StoreRuntime = {
+			...createContractRuntime(),
+			hooks: {
+				createImportSession: function sessionPatchingMany() {
+					return {
+						afterImport: async function patchMany() {
+							const updates: RecordPatch[] = Array.from({ length: patchCount }, (_, index) => ({
+								recordId: `created-${index}`,
+								value: 'v',
+							}))
+							updates[refusedAt] = Object.assign(new PatchInstance(), {
+								recordId: `created-${refusedAt}`,
+								value: 'v',
+							})
+							return {
+								creates: Array.from({ length: patchCount }, (_, index) =>
+									makeRecord({ id: `created-${index}` }),
+								),
+								updates,
+							}
+						},
+					}
+				},
+			},
+		}
+		const { engine } = await startImportEngine({ runtime })
+		await expectRejectsWith({
+			action: engine.importFile({
+				file: contractFile({ body: '<A/>' }),
+				writeId: 'w-1',
+				clientId: 'c-1',
+			}),
+			key: 'STORE_VALUE_NOT_JSON',
+			detail: new RegExp(`field "${refusedAt}"`),
+		})
+		expect(await engine.getDocuments()).toEqual([])
+	})
+
+	it('a session patching more records than one bind holds, a window of 0 ms → the engine yields while it checks the patches: a task queued meanwhile runs before the check ends', async () => {
+		const patchCount = ROWS_PER_BIND + 500
+		const runtime: StoreRuntime = {
+			...createContractRuntime(),
+			hooks: {
+				createImportSession: function sessionPatchingMany() {
+					return {
+						afterImport: async function patchMany() {
+							const updates: RecordPatch[] = Array.from({ length: patchCount }, (_, index) => ({
+								recordId: `created-${index}`,
+								value: 'v',
+							}))
+							// the last patch is refused: the check ends there
+							updates[patchCount - 1] = Object.assign(new PatchInstance(), {
+								recordId: `created-${patchCount - 1}`,
+							})
+							return {
+								creates: Array.from({ length: patchCount }, (_, index) =>
+									makeRecord({ id: `created-${index}` }),
+								),
+								updates,
+							}
+						},
+					}
+				},
+			},
+		}
+		const { engine } = await startImportEngine({ runtime, options: { importWindowMs: 0 } })
+		const ran = { second: false, atRejection: false }
+		let afterIndexing = false
+		let queued = false
+		const importing = engine.importFile(
+			{ file: contractFile({ body: '<A/>' }), writeId: 'w-1', clientId: 'c-1' },
+			function queueAfterTheIdIndex(progress: ImportProgress) {
+				if (progress.phase === 'indexing') afterIndexing = true
+				// once, after the first index build (the id index): the finalize builds come after the check
+				if (!afterIndexing || progress.phase !== 'storing' || queued) return
+				queued = true
+				// the first task runs at the yield after the index build, the second one at the next yield
+				setTimeout(() => setTimeout(() => (ran.second = true), 0), 0)
+			},
+		)
+		const rejected = importing.catch(function noteTasks(thrown: unknown) {
+			ran.atRejection = ran.second
+			throw thrown
+		})
+		await expectRejectsWith({ action: rejected, key: 'STORE_VALUE_NOT_JSON' })
+		expect(ran.atRejection).toBe(true)
+	})
+
+	it('a session patch of a record the document does not hold, the record created by another client while the engine yields after the check → the patch is not applied, as in one write', async () => {
+		const runtime: StoreRuntime = {
+			...createContractRuntime(),
+			hooks: {
+				createImportSession: function sessionPatchingLater() {
+					return {
+						afterImport: async function patchAbsent() {
+							return {
+								updates: [{ recordId: 'later', value: Number.NaN as unknown as string }],
+							}
+						},
+					}
+				},
+			},
+		}
+		const { engine } = await startImportEngine({ runtime, options: { importWindowMs: 0 } })
+		let afterIndexing = false
+		let queued = false
+		const result = await engine.importFile(
+			{ file: contractFile({ body: '<A/>' }), writeId: 'w-1', clientId: 'c-1' },
+			function createLaterAfterTheCheck(progress: ImportProgress) {
+				if (progress.phase === 'indexing') afterIndexing = true
+				// once, after the first index build (the id index): the finalize builds come after the check
+				if (!afterIndexing || progress.phase !== 'storing' || queued) return
+				queued = true
+				// the first task runs at the yield after the index build, the second one at the check's yield
+				setTimeout(() => {
+					setTimeout(() => {
+						void engine.getDocuments().then(([importing]) =>
+							engine.bulkWrite(importing!.id, {
+								creates: [makeRecord({ id: 'later', value: 'given' })],
+							}),
+						)
+					}, 0)
+				}, 0)
+			},
+		)
+		expect((await engine.get('later', result.record.id))?.value).toBe('given')
+	})
+
 	it('a file giving one of its own ids twice → refused STORE_DUPLICATE_ID at its batch, before the session’s after-import runs', async () => {
 		let afterImportRan = false
 		const { engine } = await startImportEngine({
@@ -547,6 +681,88 @@ describe('an engine importing files', () => {
 			})
 			held.release()
 			await held.importing
+		})
+
+		/** An edit of the document `other` (one record, one commit in its history), and the records it holds after. */
+		const EDITS_OF_ANOTHER_CLIENT: Record<
+			string,
+			{ run: (engine: SqliteEngine) => Promise<void>; expectedCount: number }
+		> = {
+			'a commit': {
+				run: (engine) =>
+					engine.commit({
+						documentId: 'other',
+						writeId: 'w-commit',
+						creates: [makeRecord({ id: 'o2' })],
+						updates: [],
+						deletes: [],
+					}),
+				expectedCount: 2,
+			},
+			'an undo': { run: (engine) => engine.undo('other'), expectedCount: 0 },
+			'a redo': {
+				run: async (engine) => {
+					await engine.undo('other')
+					await engine.redo('other')
+				},
+				expectedCount: 1,
+			},
+		}
+		for (const [edit, { run, expectedCount }] of Object.entries(EDITS_OF_ANOTHER_CLIENT)) {
+			it(`${edit} of another client while an import runs → it lands on its own, durable, no transaction left open; the import then ends ready`, async () => {
+				const sqlite3 = await loadSqlite()
+				const { engine, db } = await startImportEngine()
+				await engine.registerDocument(makeDocument({ id: 'other' }))
+				await engine.commit({
+					documentId: 'other',
+					writeId: 'w-seed',
+					creates: [makeRecord({ id: 'o1' })],
+					updates: [],
+					deletes: [],
+				})
+				const held = await startHeldImport({ engine, writeId: 'w-1', clientId: 'c-1' })
+				expect(pragmasOf({ db, sqlite3 })).toMatchObject({ synchronous: 0, inTransaction: true })
+				await run(engine)
+				expect(pragmasOf({ db, sqlite3 })).toMatchObject({ synchronous: 2, inTransaction: false })
+				expect(await engine.count('other')).toBe(expectedCount)
+				held.release()
+				const result = (await held.importing) as { record: { id: string; status: string } }
+				expect(result.record.status).toBe('ready')
+				expect(await engine.count(result.record.id)).toBe(2)
+			})
+		}
+
+		it('a commit asked from a task queued at an import’s first progress, a window of 0 ms → it lands before the next progress, not after the import', async () => {
+			const { engine } = await startImportEngine({ options: { importWindowMs: 0 } })
+			await engine.registerDocument(makeDocument({ id: 'other' }))
+			const told: number[] = []
+			let committed: Promise<number> | undefined
+			await engine.importFile(
+				{
+					file: contractFile({ body: sessionRecords(6) }),
+					options: { chunkOptions: SMALL_BATCHES },
+					writeId: 'w-1',
+					clientId: 'c-1',
+				},
+				function commitAtFirstProgress(progress: ImportProgress) {
+					if (told.length === 0) {
+						setTimeout(() => {
+							committed = engine
+								.commit({
+									documentId: 'other',
+									writeId: 'w-commit',
+									creates: [makeRecord({ id: 'o1' })],
+									updates: [],
+									deletes: [],
+								})
+								.then(() => told.length)
+						}, 0)
+					}
+					told.push(progress.bytesRead)
+				},
+			)
+			expect(told.length).toBeGreaterThan(2)
+			expect(await committed).toBe(1)
 		})
 
 		it('the commit of the import’s window failing for a write of another client → that write refused, the import refused STORE_COMMIT_FAILED, nothing of it left', async () => {

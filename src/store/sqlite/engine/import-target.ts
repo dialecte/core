@@ -3,8 +3,10 @@ import { asReadFailure, asStoreFailure } from './engine-errors'
 import { RECORD_INDEXES, ROWS_PER_BIND } from './engine.constants'
 import { endQuietly } from './import-window'
 import {
+	checkHeldPatches,
 	deleteRecords,
 	patchRecords,
+	readHeldIds,
 	refuseDuplicateIds,
 	refuseRepeatedIds,
 	refuseTakenIds,
@@ -192,9 +194,16 @@ async function writeChanges(params: {
 	const { documentId, updates, deletes } = params
 	const { db, counts, window } = params.params
 	const detail = `Records of document "${documentId}" could not be written`
-	for (let start = 0; start < updates.length; start += ROWS_PER_BIND) {
+	// the patches checked are the ones applied: a record created since by another write is not patched
+	const applying = await checkPatchesInTurns({
+		params: params.params,
+		state: params.state,
+		documentId,
+		updates,
+	})
+	for (let start = 0; start < applying.length; start += ROWS_PER_BIND) {
 		const table = ownTable(params)
-		const patches = updates.slice(start, start + ROWS_PER_BIND)
+		const patches = applying.slice(start, start + ROWS_PER_BIND)
 		asStoreFailure({
 			key: 'STORE_BULK_UPDATE_FAILED',
 			detail,
@@ -221,6 +230,40 @@ async function writeChanges(params: {
 		counts.set(documentId, (counts.get(documentId) ?? 0) - deleted)
 		await commitAtCap({ params: params.params, documentId })
 	}
+}
+
+/**
+ * The session's updates checked as one list, as every store checks them (a refused one named by its
+ * place among those of records the document holds), its ids looked up a bind at a time; the engine's
+ * queue gets a turn each time the lookups have run for the window's time, so a write of another
+ * connection does not wait for the whole check. Answers the patches checked: the ones to apply.
+ */
+async function checkPatchesInTurns(params: {
+	params: ImportTargetParams
+	state: ImportTargetState
+	documentId: string
+	updates: RecordPatch[]
+}): Promise<RecordPatch[]> {
+	const { documentId, updates } = params
+	const { db, windowMs } = params.params
+	const held = new Set<string>()
+	let since = performance.now()
+	for (let start = 0; start < updates.length; start += ROWS_PER_BIND) {
+		const table = ownTable(params)
+		const ids = updates.slice(start, start + ROWS_PER_BIND).map((patch) => patch.recordId)
+		for (const id of asReadFailure({
+			detail: `The records to patch in document "${documentId}"`,
+			work: function lookUpIds() {
+				return readHeldIds({ db, table, ids })
+			},
+		}))
+			held.add(id)
+		if (performance.now() - since >= windowMs) {
+			await yieldToQueue()
+			since = performance.now()
+		}
+	}
+	return checkHeldPatches({ patches: updates, held })
 }
 
 /**

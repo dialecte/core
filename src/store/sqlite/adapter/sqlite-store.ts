@@ -178,32 +178,44 @@ export class SqliteStore implements Store {
 		return this.operation((engine) => engine.bulkWrite(documentId, ops))
 	}
 
-	async commit(_params: {
+	/** The commit runs in the engine; its progress listener crosses as an argument of its own. */
+	async commit(params: {
 		documentId: string
+		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: string[]
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
-		return this.notServed('commit')
+		const {
+			documentId,
+			writeId = crypto.randomUUID(),
+			creates,
+			updates,
+			deletes,
+			onProgress,
+		} = params
+		return this.operation((engine) =>
+			engine.commit({ documentId, writeId, creates, updates, deletes }, onProgress),
+		)
 	}
 
 	// --- History ---
 
-	async undo(_documentId: string): Promise<void> {
-		return this.notServed('undo')
+	async undo(documentId: string): Promise<void> {
+		return this.operation((engine) => engine.undo(documentId))
 	}
 
-	async redo(_documentId: string): Promise<void> {
-		return this.notServed('redo')
+	async redo(documentId: string): Promise<void> {
+		return this.operation((engine) => engine.redo(documentId))
 	}
 
-	async getHistoryStatus(_documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
-		return this.notServed('getHistoryStatus')
+	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
+		return this.operation((engine) => engine.getHistoryStatus(documentId))
 	}
 
-	async getChangeLog(_documentId: string): Promise<ChangeLogEntry[]> {
-		return this.notServed('getChangeLog')
+	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
+		return this.operation((engine) => engine.getChangeLog(documentId))
 	}
 
 	/** No database object crosses the port: the engine owns it. */
@@ -213,39 +225,36 @@ export class SqliteStore implements Store {
 
 	// --- Blob storage ---
 
-	async addBlob(_entry: BlobRecord, _data: Blob): Promise<void> {
-		return this.notServed('addBlob')
+	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
+		return this.operation((engine) => engine.addBlob(entry, data))
 	}
 
-	async getBlob(_blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
-		return this.notServed('getBlob')
+	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
+		return this.operation((engine) => engine.getBlob(blobId))
 	}
 
-	async getBlobsByDocument(_documentId: string): Promise<BlobRecord[]> {
-		return this.notServed('getBlobsByDocument')
+	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
+		return this.operation((engine) => engine.getBlobsByDocument(documentId))
 	}
 
-	async getBlobsByRecord(_documentId: string, _recordRef: string): Promise<BlobRecord[]> {
-		return this.notServed('getBlobsByRecord')
+	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
+		return this.operation((engine) => engine.getBlobsByRecord(documentId, recordRef))
 	}
 
 	async getStandaloneBlobs(): Promise<BlobRecord[]> {
-		return this.notServed('getStandaloneBlobs')
+		return this.operation((engine) => engine.getStandaloneBlobs())
 	}
 
-	async attachBlob(_blobId: string, _ref: BlobAttachment): Promise<void> {
-		return this.notServed('attachBlob')
+	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
+		return this.operation((engine) => engine.attachBlob(blobId, ref))
 	}
 
-	async detachBlob(
-		_blobId: string,
-		_ref: { documentId: string; recordRef: string },
-	): Promise<void> {
-		return this.notServed('detachBlob')
+	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
+		return this.operation((engine) => engine.detachBlob(blobId, ref))
 	}
 
-	async removeBlob(_blobId: string): Promise<void> {
-		return this.notServed('removeBlob')
+	async removeBlob(blobId: string): Promise<void> {
+		return this.operation((engine) => engine.removeBlob(blobId))
 	}
 
 	// --- Private ---

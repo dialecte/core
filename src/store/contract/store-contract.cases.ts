@@ -1602,6 +1602,36 @@ const extraFieldsDropped: StoreContractCases = Object.fromEntries(
 	]),
 )
 
+/** How many patches the long-list cases hand at once: more than a store may check in one go. */
+const MANY_PATCHES = 1500
+
+/** The patch the long-list cases refuse, by its place among the patches handed (all of which apply). */
+const REFUSED_PATCH_AT = 1200
+
+const nonJsonPatchPlace: StoreContractCases = {
+	[`a bulk write of ${MANY_PATCHES} patches whose patch ${REFUSED_PATCH_AT} is not JSON → STORE_VALUE_NOT_JSON naming its place in the whole list, nothing written`]:
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument())
+				const ids = Array.from({ length: MANY_PATCHES }, (_, index) => `r${index}`)
+				await store.bulkWrite('doc-1', { creates: ids.map((id) => makeRecord({ id })) })
+				const updates: RecordPatch[] = ids.map((recordId) => ({ recordId, value: 'v' }))
+				updates[REFUSED_PATCH_AT] = Object.assign(new HeldInstance(), {
+					recordId: ids[REFUSED_PATCH_AT]!,
+					value: 'v',
+				})
+				await expectRejectsWith({
+					action: store.bulkWrite('doc-1', { updates }),
+					key: 'STORE_VALUE_NOT_JSON',
+					detail: new RegExp(`field "${REFUSED_PATCH_AT}"`),
+				})
+				expect((await store.getByDocumentId('doc-1')).every((record) => record.value === '')).toBe(
+					true,
+				)
+			},
+		},
+}
+
 const undefinedFieldsDropped: StoreContractCases = {
 	'a document registered with fields holding undefined → read without them': {
 		act: async ({ store }) => {
@@ -2313,6 +2343,47 @@ const importing: StoreContractCases = {
 			}
 		},
 	},
+	'a commit, its undo and its redo through another connection while an import runs → kept when the import then fails':
+		{
+			needs: ['second-connection', 'import', 'history'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument({ id: 'edited' }))
+				const other = await connect()
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({
+						body:
+							`<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` +
+							`<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
+					}),
+					writeId: 'w-failing',
+				})
+				try {
+					await untilHeld({ hold, importing })
+					await commit({
+						store: other,
+						documentId: 'edited',
+						writeId: 'w-commit',
+						creates: [makeRecord({ id: 'e1' }), makeRecord({ id: 'e2' })],
+					})
+					await other.undo('edited')
+					await other.redo('edited')
+					hold.release()
+					await expectRejectsWith({ action: importing, key: 'IMPORT_FAILED' })
+					expect((await store.getDocuments()).map((document) => document.id)).toEqual(['edited'])
+					expect((await store.getByDocumentId('edited')).map((record) => record.id)).toEqual([
+						'e1',
+						'e2',
+					])
+					expect(await store.getWriteOutcome({ writeId: 'w-commit' })).toBe('applied')
+					await store.undo('edited')
+					expect(await store.getByDocumentId('edited')).toEqual([])
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
 	'a file giving one of its own ids twice → STORE_DUPLICATE_ID naming it, and leaves nothing': {
 		needs: ['import'],
 		act: async ({ store }) => {
@@ -2977,6 +3048,7 @@ export const STORE_CONTRACT: StoreContractGroups = {
 		...nonJsonBlobValues,
 		...undefinedFieldsDropped,
 		...extraFieldsDropped,
+		...nonJsonPatchPlace,
 		...nonJsonRefusalOrder,
 		...nonJsonBlobRefusalOrder,
 	},

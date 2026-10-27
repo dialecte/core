@@ -12,8 +12,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
-import type { Store } from '../../store.types'
-
 /** The names a case used: destroyed after it, whatever state its stores were left in. */
 const usedNames: string[] = []
 
@@ -41,102 +39,6 @@ async function seededStore(): Promise<SqliteStore> {
 }
 
 describe('SqliteStore', () => {
-	type Operation = {
-		run: (store: Store) => Promise<unknown>
-		/** what the store reads once the operation has completed and the store is open again */
-		expected: (store: Store) => Promise<void>
-	}
-	const operations: Record<string, Operation> = {
-		registerDocument: {
-			run: (store) => store.registerDocument(makeDocument({ id: 'doc-2' })),
-			expected: async (store) =>
-				expect((await store.getDocuments()).map((document) => document.id)).toEqual([
-					'doc-1',
-					'doc-2',
-				]),
-		},
-		removeDocument: {
-			run: (store) => store.removeDocument('doc-1'),
-			expected: async (store) => expect(await store.getDocuments()).toEqual([]),
-		},
-		bulkWrite: {
-			run: (store) => store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r9' })] }),
-			expected: async (store) =>
-				expect(await store.get('r9', 'doc-1')).toEqual(makeRecord({ id: 'r9' })),
-		},
-		getByDocumentId: {
-			run: async (store) =>
-				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })]),
-			expected: async () => {},
-		},
-	}
-
-	describe('an operation running when the store is closed', () => {
-		for (const [name, operation] of Object.entries(operations)) {
-			it(`${name} → it completes; a later operation is refused STORE_CLOSED; opened again, its result is there`, async () => {
-				const store = await seededStore()
-				const running = operation.run(store)
-				store.close()
-				await running
-				await expectRejectsWith({
-					action: store.getDocuments(),
-					key: 'STORE_CLOSED',
-					meta: { storeName: store.name },
-				})
-				await store.open()
-				await operation.expected(store)
-			})
-
-			it(`${name}, the store closed and opened again at once → it completes, then the store opens`, async () => {
-				const store = await seededStore()
-				const running = operation.run(store)
-				store.close()
-				const opening = store.open()
-				await running
-				await opening
-				await operation.expected(store)
-			})
-		}
-	})
-
-	describe('a closed store', () => {
-		for (const [name, operation] of Object.entries(operations)) {
-			it(`${name} through it → STORE_CLOSED; opened again, the store as it was`, async () => {
-				const store = await seededStore()
-				store.close()
-				await expectRejectsWith({
-					action: operation.run(store),
-					key: 'STORE_CLOSED',
-					meta: { storeName: store.name },
-				})
-				await store.open()
-				expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
-				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
-			})
-		}
-
-		it('open() then close() at once → the store ends closed: the open refused, the next operation too', async () => {
-			const store = await seededStore()
-			store.close()
-			const opening = store.open()
-			store.close()
-			await expectRejectsWith({ action: opening, key: 'STORE_CLOSED' })
-			await expectRejectsWith({ action: store.getDocuments(), key: 'STORE_CLOSED' })
-			await store.open()
-			expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
-		})
-
-		it('closed again → nothing thrown; destroyed → the name opens empty', async () => {
-			const store = await seededStore()
-			store.close()
-			expect(() => store.close()).not.toThrow()
-			await store.destroy()
-			const reopened = openStore({ name: store.name })
-			await reopened.open()
-			expect(await reopened.getDocuments()).toEqual([])
-		})
-	})
-
 	it('a store opened twice then closed → the engine closes with it: the next store of the name starts it again', async () => {
 		const store = await seededStore()
 		await store.registerDocument(makeDocument({ id: 'left', status: 'importing' }))
