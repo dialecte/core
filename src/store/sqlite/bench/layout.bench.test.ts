@@ -13,6 +13,7 @@
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
 import { BENCH_CELLS } from './bench-matrix'
 import { realmMemory } from './bench-memory'
+import { fetchFixtureFile, waitForQuietMachine } from './bench-page'
 import { buildCommitRecords } from './bench-variants'
 import {
 	BENCH_PHASE_MESSAGE,
@@ -36,12 +37,10 @@ import {
 	PROFILE_SAMPLING_INTERVAL_US,
 	PROFILED_FUNCTIONS,
 	QUIET_LOAD,
-	QUIET_SLICE_MS,
 	QUIET_WAIT_MAX_MS,
 	READ_REPEATS,
 	SIDE_DOCUMENT_ID,
 	SMALL_COMMIT_INTERVAL_MS,
-	VARIANTS,
 	WORKER_URL_PART,
 } from './bench.constants'
 
@@ -96,27 +95,9 @@ async function fixtureFile(params: { fixture: BenchFixture }): Promise<File> {
 	const { fixture } = params
 	if (loadedFile?.name === fixture.name) return loadedFile.file
 	loadedFile = undefined
-	const response = await fetch(fixture.url)
-	if (!response.ok) throw new Error(`fixture ${fixture.name} not served (${response.status})`)
-	const file = new File([await response.blob()], `${fixture.name}.xml`, { type: 'text/xml' })
+	const file = await fetchFixtureFile({ fixture })
 	loadedFile = { name: fixture.name, file }
 	return file
-}
-
-/**
- * Wait for a 1-minute load below the limit, one short command at a time: a browser command that
- * outlives vitest's RPC timeout closes the browser connection.
- */
-async function waitForQuietMachine(): Promise<{ waitedMs: number }> {
-	const startedAt = performance.now()
-	for (;;) {
-		const { load } = await commands.benchWaitForQuiet({
-			maxLoad: QUIET_BAR,
-			maxWaitMs: QUIET_SLICE_MS,
-		})
-		const waitedMs = performance.now() - startedAt
-		if (load[0]! < QUIET_BAR || waitedMs > QUIET_WAIT_MS) return { waitedMs }
-	}
 }
 
 async function benchDevice(): Promise<BenchDevice> {
@@ -261,7 +242,7 @@ async function runCell(params: {
 	const { variant, measures } = cell
 	const fixture = await commands.benchFixture({ name: cell.fixture })
 	const file = await fixtureFile({ fixture })
-	const quiet = await waitForQuietMachine()
+	const quiet = await waitForQuietMachine({ maxLoad: QUIET_BAR, maxWaitMs: QUIET_WAIT_MS })
 	const machine = await commands.benchMachine()
 	const { worker, api } = spawnBenchWorker()
 	const project = `${cell.id}-${run}-${crypto.randomUUID().slice(0, 8)}`
@@ -384,7 +365,7 @@ async function runKill(params: { scenario: KillScenario; run: number }): Promise
 	const other = await commands.benchFixture({ name: 'composed-catalogue-small' })
 	const victim = await commands.benchFixture({ name: 'composed-50-compact' })
 	const project = `kill-${scenario}-${run}-${crypto.randomUUID().slice(0, 8)}`
-	await waitForQuietMachine()
+	await waitForQuietMachine({ maxLoad: QUIET_BAR, maxWaitMs: QUIET_WAIT_MS })
 	const load = (await commands.benchMachine()).load
 	const first = spawnBenchWorker()
 	const phases = trackPhases({ worker: first.worker })

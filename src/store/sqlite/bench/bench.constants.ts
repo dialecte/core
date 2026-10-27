@@ -241,3 +241,27 @@ export const FIXTURE_ROOTS = {
 	composed: { rootElementName: 'SCL', namespaceUri: 'http://www.iec.ch/61850/2003/SCL' },
 	structural: { rootElementName: 'Root', namespaceUri: 'http://dialecte.dev/XML/DEFAULT' },
 } as const
+
+/** The engine bench's timed runs start below this 1-minute load. */
+export const ENGINE_BENCH_QUIET_LOAD = 8
+
+/** One engine-bench cell's time limit: its wait for a quiet machine, then up to half an hour of work. */
+export const ENGINE_BENCH_CELL_TIMEOUT_MS = QUIET_WAIT_MAX_MS + 30 * 60_000
+
+/** The engine bench's database file in its pool. */
+export const ENGINE_BENCH_DATABASE_PATH = '/engine-bench.sqlite3'
+
+/** Records of the composed 500 MB compact file, the ready document of the engine-start cells. */
+export const READY_500_RECORDS = 4_200_000
+
+/** Rows written per transaction while the engine-start cells fill a document. */
+export const FILL_ROWS_PER_TRANSACTION = 100_000
+
+/** Random bytes per filled row's attribute value (written as hex: twice as many characters). */
+export const FILL_ATTRIBUTE_BYTES = 120
+
+/** The dead imports in front of the ready 500 MB document: a 50 MB file's records, and nine tenths of a 500 MB one. */
+export const DEAD_IMPORT_ROWS = { 'dead-50': 486_333, 'dead-450': 3_780_000 } as const
+
+/** The dialecte the engine bench's files say they belong to. */
+export const ENGINE_BENCH_DIALECTE_ID = 'bench/engine'
