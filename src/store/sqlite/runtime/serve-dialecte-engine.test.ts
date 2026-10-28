@@ -1,3 +1,4 @@
+import { CONTRACT_ENGINE_URL } from '../../contract/store-contract.constants'
 import { contractFile, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
 import { EngineStore } from '../../engine/engine-store'
@@ -14,14 +15,19 @@ import {
 	startEngineWorker,
 	uniqueProject,
 } from './runtime.fixtures'
-import { RUNTIME_FIXTURE_CHANNEL } from './runtime.fixtures.constants'
+import {
+	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	RUNTIME_FIXTURE_CHANNEL,
+} from './runtime.fixtures.constants'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 
 import type { RuntimeFixtureNotice, RuntimeFixtureOrder } from './runtime.fixtures.types'
+
+vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
 /** What a case leaves: its workers ended, its pools removed. */
 const cleanups: (() => Promise<void> | void)[] = []
@@ -346,7 +352,7 @@ describe('an engine worker destroying its project', () => {
 describe('a client of an engine worker', () => {
 	it('released during its own held import → the import aborted in the engine: not applied, nothing of the file', async () => {
 		const name = uniqueProject()
-		const engineUrl = new URL('../../contract/store-contract.worker.ts', import.meta.url).href
+		const engineUrl = CONTRACT_ENGINE_URL
 		const connector = createSqliteWorkerConnector({ name, engineUrl })
 		cleanups.push(() => connector.destroy())
 		const link = await connector.connect()

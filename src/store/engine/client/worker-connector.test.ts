@@ -1,4 +1,7 @@
-import { CONTRACT_SESSION_FAIL_VALUE } from '../../contract/store-contract.constants'
+import {
+	CONTRACT_ENGINE_URL,
+	CONTRACT_SESSION_FAIL_VALUE,
+} from '../../contract/store-contract.constants'
 import {
 	commit,
 	contractFile,
@@ -8,7 +11,7 @@ import {
 	makeRecord,
 } from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
-import { fixtureUrl } from '../../sqlite/runtime/runtime.fixtures'
+import { TEST_ENGINE_URL, fixtureUrl } from '../../sqlite/runtime/runtime.fixtures'
 import {
 	CROSS_REALM_CLOCK_SLACK_MS,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
@@ -31,11 +34,7 @@ import type { EngineWire } from '../wire/wire.types'
 import type { ProjectChannelMessage } from '@/project/types'
 import type { AnyRawRecord } from '@/types'
 
-/** The engine of the contract dialecte: its import session fails on a record marked so. */
-const CONTRACT_ENGINE_URL = new URL('../../contract/store-contract.worker.ts', import.meta.url).href
-
-/** The engine of core's test dialecte, as a dialecte's worker entry serves it. */
-const TEST_ENGINE_URL = new URL('../../../test/test-dialecte.worker.ts', import.meta.url).href
+vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
 /** The stores a case opened, destroyed after it. */
 const opened: EngineStore[] = []

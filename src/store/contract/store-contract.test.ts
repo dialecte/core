@@ -1,10 +1,11 @@
 import { POOL_ROOT_DIRECTORY } from '../sqlite/runtime/runtime.constants'
+import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../sqlite/runtime/runtime.fixtures.constants'
 import { STORE_CONTRACT } from './store-contract.cases'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_CONTRACT_FACTORIES } from './store-contract.factories'
 import { STORE_PATH_CONTRACT } from './store-contract.path.cases'
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Store } from '../store.types'
 import type {
@@ -12,6 +13,9 @@ import type {
 	StoreContractContext,
 	StoreContractFactory,
 } from './store-contract.types'
+
+// one leg spawns an engine worker per case: seconds apiece on a loaded machine
+vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
 /** Why the leg cannot run the case yet: the reason of the first part of the port it needs and has pending. */
 function pendingReasonOf(params: {

@@ -54,3 +54,6 @@ export const CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE = 4
 
 /** Arrays and objects above a metadata field's value in a document registered or updated: the document, its metadata. */
 export const CONTRACT_LEVELS_ABOVE_METADATA_VALUE = 2
+
+/** The engine of the contract dialecte, served from a worker as a dialecte's worker entry serves it. */
+export const CONTRACT_ENGINE_URL = new URL('./store-contract.worker.ts', import.meta.url).href

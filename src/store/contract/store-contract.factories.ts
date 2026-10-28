@@ -2,6 +2,7 @@ import { EngineStore } from '../engine/engine-store'
 import { InMemoryStore } from '../in-memory'
 import { DexieStore } from '../local'
 import { createInProcessConnector } from '../sqlite/adapter/in-process-link'
+import { CONTRACT_ENGINE_URL } from './store-contract.constants'
 import { createContractRuntime } from './store-contract.import-session'
 
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
@@ -84,9 +85,6 @@ const sqliteInProcessStoreFactory: StoreContractFactory = {
 		return openSqliteStore(store.name)
 	},
 }
-
-/** The engine of the contract dialecte, served from a worker as a dialecte's worker entry serves it. */
-const CONTRACT_ENGINE_URL = new URL('./store-contract.worker.ts', import.meta.url).href
 
 /** An open SQLite store of that name, its engine run in a worker of this realm on the origin's private files. */
 async function openWorkerStore(name: string): Promise<EngineStore> {

@@ -146,7 +146,7 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		expect(main).not.toContain('sqlite3ApiBootstrap')
 	})
 
-	it('core’s main side → the one wasm beside it, referenced by a URL a consumer’s bundler resolves', async () => {
+	it('core’s main side (a synthetic entry of the wasm URL module, until the local store moves to SQLite) → the one wasm beside it, referenced by a URL a consumer’s bundler resolves', async () => {
 		expect(await filesUnder({ directory: CORE_DIST })).toContain('sqlite3.wasm')
 		expect(await textOf({ file: path.join(CORE_DIST, 'wasm.js') })).toContain(
 			'new URL("sqlite3.wasm", import.meta.url)',
