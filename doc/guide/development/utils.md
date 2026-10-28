@@ -26,6 +26,7 @@ import {
 	orderAttributesBySequence,
 	orderByConfigSequence,
 	childOccurrences,
+	requiredChoices,
 	invariant,
 	saveToDisk,
 	formatXml,
@@ -363,6 +364,23 @@ import { childOccurrences, resolveDefinition } from '@dialecte/core/utils'
 
 const definition = resolveDefinition({ dialecteConfig, record })
 childOccurrences({ definition }) // e.g. { AA_1: { min: 1, max: 1 }, AA_2: { min: 0, max: 2 } }
+```
+
+### `requiredChoices`
+
+The choices an element's content model requires, which `childOccurrences` reads as optional children (a choice
+keeps the widest of its branches): each one reached through required groups only, with how many times it is
+taken (`min`, the groups' own minimum occurrences multiplied) and its `branches` in order. A branch gives how
+often it holds each child, counted as `childOccurrences` counts them, and the choices it requires in turn when it
+is taken. An optional choice, or a required one inside an optional group, is not listed. Use it to build a valid
+element: take one branch of every required choice.
+
+```ts
+import { requiredChoices, resolveDefinition } from '@dialecte/core/utils'
+
+const definition = resolveDefinition({ dialecteConfig, record })
+requiredChoices({ definition })
+// e.g. [{ min: 1, branches: [{ children: { X: { min: 1, max: 1 } }, choices: [] }, { children: { Y: { min: 1, max: 1 } }, choices: [] }] }]
 ```
 
 ---
