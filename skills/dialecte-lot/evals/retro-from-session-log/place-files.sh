@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -eu
-cp -R "$(dirname "$0")/files/." .
+mkdir -p files
+cp -R "$(dirname "$0")/files/." files/

@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: review-input-from-real-producer
+expected_outcome: |
+  The review does not approve: the renderer's table cases feed it strings written by hand, while its real
+  input comes from the TypeScript compiler (`ts.displayPartsToString` in discover.ts), whose output for a
+  labelled link is not what the tests assume. The reviewer asks for cases whose input comes from the real
+  producer (an integration fixture through the compiler) or checks the producer's real output, and gives
+  fix-then-repass.
+context:
+  scaffold_script: place-files.sh

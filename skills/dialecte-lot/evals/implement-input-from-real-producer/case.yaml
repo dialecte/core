@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: implement-input-from-real-producer
+expected_outcome: |
+  The implementer writes the renderer red-first and at least one case takes its input from the TypeScript
+  compiler (a source compiled in the test and read through summaryOf / intentsOf, or display parts captured from
+  the compiler), so the labelled link is checked on what the compiler really produces; the labelled link renders
+  as its label through that real path.
+context:
+  scaffold_script: place-files.sh
