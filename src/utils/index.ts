@@ -1,4 +1,5 @@
 export * from './attribute-rules'
+export * from './child-occurrences'
 export * from './datatype'
 export * from './format-xml'
 export * from './invariant'

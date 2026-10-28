@@ -25,6 +25,7 @@ import {
 	compareQualifiedAttributes,
 	orderAttributesBySequence,
 	orderByConfigSequence,
+	childOccurrences,
 	invariant,
 	saveToDisk,
 	formatXml,
@@ -346,6 +347,21 @@ const ordered = orderByConfigSequence({
 	childrenConfig: dialecteConfig.children,
 })
 // → reordered to the parent's declared sequence, e.g. ['A', 'B', 'C']
+```
+
+### `childOccurrences`
+
+How often each child may appear under an element, from its resolved definition: one entry per child in
+`children.sequence` order, `{ min, max }` with `max` undefined when unbounded. A choice makes its alternatives
+optional, a repeated group multiplies what it holds, and a child the content model does not name (an element
+without one, or a child only a variant holds) is optional and unbounded. Resolve first, so a declaration chosen
+by the parent or a type named with `xsi:type` is the one read.
+
+```ts
+import { childOccurrences, resolveDefinition } from '@dialecte/core/utils'
+
+const definition = resolveDefinition({ dialecteConfig, record })
+childOccurrences({ definition }) // e.g. { AA_1: { min: 1, max: 1 }, AA_2: { min: 0, max: 2 } }
 ```
 
 ---
