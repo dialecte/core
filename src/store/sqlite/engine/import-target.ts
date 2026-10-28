@@ -301,7 +301,7 @@ async function buildIndex(params: {
 	index: RecordIndex
 }): Promise<void> {
 	const { state, documentId, index } = params
-	const { sqlite3, db, perf, window, tellPhase } = params.params
+	const { sqlite3, db, perf, window, tellPhase, onLongStatement } = params.params
 	const table = ownTable(params)
 	tellPhase({ phase: 'indexing' })
 	perf.start('import::index')
@@ -310,13 +310,16 @@ async function buildIndex(params: {
 			key: 'STORE_COMMIT_FAILED',
 			detail: `The ${index} index of document "${documentId}" could not be built`,
 			work: function buildAlone() {
-				window.alone(function createIndex() {
-					try {
-						createRecordIndex({ db, table, index })
-					} catch (thrown) {
-						refuseRepeatedIds({ sqlite3, db, table, documentId, thrown })
-						throw thrown
-					}
+				// the build and its window's commit (the index's pages flushed in one step) told as one long statement
+				onLongStatement(function buildInItsWindow() {
+					window.alone(function createIndex() {
+						try {
+							createRecordIndex({ db, table, index })
+						} catch (thrown) {
+							refuseRepeatedIds({ sqlite3, db, table, documentId, thrown })
+							throw thrown
+						}
+					})
 				})
 			},
 		})

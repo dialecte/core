@@ -7,6 +7,8 @@ import { installProgressBeat } from './progress-beat'
 import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
 import {
 	RUNTIME_FIXTURE_CHANNEL,
+	SLOW_DDL_MS,
+	SLOW_DDL_PATTERN,
 	SLOW_STATEMENT_STEP_MS,
 	YIELDING_SLICE_MS,
 } from './runtime.fixtures.constants'
@@ -17,6 +19,7 @@ import { serveDialecteEngine } from '@/engine'
 import type {
 	ProgressBeatOrder,
 	RuntimeFixtureMessage,
+	RuntimeFixtureNotice,
 	RuntimeFixtureOrder,
 	RuntimeFixtureScenario,
 } from './runtime.fixtures.types'
@@ -64,6 +67,7 @@ function serveEngine(): void {
 	if (scenario === 'slow-statements' || scenario === 'slow-statements-silent') {
 		slowStatements({ silent: scenario === 'slow-statements-silent' })
 	}
+	if (scenario === 'liveness') slowDdlWhenOrdered()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -76,7 +80,9 @@ function slowStatements(params: { silent: boolean }): void {
 	let slow = false
 	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
 	channel.addEventListener('message', function slowDown(event: MessageEvent<RuntimeFixtureOrder>) {
-		if (event.data.type === 'slow') slow = true
+		if (event.data.type !== 'slow') return
+		slow = true
+		acknowledge({ channel, order: event.data })
 	})
 	// chained on the realm's one load before the engine's open awaits it: patched before any database
 	void loadSqlite().then(function patchProgressHandler(sqlite3) {
@@ -92,6 +98,44 @@ function slowStatements(params: { silent: boolean }): void {
 				context,
 			)
 		} as typeof install
+	})
+}
+
+/** An order taken, said on the fixture channel: the case goes on once the worker has it. */
+function acknowledge(params: { channel: BroadcastChannel; order: RuntimeFixtureOrder }): void {
+	const notice: RuntimeFixtureNotice = { type: 'ack', of: params.order.type }
+	params.channel.postMessage(notice)
+}
+
+function tellFixtureChannel(notice: RuntimeFixtureNotice): void {
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.postMessage(notice)
+	channel.close()
+}
+
+/**
+ * Once the case orders `slow-ddl`, every record-index build and every table drop holds its statement
+ * `SLOW_DDL_MS` before it runs - one long opcode, as a large sort or drop is: no progress-handler call
+ * inside it, so no beat.
+ */
+function slowDdlWhenOrdered(): void {
+	let slow = false
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.addEventListener('message', function slowDown(event: MessageEvent<RuntimeFixtureOrder>) {
+		if (event.data.type !== 'slow-ddl') return
+		slow = true
+		acknowledge({ channel, order: event.data })
+	})
+	void loadSqlite().then(function patchExec(sqlite3) {
+		const prototype = sqlite3.oo1.DB.prototype
+		const exec = prototype.exec
+		prototype.exec = function slowedExec(this: typeof prototype, ...args: unknown[]) {
+			const first = args[0]
+			const sql = typeof first === 'string' ? first : (first as { sql?: unknown } | undefined)?.sql
+			if (slow && typeof sql === 'string' && SLOW_DDL_PATTERN.test(sql))
+				busyWait({ ms: SLOW_DDL_MS })
+			return (exec as (...given: unknown[]) => unknown).apply(this, args)
+		} as typeof exec
 	})
 }
 
@@ -146,12 +190,19 @@ const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
 					...session,
 					beforeImportRecord: function pauseOnRecord(recordParams) {
 						const marker = markerOf({ record: recordParams.record })
-						if (marker?.kind === 'pause') busyWait({ ms: marker.ms })
+						if (marker?.kind === 'pause') {
+							tellFixtureChannel({ type: 'reached', marker: 'pause' })
+							busyWait({ ms: marker.ms })
+						}
 						if (marker?.kind === 'after-pause') afterPauseMs = marker.ms
 						if (marker?.kind === 'after-yield-pause') afterYieldPauseMs = marker.ms
 						session.beforeImportRecord?.(recordParams)
 					},
 					afterImport: async function pauseAfterImport() {
+						if (afterPauseMs > 0) tellFixtureChannel({ type: 'reached', marker: 'after-pause' })
+						if (afterYieldPauseMs > 0) {
+							tellFixtureChannel({ type: 'reached', marker: 'after-yield-pause' })
+						}
 						busyWait({ ms: afterPauseMs })
 						// dialecte code that yields now and then: other calls are served between its slices
 						for (let spent = 0; spent < afterYieldPauseMs; spent += YIELDING_SLICE_MS) {

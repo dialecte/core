@@ -30,6 +30,8 @@ export function createHeartbeat(params: { intervalMs: number }): Heartbeat {
 	return {
 		add: function addPort(port) {
 			ports.add(port)
+			// a client adopted while dialecte code runs learns it at once: it may hear nothing else for long
+			if (opaque > 0) port.postMessage({ type: ENGINE_SIGNAL.busy })
 		},
 		remove: function removePort(port) {
 			ports.delete(port)
@@ -46,6 +48,23 @@ export function createHeartbeat(params: { intervalMs: number }): Heartbeat {
 			opaque = Math.max(0, opaque - 1)
 			post({ type: opaque > 0 ? ENGINE_SIGNAL.busy : ENGINE_SIGNAL.heartbeat })
 		},
+	}
+}
+
+/**
+ * Work the engine cannot beat inside (one long opcode, a large answer cloned): every client is told the
+ * engine is busy before it, beaten once it is done.
+ */
+export function runToldBusy<GenericResult>(params: {
+	heartbeat: Heartbeat
+	work: () => GenericResult
+}): GenericResult {
+	const { heartbeat, work } = params
+	heartbeat.busy()
+	try {
+		return work()
+	} finally {
+		heartbeat.idle()
 	}
 }
 

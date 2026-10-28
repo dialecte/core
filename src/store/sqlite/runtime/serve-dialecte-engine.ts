@@ -1,5 +1,5 @@
 import { serveClient } from '../../engine/host/engine-wire'
-import { createHeartbeat, withOpaquePhases } from '../../engine/host/heartbeat'
+import { createHeartbeat, runToldBusy, withOpaquePhases } from '../../engine/host/heartbeat'
 import {
 	CLIENT_DRAIN_BUDGET_MS,
 	ENGINE_HEARTBEAT_INTERVAL_MS,
@@ -111,6 +111,7 @@ async function answerControl(params: {
 					clientId: request.clientId,
 					view: engine.clientView({ clientId: request.clientId }),
 					events,
+					heartbeat,
 				})
 				state.clients.set(request.clientId, served)
 				answer = { type: 'adopted', requestId }
@@ -215,6 +216,9 @@ async function openEngine(params: {
 				return refuseShortSpace({ project, bytes })
 			},
 			onWork: heartbeat.beat,
+			onLongStatement: function longStatementToldBusy(work) {
+				return runToldBusy({ heartbeat, work })
+			},
 		})
 		return { resumed }
 	} catch (thrown) {

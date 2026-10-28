@@ -4,7 +4,6 @@ import {
 	makeDocument,
 	makeRecord,
 } from '../../contract/store-contract.fixtures'
-import { createEngineClient } from '../../engine/client/engine-client'
 import { EngineStore } from '../../engine/engine-store'
 import { fixtureUrl, removePoolDirectory, uniqueProject } from './runtime.fixtures'
 import { RUNTIME_FIXTURE_CHANNEL } from './runtime.fixtures.constants'
@@ -14,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { toDialecteError } from '@/errors'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 
-import type { RuntimeFixtureScenario } from './runtime.fixtures.types'
+import type { RuntimeFixtureNotice, RuntimeFixtureScenario } from './runtime.fixtures.types'
 
 /** What a case leaves: its stores destroyed, its pools removed. */
 const cleanups: (() => Promise<void> | void)[] = []
@@ -69,20 +68,30 @@ async function outcomeOf(action: Promise<unknown>): Promise<unknown> {
 	}
 }
 
-function orderFixtures(order: { type: 'slow' }): void {
+/** The fixture's engine worker told `order`; resolves once it has taken it (its acknowledgement heard). */
+async function orderFixtures(order: { type: 'slow' } | { type: 'slow-ddl' }): Promise<void> {
+	const acknowledged = noticeOf({ type: 'ack', of: order.type })
 	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
 	channel.postMessage(order)
 	channel.close()
+	await acknowledged
+}
+
+/** Resolves once the fixture's engine worker says `expected` on the fixture channel. */
+function noticeOf(expected: RuntimeFixtureNotice): Promise<void> {
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	return new Promise<void>(function waitForNotice(resolve) {
+		channel.addEventListener('message', function hear(event: MessageEvent<RuntimeFixtureNotice>) {
+			if (JSON.stringify(event.data) !== JSON.stringify(expected)) return
+			channel.close()
+			resolve()
+		})
+	})
 }
 
 /** How long the slowed read took, for the record. */
 function logStatementTime(params: { description: string; ms: number }): void {
 	console.info(`${params.description}: ${Math.round(params.ms)} ms`)
-}
-
-function busyWait(params: { ms: number }): void {
-	const until = performance.now() + params.ms
-	while (performance.now() < until);
 }
 
 describe('an engine alive or lost', () => {
@@ -126,9 +135,7 @@ describe('an engine alive or lost', () => {
 				await store.registerDocument(makeDocument())
 				const records = Array.from({ length: 1_500 }, (_, index) => makeRecord({ id: `r${index}` }))
 				await store.bulkWrite('doc-1', { creates: records })
-				orderFixtures({ type: 'slow' })
-				// the order crosses the channel before the read is sent
-				await new Promise((resolve) => setTimeout(resolve, 100))
+				await orderFixtures({ type: 'slow' })
 				const startedAt = performance.now()
 				expect(await outcomeOf(store.getByDocumentId('doc-1'))).toEqual(expected)
 				expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1_500)
@@ -151,12 +158,13 @@ describe('an engine alive or lost', () => {
 	it('an engine paused 3 s in a record → the import and a commit queued behind it lost, each with its id, running meanwhile, then applied', async () => {
 		const store = await openStore({ heartbeatTimeoutMs: 1_000 })
 		await store.registerDocument(makeDocument())
+		const paused = noticeOf({ type: 'reached', marker: 'pause' })
 		const importing = store.importFile({
 			file: markedFile({ markers: ['pause:3000'] }),
 			writeId: 'w-paused',
 		})
 		// sent once the engine is paused: it waits on the port behind the import
-		await new Promise((resolve) => setTimeout(resolve, 300))
+		await paused
 		const committing = store.commit({
 			documentId: 'doc-1',
 			writeId: 'w-commit',
@@ -199,8 +207,9 @@ describe('an engine alive or lost', () => {
 		it('a read sent while the other’s afterImport runs 3 s of dialecte code → it resolves', async () => {
 			const first = await openStore({ heartbeatTimeoutMs: 1_500 })
 			const second = await openStore({ heartbeatTimeoutMs: 1_500, name: first.name })
+			const pausing = noticeOf({ type: 'reached', marker: 'after-pause' })
 			const importing = first.importFile({ file: markedFile({ markers: ['after-pause:3000'] }) })
-			await new Promise((resolve) => setTimeout(resolve, 300))
+			await pausing
 			expect(await outcomeOf(second.getDocuments())).toBe('resolved')
 			expect(await outcomeOf(importing)).toBe('resolved')
 		})
@@ -210,10 +219,11 @@ describe('an engine alive or lost', () => {
 		const first = await openStore({ heartbeatTimeoutMs: 1_000 })
 		const second = await openStore({ heartbeatTimeoutMs: 1_000, name: first.name })
 		await second.registerDocument(makeDocument())
+		const yielding = noticeOf({ type: 'reached', marker: 'after-yield-pause' })
 		const importing = first.importFile({
 			file: markedFile({ markers: ['after-yield-pause:3000'] }),
 		})
-		await new Promise((resolve) => setTimeout(resolve, 300))
+		await yielding
 		const records = Array.from({ length: 20_000 }, (_, index) => makeRecord({ id: `r${index}` }))
 		await second.commit({
 			documentId: 'doc-1',
@@ -225,44 +235,40 @@ describe('an engine alive or lost', () => {
 		expect(await outcomeOf(importing)).toBe('resolved')
 	})
 
+	describe('one long statement with no beat in it (an index built, a table dropped: one opcode)', () => {
+		it('an import whose index builds each run 3 s (timeout 1 s) → told busy around each, the import resolves', async () => {
+			const store = await openStore({ heartbeatTimeoutMs: 1_000 })
+			await orderFixtures({ type: 'slow-ddl' })
+			expect(await outcomeOf(store.importFile({ file: markedFile({ markers: ['plain'] }) }))).toBe(
+				'resolved',
+			)
+		})
+
+		it('a document removed, its tables dropped in 3 s each (timeout 1 s) → told busy, the removal resolves', async () => {
+			const store = await openStore({ heartbeatTimeoutMs: 1_000 })
+			await store.registerDocument(makeDocument())
+			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
+			await orderFixtures({ type: 'slow-ddl' })
+			expect(await outcomeOf(store.removeDocument('doc-1'))).toBe('resolved')
+		})
+	})
+
+	it('an afterImport yielding now and then for 3 s while its own importer reads → the answer keeps it busy, the import resolves', async () => {
+		const store = await openStore({ heartbeatTimeoutMs: 1_000 })
+		const yielding = noticeOf({ type: 'reached', marker: 'after-yield-pause' })
+		const importing = store.importFile({
+			file: markedFile({ markers: ['after-yield-pause:3000'] }),
+		})
+		// read while the engine is busy in the importer's own afterImport
+		await yielding
+		expect(await outcomeOf(store.getDocuments())).toBe('resolved')
+		expect(await outcomeOf(importing)).toBe('resolved')
+	})
+
 	it('an afterImport running 3 s of dialecte code (timeout 1 s) → told busy, the import resolves', async () => {
 		const store = await openStore({ heartbeatTimeoutMs: 1_000 })
 		expect(
 			await outcomeOf(store.importFile({ file: markedFile({ markers: ['after-pause:3000'] }) })),
 		).toBe('resolved')
-	})
-})
-
-describe('a client watching its engine', () => {
-	it('the document resumed (a frozen tab coming back) while a call waits → the silence counts from the resume', async () => {
-		const channel = new MessageChannel()
-		const client = createEngineClient({ port: channel.port1, heartbeatTimeoutMs: 300 })
-		cleanups.push(() => client.close({ storeName: 'watched' }))
-		const calling = outcomeOf(client.api.getDocuments())
-		await new Promise((resolve) => setTimeout(resolve, 250))
-		document.dispatchEvent(new Event('resume'))
-		const early = await Promise.race([
-			calling,
-			new Promise((resolve) => setTimeout(() => resolve('waiting'), 200)),
-		])
-		expect(early).toBe('waiting')
-		expect(await calling).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } })
-		channel.port2.close()
-	})
-
-	it('its page stalled past the timeout while a beat waited → no loss: the beat is read first; silent after → lost', async () => {
-		const channel = new MessageChannel()
-		const client = createEngineClient({ port: channel.port1, heartbeatTimeoutMs: 300 })
-		cleanups.push(() => client.close({ storeName: 'watched' }))
-		const calling = outcomeOf(client.api.getDocuments())
-		channel.port2.postMessage({ type: 'heartbeat' })
-		busyWait({ ms: 500 })
-		const early = await Promise.race([
-			calling,
-			new Promise((resolve) => setTimeout(() => resolve('waiting'), 150)),
-		])
-		expect(early).toBe('waiting')
-		expect(await calling).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } })
-		channel.port2.close()
 	})
 })

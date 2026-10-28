@@ -52,3 +52,10 @@ export type ServedClient = {
 	port: MessagePort
 	drained: () => Promise<void>
 }
+
+/** A call's progress listener as the engine tells it: each tick without waiting, the last one awaited before the answer. */
+export type ProgressRelay = {
+	tell: (...progress: unknown[]) => void
+	/** Settles once the last tick has reached the caller (or the flush budget has passed). */
+	told: () => Promise<void>
+}

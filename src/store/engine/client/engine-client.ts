@@ -45,10 +45,27 @@ export function createEngineClient(params: {
 
 	function lose(params: { reason: EngineLostReason }): void {
 		const { reason } = params
-		for (const entry of inFlight) refuseLost({ entry, reason, unanswered })
+		for (const entry of inFlight) {
+			refuseLost({ entry, reason, unanswered })
+			// a silent engine may still run the export for minutes: stopped, unlike a write, whose outcome is asked later
+			if (reason === 'no-heartbeat' && entry.exportId !== undefined) {
+				abortLostExport({ exportId: entry.exportId })
+			}
+		}
 		inFlight.clear()
 		// a gone engine took its queued writes with it: the next one answers for them
 		if (reason === 'host-gone') unanswered.clear()
+	}
+
+	/** Told to the engine and forgotten: its answer, if it ever comes, changes nothing here. */
+	function abortLostExport(params: { exportId: string }): void {
+		const spec: WireMemberSpec = ENGINE_WIRE_MEMBERS.abortExport
+		const wire = toWireArgs({ args: [params], places: spec.json ?? [] })
+		remote
+			.call({ member: 'abortExport', args: wire.args, standIns: wire.standIns })
+			.catch(function abortNotSent() {
+				// the port closed meanwhile: the engine is gone with its export
+			})
 	}
 
 	function call(callParams: { member: keyof EngineApi; args: unknown[] }): Promise<unknown> {
@@ -57,34 +74,34 @@ export function createEngineClient(params: {
 		const listener = spec.listener === undefined ? undefined : args[spec.listener]
 		const given = spec.listener === undefined ? args : args.slice(0, spec.listener)
 		const writeId = spec.identified ? (given[0] as { writeId?: string }).writeId : undefined
+		const exportId =
+			member === 'exportFile' ? (given[0] as { exportId?: string }).exportId : undefined
 		if (member === 'getWriteOutcome') {
 			const asked = (given[0] as { writeId: string }).writeId
 			if (unanswered.has(asked)) return Promise.resolve('running' satisfies WriteOutcome)
 		}
 		const wire = toWireArgs({ args: given, places: spec.json ?? [] })
 		return new Promise(function callEngine(resolve, reject) {
-			const entry: CallInFlight = { writeId, reject, lost: false }
+			// made before the call is in flight: a listener Comlink cannot proxy (a frozen one) leaves nothing waiting
+			const proxied =
+				typeof listener === 'function' ? Comlink.proxy(listener as () => void) : undefined
+			const entry: CallInFlight = { writeId, exportId, reject, lost: false }
 			// a call starting while none waited: the engine's silence counts from now
 			if (inFlight.size === 0) watch.restart()
 			inFlight.add(entry)
-			remote
-				.call(
-					{ member, args: wire.args, standIns: wire.standIns },
-					typeof listener === 'function' ? Comlink.proxy(listener as () => void) : undefined,
-				)
-				.then(
-					function answered(answer) {
-						inFlight.delete(entry)
-						if (writeId !== undefined) unanswered.delete(writeId)
-						if (entry.lost) return
-						if (answer.ok) resolve(answer.value)
-						else reject(fromThrownData({ data: answer.thrown }))
-					},
-					function notSent(thrown: unknown) {
-						inFlight.delete(entry)
-						if (!entry.lost) reject(thrown)
-					},
-				)
+			remote.call({ member, args: wire.args, standIns: wire.standIns }, proxied).then(
+				function answered(answer) {
+					inFlight.delete(entry)
+					if (writeId !== undefined) unanswered.delete(writeId)
+					if (entry.lost) return
+					if (answer.ok) resolve(answer.value)
+					else reject(fromThrownData({ data: answer.thrown }))
+				},
+				function notSent(thrown: unknown) {
+					inFlight.delete(entry)
+					if (!entry.lost) reject(thrown)
+				},
+			)
 		})
 	}
 
@@ -145,10 +162,10 @@ function refuseLost(params: {
 
 /**
  * The engine's silence while calls wait: any message on the port (an answer, a beat) is a sign of
- * life, `busy` holds the clock until the next one; none for `timeoutMs` while a call waits loses the
- * engine - once the messages queued meanwhile have gone through (a message turn: the page may have
- * stalled, or been frozen with its worker); the document's `resume` and the page's `pageshow` restart
- * the clock.
+ * life; `busy` holds the clock from the engine's busy signal to its next heartbeat; none for
+ * `timeoutMs` while a call waits loses the engine - once the messages queued meanwhile have gone
+ * through (a message turn: the page may have stalled, or been frozen with its worker); the
+ * document's `resume` and the page's `pageshow` restart the clock.
  */
 function watchHeartbeat(params: {
 	port: MessagePort
@@ -163,7 +180,10 @@ function watchHeartbeat(params: {
 
 	function hear(event: MessageEvent<{ type?: string } | undefined>): void {
 		heardAt = performance.now()
-		busy = event.data?.type === ENGINE_SIGNAL.busy
+		// only the engine's signals move `busy`: an answer to a call (this client's own, during the opaque phase) does not end it
+		const type = event.data?.type
+		if (type === ENGINE_SIGNAL.busy) busy = true
+		if (type === ENGINE_SIGNAL.heartbeat) busy = false
 		armIn({ delayMs: timeoutMs })
 	}
 

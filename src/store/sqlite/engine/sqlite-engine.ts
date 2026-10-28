@@ -92,6 +92,7 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  */
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const { sqlite3, db, dialecteId, name, runtime, ensureImportSpace, onWork } = params
+	const onLongStatement = params.onLongStatement ?? runStatement
 	const engineOptions = { ...DEFAULT_ENGINE_OPTIONS, ...params.options }
 	const deviceMiB = deviceCacheMiB({
 		deviceMemoryGiB: reportedDeviceMemoryGiB(),
@@ -106,6 +107,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			detail: 'The project file could not be opened',
 			work: function startOnFile() {
 				prepareFile({ sqlite3, db, dialecteId, steadyCacheMiB })
+				// at the start no client waits on the engine yet (the open has its own budget): nobody to tell
 				inWriteTransaction({
 					sqlite3,
 					db,
@@ -477,12 +479,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				detail,
 				work: function dropInTransaction() {
 					settleImport({ importing })
-					inWriteTransaction({
-						sqlite3,
-						db,
-						work: function deleteRowAndTable() {
-							deleteDocument({ db, documentId })
-						},
+					onLongStatement(function dropInOneTransaction() {
+						inWriteTransaction({
+							sqlite3,
+							db,
+							work: function deleteRowAndTable() {
+								deleteDocument({ db, documentId })
+							},
+						})
 					})
 					counts.delete(documentId)
 				},
@@ -658,6 +662,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					window,
 					windowMs: engineOptions.importWindowMs,
 					tellPhase: progress.tellPhase,
+					onLongStatement,
 					customIds: options?.useCustomRecordsIds ?? false,
 				})
 				importing.window = window
@@ -906,4 +911,9 @@ function writeRows(params: {
 			return deleteRecords({ db, table, ids: deletes })
 		},
 	})
+}
+
+/** A long statement with no one to tell: run as it is. */
+function runStatement<GenericResult>(work: () => GenericResult): GenericResult {
+	return work()
 }

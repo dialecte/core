@@ -23,6 +23,8 @@ export type EngineLostReason = 'host-gone' | 'no-heartbeat'
 /** A call waiting for the engine's answer: refused at once if the engine is lost. */
 export type CallInFlight = {
 	writeId: string | undefined
+	/** An export's id: a lost export is told to stop (its result would reach no one). */
+	exportId: string | undefined
 	reject: (thrown: unknown) => void
 	/** Refused lost already: its answer, if it ever comes, is dropped. */
 	lost: boolean

@@ -1,14 +1,16 @@
 import { toThrownData } from '../wire/error-envelope'
 import { fromWireArgs } from '../wire/wire-values'
 import { ENGINE_WIRE_MEMBERS } from '../wire/wire.constants'
+import { LARGE_ANSWER_RECORDS, LISTENER_FLUSH_BUDGET_MS } from './host.constants'
 
 import * as Comlink from 'comlink'
 
 import { createDialecteError } from '@/errors'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { EngineApi } from '../engine.types'
 import type { EngineWire, WireAnswer, WireMemberSpec, WireRequest } from '../wire/wire.types'
-import type { ServedClient, StoreEvents } from './host.types'
+import type { Heartbeat, ProgressRelay, ServedClient, StoreEvents } from './host.types'
 
 /**
  * Serve one client's port: one member, `call`, every call of the engine through it - a member outside
@@ -21,15 +23,23 @@ export function serveClient(params: {
 	clientId: string
 	view: EngineApi
 	events: StoreEvents
+	/** The engine's sign of life on its ports: told busy around an answer it cannot beat inside. */
+	heartbeat: Heartbeat
 }): ServedClient {
-	const { port, clientId, view, events } = params
+	const { port, clientId, view, events, heartbeat } = params
 	let answering = 0
 	const whenDrained: (() => void)[] = []
 	const wire: EngineWire = {
 		call: async function callMember(request, listener) {
 			answering += 1
 			try {
-				return await answerCall({ view, request, listener, clientId, events })
+				const answer = await answerCall({ view, request, listener, clientId, events })
+				if (isLargeAnswer({ answer })) {
+					// Comlink clones it once this call resolves; the beat after it comes a message turn later
+					heartbeat.busy()
+					void yieldToQueue().then(heartbeat.idle)
+				}
+				return answer
 			} finally {
 				answering -= 1
 				if (answering === 0) for (const drained of whenDrained.splice(0)) drained()
@@ -56,6 +66,7 @@ async function answerCall(params: {
 	events: StoreEvents
 }): Promise<WireAnswer> {
 	const { view, request, listener, clientId, events } = params
+	const relay = listener ? relayProgress({ listener }) : undefined
 	try {
 		const member = request.member
 		if (!Object.hasOwn(ENGINE_WIRE_MEMBERS, member)) {
@@ -72,7 +83,7 @@ async function answerCall(params: {
 		})
 		if (spec.listener !== undefined) {
 			args.length = spec.listener
-			args.push(listener ? tellWithoutWaiting({ listener }) : undefined)
+			args.push(relay?.tell)
 		}
 		const name = member as keyof EngineApi
 		const run = view[name] as (...given: unknown[]) => Promise<unknown>
@@ -82,6 +93,9 @@ async function answerCall(params: {
 	} catch (thrown) {
 		return { ok: false, thrown: toThrownData({ thrown }) }
 	} finally {
+		// the progress told last reaches the caller before its answer and before its proxy is let go: the
+		// two travel on ports of their own, nothing else orders them
+		await relay?.told()
 		if (listener) releaseListener({ listener })
 	}
 }
@@ -108,18 +122,40 @@ function releaseListener(params: { listener: unknown }): void {
 	}
 }
 
-/** The caller's listener, told across the port and never awaited: its failure (a closed port) is dropped. */
-function tellWithoutWaiting(params: {
-	listener: (...progress: unknown[]) => unknown
-}): (...progress: unknown[]) => void {
+/**
+ * The caller's listener, told across the port and never awaited by the work: its failure (a closed port)
+ * is dropped. `told` settles once the last tick has reached the caller, or `LISTENER_FLUSH_BUDGET_MS`
+ * has passed (a listener on a page gone holds no answer longer).
+ */
+function relayProgress(params: { listener: (...progress: unknown[]) => unknown }): ProgressRelay {
 	const { listener } = params
-	return function tellCaller(...progress) {
-		try {
-			Promise.resolve(listener(...progress)).catch(ignoreListenerFailure)
-		} catch {
-			// a port that cannot post any more: the listener is gone, the engine goes on
-		}
+	let last: Promise<unknown> = Promise.resolve()
+	return {
+		tell: function tellCaller(...progress) {
+			try {
+				last = Promise.resolve(listener(...progress)).catch(ignoreListenerFailure)
+			} catch {
+				// a port that cannot post any more: the listener is gone, the engine goes on
+			}
+		},
+		told: function lastTold() {
+			let timer: ReturnType<typeof setTimeout> | undefined
+			const budget = new Promise<void>(function waitBudget(resolve) {
+				timer = setTimeout(resolve, LISTENER_FLUSH_BUDGET_MS)
+			})
+			return Promise.race([last.then(settleNothing), budget]).finally(function clearBudget() {
+				clearTimeout(timer)
+			})
+		},
 	}
 }
 
+function settleNothing(): void {}
+
 function ignoreListenerFailure(): void {}
+
+/** An answer holding a list of records long enough that cloning it onto the port takes long (one step). */
+function isLargeAnswer(params: { answer: WireAnswer }): boolean {
+	const { answer } = params
+	return answer.ok && Array.isArray(answer.value) && answer.value.length >= LARGE_ANSWER_RECORDS
+}

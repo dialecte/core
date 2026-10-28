@@ -78,7 +78,15 @@ export type OpenSqliteEngineParams = {
 	 * the engine is alive, whoever waits on it.
 	 */
 	onWork?: () => void
+	/**
+	 * Runs one statement that may last long in a single step, with no progress-handler call inside it
+	 * (an index build's sort, a table dropped): whoever waits on the engine is told so around it.
+	 */
+	onLongStatement?: LongStatementRunner
 }
+
+/** Runs a statement that may last long as one step of SQLite, telling who waits on the engine around it. */
+export type LongStatementRunner = <GenericResult>(work: () => GenericResult) => GenericResult
 
 /** An export as the engine runs it: the client that asked for it owns it. */
 export type SqliteEngineExportParams = EngineExportParams & {
@@ -263,6 +271,8 @@ export type ImportTargetParams = {
 	windowMs: number
 	/** Tell the caller what the import does now (`indexing` around an index build). */
 	tellPhase: (params: { phase: ImportPhase }) => void
+	/** Runs an index build: one long statement. */
+	onLongStatement: LongStatementRunner
 	/** Whether the file gives its own record ids (they may repeat); generated ids never do. */
 	customIds: boolean
 }
