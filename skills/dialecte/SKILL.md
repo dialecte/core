@@ -49,6 +49,28 @@ This skill ships inside `@dialecte/core` and describes the core it ships with (0
 pins another core, read the skill of that version (`npx @dialecte/cli skills sync` installs the one
 matching your `node_modules`) and confirm signatures in its `.d.ts`.
 
+## Look it up with the cli first: one command each
+
+`@dialecte/cli` (0.2 or later, run as `npx @dialecte/cli <command>`) answers from what is installed -
+the same with or without the repositories - in a few lines (`--json` for more). Run these before
+reading `node_modules`, the sources or the docs:
+
+| You need                                                        | Run                                            |
+| --------------------------------------------------------------- | ---------------------------------------------- |
+| your versions, and whether this skill is theirs (Step 0)        | `npx @dialecte/cli doctor`                     |
+| a method for what you are trying to do (reuse ladder, rung 2-4) | `npx @dialecte/cli api find "<what you need>"` |
+| its exact contract: signature, summary, routes, one call        | `npx @dialecte/cli api show <route>`           |
+| what a group holds, your own extensions included                | `npx @dialecte/cli members <expression>`       |
+| what an element may hold: parents, children, attributes         | `npx @dialecte/cli schema <Tag>`               |
+
+- A `⚠️` line of `doctor` comes first: it names the command that fixes it.
+- Search by the words of your need, not by a name you imagine:
+  `npx @dialecte/cli api find "copy a subtree from another document"`. The best match is first; read the
+  `api show` of every close one before ruling it out.
+- `schema` reads the installed definition through core's own readers: never list children or required
+  attributes by hand, never parse `definition.generated.ts` or the XSD.
+- Exit 1 means nothing found (or a warning): fall back to the sources below, in their order.
+
 ## Where the truth for your installed version lives
 
 This skill describes shapes and rules, not exact signatures. Before calling or citing any method,
