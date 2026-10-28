@@ -69,7 +69,7 @@
 		"prepare": "husky"
 	},
 	"dependencies": {
-		"@sqlite.org/sqlite-wasm": "3.53.4-build2",
+		"@sqlite.org/sqlite-wasm": "3.54.1-build1",
 		"@types/sax": "1.2.7",
 		"comlink": "4.4.2",
 		"dexie": "4.4.6",

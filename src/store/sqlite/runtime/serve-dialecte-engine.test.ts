@@ -284,6 +284,24 @@ describe('an engine worker opening its project', () => {
 		})
 	})
 
+	it('a pool that fails to get ready (its files cannot be opened, none held elsewhere) → refused, the pool kept: a later engine finds its document', async () => {
+		const project = uniqueProject()
+		await closedPoolWithDocument({ project })
+		const broken = engineWorker({ project, url: fixtureUrl({ scenario: 'install-fails' }) })
+		const refused = await broken.control
+			.request({ message: openMessage({ project }), expect: 'opened' })
+			.then(
+				() => 'opened',
+				() => 'refused',
+			)
+		expect(refused).toBe('refused')
+		broken.end()
+		const { control } = engineWorker({ project })
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const engine = await clientOf({ control, clientId: 'reader' })
+		expect(await engine.getDocuments()).toEqual([makeDocument()])
+	})
+
 	it('closed, then opened again in the same worker → the pool resumed, not installed, its data there', async () => {
 		const project = uniqueProject()
 		const { control } = engineWorker({ project })

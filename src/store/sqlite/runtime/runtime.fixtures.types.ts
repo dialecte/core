@@ -14,6 +14,7 @@ export type RuntimeFixtureScenario =
 	| 'liveness'
 	| 'disk-full'
 	| 'ignore-destroy'
+	| 'install-fails'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =

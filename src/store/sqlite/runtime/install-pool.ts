@@ -18,9 +18,10 @@ import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 /**
  * The project's pool, opened for this engine within `budgetMs`: the origin's private files checked,
  * the engine lock taken, then - inside one try that releases the lock on any failure - every file of
- * an existing pool probed (opened and closed again), or the space a new pool needs checked, and only
- * then the pool installed: sqlite-wasm removes the whole pool directory when its install fails, so it
- * never runs on a file another engine still holds or on too little space.
+ * an existing pool probed (opened and closed again; one another engine still holds is waited for, then
+ * refused PROJECT_ENGINE_BUSY), or the space a new pool needs checked, and only then the pool
+ * installed - one whose install fails anyway keeps its files (`preserveOnInitFailure`: by default
+ * sqlite-wasm removes the whole pool directory on a failed install).
  */
 export async function openPool(params: {
 	sqlite3: Sqlite3Static
@@ -40,6 +41,7 @@ export async function openPool(params: {
 			name: POOL_VFS_NAME,
 			directory: poolDirectoryOf({ project }),
 			initialCapacity: POOL_CAPACITY,
+			preserveOnInitFailure: true,
 		})
 		return { pool, lock }
 	} catch (thrown) {

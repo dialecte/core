@@ -8,12 +8,16 @@ export async function installPool(params: {
 }): Promise<SAHPoolUtil> {
 	const { sqlite3, project } = params
 	await waitForFreePool({ project })
-	return sqlite3.installOpfsSAHPoolVfs({ name: `bench-${project}`, directory: `bench/${project}` })
+	return sqlite3.installOpfsSAHPoolVfs({
+		name: `bench-${project}`,
+		directory: `bench/${project}`,
+		preserveOnInitFailure: true,
+	})
 }
 
 /**
- * A killed worker's sync handles close a little after it is gone; a failed install would remove the
- * pool directory, so every pool file is probed free before the install.
+ * A killed worker's sync handles close a little after it is gone: every pool file is probed free before
+ * the install, which would otherwise fail on a file still held.
  */
 async function waitForFreePool(params: { project: string }): Promise<void> {
 	const deadline = performance.now() + 10_000
