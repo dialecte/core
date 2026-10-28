@@ -9,6 +9,8 @@ import {
 
 import { it } from 'vitest'
 
+import { createSeededRandomUuid } from '@/utils'
+
 import type { DeclaredTestRunnerParams, LegacyTestRunnerParams } from './create-test-dialecte.types'
 import type {
 	BaseTestCase,
@@ -16,21 +18,24 @@ import type {
 	TestCases,
 	ActParams,
 	ActResult,
+	CreateMockRandomUuidParams,
 	TestRunner,
 } from './run-test-cases.type'
 import type { CaseOverrides, RunnerSetup } from './test-dialecte-setup.types'
 import type { ExtensionModules } from '@/document'
 import type { AnyDialecteConfig } from '@/types'
+import type { UuidShaped } from '@/utils'
 
 // ── UUID mocking ─────────────────────────────────────────────────────────────
 
 const originalRandomUUID = crypto.randomUUID.bind(crypto)
 
-export function createMockRandomUUID(): () => `${string}-${string}-${string}-${string}-${string}` {
-	let counter = 0
-	return function () {
-		return `${counter++}` as `${string}-${string}-${string}-${string}-${string}`
-	}
+/**
+ * The `crypto.randomUUID` a test case's act runs with: UUID-shaped ids that follow from a seed (0 by
+ * default), the same sequence on every run.
+ */
+export function createMockRandomUUID(params?: CreateMockRandomUuidParams): () => UuidShaped {
+	return createSeededRandomUuid({ seed: params?.seed ?? 0 })
 }
 
 // ── Runner ───────────────────────────────────────────────────────────────────

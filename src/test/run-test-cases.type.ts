@@ -80,3 +80,8 @@ export type TestRunner<
 		act: (testCase: GenericTestCase) => void,
 	): void
 }
+
+/** What `createMockRandomUUID` is given: the seed of its sequence, 0 when absent. */
+export type CreateMockRandomUuidParams = {
+	seed?: number
+}
