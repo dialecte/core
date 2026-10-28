@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: wait-on-a-long-run
+expected_outcome: |
+  Starts the run in the background with its output in a log (or the harness's background run), waits on the
+  captured PID or the completion notice - never a `pgrep -f` whose pattern appears in the wait command itself -
+  with an upper bound tied to the 25 minutes, and decides pass/fail from the exit code and the log's summary line,
+  not from the process being gone.

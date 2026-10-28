@@ -22,16 +22,16 @@ are what the next station reads. A decision that is not in one of them was not a
 
 ## The stations
 
-| #   | Station     | Who                                     | Reads                                                                           | Leaves                                                                               |
-| --- | ----------- | --------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| 0   | Orchestrate | orchestrator                            | the plan, the user's decisions                                                  | one brief per implementer (template in [references/briefs.md](references/briefs.md)) |
-| 1   | Implement   | implementer                             | its brief, the code it changes                                                  | code + tests, red first; an implement report                                         |
-| 2   | Fast gate   | implementer                             | -                                                                               | type-check (sources and tests), lint, format, the touched tests, `skills:check`      |
-| 3   | Review      | **a different agent** (strongest model) | the brief, the diff, the previous version (`git show <base>:<file>`), the rules | a review report: pass 1 correctness, pass 2 fit, verdict                             |
-| 4   | Fix         | the implementer, fix mode               | the findings                                                                    | each finding fixed, disagreed (one line why) or escalated                            |
-| 5   | Full gate   | implementer                             | -                                                                               | the package's full Definition of Done, once per lot                                  |
-| 6   | Hand over   | implementer or orchestrator             | the lot's files                                                                 | a commit-by-lots script a human runs; nothing committed, nothing pushed              |
-| 7   | Retro       | orchestrator                            | reports, loops, the user's corrections                                          | retro entries; skill edits drafted, applied on approval                              |
+| #   | Station     | Who                                     | Reads                                                                           | Leaves                                                                                                       |
+| --- | ----------- | --------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 0   | Orchestrate | orchestrator                            | the plan, the user's decisions                                                  | one brief per implementer (template in [references/briefs.md](references/briefs.md))                         |
+| 1   | Implement   | implementer                             | its brief, the code it changes                                                  | code + tests, red first; an implement report                                                                 |
+| 2   | Fast gate   | implementer                             | -                                                                               | `dialecte gate --fast` + `dialecte rules`: type-check, lint, format, touched tests, skills check, code rules |
+| 3   | Review      | **a different agent** (strongest model) | the brief, the diff, the previous version (`git show <base>:<file>`), the rules | a review report: pass 1 correctness, pass 2 fit, verdict                                                     |
+| 4   | Fix         | the implementer, fix mode               | the findings                                                                    | each finding fixed, disagreed (one line why) or escalated                                                    |
+| 5   | Full gate   | implementer                             | -                                                                               | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
+| 6   | Hand over   | implementer or orchestrator             | the lot's files                                                                 | `dialecte handover`: a commit-by-lots script a human runs; nothing committed, nothing pushed                 |
+| 7   | Retro       | orchestrator                            | reports, loops, the user's corrections                                          | retro entries; skill edits drafted, applied on approval                                                      |
 
 Stations 3-4 loop on the same lot. **Cap: three review rounds.** A fourth round means the plan or the
 brief is wrong - stop and bring the disagreement to the user. Re-review only the hunks that changed.
@@ -68,13 +68,18 @@ Base: <branch> @ <sha>
 Files: <list>
 Tests: <n> passing of <m> table cases - command: <the exact command, unfiltered>
 Red seen: <case> failed with <assertion>   (one line per behaviour)
-Gates: check <ok|n errors>, build <ok>, skills:check <0 errors>, ...
+Gates: <the lines `dialecte gate` printed, with their counts>; rules <n errors, m warnings>
 Skill evals: <case: with / without>   | n/a
 Deviations from the brief: <none | what and why>
 Open questions: <none | ...>
 ```
 
 ## Station 2 - fast gate (the counts decide, not the summary)
+
+Run `npx dialecte gate --fast` and `npx dialecte rules` from the package root. The gate runs each step
+unfiltered and prints one line per step with the counts the step itself printed; paste those lines in
+the report. Fix every `rules` error before the review. The bullets below are what the gate checks for
+you, and what you check by hand with a cli older than 0.2.0:
 
 - Run every command that decides a gate **unfiltered**: an output-compacting shell wrapper can print a green
   summary for a run that tested nothing. Read the real summary line.
@@ -123,8 +128,10 @@ You never drop a finding on your own: disagreements go back to the orchestrator.
 
 ## Station 6 - hand over
 
-The `dialecte-contributing` landing rules apply: a commit-by-lots script with every guard, the absolute
-path and the one command to run, the gates with real counts, what was not verified. Never commit, push,
+The `dialecte-contributing` landing rules apply: write the lots file and run `npx dialecte handover
+<lots.json>` (never a hand-written script when the command exists); give the absolute path and the one
+command to run, the gates with real counts, what was not verified. A refusal is a finding: fix the file
+or the message, do not loosen the lots. Never commit, push,
 stage, or touch a repository's index while a hand-over script may be waiting.
 
 ## Station 7 - retro

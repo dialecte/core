@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: handover-through-cli
+expected_outcome: |
+  The hand-over is written as a lots file (repository, branch, HEAD, lots with paths and messages) handed
+  to `dialecte handover`, not as a commit script written by hand; the code rules are checked with
+  `dialecte rules` and the full gate with `dialecte gate --full` before it, their lines reported as the
+  real counts; nothing is committed or pushed by the agent.

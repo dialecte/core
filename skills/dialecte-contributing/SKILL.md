@@ -80,19 +80,43 @@ rule that contradicts the standard stays out of the engine (consumer override).
 
 1. **Orient**: read the nearest existing example of what you build (an extension in the same
    package, a hook sub-file, its test) and the package's `doc/` page for the surface. Copy shapes,
-   don't invent them.
+   don't invent them. A new extension verb starts from `npx dialecte new verb <namespace>
+<query|transaction> <name>`: it writes the function, its `.types.ts`, a red table case marked
+   `only`, the barrel export and the namespace registration, and lists the `FILL:` placeholders
+   (`skills check` refuses them until written).
 2. **Red first, vertically**: one table case with `only: true`, red for the right reason, minimum
    code, next case. See the `dialecte` skill's references/testing.md.
 3. **Implement under the code rules**: [references/code-rules.md](references/code-rules.md).
-   Read it before writing the first line; most review comments come from it.
+   Read it before writing the first line; most review comments come from it. `npx dialecte rules`
+   checks them on the changed files.
 4. **Gates** (below), then docs + CHANGELOG if the surface changed.
 5. **Independent review**: have a fresh reviewer (a sub-agent with only the spec, the diff and
    these rules, or a human) read the diff against the previous version before hand-over. Self-review
    re-reads your own intent and misses weakened assertions and unusable types.
-6. **Hand over** with a commit-by-lots script: [references/landing-changes.md](references/landing-changes.md).
-   The agent never commits or pushes.
+6. **Hand over** with a commit-by-lots script written by `npx dialecte handover <lots.json>`:
+   [references/landing-changes.md](references/landing-changes.md). The agent never commits or pushes.
 
 ## Definition of Done - every change, in the changed package
+
+Run it with `npx dialecte gate --fast` while iterating and `npx dialecte gate --full` once per lot,
+from the package root. The gate runs each step below unfiltered and judges it on its exit code and
+on the counts the step printed (a test step that counts no test fails), prints one line per step,
+restores the generated docs the package declares after the docs build, and refuses to run while a
+hand-over script holds the repository. With `--fast`, a change that touches no test (a doc edit)
+passes the tests step with the note "no test file is affected by the change"; any other run that
+counts no test fails. Paste its lines in your report: they are the real counts.
+
+**Waiting on a long run** (`gate --full`, a mutation run, a bench): start it in the background with its output in
+a log - your harness's background run, or `cmd > "$log" 2>&1 & echo $! > "$pidfile"` - then wait for the
+harness's completion notice or on that PID (`while kill -0 "$(cat "$pidfile")" 2>/dev/null; do sleep 5; done`),
+with an upper bound tied to the run's expected duration; at the bound, report "timed out" with the log's tail.
+Never wait with `pgrep -f "<text>"` when that text is in your own wait command: the loop finds itself and never
+ends (`pgrep -f "[m]utants.ts"` if it is unavoidable). When the wait ends, read the exit code and the log's
+summary line: "no process found" is not a pass.
+
+Read the step list in the package's `package.json` (`"dialecte": { "gate" }`) when it overrides the
+defaults. The gate, `rules`, `new verb` and `handover` come with `@dialecte/cli` 0.2.0 or later; with
+an older cli in the package, run `npx @dialecte/cli@latest gate`, or the steps by hand:
 
 1. `npm run check` - type-checks sources AND tests, lint, format. Never a bare `tsc --noEmit`
    (`tsconfig.json` is a solution file and checks nothing).

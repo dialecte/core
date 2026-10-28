@@ -82,13 +82,27 @@ does not name.
 
 ## Self-check before hand-over
 
-Run over the files of the change (not tests/types/constants files for the first two):
+```bash
+npx dialecte rules              # the files changed against HEAD and the new ones
+npx dialecte rules <files...>   # or the files you name; --json for a program
+```
+
+It reads each file's syntax tree, not lines: an exported type outside a `*.types.ts` file, a module
+constant outside a `*.constants.ts` file, a function declared as a `const`, an `await` inside an
+argument, a plan or ticket tag or a standard citation (the package's own patterns included) are
+errors; positional parameters beyond a leading `query` / `tx` and abbreviated names are warnings. Fix
+every error; answer every warning (fix it, or say in the hand-over why the shape is right). It exits 1
+on an error. A finding that is wrong is a cli bug: report it, do not work around it.
+
+`rules` comes with `@dialecte/cli` 0.2.0 or later. Without it, the same checks as greps (not
+tests/types/constants files for the first two); the last two mirror the patterns `rules` and
+`handover` share (the cli's committed-text constants):
 
 ```bash
 grep -nE '^(export )?type [A-Z]|^(export )?interface ' <impl files>    # inline types?
 grep -nE '^const [A-Z_]+ ' <impl files>                                # module constants outside *.constants.ts?
 grep -nE 'const [a-zA-Z]+ = (async )?\(' <files>                       # arrow-function declarations?
 grep -nE '\((await |.*, await )' <files>                               # await inside an argument?
-grep -nE '\b(lot|phase) [A-Z0-9]|\bAC[0-9]|#[0-9]{3,}' <files>         # plan / ticket tags?
+grep -nE '\blot [A-Z0-9]|\bAC[0-9]|#[0-9]{3,}\b' <files>               # plan / ticket tags?
 grep -nE '§ ?[0-9]|Tables? [0-9]|Annex [A-Z]|[Cc]lause [0-9]' <files>  # standard citations? (a dialecte's skill adds its standard's names)
 ```
