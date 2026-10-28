@@ -110,7 +110,7 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 			// a document of that id registered since by another connection is not this import's
 			const row = readRegistryRow({ db, documentId })
 			if (row?.seq !== registered.seq || row.status !== 'importing') return
-			removeDocument({ documentId })
+			await removeDocument({ documentId })
 		},
 	}
 }

@@ -9,12 +9,13 @@ import {
 import { encodeCheckedRecords, insertEncodedRows } from './bulk-insert'
 import { commitRecords, stepHistory } from './commit'
 import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
-import { asReadFailure, asStoreFailure } from './engine-errors'
+import { asReadFailure, asStoreFailure, toStoreFailure } from './engine-errors'
 import { DEFAULT_ENGINE_OPTIONS } from './engine.constants'
 import { hasCommitOf, readChangeLog, readHistoryStatus } from './history'
 import { createImportQueue } from './import-queue'
 import { createImportTarget, createProgressRelay } from './import-target'
 import { createImportWindow, endQuietly } from './import-window'
+import { reclaimInSteps } from './reclaim'
 import {
 	checkApplyingPatches,
 	countRecords,
@@ -39,7 +40,7 @@ import {
 	recordTableOf,
 	updateDocumentRow,
 } from './registry'
-import { createRecordIndexes, prepareFile, reclaimFreePages } from './schema'
+import { createRecordIndexes, prepareFile } from './schema'
 import { inWriteTransaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
@@ -80,8 +81,9 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
  * Start the engine of a project on its database: a new file is laid out, a file of another layout
- * refused (`PROJECT_LAYOUT_OUTDATED`), every document an import left `importing` removed. The engine
- * owns the database from then on: a start that fails closes it, so the file stays free.
+ * refused (`PROJECT_LAYOUT_OUTDATED`), every document an import left `importing` removed - its free
+ * pages given back in steps while the engine already serves. The engine owns the database from then
+ * on: a start that fails closes it, so the file stays free.
  *
  * Its methods run synchronously on the one connection and never await while a transaction is open,
  * so no call runs inside another's transaction. A failure of SQLite is thrown as the operation's
@@ -111,7 +113,6 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 						deleteUnfinishedImports({ db })
 					},
 				})
-				reclaimFreePages({ db })
 			},
 		})
 	} catch (thrown) {
@@ -301,7 +302,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		 */
 		removeDocument: async function removeDocument(documentId) {
 			refuseClosed({ state, name })
-			removeDocumentFromFile({ sqlite3, db, documentId, counts, importing, removals, versions })
+			await removeDocumentFromFile({ documentId })
 		},
 		get: async function get(id, documentId) {
 			refuseClosed({ state, name })
@@ -461,6 +462,59 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		})
 	}
 
+	/**
+	 * A document gone with all it has (its records, its history, the blobs it owns) in one transaction,
+	 * then its pages given back to the file in steps, the calls waiting served between them. A failure
+	 * of the reclaim is reported as a failed removal of a document that is gone; removing it again is
+	 * harmless (an unknown id is ignored, the free pages reclaimed then).
+	 */
+	async function removeDocumentFromFile(params: { documentId: string }): Promise<void> {
+		const { documentId } = params
+		const detail = `Document "${documentId}" could not be removed`
+		try {
+			asStoreFailure({
+				key: 'STORE_DELETE_FAILED',
+				detail,
+				work: function dropInTransaction() {
+					settleImport({ importing })
+					inWriteTransaction({
+						sqlite3,
+						db,
+						work: function deleteRowAndTable() {
+							deleteDocument({ db, documentId })
+						},
+					})
+					counts.delete(documentId)
+				},
+			})
+		} finally {
+			// a table may be gone: what reads it through a statement of its own prepares it again, and an
+			// export of the id - which may be registered and imported again - starts again
+			removals.count += 1
+			versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
+		}
+		try {
+			await reclaimFreePagesInSteps()
+		} catch (thrown) {
+			throw toStoreFailure({ key: 'STORE_DELETE_FAILED', detail, thrown })
+		}
+	}
+
+	/** The file's free pages given back in steps; stopped once the engine is closed. */
+	function reclaimFreePagesInSteps(): Promise<void> {
+		return reclaimInSteps({
+			db,
+			settle: function settleBeforeStep() {
+				settleImport({ importing })
+			},
+			isClosed: function isEngineClosed() {
+				return state.closed
+			},
+			pagesPerStatement: engineOptions.reclaimPagesPerStatement,
+			sliceMs: engineOptions.reclaimSliceMs,
+		})
+	}
+
 	/** A write of the engine's own in one durable transaction, once the import that runs is settled. */
 	function writeInTransaction(params: { detail: string; work: () => void }): void {
 		const { detail, work } = params
@@ -587,15 +641,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					file,
 					counts,
 					removeDocument: function removeFailedImport({ documentId }) {
-						removeDocumentFromFile({
-							sqlite3,
-							db,
-							documentId,
-							counts,
-							importing,
-							removals,
-							versions,
-						})
+						return removeDocumentFromFile({ documentId })
 					},
 					window,
 					windowMs: engineOptions.importWindowMs,
@@ -688,6 +734,9 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		exports.get(params.exportId)?.controller.abort()
 	}
 
+	// what the unfinished imports left is given back while the engine serves: a large one held a start for seconds
+	reclaimFreePagesInSteps().catch(leaveForNextReclaim)
+
 	return {
 		...members,
 		importFile: importAsOwner,
@@ -729,45 +778,10 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 }
 
 /**
- * A document gone with all it has (its records, its history, the blobs it owns) in one transaction,
- * then its pages given back to the file. A failure of the reclaim is reported as a failed removal of a
- * document that is gone; removing it again is harmless (an unknown id is ignored, the free pages
- * reclaimed then).
+ * A start's reclaim that failed is left: nothing waits for it, and the next removal or start gives the
+ * free pages back.
  */
-function removeDocumentFromFile(params: {
-	sqlite3: Sqlite3Static
-	db: Database
-	documentId: string
-	counts: Map<string, number>
-	importing: RunningImport
-	removals: { count: number }
-	versions: Map<string, number>
-}): void {
-	const { sqlite3, db, documentId, counts, importing, removals, versions } = params
-	try {
-		asStoreFailure({
-			key: 'STORE_DELETE_FAILED',
-			detail: `Document "${documentId}" could not be removed`,
-			work: function removeAndReclaim() {
-				settleImport({ importing })
-				inWriteTransaction({
-					sqlite3,
-					db,
-					work: function deleteRowAndTable() {
-						deleteDocument({ db, documentId })
-					},
-				})
-				counts.delete(documentId)
-				reclaimFreePages({ db })
-			},
-		})
-	} finally {
-		// a table may be gone: what reads it through a statement of its own prepares it again, and an
-		// export of the id - which may be registered and imported again - starts again
-		removals.count += 1
-		versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
-	}
-}
+function leaveForNextReclaim(): void {}
 
 /** The import that runs, if any, committed and made durable before another write: that write stands on its own. */
 function settleImport(params: { importing: RunningImport }): void {

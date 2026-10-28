@@ -18,6 +18,12 @@ export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	 * other connections run between two of its transactions within about a second.
 	 */
 	importWindowMs: 1000,
+	/**
+	 * Free pages are given back 256 at a time (1 MiB of 4 KiB pages), and the calls waiting run after
+	 * every 50 ms of it: giving back a dead 450 MB import held the engine 6.6 s in one statement.
+	 */
+	reclaimSliceMs: 50,
+	reclaimPagesPerStatement: 256,
 }
 
 /** The device's memory when the realm does not report it (Firefox, node): a 4 GiB device. */

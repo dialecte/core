@@ -1,4 +1,6 @@
 import { loadSqlite } from '../load-sqlite'
+import { yieldToMessages } from './message-turn'
+import { freePagesOf } from './reclaim'
 import { openSqliteEngine } from './sqlite-engine'
 
 import type { SqliteEngine, SqliteEngineOptions } from './engine.types'
@@ -46,4 +48,14 @@ export async function startEngine(params: {
 		runtime,
 		options,
 	})
+}
+
+/** Wait, a message turn at a time, until the file has no free page left (the engine gives them back in steps). */
+export async function untilNoFreePages(params: { db: Database }): Promise<void> {
+	const { db } = params
+	for (let turn = 0; turn < 10_000; turn += 1) {
+		if (freePagesOf({ db }) === 0) return
+		await yieldToMessages()
+	}
+	throw new Error('the free pages were never given back')
 }

@@ -131,16 +131,3 @@ export function columnDefinitions(params: { columns: Record<string, string> }): 
 		.map(([column, type]) => `${column} ${type}`)
 		.join(', ')
 }
-
-/**
- * Give the free pages back to the file (incremental auto-vacuum): after a document's table is
- * dropped, the file shrinks by its pages. One step frees one page: stepped to the end.
- */
-export function reclaimFreePages(params: { db: Database }): void {
-	const statement = params.db.prepare('PRAGMA incremental_vacuum')
-	try {
-		while (statement.step());
-	} finally {
-		statement.finalize()
-	}
-}

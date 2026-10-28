@@ -1,4 +1,4 @@
-import { throwDialecteError, toDialecteError } from '@/errors'
+import { createDialecteError, toDialecteError } from '@/errors'
 
 import type { StoreFailureKey } from './engine.types'
 
@@ -15,10 +15,21 @@ export function asStoreFailure<GenericResult>(params: {
 	try {
 		return work()
 	} catch (thrown) {
-		if (toDialecteError(thrown)) throw thrown
-		const cause = thrown instanceof Error ? thrown : new Error(String(thrown))
-		throwDialecteError(key, { detail: `${detail}: ${cause.message}`, cause })
+		throw toStoreFailure({ key, detail, thrown })
 	}
+}
+
+/** A failure of SQLite as the operation's store error, the failure as its cause; a refusal stays as it is. */
+export function toStoreFailure(params: {
+	key: StoreFailureKey
+	detail: string
+	thrown: unknown
+}): Error {
+	const { key, detail, thrown } = params
+	// a structured error is an Error carrying its record
+	if (toDialecteError(thrown)) return thrown as Error
+	const cause = thrown instanceof Error ? thrown : new Error(String(thrown))
+	return createDialecteError(key, { detail: `${detail}: ${cause.message}`, cause })
 }
 
 /** A read: a failure of SQLite is thrown as `STORE_READ_FAILED`, `detail` naming what was read. */

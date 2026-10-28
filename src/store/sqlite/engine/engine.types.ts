@@ -35,6 +35,21 @@ export type SqliteEngineOptions = {
 	steadyCacheMiB?: number
 	/** How long an import writes in one transaction before it commits and lets other calls run. */
 	importWindowMs: number
+	/** How long the free pages are given back before the queued calls run. */
+	reclaimSliceMs: number
+	/** How many free pages one reclaim statement gives back. */
+	reclaimPagesPerStatement: number
+}
+
+/** A reclaim of the file's free pages on the engine's connection. */
+export type ReclaimParams = {
+	db: Database
+	/** Commit the running import's window before a statement writes (as before any foreign write). */
+	settle: () => void
+	/** Whether the engine was closed meanwhile: the reclaim stops there. */
+	isClosed: () => boolean
+	pagesPerStatement: number
+	sliceMs: number
 }
 
 export type OpenSqliteEngineParams = {
@@ -311,8 +326,8 @@ export type ImportTargetParams = {
 	file: File
 	/** The engine's record count per document, kept in step by the import's writes. */
 	counts: Map<string, number>
-	/** The engine's removal of a document (table, row, free pages): what a failed import leaves goes. */
-	removeDocument: (params: { documentId: string }) => void
+	/** The engine's removal of a document (table, row, free pages in steps): what a failed import leaves goes. */
+	removeDocument: (params: { documentId: string }) => Promise<void>
 	/** The import's transactions. */
 	window: ImportWindow
 	/** How long the import works before the engine's queue gets a turn (its window's time). */
