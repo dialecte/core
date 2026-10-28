@@ -27,6 +27,7 @@
 			"types": "./dist/test.d.ts",
 			"default": "./dist/test.js"
 		},
+		"./test/xsd/*": "./dist/test/xsd/*",
 		"./utils": {
 			"types": "./dist/utils.d.ts",
 			"default": "./dist/utils.js"
@@ -96,5 +97,52 @@
 		"vitepress": "^2.0.0-alpha.17",
 		"vitepress-plugin-llms": "^1.13.2",
 		"vitest": "^4.1.10"
+	},
+	"dialecte": {
+		"gate": {
+			"fast": [
+				{
+					"name": "check",
+					"run": "npm run check"
+				},
+				{
+					"name": "skills",
+					"run": "npm run skills:check"
+				},
+				{
+					"name": "tests",
+					"run": "npx vitest run --project unit --changed",
+					"counts": "tests",
+					"changedOnly": true
+				}
+			],
+			"full": [
+				{
+					"name": "check",
+					"run": "npm run check"
+				},
+				{
+					"name": "skills",
+					"run": "npm run skills:check"
+				},
+				{
+					"name": "build",
+					"run": "npm run build"
+				},
+				{
+					"name": "tests",
+					"run": "nice -n 10 npx vitest run --project unit --project node --no-file-parallelism",
+					"counts": "tests"
+				},
+				{
+					"name": "docs",
+					"run": "npm run doc:build"
+				},
+				{
+					"name": "type-bench",
+					"run": "npm run type-bench:check"
+				}
+			]
+		}
 	}
 }
