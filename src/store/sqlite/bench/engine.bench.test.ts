@@ -1,6 +1,7 @@
 import { EngineStore } from '../../engine/engine-store'
 import { createInProcessConnector } from '../adapter/in-process-link'
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
+import { commitWaitsOf, epochNow } from './bench-commit-waits'
 import { createBenchImportRuntime, stagesOf } from './bench-import-session'
 import { fetchFixtureFile, waitForQuietMachine } from './bench-page'
 import {
@@ -24,7 +25,6 @@ import { commands } from 'vitest/browser'
 
 import type {
 	BenchFixtureName,
-	CommitDuringImport,
 	CommitWaits,
 	EngineBenchWorkerApi,
 	EngineHistoryExportRun,
@@ -188,51 +188,6 @@ function commitEvery(params: { api: EngineBenchWorkerApi }): {
 	}
 }
 
-/** The commits sent during the import, each against the import's index builds (a phase `indexing` until the next change). */
-function commitWaitsOf(params: {
-	sent: { sentAt: number; resolvedAt: number }[]
-	imported: HistoryImport
-}): CommitWaits {
-	const { sent, imported } = params
-	const { phases, startedAtEpochMs, endedAtEpochMs } = imported
-	const indexing = phases.flatMap(({ atEpochMs, phase }, index) =>
-		phase === 'indexing'
-			? [{ from: atEpochMs, to: phases[index + 1]?.atEpochMs ?? endedAtEpochMs }]
-			: [],
-	)
-	const all: CommitDuringImport[] = sent
-		.filter(({ sentAt }) => sentAt <= endedAtEpochMs)
-		.map(({ sentAt, resolvedAt }) => ({
-			sentMs: sentAt - startedAtEpochMs,
-			waitMs: resolvedAt - sentAt,
-			duringIndexing: indexing.some(({ from, to }) => from < resolvedAt && to > sentAt),
-		}))
-	const outside = all.filter((commit) => !commit.duringIndexing).map((commit) => commit.waitMs)
-	const during = all.filter((commit) => commit.duringIndexing).map((commit) => commit.waitMs)
-	return {
-		commits: all.length,
-		outsideIndexing: {
-			count: outside.length,
-			p50Ms: medianOf({ values: outside }),
-			maxMs: Math.max(0, ...outside),
-		},
-		duringIndexing: { count: during.length, maxMs: Math.max(0, ...during) },
-		all,
-	}
-}
-
-function medianOf(params: { values: number[] }): number {
-	const sorted = [...params.values].sort((left, right) => left - right)
-	if (sorted.length === 0) return 0
-	const middle = Math.floor(sorted.length / 2)
-	return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
-}
-
-/** The time on the clock every realm of the page shares. */
-function epochNow(): number {
-	return performance.timeOrigin + performance.now()
-}
-
 describe('engine bench (the SQLite engine as built)', () => {
 	it.runIf(RUN && CELL_FILTER.test('engine-import-50-in-process'))(
 		'engine-import-50-in-process',
@@ -243,6 +198,30 @@ describe('engine bench (the SQLite engine as built)', () => {
 				run: () => importInProcess({ file }),
 			})) as EngineImportRun
 			expect(result.recordCount).toBeGreaterThan(0)
+		},
+		ENGINE_BENCH_CELL_TIMEOUT_MS,
+	)
+
+	it.runIf(RUN && CELL_FILTER.test('engine-liveness-500-opfs-worker'))(
+		'engine-liveness-500-opfs-worker',
+		async () => {
+			const file = await fixtureFile({ name: 'composed-500-compact' })
+			const { worker, api } = spawnEngineWorker()
+			try {
+				const result = (await recordCell({
+					name: 'engine-liveness-500-opfs-worker',
+					run: () =>
+						api.importOnOpfs({
+							file,
+							project: 'engine-liveness-500',
+							root: FIXTURE_ROOTS.composed,
+							afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
+						}),
+				})) as EngineImportRun
+				expect(result.recordCount).toBeGreaterThan(0)
+			} finally {
+				worker.terminate()
+			}
 		},
 		ENGINE_BENCH_CELL_TIMEOUT_MS,
 	)

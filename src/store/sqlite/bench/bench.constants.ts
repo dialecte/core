@@ -280,3 +280,18 @@ export const HISTORY_EXPORT_FIXTURES: Record<string, BenchFixtureName> = {
 	'50': 'composed-50-compact',
 	'500': 'composed-500-compact',
 }
+
+/** The port bench's files: the composed compact ones, by size. */
+export const PORT_BENCH_FIXTURES: Record<string, BenchFixtureName> = {
+	'50': 'composed-50-compact',
+	'500': 'composed-500-compact',
+}
+
+/** How many times the port bench opens a pool, each way. */
+export const POOL_OPEN_RUNS = 5
+
+/** How often the start cell sends a read while the engine gives a dead import's pages back. */
+export const RECLAIM_READ_EVERY_MS = 100
+
+/** How long the start cell waits for the free pages to be back before it fails. */
+export const RECLAIM_WAIT_MAX_MS = 120_000

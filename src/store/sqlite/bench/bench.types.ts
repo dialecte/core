@@ -508,6 +508,17 @@ export type EngineImportRun = {
 	stages: Record<string, StageTiming>
 	/** The database file's size once the document is ready (pages times page size). */
 	databaseBytes: number
+	/**
+	 * The engine's signs of life during the import (beats as the runtime makes them, unthrottled): their
+	 * count, the time told busy, the longest silences outside busy spans (from the import's start), and
+	 * the import's phases on the same clock.
+	 */
+	liveness?: {
+		beats: number
+		busyMs: number
+		longestGaps: { atMs: number; gapMs: number }[]
+		phases?: PhaseChange[]
+	}
 }
 
 /** A database file's pages, as SQLite counts them. */
@@ -519,8 +530,12 @@ export type EngineStartRun = {
 	readyRows: number
 	fillMs: { dead: number; ready: number }
 	before: FilePages
-	/** The engine's start as it runs: layout check, the dead import swept, its pages given back. */
+	/** The engine's start as it runs: layout check, the dead import swept (its pages given back after, in steps). */
 	startMs: number
+	/** From the start until the last free page was given back. */
+	reclaimMs: number
+	/** Reads sent as messages every `RECLAIM_READ_EVERY_MS` while the pages were given back: each one's wait. */
+	readWaits: { count: number; p50Ms: number; maxMs: number }
 	/** The page cache the engine started with (the device's), in MiB. */
 	cacheMiB: number
 	after: FilePages
@@ -633,4 +648,24 @@ export type EngineBenchWorkerApi = {
 	historyUndo: (params: { documentId: string }) => Promise<void>
 	/** The engine closed, the pool removed. */
 	historyClose: () => Promise<void>
+}
+
+/** The port bench on one file: the import alone and with another view committing, through the store's ports. */
+export type PortCommitsRun = {
+	recordCount: number
+	/** The import alone, from the call to its answer on this page. */
+	aloneMs: number
+	stagesAlone: Record<string, StageTiming>
+	/** The same import while the other view commits every `COMMIT_EVERY_MS`. */
+	withCommitsMs: number
+	stagesWithCommits: Record<string, StageTiming>
+	commits: CommitWaits
+	/** Opens of the file's pool once it holds the document, each by a new engine worker. */
+	existingPool: PoolOpenRuns
+}
+
+/** Opens of a pool: by a new worker (probe, install, open), and closed then opened again in one worker. */
+export type PoolOpenRuns = {
+	openMs: number[]
+	resumeMs: number[]
 }

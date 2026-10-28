@@ -1,7 +1,11 @@
+import { withOpaquePhases } from '../../engine/host/heartbeat'
+import { yieldToMessages } from '../../engine/message-turn'
 import { RECORD_COLUMN_LIST } from '../engine/engine.constants'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { inWriteTransaction } from '../engine/transaction'
 import { loadSqlite } from '../load-sqlite'
+import { installProgressBeat } from '../runtime/progress-beat'
+import { PROGRESS_BEAT_OPS } from '../runtime/runtime.constants'
 import { createBenchImportRuntime, stagesOf } from './bench-import-session'
 import { installPool } from './bench-pool'
 import {
@@ -9,15 +13,20 @@ import {
 	ENGINE_BENCH_DIALECTE_ID,
 	FILL_ATTRIBUTE_BYTES,
 	FILL_ROWS_PER_TRANSACTION,
+	RECLAIM_READ_EVERY_MS,
+	RECLAIM_WAIT_MAX_MS,
 } from './bench.constants'
 
 import * as Comlink from 'comlink'
 
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
+import type { Heartbeat } from '../../engine/host/host.types'
 import type { SqliteEngine, SqliteEngineOptions } from '../engine/engine.types'
 import type {
 	EngineBenchWorkerApi,
+	EngineImportRun,
+	EngineStartRun,
 	FilePages,
 	HistoryCellState,
 	PhaseChange,
@@ -38,16 +47,32 @@ const api: EngineBenchWorkerApi = {
 		const pool = await installPool({ sqlite3, project })
 		try {
 			const db = new pool.OpfsSAHPoolDb(ENGINE_BENCH_DATABASE_PATH)
+			// the engine's signs of life as the runtime installs them, timed instead of posted
+			const signs = createSignRecorder()
+			installProgressBeat({ sqlite3, db, heartbeat: signs.heartbeat, ops: PROGRESS_BEAT_OPS })
+			const runtime = createBenchImportRuntime({ root, afterImportRatio })
 			const engine = openSqliteEngine({
 				sqlite3,
 				db,
 				dialecteId: ENGINE_BENCH_DIALECTE_ID,
 				name: project,
-				runtime: createBenchImportRuntime({ root, afterImportRatio }),
+				runtime: {
+					...runtime,
+					hooks: withOpaquePhases({ hooks: runtime.hooks, heartbeat: signs.heartbeat }),
+				},
+				onWork: signs.heartbeat.beat,
 			})
 			try {
 				const startedAt = performance.now()
-				const result = await engine.importFile({ file, writeId: 'w-bench', clientId: 'bench' })
+				const phases: PhaseChange[] = []
+				const result = await engine.importFile(
+					{ file, writeId: 'w-bench', clientId: 'bench' },
+					function keepPhases(progress) {
+						if (phases.at(-1)?.phase !== progress.phase) {
+							phases.push({ phase: progress.phase, atEpochMs: performance.now() - startedAt })
+						}
+					},
+				)
 				const dropToReadyMs = performance.now() - startedAt
 				const { pages, pageSize } = pagesOf({ db })
 				return {
@@ -55,6 +80,7 @@ const api: EngineBenchWorkerApi = {
 					recordCount: result.recordCount,
 					stages: stagesOf({ snapshot: result.perf }),
 					databaseBytes: pages * pageSize,
+					liveness: { ...signs.gaps({ since: startedAt }), phases },
 				}
 			} finally {
 				engine.close()
@@ -86,6 +112,7 @@ const api: EngineBenchWorkerApi = {
 			const startMs = performance.now() - startedAt
 			try {
 				const cacheMiB = -Number(db.selectValue('PRAGMA cache_size')) / 1024
+				const reclaim = await readsUntilReclaimed({ engine, db, startedAt })
 				const after = pagesOf({ db })
 				engine.close()
 				const restartMs = timed({
@@ -98,7 +125,17 @@ const api: EngineBenchWorkerApi = {
 						}).close()
 					},
 				})
-				return { deadRows, readyRows, fillMs, before, startMs, cacheMiB, after, restartMs }
+				return {
+					deadRows,
+					readyRows,
+					fillMs,
+					before,
+					startMs,
+					cacheMiB,
+					...reclaim,
+					after,
+					restartMs,
+				}
 			} finally {
 				if (db.isOpen()) engine.close()
 			}
@@ -212,6 +249,109 @@ Comlink.expose(api)
 
 /** What the history cell's calls share: one pool and one engine, the subtree its edits delete. */
 const history: HistoryCellState = {}
+
+/**
+ * The engine's signs of life, timed: every beat the work makes (unthrottled), and the busy spans told
+ * around dialecte code; `gaps` answers the longest silences outside busy spans, from `since`.
+ */
+function createSignRecorder(): {
+	heartbeat: Heartbeat
+	gaps: (params: { since: number }) => NonNullable<EngineImportRun['liveness']>
+} {
+	const beats: number[] = []
+	const busy: { from: number; to: number }[] = []
+	let busySince: number | undefined
+	function beat(): void {
+		const now = performance.now()
+		beats.push(now)
+		if (busySince !== undefined) {
+			busy.push({ from: busySince, to: now })
+			busySince = undefined
+		}
+	}
+	return {
+		heartbeat: {
+			add: function ignorePort() {},
+			remove: function ignorePort() {},
+			beat,
+			idle: beat,
+			busy: function markBusy() {
+				beats.push(performance.now())
+				busySince = performance.now()
+			},
+		},
+		gaps: function gapsOf({ since }) {
+			const silences = beats
+				.slice(1)
+				.map((at, index) => ({ atMs: beats[index]! - since, gapMs: at - beats[index]! }))
+				.filter(
+					({ atMs, gapMs }) =>
+						!busy.some(({ from, to }) => from - since <= atMs && to - since >= atMs + gapMs),
+				)
+				.sort((left, right) => right.gapMs - left.gapMs)
+			return {
+				beats: beats.length,
+				busyMs: busy.reduce((total, { from, to }) => total + to - from, 0),
+				longestGaps: silences.slice(0, 5),
+			}
+		},
+	}
+}
+
+/**
+ * While the engine gives the dead import's pages back in steps: a read sent every
+ * `RECLAIM_READ_EVERY_MS` as a message (as a view's call arrives), each one's wait from when it was due
+ * to answered; and when the last free page was given back, from the start (within `RECLAIM_WAIT_MAX_MS`).
+ */
+async function readsUntilReclaimed(params: {
+	engine: SqliteEngine
+	db: Database
+	startedAt: number
+}): Promise<Pick<EngineStartRun, 'reclaimMs' | 'readWaits'>> {
+	const { engine, db, startedAt } = params
+	const channel = new MessageChannel()
+	const waits: number[] = []
+	const firstDueAt = performance.now()
+	let sent = 0
+	channel.port1.onmessage = async function answerRead(event: MessageEvent<number>) {
+		await engine.getDocuments()
+		// from when the read was due: a timer in this realm may fire late behind the reclaim's turns
+		waits.push(performance.now() - event.data)
+	}
+	const timer = setInterval(function sendReadsDue() {
+		// every read due since the last tick, each with its due time: a late tick sends the ones it missed
+		while (firstDueAt + sent * RECLAIM_READ_EVERY_MS <= performance.now()) {
+			channel.port2.postMessage(firstDueAt + sent * RECLAIM_READ_EVERY_MS)
+			sent += 1
+		}
+	}, RECLAIM_READ_EVERY_MS)
+	const deadline = performance.now() + RECLAIM_WAIT_MAX_MS
+	let reclaimMs: number
+	try {
+		while (Number(db.selectValue('PRAGMA freelist_count')) > 0) {
+			if (performance.now() > deadline) {
+				throw new Error(`the free pages were not back after ${RECLAIM_WAIT_MAX_MS} ms`)
+			}
+			await yieldToMessages()
+		}
+		reclaimMs = performance.now() - startedAt
+		clearInterval(timer)
+		// the reads still on their way are answered too: the slowest ones are often the last
+		while (waits.length < sent) await yieldToMessages()
+	} finally {
+		clearInterval(timer)
+		channel.port1.close()
+	}
+	const sorted = [...waits].sort((left, right) => left - right)
+	return {
+		reclaimMs,
+		readWaits: {
+			count: sorted.length,
+			p50Ms: sorted[Math.floor(sorted.length / 2)] ?? 0,
+			maxMs: sorted.at(-1) ?? 0,
+		},
+	}
+}
 
 function openedEngine(): { engine: SqliteEngine; db: Database } {
 	if (!history.opened?.db.isOpen()) throw new Error('the history cell has no engine open')
