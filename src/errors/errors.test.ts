@@ -5,7 +5,8 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import { runTestCases } from '@/test'
 
-import type { DialecteErrorKey } from './types'
+import type { CatalogueExplanation, DialecteErrorDefinition, DialecteErrorKey } from './types'
+import type { DiagnosticCatalogueEntry } from '@/diagnostics'
 import type { BaseTestCase } from '@/test'
 
 const DIALECT_ERRORS = defineErrors({
@@ -19,6 +20,15 @@ function catchThrown(act: () => unknown): unknown {
 		return error
 	}
 	return undefined
+}
+
+/** The keys whose entry does not say when it is raised and the usual fix. */
+function keysWithoutExplanation(params: {
+	catalog: Record<string, { explanation?: CatalogueExplanation }>
+}): string[] {
+	return Object.entries(params.catalog)
+		.filter(([, entry]) => !entry.explanation?.when || !entry.explanation.fix)
+		.map(([key]) => key)
 }
 
 /** Each code given to more than one key, with those keys. */
@@ -182,6 +192,37 @@ describe('ERROR_CATALOG', () => {
 
 	runTestCases.generic(testCases, () => {
 		expect(codesTakenTwice({ catalog: ERROR_CATALOG })).toEqual([])
+	})
+})
+
+describe('ERROR_CATALOG explanations', () => {
+	type TestCase = BaseTestCase
+
+	const testCases: Record<string, TestCase> = {
+		'the core catalogue → every entry says when it is raised and the usual fix': {},
+	}
+
+	runTestCases.generic(testCases, () => {
+		expect(keysWithoutExplanation({ catalog: ERROR_CATALOG })).toEqual([])
+	})
+})
+
+describe('explanation on a catalogue entry', () => {
+	it('an error definition and a diagnostic catalogue entry → may carry an explanation', () => {
+		expectTypeOf<DialecteErrorDefinition['explanation']>().toEqualTypeOf<
+			CatalogueExplanation | undefined
+		>()
+		expectTypeOf<DiagnosticCatalogueEntry['explanation']>().toEqualTypeOf<
+			CatalogueExplanation | undefined
+		>()
+		const errors = defineErrors({
+			NAME_TAKEN: {
+				code: 'X1001',
+				message: 'The name is already taken',
+				explanation: { when: 'A sibling holds the name', fix: 'Pick another name' },
+			},
+		})
+		expect(errors.NAME_TAKEN.explanation?.fix).toBe('Pick another name')
 	})
 })
 

@@ -1,3 +1,5 @@
+import type { CatalogueExplanation } from '@/errors'
+
 /**
  * The levels of the language-server protocol: `error` and `warning` say something is wrong,
  * `information` reports what was done (a value rewritten on import), `hint` what could be better.
@@ -42,11 +44,15 @@ export type Diagnostic<GenericCode extends string = string> = {
 	meta?: Record<string, unknown>
 }
 
-/** What a catalogue says of one code: the severity its diagnostics carry, their family, their default wording. */
+/**
+ * What a catalogue says of one code: the severity its diagnostics carry, their family, their default
+ * wording, and optionally when it is raised and the usual fix.
+ */
 export type DiagnosticCatalogueEntry = {
 	severity: DiagnosticSeverity
 	family: DiagnosticFamily
 	message: string
+	explanation?: CatalogueExplanation
 }
 
 /**

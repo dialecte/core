@@ -4,6 +4,19 @@ export type DialecteErrorKey = keyof typeof ERROR_CATALOG
 export type DialecteErrorCode = (typeof ERROR_CATALOG)[DialecteErrorKey]['code']
 
 /**
+ * What a catalogue says of a code beyond its message, for a reader who met it and wants to act on
+ * it (`dialecte explain <code>`): when it is raised, the usual fix, and the docs page about it.
+ */
+export type CatalogueExplanation = {
+	/** When it is raised: the situation, in the reader's words. */
+	when: string
+	/** The usual fix. */
+	fix: string
+	/** The docs page about it, when one exists. */
+	docs?: string
+}
+
+/**
  * An error a dialecte declares beside the core catalogue: its own key, its own code and the
  * default message shown when the consumer has no wording of its own for that key.
  * Build a catalogue of them with `defineErrors`.
@@ -12,10 +25,14 @@ export type DialecteErrorDefinition<GenericKey extends string = string> = {
 	key: GenericKey
 	code: string
 	message: string
+	explanation?: CatalogueExplanation
 }
 
 /** What a dialecte gives `defineErrors`: one entry per error, named by its key. */
-export type DialecteErrorCatalogInput = Record<string, { code: string; message: string }>
+export type DialecteErrorCatalogInput = Record<
+	string,
+	{ code: string; message: string; explanation?: CatalogueExplanation }
+>
 
 /** What `defineErrors` returns: each entry of the catalogue with its property name as `key`. */
 export type DialecteErrorDefinitions<GenericCatalog extends DialecteErrorCatalogInput> = {

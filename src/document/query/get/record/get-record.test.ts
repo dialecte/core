@@ -2,6 +2,7 @@ import { getRecord } from './get-record'
 
 import { describe, expect, it } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
@@ -281,5 +282,46 @@ describe('getRecord', () => {
 				await project.destroy()
 			}
 		})
+	})
+})
+
+describe('getRecord - a ref naming another tag than the record holds', () => {
+	type TestCase = BaseXmlTestCase & { staged: boolean }
+
+	const testCases: TestCases<TestCase> = {
+		'committed record → ELEMENT_TAGNAME_MISMATCH, meta names the id and both tags': {
+			sourceXml: /* xml */ `<Root ${ns}><A ${customId}="a1" aA="X"/></Root>`,
+			staged: false,
+		},
+		'staged record → ELEMENT_TAGNAME_MISMATCH, meta names the id and both tags': {
+			sourceXml: /* xml */ `<Root ${ns}><A ${customId}="a1" aA="X"/></Root>`,
+			staged: true,
+		},
+	}
+
+	runTestCases.withoutExport<TestCase>({
+		testCases,
+		act: async ({ testCase, source }) => {
+			let thrown: unknown
+			if (testCase.staged) {
+				await source
+					.prepare(async (tx) => {
+						await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'Y' } })
+						await tx.any.getRecord({ tagName: 'B', id: 'a1' })
+					})
+					.catch((error: unknown) => {
+						thrown = error
+					})
+			} else {
+				await source.query.any.getRecord({ tagName: 'B', id: 'a1' }).catch((error: unknown) => {
+					thrown = error
+				})
+			}
+			expect(toDialecteError(thrown)).toMatchObject({
+				key: 'ELEMENT_TAGNAME_MISMATCH',
+				ref: { tagName: 'B', id: 'a1' },
+				meta: { id: 'a1', expectedTagName: 'B', actualTagName: 'A' },
+			})
+		},
 	})
 })

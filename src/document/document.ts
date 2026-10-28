@@ -1,6 +1,7 @@
 import { bindExtensions } from './bind-extensions'
 import { Query } from './query'
 import { Transaction } from './transaction'
+import { summarizeOperations } from './transaction/commit/summarize-operations'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 
@@ -183,11 +184,7 @@ export class Document<
 		fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<T>,
 		options?: { label?: string },
 	): Promise<T> {
-		if (this.activeTransactions > 0) {
-			throwDialecteError('CONCURRENT_TRANSACTION', {
-				detail: `${this.activeTransactions} transaction(s) already active. Concurrent transactions risk lost updates — serialize them or implement a transaction queue.`,
-			})
-		}
+		this.assertNoActiveTransaction()
 
 		this.activeTransactions++
 		this.state.loading = true
@@ -255,6 +252,7 @@ export class Document<
 		fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<void>,
 		options?: { label?: string },
 	): Promise<PreparedTransaction<GenericConfig, GenericExtension>> {
+		this.assertNoActiveTransaction()
 		this.activeTransactions++
 		this.state.loading = true
 		this.state.error = null
@@ -275,11 +273,7 @@ export class Document<
 		this.state.loading = false
 
 		const operations = tx.getStagedOperations()
-		const summary = {
-			creates: operations.filter((op) => op.status === 'created').length,
-			updates: operations.filter((op) => op.status === 'updated').length,
-			deletes: operations.filter((op) => op.status === 'deleted').length,
-		}
+		const summary = summarizeOperations(operations)
 
 		let settled = false
 
@@ -296,6 +290,7 @@ export class Document<
 				if (settled) {
 					return
 				}
+				this.assertNoActiveTransaction()
 				settled = true
 
 				this.activeTransactions++
@@ -359,6 +354,18 @@ export class Document<
 	}
 
 	//== Lifecycle
+
+	/**
+	 * One write at a time on this Document: a transaction, a prepare or a prepared commit started while
+	 * another is open would stage against records the other is about to overwrite.
+	 */
+	private assertNoActiveTransaction(): void {
+		if (this.activeTransactions > 0) {
+			throwDialecteError('CONCURRENT_TRANSACTION', {
+				detail: `${this.activeTransactions} transaction(s) already active. Concurrent transactions risk lost updates — serialize them or implement a transaction queue.`,
+			})
+		}
+	}
 
 	/**
 	 * Close the connection to the project's store, shared by every document of the project: after it,
