@@ -1,5 +1,4 @@
 import path from 'node:path'
-/// <reference types="vite/client" />
 import { fileURLToPath, URL } from 'node:url'
 
 // VITE
@@ -23,7 +22,9 @@ export default defineConfig({
 		},
 	},
 	build: {
-		sourcemap: import.meta.env?.DEV,
+		// a config file runs in Node, where import.meta.env does not exist; Vite sets NODE_ENV to production for a
+		// build unless it is set already: `NODE_ENV=development npm run build` gives maps
+		sourcemap: process.env.NODE_ENV === 'development',
 		lib: {
 			entry: {
 				index: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
