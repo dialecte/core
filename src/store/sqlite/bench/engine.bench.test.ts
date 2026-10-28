@@ -1,18 +1,5 @@
-/**
- * Engine bench: the SQLite engine as built, timed on the composed 50 MB compact file (the write-back
- * session at the path-named ratio) through `SqliteStore.importFile` in the page (in-memory file) and
- * through the engine in a worker on a real OPFS pool (the layout bench's setting); the engine's
- * start on a file holding a dead import in front of a ready 500 MB document; and, on the composed
- * 50 MB and 500 MB compact files in a worker on OPFS, the import alone and with another view
- * committing meanwhile (each commit's wait), the export, and the largest voltage level deleted,
- * undone and redone (`engine-history-export-<size>`). Runs only under
- * `--mode bench`, a cell at a time below a 1-minute load of 8; pick cells with `VITE_BENCH_CELLS`.
- *
- *   BENCH_SCL_FIXTURES_DIR=<dir> VITE_BENCH=1 VITE_BENCH_CELLS='^engine-import' \
- *     nice -n 10 npx vitest run --project perf --mode bench src/store/sqlite/bench/engine.bench.test.ts
- */
+import { EngineStore } from '../../engine/engine-store'
 import { createInProcessConnector } from '../adapter/in-process-link'
-import { SqliteStore } from '../adapter/sqlite-store'
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
 import { createBenchImportRuntime, stagesOf } from './bench-import-session'
 import { fetchFixtureFile, waitForQuietMachine } from './bench-page'
@@ -44,6 +31,20 @@ import type {
 	EngineImportRun,
 	HistoryImport,
 } from './bench.types'
+
+/**
+ * Engine bench: the SQLite engine as built, timed on the composed 50 MB compact file (the write-back
+ * session at the path-named ratio) through `EngineStore.importFile` in the page (in-memory file) and
+ * through the engine in a worker on a real OPFS pool (the layout bench's setting); the engine's
+ * start on a file holding a dead import in front of a ready 500 MB document; and, on the composed
+ * 50 MB and 500 MB compact files in a worker on OPFS, the import alone and with another view
+ * committing meanwhile (each commit's wait), the export, and the largest voltage level deleted,
+ * undone and redone (`engine-history-export-<size>`). Runs only under
+ * `--mode bench`, a cell at a time below a 1-minute load of 8; pick cells with `VITE_BENCH_CELLS`.
+ *
+ *   BENCH_SCL_FIXTURES_DIR=<dir> VITE_BENCH=1 VITE_BENCH_CELLS='^engine-import' \
+ *     nice -n 10 npx vitest run --project perf --mode bench src/store/sqlite/bench/engine.bench.test.ts
+ */
 
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
 const CELL_FILTER = new RegExp(import.meta.env.VITE_BENCH_CELLS ?? '^$')
@@ -88,7 +89,7 @@ async function importInProcess(params: { file: File }): Promise<EngineImportRun>
 			afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
 		}),
 	})
-	const store = new SqliteStore({ name, connector })
+	const store = new EngineStore({ name, connector })
 	await store.open()
 	try {
 		const startedAt = performance.now()

@@ -1,3 +1,9 @@
+import type {
+	EngineApi,
+	EngineCommitParams,
+	EngineExportParams,
+	EngineImportParams,
+} from '../../engine/engine.types'
 import type { HISTORY_ENTRY_STATE, HISTORY_PART, RECORD_INDEXES } from './engine.constants'
 import type { DialecteErrorKey } from '@/errors'
 import type { Perf } from '@/perf'
@@ -5,17 +11,14 @@ import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentStatus } from '@/project/types'
 import type {
 	ExportControl,
-	ExportFileOptions,
 	ExportFileResult,
 	ImportControl,
-	ImportFileOptions,
 	ImportFileResult,
 	ImportPhase,
 	ImportProgress,
-	Store,
 } from '@/store/store.types'
 import type { AnyRawRecord } from '@/types'
-import type { Database, Sqlite3Static, SqlValue } from '@sqlite.org/sqlite-wasm'
+import type { Database, SqlValue, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** How a page cache follows the device's memory: `mibPerGiB` per GiB, held between a floor and a ceiling. */
 export type DeviceCacheRule = {
@@ -65,61 +68,13 @@ export type OpenSqliteEngineParams = {
 	options?: Partial<SqliteEngineOptions>
 }
 
-/** The port members an engine serves, with the port's own signatures. */
-export type SqliteEngineMember =
-	| 'registerDocument'
-	| 'getDocument'
-	| 'getDocuments'
-	| 'updateDocument'
-	| 'removeDocument'
-	| 'get'
-	| 'getByDocumentId'
-	| 'count'
-	| 'getByTagNameInDocument'
-	| 'getMany'
-	| 'bulkWrite'
-	| 'getWriteOutcome'
-	| 'undo'
-	| 'redo'
-	| 'getHistoryStatus'
-	| 'getChangeLog'
-
-/** A file to import, as a client hands it to the engine: plain data, the progress listener apart. */
-export type SqliteImportParams = {
-	file: File
-	options?: ImportFileOptions
-	/** The caller's id for this import, kept on the document's registry row. */
-	writeId: string
-}
-
-/** An export as a client asks the engine for it: plain data, the progress listener apart. */
-export type SqliteExportParams = {
-	documentId: string
-	options?: ExportFileOptions
-	/** The caller's id for this export, by which it is aborted; one export of an id runs at a time. */
-	exportId: string
-}
-
 /** An export as the engine runs it: the client that asked for it owns it. */
-export type SqliteEngineExportParams = SqliteExportParams & {
+export type SqliteEngineExportParams = EngineExportParams & {
 	clientId: string
 }
 
-/** A commit as a client hands it to the engine: plain data, the progress listener apart. */
-export type SqliteCommitParams = {
-	documentId: string
-	/** The caller's id for this commit, kept on its history entry. */
-	writeId: string
-	creates: AnyRawRecord[]
-	updates: AnyRawRecord[]
-	deletes: string[]
-}
-
-/** How far a commit is, as the port tells it: the operations written, out of all of them. */
-export type CommitProgressListener = (current: number, total: number) => void
-
 /** A commit on the engine's file; `settle` commits the running import's window first. */
-export type CommitRecordsParams = SqliteCommitParams & {
+export type CommitRecordsParams = EngineCommitParams & {
 	sqlite3: Sqlite3Static
 	db: Database
 	settle: () => void
@@ -135,50 +90,12 @@ export type HistoryStepParams = {
 }
 
 /** An import as the engine runs it: the client that asked for it owns it. */
-export type SqliteEngineImportParams = SqliteImportParams & {
+export type SqliteEngineImportParams = EngineImportParams & {
 	clientId: string
 }
 
-/**
- * The port members an engine serves alike to every client, with the port's signatures: registry,
- * reads, bulk writes, write outcomes, history; and a commit, its progress listener an argument of its own.
- */
-export type SqliteEngineMembers = Pick<Store, SqliteEngineMember> &
-	SqliteEngineBlobMembers & {
-		commit: (params: SqliteCommitParams, onProgress?: CommitProgressListener) => Promise<void>
-	}
-
-/** The blob members of the port an engine serves, with the port's signatures (a `Blob` crosses a port as it is). */
-export type SqliteEngineBlobMember =
-	| 'addBlob'
-	| 'getBlob'
-	| 'getBlobsByDocument'
-	| 'getBlobsByRecord'
-	| 'getStandaloneBlobs'
-	| 'attachBlob'
-	| 'detachBlob'
-	| 'removeBlob'
-
-export type SqliteEngineBlobMembers = Pick<Store, SqliteEngineBlobMember>
-
-/** The store port as one client of an engine reaches it: an import's progress listener is an argument of its own. */
-export type SqliteEngineApi = SqliteEngineMembers & {
-	importFile: (
-		params: SqliteImportParams,
-		onProgress?: ImportControl['onProgress'],
-	) => Promise<ImportFileResult>
-	/** Abort the import of that id: it is refused `IMPORT_ABORTED` and leaves nothing; an id no import runs is ignored. */
-	abortImport: (params: { writeId: string }) => Promise<void>
-	exportFile: (
-		params: SqliteExportParams,
-		onProgress?: ExportControl['onProgress'],
-	) => Promise<ExportFileResult>
-	/** Abort the export of that id: it is refused `EXPORT_ABORTED`; an id no export runs is ignored. */
-	abortExport: (params: { exportId: string }) => Promise<void>
-}
-
 /** One project's database behind the store port: the single writer of its file, serving every client. */
-export type SqliteEngine = Omit<SqliteEngineApi, 'importFile' | 'exportFile'> & {
+export type SqliteEngine = Omit<EngineApi, 'importFile' | 'exportFile'> & {
 	/** An import owned by the client that asked for it; one import runs at a time, the others wait their turn. */
 	importFile: (
 		params: SqliteEngineImportParams,
@@ -194,7 +111,7 @@ export type SqliteEngine = Omit<SqliteEngineApi, 'importFile' | 'exportFile'> & 
 	/** Abort every export the client owns: its connection is gone. */
 	abortExportsOf: (params: { clientId: string }) => void
 	/** The engine as that client reaches it: its imports owned by it, nothing more than the port. */
-	clientView: (params: { clientId: string }) => SqliteEngineApi
+	clientView: (params: { clientId: string }) => EngineApi
 	/**
 	 * Abort every import and every export, then close the database; the engine refuses every call after
 	 * (`STORE_CLOSED`).

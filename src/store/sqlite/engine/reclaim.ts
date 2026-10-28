@@ -1,4 +1,4 @@
-import { yieldToMessages } from './message-turn'
+import { yieldToMessages } from '../../engine/message-turn'
 
 import type { ReclaimParams } from './engine.types'
 

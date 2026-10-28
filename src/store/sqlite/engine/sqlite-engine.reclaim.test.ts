@@ -7,9 +7,9 @@ import {
 	sessionRecords,
 } from '../../contract/store-contract.fixtures'
 import { createContractRuntime } from '../../contract/store-contract.import-session'
+import { yieldToMessages } from '../../engine/message-turn'
 import { loadSqlite } from '../load-sqlite'
 import { openMemoryFile, startEngine, untilNoFreePages } from './engine.fixtures'
-import { yieldToMessages } from './message-turn'
 import { freePagesOf } from './reclaim'
 
 import { afterEach, describe, expect, it } from 'vitest'

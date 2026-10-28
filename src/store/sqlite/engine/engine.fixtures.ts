@@ -1,5 +1,5 @@
+import { yieldToMessages } from '../../engine/message-turn'
 import { loadSqlite } from '../load-sqlite'
-import { yieldToMessages } from './message-turn'
 import { freePagesOf } from './reclaim'
 import { openSqliteEngine } from './sqlite-engine'
 

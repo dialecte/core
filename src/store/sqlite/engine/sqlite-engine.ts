@@ -32,9 +32,9 @@ import {
 	deleteDocument,
 	deleteUnfinishedImports,
 	documentTablesOf,
-	readDocumentState,
 	insertDocument,
 	readDocument,
+	readDocumentState,
 	readDocuments,
 	readDocumentsByWriteId,
 	recordTableOf,
@@ -55,19 +55,18 @@ import { writeOutcomeOf } from '@/store/write-outcome'
 import { invariant } from '@/utils'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
+import type { EngineBlobMembers, EngineMembers } from '../../engine/engine.types'
 import type {
 	EncodedRows,
 	ExportReads,
-	RunningExport,
 	HistoryDirection,
-	RecordReadsById,
-	SqliteEngineBlobMembers,
-	SqliteEngineExportParams,
 	OpenSqliteEngineParams,
+	RecordReadsById,
+	RunningExport,
 	RunningImport,
 	SqliteEngine,
+	SqliteEngineExportParams,
 	SqliteEngineImportParams,
-	SqliteEngineMembers,
 } from './engine.types'
 import type {
 	ExportControl,
@@ -139,7 +138,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	/** Set by `close()`: every call refused from then on, an import resumed after it aborted first. */
 	const state = { closed: false }
 
-	const blobMembers: SqliteEngineBlobMembers = {
+	const blobMembers: EngineBlobMembers = {
 		/**
 		 * Refused, nothing written, in the order every store answers in: an owner document not
 		 * registered, then an entry that is not JSON. The bytes are read first, before any statement.
@@ -239,7 +238,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		},
 	}
 
-	const members: SqliteEngineMembers = {
+	const members: EngineMembers = {
 		...blobMembers,
 		registerDocument: async function registerDocument(document) {
 			refuseClosed({ state, name })

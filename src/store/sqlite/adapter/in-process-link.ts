@@ -2,18 +2,14 @@ import { throwStoreClosed } from '../../store-errors'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
 
+import type { EngineConnector, EngineLink } from '../../engine/engine-store.types'
 import type { SqliteEngine } from '../engine/engine.types'
-import type {
-	InProcessConnectorParams,
-	InProcessFile,
-	SqliteEngineConnector,
-	SqliteEngineLink,
-} from './sqlite-store.types'
+import type { InProcessConnectorParams, InProcessFile } from './in-process-link.types'
 
 /** The in-memory project files of this realm, by name: one state per name, as the origin's files are. */
 const FILES = new Map<string, InProcessFile>()
 /** The connections open on each name; they outlive a destroy of the name and follow its new file. */
-const CLIENTS = new Map<string, Set<SqliteEngineLink>>()
+const CLIENTS = new Map<string, Set<EngineLink>>()
 
 /**
  * The engine of a project run in the calling realm, on an in-memory file of its own (`memdb`): a
@@ -21,7 +17,7 @@ const CLIENTS = new Map<string, Set<SqliteEngineLink>>()
  * the file stays until the name is destroyed, so the next engine starts on what was written - its
  * start (layout check, unfinished imports removed) runs as after a reload.
  */
-export function createInProcessConnector(params: InProcessConnectorParams): SqliteEngineConnector {
+export function createInProcessConnector(params: InProcessConnectorParams): EngineConnector {
 	return {
 		connect: function connectInProcess() {
 			return connectToEngine(params)
@@ -32,13 +28,13 @@ export function createInProcessConnector(params: InProcessConnectorParams): Sqli
 	}
 }
 
-async function connectToEngine(params: InProcessConnectorParams): Promise<SqliteEngineLink> {
+async function connectToEngine(params: InProcessConnectorParams): Promise<EngineLink> {
 	const { name } = params
-	const clients = CLIENTS.get(name) ?? new Set<SqliteEngineLink>()
+	const clients = CLIENTS.get(name) ?? new Set<EngineLink>()
 	CLIENTS.set(name, clients)
 	const clientId = crypto.randomUUID()
 	let released = false
-	const link: SqliteEngineLink = {
+	const link: EngineLink = {
 		engine: async function currentEngine() {
 			// a released connection is not counted: it must not start an engine nobody would close
 			if (released) throwStoreClosed({ storeName: name })
