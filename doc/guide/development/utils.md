@@ -30,6 +30,7 @@ import {
 	saveToDisk,
 	formatXml,
 	formatEmbeddedXml,
+	createSeededRandomUuid,
 } from '@dialecte/core/utils'
 ```
 
@@ -426,4 +427,17 @@ It backs the **`dialecte-xmlfmt` bin**, so a consuming package needs no wrapper 
 	"format:xml": "dialecte-xmlfmt 'src/**/*.test.ts'",
 	"format:xml:check": "dialecte-xmlfmt --check 'src/**/*.test.ts'"
 }
+```
+
+## Deterministic ids
+
+### `createSeededRandomUuid`
+
+A stand-in for `crypto.randomUUID` whose ids follow from a seed: the same seed gives the same sequence, every id in the layout of a version 4 UUID. Install it before a script runs and two runs mint the same ids - what `dialecte run` and the test runner's `act` do. No vitest needed. Not for ids that must be unguessable.
+
+```ts
+import { createSeededRandomUuid } from '@dialecte/core/utils'
+
+crypto.randomUUID = createSeededRandomUuid({ seed: 1 })
+crypto.randomUUID() // the same id on every run with seed 1
 ```

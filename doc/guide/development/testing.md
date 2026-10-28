@@ -212,29 +212,32 @@ During import, `createTestProject` always sets `useCustomRecordsIds: true`. Any 
 await tx.update({ tagName: 'A', id: 'elem-a-1' }, { attributes: { aA: 'updated' } })
 ```
 
-Because `runTestCases.withExport` exports with `withDatabaseIds: true`, the `dev:db-id` attribute is present in the output XML and XPath assertions can target by ID:
+Because `runTestCases.withExport` exports with `withDatabaseIds: true`, every element of the output XML carries its record id as `_temp-idb-id`, and XPath assertions can target by ID:
 
 ```ts
-expectedQueries: ['//default:A[@dev:db-id="elem-a-1"][@aA="updated"]']
+expectedQueries: ['//default:A[@_temp-idb-id="elem-a-1"][@aA="updated"]']
 ```
 
 ### Deterministic UUIDs for created elements
 
-When a transaction creates new elements (no `dev:db-id` in the source XML), they receive random UUIDs. `runTestCases.withExport` replaces `crypto.randomUUID` with a counter-based mock during `act`, so generated IDs are deterministic: `"0"`, `"1"`, `"2"`, ...
+When a transaction creates new elements (no `dev:db-id` in the source XML), they receive random UUIDs. `runTestCases` replaces `crypto.randomUUID` during `act` with ids that follow from a seed: UUID-shaped (version 4 layout), the same sequence on every run.
 
 ```ts
-expectedQueries: ['//default:AA_1[@dev:db-id="0"][@aAA_1="created"]']
+import { createSeededRandomUuid } from '@dialecte/core/utils'
+
+const firstCreatedId = createSeededRandomUuid({ seed: 0 })()
+expectedQueries: [`//default:AA_1[@_temp-idb-id="${firstCreatedId}"][@aAA_1="created"]`]
 ```
 
 The mock is scoped to each test's act phase. Setup always uses real UUIDs to avoid collisions between parallel tests.
 
-`createMockRandomUUID` is exported for manual tests outside `runTestCases`:
+`createMockRandomUUID({ seed? })` is exported for manual tests outside `runTestCases` (seed 0 by default); it is `createSeededRandomUuid` from `@dialecte/core/utils`, which a script outside vitest uses directly:
 
 ```ts
 import { createMockRandomUUID } from '@dialecte/core/test'
 
 crypto.randomUUID = createMockRandomUUID()
-// IDs from here: "0", "1", "2", ...
+// ids from here: the seed-0 sequence, each in the layout of a UUID
 ```
 
 Prefer `dev:db-id` over mock UUIDs when possible - more explicit, decoupled from creation order.

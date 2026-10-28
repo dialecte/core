@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: check-behaviour-by-running
+expected_outcome: |
+  Checks the behaviour by running it rather than reasoning from the source: writes the claim under
+  test as the expected document state first, before any outcome is known, as a `dialecte run --expect` file (a JSON array of { tag, where?, under?,
+  count? }, here AA_1 under A), writes a module script whose default export gets { doc, ... } and adds
+  the second AA_1 in a transaction, runs `dialecte run <script> --in <fixture> --expect <file>` (with
+  `--prepare` or `--json` as it needs), and answers from the outcome: whether an error was thrown
+  (code, key, path; `dialecte explain <code>` for its meaning) or the element was written (the
+  expectation's count and the operations per tag).

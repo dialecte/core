@@ -226,6 +226,29 @@ behaviour, inline XML fixtures with `dev:db-id` ids that say intent, `.withExpor
 resulting XML with XPath, `.withoutExport` asserts inside `act`, `.generic` for pure functions.
 Red first, one case at a time.
 
+## Check a behaviour by running it
+
+When the question is what a call does to a document - which elements a verb writes, whether a write
+is refused and with which error, what a hook adds - run it in Node instead of reasoning from the
+source. `npx @dialecte/cli run` (a cli that lists `run` in its `--help`, on core 0.8) runs a script
+against an in-memory project of the installed dialecte; ids are seeded, so the same script, input and
+`--seed` give the same outcome.
+
+1. **Expectations first**, in a JSON file: `[{ "tag": "Part", "under": { "tag": "Assembly" }, "count": 2 }]` -
+   `where` for attribute values, `count: 0` for none, no `count` for at least one. They say what the
+   user wants, which a valid document does not prove.
+2. **The script** is a module whose default export receives `{ project, doc, documentId, dialecte, helpers, utils }`.
+   Use the dialecte's verbs, not hand-built `addChild` chains; ask the user for values that are open.
+3. **Run it**: `npx @dialecte/cli run script.ts --in fixture.xml --expect expected.json`. `--prepare` stages
+   the first transaction and commits nothing (its operations and what its callback returned are
+   printed); `--json` answers the outcome as data; `--out result.xml` writes the document;
+   `--package <name>` names the dialecte when the project has none or several.
+4. **Read the outcome**, not a guess: `failed: <code> <key> at <path>` for a thrown error, then
+   `npx @dialecte/cli explain <code>` for when it is raised and the usual fix; each unmet expectation
+   with the count found; the operations per tag. Exit 1 means failed or unmet.
+5. Expectations red → script → green; show the user the prepared operations before anything is
+   committed for real.
+
 ## Before you hand over
 
 - Did you walk the reuse ladder and name what you reused?

@@ -8,7 +8,7 @@
 			"signature": "() => void",
 			"summary": "Close the connection to the project's store, shared by every document of the project: after it, no document of this project can read or write. With a built-in store (local, in-memory), opening the project again gives a new store: documents opened before stay closed, open them again from the project. A custom store is reopened in place. To finish with the project, use `project.close`.",
 			"intents": ["close the project's database connection from a document"],
-			"declaredAt": "src/document/document.ts:372"
+			"declaredAt": "src/document/document.ts:379"
 		},
 		{
 			"path": "doc.destroy",
@@ -20,7 +20,7 @@
 				"delete the whole project database from a document",
 				"wipe every document of the project"
 			],
-			"declaredAt": "src/document/document.ts:383"
+			"declaredAt": "src/document/document.ts:390"
 		},
 		{
 			"path": "doc.prepare",
@@ -33,7 +33,7 @@
 				"ask a user to confirm an edit",
 				"dry-run a transaction"
 			],
-			"declaredAt": "src/document/document.ts:254"
+			"declaredAt": "src/document/document.ts:251"
 		},
 		{
 			"path": "doc.query.findAncestors",
@@ -344,7 +344,7 @@
 				"refresh a view after a commit or an undo",
 				"follow transaction progress"
 			],
-			"declaredAt": "src/document/document.ts:66"
+			"declaredAt": "src/document/document.ts:67"
 		},
 		{
 			"path": "doc.transaction",
@@ -357,7 +357,7 @@
 				"add or update or delete elements and commit them",
 				"group edits into one undo step"
 			],
-			"declaredAt": "src/document/document.ts:182",
+			"declaredAt": "src/document/document.ts:183",
 			"example": "await doc.transaction(async (tx) => {\n  await tx.addChild(root, { tagName: 'A', attributes: { aA: 'a' } })\n}, { label: 'Add A' })"
 		},
 		{
