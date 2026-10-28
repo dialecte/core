@@ -12,6 +12,7 @@ export type RuntimeFixtureScenario =
 	| 'slow-statements-silent'
 	| 'progress-beat'
 	| 'liveness'
+	| 'disk-full'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =
@@ -19,6 +20,9 @@ export type RuntimeFixtureOrder =
 	| { type: 'throw-later' }
 	| { type: 'slow' }
 	| { type: 'slow-ddl' }
+	| { type: 'disk-full'; afterWrites?: number }
+	| { type: 'disk-free' }
+	| { type: 'write-fails' }
 
 /** What the fixture's engine workers say on the fixture channel: an order taken, a phase reached. */
 export type RuntimeFixtureNotice =

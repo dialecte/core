@@ -50,10 +50,59 @@ if (scenario === 'no-opfs') {
 		configurable: true,
 	})
 }
+if (scenario === 'disk-full') fillDiskWhenOrdered()
+
 const freeBytes = scenario ? FREE_BYTES_OF_SCENARIO[scenario] : undefined
 if (freeBytes !== undefined) {
 	StorageManager.prototype.estimate = async function estimateShort() {
 		return { quota: 10 * 1024 * 1024 * 1024, usage: 10 * 1024 * 1024 * 1024 - freeBytes }
+	}
+}
+
+/**
+ * Once the case orders `disk-full` (and `afterWrites` more writes went through), the origin is out of
+ * storage: every write to a file of the private file system throws `QuotaExceededError` (as the
+ * browser's quota does) and the estimate says nothing is left - until it orders `disk-free`. Ordered
+ * `write-fails`, every write throws an error that is not the quota's while room is left.
+ */
+function fillDiskWhenOrdered(): void {
+	let full = false
+	let writesLeft: number | undefined
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	let failing = false
+	channel.addEventListener('message', function fillDisk(event: MessageEvent<RuntimeFixtureOrder>) {
+		const order = event.data
+		if (order.type === 'disk-free') {
+			full = false
+			failing = false
+			writesLeft = undefined
+		}
+		if (order.type === 'write-fails') failing = true
+		if (order.type === 'disk-full') {
+			writesLeft = order.afterWrites ?? 0
+			full = writesLeft === 0
+		}
+		if (order.type === 'disk-free' || order.type === 'write-fails' || order.type === 'disk-full') {
+			acknowledge({ channel, order })
+		}
+	})
+	const handles = (globalThis as { FileSystemSyncAccessHandle?: { prototype: { write: unknown } } })
+		.FileSystemSyncAccessHandle
+	if (!handles) return
+	const write = handles.prototype.write as (...args: unknown[]) => number
+	handles.prototype.write = function writeUnlessFull(this: unknown, ...args: unknown[]) {
+		if (!full && writesLeft !== undefined) {
+			writesLeft -= 1
+			full = writesLeft < 0
+		}
+		if (full) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError')
+		if (failing) throw new DOMException('The file could not be written.', 'InvalidStateError')
+		return write.apply(this, args)
+	}
+	const estimate = StorageManager.prototype.estimate
+	StorageManager.prototype.estimate = async function estimateWhileFull(this: StorageManager) {
+		if (!full) return estimate.call(this)
+		return { quota: 10 * 1024 * 1024 * 1024, usage: 10 * 1024 * 1024 * 1024 }
 	}
 }
 

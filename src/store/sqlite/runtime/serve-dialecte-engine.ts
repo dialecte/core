@@ -9,7 +9,13 @@ import { yieldToMessages } from '../../engine/message-turn'
 import { toThrownData } from '../../engine/wire/error-envelope'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
-import { destroyPool, openPool, refuseShortSpace, takeEngineLock } from './install-pool'
+import {
+	destroyPool,
+	explainOutOfSpace,
+	openPool,
+	refuseShortSpace,
+	takeEngineLock,
+} from './install-pool'
 import { installProgressBeat } from './progress-beat'
 import { POOL_FILE, PROGRESS_BEAT_OPS } from './runtime.constants'
 
@@ -218,6 +224,9 @@ async function openEngine(params: {
 			onWork: heartbeat.beat,
 			onLongStatement: function longStatementToldBusy(work) {
 				return runToldBusy({ heartbeat, work })
+			},
+			explainIoFailure: function explainIoFailure({ thrown }) {
+				return explainOutOfSpace({ project, thrown })
 			},
 		})
 		return { resumed }

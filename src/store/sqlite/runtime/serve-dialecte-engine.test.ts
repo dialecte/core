@@ -1,4 +1,4 @@
-import { contractFile, makeDocument } from '../../contract/store-contract.fixtures'
+import { contractFile, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
 import { EngineStore } from '../../engine/engine-store'
 import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
@@ -14,11 +14,14 @@ import {
 	startEngineWorker,
 	uniqueProject,
 } from './runtime.fixtures'
+import { RUNTIME_FIXTURE_CHANNEL } from './runtime.fixtures.constants'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
+
+import type { RuntimeFixtureNotice, RuntimeFixtureOrder } from './runtime.fixtures.types'
 
 /** What a case leaves: its workers ended, its pools removed. */
 const cleanups: (() => Promise<void> | void)[] = []
@@ -189,6 +192,90 @@ describe('an engine worker opening its project', () => {
 		).toBe('STORE_QUOTA_EXCEEDED')
 		expect(await engine.getDocuments()).toEqual([])
 		expect(await engine.getWriteOutcome({ writeId: 'w-big' })).toBe('not-applied')
+	})
+
+	describe('the origin out of storage while it writes (the file system refuses the writes)', () => {
+		/** An engine on the `disk-full` fixture, a document registered, then the disk filled (after some writes). */
+		async function engineOnFullDisk(
+			params: { afterWrites?: number; failing?: boolean } = {},
+		): Promise<Awaited<ReturnType<typeof clientOf>>> {
+			const project = uniqueProject()
+			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'disk-full' }) })
+			await control.request({ message: openMessage({ project }), expect: 'opened' })
+			const engine = await clientOf({ control, clientId: 'c-1' })
+			await engine.registerDocument(makeDocument())
+			await orderDisk(
+				params.failing
+					? { type: 'write-fails' }
+					: { type: 'disk-full', afterWrites: params.afterWrites },
+			)
+			return engine
+		}
+
+		/** The fixture told how its disk is; resolves once the engine worker has taken the order. */
+		async function orderDisk(order: RuntimeFixtureOrder): Promise<void> {
+			const listener = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+			const acknowledged = new Promise<void>(function waitForAck(resolve) {
+				listener.addEventListener(
+					'message',
+					function hear(event: MessageEvent<RuntimeFixtureNotice>) {
+						if (event.data.type === 'ack' && event.data.of === order.type) resolve()
+					},
+				)
+			})
+			const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+			channel.postMessage(order)
+			channel.close()
+			await acknowledged
+			listener.close()
+		}
+
+		it('a commit → STORE_QUOTA_EXCEEDED, nothing of it applied', async () => {
+			const engine = await engineOnFullDisk()
+			const creates = Array.from({ length: 2_000 }, (_, index) => makeRecord({ id: `r${index}` }))
+			expect(
+				await rejectionKey({
+					action: engine.commit({
+						documentId: 'doc-1',
+						writeId: 'w-1',
+						creates,
+						updates: [],
+						deletes: [],
+					}),
+				}),
+			).toBe('STORE_QUOTA_EXCEEDED')
+			expect(await engine.count('doc-1')).toBe(0)
+		})
+
+		it('a commit refused by the file system for another reason while room is left → its own key, STORE_COMMIT_FAILED', async () => {
+			const engine = await engineOnFullDisk({ failing: true })
+			const creates = Array.from({ length: 2_000 }, (_, index) => makeRecord({ id: `r${index}` }))
+			expect(
+				await rejectionKey({
+					action: engine.commit({
+						documentId: 'doc-1',
+						writeId: 'w-1',
+						creates,
+						updates: [],
+						deletes: [],
+					}),
+				}),
+			).toBe('STORE_COMMIT_FAILED')
+		})
+
+		it('an import, the disk filling once it has started writing → STORE_QUOTA_EXCEEDED, nothing registered', async () => {
+			const engine = await engineOnFullDisk({ afterWrites: 20 })
+			const body = Array.from({ length: 5_000 }, (_, index) => `<A aA="${index}"/>`).join('')
+			expect(
+				await rejectionKey({
+					action: engine.importFile({ file: contractFile({ body }), writeId: 'w-import' }),
+				}),
+			).toBe('STORE_QUOTA_EXCEEDED')
+			// the disk full, SQLite cannot even roll back what it began: the aftermath is read once there is room
+			await orderDisk({ type: 'disk-free' })
+			expect(await engine.getWriteOutcome({ writeId: 'w-import' })).toBe('not-applied')
+			expect(await engine.getDocument('doc-1')).toEqual(makeDocument())
+		})
 	})
 
 	it('closed, then opened again in the same worker → the pool resumed, not installed, its data there', async () => {

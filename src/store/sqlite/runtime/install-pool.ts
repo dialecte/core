@@ -1,6 +1,7 @@
 import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
 import {
 	NEW_POOL_FREE_BYTES,
+	OUT_OF_SPACE_BYTES,
 	OPAQUE_DIRECTORY,
 	POOL_CAPACITY,
 	POOL_ROOT_DIRECTORY,
@@ -225,6 +226,30 @@ export async function refuseShortSpace(params: { project: string; bytes: number 
 	throw createDialecteError('STORE_QUOTA_EXCEEDED', {
 		detail: `Project "${project}" needs ${bytes} bytes free, ${available} are left`,
 		meta: { project, needed: bytes, available },
+	})
+}
+
+/**
+ * A write SQLite reports as an I/O error, explained by the file system: the origin has (nearly) no
+ * storage left → `STORE_QUOTA_EXCEEDED`; anything else is no shortage (none returned).
+ */
+export async function explainOutOfSpace(params: {
+	project: string
+	thrown: unknown
+}): Promise<Error | undefined> {
+	const { project, thrown } = params
+	const estimate = await navigator.storage.estimate().catch(function noEstimate() {
+		return undefined
+	})
+	// no estimate: nothing explains the failure, it keeps its own key
+	const { quota, usage = 0 } = estimate ?? {}
+	if (quota === undefined) return undefined
+	const available = quota - usage
+	if (available >= OUT_OF_SPACE_BYTES) return undefined
+	return createDialecteError('STORE_QUOTA_EXCEEDED', {
+		detail: `Project "${project}" ran out of storage: ${available} bytes are left`,
+		meta: { project, available },
+		cause: thrown instanceof Error ? thrown : undefined,
 	})
 }
 

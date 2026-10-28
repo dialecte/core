@@ -159,5 +159,13 @@ export const ROW_SELECT_ALIASES = ROW_SELECT_EXPRESSIONS.map(
 	(expression, index) => `${expression} AS c${index}`,
 ).join(', ')
 
-/** An import needs about this many times its file's size free (its rows, its indexes, the journal). */
-export const IMPORT_SPACE_FACTOR = 2
+/**
+ * An import needs this many times its file's size free. Measured database / file: composed compact 50 MB
+ * and 500 MB 6.5x / 6.6x, structural 50 MB 7.5x (the layout and port benches), indented files 2.8-3.1x; the worst
+ * case and room for the journal and the index sort's temporary file. A file that outgrows it anyway is
+ * refused `STORE_QUOTA_EXCEEDED` when the file system says so.
+ */
+export const IMPORT_SPACE_FACTOR = 8
+
+/** How many causes deep a failure is searched for the SQLite code that started it. */
+export const CAUSE_DEPTH = 8

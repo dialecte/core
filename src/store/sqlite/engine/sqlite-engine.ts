@@ -10,7 +10,7 @@ import {
 import { encodeCheckedRecords, insertEncodedRows } from './bulk-insert'
 import { commitRecords, stepHistory } from './commit'
 import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
-import { asReadFailure, asStoreFailure, toStoreFailure } from './engine-errors'
+import { asReadFailure, asStoreFailure, sqliteCodeOf, toStoreFailure } from './engine-errors'
 import { DEFAULT_ENGINE_OPTIONS, IMPORT_SPACE_FACTOR } from './engine.constants'
 import { hasCommitOf, readChangeLog, readHistoryStatus } from './history'
 import { createImportQueue } from './import-queue'
@@ -44,7 +44,7 @@ import {
 import { createRecordIndexes, prepareFile } from './schema'
 import { inWriteTransaction } from './transaction'
 
-import { throwDialecteError } from '@/errors'
+import { createDialecteError, throwDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
 import { runExport, throwIfExportAborted } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
@@ -93,6 +93,7 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const { sqlite3, db, dialecteId, name, runtime, ensureImportSpace, onWork } = params
 	const onLongStatement = params.onLongStatement ?? runStatement
+	const { explainIoFailure } = params
 	const engineOptions = { ...DEFAULT_ENGINE_OPTIONS, ...params.options }
 	const deviceMiB = deviceCacheMiB({
 		deviceMemoryGiB: reportedDeviceMemoryGiB(),
@@ -400,13 +401,15 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		commit: async function commit(params, onProgress) {
 			refuseClosed({ state, name })
 			const { documentId, creates, updates, deletes } = params
-			const gained = commitRecords({
-				...params,
-				sqlite3,
-				db,
-				settle: function settleBeforeCommit() {
-					settleImport({ importing })
-				},
+			const gained = await writing(function commitInOneTransaction() {
+				return commitRecords({
+					...params,
+					sqlite3,
+					db,
+					settle: function settleBeforeCommit() {
+						settleImport({ importing })
+					},
+				})
 			})
 			noteWrite({ documentId, gained })
 			tellCommitProgress({ onProgress, parts: [creates.length, updates.length, deletes.length] })
@@ -613,6 +616,35 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		noteWrite({ documentId, gained })
 	}
 
+	/**
+	 * A write that failed because the file can grow no more answers `STORE_QUOTA_EXCEEDED` (SQLite's
+	 * `SQLITE_FULL`, or an I/O error the file system explains so); any other failure stays as it is.
+	 */
+	async function outOfSpaceOr(params: { thrown: unknown }): Promise<unknown> {
+		const { thrown } = params
+		const code = sqliteCodeOf({ thrown })
+		if (code === sqlite3.capi.SQLITE_FULL) {
+			return createDialecteError('STORE_QUOTA_EXCEEDED', {
+				detail: `The file of project "${name}" can grow no more`,
+				meta: { project: name },
+				cause: thrown instanceof Error ? thrown : undefined,
+			})
+		}
+		if (code === sqlite3.capi.SQLITE_IOERR && explainIoFailure) {
+			return (await explainIoFailure({ thrown })) ?? thrown
+		}
+		return thrown
+	}
+
+	/** A commit, its failure for want of space answered `STORE_QUOTA_EXCEEDED`. */
+	async function writing<GenericResult>(work: () => GenericResult): Promise<GenericResult> {
+		try {
+			return work()
+		} catch (thrown) {
+			throw await outOfSpaceOr({ thrown })
+		}
+	}
+
 	/** The import runs here, next to the data, in its turn; it writes through the engine's own members. */
 	async function importAsOwner(
 		importParams: SqliteEngineImportParams,
@@ -679,7 +711,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					return result
 				} catch (failure) {
 					endQuietly({ window })
-					throw failure
+					throw await outOfSpaceOr({ thrown: failure })
 				} finally {
 					importing.window = undefined
 				}

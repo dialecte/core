@@ -83,6 +83,11 @@ export type OpenSqliteEngineParams = {
 	 * (an index build's sort, a table dropped): whoever waits on the engine is told so around it.
 	 */
 	onLongStatement?: LongStatementRunner
+	/**
+	 * Says whether a write that failed with an I/O error did because the origin's storage is full: the
+	 * `STORE_QUOTA_EXCEEDED` refusal to answer instead, or none (the file system knows, not SQLite).
+	 */
+	explainIoFailure?: (params: { thrown: unknown }) => Promise<Error | undefined>
 }
 
 /** Runs a statement that may last long as one step of SQLite, telling who waits on the engine around it. */

@@ -26,3 +26,10 @@ export const NEW_POOL_FREE_BYTES = 1024 * 1024
  * long statement; the handler only reads the clock until a beat is due.
  */
 export const PROGRESS_BEAT_OPS = 10_000
+
+/**
+ * A write the file system failed while the origin has less than this left failed for want of space:
+ * the quota refuses a write larger than what is left - the engine's own writes are pages and windows of
+ * a few MiB, but a file's capacity may grow by a larger step - so the bound leaves room to spare.
+ */
+export const OUT_OF_SPACE_BYTES = 64 * 1024 * 1024
