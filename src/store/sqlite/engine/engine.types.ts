@@ -151,8 +151,8 @@ export type ImportQueueEntry = {
 	controller: AbortController
 	/** Whether its turn has come (it runs, or it was aborted while it waited). */
 	hasTurn: boolean
-	/** Whether its work runs: from then on its registry row says what became of it. */
-	running: boolean
+	/** Whether it registered its document: its registry row says what became of it. */
+	registered: boolean
 	/** Gives it its turn. */
 	start: () => void
 }
@@ -168,8 +168,13 @@ export type ImportQueue = {
 	abort: (params: { writeId: string }) => void
 	abortOwnedBy: (params: { clientId: string }) => void
 	abortAll: () => void
-	/** Whether an import of that id waits (its turn not come, or come and its work not begun): no registry row yet. */
-	waits: (params: { writeId: string }) => boolean
+	/**
+	 * Whether an import of that id has no registry row yet though it runs or will - waiting its turn, or
+	 * running before its document is registered (while its space is checked): its row cannot say.
+	 */
+	awaitsRow: (params: { writeId: string }) => boolean
+	/** The import of that id registered its document: from now on its registry row says what became of it. */
+	markRegistered: (params: { writeId: string }) => void
 }
 
 /** An index of a record table. */
@@ -278,6 +283,8 @@ export type ImportTargetParams = {
 	tellPhase: (params: { phase: ImportPhase }) => void
 	/** Runs an index build: one long statement. */
 	onLongStatement: LongStatementRunner
+	/** Told once the import's document is registered (its registry row exists). */
+	onRegistered: () => void
 	/** Whether the file gives its own record ids (they may repeat); generated ids never do. */
 	customIds: boolean
 }

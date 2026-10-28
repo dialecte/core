@@ -66,6 +66,7 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 				},
 			})
 			state.registered = { ...documentTable, documentId: document.id }
+			params.onRegistered()
 			counts.set(document.id, 0)
 		},
 		getDocument: async function getImported(documentId) {
@@ -259,7 +260,7 @@ async function checkPatchesInTurns(params: {
 		}))
 			held.add(id)
 		if (performance.now() - since >= windowMs) {
-			await yieldToQueue()
+			await yieldToTimers()
 			since = performance.now()
 		}
 	}
@@ -281,11 +282,11 @@ async function commitAtCap(params: {
 		detail: `Records of document "${documentId}" could not be committed`,
 		work: window.commitIfDue,
 	})
-	if (committed) await yieldToQueue()
+	if (committed) await yieldToTimers()
 }
 
 /** Let the tasks waiting run (a message of another connection, a timer) before the import goes on. */
-function yieldToQueue(): Promise<void> {
+function yieldToTimers(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
@@ -330,7 +331,7 @@ async function buildIndex(params: {
 	// the index refuses a taken id from now on
 	if (index === 'id') state.givenIds = undefined
 	tellPhase({ phase: 'storing' })
-	await yieldToQueue()
+	await yieldToTimers()
 }
 
 /**

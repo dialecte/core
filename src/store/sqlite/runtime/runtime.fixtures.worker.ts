@@ -1,6 +1,5 @@
 import { CONTRACT_DIALECTE } from '../../contract/store-contract.dialecte'
 import { createHeartbeat } from '../../engine/host/heartbeat'
-import { yieldToMessages } from '../../engine/message-turn'
 import { loadSqlite } from '../load-sqlite'
 import { poolDirectoryOf } from './install-pool'
 import { installProgressBeat } from './progress-beat'
@@ -15,6 +14,7 @@ import {
 
 import { defineDialecte } from '@/dialecte'
 import { serveDialecteEngine } from '@/engine'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type {
 	ProgressBeatOrder,
@@ -257,7 +257,7 @@ const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
 						// dialecte code that yields now and then: other calls are served between its slices
 						for (let spent = 0; spent < afterYieldPauseMs; spent += YIELDING_SLICE_MS) {
 							busyWait({ ms: YIELDING_SLICE_MS })
-							await yieldToMessages()
+							await yieldToQueue()
 						}
 						return session.afterImport!()
 					},

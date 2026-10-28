@@ -1,9 +1,10 @@
-import { yieldToMessages } from '../../engine/message-turn'
 import { loadSqlite } from '../load-sqlite'
 import { freePagesOf } from './reclaim'
 import { openSqliteEngine } from './sqlite-engine'
 
-import type { SqliteEngine, SqliteEngineOptions } from './engine.types'
+import { yieldToQueue } from '@/utils/yield-to-queue'
+
+import type { OpenSqliteEngineParams, SqliteEngine, SqliteEngineOptions } from './engine.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
@@ -38,8 +39,9 @@ export async function startEngine(params: {
 	options?: Partial<SqliteEngineOptions>
 	runtime?: StoreRuntime
 	onWork?: () => void
+	ensureImportSpace?: OpenSqliteEngineParams['ensureImportSpace']
 }): Promise<SqliteEngine> {
-	const { db, options, runtime, onWork } = params
+	const { db, options, runtime, onWork, ensureImportSpace } = params
 	const sqlite3 = await loadSqlite()
 	return openSqliteEngine({
 		sqlite3,
@@ -49,6 +51,7 @@ export async function startEngine(params: {
 		runtime,
 		options,
 		onWork,
+		ensureImportSpace,
 	})
 }
 
@@ -57,7 +60,7 @@ export async function untilNoFreePages(params: { db: Database }): Promise<void> 
 	const { db } = params
 	for (let turn = 0; turn < 10_000; turn += 1) {
 		if (freePagesOf({ db }) === 0) return
-		await yieldToMessages()
+		await yieldToQueue()
 	}
 	throw new Error('the free pages were never given back')
 }

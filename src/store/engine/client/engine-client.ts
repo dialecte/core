@@ -1,5 +1,4 @@
 import { ENGINE_SIGNAL } from '../engine.constants'
-import { yieldToMessages } from '../message-turn'
 import { fromThrownData } from '../wire/error-envelope'
 import { toWireArgs } from '../wire/wire-values'
 import { ENGINE_WIRE_MEMBERS } from '../wire/wire.constants'
@@ -8,6 +7,7 @@ import { ENGINE_HEARTBEAT_TIMEOUT_MS } from './client.constants'
 import * as Comlink from 'comlink'
 
 import { createDialecteError } from '@/errors'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { EngineApi } from '../engine.types'
 import type { EngineWire, WireMemberSpec } from '../wire/wire.types'
@@ -207,7 +207,7 @@ function watchHeartbeat(params: {
 			return
 		}
 		// before a loss, the messages queued meanwhile go through first (a page stalled, or frozen with its worker)
-		void yieldToMessages().then(judgeAfterTurn)
+		void yieldToQueue().then(judgeAfterTurn)
 	}
 
 	function judgeAfterTurn(): void {

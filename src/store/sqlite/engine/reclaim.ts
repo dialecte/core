@@ -1,4 +1,4 @@
-import { yieldToMessages } from '../../engine/message-turn'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { ReclaimParams } from './engine.types'
 
@@ -18,7 +18,7 @@ export async function reclaimInSteps(params: ReclaimParams): Promise<void> {
 		// a step is a few virtual-machine steps a page: too few for SQLite's progress handler to beat
 		onStep?.()
 		if (performance.now() - sliceStartedAt < sliceMs) continue
-		await yieldToMessages()
+		await yieldToQueue()
 		sliceStartedAt = performance.now()
 	}
 }

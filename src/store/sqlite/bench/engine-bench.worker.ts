@@ -1,5 +1,4 @@
 import { withOpaquePhases } from '../../engine/host/heartbeat'
-import { yieldToMessages } from '../../engine/message-turn'
 import { RECORD_COLUMN_LIST } from '../engine/engine.constants'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { inWriteTransaction } from '../engine/transaction'
@@ -20,6 +19,7 @@ import {
 import * as Comlink from 'comlink'
 
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { Heartbeat } from '../../engine/host/host.types'
 import type { SqliteEngine, SqliteEngineOptions } from '../engine/engine.types'
@@ -332,12 +332,12 @@ async function readsUntilReclaimed(params: {
 			if (performance.now() > deadline) {
 				throw new Error(`the free pages were not back after ${RECLAIM_WAIT_MAX_MS} ms`)
 			}
-			await yieldToMessages()
+			await yieldToQueue()
 		}
 		reclaimMs = performance.now() - startedAt
 		clearInterval(timer)
 		// the reads still on their way are answered too: the slowest ones are often the last
-		while (waits.length < sent) await yieldToMessages()
+		while (waits.length < sent) await yieldToQueue()
 	} finally {
 		clearInterval(timer)
 		channel.port1.close()

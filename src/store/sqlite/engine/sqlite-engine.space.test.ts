@@ -40,6 +40,29 @@ function manyElements(params: { count: number }): string {
 	return Array.from({ length: params.count }, (_, index) => `<A aA="${index}"/>`).join('')
 }
 
+describe('an import whose space is being checked', () => {
+	it('its outcome asked meanwhile → running (no row yet, yet it will apply), then applied', async () => {
+		const file = await openMemoryFile({ opened })
+		const checking = Promise.withResolvers<void>()
+		const engine = await startEngine({
+			db: file.connect(),
+			runtime: createContractRuntime(),
+			ensureImportSpace: () => checking.promise,
+		})
+		const importing = engine.importFile({
+			file: contractFile({ body: '<A aA="1"/>' }),
+			writeId: 'w-1',
+			clientId: 'c-1',
+		})
+		// the import has its turn and awaits its check
+		await new Promise((resolve) => setTimeout(resolve, 0))
+		expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('running')
+		checking.resolve()
+		await importing
+		expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('applied')
+	})
+})
+
 describe('an engine whose file can grow no more', () => {
 	it('an import outgrowing it → STORE_QUOTA_EXCEEDED naming the project, nothing registered', async () => {
 		const { engine, cap } = await startCappedEngine()

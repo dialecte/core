@@ -1,4 +1,3 @@
-import { yieldToMessages } from '../../engine/message-turn'
 import {
 	deleteBlob,
 	readBlob,
@@ -54,6 +53,7 @@ import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwStoreClosed } from '@/store/store-errors'
 import { writeOutcomeOf } from '@/store/write-outcome'
 import { invariant } from '@/utils'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
 import type { EngineBlobMembers, EngineMembers } from '../../engine/engine.types'
@@ -369,8 +369,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			return asReadFailure({
 				detail: `The outcome of write "${writeId}"`,
 				work: function outcomeFromRegistry() {
-					// waiting its turn, an import has no row yet; once it runs, its row says
-					if (queue.waits({ writeId })) return 'running'
+					// an import with no row yet runs or will (waiting its turn, or checking its space); then its row says
+					if (queue.awaitsRow({ writeId })) return 'running'
 					const documents = readDocumentsByWriteId({ db, writeId })
 					return writeOutcomeOf({ documents, writeId, committed: hasCommitOf({ db, writeId }) })
 				},
@@ -695,6 +695,9 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					windowMs: engineOptions.importWindowMs,
 					tellPhase: progress.tellPhase,
 					onLongStatement,
+					onRegistered: function rowWritten() {
+						queue.markRegistered({ writeId })
+					},
 					customIds: options?.useCustomRecordsIds ?? false,
 				})
 				importing.window = window
@@ -740,7 +743,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		exports.set(exportId, { clientId, controller, reads })
 		try {
 			// the calls sent before it are served first: an abort its caller sent right after it lands
-			await yieldToMessages()
+			await yieldToQueue()
 			return await runExport(
 				{
 					source: exportSourceOf({ signal: controller.signal, documentId, reads }),

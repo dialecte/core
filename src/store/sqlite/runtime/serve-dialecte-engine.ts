@@ -5,7 +5,6 @@ import {
 	ENGINE_HEARTBEAT_INTERVAL_MS,
 } from '../../engine/host/host.constants'
 import { createStoreEvents } from '../../engine/host/store-events'
-import { yieldToMessages } from '../../engine/message-turn'
 import { toThrownData } from '../../engine/wire/error-envelope'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
@@ -20,6 +19,7 @@ import { installProgressBeat } from './progress-beat'
 import { POOL_FILE, PROGRESS_BEAT_OPS } from './runtime.constants'
 
 import { createDialecteError } from '@/errors'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { EngineControlAnswer, EngineControlRequest } from '../../engine/engine.types'
 import type { EngineDialecte } from '../../engine/host/host.types'
@@ -254,8 +254,12 @@ function openedEngine(params: { state: EngineRuntimeState }): {
 /** Every import and export aborted, the database closed, the pool paused (its files kept), the lock released. */
 async function closeEngine(params: { state: EngineRuntimeState }): Promise<void> {
 	const { state } = params
-	await endEngineAndClients({ state })
-	releasePool({ state })
+	try {
+		await endEngineAndClients({ state })
+	} finally {
+		// the lock let go whatever ending the engine did: in hub mode the next engine waits for it
+		releasePool({ state })
+	}
 }
 
 /**
@@ -270,14 +274,18 @@ async function endEngineAndClients(params: { state: EngineRuntimeState }): Promi
 	state.clients.clear()
 	let budget: ReturnType<typeof setTimeout> | undefined
 	await Promise.race([
-		Promise.all(clients.map((client) => client.drained())),
+		Promise.all(
+			clients.map(function drainedOf(client) {
+				return client.drained()
+			}),
+		),
 		new Promise(function waitDrainBudget(resolve) {
 			budget = setTimeout(resolve, CLIENT_DRAIN_BUDGET_MS)
 		}),
 	])
 	clearTimeout(budget)
 	// the answers posted first: a port closed a turn later never loses one
-	await yieldToMessages()
+	await yieldToQueue()
 	for (const client of clients) client.port.close()
 	state.events?.close()
 	state.events = undefined

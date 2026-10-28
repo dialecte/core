@@ -46,9 +46,10 @@ function thrownDataAt(params: { thrown: unknown; depth: number }): ThrownData {
 	const { thrown, depth } = params
 	const structured = toDialecteError(thrown)
 	if (structured && thrown instanceof Error) {
-		const { cause, meta, ...record } = structured
+		const { cause, meta, ref, ...record } = structured
 		const error: DialecteErrorData = { ...record }
 		if (meta !== undefined) error.meta = cloneSafe({ value: meta }) as Record<string, unknown>
+		if (ref !== undefined) error.ref = cloneSafe({ value: ref }) as DialecteErrorData['ref']
 		if (cause !== undefined && depth < WIRE_CAUSE_DEPTH) {
 			error.cause = thrownDataAt({ thrown: cause, depth: depth + 1 })
 		}
@@ -73,7 +74,7 @@ function thrownDataAt(params: { thrown: unknown; depth: number }): ThrownData {
  * A value a port carries: as it is when it clones; else a plain array or object rebuilt member by
  * member, each member that does not clone as its text (a function, a symbol); a cycle as its text.
  */
-function cloneSafe(params: { value: unknown; ancestors?: Set<object> }): unknown {
+export function cloneSafe(params: { value: unknown; ancestors?: Set<object> }): unknown {
 	const { value, ancestors = new Set<object>() } = params
 	if (clones({ value })) return value
 	if (typeof value !== 'object' || value === null || ancestors.has(value)) return String(value)

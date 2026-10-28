@@ -7,7 +7,6 @@ import {
 	sessionRecords,
 } from '../../contract/store-contract.fixtures'
 import { createContractRuntime } from '../../contract/store-contract.import-session'
-import { yieldToMessages } from '../../engine/message-turn'
 import { loadSqlite } from '../load-sqlite'
 import { openMemoryFile, startEngine, untilNoFreePages } from './engine.fixtures'
 import { freePagesOf } from './reclaim'
@@ -15,6 +14,7 @@ import { freePagesOf } from './reclaim'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { SqliteEngineOptions } from './engine.types'
 import type { AnyRawRecord } from '@/types'
@@ -64,7 +64,7 @@ function slowFile(params: { file: File }): File {
 			const reader = file.stream().getReader()
 			return new ReadableStream({
 				pull: async function readAfterTurn(controller) {
-					await yieldToMessages()
+					await yieldToQueue()
 					const { done, value } = await reader.read()
 					if (!done) return controller.enqueue(value)
 					reader.releaseLock()
@@ -206,7 +206,7 @@ describe('the free pages given back in steps', () => {
 			const file = await fileWithDeadImport()
 			const engine = await startEngine({ db: file.connect(), options: MANY_SLICES })
 			engine.close()
-			await yieldToMessages()
+			await yieldToQueue()
 			expect(freePagesOf({ db: file.keeper })).toBeGreaterThan(0)
 			const db = file.connect()
 			await startEngine({ db })
