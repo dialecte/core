@@ -4,7 +4,6 @@ import {
 	CONTRACT_LEVELS_ABOVE_METADATA_VALUE,
 	CONTRACT_SESSION_DIAGNOSTICS,
 	CONTRACT_SESSION_FAIL_VALUE,
-	CONTRACT_SESSION_HOLD_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
 } from './store-contract.constants'
@@ -1629,6 +1628,36 @@ const nonJsonPatchPlace: StoreContractCases = {
 		},
 }
 
+/** A proxy over plain data, as a reactive framework hands its objects: it reads as the data. */
+function reactive<GenericValue extends object>(value: GenericValue): GenericValue {
+	return new Proxy(value, {})
+}
+
+const proxiesKept: StoreContractCases = {
+	'a document registered, records created by a bulk write and by a commit, each a proxy over plain data → kept as the plain data they read as':
+		{
+			needs: ['history'],
+			act: async ({ store }) => {
+				await store.registerDocument(
+					reactive(makeDocument({ metadata: reactive({ origin: 'ui' }) })),
+				)
+				await store.bulkWrite('doc-1', { creates: reactive([reactive(makeRecord({ id: 'r1' }))]) })
+				await commit({
+					store,
+					documentId: 'doc-1',
+					creates: [
+						reactive(makeRecord({ id: 'r2', attributes: [reactive({ name: 'a', value: '1' })] })),
+					],
+				})
+				expect(await store.getDocuments()).toEqual([makeDocument({ metadata: { origin: 'ui' } })])
+				expect(await store.getByDocumentId('doc-1')).toEqual([
+					makeRecord({ id: 'r1' }),
+					makeRecord({ id: 'r2', attributes: [{ name: 'a', value: '1' }] }),
+				])
+			},
+		},
+}
+
 const undefinedFieldsDropped: StoreContractCases = {
 	'a document registered with fields holding undefined → read without them': {
 		act: async ({ store }) => {
@@ -2292,7 +2321,7 @@ const importing: StoreContractCases = {
 				const other = await connect()
 				const hold = holdContractImport()
 				const importing = store.importFile({
-					file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 					writeId: 'w-held',
 				})
 				try {
@@ -2321,8 +2350,7 @@ const importing: StoreContractCases = {
 			const importing = store.importFile({
 				file: contractFile({
 					body:
-						`<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` +
-						`<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
+						`<B aB="B0" bB="${hold.value}"/>` + `<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
 				}),
 				writeId: 'w-failing',
 			})
@@ -2350,7 +2378,7 @@ const importing: StoreContractCases = {
 				const importing = store.importFile({
 					file: contractFile({
 						body:
-							`<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` +
+							`<B aB="B0" bB="${hold.value}"/>` +
 							`<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
 					}),
 					writeId: 'w-failing',
@@ -2510,7 +2538,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 			act: async ({ store, connect }) => {
 				const hold = holdContractImport()
 				const importing = store.importFile({
-					file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 					writeId: 'w-held',
 				})
 				try {
@@ -2915,7 +2943,7 @@ const closedStore: StoreContractCases = {
 		act: async ({ store, reopen }) => {
 			const hold = holdContractImport()
 			const importing = store.importFile({
-				file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 				writeId: 'w-held',
 			})
 			try {
@@ -2937,7 +2965,7 @@ const closedStore: StoreContractCases = {
 		act: async ({ store }) => {
 			const hold = holdContractImport()
 			const importing = store.importFile({
-				file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 				writeId: 'w-held',
 			})
 			try {
@@ -3044,6 +3072,7 @@ export const STORE_CONTRACT: StoreContractGroups = {
 		...nonJsonValues,
 		...nonJsonBlobValues,
 		...undefinedFieldsDropped,
+		...proxiesKept,
 		...extraFieldsDropped,
 		...nonJsonPatchPlace,
 		...nonJsonRefusalOrder,

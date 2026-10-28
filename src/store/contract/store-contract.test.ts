@@ -1,9 +1,10 @@
+import { POOL_ROOT_DIRECTORY } from '../sqlite/runtime/runtime.constants'
 import { STORE_CONTRACT } from './store-contract.cases'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_CONTRACT_FACTORIES } from './store-contract.factories'
 import { STORE_PATH_CONTRACT } from './store-contract.path.cases'
 
-import { afterEach, beforeEach, describe, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { Store } from '../store.types'
 import type {
@@ -105,3 +106,21 @@ function runStoreContract(factory: StoreContractFactory): void {
 for (const factory of STORE_CONTRACT_FACTORIES) {
 	runStoreContract(factory)
 }
+
+describe('the store contract over every leg', () => {
+	it('every store a case opened is destroyed after it: no pool of a contract leg left on the private file system', async () => {
+		if (typeof navigator === 'undefined' || typeof navigator.storage?.getDirectory !== 'function')
+			return
+		const root = await navigator.storage.getDirectory()
+		const left: string[] = []
+		try {
+			const pools = await root.getDirectoryHandle(POOL_ROOT_DIRECTORY)
+			for await (const name of pools.keys()) {
+				if (decodeURIComponent(name).startsWith('store-contract-')) left.push(name)
+			}
+		} catch {
+			// no pool directory at all
+		}
+		expect(left).toEqual([])
+	})
+})

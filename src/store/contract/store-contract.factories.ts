@@ -4,6 +4,7 @@ import { DexieStore } from '../local'
 import { createInProcessConnector } from '../sqlite/adapter/in-process-link'
 import { createContractRuntime } from './store-contract.import-session'
 
+import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { StoreContractFactory } from './store-contract.types'
@@ -84,9 +85,44 @@ const sqliteInProcessStoreFactory: StoreContractFactory = {
 	},
 }
 
+/** The engine of the contract dialecte, served from a worker as a dialecte's worker entry serves it. */
+const CONTRACT_ENGINE_URL = new URL('./store-contract.worker.ts', import.meta.url).href
+
+/** An open SQLite store of that name, its engine run in a worker of this realm on the origin's private files. */
+async function openWorkerStore(name: string): Promise<EngineStore> {
+	const connector = createSqliteWorkerConnector({
+		name,
+		engineUrl: CONTRACT_ENGINE_URL,
+		perf: true,
+	})
+	const store = new EngineStore({ name, connector })
+	await store.open()
+	return store
+}
+
+const sqliteWorkerStoreFactory: StoreContractFactory = {
+	name: 'EngineStore worker',
+	create: async function createWorkerStore() {
+		return openWorkerStore(uniqueName('store-contract-worker'))
+	},
+	reopen: async function reopenWorkerStore(store) {
+		await store.close()
+		return openWorkerStore(store.name)
+	},
+	connect: async function connectWorkerStore(store) {
+		return openWorkerStore(store.name)
+	},
+}
+
+/** Whether this realm can run an engine worker on the origin's private files (a browser, not node). */
+function canRunEngineWorker(): boolean {
+	return typeof Worker === 'function' && typeof navigator.storage?.getDirectory === 'function'
+}
+
 /** The stores the contract runs over today; a new kind of store joins by adding its factory here. */
 export const STORE_CONTRACT_FACTORIES: StoreContractFactory[] = [
 	inMemoryStoreFactory,
 	dexieStoreFactory,
 	sqliteInProcessStoreFactory,
+	...(canRunEngineWorker() ? [sqliteWorkerStoreFactory] : []),
 ]

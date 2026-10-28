@@ -1,6 +1,7 @@
 import { throwStoreClosed } from '../../store-errors'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
+import { realmWasmUrl } from '../sqlite-wasm-url'
 
 import type { EngineConnector, EngineLink } from '../../engine/engine-store.types'
 import type { SqliteEngine } from '../engine/engine.types'
@@ -57,7 +58,7 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Engine
 /** The engine running on the name's file, started first (on a new file when the name has none). */
 async function engineOf(params: InProcessConnectorParams): Promise<SqliteEngine> {
 	const { name, dialecteId, runtime, options } = params
-	const sqlite3 = await loadSqlite()
+	const sqlite3 = await loadSqlite({ wasmUrl: realmWasmUrl() })
 	const file = FILES.get(name) ?? { keeper: new sqlite3.oo1.DB(fileName({ name }), 'c') }
 	FILES.set(name, file)
 	if (!file.engine) {

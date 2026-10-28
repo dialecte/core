@@ -44,6 +44,23 @@ const benchInstances = (): BrowserConfigOptions['instances'] =>
 				},
 			]
 
+// The unit suite runs on Chromium; UNIT_FIREFOX_EXECUTABLE runs it once on stock Firefox over BiDi instead (the
+// engine's worker legs, best effort: Playwright's own Firefox build does not start on every macOS).
+const unitInstances = (): BrowserConfigOptions['instances'] =>
+	process.env.UNIT_FIREFOX_EXECUTABLE
+		? [
+				{
+					browser: 'firefox',
+					provider: playwright({
+						launchOptions: {
+							channel: 'moz-firefox',
+							executablePath: process.env.UNIT_FIREFOX_EXECUTABLE,
+						},
+					}),
+				},
+			]
+		: [{ browser: 'chromium' }]
+
 export default mergeConfig(
 	viteConfig,
 	defineConfig({
@@ -58,7 +75,7 @@ export default mergeConfig(
 					plugins: [],
 					test: {
 						name: 'unit',
-						browser: createBrowser(),
+						browser: createBrowser(unitInstances()),
 						include: ['src/**/*.test.{js,ts,jsx,tsx}'],
 						exclude: [...configDefaults.exclude, 'src/**/*.bench.test.{js,ts}'],
 						root,

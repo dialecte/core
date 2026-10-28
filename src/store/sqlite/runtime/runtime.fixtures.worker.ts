@@ -1,0 +1,232 @@
+import { CONTRACT_DIALECTE } from '../../contract/store-contract.dialecte'
+import { createHeartbeat } from '../../engine/host/heartbeat'
+import { yieldToMessages } from '../../engine/message-turn'
+import { loadSqlite } from '../load-sqlite'
+import { poolDirectoryOf } from './install-pool'
+import { installProgressBeat } from './progress-beat'
+import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
+import {
+	RUNTIME_FIXTURE_CHANNEL,
+	SLOW_STATEMENT_STEP_MS,
+	YIELDING_SLICE_MS,
+} from './runtime.fixtures.constants'
+
+import { defineDialecte } from '@/dialecte'
+import { serveDialecteEngine } from '@/engine'
+
+import type {
+	ProgressBeatOrder,
+	RuntimeFixtureMessage,
+	RuntimeFixtureOrder,
+	RuntimeFixtureScenario,
+} from './runtime.fixtures.types'
+import type { SyncAccessFileHandle } from './runtime.types'
+import type { AnyRawRecord } from '@/types'
+
+/**
+ * The contract dialecte's engine worker on a platform a case shapes (`?scenario=`): no private file
+ * system, a quota nearly used up, room for a pool but not for a large import, a worker deaf to
+ * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load;
+ * or, `holder`, no engine at all - a worker holding one file of a project's pool, as an engine that
+ * ended may still do.
+ */
+const scenario = new URL(self.location.href).searchParams.get(
+	'scenario',
+) as RuntimeFixtureScenario | null
+
+const FREE_BYTES_OF_SCENARIO: Partial<Record<RuntimeFixtureScenario, number>> = {
+	'small-quota': 1000,
+	'import-quota': 2 * 1024 * 1024,
+}
+
+if (scenario === 'broken') throw new Error('a worker module failing as it loads')
+
+if (scenario === 'no-opfs') {
+	Object.defineProperty(StorageManager.prototype, 'getDirectory', {
+		value: undefined,
+		configurable: true,
+	})
+}
+const freeBytes = scenario ? FREE_BYTES_OF_SCENARIO[scenario] : undefined
+if (freeBytes !== undefined) {
+	StorageManager.prototype.estimate = async function estimateShort() {
+		return { quota: 10 * 1024 * 1024 * 1024, usage: 10 * 1024 * 1024 * 1024 - freeBytes }
+	}
+}
+
+/**
+ * The fixture dialecte's engine, its platform shaped first - in this turn: a message arriving before a
+ * listener is there is lost.
+ */
+function serveEngine(): void {
+	if (scenario === 'ignore-close') ignoreClose()
+	if (scenario === 'endable' || scenario === 'uncaught-error') followCaseOrders()
+	if (scenario === 'slow-statements' || scenario === 'slow-statements-silent') {
+		slowStatements({ silent: scenario === 'slow-statements-silent' })
+	}
+	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
+}
+
+/**
+ * Every call of SQLite's progress handler made slow (each waits `SLOW_STATEMENT_STEP_MS`) once the
+ * case orders `slow` - a statement then runs for seconds; `silent`, the engine's own handler is never
+ * called (a long statement with no beat).
+ */
+function slowStatements(params: { silent: boolean }): void {
+	let slow = false
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.addEventListener('message', function slowDown(event: MessageEvent<RuntimeFixtureOrder>) {
+		if (event.data.type === 'slow') slow = true
+	})
+	// chained on the realm's one load before the engine's open awaits it: patched before any database
+	void loadSqlite().then(function patchProgressHandler(sqlite3) {
+		const install = sqlite3.capi.sqlite3_progress_handler
+		sqlite3.capi.sqlite3_progress_handler = function installSlowed(db, ops, handler, context) {
+			return install(
+				db,
+				ops,
+				function slowedHandler(pointer: number) {
+					if (slow) busyWait({ ms: SLOW_STATEMENT_STEP_MS })
+					return slow && params.silent ? 0 : (handler as (pointer: number) => number)(pointer)
+				},
+				context,
+			)
+		} as typeof install
+	})
+}
+
+/** Answer `run-statement` with a database of its own: the heartbeat on the port given, one long statement, its times. */
+function serveProgressBeat(): void {
+	self.addEventListener(
+		'message',
+		async function runStatement(event: MessageEvent<ProgressBeatOrder>) {
+			const sqlite3 = await loadSqlite()
+			const db = new sqlite3.oo1.DB(':memory:', 'c')
+			const heartbeat = createHeartbeat({ intervalMs: event.data.intervalMs })
+			heartbeat.add(event.data.port)
+			installProgressBeat({ sqlite3, db, heartbeat, ops: PROGRESS_BEAT_OPS })
+			const startedAt = performance.timeOrigin + performance.now()
+			db.selectValue(
+				'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ?) SELECT count(*) FROM c',
+				[event.data.rows],
+			)
+			const endedAt = performance.timeOrigin + performance.now()
+			db.close()
+			self.postMessage({ startedAt, endedAt })
+		},
+	)
+}
+
+function busyWait(params: { ms: number }): void {
+	const until = performance.now() + params.ms
+	while (performance.now() < until);
+}
+
+/**
+ * The contract dialecte, its session pausing as the file says: a record of the session's tag whose
+ * `bB` is `pause:<ms>` holds the parse that long (no statement, no beat: as a paused engine),
+ * `after-pause:<ms>` holds `afterImport` that long (dialecte code the engine tells as busy),
+ * `after-yield-pause:<ms>` holds it that long in slices with a message turn between them.
+ */
+const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
+	id: CONTRACT_DIALECTE.id,
+	version: CONTRACT_DIALECTE.version,
+	configs: CONTRACT_DIALECTE.configs,
+	defaultConfigKey: CONTRACT_DIALECTE.defaultConfigKey,
+	createHooks: function createPausingHooks() {
+		const hooks = CONTRACT_DIALECTE.createHooks()
+		const createContractSession = hooks.createImportSession!
+		return {
+			...hooks,
+			createImportSession: function createPausingSession(sessionParams) {
+				const session = createContractSession(sessionParams)
+				let afterPauseMs = 0
+				let afterYieldPauseMs = 0
+				return {
+					...session,
+					beforeImportRecord: function pauseOnRecord(recordParams) {
+						const marker = markerOf({ record: recordParams.record })
+						if (marker?.kind === 'pause') busyWait({ ms: marker.ms })
+						if (marker?.kind === 'after-pause') afterPauseMs = marker.ms
+						if (marker?.kind === 'after-yield-pause') afterYieldPauseMs = marker.ms
+						session.beforeImportRecord?.(recordParams)
+					},
+					afterImport: async function pauseAfterImport() {
+						busyWait({ ms: afterPauseMs })
+						// dialecte code that yields now and then: other calls are served between its slices
+						for (let spent = 0; spent < afterYieldPauseMs; spent += YIELDING_SLICE_MS) {
+							busyWait({ ms: YIELDING_SLICE_MS })
+							await yieldToMessages()
+						}
+						return session.afterImport!()
+					},
+				}
+			},
+		}
+	},
+})
+
+/** A pause marker a record carries in `bB`. */
+function markerOf(params: {
+	record: AnyRawRecord
+}): { kind: 'pause' | 'after-pause' | 'after-yield-pause'; ms: number } | undefined {
+	const value = params.record.attributes.find((attribute) => attribute.name === 'bB')?.value
+	const match =
+		typeof value === 'string' ? /^(pause|after-pause|after-yield-pause):(\d+)$/.exec(value) : null
+	return match
+		? { kind: match[1] as 'pause' | 'after-pause' | 'after-yield-pause', ms: Number(match[2]) }
+		: undefined
+}
+
+/** A worker that never answers `close`: its realm must end it anyway. */
+function ignoreClose(): void {
+	self.addEventListener('message', function swallowClose(event: MessageEvent<{ type?: string }>) {
+		if (event.data?.type === 'close') event.stopImmediatePropagation()
+	})
+}
+
+/** The case's orders on the fixture channel: end this worker from inside, or throw from a timer. */
+function followCaseOrders(): void {
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.onmessage = function obey(event: MessageEvent<RuntimeFixtureOrder>) {
+		if (event.data.type === 'end') self.close()
+		if (event.data.type === 'throw-later') {
+			setTimeout(function throwUncaught() {
+				throw new Error('an uncaught error of a hook timer')
+			}, 0)
+		}
+	}
+}
+
+/** Hold the first pool file of a project on `hold`, let it go on `release`; answer each with its type. */
+function serveHolder(): void {
+	let held: { close: () => void } | undefined
+	self.addEventListener(
+		'message',
+		async function holdOrRelease(event: MessageEvent<RuntimeFixtureMessage>) {
+			if (event.data.type === 'hold') {
+				let directory = await navigator.storage.getDirectory()
+				for (const name of [
+					...poolDirectoryOf({ project: event.data.project }).split('/'),
+					OPAQUE_DIRECTORY,
+				]) {
+					directory = await directory.getDirectoryHandle(name)
+				}
+				for await (const handle of directory.values()) {
+					if (handle.kind !== 'file') continue
+					held = await (handle as SyncAccessFileHandle).createSyncAccessHandle()
+					self.postMessage({ type: 'held', file: handle.name })
+					return
+				}
+			}
+			held?.close()
+			held = undefined
+			self.postMessage({ type: 'released' })
+		},
+	)
+}
+
+// last: every function and the fixture dialecte above are defined by now
+if (scenario === 'holder') serveHolder()
+else if (scenario === 'progress-beat') serveProgressBeat()
+else serveEngine()

@@ -37,8 +37,9 @@ export async function startEngine(params: {
 	db: Database
 	options?: Partial<SqliteEngineOptions>
 	runtime?: StoreRuntime
+	onWork?: () => void
 }): Promise<SqliteEngine> {
-	const { db, options, runtime } = params
+	const { db, options, runtime, onWork } = params
 	const sqlite3 = await loadSqlite()
 	return openSqliteEngine({
 		sqlite3,
@@ -47,6 +48,7 @@ export async function startEngine(params: {
 		name: 'engine-test',
 		runtime,
 		options,
+		onWork,
 	})
 }
 

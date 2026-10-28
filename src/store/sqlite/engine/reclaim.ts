@@ -10,11 +10,13 @@ import type { ReclaimParams } from './engine.types'
  * closed (what is left is given back by the next removal or start).
  */
 export async function reclaimInSteps(params: ReclaimParams): Promise<void> {
-	const { db, settle, isClosed, pagesPerStatement, sliceMs } = params
+	const { db, settle, isClosed, pagesPerStatement, sliceMs, onStep } = params
 	let sliceStartedAt = performance.now()
 	while (!isClosed() && freePagesOf({ db }) > 0) {
 		settle()
 		vacuumWhole({ db, pages: pagesPerStatement })
+		// a step is a few virtual-machine steps a page: too few for SQLite's progress handler to beat
+		onStep?.()
 		if (performance.now() - sliceStartedAt < sliceMs) continue
 		await yieldToMessages()
 		sliceStartedAt = performance.now()

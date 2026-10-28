@@ -1,3 +1,4 @@
+import type { ThrownData } from './wire/wire.types'
 import type {
 	ExportControl,
 	ExportFileOptions,
@@ -11,10 +12,71 @@ import type { AnyRawRecord } from '@/types'
 
 /*
  * store/engine - a project served by one engine, whatever its database: the store port over that engine
- * (`EngineStore`), the engine's members as a client reaches them (`EngineApi`), how values and errors
- * cross a port to an engine in another realm (`wire`), and the hub's router (which realm hosts each
- * project's engine). The database is the engine's own: `store/sqlite`.
+ * (`EngineStore`) and the engine's members as a client reaches them (`EngineApi`); for an engine in a
+ * worker, its control messages, how values and errors cross a port (`wire`), the client side (engine
+ * client, worker connector, liveness watch), the host side (a client port served, heartbeat, store
+ * events) and the hub's router (which realm hosts each project's engine). The database and its worker
+ * runtime are the engine's own: `store/sqlite`.
  */
+
+/**
+ * How the engine takes its project's lock: wait for it within the open budget (a successor of an
+ * engine that ended, through the hub), or take it only if free (direct mode: a holder is another
+ * realm's engine).
+ */
+export type EngineLockMode = 'wait' | 'if-available'
+
+/**
+ * What an engine is opened with: what every engine is told, and `settings`, what its kind of engine
+ * needs besides (the SQLite engine: the consumer's wasm file and its options), passed through as is.
+ */
+export type EngineOpenParams<GenericSettings = unknown> = {
+	project: string
+	lock: EngineLockMode
+	/** How long the open may take in all: the lock and the engine's own setup. */
+	budgetMs: number
+	/** Measure the import's and the export's stages (`dev.perf`). */
+	perf: boolean
+	/** How often the engine beats while it works (`ENGINE_HEARTBEAT_INTERVAL_MS` when absent). */
+	heartbeatIntervalMs?: number
+	settings: GenericSettings
+}
+
+/** A control message a realm sends its engine worker; each is answered once by its `requestId`. */
+export type EngineControlRequest<GenericSettings = unknown> =
+	| ({ type: 'open'; requestId: number } & EngineOpenParams<GenericSettings>)
+	| { type: 'adopt-client'; requestId: number; clientId: string; port: MessagePort }
+	| { type: 'client-gone'; requestId: number; clientId: string }
+	| { type: 'close'; requestId: number }
+	| {
+			type: 'destroy'
+			requestId: number
+			project: string
+			lock: EngineLockMode
+			budgetMs: number
+	  }
+
+/** The engine worker's answer to a control message. */
+export type EngineControlAnswer =
+	| {
+			type: 'opened'
+			requestId: number
+			dialecteId: string
+			dialecteVersion: string
+			/** Whether the engine took its files back in this worker (closed then opened again) rather than set them up. */
+			resumed: boolean
+	  }
+	| { type: 'adopted'; requestId: number }
+	| { type: 'released'; requestId: number }
+	| { type: 'closed'; requestId: number }
+	| { type: 'destroyed'; requestId: number }
+	| { type: 'failed'; requestId: number; thrown: ThrownData }
+
+/** `Omit` applied to each member of a union. */
+export type DistributiveOmit<
+	GenericUnion,
+	GenericKey extends PropertyKey,
+> = GenericUnion extends unknown ? Omit<GenericUnion, GenericKey> : never
 
 /** The port members an engine serves, with the port's own signatures. */
 export type EngineMember =

@@ -1,8 +1,5 @@
 import { needing } from './store-contract.cases'
-import {
-	CONTRACT_SESSION_FAIL_VALUE,
-	CONTRACT_SESSION_HOLD_VALUE,
-} from './store-contract.constants'
+import { CONTRACT_SESSION_FAIL_VALUE } from './store-contract.constants'
 import {
 	contractFile,
 	expectRejectsWith,
@@ -545,7 +542,7 @@ const importingAtAPath: StoreContractCases = {
 		act: async ({ store }) => {
 			const hold = holdContractImport()
 			const importing = store.importFile({
-				file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 				options: { path: 'substations/north.xml' },
 			})
 			try {

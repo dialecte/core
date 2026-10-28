@@ -50,8 +50,13 @@ export type StoreContractContext = {
 	createOther: () => Promise<Store>
 }
 
+/** What a held import and its case say on the hold channel. */
+export type ContractHoldMessage = { type: 'reached' } | { type: 'release' }
+
 /** An import the case holds at the end of its parse: `reached` once it waits, `release` lets it go on. */
 export type ContractImportHold = {
+	/** What a file's record of the session's tag carries in `bB` to be held by this hold. */
+	value: string
 	reached: Promise<void>
 	release: () => void
 }

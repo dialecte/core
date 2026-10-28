@@ -158,3 +158,6 @@ export const RECORD_UPDATE_ASSIGNMENTS = Object.keys(RECORD_COLUMNS)
 export const ROW_SELECT_ALIASES = ROW_SELECT_EXPRESSIONS.map(
 	(expression, index) => `${expression} AS c${index}`,
 ).join(', ')
+
+/** An import needs about this many times its file's size free (its rows, its indexes, the journal). */
+export const IMPORT_SPACE_FACTOR = 2

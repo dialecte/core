@@ -1,3 +1,4 @@
+import { yieldToMessages } from '../../engine/message-turn'
 import {
 	deleteBlob,
 	readBlob,
@@ -10,7 +11,7 @@ import { encodeCheckedRecords, insertEncodedRows } from './bulk-insert'
 import { commitRecords, stepHistory } from './commit'
 import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
 import { asReadFailure, asStoreFailure, toStoreFailure } from './engine-errors'
-import { DEFAULT_ENGINE_OPTIONS } from './engine.constants'
+import { DEFAULT_ENGINE_OPTIONS, IMPORT_SPACE_FACTOR } from './engine.constants'
 import { hasCommitOf, readChangeLog, readHistoryStatus } from './history'
 import { createImportQueue } from './import-queue'
 import { createImportTarget, createProgressRelay } from './import-target'
@@ -90,7 +91,7 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  * passes as it is.
  */
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
-	const { sqlite3, db, dialecteId, name, runtime } = params
+	const { sqlite3, db, dialecteId, name, runtime, ensureImportSpace, onWork } = params
 	const engineOptions = { ...DEFAULT_ENGINE_OPTIONS, ...params.options }
 	const deviceMiB = deviceCacheMiB({
 		deviceMemoryGiB: reportedDeviceMemoryGiB(),
@@ -511,6 +512,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			},
 			pagesPerStatement: engineOptions.reclaimPagesPerStatement,
 			sliceMs: engineOptions.reclaimSliceMs,
+			onStep: onWork,
 		})
 	}
 
@@ -622,6 +624,10 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			work: async function importInTurn(signal) {
 				// a waiting import aborted gets its turn at once: refused before it takes any part of the engine
 				throwIfAborted({ signal, file })
+				if (ensureImportSpace) {
+					await ensureImportSpace({ bytes: importSpaceOf({ db, file }) })
+					throwIfAborted({ signal, file })
+				}
 				const perf = createPerf({ enabled: importRuntime.perf ?? false, timeline: false })
 				const window = createImportWindow({
 					sqlite3,
@@ -631,7 +637,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					importCacheMiB,
 					steadyCacheMiB,
 				})
-				const progress = createProgressRelay({ file, listener: onProgress })
+				const progress = createProgressRelay({
+					file,
+					listener: function tellWorkDone(told) {
+						onWork?.()
+						// its answer handed on: the relay drops a rejection, never leaves it unhandled
+						return onProgress?.(told)
+					},
+				})
 				const target = createImportTarget({
 					sqlite3,
 					db,
@@ -689,6 +702,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		const reads: ExportReads = { current: undefined }
 		exports.set(exportId, { clientId, controller, reads })
 		try {
+			// the calls sent before it are served first: an abort its caller sent right after it lands
+			await yieldToMessages()
 			return await runExport(
 				{
 					source: exportSourceOf({ signal: controller.signal, documentId, reads }),
@@ -696,7 +711,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					documentId,
 					options,
 				},
-				{ onProgress, signal: controller.signal },
+				{
+					onProgress: function tellWorkDone(told) {
+						onWork?.()
+						// its answer handed on: the relay drops a rejection, never leaves it unhandled
+						return onProgress?.(told)
+					},
+					signal: controller.signal,
+				},
 			)
 		} finally {
 			exports.delete(exportId)
@@ -781,6 +803,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
  * free pages back.
  */
 function leaveForNextReclaim(): void {}
+
+/** What an import of `file` needs free: about twice its size, less the pages the file has free already. */
+function importSpaceOf(params: { db: Database; file: File }): number {
+	const { db, file } = params
+	const freeBytes =
+		Number(db.selectValue('PRAGMA freelist_count')) * Number(db.selectValue('PRAGMA page_size'))
+	return Math.max(0, IMPORT_SPACE_FACTOR * file.size - freeBytes)
+}
 
 /** The import that runs, if any, committed and made durable before another write: that write stands on its own. */
 function settleImport(params: { importing: RunningImport }): void {

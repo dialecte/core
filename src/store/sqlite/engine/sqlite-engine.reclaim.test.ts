@@ -132,6 +132,23 @@ describe('the free pages given back in steps', () => {
 		expect(freePagesOf({ db })).toBe(0)
 	})
 
+	it('a document of 20,000 records removed → the engine tells it works after each reclaim statement (too few steps for SQLite’s progress handler)', async () => {
+		const file = await openMemoryFile({ opened })
+		let told = 0
+		const engine = await startEngine({
+			db: file.connect(),
+			options: MANY_SLICES,
+			onWork: function countWork() {
+				told += 1
+			},
+		})
+		await engine.registerDocument(makeDocument())
+		await engine.bulkWrite('doc-1', { creates: bulkyRecords({ count: 20_000 }) })
+		told = 0
+		await engine.removeDocument('doc-1')
+		expect(told).toBeGreaterThan(5)
+	})
+
 	it('an import failing after storing 20,000 records → a message queued at its last progress runs before it rejects; nothing left, no free page', async () => {
 		const file = await openMemoryFile({ opened })
 		const db = file.connect()

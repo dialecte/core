@@ -1,0 +1,287 @@
+import { contractFile, makeDocument } from '../../contract/store-contract.fixtures'
+import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
+import { EngineStore } from '../../engine/engine-store'
+import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
+import { POOL_CAPACITY } from './runtime.constants'
+import {
+	TEST_ENGINE_URL,
+	clientOf,
+	fixtureUrl,
+	holdPoolFile,
+	openMessage,
+	poolState,
+	removePoolDirectory,
+	startEngineWorker,
+	uniqueProject,
+} from './runtime.fixtures'
+
+import { afterEach, describe, expect, it } from 'vitest'
+
+import { toDialecteError } from '@/errors'
+import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
+
+/** What a case leaves: its workers ended, its pools removed. */
+const cleanups: (() => Promise<void> | void)[] = []
+
+afterEach(async () => {
+	for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
+})
+
+/** An engine worker the case drives; ended, and the project's pool removed, after the case. */
+function engineWorker(params: {
+	project: string
+	url?: string
+}): ReturnType<typeof startEngineWorker> {
+	const started = startEngineWorker({ url: params.url })
+	cleanups.push(started.end, () => removePoolDirectory({ project: params.project }))
+	return started
+}
+
+/** The key of what a promise rejected with; `resolved` when it did not. */
+async function rejectionKey(params: { action: Promise<unknown> }): Promise<string> {
+	try {
+		await params.action
+		return 'resolved'
+	} catch (thrown) {
+		return toDialecteError(thrown)?.key ?? String(thrown)
+	}
+}
+
+/** A pool made by an engine that wrote a document then closed. */
+async function closedPoolWithDocument(params: { project: string }): Promise<void> {
+	const { control, end } = engineWorker({ project: params.project })
+	await control.request({ message: openMessage(params), expect: 'opened' })
+	const engine = await clientOf({ control, clientId: 'writer' })
+	await engine.registerDocument(makeDocument())
+	await control.request({ message: { type: 'close' }, expect: 'closed' })
+	end()
+}
+
+describe('an engine worker opening its project', () => {
+	it('no private file system → STORE_UNAVAILABLE, nothing created', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'no-opfs' }) })
+		expect(
+			await rejectionKey({
+				action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+			}),
+		).toBe('STORE_UNAVAILABLE')
+		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+	})
+
+	describe('the project’s engine lock held elsewhere', () => {
+		/** The project's engine lock held by the page until the returned release. */
+		async function holdLock(params: { project: string }): Promise<() => void> {
+			let release: () => void = () => {}
+			await new Promise<void>((granted) => {
+				void navigator.locks.request(`${ENGINE_LOCK_PREFIX}${params.project}`, async () => {
+					granted()
+					await new Promise<void>((done) => {
+						release = done
+					})
+				})
+			})
+			return release
+		}
+
+		it('taken only if free → PROJECT_OPEN_ELSEWHERE without waiting, nothing created', async () => {
+			const project = uniqueProject()
+			const release = await holdLock({ project })
+			cleanups.push(release)
+			const { control } = engineWorker({ project })
+			const budgetMs = 10_000
+			const startedAt = performance.now()
+			expect(
+				await rejectionKey({
+					action: control.request({
+						message: openMessage({ project, budgetMs }),
+						expect: 'opened',
+					}),
+				}),
+			).toBe('PROJECT_OPEN_ELSEWHERE')
+			// a wait for the lock would last the whole budget; the worker's own start (its SQLite load) counts here too
+			expect(performance.now() - startedAt).toBeLessThan(budgetMs)
+			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		})
+
+		it('waited for within 300 ms → PROJECT_ENGINE_BUSY once they have passed', async () => {
+			const project = uniqueProject()
+			const release = await holdLock({ project })
+			cleanups.push(release)
+			const { control } = engineWorker({ project })
+			const startedAt = performance.now()
+			expect(
+				await rejectionKey({
+					action: control.request({
+						message: openMessage({ project, lock: 'wait', budgetMs: 300 }),
+						expect: 'opened',
+					}),
+				}),
+			).toBe('PROJECT_ENGINE_BUSY')
+			expect(performance.now() - startedAt).toBeGreaterThanOrEqual(290)
+		})
+
+		it('held by another engine worker → PROJECT_OPEN_ELSEWHERE; that engine goes on', async () => {
+			const project = uniqueProject()
+			const first = engineWorker({ project })
+			await first.control.request({ message: openMessage({ project }), expect: 'opened' })
+			const second = engineWorker({ project })
+			expect(
+				await rejectionKey({
+					action: second.control.request({ message: openMessage({ project }), expect: 'opened' }),
+				}),
+			).toBe('PROJECT_OPEN_ELSEWHERE')
+			const engine = await clientOf({ control: first.control, clientId: 'c-1' })
+			expect(await engine.getDocuments()).toEqual([])
+		})
+	})
+
+	it('a pool file another worker still holds → PROJECT_ENGINE_BUSY naming it, the pool intact; once let go, the data there', async () => {
+		const project = uniqueProject()
+		await closedPoolWithDocument({ project })
+		const holder = await holdPoolFile({ project })
+		cleanups.push(holder.release)
+		const { control } = engineWorker({ project })
+		const thrown = await control
+			.request({ message: openMessage({ project, budgetMs: 600 }), expect: 'opened' })
+			.catch((error: unknown) => error)
+		expect(toDialecteError(thrown)).toMatchObject({
+			key: 'PROJECT_ENGINE_BUSY',
+			meta: { project, retriedOn: [holder.file] },
+		})
+		expect(await poolState({ project })).toEqual({ exists: true, files: POOL_CAPACITY })
+		await holder.release()
+		const next = engineWorker({ project })
+		await next.control.request({ message: openMessage({ project }), expect: 'opened' })
+		const engine = await clientOf({ control: next.control, clientId: 'reader' })
+		expect(await engine.getDocuments()).toEqual([makeDocument()])
+	})
+
+	it('a new project where too little space is left → STORE_QUOTA_EXCEEDED, nothing created', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'small-quota' }) })
+		const thrown = await control
+			.request({ message: openMessage({ project }), expect: 'opened' })
+			.catch((error: unknown) => error)
+		expect(toDialecteError(thrown)).toMatchObject({
+			key: 'STORE_QUOTA_EXCEEDED',
+			meta: { project, available: 1000 },
+		})
+		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+	})
+
+	it('an import needing more space than is left → STORE_QUOTA_EXCEEDED, nothing registered, not applied', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'import-quota' }) })
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const engine = await clientOf({ control, clientId: 'c-1' })
+		const body = Array.from(
+			{ length: 15_000 },
+			(_, index) => `<A aA="${'x'.repeat(100)}${index}"/>`,
+		)
+		expect(
+			await rejectionKey({
+				action: engine.importFile({
+					file: contractFile({ body: body.join('') }),
+					writeId: 'w-big',
+				}),
+			}),
+		).toBe('STORE_QUOTA_EXCEEDED')
+		expect(await engine.getDocuments()).toEqual([])
+		expect(await engine.getWriteOutcome({ writeId: 'w-big' })).toBe('not-applied')
+	})
+
+	it('closed, then opened again in the same worker → the pool resumed, not installed, its data there', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project })
+		const opened = await control.request({ message: openMessage({ project }), expect: 'opened' })
+		expect(opened.resumed).toBe(false)
+		await (await clientOf({ control, clientId: 'writer' })).registerDocument(makeDocument())
+		await control.request({ message: { type: 'close' }, expect: 'closed' })
+		const reopened = await control.request({ message: openMessage({ project }), expect: 'opened' })
+		expect(reopened.resumed).toBe(true)
+		expect(await (await clientOf({ control, clientId: 'reader' })).getDocuments()).toEqual([
+			makeDocument(),
+		])
+	})
+})
+
+describe('an engine worker destroying its project', () => {
+	it('through a store → the pool directory gone; a new connection reads empty', async () => {
+		const name = uniqueProject()
+		cleanups.push(() => removePoolDirectory({ project: name }))
+		const open = async () => {
+			const store = new EngineStore({
+				name,
+				connector: createSqliteWorkerConnector({ name, engineUrl: TEST_ENGINE_URL }),
+			})
+			await store.open()
+			return store
+		}
+		const store = await open()
+		await store.registerDocument(makeDocument())
+		await store.destroy()
+		expect(await poolState({ project: name })).toEqual({ exists: false, files: 0 })
+		const next = await open()
+		expect(await next.getDocuments()).toEqual([])
+		await next.destroy()
+	})
+
+	it('with no engine open in the worker → the pool directory gone', async () => {
+		const project = uniqueProject()
+		await closedPoolWithDocument({ project })
+		const { control } = engineWorker({ project })
+		await control.request({
+			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 1_000 },
+			expect: 'destroyed',
+		})
+		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+	})
+
+	it('a pool file another worker holds → PROJECT_DESTROY_FAILED, the directory still there', async () => {
+		const project = uniqueProject()
+		await closedPoolWithDocument({ project })
+		const holder = await holdPoolFile({ project })
+		cleanups.push(holder.release)
+		const { control } = engineWorker({ project })
+		expect(
+			await rejectionKey({
+				action: control.request({
+					message: { type: 'destroy', project, lock: 'if-available', budgetMs: 1_000 },
+					expect: 'destroyed',
+				}),
+			}),
+		).toBe('PROJECT_DESTROY_FAILED')
+		expect((await poolState({ project })).exists).toBe(true)
+	})
+})
+
+describe('a client of an engine worker', () => {
+	it('released during its own held import → the import aborted in the engine: not applied, nothing of the file', async () => {
+		const name = uniqueProject()
+		const engineUrl = new URL('../../contract/store-contract.worker.ts', import.meta.url).href
+		const connector = createSqliteWorkerConnector({ name, engineUrl })
+		cleanups.push(() => connector.destroy())
+		const link = await connector.connect()
+		const engine = await link.engine()
+		const hold = holdContractImport()
+		cleanups.push(hold.release)
+		const importing = engine.importFile({
+			file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+			writeId: 'w-held',
+		})
+		await untilHeld({ hold, importing })
+		const other = await connector.connect()
+		const reader = await other.engine()
+		await reader.registerDocument(makeDocument({ id: 'kept' }))
+		link.close()
+		// the released connection's own call ends: refused, never left waiting
+		expect(await rejectionKey({ action: importing })).toBe('STORE_CLOSED')
+		hold.release()
+		await expect
+			.poll(() => reader.getWriteOutcome({ writeId: 'w-held' }), { timeout: 5_000 })
+			.toBe('not-applied')
+		expect(await reader.getDocuments()).toEqual([makeDocument({ id: 'kept' })])
+		other.close()
+	})
+})

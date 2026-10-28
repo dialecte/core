@@ -53,6 +53,8 @@ export type ReclaimParams = {
 	isClosed: () => boolean
 	pagesPerStatement: number
 	sliceMs: number
+	/** Called after each statement: the engine is alive, whoever waits on it. */
+	onStep?: () => void
 }
 
 export type OpenSqliteEngineParams = {
@@ -66,6 +68,16 @@ export type OpenSqliteEngineParams = {
 	/** What the engine imports with: without it, an import is refused (`IMPORT_FAILED`). */
 	runtime?: StoreRuntime
 	options?: Partial<SqliteEngineOptions>
+	/**
+	 * Refuse an import, before it registers anything, when the file system cannot take `bytes` more
+	 * (`STORE_QUOTA_EXCEEDED`); none: the file is in memory.
+	 */
+	ensureImportSpace?: (params: { bytes: number }) => Promise<void>
+	/**
+	 * Called as an import or an export moves on (each batch) and at each step of giving free pages back:
+	 * the engine is alive, whoever waits on it.
+	 */
+	onWork?: () => void
 }
 
 /** An export as the engine runs it: the client that asked for it owns it. */
