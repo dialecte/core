@@ -9,6 +9,8 @@ import dts from 'vite-plugin-dts'
 
 // https://vite.dev/config/
 export default defineConfig({
+	// emitted assets resolved next to the module that needs them, wherever the package is installed
+	base: './',
 	plugins: [
 		dts({
 			tsconfigPath: path.resolve(__dirname, './tsconfig.build.json'),
@@ -33,7 +35,9 @@ export default defineConfig({
 			formats: ['es'],
 		},
 		rollupOptions: {
-			external: ['vitest'],
+			// sqlite-wasm resolved by whoever loads core's main side (node finds its own wasm); the engine
+			// build (vite.engine.config.ts) bundles it
+			external: ['vitest', /^@sqlite\.org\/sqlite-wasm/, 'comlink'],
 			output: {
 				entryFileNames: '[name].js',
 			},

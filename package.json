@@ -32,12 +32,16 @@
 		"./helpers": {
 			"types": "./dist/helpers.d.ts",
 			"default": "./dist/helpers.js"
+		},
+		"./engine": {
+			"types": "./dist/engine.d.ts",
+			"default": "./dist/engine.js"
 		}
 	},
 	"scripts": {
 		"//====== BUILD ======//": "",
 		"build": "run-p type-check \"build-only {@}\" --",
-		"build-only": "tsc -p tsconfig.json && vite build",
+		"build-only": "tsc -p tsconfig.json && vite build && vite build -c vite.engine.config.ts",
 		"build:watch": "vite build --watch",
 		"//====== VITEPRESS ======//": "",
 		"doc:dev": "vitepress dev",
