@@ -13,6 +13,7 @@ export type RuntimeFixtureScenario =
 	| 'progress-beat'
 	| 'liveness'
 	| 'disk-full'
+	| 'ignore-destroy'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =

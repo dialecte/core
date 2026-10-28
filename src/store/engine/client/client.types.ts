@@ -48,6 +48,13 @@ export type WorkerConnectorParams<GenericSettings> = {
 	settings: GenericSettings
 }
 
+/** A control request sent, waiting for its answer: the answer's type it expects, how it settles. */
+export type PendingControlRequest = {
+	expect: string
+	resolve: (answer: EngineControlAnswer) => void
+	reject: (thrown: unknown) => void
+}
+
 /** The engine worker a realm runs for one project in direct mode, and the connections it serves. */
 export type RealmEngine = {
 	worker: Worker

@@ -11,6 +11,7 @@ import { holdContractImport, untilHeld } from '../../contract/store-contract.imp
 import { fixtureUrl } from '../../sqlite/runtime/runtime.fixtures'
 import {
 	CROSS_REALM_CLOCK_SLACK_MS,
+	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 } from '../../sqlite/runtime/runtime.fixtures.constants'
 import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
@@ -19,7 +20,7 @@ import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS } from './client.constant
 import { createEngineControl } from './engine-control'
 
 import * as Comlink from 'comlink'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { isKnownDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
@@ -302,6 +303,65 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				)
 			await expect.poll(free, { timeout: ENGINE_CLOSE_BUDGET_MS + 3_000, interval: 100 }).toBe(true)
 			expect(performance.now() - startedAt).toBeGreaterThanOrEqual(ENGINE_CLOSE_BUDGET_MS - 100)
+			await connector.destroy()
+		})
+
+		it('ended from inside, the next call adopted by another engine → the first client let go: one page watch left', async () => {
+			const added = vi.spyOn(document, 'addEventListener')
+			const removed = vi.spyOn(document, 'removeEventListener')
+			onTestFinished(function restoreSpies() {
+				added.mockRestore()
+				removed.mockRestore()
+			})
+			const name = `worker-connector-${crypto.randomUUID()}`
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'endable' }),
+			})
+			const link = await connector.connect()
+			const first = await link.engine()
+			orderFixtures({ type: 'end' })
+			// a new worker loads SQLite and opens the pool first: seconds on a loaded machine
+			await expect
+				.poll(() => link.engine().then((api) => api !== first), {
+					timeout: ENGINE_WORKER_CASE_TIMEOUT_MS / 2,
+				})
+				.toBe(true)
+			const watches = (spy: typeof added) =>
+				spy.mock.calls.filter(([type]) => type === 'resume').length
+			expect(watches(added) - watches(removed)).toBe(1)
+			link.close()
+			await connector.destroy()
+		})
+
+		it('deaf to destroy while it serves the project → ended once the close budget has passed, the project destroyed from a fresh worker', async () => {
+			const name = `worker-connector-${crypto.randomUUID()}`
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
+			})
+			const link = await connector.connect()
+			await (await link.engine()).registerDocument(makeDocument())
+			await connector.destroy()
+			const again = await connector.connect()
+			expect(await (await again.engine()).getDocuments()).toEqual([])
+			again.close()
+			link.close()
+			await connector.destroy()
+		})
+
+		it('deaf to close, another connection of the name at once → it waits for the ended worker to let the lock go, then opens', async () => {
+			const name = `worker-connector-${crypto.randomUUID()}`
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-close' }),
+			})
+			const link = await connector.connect()
+			await (await link.engine()).registerDocument(makeDocument())
+			link.close()
+			const again = await connector.connect()
+			expect(await (await again.engine()).getDocuments()).toEqual([makeDocument()])
+			again.close()
 			await connector.destroy()
 		})
 

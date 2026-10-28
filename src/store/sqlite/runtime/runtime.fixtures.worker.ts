@@ -112,6 +112,7 @@ function fillDiskWhenOrdered(): void {
  */
 function serveEngine(): void {
 	if (scenario === 'ignore-close') ignoreClose()
+	if (scenario === 'ignore-destroy') ignoreDestroyWhileOpen()
 	if (scenario === 'endable' || scenario === 'uncaught-error') followCaseOrders()
 	if (scenario === 'slow-statements' || scenario === 'slow-statements-silent') {
 		slowStatements({ silent: scenario === 'slow-statements-silent' })
@@ -282,6 +283,15 @@ function markerOf(params: {
 function ignoreClose(): void {
 	self.addEventListener('message', function swallowClose(event: MessageEvent<{ type?: string }>) {
 		if (event.data?.type === 'close') event.stopImmediatePropagation()
+	})
+}
+
+/** Deaf to `destroy` once it has opened a project (a worker that opens nothing still answers it). */
+function ignoreDestroyWhileOpen(): void {
+	let opened = false
+	self.addEventListener('message', function swallowDestroy(event: MessageEvent<{ type?: string }>) {
+		if (event.data?.type === 'open') opened = true
+		if (event.data?.type === 'destroy' && opened) event.stopImmediatePropagation()
 	})
 }
 

@@ -21,3 +21,10 @@ export const YIELDING_SLICE_MS = 200
  * each realm coarsens its `timeOrigin` and `performance.now()` on its own (about a millisecond seen).
  */
 export const CROSS_REALM_CLOCK_SLACK_MS = 5
+
+/**
+ * How long a case spawning engine workers may run before it counts as hung: each worker loads SQLite
+ * and opens its pool, seconds apiece on a loaded machine (a case of two workers took 15 s at a 1-minute
+ * load of 15-20) - a timeout catches a hang, it never measures speed.
+ */
+export const ENGINE_WORKER_CASE_TIMEOUT_MS = 60_000

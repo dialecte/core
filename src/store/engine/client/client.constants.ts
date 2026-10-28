@@ -10,3 +10,6 @@ export const ENGINE_CLOSE_BUDGET_MS = 2_000
  * code that may run longer.
  */
 export const ENGINE_HEARTBEAT_TIMEOUT_MS = 10_000
+
+/** What a destroy request answers once the engine has deleted the project (a budget running out answers nothing). */
+export const DESTROYED = 'destroyed'

@@ -3,19 +3,12 @@ import { fromThrownData } from '../wire/error-envelope'
 import { createDialecteError } from '@/errors'
 
 import type { EngineControlAnswer } from '../engine.types'
-import type { EngineControl } from './client.types'
+import type { EngineControl, PendingControlRequest } from './client.types'
 
 /** The control messages of one engine worker: each request answered once, by its id. */
 export function createEngineControl(params: { worker: Worker }): EngineControl {
 	const { worker } = params
-	const pending = new Map<
-		number,
-		{
-			expect: string
-			resolve: (answer: EngineControlAnswer) => void
-			reject: (thrown: unknown) => void
-		}
-	>()
+	const pending = new Map<number, PendingControlRequest>()
 	let nextRequestId = 0
 	let isOpen = false
 	/** Set once the realm ended or lost the worker: every request refused with it. */

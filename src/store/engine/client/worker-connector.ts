@@ -1,5 +1,5 @@
 import { ENGINE_LOCK_PREFIX } from '../engine.constants'
-import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS } from './client.constants'
+import { DESTROYED, ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS } from './client.constants'
 import { createEngineClient } from './engine-client'
 import { createEngineControl } from './engine-control'
 
@@ -9,6 +9,7 @@ import { throwStoreClosed } from '@/store/store-errors'
 import type { EngineConnector, EngineLink } from '../engine-store.types'
 import type {
 	EngineClient,
+	EngineControl,
 	RealmEngine,
 	WorkerConnectorParams,
 	WorkerLinkState,
@@ -54,6 +55,8 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 			const engine = await runningEngine(params)
 			engine.links.add(state)
 			if (state.adoption?.generation !== engine.generation) {
+				// the client of an engine gone since is let go: its port, its watch, its page listeners
+				releaseSupersededClient({ adoption: state.adoption, storeName: params.name })
 				state.adoption = {
 					generation: engine.generation,
 					client: adoptClient({
@@ -203,6 +206,17 @@ async function adoptClient(params: {
 	return createEngineClient({ port: channel.port1, heartbeatTimeoutMs })
 }
 
+/** A client of an engine that has ended: closed, nothing told to an engine that is gone. */
+function releaseSupersededClient(params: {
+	adoption: WorkerLinkState['adoption']
+	storeName: string
+}): void {
+	const { adoption, storeName } = params
+	adoption?.client.then(function closeClient(client) {
+		client.close({ storeName })
+	}, ignoreFailedAdoption)
+}
+
 /** The connection's client closed and the engine told it is gone (its imports and exports aborted). */
 function releaseClient(params: {
 	engine: RealmEngine | undefined
@@ -224,7 +238,9 @@ function releaseClient(params: {
 
 /**
  * The project deleted: through its engine when one runs in this realm, else through a worker that
- * opens nothing (a project of another layout is deleted too); the worker ended after.
+ * opens nothing (a project of another layout is deleted too); the worker ended after. A running engine
+ * that does not answer within the close budget is ended and a fresh worker deletes the project - one
+ * not cut short: it waits for the lock within its own budget and answers what it found.
  */
 async function destroyProject(params: WorkerConnectorParams<unknown>): Promise<void> {
 	const { name, engineUrl, openBudgetMs = ENGINE_OPEN_BUDGET_MS } = params
@@ -234,17 +250,41 @@ async function destroyProject(params: WorkerConnectorParams<unknown>): Promise<v
 		await ENDING.get(name)
 		running = undefined
 	}
-	const worker = running?.worker ?? new Worker(engineUrl, { type: 'module' })
-	const control = running?.control ?? createEngineControl({ worker })
+	if (running) {
+		const answered = await endEngine({
+			name,
+			engine: running,
+			worker: running.worker,
+			ending: withinBudget({
+				work: askDestroy({ name, control: running.control, budgetMs: openBudgetMs }),
+				budgetMs: ENGINE_CLOSE_BUDGET_MS,
+			}),
+		})
+		if (answered === DESTROYED) return
+		// deaf: its worker ended, its lock let go, the project deleted from a fresh worker
+		await ENDING.get(name)
+	}
+	const worker = new Worker(engineUrl, { type: 'module' })
 	await endEngine({
 		name,
-		engine: running,
+		engine: undefined,
 		worker,
-		ending: control.request({
-			message: { type: 'destroy', project: name, lock: 'if-available', budgetMs: openBudgetMs },
-			expect: 'destroyed',
-		}),
+		ending: askDestroy({ name, control: createEngineControl({ worker }), budgetMs: openBudgetMs }),
 	})
+}
+
+/** The engine asked to delete the project; `DESTROYED` once it has (a budget running out answers nothing). */
+async function askDestroy(params: {
+	name: string
+	control: EngineControl
+	budgetMs: number
+}): Promise<typeof DESTROYED> {
+	const { name, control, budgetMs } = params
+	await control.request({
+		message: { type: 'destroy', project: name, lock: 'if-available', budgetMs },
+		expect: 'destroyed',
+	})
+	return DESTROYED
 }
 
 /**
@@ -284,7 +324,7 @@ function endEngine(params: {
 	engine: RealmEngine | undefined
 	worker: Worker
 	ending: Promise<unknown>
-}): Promise<void> {
+}): Promise<unknown> {
 	const { name, engine, worker, ending } = params
 	if (engine) {
 		engine.ended = true
@@ -292,8 +332,9 @@ function endEngine(params: {
 		engine.watch?.controller.abort()
 	}
 	const ended = ending.then(
-		function terminateWorker() {
+		function terminateWorker(answer: unknown) {
 			endWorker()
+			return answer
 		},
 		function terminateAfterFailure(thrown: unknown) {
 			endWorker()
@@ -304,13 +345,29 @@ function endEngine(params: {
 		engine?.control.end({ error: endedByRealm({ name }) })
 		worker.terminate()
 	}
+	// the next engine waits for the ended worker to let the lock go (one ended deaf may still hold it a moment)
+	const lockFree = ended.then(settleNothing, settleNothing).then(function waitForLock() {
+		return untilLockFree({ name })
+	})
 	holdNextEngine({
 		name,
-		until: Promise.all([ended.then(settleNothing, settleNothing), engine?.watch?.settled]).then(
-			settleNothing,
-		),
+		until: Promise.all([lockFree, engine?.watch?.settled]).then(settleNothing),
 	})
 	return ended
+}
+
+/**
+ * The page granted the engine's lock (let go at once): its last holder in this realm let it go - or
+ * the close budget passed (another realm's engine may hold it: the next open answers that).
+ */
+function untilLockFree(params: { name: string }): Promise<void> {
+	return navigator.locks
+		.request(
+			`${ENGINE_LOCK_PREFIX}${params.name}`,
+			{ signal: AbortSignal.timeout(ENGINE_CLOSE_BUDGET_MS) },
+			settleNothing,
+		)
+		.then(settleNothing, settleNothing)
 }
 
 /** The next engine of the name waits until `until` has settled (and whatever it waited for before). */
