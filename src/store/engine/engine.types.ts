@@ -11,8 +11,9 @@ import type { AnyRawRecord } from '@/types'
 
 /*
  * store/engine - a project served by one engine, whatever its database: the store port over that engine
- * (`EngineStore`), the engine's members as a client reaches them (`EngineApi`), and the hub's router
- * (which realm hosts each project's engine). The database is the engine's own: `store/sqlite`.
+ * (`EngineStore`), the engine's members as a client reaches them (`EngineApi`), how values and errors
+ * cross a port to an engine in another realm (`wire`), and the hub's router (which realm hosts each
+ * project's engine). The database is the engine's own: `store/sqlite`.
  */
 
 /** The port members an engine serves, with the port's own signatures. */

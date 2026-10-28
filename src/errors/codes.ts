@@ -70,6 +70,18 @@ export const ERROR_CATALOG = {
 		code: 'D1015',
 		message: 'A value handed to the store is not JSON',
 	},
+	STORE_UNAVAILABLE: {
+		code: 'D1016',
+		message: 'This browser gives the page no storage for a project',
+	},
+	STORE_QUOTA_EXCEEDED: {
+		code: 'D1017',
+		message: 'Not enough storage left for the project',
+	},
+	STORE_ENGINE_LOST: {
+		code: 'D1018',
+		message: 'The project engine stopped answering',
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {
@@ -228,6 +240,14 @@ export const ERROR_CATALOG = {
 	PROJECT_DIALECTE_VERSION_MISMATCH: {
 		code: 'D7009',
 		message: 'The project engine runs another version of the dialecte',
+	},
+	PROJECT_DESTROY_FAILED: {
+		code: 'D7010',
+		message: 'The project could not be deleted',
+	},
+	PROJECT_OPEN_ELSEWHERE: {
+		code: 'D7011',
+		message: 'The project is open in another tab or window',
 	},
 	DOCUMENT_PATH_INVALID: {
 		code: 'D7030',
