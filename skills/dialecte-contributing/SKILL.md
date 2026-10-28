@@ -76,6 +76,31 @@ the standard says, and that is the default. A rule an expert wants that the stan
 require is a consumer choice (an option on the verb or a policy hook, default = the standard). A
 rule that contradicts the standard stays out of the engine (consumer override).
 
+## Reading the standard
+
+For a dialecte that implements a standard: the standard your dialecte implements is the truth its rules come
+from, and a long text read once by one model is not a reliable source.
+
+- **Markdown first.** Read the standard as markdown, citing `file:line`; never the PDF. A document not yet in
+  markdown is converted first: markitdown for PDF, DOCX or PPTX; docling or pymupdf4llm when its tables come
+  out broken.
+- **The converted text stays private**: kept next to the plans, outside every package repository; never
+  committed, never quoted or cited in committed text (code, doc, CHANGELOG, skill) or on GitHub. Committed text
+  states the behaviour.
+- **A confirmation** (a name, a type, a cardinality the code already follows): one reader, with line references.
+- **A decision that changes what the engine does or accepts** gets the cross-check, once per decision:
+  1. Two or three independent readers on the `standard` tier (at least one on another model or vendor when
+     one is available): the same question, no shared notes, a `file:line` for every claim.
+  2. One reader takes the whole relevant part, the others split it by section, so coverage does not rest on
+     one model's retrieval.
+  3. An adjudicator on the `strong` tier compares the answers: an agreed claim with matching lines passes; a
+     disagreement, or a claim without a line, becomes a question for the user or the domain expert. Runs of
+     one model share its biases, so agreement is evidence, not proof.
+  4. The result (question, claims, lines, verdict) goes in the plan's research folder, next to the plan: later
+     lots reuse it instead of reading the standard again.
+
+The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
+
 ## The workflow
 
 1. **Orient**: read the nearest existing example of what you build (an extension in the same

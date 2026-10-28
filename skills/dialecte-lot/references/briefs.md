@@ -9,6 +9,8 @@ well enough to hand it off.
 
 ```
 You implement lot <id> of <plan path>, as the implement station of the dialecte-lot skill.
+Tier: <standard for a mechanical or fully specified lot | strong for a design-heavy one> (model-tiers.md;
+  `npx @dialecte/cli models` says which model; a failed round may go one tier up, said in the report)
 
 Goal: <one sentence: the behaviour a user or caller gets>
 Spec: <the plan section(s) to read, by path and heading; the decisions that bind it>
@@ -28,6 +30,7 @@ Report: the implement report shape of dialecte-lot, nothing else.
 ```
 You review lot <id>, as the review station of the dialecte-lot skill. Read-only: modify nothing, no git
 command that writes.
+Tier: strong, effort high, for both passes - never lower.
 
 Spec: <plan path + sections>; the implementer's brief: <inline or path>.
 Diff: `git -C <worktree> diff <base>` and untracked files (`git status --porcelain`). Compare each file with
@@ -42,6 +45,8 @@ Max ~80 lines, most severe first, file:line for each finding.
 
 ```
 Fix mode for lot <id> (round <n>). Findings: <the list, verbatim>.
+Tier: <standard for wording or naming findings | the implementer's tier otherwise> (resume the implementer
+  when it is on that tier: its context is warm)
 For each: agree (fix, test if behaviour changed) / disagree (one line why) / needs the user.
 Then the fast gate, and the report per finding.
 ```

@@ -22,16 +22,21 @@ are what the next station reads. A decision that is not in one of them was not a
 
 ## The stations
 
-| #   | Station     | Who                                     | Reads                                                                           | Leaves                                                                                                       |
-| --- | ----------- | --------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 0   | Orchestrate | orchestrator                            | the plan, the user's decisions                                                  | one brief per implementer (template in [references/briefs.md](references/briefs.md))                         |
-| 1   | Implement   | implementer                             | its brief, the code it changes                                                  | code + tests, red first; an implement report                                                                 |
-| 2   | Fast gate   | implementer                             | -                                                                               | `dialecte gate --fast` + `dialecte rules`: type-check, lint, format, touched tests, skills check, code rules |
-| 3   | Review      | **a different agent** (strongest model) | the brief, the diff, the previous version (`git show <base>:<file>`), the rules | a review report: pass 1 correctness, pass 2 fit, verdict                                                     |
-| 4   | Fix         | the implementer, fix mode               | the findings                                                                    | each finding fixed, disagreed (one line why) or escalated                                                    |
-| 5   | Full gate   | implementer                             | -                                                                               | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
-| 6   | Hand over   | implementer or orchestrator             | the lot's files                                                                 | `dialecte handover`: a commit-by-lots script a human runs; nothing committed, nothing pushed                 |
-| 7   | Retro       | orchestrator                            | reports, loops, the user's corrections                                          | retro entries; skill edits drafted, applied on approval                                                      |
+| #   | Station     | Who                         | Tier                                                        | Reads                                                                           | Leaves                                                                                                       |
+| --- | ----------- | --------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 0   | Orchestrate | orchestrator                | strong                                                      | the plan, the user's decisions                                                  | one brief per implementer (template in [references/briefs.md](references/briefs.md))                         |
+| 1   | Implement   | implementer                 | standard or strong, by lot kind                             | its brief, the code it changes                                                  | code + tests, red first; an implement report                                                                 |
+| 2   | Fast gate   | implementer                 | no agent                                                    | -                                                                               | `dialecte gate --fast` + `dialecte rules`: type-check, lint, format, touched tests, skills check, code rules |
+| 3   | Review      | **a different agent**       | strong, both passes                                         | the brief, the diff, the previous version (`git show <base>:<file>`), the rules | a review report: pass 1 correctness, pass 2 fit, verdict                                                     |
+| 4   | Fix         | the implementer, fix mode   | standard for wording or naming, else the implementer's tier | the findings                                                                    | each finding fixed, disagreed (one line why) or escalated                                                    |
+| 5   | Full gate   | implementer                 | no agent                                                    | -                                                                               | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
+| 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                 | `dialecte handover`: a commit-by-lots script a human runs; nothing committed, nothing pushed                 |
+| 7   | Retro       | orchestrator                | strong                                                      | reports, loops, the user's corrections                                          | retro entries; skill edits drafted, applied on approval                                                      |
+
+The Tier column names the kind of model a station runs on, never a model: the tiers, the rules that go with
+them (escalate one tier after a failed round, never down-tier a correctness review, effort as a second knob)
+and how to learn which model a tier is (`npx @dialecte/cli models`) are in
+[references/model-tiers.md](references/model-tiers.md).
 
 Stations 3-4 loop on the same lot. **Cap: three review rounds.** A fourth round means the plan or the
 brief is wrong - stop and bring the disagreement to the user. Re-review only the hunks that changed.
@@ -130,7 +135,8 @@ You never drop a finding on your own: disagreements go back to the orchestrator.
 
 The `dialecte-contributing` landing rules apply: write the lots file and run `npx dialecte handover
 <lots.json>` (never a hand-written script when the command exists); give the absolute path and the one
-command to run, the gates with real counts, what was not verified. A refusal is a finding: fix the file
+command to run, the gates with real counts, what was not verified, and one usage line for the user (the
+lot's sub-agent tokens, in total and by station: [references/retro.md](references/retro.md)). A refusal is a finding: fix the file
 or the message, do not loosen the lots. Never commit, push,
 stage, or touch a repository's index while a hand-over script may be waiting.
 
@@ -148,6 +154,10 @@ that is rewritten every retro never settles.
   (never from uncommitted work). Concerns that touch the same files are one implementer, or run in order.
 - Write each brief from [references/briefs.md](references/briefs.md): the brief is the agent's whole
   context; synthesise, do not say "based on the findings".
+- Spawn each agent on the tier its brief names ([references/model-tiers.md](references/model-tiers.md)), and
+  note the tokens of each completion notice against its station as it lands: the ledger the retro and the
+  hand-over message report. When a station runs well above the lot's other stations, tell the user then, not
+  at the end.
 - Spawn the reviewer only after the implementer's report; give it the brief, not the implementer's
   conclusions. You review too: read the diff yourself before accepting a verdict.
 - Heavy runs share one machine: one browser test suite at a time (`--no-file-parallelism`), low
@@ -157,6 +167,7 @@ that is rewritten every retro never settles.
 ## Never
 
 - Skip the red step, the review, or the cap.
+- Name a model in a brief or a skill (name the tier), or down-tier a correctness review to save tokens.
 - Commit, push, stage, or merge.
 - Implement two lots in one station "because they are small".
 - Reach for `any`, `@ts-ignore` or a skipped test to get green.

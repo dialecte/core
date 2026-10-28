@@ -13,7 +13,13 @@ every larger change (complete). Write the moment a mistake is caught, not from m
   green by accident). These are the most expensive findings.
 - **Corrections by the user**: verbatim, with what they corrected.
 - **Plan drift**: deviations, and whether they were a plan flaw or a discovery.
-- **Cost**: model used per station, rough time.
+- **Token ledger**: sub-agent tokens per station, from the completion notices (implementer, each review and
+  fix round, skill-eval runs, graders), the tier each ran on, and every escalation with its reason. No fixed
+  budget: the ledger is what shows where a lot's tokens went, and what later lots compare against.
+
+The **hand-over message** carries the ledger as one usage line for the user, for example "this lot cost
+~1.1M tokens: implementer 450k, review 320k, fix 90k, evals 240k". A station far above the others in that line is a
+retro fact too: why it ran long, and whether its tier or its brief was wrong.
 
 ## 2. From facts to improvements
 
