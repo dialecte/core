@@ -648,6 +648,15 @@ export type EngineBenchWorkerApi = {
 	historyUndo: (params: { documentId: string }) => Promise<void>
 	/** The engine closed, the pool removed. */
 	historyClose: () => Promise<void>
+	/** The history engine's SQLite progress handler beating (as the runtime installs it, to no port) or none. */
+	historyProgressBeat: (params: { on: boolean }) => Promise<void>
+}
+
+/** One file imported once, then exported again and again in one session, the progress handler on and off in turn. */
+export type ExportBeatAbRun = {
+	importMs: number
+	recordCount: number
+	exports: { beat: boolean; exportMs: number }[]
 }
 
 /** The port bench on one file: the import alone and with another view committing, through the store's ports. */

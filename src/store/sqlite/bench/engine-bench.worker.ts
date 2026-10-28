@@ -1,4 +1,5 @@
-import { withOpaquePhases } from '../../engine/host/heartbeat'
+import { createHeartbeat, withOpaquePhases } from '../../engine/host/heartbeat'
+import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
 import { RECORD_COLUMN_LIST } from '../engine/engine.constants'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { inWriteTransaction } from '../engine/transaction'
@@ -219,6 +220,21 @@ const api: EngineBenchWorkerApi = {
 			fileBytes: result.file.size,
 			recordCount: await engine.count(documentId),
 			stages: stagesOf({ snapshot: result.perf }),
+		}
+	},
+
+	historyProgressBeat: async function historyProgressBeat({ on }) {
+		const { db } = openedEngine()
+		const sqlite3 = await loadSqlite()
+		if (on) {
+			installProgressBeat({
+				sqlite3,
+				db,
+				heartbeat: createHeartbeat({ intervalMs: ENGINE_HEARTBEAT_INTERVAL_MS }),
+				ops: PROGRESS_BEAT_OPS,
+			})
+		} else {
+			sqlite3.capi.sqlite3_progress_handler(db, 0, 0, 0)
 		}
 	},
 

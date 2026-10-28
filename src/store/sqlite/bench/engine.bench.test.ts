@@ -13,6 +13,7 @@ import {
 	ENGINE_BENCH_QUIET_LOAD,
 	FIXTURE_ROOTS,
 	GATE_STEADY_CACHE_MIB,
+	EXPORT_AB_ROUNDS,
 	HISTORY_EXPORT_FIXTURES,
 	QUIET_WAIT_MAX_MS,
 	READY_500_RECORDS,
@@ -28,6 +29,7 @@ import type {
 	CommitWaits,
 	EngineBenchWorkerApi,
 	EngineHistoryExportRun,
+	ExportBeatAbRun,
 	EngineImportRun,
 	HistoryImport,
 } from './bench.types'
@@ -103,6 +105,35 @@ async function importInProcess(params: { file: File }): Promise<EngineImportRun>
 	} finally {
 		await store.destroy()
 	}
+}
+
+/**
+ * One file imported once in one engine session, then exported `EXPORT_AB_ROUNDS` times with the SQLite
+ * progress handler beating and as many without it, in turn (beat first in even rounds, last in odd
+ * ones): what the beat costs an export, beside the run-to-run spread of one database.
+ */
+async function measureExportBeatAb(params: {
+	api: EngineBenchWorkerApi
+	file: File
+	project: string
+}): Promise<ExportBeatAbRun> {
+	const { api, file, project } = params
+	await api.historyOpen({
+		project,
+		root: FIXTURE_ROOTS.composed,
+		afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
+	})
+	const imported = await api.historyImport({ file, writeId: 'w-ab' })
+	const exports: ExportBeatAbRun['exports'] = []
+	for (let round = 0; round < EXPORT_AB_ROUNDS; round += 1) {
+		const order = round % 2 === 0 ? [true, false] : [false, true]
+		for (const beat of order) {
+			await api.historyProgressBeat({ on: beat })
+			const { exportMs } = await api.historyExport({ documentId: imported.documentId })
+			exports.push({ beat, exportMs })
+		}
+	}
+	return { importMs: imported.run.dropToReadyMs, recordCount: imported.run.recordCount, exports }
 }
 
 /**
@@ -249,6 +280,28 @@ describe('engine bench (the SQLite engine as built)', () => {
 		},
 		ENGINE_BENCH_CELL_TIMEOUT_MS,
 	)
+
+	for (const [size, name] of Object.entries(HISTORY_EXPORT_FIXTURES)) {
+		const cell = `engine-export-beat-ab-${size}`
+		it.runIf(RUN && CELL_FILTER.test(cell))(
+			cell,
+			async () => {
+				const file = await fixtureFile({ name })
+				const { worker, api } = spawnEngineWorker()
+				try {
+					const result = (await recordCell({
+						name: cell,
+						run: () => measureExportBeatAb({ api, file, project: cell }),
+					})) as ExportBeatAbRun
+					expect(result.exports).toHaveLength(2 * EXPORT_AB_ROUNDS)
+				} finally {
+					await api.historyClose().catch(() => undefined)
+					worker.terminate()
+				}
+			},
+			ENGINE_BENCH_CELL_TIMEOUT_MS,
+		)
+	}
 
 	for (const [size, name] of Object.entries(HISTORY_EXPORT_FIXTURES)) {
 		const cell = `engine-history-export-${size}`

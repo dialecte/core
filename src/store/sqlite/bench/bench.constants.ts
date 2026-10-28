@@ -295,3 +295,6 @@ export const RECLAIM_READ_EVERY_MS = 100
 
 /** How long the start cell waits for the free pages to be back before it fails. */
 export const RECLAIM_WAIT_MAX_MS = 120_000
+
+/** Rounds of the export A/B: each exports once with the progress handler beating and once without. */
+export const EXPORT_AB_ROUNDS = 5
