@@ -1,4 +1,4 @@
-import type { Store } from '../store.types'
+import type { ImportFileOptions, Store } from '../store.types'
 import type { DialecteErrorKey } from '@/errors'
 import type { DocumentRecord } from '@/project/types'
 import type { BaseTestCase } from '@/test'
@@ -194,4 +194,17 @@ export type KeptTextWrite = {
 	record: AnyRawRecord
 	blob: BlobRecord
 	writeId: string
+}
+
+/** An import handing a lone surrogate: the write id it runs under, its options, the body of its file. */
+export type ImportWithLoneSurrogate = {
+	writeId: string
+	options?: ImportFileOptions
+	body?: string
+}
+
+/** A write handing a store, at one place, text holding a lone surrogate. */
+export type TextPlace = {
+	needs?: StoreContractNeed[]
+	write: (store: Store) => Promise<unknown>
 }

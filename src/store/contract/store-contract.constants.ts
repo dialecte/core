@@ -9,6 +9,9 @@ export const CONTRACT_SESSION_FAIL_VALUE = 'fail'
 /** A record of the session's tag whose `bB` holds this value gets a diagnostic whose `meta` holds a function. */
 export const CONTRACT_SESSION_FUNCTION_VALUE = 'function'
 
+/** A record of the session's tag whose `bB` holds this value gets a diagnostic whose `meta.note` holds a lone surrogate. */
+export const CONTRACT_SESSION_LONE_SURROGATE_VALUE = 'lone-surrogate'
+
 /** A record of the session's tag whose `bB` holds this value makes the session wait for the case's release. */
 export const CONTRACT_SESSION_HOLD_VALUE = 'hold'
 

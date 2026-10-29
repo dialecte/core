@@ -16,6 +16,7 @@ import { readHeldIds, refuseTakenIds } from './records'
 import { documentTablesOf } from './registry'
 import { inWriteTransaction } from './transaction'
 
+import { checkWriteId } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwRecordToUpdateNotFound } from '@/store/store-errors'
 
 import type { CommitRecordsParams, HistoryStepParams } from './engine.types'
@@ -23,12 +24,13 @@ import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /**
  * A commit on the file: refused whole before anything is written, in the order every store answers
- * in - a document not registered (or still importing), an update of a record it does not hold, a
- * create that is not JSON, a taken or repeated id, an update that is not JSON. Then, once the import
- * that runs is settled, one durable transaction: the redo future discarded, the entry recorded with
- * the records it touches whole - the updated ones as they are, the created and updated ones as given -
- * the creates and the updates written, then the records the deletes find kept as they are at that
- * step and deleted. Answers how many records the document gained (negative when it lost some).
+ * in - a document not registered (or still importing), a write id that is not well-formed text, an
+ * update of a record it does not hold, a create that is not JSON, a taken or repeated id, an update
+ * that is not JSON. Then, once the import that runs is settled, one durable transaction: the redo
+ * future discarded, the entry recorded with the records it touches whole - the updated ones as they
+ * are, the created and updated ones as given - the creates and the updates written, then the records
+ * the deletes find kept as they are at that step and deleted. Answers how many records the document
+ * gained (negative when it lost some).
  */
 export function commitRecords(params: CommitRecordsParams): number {
 	const { sqlite3, db, documentId, writeId, creates, updates, deletes, settle } = params
@@ -41,6 +43,7 @@ export function commitRecords(params: CommitRecordsParams): number {
 	if (!tables) throwDocumentNotRegistered({ documentId, what: 'records' })
 	// an import table has no unique id index yet, and nothing commits on a document before it is ready
 	if (tables.status === 'importing') throwDocumentNotRegistered({ documentId, what: 'a commit' })
+	checkWriteId({ writeId })
 	asReadFailure({
 		detail: `The records to update in document "${documentId}"`,
 		work: function checkUpdatesHeld() {

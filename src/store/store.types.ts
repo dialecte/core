@@ -43,18 +43,21 @@ export type RecordSchema = {
  * `getChangeLog` in sequence order.
  *
  * A store holds JSON values only, in records, in document metadata and in blob entries (an added
- * entry, an attached reference): strings, finite numbers, booleans, null, and arrays and plain
- * objects of them, nested at most 512 levels counted from what a write hands (its list of records
- * or patches, or the document; a record's attribute value may then nest 508 levels, a metadata
- * field's 510). A record is kept as its type has it: a field it carries beyond the type's - at its
- * top, in its namespace or in its parent - is dropped. A field holding `undefined` is dropped: a record
- * or a document created with one reads back without it, and an update leaves that field as it was.
- * Any other value - a Date, a Map, a Set, NaN or Infinity, a BigInt, a function, a symbol, an
- * instance of a class, a raw JSON value, an object with a `toJSON` method, `undefined` in an array,
- * a cycle, a value nested deeper - refuses the write whole with `STORE_VALUE_NOT_JSON`, nothing of
- * it written; each write says where that comes in its order. Hand values that read the same each
- * time: one that does not (a getter answering something new) is kept as it read for one store and
- * may be read again by another.
+ * entry, an attached reference): well-formed strings, finite numbers, booleans, null, and arrays
+ * and plain objects of them under well-formed keys, nested at most 512 levels counted from what a
+ * write hands (its list of records or patches, or the document; a record's attribute value may then
+ * nest 508 levels, a metadata field's 510). A record is kept as its type has it: a field it carries
+ * beyond the type's - at its top, in its namespace or in its parent - is dropped. A field holding
+ * `undefined` is dropped: a record or a document created with one reads back without it, and an
+ * update leaves that field as it was. Any other value - a string or an object key holding a lone
+ * surrogate (SQLite would read it back changed), a Date, a Map, a Set, NaN or Infinity, a BigInt, a
+ * function, a symbol, an instance of a class, a raw JSON value, an object with a `toJSON` method,
+ * `undefined` in an array, a cycle, a value nested deeper - refuses the write whole with
+ * `STORE_VALUE_NOT_JSON`, nothing of it written; each write says where that comes in its order.
+ * Every store keeps well-formed text as written, code unit for code unit; an id or a tag name a
+ * call looks up that holds a lone surrogate names nothing (no store holds one). Hand values that
+ * read the same each time: one that does not (a getter answering something new) is kept as it read
+ * for one store and may be read again by another.
  */
 export interface Store {
 	/** The name of the state this store reads and writes; also scopes the BroadcastChannel */
@@ -162,12 +165,13 @@ export interface Store {
 
 	/**
 	 * Import one file next to the data: register the document `importing`, parse it with the
-	 * dialecte's import session, store its records batch by batch, apply the session's writes, mark it
-	 * `ready`. Answers the document, its record count and its diagnostics. Whatever fails, or an abort,
-	 * leaves nothing of the file and throws the structured error (`PARSE_ERROR`, `IMPORT_ABORTED`,
-	 * `IMPORT_FAILED` wrapping anything else). `onProgress` is never awaited; `writeId` is generated
-	 * when absent. A store that opens finds no import of a previous run: an unfinished import is
-	 * removed when the store opens.
+	 * dialecte's import session, store its records batch by batch, apply the session's writes, mark
+	 * it `ready`. Answers the document, its record count and its diagnostics. Whatever fails, or an
+	 * abort, leaves nothing of the file and throws the structured error (`PARSE_ERROR`,
+	 * `IMPORT_ABORTED`, a store's refusal as it is - `STORE_VALUE_NOT_JSON` for a file, a `writeId`
+	 * or `metadata` holding a value a store does not keep - `IMPORT_FAILED` wrapping anything else).
+	 * `onProgress` is never awaited; `writeId` is generated when absent. A store that opens finds no
+	 * import of a previous run: an unfinished import is removed when the store opens.
 	 */
 	importFile(params: ImportFileParams): Promise<ImportFileResult>
 
@@ -208,7 +212,8 @@ export interface Store {
 	/**
 	 * Atomic commit — all-or-nothing write scoped to a document, one undoable history entry holding
 	 * the whole records before and after. Refused whole, nothing written and no entry kept: a document
-	 * not registered (`DOCUMENT_NOT_REGISTERED`), then an update of a record the document does not hold
+	 * not registered or still importing (`DOCUMENT_NOT_REGISTERED`), then a `writeId` that is not
+	 * well-formed text (`STORE_VALUE_NOT_JSON`), then an update of a record the document does not hold
 	 * (`STORE_RECORD_NOT_FOUND`, `meta.recordId`), then a create that is not JSON
 	 * (`STORE_VALUE_NOT_JSON`), then a create of an id the document holds or the commit holds twice
 	 * (`STORE_DUPLICATE_ID`, `meta.recordIds`), then an update that is not JSON. A delete of an absent

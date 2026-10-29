@@ -1,12 +1,14 @@
 import {
 	CONTRACT_HOLD_CHANNEL,
-	HOLD_ID_SEPARATOR,
+	CONTRACT_LONE_SURROGATE_TEXT,
 	CONTRACT_SESSION_DIAGNOSTICS,
 	CONTRACT_SESSION_FAIL_VALUE,
 	CONTRACT_SESSION_FUNCTION_VALUE,
 	CONTRACT_SESSION_HOLD_VALUE,
+	CONTRACT_SESSION_LONE_SURROGATE_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
+	HOLD_ID_SEPARATOR,
 } from './store-contract.constants'
 
 import { createDiagnostic } from '@/diagnostics'
@@ -101,7 +103,8 @@ function holdIdOf(params: { handed: { record: AnyRawRecord }[] }): string | unde
 /**
  * The import session every contract leg runs. Its behaviour is read from the file - a store behind a
  * worker cannot be handed a test's own hooks: it asks for the records of one tag only, says one
- * diagnostic per record it was handed (with the tag names of its open ancestors), marks each with an
+ * diagnostic per record it was handed (with the tag names of its open ancestors; a function or a lone
+ * surrogate in its `meta` when the record's `bB` asks for one), marks each with an
  * attribute after the parse, fails when one of them has `bB` set to the fail value, and waits for the
  * case's release when one has it set to the hold value (`holdContractImport`, every file holding it
  * is held).
@@ -130,7 +133,15 @@ function createContractImportSession(): ImportSession {
 				diagnostics: handed.map(({ record, ancestry }) =>
 					createDiagnostic(CONTRACT_SESSION_DIAGNOSTICS, 'seen', {
 						ref: { tagName: record.tagName, id: record.id },
-						meta: { ancestry, ...(holdsFunctionValue({ record }) && { fix: sessionFix }) },
+						meta: {
+							ancestry,
+							...(holdsValue({ record, value: CONTRACT_SESSION_FUNCTION_VALUE }) && {
+								fix: sessionFix,
+							}),
+							...(holdsValue({ record, value: CONTRACT_SESSION_LONE_SURROGATE_VALUE }) && {
+								note: CONTRACT_LONE_SURROGATE_TEXT,
+							}),
+						},
 					}),
 				),
 			}
@@ -138,11 +149,10 @@ function createContractImportSession(): ImportSession {
 	}
 }
 
-/** A record whose `bB` asks for a diagnostic holding a function. */
-function holdsFunctionValue(params: { record: AnyRawRecord }): boolean {
-	return params.record.attributes.some(
-		(attribute) => attribute.name === 'bB' && attribute.value === CONTRACT_SESSION_FUNCTION_VALUE,
-	)
+/** A record whose `bB` holds `value`: it asks for a diagnostic holding what that value names. */
+function holdsValue(params: { record: AnyRawRecord; value: string }): boolean {
+	const { record, value } = params
+	return record.attributes.some((attribute) => attribute.name === 'bB' && attribute.value === value)
 }
 
 /** What a dialecte might wrongly put in a diagnostic: a function, which no store keeps nor any port carries. */

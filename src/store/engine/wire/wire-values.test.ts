@@ -1,3 +1,4 @@
+import { CONTRACT_LONE_SURROGATE_TEXT } from '../../contract/store-contract.constants'
 import { fromWireArgs, fromWireValues, toWireArgs, toWireValues } from './wire-values'
 
 import { describe, expect, it } from 'vitest'
@@ -39,6 +40,8 @@ const NON_JSON_VALUES: Record<string, () => unknown> = {
 	'an instance of a class': () => new HeldInstance(),
 	'an array holding undefined': () => [undefined],
 	'a raw JSON value': () => (JSON as JsonWithRawJson).rawJSON?.('1'),
+	'text holding a lone surrogate': () => CONTRACT_LONE_SURROGATE_TEXT,
+	'an object whose key holds a lone surrogate': () => ({ [CONTRACT_LONE_SURROGATE_TEXT]: 1 }),
 	'an object with a toJSON function': () => ({ toJSON: () => 1 }),
 	'an object whose getter throws': () =>
 		Object.defineProperty({}, 'held', {
@@ -147,6 +150,13 @@ describe('values a write hands the store, carried across a port', () => {
 			Object.prototype,
 		)
 		expect(checkOutcome({ value: received })).toBe('kept')
+	})
+
+	it('text and a key holding a lone surrogate → cross as they are, no stand-in named', () => {
+		const held = { [CONTRACT_LONE_SURROGATE_TEXT]: [CONTRACT_LONE_SURROGATE_TEXT] }
+		const wire = toWireValues({ values: [held] })
+		expect(wire.standIns).toEqual([])
+		expect(fromWireValues(structuredClone(wire))).toStrictEqual([held])
 	})
 
 	it('a cycle → refused as a cycle', () => {
