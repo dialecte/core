@@ -1,6 +1,6 @@
 ---
 name: dialecte-contributing
-description: Change Dialecte itself - @dialecte/core, a dialecte package, the generator (create) or the type-perf CLI (cli). Covers how the repos are split, the placement decision (core vs dialecte hook vs dialecte extension vs helper vs consumer code), the red-first table-driven workflow, the Definition of Done gates (check, format, build, test, doc:build, docs + CHANGELOG), the team code rules, the verification traps that give false greens, and how a change is handed over (commit-by-lots script, never pushed by the agent). Use it whenever the working directory is inside a dialecte repo, the task says "add to core", "new hook", "new extension method", "fix dialecte", "bump core in a dialecte package", or a consumer feature is blocked on a missing dialecte capability. Load the dialecte skill too for the API map; for a dialecte's own schema knowledge also load its skill (dialecte-<id>).
+description: Change Dialecte itself - @dialecte/core, a dialecte package, the generator (create) or the type-perf CLI (cli). Covers how the repos are split, the placement decision (core vs dialecte hook vs dialecte extension vs helper vs consumer code), the red-first table-driven workflow, the Definition of Done gates (check, format, build, test, doc:build, docs + CHANGELOG), the team code rules, the verification traps that give false greens, and how a change is handed over (a commit-by-lots hand-over the user runs, never pushed by the agent). Use it whenever the working directory is inside a dialecte repo, the task says "add to core", "new hook", "new extension method", "fix dialecte", "bump core in a dialecte package", or a consumer feature is blocked on a missing dialecte capability. Load the dialecte skill too for the API map; for a dialecte's own schema knowledge also load its skill (dialecte-<id>).
 license: MIT
 metadata:
   author: dialecte
@@ -110,7 +110,9 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
    `only`, the barrel export and the namespace registration, and lists the `FILL:` placeholders
    (`skills check` refuses them until written).
 2. **Red first, vertically**: one table case with `only: true`, red for the right reason, minimum
-   code, next case. See the `dialecte` skill's references/testing.md.
+   code, next case. See the `dialecte` skill's references/testing.md. Tests share a loaded machine: a
+   test owns its temporary folder, and a time bound carries slack and never counts a worker's start
+   ([references/traps.md](references/traps.md), Tests).
 3. **Implement under the code rules**: [references/code-rules.md](references/code-rules.md).
    Read it before writing the first line; most review comments come from it. `npx dialecte rules`
    checks them on the changed files.
@@ -118,8 +120,9 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
 5. **Independent review**: have a fresh reviewer (a sub-agent with only the spec, the diff and
    these rules, or a human) read the diff against the previous version before hand-over. Self-review
    re-reads your own intent and misses weakened assertions and unusable types.
-6. **Hand over** with a commit-by-lots script written by `npx dialecte handover <lots.json>`:
-   [references/landing-changes.md](references/landing-changes.md). The agent never commits or pushes.
+6. **Hand over** through `npx dialecte handover <lots.json>`: the agent writes only the lots file, the
+   command writes the hand-over folder and prints the card the user gets
+   ([references/landing-changes.md](references/landing-changes.md)). The agent never commits or pushes.
 
 ## Definition of Done - every change, in the changed package
 
@@ -130,6 +133,15 @@ restores the generated docs the package declares after the docs build, and refus
 hand-over script holds the repository. With `--fast`, a change that touches no test (a doc edit)
 passes the tests step with the note "no test file is affected by the change"; any other run that
 counts no test fails. Paste its lines in your report: they are the real counts.
+
+`--fast` starts with the worktree's **hygiene**: nothing staged, no stash entry pushed on this
+worktree's branch since `dialecte worktree add` made it (other branches' entries are only noted), and
+every new file declared (`--declare <path>`, one per new file or folder; an undeclared one is a
+warning). A failure names what changed and the read-only commands
+to look at it. `--full` and the heavy steps hold a machine-wide lock: a step the package marks `heavy`, a
+command naming a browser project, and any test step of a package that runs its tests in a browser (a
+`@vitest/browser*` or playwright dependency, a `browser` in its vitest config). A second heavy run waits
+with a line every 30 s naming the holder (`--no-wait` refuses).
 
 **Waiting on a long run** (`gate --full`, a mutation run, a bench): start it in the background with its output in
 a log - your harness's background run, or `cmd > "$log" 2>&1 & echo $! > "$pidfile"` - then wait for the

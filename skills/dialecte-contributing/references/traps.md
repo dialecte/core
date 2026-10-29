@@ -28,6 +28,13 @@ ran what you think it ran.
 - A case that is green on its first run may be green by accident (an XPath matching another
   element, last-wins index, id order). Break the code on purpose once.
 - Benches running in the browser print nothing unless run with `--silent=false`.
+- A test owns its temporary folder: `mkdtempSync(join(tmpdir(), '<prefix>-'))`, removed when it ends. The
+  system's temporary folder itself, scanned or used as a project root, holds what every other test and
+  process left there: green alone, red under load (`dialecte rules` reports it).
+- A time bound carries slack: several times what the call takes on an idle machine, measured around the
+  call under test only (`performance.now()` before and after it). A test's or a file's duration counts a
+  worker's or a browser's start and the machine's load, so a tight bound fails for reasons the code
+  does not have.
 
 ## Tooling
 

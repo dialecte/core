@@ -30,7 +30,7 @@ are what the next station reads. A decision that is not in one of them was not a
 | 3   | Review      | **a different agent**       | strong, both passes                                         | the brief, the diff, the previous version (`git show <base>:<file>`), the rules | a review report: pass 1 correctness, pass 2 fit, verdict                                                     |
 | 4   | Fix         | the implementer, fix mode   | standard for wording or naming, else the implementer's tier | the findings                                                                    | each finding fixed, disagreed (one line why) or escalated                                                    |
 | 5   | Full gate   | implementer                 | no agent                                                    | -                                                                               | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
-| 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                 | `dialecte handover`: a commit-by-lots script a human runs; nothing committed, nothing pushed                 |
+| 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                 | `dialecte handover`: a hand-over folder and its card; a human runs it; nothing committed, nothing pushed     |
 | 7   | Retro       | orchestrator                | strong                                                      | reports, loops, the user's corrections                                          | retro entries; skill edits drafted, applied on approval                                                      |
 
 The Tier column names the kind of model a station runs on, never a model: the tiers, the rules that go with
@@ -81,9 +81,10 @@ Open questions: <none | ...>
 
 ## Station 2 - fast gate (the counts decide, not the summary)
 
-Run `npx dialecte gate --fast` and `npx dialecte rules` from the package root. The gate runs each step
-unfiltered and prints one line per step with the counts the step itself printed; paste those lines in
-the report. Fix every `rules` error before the review. The bullets below are what the gate checks for
+Run `npx dialecte gate --fast --declare <new path>` and `npx dialecte rules` from the package root. The gate
+starts with the worktree's hygiene (nothing staged, the stash as it was when the worktree was made, every new
+file declared: one `--declare` per new file or folder of the lot), then runs each step unfiltered and prints
+one line per step with the counts the step itself printed; paste those lines in the report. Fix every `rules` error before the review. The bullets below are what the gate checks for
 you, and what you check by hand with a cli older than 0.2.0:
 
 - Run every command that decides a gate **unfiltered**: an output-compacting shell wrapper can print a green
@@ -133,12 +134,18 @@ You never drop a finding on your own: disagreements go back to the orchestrator.
 
 ## Station 6 - hand over
 
-The `dialecte-contributing` landing rules apply: write the lots file and run `npx dialecte handover
-<lots.json>` (never a hand-written script when the command exists); give the absolute path and the one
-command to run, the gates with real counts, what was not verified, and one usage line for the user (the
-lot's sub-agent tokens, in total and by station: [references/retro.md](references/retro.md)). A refusal is a finding: fix the file
-or the message, do not loosen the lots. Never commit, push,
-stage, or touch a repository's index while a hand-over script may be waiting.
+The `dialecte-contributing` landing rules apply. Write only the lots file and run `npx dialecte handover
+<lots.json>`: it writes the hand-over folder and prints its card. Never a hand-written script, nor a file per
+commit. When the repository has a commit hook (`core.hooksPath`), rehearse first with `npx dialecte handover
+run <folder> --rehearse`: a scratch clone holding your tree, the hooks folder and `node_modules`, so the hook
+runs as it will for the user.
+
+The hand-over message to the user **is the card** `handover` printed - repository, worktree, branch, HEAD,
+gates, the lots with their files and messages, and the command with its absolute `cd` - pasted as printed,
+never retyped. After it: what was not verified, and one usage line (the lot's sub-agent tokens, in total
+and by station: [references/retro.md](references/retro.md)). A refusal is a finding: fix the file or the
+message, do not loosen the lots. `npx dialecte handover list` shows every hand-over waiting on the machine.
+Never commit, push, stage, or touch a repository's index while a hand-over may be waiting.
 
 ## Station 7 - retro
 
@@ -151,7 +158,14 @@ that is rewritten every retro never settles.
 ## Orchestrating with sub-agents
 
 - One implementer per independent concern, **each in its own git worktree** cut from a committed base
-  (never from uncommitted work). Concerns that touch the same files are one implementer, or run in order.
+  (never from uncommitted work), made with `npx dialecte worktree add <repository> <branch> [--from <ref>]`:
+  it copies the hooks folder and `node_modules` and writes the hygiene baseline in one step. Never
+  `git worktree add` plus copies by hand. Concerns that touch the same files are one implementer, or run in
+  order.
+- **After every agent hands back** (implementer, fixer), run `npx dialecte gate --fast --declare <new path>`
+  in its worktree before anything else. Its hygiene step fails on a staged file or a stash added since the
+  worktree was made, whatever wrote it. A failure is a finding: look with the read-only commands it prints
+  and report it; never repair it with a git command that writes.
 - Write each brief from [references/briefs.md](references/briefs.md): the brief is the agent's whole
   context; synthesise, do not say "based on the findings".
 - Spawn the station's own agent when the host has it: Claude Code with `.claude/agents/dialecte-<station>.md`
@@ -165,7 +179,13 @@ that is rewritten every retro never settles.
 - Spawn the reviewer only after the implementer's report; give it the brief, not the implementer's
   conclusions. You review too: read the diff yourself before accepting a verdict.
 - Heavy runs share one machine: one browser test suite at a time (`--no-file-parallelism`), low
-  concurrency for mutation tests.
+  concurrency for mutation tests. `gate --full` and the heavy gate steps (any test step of a package that
+  runs its tests in a browser) hold a machine-wide lock: a second one waits, naming the holder.
+- After the user merged: `npx dialecte worktree prune` lists the merged worktrees and branches, the
+  committed hand-over folders and the rehearsal clones, each with its command (a worktree just made, one
+  holding ignored files, an unmerged branch are kept, with why). `--yes` asks for a confirmation on a
+  terminal and refuses without one: hand the printed commands, or the `--yes` command, to the user, each
+  with its absolute `cd`. Never remove a worktree, a branch or a hand-over folder by hand.
 - Never predict a sub-agent's result; wait for its report.
 
 ## Never
