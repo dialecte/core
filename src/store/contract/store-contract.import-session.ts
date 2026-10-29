@@ -3,6 +3,7 @@ import {
 	HOLD_ID_SEPARATOR,
 	CONTRACT_SESSION_DIAGNOSTICS,
 	CONTRACT_SESSION_FAIL_VALUE,
+	CONTRACT_SESSION_FUNCTION_VALUE,
 	CONTRACT_SESSION_HOLD_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
@@ -129,13 +130,23 @@ function createContractImportSession(): ImportSession {
 				diagnostics: handed.map(({ record, ancestry }) =>
 					createDiagnostic(CONTRACT_SESSION_DIAGNOSTICS, 'seen', {
 						ref: { tagName: record.tagName, id: record.id },
-						meta: { ancestry },
+						meta: { ancestry, ...(holdsFunctionValue({ record }) && { fix: sessionFix }) },
 					}),
 				),
 			}
 		},
 	}
 }
+
+/** A record whose `bB` asks for a diagnostic holding a function. */
+function holdsFunctionValue(params: { record: AnyRawRecord }): boolean {
+	return params.record.attributes.some(
+		(attribute) => attribute.name === 'bB' && attribute.value === CONTRACT_SESSION_FUNCTION_VALUE,
+	)
+}
+
+/** What a dialecte might wrongly put in a diagnostic: a function, which no store keeps nor any port carries. */
+function sessionFix(): void {}
 
 /** The hooks of the contract dialecte: the contract session, made fresh for each import. */
 export function createContractHooks(): DialecteHooks<AnyDialecteConfig> {

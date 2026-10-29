@@ -1,4 +1,4 @@
-import { cloneSafe, toThrownData } from '../wire/error-envelope'
+import { toThrownData } from '../wire/error-envelope'
 import { fromWireArgs } from '../wire/wire-values'
 import { ENGINE_WIRE_MEMBERS } from '../wire/wire.constants'
 import { LARGE_ANSWER_RECORDS, LISTENER_FLUSH_BUDGET_MS } from './host.constants'
@@ -46,7 +46,7 @@ export function serveClient(params: {
 			}
 		},
 	}
-	Comlink.expose(wire, cloneSafeEndpoint({ port }))
+	Comlink.expose(wire, refusingEndpoint({ port }))
 	return {
 		port,
 		drained: function untilDrained() {
@@ -161,12 +161,11 @@ function isLargeAnswer(params: { answer: WireAnswer }): boolean {
 }
 
 /**
- * The port as Comlink answers on it: an answer the port refuses to clone (a function in a dialecte's
- * diagnostic, or in what an error carries) is posted again made clonable - each member that does not
- * clone as its text - so the caller learns what the engine did or refused; one that does not clone even
- * so answers the refusal, as data.
+ * The port as Comlink answers on it: an answer the port refuses to clone is answered as the refusal,
+ * as data - never the value made clonable, which only a call through a port would see (what a store
+ * answers is plain data on every leg; what an error carries is made clonable by its envelope).
  */
-function cloneSafeEndpoint(params: { port: MessagePort }): Comlink.Endpoint {
+function refusingEndpoint(params: { port: MessagePort }): Comlink.Endpoint {
 	const { port } = params
 	return {
 		postMessage: function postClonable(message: unknown, transfer?: Transferable[]) {
@@ -174,7 +173,7 @@ function cloneSafeEndpoint(params: { port: MessagePort }): Comlink.Endpoint {
 				port.postMessage(message, transfer ?? [])
 			} catch (thrown) {
 				if (!isDataCloneError({ thrown })) throw thrown
-				postClonableAgain({ port, message, thrown })
+				postRefusal({ port, message, thrown })
 			}
 		},
 		addEventListener: function addListener(...args: Parameters<MessagePort['addEventListener']>) {
@@ -191,20 +190,13 @@ function cloneSafeEndpoint(params: { port: MessagePort }): Comlink.Endpoint {
 	}
 }
 
-/** Comlink's answer message, its value (an envelope) made clonable, or the refusal as data. */
-function postClonableAgain(params: { port: MessagePort; message: unknown; thrown: unknown }): void {
+/** Comlink's answer message, its value (an envelope) replaced by the port's refusal. */
+function postRefusal(params: { port: MessagePort; message: unknown; thrown: unknown }): void {
 	const { port, message, thrown } = params
-	const { value, ...rest } = message as { value?: unknown }
-	const envelope = value as WireAnswer | undefined
-	const safe = envelope?.ok
-		? { ok: true, value: cloneSafe({ value: envelope.value }) }
-		: { ok: false, thrown: cloneSafe({ value: envelope?.thrown }) }
-	try {
-		port.postMessage({ ...rest, value: safe })
-	} catch {
-		// not even its members' texts clone: the refusal itself goes
-		port.postMessage({ ...rest, value: { ok: false, thrown: toThrownData({ thrown }) } })
-	}
+	port.postMessage({
+		...(message as object),
+		value: { ok: false, thrown: toThrownData({ thrown }) },
+	})
 }
 
 function isDataCloneError(params: { thrown: unknown }): boolean {

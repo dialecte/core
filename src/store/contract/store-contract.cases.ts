@@ -4,6 +4,7 @@ import {
 	CONTRACT_LEVELS_ABOVE_METADATA_VALUE,
 	CONTRACT_SESSION_DIAGNOSTICS,
 	CONTRACT_SESSION_FAIL_VALUE,
+	CONTRACT_SESSION_FUNCTION_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
 } from './store-contract.constants'
@@ -2091,7 +2092,7 @@ async function expectOnlyKeptDocument(params: { store: Store; writeId: string })
 /** A failing import, and the structured error it must be refused with. */
 type FailingImport = {
 	file: File
-	key: 'PARSE_ERROR' | 'IMPORT_FAILED'
+	key: 'PARSE_ERROR' | 'IMPORT_FAILED' | 'STORE_VALUE_NOT_JSON'
 	detail: RegExp
 }
 
@@ -2106,6 +2107,14 @@ const failingImports: Record<string, FailingImport> = {
 		key: 'IMPORT_FAILED',
 		detail: /the contract session fails/,
 	},
+	'a session saying a diagnostic that is not JSON (a function in its meta) is refused STORE_VALUE_NOT_JSON':
+		{
+			file: contractFile({
+				body: `${sessionRecords(2)}<B aB="x" bB="${CONTRACT_SESSION_FUNCTION_VALUE}"/>`,
+			}),
+			key: 'STORE_VALUE_NOT_JSON',
+			detail: /function is not a JSON value \(field "fix"\)/,
+		},
 }
 
 const importing: StoreContractCases = {

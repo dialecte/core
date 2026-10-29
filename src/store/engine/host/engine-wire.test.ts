@@ -83,14 +83,16 @@ function servedCall(params: { answer?: unknown; thrown?: unknown }): () => Promi
 }
 
 describe('an answer that does not clone as it is', () => {
-	it('a value holding a function → answered, the function as its text', async () => {
+	it('a value holding a function → refused as the port refused it (as data), nothing of the value', async () => {
 		function fix(): number {
 			return 1
 		}
 		const call = servedCall({ answer: { applied: true, diagnostics: [{ meta: { fix } }] } })
-		expect(await call()).toEqual({
-			ok: true,
-			value: { applied: true, diagnostics: [{ meta: { fix: String(fix) } }] },
+		const answer = await call()
+		expect(answer.ok).toBe(false)
+		expect(answer.ok === false && answer.thrown).toMatchObject({
+			kind: 'error',
+			name: 'DataCloneError',
 		})
 	})
 

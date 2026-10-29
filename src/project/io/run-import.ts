@@ -3,6 +3,7 @@ import { resolveConfig } from './resolve-config'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
 import { splitFileName } from '@/store/document-path'
+import { checkJsonValues } from '@/store/json-values'
 import { parseXmlFile } from '@/xml'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
@@ -17,8 +18,9 @@ import type { AnyDialecteConfig } from '@/types'
  * document `importing` under the caller's `writeId`, parses the file with the dialecte's import
  * session and stores it batch by batch, applies the session's writes, marks the document `ready`.
  * A document is whole or absent: whatever fails, or an abort, removes it and is thrown (a foreign
- * error as `IMPORT_FAILED`, its cause kept). The progress listener and the abort come apart from the
- * import's data, as a worker call carries them.
+ * error as `IMPORT_FAILED`, its cause kept; diagnostics that are not plain JSON as
+ * `STORE_VALUE_NOT_JSON`). The progress listener and the abort come apart from the import's data, as
+ * a worker call carries them.
  */
 export async function runImport(
 	params: RunImportParams,
@@ -116,6 +118,8 @@ async function importRegistered(
 			control,
 		)
 		throwIfAborted({ signal: control.signal, file })
+		// what the dialecte says is answered by every store alike, through a port too: plain JSON only
+		checkJsonValues({ value: parsed.diagnostics })
 		perf.start('import::finalize')
 		try {
 			// a registry row removed meanwhile (by another connection) is never answered ready
