@@ -4,6 +4,7 @@ import { STORE_CONTRACT } from './store-contract.cases'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_CONTRACT_FACTORIES } from './store-contract.factories'
 import { STORE_PATH_CONTRACT } from './store-contract.path.cases'
+import { STORE_TEXT_CONTRACT } from './store-contract.text.cases'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -96,6 +97,7 @@ function runStoreContract(factory: StoreContractFactory): void {
 			...STORE_CONTRACT,
 			...STORE_EXPORT_CONTRACT,
 			...STORE_PATH_CONTRACT,
+			...STORE_TEXT_CONTRACT,
 		})) {
 			describe(group, () => {
 				for (const [description, testCase] of Object.entries(cases)) {

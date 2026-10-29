@@ -1,7 +1,8 @@
 import type { Store } from '../store.types'
 import type { DialecteErrorKey } from '@/errors'
+import type { DocumentRecord } from '@/project/types'
 import type { BaseTestCase } from '@/test'
-import type { AnyAttribute, AnyRawRecord } from '@/types'
+import type { AnyAttribute, AnyRawRecord, BlobRecord } from '@/types'
 
 /**
  * One leg of the store contract: how to get a store of that kind, and how to see its state again
@@ -176,4 +177,21 @@ export type WriteDuringExportParams = {
 	writer: Store
 	documentId: string
 	edited: EditedRecords
+}
+
+/**
+ * A call naming, at one key place, a key that is not well-formed, and what it answers: the answer for a key
+ * not held (`answers`), or the refusal of one (`refused`).
+ */
+export type KeyedCall = {
+	needs?: StoreContractNeed[]
+	call: (store: Store) => Promise<unknown>
+} & ({ answers: unknown } | { refused: DialecteErrorKey; meta?: Record<string, unknown> })
+
+/** What a "text kept as written" case writes: each text of a document, a record, a commit and a blob holding one kept text. */
+export type KeptTextWrite = {
+	document: DocumentRecord
+	record: AnyRawRecord
+	blob: BlobRecord
+	writeId: string
 }

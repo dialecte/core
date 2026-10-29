@@ -151,6 +151,8 @@ A store keeps plain JSON values only, in records, in document metadata and in bl
 
 Write a date as its ISO string or a number. A store keeps its own copy of what it is handed: a caller changing a value after the write does not change the store. Each value is read once, so hand values that read the same each time: a getter answering something new at each read is kept as it read for one store and may be read again by another.
 
+Every store keeps well-formed text as written, code unit for code unit, and reads it back the same: a leading byte order mark (U+FEFF), NUL, U+FFFD, a surrogate pair, a decomposed letter (no normalisation). The SQLite project store too, though SQLite holds text as UTF-8: its text columns are decoded with the byte order mark kept, and a key holding a lone surrogate - a document's, a record's, a blob's or a tag name - is bound as bytes UTF-8 never holds, so it never reaches the document, record or blob whose key holds U+FFFD at that place.
+
 A record is kept as its type has it: `id`, `tagName`, `namespace` (`prefix`, `uri`), `attributes`, `value`, `parent` (`id`, `tagName`, or `null`) and `children`. A field the object carries beyond those - at its top, in its namespace or in its parent - is dropped, once the whole record has passed the JSON check (a value that is not JSON is refused even there); attributes and children are kept as given. A bulk-write patch merged into a record keeps the same fields. A refused patch is named by its place among the patches that apply (those of records the document holds), however many the write hands.
 
 ## A document's path
