@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: spawn-station-agent
+expected_outcome: |
+  When the host has the station's agent definition (Claude Code with `.claude/agents/dialecte-<station>.md`),
+  the orchestrator spawns that agent for the station (dialecte-implementer for a specified lot, dialecte-reviewer
+  for the review) and does not rebuild its envelope in the prompt; when the host has no such file, it spawns a
+  general sub-agent on the tier the brief names, resolved with `dialecte models`, naming no model.
