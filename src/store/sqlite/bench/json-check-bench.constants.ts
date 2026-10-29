@@ -21,3 +21,9 @@ export const JSON_CHECK_BENCH_TEXT_EVERY = 4
 
 /** The text value: the file's mean length. */
 export const JSON_CHECK_BENCH_TEXT = 'a text value 16c'
+
+/**
+ * The character the two-byte cells add to every attribute value and text value: one outside Latin-1, as
+ * a parsed chunk holding one hands every string cut from it (the composed 50 MB file holds 406).
+ */
+export const JSON_CHECK_BENCH_TWO_BYTE_MARK = '\u2014'

@@ -24,22 +24,26 @@ import { commands } from 'vitest/browser'
 import { checkJsonValues, toJsonCopy } from '@/store/json-values'
 import { DEFAULT_BATCH_SIZE } from '@/xml/parse/parse-xml-document.constants'
 
-import type { JsonCheckRun } from './json-check-bench.types'
+import type { JsonCheckMember, JsonCheckRun, JsonCheckStrings } from './json-check-bench.types'
 import type { AnyRawRecord } from '@/types'
 
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
 const CELL_FILTER = new RegExp(import.meta.env.VITE_BENCH_CELLS ?? '^$')
 
-/** The members timed, each over the same batches. */
-const MEMBERS: Record<
-	string,
-	{ member: JsonCheckRun['member']; run: (batch: unknown) => unknown }
-> = {
-	'json-check-50': {
-		member: 'checkJsonValues',
-		run: (batch) => checkJsonValues({ value: batch }),
-	},
-	'json-copy-50': { member: 'toJsonCopy', run: (batch) => toJsonCopy({ value: batch }) },
+/** The members timed, each over the same batches, on one-byte and on two-byte strings. */
+const MEMBERS: Record<string, JsonCheckMember> = {
+	'json-check-50': { member: 'checkJsonValues', strings: 'one-byte', run: checkBatch },
+	'json-copy-50': { member: 'toJsonCopy', strings: 'one-byte', run: copyBatch },
+	'json-check-50-two-byte': { member: 'checkJsonValues', strings: 'two-byte', run: checkBatch },
+	'json-copy-50-two-byte': { member: 'toJsonCopy', strings: 'two-byte', run: copyBatch },
+}
+
+function checkBatch(batch: unknown): unknown {
+	return checkJsonValues({ value: batch })
+}
+
+function copyBatch(batch: unknown): unknown {
+	return toJsonCopy({ value: batch })
 }
 
 function batchesOf(params: { records: AnyRawRecord[] }): AnyRawRecord[][] {
@@ -61,10 +65,13 @@ function timePass(params: { batches: AnyRawRecord[][]; run: (batch: unknown) => 
 
 function timeMember(params: {
 	member: JsonCheckRun['member']
+	strings: JsonCheckStrings
 	run: (batch: unknown) => unknown
 }): JsonCheckRun {
-	const { member, run } = params
-	const batches = batchesOf({ records: fixtureShapedRecords({ count: JSON_CHECK_BENCH_RECORDS }) })
+	const { member, strings, run } = params
+	const batches = batchesOf({
+		records: fixtureShapedRecords({ count: JSON_CHECK_BENCH_RECORDS, strings }),
+	})
 	timePass({ batches, run })
 	const passesMs: number[] = []
 	for (let pass = 0; pass < JSON_CHECK_BENCH_PASSES; pass++) {
@@ -73,6 +80,7 @@ function timeMember(params: {
 	const medianMs = [...passesMs].sort((left, right) => left - right)[passesMs.length >> 1]!
 	return {
 		member,
+		strings,
 		records: JSON_CHECK_BENCH_RECORDS,
 		batch: DEFAULT_BATCH_SIZE,
 		passesMs,
@@ -83,7 +91,7 @@ function timeMember(params: {
 }
 
 describe('JSON-check bench (the store check, in the page)', () => {
-	for (const [cell, { member, run }] of Object.entries(MEMBERS)) {
+	for (const [cell, { member, strings, run }] of Object.entries(MEMBERS)) {
 		it.runIf(RUN && CELL_FILTER.test(cell))(
 			cell,
 			async () => {
@@ -95,7 +103,7 @@ describe('JSON-check bench (the store check, in the page)', () => {
 					...(await commands.benchDevice()),
 					deviceMemoryGiB: reportedDeviceMemoryGiB(),
 				}
-				const result = timeMember({ member, run })
+				const result = timeMember({ member, strings, run })
 				const loadAfter = (await commands.benchMachine()).load
 				await commands.benchRecord({ name: cell, data: { device, quiet, loadAfter, result } })
 				expect(result.medianMs).toBeGreaterThan(0)
