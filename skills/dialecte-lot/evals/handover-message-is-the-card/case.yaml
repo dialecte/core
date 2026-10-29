@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: handover-message-is-the-card
+expected_outcome: |
+  The hand-over is a lots file run through `dialecte handover`; the message to the user is the card the
+  command printed (repository, worktree, branch, HEAD, gates, lots with file counts and messages, the command
+  with its absolute `cd`), pasted as printed, not a summary retyped from memory; the agent rehearses with
+  `dialecte handover run <folder> --rehearse` when the repository has a commit hook, and commits nothing.

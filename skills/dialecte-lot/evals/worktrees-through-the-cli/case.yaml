@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: worktrees-through-the-cli
+expected_outcome: |
+  The orchestrator makes each implementer's worktree with `dialecte worktree add <repository> <branch>` (hooks
+  folder, node_modules and hygiene baseline in one step), not with `git worktree add` plus copies by hand, and
+  after the user merged the work it cleans up with `dialecte worktree prune` (reviewing the list, then
+  `--yes`), never by removing folders or branches by hand.
