@@ -98,6 +98,39 @@ const refusedCases: Record<string, RefusedCase> = {
 		value: () => ({ held: document.all }),
 		detail: 'an instance of HTMLAllCollection is not a JSON value (field "held")',
 	},
+	'a lone high surrogate in a field → refused, the field named': {
+		value: () => ({ text: 'a\uD800b' }),
+		detail:
+			'text that is not well-formed UTF-16 (a lone surrogate) is not a JSON value (field "text")',
+	},
+	'a lone low surrogate in an array → refused, its index named': {
+		value: () => ({ list: ['kept', '\uDC00'] }),
+		detail:
+			'text that is not well-formed UTF-16 (a lone surrogate) is not a JSON value (field "1")',
+	},
+	'a pair written low half first, alone → refused, no field named': {
+		value: () => '\uDC00\uD800',
+		detail: 'text that is not well-formed UTF-16 (a lone surrogate) is not a JSON value',
+	},
+	'a key holding a lone surrogate → refused, the field holding its object named': {
+		value: () => ({ held: { 'k\uD800': 1 } }),
+		detail:
+			'a key that is not well-formed UTF-16 (a lone surrogate) is not a JSON value (field "held")',
+	},
+	'a key holding a lone surrogate, its value undefined → refused, not dropped': {
+		value: () => ({ held: { 'k\uD800': undefined } }),
+		detail:
+			'a key that is not well-formed UTF-16 (a lone surrogate) is not a JSON value (field "held")',
+	},
+	'a key holding a lone surrogate in an object of an array → refused, its index named': {
+		value: () => [{ 'k\uDC00': 1 }],
+		detail:
+			'a key that is not well-formed UTF-16 (a lone surrogate) is not a JSON value (field "0")',
+	},
+	'a key holding a lone surrogate, at the top → refused, no field named': {
+		value: () => ({ 'k\uDC00': 1 }),
+		detail: 'a key that is not well-formed UTF-16 (a lone surrogate) is not a JSON value',
+	},
 	[`a value nested ${JSON_MAX_DEPTH + 1} levels deep → refused`]: {
 		value: () => nestedArrays({ levels: JSON_MAX_DEPTH + 1 }),
 		detail: `a value nested more than ${JSON_MAX_DEPTH} levels deep is not a JSON value (field "0")`,
@@ -129,6 +162,26 @@ for (const [memberName, member] of Object.entries(MEMBERS)) {
 				key: 'STORE_VALUE_NOT_JSON',
 			})
 			expect(calls.toJSON).toBe(0)
+		})
+
+		it('a key holding a lone surrogate, its value a getter → refused, the getter never called', async () => {
+			const calls = { get: 0 }
+			const value = Object.defineProperty({}, 'k\uD800', {
+				enumerable: true,
+				get: () => `read ${++calls.get}`,
+			})
+			await expectRejectsWith({
+				action: Promise.resolve().then(function walk() {
+					return member(value)
+				}),
+				key: 'STORE_VALUE_NOT_JSON',
+			})
+			expect(calls.get).toBe(0)
+		})
+
+		it('well-formed text at the edges (a surrogate pair, U+FFFD, a byte order mark, NUL) in values and keys → kept', () => {
+			const edges = '\u{1D11E}\uFFFD\uFEFF\u0000'
+			expect(() => member({ [edges]: [edges, { text: edges }] })).not.toThrow()
 		})
 
 		it('a field read through a getter → read once', () => {
@@ -210,6 +263,10 @@ describe('toJsonCopy', () => {
 					{ value: 1, enumerable: false },
 				),
 			expected: { list: [1] },
+		},
+		'well-formed text at the edges in values and keys → copied as it is': {
+			value: () => ({ '\u{1D11E}\uFEFF': ['\uFFFD\u0000', '\u{10FFFF}'] }),
+			expected: { '\u{1D11E}\uFEFF': ['\uFFFD\u0000', '\u{10FFFF}'] },
 		},
 		'an empty key → kept': {
 			value: () => ({ '': 'x' }),

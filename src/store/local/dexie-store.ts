@@ -1,7 +1,7 @@
 import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
-import { toJsonCopy } from '../json-values'
+import { checkWriteId, toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -366,6 +366,7 @@ export class DexieStore implements Store {
 				if (document && withStatus(document).status === 'importing') {
 					throwDocumentNotRegistered({ documentId, what: 'a commit' })
 				}
+				checkWriteId({ writeId })
 
 				try {
 					await this.db.transaction(

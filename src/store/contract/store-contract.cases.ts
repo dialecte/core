@@ -2,9 +2,11 @@ import { JSON_MAX_DEPTH } from '../json-values.constants'
 import {
 	CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE,
 	CONTRACT_LEVELS_ABOVE_METADATA_VALUE,
+	CONTRACT_LONE_SURROGATE_TEXT,
 	CONTRACT_SESSION_DIAGNOSTICS,
 	CONTRACT_SESSION_FAIL_VALUE,
 	CONTRACT_SESSION_FUNCTION_VALUE,
+	CONTRACT_SESSION_LONE_SURROGATE_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
 } from './store-contract.constants'
@@ -1431,6 +1433,7 @@ const NON_JSON_VALUES: Record<string, () => unknown> = {
 	'an instance of a class': () => new HeldInstance(),
 	'an array holding undefined': () => [undefined],
 	'a raw JSON value': () => (JSON as JsonWithRawJson).rawJSON?.('1'),
+	'text that is not well-formed': () => CONTRACT_LONE_SURROGATE_TEXT,
 }
 
 /** Where a write hands the store a value: every store refuses one that is not JSON there. */
@@ -2114,6 +2117,15 @@ const failingImports: Record<string, FailingImport> = {
 			}),
 			key: 'STORE_VALUE_NOT_JSON',
 			detail: /^A diagnostic of the import session: a function is not a JSON value \(field "fix"\)/,
+		},
+	'a session saying a diagnostic holding text that is not well-formed is refused STORE_VALUE_NOT_JSON':
+		{
+			file: contractFile({
+				body: `${sessionRecords(2)}<B aB="x" bB="${CONTRACT_SESSION_LONE_SURROGATE_VALUE}"/>`,
+			}),
+			key: 'STORE_VALUE_NOT_JSON',
+			detail:
+				/^A diagnostic of the import session: text that is not well-formed UTF-16 \(a lone surrogate\) is not a JSON value \(field "note"\)/,
 		},
 }
 

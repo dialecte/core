@@ -1,17 +1,23 @@
-import { JSON_MAX_DEPTH, REFUSED_TYPES } from './json-values.constants'
+import {
+	JSON_MAX_DEPTH,
+	NOT_WELL_FORMED_KEY_KIND,
+	NOT_WELL_FORMED_VALUE_KIND,
+	REFUSED_TYPES,
+} from './json-values.constants'
 
 import { throwDialecteError } from '@/errors'
 
 import type { JsonKind, JsonWalkStep, JsonWithRawJson } from './json-values.types'
 
 /**
- * Check a value a write hands the store. A store keeps plain JSON values only: strings, finite
- * numbers, booleans, null, and arrays and plain objects of them, nested at most `JSON_MAX_DEPTH`
- * levels counted from `value` (every store hands the same: a write's list of records or patches, or
- * the document). A field holding `undefined` is dropped, as JSON drops a symbol key and a property
- * that is not enumerable; any other value - a Date, a Map, a Set, NaN or Infinity, a BigInt, a
- * function, a symbol, an instance of a class, a raw JSON value, an object with a `toJSON` method
- * (never called), `undefined` in an array, a cycle, a value nested deeper - refuses the write with
+ * Check a value a write hands the store. A store keeps plain JSON values only: well-formed strings,
+ * finite numbers, booleans, null, and arrays and plain objects of them under well-formed keys, nested
+ * at most `JSON_MAX_DEPTH` levels counted from `value` (every store hands the same: a write's list of
+ * records or patches, or the document). A field holding `undefined` is dropped, as JSON drops a symbol
+ * key and a property that is not enumerable; any other value - text or a key holding a lone surrogate
+ * (SQLite would read it back changed), a Date, a Map, a Set, NaN or Infinity, a BigInt, a function, a
+ * symbol, an instance of a class, a raw JSON value, an object with a `toJSON` method (never called),
+ * `undefined` in an array, a cycle, a value nested deeper - refuses the write with
  * `STORE_VALUE_NOT_JSON`, before anything is written. One walk, keys in the order JSON gives them,
  * each value read once: a value must read the same each time (a getter answering something else at
  * each read is checked as it read first).
@@ -22,6 +28,14 @@ export function checkJsonValues(params: { value: unknown }): void {
 			checkValue({ value: params.value, field: '', inArray: false, ancestors: [] })
 		},
 	})
+}
+
+/**
+ * Check the id a commit is written under: kept on its history entry, it is well-formed text, as every
+ * text a store keeps (`STORE_VALUE_NOT_JSON`, field `writeId`).
+ */
+export function checkWriteId(params: { writeId: string }): void {
+	checkJsonValues({ value: { writeId: params.writeId } })
 }
 
 /**
@@ -63,6 +77,7 @@ function checkValue(step: JsonWalkStep): void {
 	} else {
 		const held = step.value as Record<string, unknown>
 		for (const key of Object.keys(held)) {
+			if (!key.isWellFormed()) refuse({ step, kind: NOT_WELL_FORMED_KEY_KIND })
 			const member = held[key]
 			if (!isJsonLeaf({ value: member })) {
 				checkValue({ value: member, field: key, inArray: false, ancestors })
@@ -103,6 +118,7 @@ function copyObject(step: JsonWalkStep): Record<string, unknown> {
 	const held = step.value as Record<string, unknown>
 	const copy: Record<string, unknown> = {}
 	for (const key of Object.keys(held)) {
+		if (!key.isWellFormed()) refuse({ step, kind: NOT_WELL_FORMED_KEY_KIND })
 		const value = held[key]
 		const member = isJsonLeaf({ value })
 			? leafCopy({ value })
@@ -126,11 +142,12 @@ function leafCopy(params: { value: unknown }): unknown {
 	return params.value === 0 ? 0 : params.value
 }
 
-/** A string, a boolean, a finite number or null: kept as it is wherever it is held. */
+/** A well-formed string, a boolean, a finite number or null: kept as it is wherever it is held. */
 function isJsonLeaf(params: { value: unknown }): boolean {
 	const { value } = params
 	switch (typeof value) {
 		case 'string':
+			return value.isWellFormed()
 		case 'boolean':
 			return true
 		case 'number':
@@ -148,6 +165,9 @@ function kindOf(step: JsonWalkStep): JsonKind {
 	const type = typeof value
 	switch (type) {
 		case 'string':
+			return (value as string).isWellFormed()
+				? 'leaf'
+				: refuse({ step, kind: NOT_WELL_FORMED_VALUE_KIND })
 		case 'boolean':
 			return 'leaf'
 		case 'number':

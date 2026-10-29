@@ -1,3 +1,4 @@
+import { isLosslessTextInstalled } from '../sqlite-text'
 import {
 	deleteBlob,
 	readBlob,
@@ -97,6 +98,11 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  */
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const { sqlite3, db, dialecteId, name, runtime, ensureImportSpace, onWork } = params
+	if (!isLosslessTextInstalled({ sqlite3 })) {
+		throwDialecteError('ASSERTION_FAILED', {
+			detail: `The engine of "${name}" runs on a SQLite whose text codec is not installed: load SQLite with loadSqlite`,
+		})
+	}
 	const onLongStatement = params.onLongStatement ?? runStatement
 	const { explainIoFailure } = params
 	const engineOptions = { ...DEFAULT_ENGINE_OPTIONS, ...params.options }

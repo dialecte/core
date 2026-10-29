@@ -5,6 +5,7 @@ import {
 	DOCUMENT_PATH_SEPARATOR,
 	DOCUMENT_UPDATE_FIELDS,
 } from './document-path.constants'
+import { NOT_WELL_FORMED_TEXT } from './json-values.constants'
 
 import { throwDocumentPathInvalid, throwDocumentPathTaken } from '@/store/store-errors'
 
@@ -172,7 +173,7 @@ function brokenRuleOf(params: { path: unknown }): string | undefined {
 	if (DOCUMENT_PATH_INVISIBLE_CHARACTER.test(path)) {
 		return 'it holds an invisible format, separator or control character (Unicode Cc, Cf, Zl or Zp)'
 	}
-	if (!path.isWellFormed()) return 'it is not well-formed UTF-16 (a lone surrogate)'
+	if (!path.isWellFormed()) return `it is ${NOT_WELL_FORMED_TEXT}`
 	if (path.normalize('NFC') !== path) return 'it is not in Unicode NFC'
 	const segments = path.split(DOCUMENT_PATH_SEPARATOR)
 	if (segments.some((segment) => segment === '')) return 'it holds an empty folder or file name'

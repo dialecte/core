@@ -2,7 +2,7 @@ import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
 import { compareById } from '../compare-by-id'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
-import { toJsonCopy } from '../json-values'
+import { checkWriteId, toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -305,6 +305,7 @@ export class InMemoryStore implements Store {
 		if (state.documents.get(documentId)?.status === 'importing') {
 			throwDocumentNotRegistered({ documentId, what: 'a commit' })
 		}
+		checkWriteId({ writeId })
 
 		// Nothing is written before the whole commit is known to apply, refused in the order every
 		// store answers in: an absent update, a create that is not JSON, a taken id, then an update

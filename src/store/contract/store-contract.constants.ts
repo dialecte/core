@@ -9,6 +9,9 @@ export const CONTRACT_SESSION_FAIL_VALUE = 'fail'
 /** A record of the session's tag whose `bB` holds this value gets a diagnostic whose `meta` holds a function. */
 export const CONTRACT_SESSION_FUNCTION_VALUE = 'function'
 
+/** A record of the session's tag whose `bB` holds this value gets a diagnostic whose `meta.note` holds a lone surrogate. */
+export const CONTRACT_SESSION_LONE_SURROGATE_VALUE = 'lone-surrogate'
+
 /** A record of the session's tag whose `bB` holds this value makes the session wait for the case's release. */
 export const CONTRACT_SESSION_HOLD_VALUE = 'hold'
 
@@ -60,3 +63,30 @@ export const CONTRACT_LEVELS_ABOVE_METADATA_VALUE = 2
 
 /** The engine of the contract dialecte, served from a worker as a dialecte's worker entry serves it. */
 export const CONTRACT_ENGINE_URL = new URL('./store-contract.worker.ts', import.meta.url).href
+
+/** A byte order mark: what a UTF-8 decoder may drop where a text begins with it. */
+export const CONTRACT_BYTE_ORDER_MARK = '\u{FEFF}'
+
+/**
+ * Well-formed texts at the edges of what a store's text encoding may change, each kept as written by every
+ * store: written as every value and at the start of every other text a store keeps (a leading byte order
+ * mark is what a UTF-8 decoder may drop).
+ */
+export const KEPT_TEXTS: Readonly<Record<string, string>> = {
+	'the empty text': '',
+	'a leading byte order mark': CONTRACT_BYTE_ORDER_MARK,
+	'a surrogate pair': '\u{1D11E}',
+	'the replacement character': '\u{FFFD}',
+	NUL: '\u0000',
+	'a line separator': '\u{2028}',
+	'the last code point of the first plane and of the last': '\u{FFFF}\u{10FFFF}',
+	'a decomposed letter (NFD)': 'e\u{301}',
+	'CR LF and a tab': '\r\n\t',
+	'quotes and a backslash': `"'\\`,
+}
+
+/** Text holding a lone surrogate: an id or a tag name a case looks up, or a value a case hands a store. */
+export const CONTRACT_LONE_SURROGATE_TEXT = 'x\uD800y'
+
+/** `CONTRACT_LONE_SURROGATE_TEXT`, its lone surrogate replaced by U+FFFD (as a UTF-8 encoder writes it). */
+export const CONTRACT_REPLACED_TEXT = 'x\u{FFFD}y'

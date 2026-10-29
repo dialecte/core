@@ -167,7 +167,7 @@ afterImport: async () => ({
 
 ### Diagnostics
 
-A `Diagnostic` is what the import has to say about one record — an unresolved reference, a value it rewrote — in the shape of the language-server protocol, on records instead of text ranges. Plain data: it crosses a worker boundary as is.
+A `Diagnostic` is what the import has to say about one record — an unresolved reference, a value it rewrote — in the shape of the language-server protocol, on records instead of text ranges. Plain data: it crosses a worker boundary as is. A session's diagnostics are checked as a store checks what a write hands it: one that is not plain JSON (a function in its `meta`) or holds text that is not well-formed (a lone surrogate) fails the import with `STORE_VALUE_NOT_JSON`, nothing of the file kept.
 
 ```ts
 type Diagnostic<GenericCode extends string = string> = {
