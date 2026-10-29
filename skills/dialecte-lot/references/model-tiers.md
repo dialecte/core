@@ -11,8 +11,8 @@ project uses, `--json` for a script); read it there instead of guessing or writi
 | Tier       | For                                                                                                                                                                        |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fast`     | search and locate, graders with a schema, log and diff summaries, format and shape checks, "does file X say Y"                                                             |
-| `standard` | an implementer on a mechanical or fully specified lot, fix mode on wording or naming findings, skill-eval runs, independent readers of a standard                          |
-| `strong`   | the orchestrator, an implementer on a design-heavy lot, the review (one agent, both passes), adjudicating a disagreement, the retro                                        |
+| `standard` | the test station, an implementer on a mechanical or fully specified lot, fix mode on wording or naming findings, skill-eval runs, independent readers of a standard        |
+| `strong`   | the orchestrator, the test review, an implementer on a design-heavy lot, the review (one agent, both passes), adjudicating a disagreement, the retro                       |
 | `frontier` | rare: a plan challenge, a decision across repositories, a lot still stuck at the review cap, once the user decided to go on                                                |
 | no agent   | gates, counts, hashes, generated blocks, scaffolds, hand-over scripts: a `dialecte` command run by the station that needs it, never a sub-agent spawned to read its output |
 
@@ -21,7 +21,9 @@ project uses, `--json` for a script); read it there instead of guessing or writi
 | Station                                   | Tier                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------- |
 | 0 Orchestrate                             | strong                                                                          |
-| 1 Implement                               | standard for a mechanical or fully specified lot; strong for a design-heavy one |
+| 1a Test (test station)                    | standard                                                                        |
+| 1b Test review                            | strong: the tests against the spec, before any code                             |
+| 1c Implement                              | standard for a mechanical or fully specified lot; strong for a design-heavy one |
 | 2 Fast gate                               | no agent (`dialecte gate --fast`, `dialecte rules`)                             |
 | 3 Review                                  | strong: one reviewer runs pass 1 (correctness) and pass 2 (fit)                 |
 | 4 Fix                                     | standard for wording or naming findings; otherwise the implementer's tier       |

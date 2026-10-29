@@ -109,8 +109,18 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
 <query|transaction> <name>`: it writes the function, its `.types.ts`, a red table case marked
    `only`, the barrel export and the namespace registration, and lists the `FILL:` placeholders
    (`skills check` refuses them until written).
-2. **Red first, vertically**: one table case with `only: true`, red for the right reason, minimum
-   code, next case. See the `dialecte` skill's references/testing.md. Tests share a loaded machine: a
+2. **Red first, proven by the cli**: the tests come first, from the spec, before any production code:
+   a test written after the code can be shaped to please it. Write the table cases (the `dialecte`
+   skill's references/testing.md); where the code does not exist yet, a stub with its real type whose body
+   throws `new Error('not implemented: <name>')`, called inside an `expect(...)` a matcher completes.
+   Remove every focus marker (`.only`, `only: true`) **before** the red: `tdd red` refuses a file holding
+   one, and removing it after would be an edit after red. Then `npx dialecte tdd red`: each new or changed
+   case must fail on an assertion (or the stub's error inside `expect`); a pass, a missing export, a type
+   or syntax error, a timeout is refused with its kind - fix the test. Then the minimum code, the test code
+   untouched (tests, helpers, fixtures, snapshots), until `npx dialecte tdd green` (test code edited after
+   its red is refused there; snapshots are never written by the run: write a snapshot test's snapshot
+   before the red). `npx dialecte tdd status` shows where each case stands. With sub-agents, the test, the
+   test review and the code are three agents (`dialecte-lot`, Station 1). Tests share a loaded machine: a
    test owns its temporary folder, and a time bound carries slack and never counts a worker's start
    ([references/traps.md](references/traps.md), Tests).
 3. **Implement under the code rules**: [references/code-rules.md](references/code-rules.md).
@@ -133,6 +143,12 @@ restores the generated docs the package declares after the docs build, and refus
 hand-over script holds the repository. With `--fast`, a change that touches no test (a doc edit)
 passes the tests step with the note "no test file is affected by the change"; any other run that
 counts no test fails. Paste its lines in your report: they are the real counts.
+
+Both modes run a **`tdd` step** after the hygiene: every new or changed test case holds a red receipt and a
+later green one (`dialecte tdd red` / `green`), and the test code (helpers, fixtures, snapshots included)
+is as the last red run froze it; a lot that changes no behaviour (wording, rename, docs) is declared
+exempt by the orchestrator in `.dialecte/lot.json` (`{ "tdd": "exempt: <reason>" }`, never committed),
+and the gate prints how many production and test files the change still touches.
 
 `--fast` starts with the worktree's **hygiene**: nothing staged, no stash entry pushed on this
 worktree's branch since `dialecte worktree add` made it (other branches' entries are only noted), and
