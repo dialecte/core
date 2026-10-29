@@ -3058,6 +3058,58 @@ export function needing(params: {
 	)
 }
 
+/** A write the store's storage has no room for: refused whole, as running out of space. */
+const fullStorage: StoreContractCases = {
+	'a commit the storage has no room for → STORE_QUOTA_EXCEEDED, nothing of it applied': {
+		needs: ['storage-limit'],
+		act: async (context) => {
+			await context.store.registerDocument(makeDocument())
+			await context.fillStorage()
+			await expectRejectsWith({
+				action: commit({
+					store: context.store,
+					documentId: 'doc-1',
+					creates: Array.from({ length: 2_000 }, (_, index) =>
+						makeRecord({ id: `r${index}`, value: 'x'.repeat(200) }),
+					),
+				}),
+				key: 'STORE_QUOTA_EXCEEDED',
+			})
+			expect(await context.store.count('doc-1')).toBe(0)
+		},
+	},
+	'a bulk write the storage has no room for → STORE_QUOTA_EXCEEDED, nothing of it applied': {
+		needs: ['storage-limit'],
+		act: async (context) => {
+			await context.store.registerDocument(makeDocument())
+			await context.fillStorage()
+			await expectRejectsWith({
+				action: context.store.bulkWrite('doc-1', {
+					creates: Array.from({ length: 2_000 }, (_, index) =>
+						makeRecord({ id: `r${index}`, value: 'x'.repeat(200) }),
+					),
+				}),
+				key: 'STORE_QUOTA_EXCEEDED',
+			})
+			expect(await context.store.count('doc-1')).toBe(0)
+		},
+	},
+	'a document the storage has no room to register → STORE_QUOTA_EXCEEDED, not registered': {
+		needs: ['storage-limit'],
+		act: async (context) => {
+			await context.fillStorage()
+			await expectRejectsWith({
+				// metadata larger than what the file has free inside it: the registration must grow it
+				action: context.store.registerDocument(
+					makeDocument({ metadata: { note: 'x'.repeat(100_000) } }),
+				),
+				key: 'STORE_QUOTA_EXCEEDED',
+			})
+			expect(await context.store.getDocuments()).toEqual([])
+		},
+	},
+}
+
 export const STORE_CONTRACT: StoreContractGroups = {
 	lifecycle,
 	'document registry': registry,
@@ -3083,6 +3135,7 @@ export const STORE_CONTRACT: StoreContractGroups = {
 	'an edit during an import': duringImport,
 	'importing a file': importing,
 	'one state for every connection': { ...oneState, ...oneStateAfterDestroy },
+	'a store whose storage is full': fullStorage,
 	'stores of other names': otherNames,
 	blobs: needing({ needs: ['blobs'], cases: blobs }),
 	'records are values': needing({ needs: ['history', 'blobs'], cases: values }),

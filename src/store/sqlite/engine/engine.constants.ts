@@ -1,3 +1,4 @@
+import type { EngineMembers } from '../../engine/engine.types'
 import type { SqliteEngineOptions } from './engine.types'
 
 /** The layout of the project file this engine reads and writes, kept in the file's header (`user_version`). */
@@ -175,3 +176,21 @@ export const IMPORT_SPACE_FLOOR_BYTES = 1024 * 1024
 
 /** How many causes deep a failure is searched for the SQLite code that started it. */
 export const CAUSE_DEPTH = 8
+
+/**
+ * The engine's members that write to the file: a failure of one for want of space (SQLite's
+ * `SQLITE_FULL`, or an I/O error the file system explains so) answers `STORE_QUOTA_EXCEEDED`.
+ */
+export const ENGINE_WRITE_MEMBERS = [
+	'registerDocument',
+	'updateDocument',
+	'removeDocument',
+	'bulkWrite',
+	'commit',
+	'undo',
+	'redo',
+	'addBlob',
+	'attachBlob',
+	'detachBlob',
+	'removeBlob',
+] as const satisfies readonly (keyof EngineMembers)[]

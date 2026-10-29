@@ -236,7 +236,10 @@ export async function refuseShortSpace(params: { project: string; bytes: number 
 
 /**
  * A write SQLite reports as an I/O error, explained by the file system: the origin has (nearly) no
- * storage left → `STORE_QUOTA_EXCEEDED`; anything else is no shortage (none returned).
+ * storage left → `STORE_QUOTA_EXCEEDED`; anything else is no shortage (none returned). The pool keeps
+ * the file system's own error (`QuotaExceededError`) to itself - SQLite sees an I/O error only - so the
+ * shortage is inferred from the estimate: an I/O error of another cause on a nearly full origin is
+ * answered as a shortage too.
  */
 export async function explainOutOfSpace(params: {
 	project: string

@@ -81,3 +81,27 @@ function closeFile(params: { name: string }): void {
 function fileName(params: { name: string }): string {
 	return `file:/${encodeURIComponent(params.name)}?vfs=memdb`
 }
+
+/**
+ * The name's in-memory file can grow no more: its size limit set through a connection of its own (the
+ * limit belongs to the file, every connection meets it; a limit below the file's size becomes its size,
+ * so 0 caps it where it is, with no read of a file its engine holds). A test tool: what an origin out of
+ * storage is to the engine.
+ */
+export async function fillInProcessFile(params: { name: string }): Promise<void> {
+	const sqlite3 = await loadSqlite({ wasmUrl: realmWasmUrl() })
+	const db = new sqlite3.oo1.DB(fileName(params), 'c')
+	const limit = sqlite3.wasm.alloc(8)
+	try {
+		sqlite3.wasm.poke(limit, 0, 'i64')
+		sqlite3.capi.sqlite3_file_control(
+			db.pointer!,
+			'main',
+			sqlite3.capi.SQLITE_FCNTL_SIZE_LIMIT,
+			limit,
+		)
+	} finally {
+		sqlite3.wasm.dealloc(limit)
+		db.close()
+	}
+}

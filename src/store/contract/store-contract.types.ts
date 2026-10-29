@@ -28,10 +28,12 @@ export type StoreContractFactory = {
 	 * once the leg serves the part and the entry is left behind.
 	 */
 	pending?: Partial<Record<StoreContractFeature, string>>
+	/** The store's storage made full: from now on a write that needs more room than it has is refused. */
+	fillStorage?: (params: { store: Store }) => Promise<void>
 }
 
 /** A part of the port a leg may not serve yet. */
-export type StoreContractFeature = 'history' | 'blobs' | 'import' | 'export'
+export type StoreContractFeature = 'history' | 'blobs' | 'import' | 'export' | 'storage-limit'
 
 /**
  * What a case needs of a leg beyond the registry, the reads and the bulk writes: a second connection
@@ -48,6 +50,8 @@ export type StoreContractContext = {
 	connect: () => Promise<Store>
 	/** A fresh, open store of another name; destroyed after the case. */
 	createOther: () => Promise<Store>
+	/** The store's storage made full (`storage-limit`): a write needing more room than it has is refused. */
+	fillStorage: () => Promise<void>
 }
 
 /** What a held import and its case say on the hold channel. */

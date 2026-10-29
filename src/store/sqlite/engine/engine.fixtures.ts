@@ -40,8 +40,9 @@ export async function startEngine(params: {
 	runtime?: StoreRuntime
 	onWork?: () => void
 	ensureImportSpace?: OpenSqliteEngineParams['ensureImportSpace']
+	explainIoFailure?: OpenSqliteEngineParams['explainIoFailure']
 }): Promise<SqliteEngine> {
-	const { db, options, runtime, onWork, ensureImportSpace } = params
+	const { db, options, runtime, onWork, ensureImportSpace, explainIoFailure } = params
 	const sqlite3 = await loadSqlite()
 	return openSqliteEngine({
 		sqlite3,
@@ -52,6 +53,7 @@ export async function startEngine(params: {
 		options,
 		onWork,
 		ensureImportSpace,
+		explainIoFailure,
 	})
 }
 

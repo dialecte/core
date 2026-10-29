@@ -1,29 +1,34 @@
 import {
 	contractFile,
 	expectRejectsWith,
+	makeBlobEntry,
 	makeDocument,
 	makeRecord,
 } from '../../contract/store-contract.fixtures'
 import { createContractRuntime } from '../../contract/store-contract.import-session'
-import { IMPORT_SPACE_FLOOR_BYTES } from './engine.constants'
+import { loadSqlite } from '../load-sqlite'
+import { ENGINE_WRITE_MEMBERS, IMPORT_SPACE_FLOOR_BYTES } from './engine.constants'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { SqliteEngine } from './engine.types'
-import type { Database } from '@sqlite.org/sqlite-wasm'
+import type { Database, Sqlite3Result } from '@sqlite.org/sqlite-wasm'
 
 /** The databases a case opened, closed after it (an in-memory file goes with its last connection). */
 const opened: Database[] = []
+/** What a case changed of SQLite itself, put back after it. */
+const restores: (() => void)[] = []
 
 afterEach(() => {
+	for (const restore of restores.splice(0)) restore()
 	for (const db of opened.splice(0)) db.close()
 })
 
 /** Pages the file may still grow by once a case caps it: room for a few records, not for many. */
 const PAGES_LEFT = 16
 
-/** An engine on a file of its own, the file then capped `PAGES_LEFT` pages above its size. */
+/** An engine on a file of its own, the file then emptied of free pages and capped `PAGES_LEFT` pages above its size. */
 async function startCappedEngine(): Promise<{ engine: SqliteEngine; cap: () => void }> {
 	const file = await openMemoryFile({ opened })
 	const db = file.connect()
@@ -31,6 +36,10 @@ async function startCappedEngine(): Promise<{ engine: SqliteEngine; cap: () => v
 	return {
 		engine,
 		cap: function capFile() {
+			// no free page left inside the file: a write that needs room must grow it (each step frees one page)
+			const vacuum = db.prepare('PRAGMA incremental_vacuum')
+			while (vacuum.step());
+			vacuum.finalize()
 			const pages = Number(db.selectValue('PRAGMA page_count'))
 			db.exec(`PRAGMA max_page_count = ${pages + PAGES_LEFT}`)
 		},
@@ -96,6 +105,166 @@ describe('an engine whose file can grow no more', () => {
 			meta: { project: 'engine-test' },
 		})
 		expect(await engine.count('doc-1')).toBe(0)
+	})
+})
+
+describe('a history step on a file that can grow no more', () => {
+	/** 3,000 records created with `from` values, then one commit setting them all to `to`: the step's commit. */
+	async function rewriteAll(params: {
+		engine: SqliteEngine
+		from: string
+		to: string
+	}): Promise<void> {
+		const { engine, from, to } = params
+		const ids = Array.from({ length: 3_000 }, (_, index) => `r${index}`)
+		await engine.registerDocument(makeDocument())
+		await engine.commit({
+			documentId: 'doc-1',
+			writeId: 'w-create',
+			creates: ids.map((id) => makeRecord({ id, value: from })),
+			updates: [],
+			deletes: [],
+		})
+		await engine.commit({
+			documentId: 'doc-1',
+			writeId: 'w-rewrite',
+			creates: [],
+			updates: ids.map((id) => makeRecord({ id, value: to })),
+			deletes: [],
+		})
+	}
+
+	const big = 'x'.repeat(200)
+	type TestCase = { step: 'undo' | 'redo'; from: string; to: string }
+	const testCases: Record<string, TestCase> = {
+		'an undo bringing larger values back → STORE_QUOTA_EXCEEDED naming the project, the history as it was':
+			{
+				step: 'undo',
+				from: big,
+				to: 'v',
+			},
+		'a redo bringing larger values back → STORE_QUOTA_EXCEEDED naming the project, the history as it was':
+			{
+				step: 'redo',
+				from: 'v',
+				to: big,
+			},
+	}
+	for (const [description, { step, from, to }] of Object.entries(testCases)) {
+		it(description, async () => {
+			const { engine, cap } = await startCappedEngine()
+			await rewriteAll({ engine, from, to })
+			if (step === 'redo') await engine.undo('doc-1')
+			const before = await engine.getHistoryStatus('doc-1')
+			cap()
+			await expectRejectsWith({
+				action: step === 'undo' ? engine.undo('doc-1') : engine.redo('doc-1'),
+				key: 'STORE_QUOTA_EXCEEDED',
+				meta: { project: 'engine-test' },
+			})
+			expect(await engine.getHistoryStatus('doc-1')).toEqual(before)
+			expect((await engine.get('r0', 'doc-1'))?.value).toBe(step === 'undo' ? to : from)
+		})
+	}
+})
+
+/**
+ * Every statement that writes (SQLite's `sqlite3_stmt_readonly` false), or every `SELECT`, refused with
+ * `resultCode` from now on, as a file system refusing a write; the step as it was once the case ends.
+ */
+async function refuseStatements(params: {
+	statements: 'writes' | 'selects'
+	resultCode: Sqlite3Result
+}): Promise<void> {
+	const { statements, resultCode } = params
+	const sqlite3 = await loadSqlite()
+	const step = sqlite3.capi.sqlite3_step
+	sqlite3.capi.sqlite3_step = function stepOrRefuse(statement) {
+		const refused =
+			statements === 'writes'
+				? sqlite3.capi.sqlite3_stmt_readonly(statement) === 0
+				: /^\s*SELECT/i.test(sqlite3.capi.sqlite3_sql(statement) ?? '')
+		return refused ? resultCode : step(statement)
+	}
+	restores.push(function restoreStep() {
+		sqlite3.capi.sqlite3_step = step
+	})
+}
+
+describe('every write of the engine, refused for want of space', () => {
+	/** A document with two commits, the last undone, a blob attached and one not: each write below has work. */
+	async function seedEveryWrite(params: { engine: SqliteEngine }): Promise<void> {
+		const { engine } = params
+		await engine.registerDocument(makeDocument())
+		for (const writeId of ['w-1', 'w-2']) {
+			await engine.commit({
+				documentId: 'doc-1',
+				writeId,
+				creates: [makeRecord({ id: `r-${writeId}` })],
+				updates: [],
+				deletes: [],
+			})
+		}
+		await engine.undo('doc-1')
+		await engine.addBlob(makeBlobEntry({ id: 'b-attached' }), new Blob(['a']))
+		await engine.attachBlob('b-attached', { documentId: 'doc-1', recordRef: 'r-w-1' })
+		await engine.addBlob(makeBlobEntry({ id: 'b-loose' }), new Blob(['b']))
+	}
+
+	const testCases = {
+		registerDocument: (engine) => engine.registerDocument(makeDocument({ id: 'doc-2' })),
+		updateDocument: (engine) => engine.updateDocument('doc-1', { name: 'renamed' }),
+		removeDocument: (engine) => engine.removeDocument('doc-1'),
+		bulkWrite: (engine) => engine.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r-bulk' })] }),
+		commit: (engine) =>
+			engine.commit({
+				documentId: 'doc-1',
+				writeId: 'w-3',
+				creates: [makeRecord({ id: 'r-w-3' })],
+				updates: [],
+				deletes: [],
+			}),
+		undo: (engine) => engine.undo('doc-1'),
+		redo: (engine) => engine.redo('doc-1'),
+		addBlob: (engine) => engine.addBlob(makeBlobEntry({ id: 'b-new' }), new Blob(['c'])),
+		attachBlob: (engine) =>
+			engine.attachBlob('b-loose', { documentId: 'doc-1', recordRef: 'r-w-1' }),
+		detachBlob: (engine) =>
+			engine.detachBlob('b-attached', { documentId: 'doc-1', recordRef: 'r-w-1' }),
+		removeBlob: (engine) => engine.removeBlob('b-loose'),
+	} satisfies Record<
+		(typeof ENGINE_WRITE_MEMBERS)[number],
+		(engine: SqliteEngine) => Promise<unknown>
+	>
+
+	for (const [member, act] of Object.entries(testCases)) {
+		it(`${member}, its write refused SQLITE_FULL → STORE_QUOTA_EXCEEDED naming the project`, async () => {
+			const engine = await startEngine({ db: (await openMemoryFile({ opened })).connect() })
+			await seedEveryWrite({ engine })
+			const sqlite3 = await loadSqlite()
+			await refuseStatements({ statements: 'writes', resultCode: sqlite3.capi.SQLITE_FULL })
+			await expectRejectsWith({
+				action: act(engine),
+				key: 'STORE_QUOTA_EXCEEDED',
+				meta: { project: 'engine-test' },
+			})
+		})
+	}
+
+	it('a bulk write whose read fails with an I/O error on a nearly full origin → STORE_READ_FAILED, not a shortage', async () => {
+		const sqlite3 = await loadSqlite()
+		const engine = await startEngine({
+			db: (await openMemoryFile({ opened })).connect(),
+			explainIoFailure: function explainAsShortage() {
+				return Promise.resolve(new Error('the origin is nearly full'))
+			},
+		})
+		await engine.registerDocument(makeDocument())
+		await refuseStatements({ statements: 'selects', resultCode: sqlite3.capi.SQLITE_IOERR })
+		await expectRejectsWith({
+			action: engine.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r-read' })] }),
+			key: 'STORE_READ_FAILED',
+		})
 	})
 })
 

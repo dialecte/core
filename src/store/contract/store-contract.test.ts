@@ -63,6 +63,10 @@ function runStoreContract(factory: StoreContractFactory): void {
 					others.push(other)
 					return other
 				},
+				fillStorage: async function fillStorage() {
+					if (!factory.fillStorage) throw new Error(`${factory.name} cannot fill its storage`)
+					await factory.fillStorage({ store: current.store })
+				},
 			}
 			context = current
 		})

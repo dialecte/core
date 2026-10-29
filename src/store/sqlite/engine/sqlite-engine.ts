@@ -12,6 +12,7 @@ import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
 import { asReadFailure, asStoreFailure, sqliteCodeOf, toStoreFailure } from './engine-errors'
 import {
 	DEFAULT_ENGINE_OPTIONS,
+	ENGINE_WRITE_MEMBERS,
 	IMPORT_SPACE_FACTOR,
 	IMPORT_SPACE_FLOOR_BYTES,
 } from './engine.constants'
@@ -47,7 +48,7 @@ import {
 import { createRecordIndexes, prepareFile } from './schema'
 import { inWriteTransaction } from './transaction'
 
-import { createDialecteError, throwDialecteError } from '@/errors'
+import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
 import { runExport, throwIfExportAborted } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
@@ -405,15 +406,13 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		commit: async function commit(params, onProgress) {
 			refuseClosed({ state, name })
 			const { documentId, creates, updates, deletes } = params
-			const gained = await writing(function commitInOneTransaction() {
-				return commitRecords({
-					...params,
-					sqlite3,
-					db,
-					settle: function settleBeforeCommit() {
-						settleImport({ importing })
-					},
-				})
+			const gained = commitRecords({
+				...params,
+				sqlite3,
+				db,
+				settle: function settleBeforeCommit() {
+					settleImport({ importing })
+				},
 			})
 			noteWrite({ documentId, gained })
 			tellCommitProgress({ onProgress, parts: [creates.length, updates.length, deletes.length] })
@@ -622,10 +621,12 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 
 	/**
 	 * A write that failed because the file can grow no more answers `STORE_QUOTA_EXCEEDED` (SQLite's
-	 * `SQLITE_FULL`, or an I/O error the file system explains so); any other failure stays as it is.
+	 * `SQLITE_FULL`, or an I/O error the file system explains so); any other failure stays as it is -
+	 * a read the write made first (`STORE_READ_FAILED`) included, whatever space is left.
 	 */
 	async function outOfSpaceOr(params: { thrown: unknown }): Promise<unknown> {
 		const { thrown } = params
+		if (toDialecteError(thrown)?.key === 'STORE_READ_FAILED') return thrown
 		const code = sqliteCodeOf({ thrown })
 		if (code === sqlite3.capi.SQLITE_FULL) {
 			return createDialecteError('STORE_QUOTA_EXCEEDED', {
@@ -638,15 +639,6 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			return (await explainIoFailure({ thrown })) ?? thrown
 		}
 		return thrown
-	}
-
-	/** A commit, its failure for want of space answered `STORE_QUOTA_EXCEEDED`. */
-	async function writing<GenericResult>(work: () => GenericResult): Promise<GenericResult> {
-		try {
-			return work()
-		} catch (thrown) {
-			throw await outOfSpaceOr({ thrown })
-		}
 	}
 
 	/** The import runs here, next to the data, in its turn; it writes through the engine's own members. */
@@ -799,11 +791,26 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		exports.get(params.exportId)?.controller.abort()
 	}
 
+	/** The members the engine serves: each write's failure for want of space answered `STORE_QUOTA_EXCEEDED`. */
+	const served: EngineMembers = { ...members }
+	for (const member of ENGINE_WRITE_MEMBERS) {
+		const write = members[member] as (...args: unknown[]) => Promise<unknown>
+		Object.assign(served, {
+			[member]: async function writeOrRefuseForSpace(...args: unknown[]) {
+				try {
+					return await write(...args)
+				} catch (thrown) {
+					throw await outOfSpaceOr({ thrown })
+				}
+			},
+		})
+	}
+
 	// what the unfinished imports left is given back while the engine serves: a large one held a start for seconds
 	reclaimFreePagesInSteps().catch(leaveForNextReclaim)
 
 	return {
-		...members,
+		...served,
 		importFile: importAsOwner,
 		abortImport,
 		exportFile,
@@ -818,7 +825,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		},
 		clientView: function clientView({ clientId }) {
 			return {
-				...members,
+				...served,
 				importFile: function importAsClient(importParams, clientProgress) {
 					return importAsOwner({ ...importParams, clientId }, clientProgress)
 				},
