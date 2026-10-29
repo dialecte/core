@@ -1,4 +1,4 @@
-import { ENGINE_OPEN_BUDGET_MS } from '../sqlite.constants'
+import { ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import { createHubRouter } from './hub-router'
 import {
 	ENGINE_IDLE_CLOSE_MS,

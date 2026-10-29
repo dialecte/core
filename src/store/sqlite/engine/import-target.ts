@@ -66,6 +66,7 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 				},
 			})
 			state.registered = { ...documentTable, documentId: document.id }
+			params.onRegistered()
 			counts.set(document.id, 0)
 		},
 		getDocument: async function getImported(documentId) {
@@ -110,7 +111,7 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 			// a document of that id registered since by another connection is not this import's
 			const row = readRegistryRow({ db, documentId })
 			if (row?.seq !== registered.seq || row.status !== 'importing') return
-			removeDocument({ documentId })
+			await removeDocument({ documentId })
 		},
 	}
 }
@@ -259,7 +260,7 @@ async function checkPatchesInTurns(params: {
 		}))
 			held.add(id)
 		if (performance.now() - since >= windowMs) {
-			await yieldToQueue()
+			await yieldToTimers()
 			since = performance.now()
 		}
 	}
@@ -281,11 +282,11 @@ async function commitAtCap(params: {
 		detail: `Records of document "${documentId}" could not be committed`,
 		work: window.commitIfDue,
 	})
-	if (committed) await yieldToQueue()
+	if (committed) await yieldToTimers()
 }
 
 /** Let the tasks waiting run (a message of another connection, a timer) before the import goes on. */
-function yieldToQueue(): Promise<void> {
+function yieldToTimers(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
@@ -301,7 +302,7 @@ async function buildIndex(params: {
 	index: RecordIndex
 }): Promise<void> {
 	const { state, documentId, index } = params
-	const { sqlite3, db, perf, window, tellPhase } = params.params
+	const { sqlite3, db, perf, window, tellPhase, onLongStatement } = params.params
 	const table = ownTable(params)
 	tellPhase({ phase: 'indexing' })
 	perf.start('import::index')
@@ -310,13 +311,18 @@ async function buildIndex(params: {
 			key: 'STORE_COMMIT_FAILED',
 			detail: `The ${index} index of document "${documentId}" could not be built`,
 			work: function buildAlone() {
-				window.alone(function createIndex() {
-					try {
-						createRecordIndex({ db, table, index })
-					} catch (thrown) {
-						refuseRepeatedIds({ sqlite3, db, table, documentId, thrown })
-						throw thrown
-					}
+				// the build and its window's commit (the index's pages flushed in one step) told as one long statement
+				onLongStatement({
+					work: function buildInItsWindow() {
+						window.alone(function createIndex() {
+							try {
+								createRecordIndex({ db, table, index })
+							} catch (thrown) {
+								refuseRepeatedIds({ sqlite3, db, table, documentId, thrown })
+								throw thrown
+							}
+						})
+					},
 				})
 			},
 		})
@@ -327,7 +333,7 @@ async function buildIndex(params: {
 	// the index refuses a taken id from now on
 	if (index === 'id') state.givenIds = undefined
 	tellPhase({ phase: 'storing' })
-	await yieldToQueue()
+	await yieldToTimers()
 }
 
 /**

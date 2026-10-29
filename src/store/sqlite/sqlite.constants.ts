@@ -1,2 +1,2 @@
-/** One engine's attempt to open its project (engine lock, file probe, install). */
-export const ENGINE_OPEN_BUDGET_MS = 10_000
+/** The VFSes of sqlite-wasm the engine never uses: not installed (they would only warn where they cannot run). */
+export const SQLITE_VFS_DISABLED = { opfs: true, 'opfs-vfs': true, 'opfs-wl': true } as const

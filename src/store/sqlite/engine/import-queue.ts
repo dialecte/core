@@ -20,8 +20,11 @@ export function createImportQueue(): ImportQueue {
 		abortAll: function abortAll() {
 			abortWhere({ entries, matches: () => true })
 		},
-		waits: function waits({ writeId }) {
-			return entries.some((entry) => entry.writeId === writeId && !entry.running)
+		awaitsRow: function awaitsRow({ writeId }) {
+			return entries.some((entry) => entry.writeId === writeId && !entry.registered)
+		},
+		markRegistered: function markRegistered({ writeId }) {
+			for (const entry of entries) if (entry.writeId === writeId) entry.registered = true
 		},
 	}
 }
@@ -40,15 +43,13 @@ async function runInTurn<GenericResult>(params: {
 		clientId,
 		controller: new AbortController(),
 		hasTurn: false,
-		running: false,
+		registered: false,
 		start: turn.resolve,
 	}
 	entries.push(entry)
 	if (entries.length === 1) giveTurn({ entry })
 	try {
 		await turn.promise
-		// from here the work runs on without a pause until its first write: it is running
-		entry.running = true
 		return await work(entry.controller.signal)
 	} finally {
 		leaveQueue({ entries, entry })

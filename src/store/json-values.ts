@@ -194,7 +194,7 @@ function containerKind(params: { step: JsonWalkStep; held: object }): JsonKind {
  * object, `Array.prototype` for a plain array, of this realm or of another one - known by its own
  * constructor's name, so a contrived prototype carrying a constructor named `Object` passes.
  */
-function isRootPrototype(params: { prototype: unknown; name: 'Object' | 'Array' }): boolean {
+export function isRootPrototype(params: { prototype: unknown; name: 'Object' | 'Array' }): boolean {
 	const { prototype, name } = params
 	if (prototype === (name === 'Array' ? Array.prototype : Object.prototype)) return true
 	if (prototype === null) return name === 'Object'

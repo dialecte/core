@@ -1,4 +1,4 @@
-import { ENGINE_OPEN_BUDGET_MS } from '../sqlite.constants'
+import { ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import {
 	ENGINE_IDLE_CLOSE_MS,
 	ENGINE_OPEN_MIN_BUDGET_MS,

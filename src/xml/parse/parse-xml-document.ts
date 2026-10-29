@@ -2,8 +2,9 @@ import { ParseSession } from './parse-session'
 import { DEFAULT_BATCH_SIZE, DEFAULT_CHUNK_SIZE } from './parse-xml-document.constants'
 import { setSaxParser } from './parser'
 
-import { throwDialecteError } from '@/errors'
+import { throwDialecteError, toDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
+import { checkJsonValues } from '@/store/json-values'
 import { invariant } from '@/utils'
 import { tellListener } from '@/utils/tell-listener'
 
@@ -197,6 +198,7 @@ async function endImportSession(params: {
 		perf.stop('import::hooks.after')
 	}
 	const { creates, updates, deletes, diagnostics = [] } = result
+	checkSessionDiagnostics({ diagnostics })
 	const hasOps = creates?.length || updates?.length || deletes?.length
 	if (hasOps) {
 		throwIfAborted({ signal, file })
@@ -209,6 +211,21 @@ async function endImportSession(params: {
 	}
 
 	return { recordDelta: (creates?.length ?? 0) - (deletes?.length ?? 0), diagnostics }
+}
+
+/**
+ * What the session says is answered by every store alike, through a port too: plain JSON only. Checked
+ * before its writes, so a refused import has written none of them.
+ */
+function checkSessionDiagnostics(params: { diagnostics: Diagnostic[] }): void {
+	try {
+		checkJsonValues({ value: params.diagnostics })
+	} catch (thrown) {
+		throwDialecteError('STORE_VALUE_NOT_JSON', {
+			detail: `A diagnostic of the import session: ${toDialecteError(thrown)?.detail ?? String(thrown)}`,
+			cause: thrown instanceof Error ? thrown : undefined,
+		})
+	}
 }
 
 /** An aborted import goes no further: `IMPORT_ABORTED`. */

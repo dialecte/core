@@ -354,27 +354,36 @@ describe('openSqliteEngine', () => {
 			makeRecord({ id: `n${index}`, value: 'x'.repeat(500) }),
 		)
 		const testCases: Record<string, TestCase> = {
-			'registerDocument, the file full → STORE_COMMIT_FAILED': {
+			'registerDocument, the file full → STORE_QUOTA_EXCEEDED': {
 				breaks: 'file-full',
 				act: (engine) => engine.registerDocument(makeDocument({ id: 'doc-2' })),
-				expectedKey: 'STORE_COMMIT_FAILED',
+				expectedKey: 'STORE_QUOTA_EXCEEDED',
 			},
-			'updateDocument, the file full → STORE_COMMIT_FAILED': {
+			'updateDocument, the file full → STORE_QUOTA_EXCEEDED': {
 				breaks: 'file-full',
 				act: (engine) =>
 					engine.updateDocument('doc-1', { metadata: { note: 'x'.repeat(100_000) } }),
-				expectedKey: 'STORE_COMMIT_FAILED',
+				expectedKey: 'STORE_QUOTA_EXCEEDED',
 			},
-			'bulkWrite creates, the file full → STORE_BULK_ADD_FAILED': {
+			'bulkWrite creates, the file full → STORE_QUOTA_EXCEEDED': {
 				breaks: 'file-full',
 				act: (engine) => engine.bulkWrite('doc-1', { creates: manyRecords }),
-				expectedKey: 'STORE_BULK_ADD_FAILED',
+				expectedKey: 'STORE_QUOTA_EXCEEDED',
 			},
-			'bulkWrite patches, the file full → STORE_BULK_UPDATE_FAILED': {
+			'bulkWrite patches, the file full → STORE_QUOTA_EXCEEDED': {
 				breaks: 'file-full',
 				act: (engine) =>
 					engine.bulkWrite('doc-1', { updates: [{ recordId: 'r1', value: 'x'.repeat(100_000) }] }),
-				expectedKey: 'STORE_BULK_UPDATE_FAILED',
+				expectedKey: 'STORE_QUOTA_EXCEEDED',
+			},
+			'addBlob, the file full → STORE_QUOTA_EXCEEDED': {
+				breaks: 'file-full',
+				act: (engine) =>
+					engine.addBlob(
+						makeBlobEntry({ id: 'b1', documentId: 'doc-1' }),
+						new Blob(['x'.repeat(100_000)], { type: 'text/plain' }),
+					),
+				expectedKey: 'STORE_QUOTA_EXCEEDED',
 			},
 			'bulkWrite deletes, the table gone → STORE_DELETE_FAILED': {
 				breaks: 'table-gone',

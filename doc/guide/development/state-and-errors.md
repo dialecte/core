@@ -224,13 +224,13 @@ Errors use a typed catalog organized by domain:
 | Range   | Domain                | Examples                                                                                                                                                                                                 |
 | ------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `D0xxx` | Generic               | `UNKNOWN`, `ASSERTION_FAILED`                                                                                                                                                                            |
-| `D1xxx` | Store/persistence     | `STORE_COMMIT_FAILED`, `STORE_READ_FAILED`, `STORE_RECORD_NOT_FOUND`, `STORE_DUPLICATE_ID`, `STORE_CLOSED`, `STORE_VALUE_NOT_JSON`                                                                       |
+| `D1xxx` | Store/persistence     | `STORE_COMMIT_FAILED`, `STORE_READ_FAILED`, `STORE_RECORD_NOT_FOUND`, `STORE_DUPLICATE_ID`, `STORE_CLOSED`, `STORE_VALUE_NOT_JSON`, `STORE_UNAVAILABLE`, `STORE_QUOTA_EXCEEDED`, `STORE_ENGINE_LOST`     |
 | `D2xxx` | Element lookup        | `ELEMENT_NOT_FOUND`, `ROOT_NOT_FOUND`, `DUPLICATE_ID`                                                                                                                                                    |
 | `D3xxx` | Constraint violations | `INVALID_PARENT_CHILD`, `PROTECTED_ROOT`, `UNKNOWN_NAMESPACE_PREFIX`, `PREFIXED_ATTRIBUTE_NAME`, `FIXED_VALUE_VIOLATION`, `XSI_TYPE_REQUIRED`, `XSI_TYPE_NOT_ADMITTED`, `XSI_TYPE_CHANGE_LEAVES_CONTENT` |
 | `D4xxx` | Transaction lifecycle | `ALREADY_COMMITTED`, `CONCURRENT_TRANSACTION`                                                                                                                                                            |
 | `D5xxx` | Import/Export         | `EXPORT_ROOT_NOT_FOUND`, `EXPORT_ORPHAN_CHILD_REF`, `PARSE_ERROR`, `IMPORT_FAILED`, `IMPORT_ABORTED`, `EXPORT_CONFLICT`, `EXPORT_ABORTED`                                                                |
 | `D6xxx` | Config                | `EXTENSION_METHOD_COLLISION`                                                                                                                                                                             |
-| `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `DOCUMENT_NOT_REGISTERED`, `PROJECT_LAYOUT_OUTDATED`                                                                                                                               |
+| `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `DOCUMENT_NOT_REGISTERED`, `PROJECT_LAYOUT_OUTDATED`, `PROJECT_DESTROY_FAILED`, `PROJECT_OPEN_ELSEWHERE`                                                                           |
 
 The full catalog is in `core/src/errors/codes.ts`.
 

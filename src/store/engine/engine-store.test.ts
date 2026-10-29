@@ -4,9 +4,9 @@ import {
 	makeDocument,
 	makeRecord,
 	sessionRecords,
-} from '../../contract/store-contract.fixtures'
-import { createInProcessConnector } from './in-process-link'
-import { SqliteStore } from './sqlite-store'
+} from '../contract/store-contract.fixtures'
+import { createInProcessConnector } from '../sqlite/adapter/in-process-link'
+import { EngineStore } from './engine-store'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -19,17 +19,17 @@ afterEach(async () => {
 	for (const name of usedNames.splice(0)) await openStore({ name }).destroy()
 })
 
-function openStore(params: { name: string }): SqliteStore {
+function openStore(params: { name: string }): EngineStore {
 	const { name } = params
-	return new SqliteStore({
+	return new EngineStore({
 		name,
 		connector: createInProcessConnector({ name, dialecteId: TEST_DIALECTE.id }),
 	})
 }
 
 /** An open store of a name of its own, holding `doc-1` with record `r1`. */
-async function seededStore(): Promise<SqliteStore> {
-	const name = `sqlite-store-${crypto.randomUUID()}`
+async function seededStore(): Promise<EngineStore> {
+	const name = `engine-store-${crypto.randomUUID()}`
 	usedNames.push(name)
 	const store = openStore({ name })
 	await store.open()
@@ -38,7 +38,7 @@ async function seededStore(): Promise<SqliteStore> {
 	return store
 }
 
-describe('SqliteStore', () => {
+describe('EngineStore', () => {
 	it('a store opened twice then closed → the engine closes with it: the next store of the name starts it again', async () => {
 		const store = await seededStore()
 		await store.registerDocument(makeDocument({ id: 'left', status: 'importing' }))

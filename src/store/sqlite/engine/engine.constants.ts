@@ -1,3 +1,4 @@
+import type { EngineMembers } from '../../engine/engine.types'
 import type { SqliteEngineOptions } from './engine.types'
 
 /** The layout of the project file this engine reads and writes, kept in the file's header (`user_version`). */
@@ -18,6 +19,12 @@ export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	 * other connections run between two of its transactions within about a second.
 	 */
 	importWindowMs: 1000,
+	/**
+	 * Free pages are given back 256 at a time (1 MiB of 4 KiB pages), and the calls waiting run after
+	 * every 50 ms of it: giving back a dead 450 MB import held the engine 6.6 s in one statement.
+	 */
+	reclaimSliceMs: 50,
+	reclaimPagesPerStatement: 256,
 }
 
 /** The device's memory when the realm does not report it (Firefox, node): a 4 GiB device. */
@@ -152,3 +159,38 @@ export const RECORD_UPDATE_ASSIGNMENTS = Object.keys(RECORD_COLUMNS)
 export const ROW_SELECT_ALIASES = ROW_SELECT_EXPRESSIONS.map(
 	(expression, index) => `${expression} AS c${index}`,
 ).join(', ')
+
+/**
+ * An import needs this many times its file's size free. Measured database / file: composed compact 50 MB
+ * and 500 MB 6.5x / 6.6x, structural 50 MB 7.5x (the layout and port benches), indented files 2.8-3.1x; the worst
+ * case and room for the journal and the index sort's temporary file. A file that outgrows it anyway is
+ * refused `STORE_QUOTA_EXCEEDED` when the file system says so.
+ */
+export const IMPORT_SPACE_FACTOR = 8
+
+/**
+ * The least an import asks for, whatever its file's size: a new document's tables, indexes, history rows
+ * and registry row take a few pages each, and the journal its own room.
+ */
+export const IMPORT_SPACE_FLOOR_BYTES = 1024 * 1024
+
+/** How many causes deep a failure is searched for the SQLite code that started it. */
+export const CAUSE_DEPTH = 8
+
+/**
+ * The engine's members that write to the file: a failure of one for want of space (SQLite's
+ * `SQLITE_FULL`, or an I/O error the file system explains so) answers `STORE_QUOTA_EXCEEDED`.
+ */
+export const ENGINE_WRITE_MEMBERS = [
+	'registerDocument',
+	'updateDocument',
+	'removeDocument',
+	'bulkWrite',
+	'commit',
+	'undo',
+	'redo',
+	'addBlob',
+	'attachBlob',
+	'detachBlob',
+	'removeBlob',
+] as const satisfies readonly (keyof EngineMembers)[]

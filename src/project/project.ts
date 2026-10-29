@@ -1,6 +1,7 @@
 import { resolveStore } from '../store/resolve-store'
 import { exportBlob, exportDocument, initEmptyDocument } from './io'
 import { resolveConfig } from './io/resolve-config'
+import { projectChannelName } from './project-channel'
 import { buildDocumentState, reconcileDocumentState } from './state'
 import { isImporting, openableDocuments } from './state/document-lifecycle'
 
@@ -121,7 +122,7 @@ export class Project<
 	 * ProjectChannelMessage, same-tab and cross-tab.
 	 */
 	get channelName(): string {
-		return `dialecte::project::${this.name}`
+		return projectChannelName({ name: this.name })
 	}
 
 	/**

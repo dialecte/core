@@ -32,12 +32,16 @@
 		"./helpers": {
 			"types": "./dist/helpers.d.ts",
 			"default": "./dist/helpers.js"
+		},
+		"./engine": {
+			"types": "./dist/engine.d.ts",
+			"default": "./dist/engine.js"
 		}
 	},
 	"scripts": {
 		"//====== BUILD ======//": "",
 		"build": "run-p type-check \"build-only {@}\" --",
-		"build-only": "tsc -p tsconfig.json && vite build",
+		"build-only": "tsc -p tsconfig.json && vite build && vite build -c vite.engine.config.ts",
 		"build:watch": "vite build --watch",
 		"//====== VITEPRESS ======//": "",
 		"doc:dev": "vitepress dev",
@@ -48,9 +52,10 @@
 		"test:node": "vitest run --project node",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
 		"//====== CHECK ======//": "",
-		"check": "run-p type-check type-check:test lint:check format:check",
+		"check": "run-p type-check type-check:test type-check:node lint:check format:check",
 		"type-check": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
 		"type-check:test": "tsc -p tsconfig.vitest.json --noEmit",
+		"type-check:node": "tsc -p tsconfig.node.json --noEmit",
 		"//====== TYPE PERF ======//": "",
 		"coverage:gen": "dialecte coverage",
 		"type-bench": "npm run coverage:gen && dialecte bench",
@@ -64,7 +69,7 @@
 		"prepare": "husky"
 	},
 	"dependencies": {
-		"@sqlite.org/sqlite-wasm": "3.53.4-build2",
+		"@sqlite.org/sqlite-wasm": "3.54.1-build1",
 		"@types/sax": "1.2.7",
 		"comlink": "4.4.2",
 		"dexie": "4.4.6",

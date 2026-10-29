@@ -1,9 +1,11 @@
+import { EngineStore } from '../engine/engine-store'
 import { InMemoryStore } from '../in-memory'
 import { DexieStore } from '../local'
-import { createInProcessConnector } from '../sqlite/adapter/in-process-link'
-import { SqliteStore } from '../sqlite/adapter/sqlite-store'
+import { createInProcessConnector, fillInProcessFile } from '../sqlite/adapter/in-process-link'
+import { CONTRACT_ENGINE_URL } from './store-contract.constants'
 import { createContractRuntime } from './store-contract.import-session'
 
+import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { StoreContractFactory } from './store-contract.types'
@@ -34,10 +36,13 @@ const inMemoryStoreFactory: StoreContractFactory = {
 	connect: async function connectInMemoryStore(store) {
 		return openInMemoryStore(store.name)
 	},
+	storageUnfillable: 'an in-memory store has no storage limit',
 }
 
 const dexieStoreFactory: StoreContractFactory = {
 	name: 'DexieStore',
+	storageUnfillable:
+		"a test cannot fill IndexedDB; IndexedDB refusing a write for want of space answers the write's own key (STORE_COMMIT_FAILED, STORE_BULK_ADD_FAILED...), not STORE_QUOTA_EXCEEDED, until the local store moves to SQLite",
 	create: async function createDexieStore() {
 		const store = new DexieStore(uniqueName('store-contract-dexie'), {
 			runtime: createContractRuntime(),
@@ -59,19 +64,19 @@ const dexieStoreFactory: StoreContractFactory = {
 }
 
 /** An open SQLite store of that name, its engine run in this realm on an in-memory file of the name. */
-async function openSqliteStore(name: string): Promise<SqliteStore> {
+async function openSqliteStore(name: string): Promise<EngineStore> {
 	const connector = createInProcessConnector({
 		name,
 		dialecteId: TEST_DIALECTE.id,
 		runtime: createContractRuntime(),
 	})
-	const store = new SqliteStore({ name, connector })
+	const store = new EngineStore({ name, connector })
 	await store.open()
 	return store
 }
 
 const sqliteInProcessStoreFactory: StoreContractFactory = {
-	name: 'SqliteStore in-process',
+	name: 'EngineStore in-process',
 	create: async function createSqliteStore() {
 		return openSqliteStore(uniqueName('store-contract-sqlite'))
 	},
@@ -82,6 +87,42 @@ const sqliteInProcessStoreFactory: StoreContractFactory = {
 	connect: async function connectSqliteStore(store) {
 		return openSqliteStore(store.name)
 	},
+	fillStorage: async function fillSqliteFile({ store }) {
+		await fillInProcessFile({ name: store.name })
+	},
+}
+
+/** An open SQLite store of that name, its engine run in a worker of this realm on the origin's private files. */
+async function openWorkerStore(name: string): Promise<EngineStore> {
+	const connector = createSqliteWorkerConnector({
+		name,
+		engineUrl: CONTRACT_ENGINE_URL,
+		perf: true,
+	})
+	const store = new EngineStore({ name, connector })
+	await store.open()
+	return store
+}
+
+const sqliteWorkerStoreFactory: StoreContractFactory = {
+	name: 'EngineStore worker',
+	create: async function createWorkerStore() {
+		return openWorkerStore(uniqueName('store-contract-worker'))
+	},
+	reopen: async function reopenWorkerStore(store) {
+		await store.close()
+		return openWorkerStore(store.name)
+	},
+	connect: async function connectWorkerStore(store) {
+		return openWorkerStore(store.name)
+	},
+	storageUnfillable:
+		"a test cannot fill the private file system from the page: the runtime's disk-full cases cover this leg",
+}
+
+/** Whether this realm can run an engine worker on the origin's private files (a browser, not node). */
+function canRunEngineWorker(): boolean {
+	return typeof Worker === 'function' && typeof navigator.storage?.getDirectory === 'function'
 }
 
 /** The stores the contract runs over today; a new kind of store joins by adding its factory here. */
@@ -89,4 +130,5 @@ export const STORE_CONTRACT_FACTORIES: StoreContractFactory[] = [
 	inMemoryStoreFactory,
 	dexieStoreFactory,
 	sqliteInProcessStoreFactory,
+	...(canRunEngineWorker() ? [sqliteWorkerStoreFactory] : []),
 ]

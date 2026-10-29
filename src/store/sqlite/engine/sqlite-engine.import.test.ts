@@ -1,4 +1,3 @@
-import { CONTRACT_SESSION_HOLD_VALUE } from '../../contract/store-contract.constants'
 import {
 	contractFile,
 	expectRejectsWith,
@@ -22,6 +21,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { CUSTOM_RECORD_ID_ATTRIBUTE, DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
+import type { ContractImportHold } from '../../contract/store-contract.types'
 import type { SqliteEngine, SqliteEngineOptions } from './engine.types'
 import type { PerfSpan } from '@/perf'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
@@ -98,9 +98,9 @@ function runtimeCreatingAfterHold(params: {
 	}
 }
 
-/** A file the contract's session holds at the end of its parse, until the case releases it. */
-function heldFile(): File {
-	return contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` })
+/** A file the contract's session holds at the end of its parse, until the case releases that hold. */
+function heldFile(params: { hold: ContractImportHold }): File {
+	return contractFile({ body: `<B aB="B0" bB="${params.hold.value}"/>` })
 }
 
 /** Start an import the session holds; answers it once it waits at its hold. */
@@ -112,7 +112,7 @@ async function startHeldImport(params: {
 	const { engine, writeId, clientId } = params
 	const hold = holdContractImport()
 	holds.push(hold.release)
-	const importing = engine.importFile({ file: heldFile(), writeId, clientId })
+	const importing = engine.importFile({ file: heldFile({ hold }), writeId, clientId })
 	// a case that ends early must not leave an unhandled rejection behind
 	importing.catch(() => undefined)
 	await untilHeld({ hold, importing })

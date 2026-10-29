@@ -6,8 +6,17 @@ export const CONTRACT_SESSION_TAG = 'B'
 /** A record of the session's tag whose `bB` attribute holds this value makes the session fail. */
 export const CONTRACT_SESSION_FAIL_VALUE = 'fail'
 
+/** A record of the session's tag whose `bB` holds this value gets a diagnostic whose `meta` holds a function. */
+export const CONTRACT_SESSION_FUNCTION_VALUE = 'function'
+
 /** A record of the session's tag whose `bB` holds this value makes the session wait for the case's release. */
 export const CONTRACT_SESSION_HOLD_VALUE = 'hold'
+
+/** Between the hold value and a hold's id in a file (`hold:<id>`), and in the hold's channel name. */
+export const HOLD_ID_SEPARATOR = ':'
+
+/** The channel a held import and its case talk on (one per hold), whatever realm the import runs in. */
+export const CONTRACT_HOLD_CHANNEL = 'dialecte::store-contract::hold'
 
 /** The attribute the contract's import session writes on every record of its tag, after the parse. */
 export const CONTRACT_SESSION_SEEN_ATTRIBUTE = 'seen'
@@ -48,3 +57,6 @@ export const CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE = 4
 
 /** Arrays and objects above a metadata field's value in a document registered or updated: the document, its metadata. */
 export const CONTRACT_LEVELS_ABOVE_METADATA_VALUE = 2
+
+/** The engine of the contract dialecte, served from a worker as a dialecte's worker entry serves it. */
+export const CONTRACT_ENGINE_URL = new URL('./store-contract.worker.ts', import.meta.url).href

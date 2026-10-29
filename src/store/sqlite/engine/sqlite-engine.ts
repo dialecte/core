@@ -9,12 +9,18 @@ import {
 import { encodeCheckedRecords, insertEncodedRows } from './bulk-insert'
 import { commitRecords, stepHistory } from './commit'
 import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
-import { asReadFailure, asStoreFailure } from './engine-errors'
-import { DEFAULT_ENGINE_OPTIONS } from './engine.constants'
+import { asReadFailure, asStoreFailure, sqliteCodeOf, toStoreFailure } from './engine-errors'
+import {
+	DEFAULT_ENGINE_OPTIONS,
+	ENGINE_WRITE_MEMBERS,
+	IMPORT_SPACE_FACTOR,
+	IMPORT_SPACE_FLOOR_BYTES,
+} from './engine.constants'
 import { hasCommitOf, readChangeLog, readHistoryStatus } from './history'
 import { createImportQueue } from './import-queue'
 import { createImportTarget, createProgressRelay } from './import-target'
 import { createImportWindow, endQuietly } from './import-window'
+import { reclaimInSteps } from './reclaim'
 import {
 	checkApplyingPatches,
 	countRecords,
@@ -31,18 +37,18 @@ import {
 	deleteDocument,
 	deleteUnfinishedImports,
 	documentTablesOf,
-	readDocumentState,
 	insertDocument,
 	readDocument,
+	readDocumentState,
 	readDocuments,
 	readDocumentsByWriteId,
 	recordTableOf,
 	updateDocumentRow,
 } from './registry'
-import { createRecordIndexes, prepareFile, reclaimFreePages } from './schema'
+import { createRecordIndexes, prepareFile } from './schema'
 import { inWriteTransaction } from './transaction'
 
-import { throwDialecteError } from '@/errors'
+import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
 import { runExport, throwIfExportAborted } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
@@ -52,21 +58,21 @@ import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwStoreClosed } from '@/store/store-errors'
 import { writeOutcomeOf } from '@/store/write-outcome'
 import { invariant } from '@/utils'
+import { yieldToQueue } from '@/utils/yield-to-queue'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
+import type { EngineBlobMembers, EngineMembers } from '../../engine/engine.types'
 import type {
 	EncodedRows,
 	ExportReads,
-	RunningExport,
 	HistoryDirection,
-	RecordReadsById,
-	SqliteEngineBlobMembers,
-	SqliteEngineExportParams,
 	OpenSqliteEngineParams,
+	RecordReadsById,
+	RunningExport,
 	RunningImport,
 	SqliteEngine,
+	SqliteEngineExportParams,
 	SqliteEngineImportParams,
-	SqliteEngineMembers,
 } from './engine.types'
 import type {
 	ExportControl,
@@ -80,8 +86,9 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
  * Start the engine of a project on its database: a new file is laid out, a file of another layout
- * refused (`PROJECT_LAYOUT_OUTDATED`), every document an import left `importing` removed. The engine
- * owns the database from then on: a start that fails closes it, so the file stays free.
+ * refused (`PROJECT_LAYOUT_OUTDATED`), every document an import left `importing` removed - its free
+ * pages given back in steps while the engine already serves. The engine owns the database from then
+ * on: a start that fails closes it, so the file stays free.
  *
  * Its methods run synchronously on the one connection and never await while a transaction is open,
  * so no call runs inside another's transaction. A failure of SQLite is thrown as the operation's
@@ -89,7 +96,9 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  * passes as it is.
  */
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
-	const { sqlite3, db, dialecteId, name, runtime } = params
+	const { sqlite3, db, dialecteId, name, runtime, ensureImportSpace, onWork } = params
+	const onLongStatement = params.onLongStatement ?? runStatement
+	const { explainIoFailure } = params
 	const engineOptions = { ...DEFAULT_ENGINE_OPTIONS, ...params.options }
 	const deviceMiB = deviceCacheMiB({
 		deviceMemoryGiB: reportedDeviceMemoryGiB(),
@@ -104,6 +113,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			detail: 'The project file could not be opened',
 			work: function startOnFile() {
 				prepareFile({ sqlite3, db, dialecteId, steadyCacheMiB })
+				// at the start no client waits on the engine yet (the open has its own budget): nobody to tell
 				inWriteTransaction({
 					sqlite3,
 					db,
@@ -111,7 +121,6 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 						deleteUnfinishedImports({ db })
 					},
 				})
-				reclaimFreePages({ db })
 			},
 		})
 	} catch (thrown) {
@@ -138,7 +147,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	/** Set by `close()`: every call refused from then on, an import resumed after it aborted first. */
 	const state = { closed: false }
 
-	const blobMembers: SqliteEngineBlobMembers = {
+	const blobMembers: EngineBlobMembers = {
 		/**
 		 * Refused, nothing written, in the order every store answers in: an owner document not
 		 * registered, then an entry that is not JSON. The bytes are read first, before any statement.
@@ -238,7 +247,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		},
 	}
 
-	const members: SqliteEngineMembers = {
+	const members: EngineMembers = {
 		...blobMembers,
 		registerDocument: async function registerDocument(document) {
 			refuseClosed({ state, name })
@@ -301,7 +310,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		 */
 		removeDocument: async function removeDocument(documentId) {
 			refuseClosed({ state, name })
-			removeDocumentFromFile({ sqlite3, db, documentId, counts, importing, removals, versions })
+			await removeDocumentFromFile({ documentId })
 		},
 		get: async function get(id, documentId) {
 			refuseClosed({ state, name })
@@ -365,8 +374,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			return asReadFailure({
 				detail: `The outcome of write "${writeId}"`,
 				work: function outcomeFromRegistry() {
-					// waiting its turn, an import has no row yet; once it runs, its row says
-					if (queue.waits({ writeId })) return 'running'
+					// an import with no row yet runs or will (waiting its turn, or checking its space); then its row says
+					if (queue.awaitsRow({ writeId })) return 'running'
 					const documents = readDocumentsByWriteId({ db, writeId })
 					return writeOutcomeOf({ documents, writeId, committed: hasCommitOf({ db, writeId }) })
 				},
@@ -458,6 +467,64 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			work: function readFiltered() {
 				return readBlobEntries({ db, filter: params.filter })
 			},
+		})
+	}
+
+	/**
+	 * A document gone with all it has (its records, its history, the blobs it owns) in one transaction,
+	 * then its pages given back to the file in steps, the calls waiting served between them. A failure
+	 * of the reclaim is reported as a failed removal of a document that is gone; removing it again is
+	 * harmless (an unknown id is ignored, the free pages reclaimed then).
+	 */
+	async function removeDocumentFromFile(params: { documentId: string }): Promise<void> {
+		const { documentId } = params
+		const detail = `Document "${documentId}" could not be removed`
+		try {
+			asStoreFailure({
+				key: 'STORE_DELETE_FAILED',
+				detail,
+				work: function dropInTransaction() {
+					settleImport({ importing })
+					onLongStatement({
+						work: function dropInOneTransaction() {
+							inWriteTransaction({
+								sqlite3,
+								db,
+								work: function deleteRowAndTable() {
+									deleteDocument({ db, documentId })
+								},
+							})
+						},
+					})
+					counts.delete(documentId)
+				},
+			})
+		} finally {
+			// a table may be gone: what reads it through a statement of its own prepares it again, and an
+			// export of the id - which may be registered and imported again - starts again
+			removals.count += 1
+			versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
+		}
+		try {
+			await reclaimFreePagesInSteps()
+		} catch (thrown) {
+			throw toStoreFailure({ key: 'STORE_DELETE_FAILED', detail, thrown })
+		}
+	}
+
+	/** The file's free pages given back in steps; stopped once the engine is closed. */
+	function reclaimFreePagesInSteps(): Promise<void> {
+		return reclaimInSteps({
+			db,
+			settle: function settleBeforeStep() {
+				settleImport({ importing })
+			},
+			isClosed: function isEngineClosed() {
+				return state.closed
+			},
+			pagesPerStatement: engineOptions.reclaimPagesPerStatement,
+			sliceMs: engineOptions.reclaimSliceMs,
+			onStep: onWork,
 		})
 	}
 
@@ -554,6 +621,28 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		noteWrite({ documentId, gained })
 	}
 
+	/**
+	 * A write that failed because the file can grow no more answers `STORE_QUOTA_EXCEEDED` (SQLite's
+	 * `SQLITE_FULL`, or an I/O error the file system explains so); any other failure stays as it is -
+	 * a read the write made first (`STORE_READ_FAILED`) included, whatever space is left.
+	 */
+	async function outOfSpaceOr(params: { thrown: unknown }): Promise<unknown> {
+		const { thrown } = params
+		if (toDialecteError(thrown)?.key === 'STORE_READ_FAILED') return thrown
+		const code = sqliteCodeOf({ thrown })
+		if (code === sqlite3.capi.SQLITE_FULL) {
+			return createDialecteError('STORE_QUOTA_EXCEEDED', {
+				detail: `The file of project "${name}" can grow no more`,
+				meta: { project: name },
+				cause: thrown instanceof Error ? thrown : undefined,
+			})
+		}
+		if (code === sqlite3.capi.SQLITE_IOERR && explainIoFailure) {
+			return (await explainIoFailure({ thrown })) ?? thrown
+		}
+		return thrown
+	}
+
 	/** The import runs here, next to the data, in its turn; it writes through the engine's own members. */
 	async function importAsOwner(
 		importParams: SqliteEngineImportParams,
@@ -569,6 +658,10 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			work: async function importInTurn(signal) {
 				// a waiting import aborted gets its turn at once: refused before it takes any part of the engine
 				throwIfAborted({ signal, file })
+				if (ensureImportSpace) {
+					await ensureImportSpace({ bytes: importSpaceOf({ db, file }) })
+					throwIfAborted({ signal, file })
+				}
 				const perf = createPerf({ enabled: importRuntime.perf ?? false, timeline: false })
 				const window = createImportWindow({
 					sqlite3,
@@ -578,7 +671,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					importCacheMiB,
 					steadyCacheMiB,
 				})
-				const progress = createProgressRelay({ file, listener: onProgress })
+				const progress = createProgressRelay({
+					file,
+					listener: function tellWorkDone(told) {
+						onWork?.()
+						// its answer handed on: the relay drops a rejection, never leaves it unhandled
+						return onProgress?.(told)
+					},
+				})
 				const target = createImportTarget({
 					sqlite3,
 					db,
@@ -587,19 +687,15 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					file,
 					counts,
 					removeDocument: function removeFailedImport({ documentId }) {
-						removeDocumentFromFile({
-							sqlite3,
-							db,
-							documentId,
-							counts,
-							importing,
-							removals,
-							versions,
-						})
+						return removeDocumentFromFile({ documentId })
 					},
 					window,
 					windowMs: engineOptions.importWindowMs,
 					tellPhase: progress.tellPhase,
+					onLongStatement,
+					onRegistered: function rowWritten() {
+						queue.markRegistered({ writeId })
+					},
 					customIds: options?.useCustomRecordsIds ?? false,
 				})
 				importing.window = window
@@ -616,7 +712,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					return result
 				} catch (failure) {
 					endQuietly({ window })
-					throw failure
+					throw await outOfSpaceOr({ thrown: failure })
 				} finally {
 					importing.window = undefined
 				}
@@ -644,6 +740,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		const reads: ExportReads = { current: undefined }
 		exports.set(exportId, { clientId, controller, reads })
 		try {
+			// the calls sent before it are served first: an abort its caller sent right after it lands
+			await yieldToQueue()
 			return await runExport(
 				{
 					source: exportSourceOf({ signal: controller.signal, documentId, reads }),
@@ -651,7 +749,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					documentId,
 					options,
 				},
-				{ onProgress, signal: controller.signal },
+				{
+					onProgress: function tellWorkDone(told) {
+						onWork?.()
+						// its answer handed on: the relay drops a rejection, never leaves it unhandled
+						return onProgress?.(told)
+					},
+					signal: controller.signal,
+				},
 			)
 		} finally {
 			exports.delete(exportId)
@@ -688,8 +793,26 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		exports.get(params.exportId)?.controller.abort()
 	}
 
+	/** The members the engine serves: each write's failure for want of space answered `STORE_QUOTA_EXCEEDED`. */
+	const served: EngineMembers = { ...members }
+	for (const member of ENGINE_WRITE_MEMBERS) {
+		const write = members[member] as (...args: unknown[]) => Promise<unknown>
+		Object.assign(served, {
+			[member]: async function writeOrRefuseForSpace(...args: unknown[]) {
+				try {
+					return await write(...args)
+				} catch (thrown) {
+					throw await outOfSpaceOr({ thrown })
+				}
+			},
+		})
+	}
+
+	// what the unfinished imports left is given back while the engine serves: a large one held a start for seconds
+	reclaimFreePagesInSteps().catch(leaveForNextReclaim)
+
 	return {
-		...members,
+		...served,
 		importFile: importAsOwner,
 		abortImport,
 		exportFile,
@@ -704,7 +827,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		},
 		clientView: function clientView({ clientId }) {
 			return {
-				...members,
+				...served,
 				importFile: function importAsClient(importParams, clientProgress) {
 					return importAsOwner({ ...importParams, clientId }, clientProgress)
 				},
@@ -729,44 +852,21 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 }
 
 /**
- * A document gone with all it has (its records, its history, the blobs it owns) in one transaction,
- * then its pages given back to the file. A failure of the reclaim is reported as a failed removal of a
- * document that is gone; removing it again is harmless (an unknown id is ignored, the free pages
- * reclaimed then).
+ * A start's reclaim that failed is left: nothing waits for it, and the next removal or start gives the
+ * free pages back.
  */
-function removeDocumentFromFile(params: {
-	sqlite3: Sqlite3Static
-	db: Database
-	documentId: string
-	counts: Map<string, number>
-	importing: RunningImport
-	removals: { count: number }
-	versions: Map<string, number>
-}): void {
-	const { sqlite3, db, documentId, counts, importing, removals, versions } = params
-	try {
-		asStoreFailure({
-			key: 'STORE_DELETE_FAILED',
-			detail: `Document "${documentId}" could not be removed`,
-			work: function removeAndReclaim() {
-				settleImport({ importing })
-				inWriteTransaction({
-					sqlite3,
-					db,
-					work: function deleteRowAndTable() {
-						deleteDocument({ db, documentId })
-					},
-				})
-				counts.delete(documentId)
-				reclaimFreePages({ db })
-			},
-		})
-	} finally {
-		// a table may be gone: what reads it through a statement of its own prepares it again, and an
-		// export of the id - which may be registered and imported again - starts again
-		removals.count += 1
-		versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
-	}
+function leaveForNextReclaim(): void {}
+
+/**
+ * What an import of `file` needs free: `IMPORT_SPACE_FACTOR` times its size, at least
+ * `IMPORT_SPACE_FLOOR_BYTES`, less the pages the file has free already.
+ */
+function importSpaceOf(params: { db: Database; file: File }): number {
+	const { db, file } = params
+	const freeBytes =
+		Number(db.selectValue('PRAGMA freelist_count')) * Number(db.selectValue('PRAGMA page_size'))
+	const needed = Math.max(IMPORT_SPACE_FLOOR_BYTES, IMPORT_SPACE_FACTOR * file.size)
+	return Math.max(0, needed - freeBytes)
 }
 
 /** The import that runs, if any, committed and made durable before another write: that write stands on its own. */
@@ -863,4 +963,9 @@ function writeRows(params: {
 			return deleteRecords({ db, table, ids: deletes })
 		},
 	})
+}
+
+/** A long statement with no one to tell: run as it is. */
+function runStatement<GenericResult>(params: { work: () => GenericResult }): GenericResult {
+	return params.work()
 }

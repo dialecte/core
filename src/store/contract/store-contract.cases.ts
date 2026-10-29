@@ -4,7 +4,7 @@ import {
 	CONTRACT_LEVELS_ABOVE_METADATA_VALUE,
 	CONTRACT_SESSION_DIAGNOSTICS,
 	CONTRACT_SESSION_FAIL_VALUE,
-	CONTRACT_SESSION_HOLD_VALUE,
+	CONTRACT_SESSION_FUNCTION_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
 } from './store-contract.constants'
@@ -1629,6 +1629,36 @@ const nonJsonPatchPlace: StoreContractCases = {
 		},
 }
 
+/** A proxy over plain data, as a reactive framework hands its objects: it reads as the data. */
+function reactive<GenericValue extends object>(value: GenericValue): GenericValue {
+	return new Proxy(value, {})
+}
+
+const proxiesKept: StoreContractCases = {
+	'a document registered, records created by a bulk write and by a commit, each a proxy over plain data → kept as the plain data they read as':
+		{
+			needs: ['history'],
+			act: async ({ store }) => {
+				await store.registerDocument(
+					reactive(makeDocument({ metadata: reactive({ origin: 'ui' }) })),
+				)
+				await store.bulkWrite('doc-1', { creates: reactive([reactive(makeRecord({ id: 'r1' }))]) })
+				await commit({
+					store,
+					documentId: 'doc-1',
+					creates: [
+						reactive(makeRecord({ id: 'r2', attributes: [reactive({ name: 'a', value: '1' })] })),
+					],
+				})
+				expect(await store.getDocuments()).toEqual([makeDocument({ metadata: { origin: 'ui' } })])
+				expect(await store.getByDocumentId('doc-1')).toEqual([
+					makeRecord({ id: 'r1' }),
+					makeRecord({ id: 'r2', attributes: [{ name: 'a', value: '1' }] }),
+				])
+			},
+		},
+}
+
 const undefinedFieldsDropped: StoreContractCases = {
 	'a document registered with fields holding undefined → read without them': {
 		act: async ({ store }) => {
@@ -2062,7 +2092,7 @@ async function expectOnlyKeptDocument(params: { store: Store; writeId: string })
 /** A failing import, and the structured error it must be refused with. */
 type FailingImport = {
 	file: File
-	key: 'PARSE_ERROR' | 'IMPORT_FAILED'
+	key: 'PARSE_ERROR' | 'IMPORT_FAILED' | 'STORE_VALUE_NOT_JSON'
 	detail: RegExp
 }
 
@@ -2077,6 +2107,14 @@ const failingImports: Record<string, FailingImport> = {
 		key: 'IMPORT_FAILED',
 		detail: /the contract session fails/,
 	},
+	'a session saying a diagnostic that is not JSON (a function in its meta) is refused STORE_VALUE_NOT_JSON':
+		{
+			file: contractFile({
+				body: `${sessionRecords(2)}<B aB="x" bB="${CONTRACT_SESSION_FUNCTION_VALUE}"/>`,
+			}),
+			key: 'STORE_VALUE_NOT_JSON',
+			detail: /^A diagnostic of the import session: a function is not a JSON value \(field "fix"\)/,
+		},
 }
 
 const importing: StoreContractCases = {
@@ -2292,7 +2330,7 @@ const importing: StoreContractCases = {
 				const other = await connect()
 				const hold = holdContractImport()
 				const importing = store.importFile({
-					file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 					writeId: 'w-held',
 				})
 				try {
@@ -2321,8 +2359,7 @@ const importing: StoreContractCases = {
 			const importing = store.importFile({
 				file: contractFile({
 					body:
-						`<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` +
-						`<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
+						`<B aB="B0" bB="${hold.value}"/>` + `<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
 				}),
 				writeId: 'w-failing',
 			})
@@ -2350,7 +2387,7 @@ const importing: StoreContractCases = {
 				const importing = store.importFile({
 					file: contractFile({
 						body:
-							`<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` +
+							`<B aB="B0" bB="${hold.value}"/>` +
 							`<B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
 					}),
 					writeId: 'w-failing',
@@ -2510,7 +2547,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 			act: async ({ store, connect }) => {
 				const hold = holdContractImport()
 				const importing = store.importFile({
-					file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 					writeId: 'w-held',
 				})
 				try {
@@ -2915,7 +2952,7 @@ const closedStore: StoreContractCases = {
 		act: async ({ store, reopen }) => {
 			const hold = holdContractImport()
 			const importing = store.importFile({
-				file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 				writeId: 'w-held',
 			})
 			try {
@@ -2937,7 +2974,7 @@ const closedStore: StoreContractCases = {
 		act: async ({ store }) => {
 			const hold = holdContractImport()
 			const importing = store.importFile({
-				file: contractFile({ body: `<B aB="B0" bB="${CONTRACT_SESSION_HOLD_VALUE}"/>` }),
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 				writeId: 'w-held',
 			})
 			try {
@@ -3030,6 +3067,58 @@ export function needing(params: {
 	)
 }
 
+/** A write the store's storage has no room for: refused whole, as running out of space. */
+const fullStorage: StoreContractCases = {
+	'a commit the storage has no room for → STORE_QUOTA_EXCEEDED, nothing of it applied': {
+		needs: ['full-storage'],
+		act: async (context) => {
+			await context.store.registerDocument(makeDocument())
+			await context.fillStorage()
+			await expectRejectsWith({
+				action: commit({
+					store: context.store,
+					documentId: 'doc-1',
+					creates: Array.from({ length: 2_000 }, (_, index) =>
+						makeRecord({ id: `r${index}`, value: 'x'.repeat(200) }),
+					),
+				}),
+				key: 'STORE_QUOTA_EXCEEDED',
+			})
+			expect(await context.store.count('doc-1')).toBe(0)
+		},
+	},
+	'a bulk write the storage has no room for → STORE_QUOTA_EXCEEDED, nothing of it applied': {
+		needs: ['full-storage'],
+		act: async (context) => {
+			await context.store.registerDocument(makeDocument())
+			await context.fillStorage()
+			await expectRejectsWith({
+				action: context.store.bulkWrite('doc-1', {
+					creates: Array.from({ length: 2_000 }, (_, index) =>
+						makeRecord({ id: `r${index}`, value: 'x'.repeat(200) }),
+					),
+				}),
+				key: 'STORE_QUOTA_EXCEEDED',
+			})
+			expect(await context.store.count('doc-1')).toBe(0)
+		},
+	},
+	'a document the storage has no room to register → STORE_QUOTA_EXCEEDED, not registered': {
+		needs: ['full-storage'],
+		act: async (context) => {
+			await context.fillStorage()
+			await expectRejectsWith({
+				// metadata larger than what the file has free inside it: the registration must grow it
+				action: context.store.registerDocument(
+					makeDocument({ metadata: { note: 'x'.repeat(100_000) } }),
+				),
+				key: 'STORE_QUOTA_EXCEEDED',
+			})
+			expect(await context.store.getDocuments()).toEqual([])
+		},
+	},
+}
+
 export const STORE_CONTRACT: StoreContractGroups = {
 	lifecycle,
 	'document registry': registry,
@@ -3044,6 +3133,7 @@ export const STORE_CONTRACT: StoreContractGroups = {
 		...nonJsonValues,
 		...nonJsonBlobValues,
 		...undefinedFieldsDropped,
+		...proxiesKept,
 		...extraFieldsDropped,
 		...nonJsonPatchPlace,
 		...nonJsonRefusalOrder,
@@ -3054,6 +3144,7 @@ export const STORE_CONTRACT: StoreContractGroups = {
 	'an edit during an import': duringImport,
 	'importing a file': importing,
 	'one state for every connection': { ...oneState, ...oneStateAfterDestroy },
+	'a store whose storage is full': fullStorage,
 	'stores of other names': otherNames,
 	blobs: needing({ needs: ['blobs'], cases: blobs }),
 	'records are values': needing({ needs: ['history', 'blobs'], cases: values }),

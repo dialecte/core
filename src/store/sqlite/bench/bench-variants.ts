@@ -1,5 +1,5 @@
 import { ROW_SELECT_EXPRESSIONS, ROWS_PER_BIND } from '../engine/engine.constants'
-import { columnDefinitions, reclaimFreePages } from '../engine/schema'
+import { columnDefinitions } from '../engine/schema'
 import {
 	AFTER_IMPORT_ATTRIBUTE,
 	COMMIT_GROUP_ITEMS,
@@ -988,4 +988,17 @@ function inDocumentOrder(params: {
 
 function yieldToQueue(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/**
+ * Give the free pages back to the file (incremental auto-vacuum): after a document's table is
+ * dropped, the file shrinks by its pages. One step frees one page: stepped to the end.
+ */
+function reclaimFreePages(params: { db: Database }): void {
+	const statement = params.db.prepare('PRAGMA incremental_vacuum')
+	try {
+		while (statement.step());
+	} finally {
+		statement.finalize()
+	}
 }

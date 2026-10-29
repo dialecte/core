@@ -1,19 +1,7 @@
-/**
- * Engine bench: the SQLite engine as built, timed on the composed 50 MB compact file (the write-back
- * session at the path-named ratio) through `SqliteStore.importFile` in the page (in-memory file) and
- * through the engine in a worker on a real OPFS pool (the layout bench's setting); the engine's
- * start on a file holding a dead import in front of a ready 500 MB document; and, on the composed
- * 50 MB and 500 MB compact files in a worker on OPFS, the import alone and with another view
- * committing meanwhile (each commit's wait), the export, and the largest voltage level deleted,
- * undone and redone (`engine-history-export-<size>`). Runs only under
- * `--mode bench`, a cell at a time below a 1-minute load of 8; pick cells with `VITE_BENCH_CELLS`.
- *
- *   BENCH_SCL_FIXTURES_DIR=<dir> VITE_BENCH=1 VITE_BENCH_CELLS='^engine-import' \
- *     nice -n 10 npx vitest run --project perf --mode bench src/store/sqlite/bench/engine.bench.test.ts
- */
+import { EngineStore } from '../../engine/engine-store'
 import { createInProcessConnector } from '../adapter/in-process-link'
-import { SqliteStore } from '../adapter/sqlite-store'
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
+import { commitWaitsOf, epochNow } from './bench-commit-waits'
 import { createBenchImportRuntime, stagesOf } from './bench-import-session'
 import { fetchFixtureFile, waitForQuietMachine } from './bench-page'
 import {
@@ -25,6 +13,7 @@ import {
 	ENGINE_BENCH_QUIET_LOAD,
 	FIXTURE_ROOTS,
 	GATE_STEADY_CACHE_MIB,
+	EXPORT_AB_ROUNDS,
 	HISTORY_EXPORT_FIXTURES,
 	QUIET_WAIT_MAX_MS,
 	READY_500_RECORDS,
@@ -37,13 +26,27 @@ import { commands } from 'vitest/browser'
 
 import type {
 	BenchFixtureName,
-	CommitDuringImport,
 	CommitWaits,
 	EngineBenchWorkerApi,
 	EngineHistoryExportRun,
+	ExportBeatAbRun,
 	EngineImportRun,
 	HistoryImport,
 } from './bench.types'
+
+/**
+ * Engine bench: the SQLite engine as built, timed on the composed 50 MB compact file (the write-back
+ * session at the path-named ratio) through `EngineStore.importFile` in the page (in-memory file) and
+ * through the engine in a worker on a real OPFS pool (the layout bench's setting); the engine's
+ * start on a file holding a dead import in front of a ready 500 MB document; and, on the composed
+ * 50 MB and 500 MB compact files in a worker on OPFS, the import alone and with another view
+ * committing meanwhile (each commit's wait), the export, and the largest voltage level deleted,
+ * undone and redone (`engine-history-export-<size>`). Runs only under
+ * `--mode bench`, a cell at a time below a 1-minute load of 8; pick cells with `VITE_BENCH_CELLS`.
+ *
+ *   BENCH_SCL_FIXTURES_DIR=<dir> VITE_BENCH=1 VITE_BENCH_CELLS='^engine-import' \
+ *     nice -n 10 npx vitest run --project perf --mode bench src/store/sqlite/bench/engine.bench.test.ts
+ */
 
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
 const CELL_FILTER = new RegExp(import.meta.env.VITE_BENCH_CELLS ?? '^$')
@@ -88,7 +91,7 @@ async function importInProcess(params: { file: File }): Promise<EngineImportRun>
 			afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
 		}),
 	})
-	const store = new SqliteStore({ name, connector })
+	const store = new EngineStore({ name, connector })
 	await store.open()
 	try {
 		const startedAt = performance.now()
@@ -102,6 +105,35 @@ async function importInProcess(params: { file: File }): Promise<EngineImportRun>
 	} finally {
 		await store.destroy()
 	}
+}
+
+/**
+ * One file imported once in one engine session, then exported `EXPORT_AB_ROUNDS` times with the SQLite
+ * progress handler beating and as many without it, in turn (beat first in even rounds, last in odd
+ * ones): what the beat costs an export, beside the run-to-run spread of one database.
+ */
+async function measureExportBeatAb(params: {
+	api: EngineBenchWorkerApi
+	file: File
+	project: string
+}): Promise<ExportBeatAbRun> {
+	const { api, file, project } = params
+	await api.historyOpen({
+		project,
+		root: FIXTURE_ROOTS.composed,
+		afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
+	})
+	const imported = await api.historyImport({ file, writeId: 'w-ab' })
+	const exports: ExportBeatAbRun['exports'] = []
+	for (let round = 0; round < EXPORT_AB_ROUNDS; round += 1) {
+		const order = round % 2 === 0 ? [true, false] : [false, true]
+		for (const beat of order) {
+			await api.historyProgressBeat({ on: beat })
+			const { exportMs } = await api.historyExport({ documentId: imported.documentId })
+			exports.push({ beat, exportMs })
+		}
+	}
+	return { importMs: imported.run.dropToReadyMs, recordCount: imported.run.recordCount, exports }
 }
 
 /**
@@ -187,51 +219,6 @@ function commitEvery(params: { api: EngineBenchWorkerApi }): {
 	}
 }
 
-/** The commits sent during the import, each against the import's index builds (a phase `indexing` until the next change). */
-function commitWaitsOf(params: {
-	sent: { sentAt: number; resolvedAt: number }[]
-	imported: HistoryImport
-}): CommitWaits {
-	const { sent, imported } = params
-	const { phases, startedAtEpochMs, endedAtEpochMs } = imported
-	const indexing = phases.flatMap(({ atEpochMs, phase }, index) =>
-		phase === 'indexing'
-			? [{ from: atEpochMs, to: phases[index + 1]?.atEpochMs ?? endedAtEpochMs }]
-			: [],
-	)
-	const all: CommitDuringImport[] = sent
-		.filter(({ sentAt }) => sentAt <= endedAtEpochMs)
-		.map(({ sentAt, resolvedAt }) => ({
-			sentMs: sentAt - startedAtEpochMs,
-			waitMs: resolvedAt - sentAt,
-			duringIndexing: indexing.some(({ from, to }) => from < resolvedAt && to > sentAt),
-		}))
-	const outside = all.filter((commit) => !commit.duringIndexing).map((commit) => commit.waitMs)
-	const during = all.filter((commit) => commit.duringIndexing).map((commit) => commit.waitMs)
-	return {
-		commits: all.length,
-		outsideIndexing: {
-			count: outside.length,
-			p50Ms: medianOf({ values: outside }),
-			maxMs: Math.max(0, ...outside),
-		},
-		duringIndexing: { count: during.length, maxMs: Math.max(0, ...during) },
-		all,
-	}
-}
-
-function medianOf(params: { values: number[] }): number {
-	const sorted = [...params.values].sort((left, right) => left - right)
-	if (sorted.length === 0) return 0
-	const middle = Math.floor(sorted.length / 2)
-	return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2
-}
-
-/** The time on the clock every realm of the page shares. */
-function epochNow(): number {
-	return performance.timeOrigin + performance.now()
-}
-
 describe('engine bench (the SQLite engine as built)', () => {
 	it.runIf(RUN && CELL_FILTER.test('engine-import-50-in-process'))(
 		'engine-import-50-in-process',
@@ -242,6 +229,30 @@ describe('engine bench (the SQLite engine as built)', () => {
 				run: () => importInProcess({ file }),
 			})) as EngineImportRun
 			expect(result.recordCount).toBeGreaterThan(0)
+		},
+		ENGINE_BENCH_CELL_TIMEOUT_MS,
+	)
+
+	it.runIf(RUN && CELL_FILTER.test('engine-liveness-500-opfs-worker'))(
+		'engine-liveness-500-opfs-worker',
+		async () => {
+			const file = await fixtureFile({ name: 'composed-500-compact' })
+			const { worker, api } = spawnEngineWorker()
+			try {
+				const result = (await recordCell({
+					name: 'engine-liveness-500-opfs-worker',
+					run: () =>
+						api.importOnOpfs({
+							file,
+							project: 'engine-liveness-500',
+							root: FIXTURE_ROOTS.composed,
+							afterImportRatio: AFTER_IMPORT_RATIOS.pathNamed,
+						}),
+				})) as EngineImportRun
+				expect(result.recordCount).toBeGreaterThan(0)
+			} finally {
+				worker.terminate()
+			}
 		},
 		ENGINE_BENCH_CELL_TIMEOUT_MS,
 	)
@@ -269,6 +280,28 @@ describe('engine bench (the SQLite engine as built)', () => {
 		},
 		ENGINE_BENCH_CELL_TIMEOUT_MS,
 	)
+
+	for (const [size, name] of Object.entries(HISTORY_EXPORT_FIXTURES)) {
+		const cell = `engine-export-beat-ab-${size}`
+		it.runIf(RUN && CELL_FILTER.test(cell))(
+			cell,
+			async () => {
+				const file = await fixtureFile({ name })
+				const { worker, api } = spawnEngineWorker()
+				try {
+					const result = (await recordCell({
+						name: cell,
+						run: () => measureExportBeatAb({ api, file, project: cell }),
+					})) as ExportBeatAbRun
+					expect(result.exports).toHaveLength(2 * EXPORT_AB_ROUNDS)
+				} finally {
+					await api.historyClose().catch(() => undefined)
+					worker.terminate()
+				}
+			},
+			ENGINE_BENCH_CELL_TIMEOUT_MS,
+		)
+	}
 
 	for (const [size, name] of Object.entries(HISTORY_EXPORT_FIXTURES)) {
 		const cell = `engine-history-export-${size}`

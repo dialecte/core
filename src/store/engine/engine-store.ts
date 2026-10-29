@@ -1,5 +1,5 @@
-import { createRunningOperations } from '../../running-operations'
-import { throwStoreClosed } from '../../store-errors'
+import { createRunningOperations } from '../running-operations'
+import { throwStoreClosed } from '../store-errors'
 
 import type {
 	ChangeLogEntry,
@@ -9,27 +9,23 @@ import type {
 	ImportFileResult,
 	Store,
 	WriteOutcome,
-} from '../../store.types'
-import type { SqliteEngineApi } from '../engine/engine.types'
-import type {
-	SqliteEngineConnector,
-	SqliteEngineLink,
-	SqliteStoreParams,
-} from './sqlite-store.types'
+} from '../store.types'
+import type { EngineConnector, EngineLink, EngineStoreParams } from './engine-store.types'
+import type { EngineApi } from './engine.types'
 import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
- * SqliteStore - the store port over a project's SQLite engine, reached through a link: the engine
+ * EngineStore - the store port over a project's engine (the SQLite one today), reached through a link: the engine
  * holds the data and answers every connection of the project alike (one state per name). This
  * adapter keeps what is per connection: `close()` refuses the operations started after it with
  * `STORE_CLOSED` and releases the link once the running ones complete; `open()` connects again.
  */
-export class SqliteStore implements Store {
+export class EngineStore implements Store {
 	readonly name: string
-	private readonly connector: SqliteEngineConnector
-	private link: SqliteEngineLink | undefined
-	private connecting: Promise<SqliteEngineLink> | undefined
+	private readonly connector: EngineConnector
+	private link: EngineLink | undefined
+	private connecting: Promise<EngineLink> | undefined
 	/** Set by `close()`, cleared by `open()`: a closed store refuses every operation started after it. */
 	private closed = false
 	/** How many times `close()` was called: an `open()` refuses when one came after it was called. */
@@ -37,7 +33,7 @@ export class SqliteStore implements Store {
 	/** The operations running: `close()` releases the link, `open()` and `destroy()` go on, once none is left. */
 	private readonly operations = createRunningOperations()
 
-	constructor(params: SqliteStoreParams) {
+	constructor(params: EngineStoreParams) {
 		this.name = params.name
 		this.connector = params.connector
 	}
@@ -280,7 +276,7 @@ export class SqliteStore implements Store {
 	 * `close()` meanwhile lets it complete and releases the link after it.
 	 */
 	private async operation<GenericResult>(
-		run: (engine: SqliteEngineApi) => Promise<GenericResult>,
+		run: (engine: EngineApi) => Promise<GenericResult>,
 	): Promise<GenericResult> {
 		if (this.closed) throwStoreClosed({ storeName: this.name })
 		return this.tracked(async () => {
@@ -302,14 +298,14 @@ export class SqliteStore implements Store {
 	}
 
 	/** The engine through this store's link, connected on the first operation (once, however many run). */
-	private async currentEngine(): Promise<SqliteEngineApi> {
+	private async currentEngine(): Promise<EngineApi> {
 		this.connecting ??= this.connectOnce()
 		this.link = await this.connecting
 		return this.link.engine()
 	}
 
 	/** A failed connection is forgotten: the next operation tries again. */
-	private async connectOnce(): Promise<SqliteEngineLink> {
+	private async connectOnce(): Promise<EngineLink> {
 		try {
 			return await this.connector.connect()
 		} catch (thrown) {

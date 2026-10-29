@@ -17,8 +17,9 @@ import type { AnyDialecteConfig } from '@/types'
  * document `importing` under the caller's `writeId`, parses the file with the dialecte's import
  * session and stores it batch by batch, applies the session's writes, marks the document `ready`.
  * A document is whole or absent: whatever fails, or an abort, removes it and is thrown (a foreign
- * error as `IMPORT_FAILED`, its cause kept). The progress listener and the abort come apart from the
- * import's data, as a worker call carries them.
+ * error as `IMPORT_FAILED`, its cause kept; diagnostics that are not plain JSON as
+ * `STORE_VALUE_NOT_JSON`). The progress listener and the abort come apart from the import's data, as
+ * a worker call carries them.
  */
 export async function runImport(
 	params: RunImportParams,

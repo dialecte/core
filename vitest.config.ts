@@ -1,3 +1,4 @@
+import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { BENCH_COMMANDS } from './src/store/sqlite/bench/bench-commands'
@@ -9,6 +10,20 @@ import { mergeConfig, defineConfig, configDefaults } from 'vitest/config'
 import type { BrowserConfigOptions } from 'vitest/node'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
+
+/** Every include pattern names at least one file: a moved test file must not drop out of its project unseen. */
+function assertEachIncludeMatches(params: { project: string; include: string[] }): string[] {
+	const { project, include } = params
+	const unmatched = include.filter(function matchesNoFile(pattern) {
+		return globSync(pattern, { cwd: root }).length === 0
+	})
+	if (unmatched.length > 0) {
+		throw new Error(
+			`vitest project "${project}" includes files that do not exist: ${unmatched.join(', ')}`,
+		)
+	}
+	return include
+}
 const createBrowser = (
 	instances: BrowserConfigOptions['instances'] = [{ browser: 'chromium' }],
 ): BrowserConfigOptions => ({
@@ -44,6 +59,23 @@ const benchInstances = (): BrowserConfigOptions['instances'] =>
 				},
 			]
 
+// The unit suite runs on Chromium; UNIT_FIREFOX_EXECUTABLE runs it once on stock Firefox over BiDi instead (the
+// engine's worker legs, best effort: Playwright's own Firefox build does not start on every macOS).
+const unitInstances = (): BrowserConfigOptions['instances'] =>
+	process.env.UNIT_FIREFOX_EXECUTABLE
+		? [
+				{
+					browser: 'firefox',
+					provider: playwright({
+						launchOptions: {
+							channel: 'moz-firefox',
+							executablePath: process.env.UNIT_FIREFOX_EXECUTABLE,
+						},
+					}),
+				},
+			]
+		: [{ browser: 'chromium' }]
+
 export default mergeConfig(
 	viteConfig,
 	defineConfig({
@@ -58,9 +90,13 @@ export default mergeConfig(
 					plugins: [],
 					test: {
 						name: 'unit',
-						browser: createBrowser(),
+						browser: createBrowser(unitInstances()),
 						include: ['src/**/*.test.{js,ts,jsx,tsx}'],
-						exclude: [...configDefaults.exclude, 'src/**/*.bench.test.{js,ts}'],
+						exclude: [
+							...configDefaults.exclude,
+							'src/**/*.bench.test.{js,ts}',
+							'src/store/sqlite/packaging/**',
+						],
 						root,
 					},
 				},
@@ -74,11 +110,15 @@ export default mergeConfig(
 						name: 'node',
 						environment: 'node',
 						isolate: false,
-						include: [
-							'src/store/contract/store-contract.test.ts',
-							'src/project/store-switch.test.ts',
-							'src/store/sqlite/hub/hub-router.test.ts',
-						],
+						include: assertEachIncludeMatches({
+							project: 'node',
+							include: [
+								'src/store/contract/store-contract.test.ts',
+								'src/project/store-switch.test.ts',
+								'src/store/engine/hub/hub-router.test.ts',
+								'src/store/sqlite/packaging/engine-packaging.test.ts',
+							],
+						}),
 						setupFiles: ['src/store/contract/store-contract.node.setup.ts'],
 						root,
 					},

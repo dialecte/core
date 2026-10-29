@@ -1,5 +1,4 @@
 import path from 'node:path'
-/// <reference types="vite/client" />
 import { fileURLToPath, URL } from 'node:url'
 
 // VITE
@@ -9,6 +8,8 @@ import dts from 'vite-plugin-dts'
 
 // https://vite.dev/config/
 export default defineConfig({
+	// emitted assets resolved next to the module that needs them, wherever the package is installed
+	base: './',
 	plugins: [
 		dts({
 			tsconfigPath: path.resolve(__dirname, './tsconfig.build.json'),
@@ -21,7 +22,9 @@ export default defineConfig({
 		},
 	},
 	build: {
-		sourcemap: import.meta.env?.DEV,
+		// a config file runs in Node, where import.meta.env does not exist; Vite sets NODE_ENV to production for a
+		// build unless it is set already: `NODE_ENV=development npm run build` gives maps
+		sourcemap: process.env.NODE_ENV === 'development',
 		lib: {
 			entry: {
 				index: fileURLToPath(new URL('./src/index.ts', import.meta.url)),
@@ -33,7 +36,9 @@ export default defineConfig({
 			formats: ['es'],
 		},
 		rollupOptions: {
-			external: ['vitest'],
+			// sqlite-wasm resolved by whoever loads core's main side (node finds its own wasm); the engine
+			// build (vite.engine.config.ts) bundles it
+			external: ['vitest', /^@sqlite\.org\/sqlite-wasm/, 'comlink'],
 			output: {
 				entryFileNames: '[name].js',
 			},
