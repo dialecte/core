@@ -302,6 +302,25 @@ describe('an engine worker opening its project', () => {
 		expect(await engine.getDocuments()).toEqual([makeDocument()])
 	})
 
+	it('an import whose file would fit at twice its size but not at eight times (2 MiB free, a file of ~400 KB) → STORE_QUOTA_EXCEEDED, nothing registered', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'import-quota' }) })
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const engine = await clientOf({ control, clientId: 'c-1' })
+		const file = contractFile({
+			body: Array.from({ length: 4_000 }, (_, index) => `<A aA="${'x'.repeat(80)}${index}"/>`).join(
+				'',
+			),
+		})
+		const freeBytes = 2 * 1024 * 1024
+		expect(2 * file.size).toBeLessThan(freeBytes)
+		expect(8 * file.size).toBeGreaterThan(freeBytes)
+		expect(await rejectionKey({ action: engine.importFile({ file, writeId: 'w-between' }) })).toBe(
+			'STORE_QUOTA_EXCEEDED',
+		)
+		expect(await engine.getDocuments()).toEqual([])
+	})
+
 	it('closed, then opened again in the same worker → the pool resumed, not installed, its data there', async () => {
 		const project = uniqueProject()
 		const { control } = engineWorker({ project })

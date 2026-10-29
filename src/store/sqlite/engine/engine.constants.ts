@@ -167,5 +167,11 @@ export const ROW_SELECT_ALIASES = ROW_SELECT_EXPRESSIONS.map(
  */
 export const IMPORT_SPACE_FACTOR = 8
 
+/**
+ * The least an import asks for, whatever its file's size: a new document's tables, indexes, history rows
+ * and registry row take a few pages each, and the journal its own room.
+ */
+export const IMPORT_SPACE_FLOOR_BYTES = 1024 * 1024
+
 /** How many causes deep a failure is searched for the SQLite code that started it. */
 export const CAUSE_DEPTH = 8

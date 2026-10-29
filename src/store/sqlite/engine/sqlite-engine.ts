@@ -10,7 +10,11 @@ import { encodeCheckedRecords, insertEncodedRows } from './bulk-insert'
 import { commitRecords, stepHistory } from './commit'
 import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
 import { asReadFailure, asStoreFailure, sqliteCodeOf, toStoreFailure } from './engine-errors'
-import { DEFAULT_ENGINE_OPTIONS, IMPORT_SPACE_FACTOR } from './engine.constants'
+import {
+	DEFAULT_ENGINE_OPTIONS,
+	IMPORT_SPACE_FACTOR,
+	IMPORT_SPACE_FLOOR_BYTES,
+} from './engine.constants'
 import { hasCommitOf, readChangeLog, readHistoryStatus } from './history'
 import { createImportQueue } from './import-queue'
 import { createImportTarget, createProgressRelay } from './import-target'
@@ -844,12 +848,16 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
  */
 function leaveForNextReclaim(): void {}
 
-/** What an import of `file` needs free: about twice its size, less the pages the file has free already. */
+/**
+ * What an import of `file` needs free: `IMPORT_SPACE_FACTOR` times its size, at least
+ * `IMPORT_SPACE_FLOOR_BYTES`, less the pages the file has free already.
+ */
 function importSpaceOf(params: { db: Database; file: File }): number {
 	const { db, file } = params
 	const freeBytes =
 		Number(db.selectValue('PRAGMA freelist_count')) * Number(db.selectValue('PRAGMA page_size'))
-	return Math.max(0, IMPORT_SPACE_FACTOR * file.size - freeBytes)
+	const needed = Math.max(IMPORT_SPACE_FLOOR_BYTES, IMPORT_SPACE_FACTOR * file.size)
+	return Math.max(0, needed - freeBytes)
 }
 
 /** The import that runs, if any, committed and made durable before another write: that write stands on its own. */
