@@ -19,6 +19,7 @@ import {
 } from '../../sqlite/runtime/runtime.fixtures.constants'
 import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
 import { EngineStore } from '../engine-store'
+import { ENGINE_LOCK_PREFIX } from '../engine.constants'
 import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS } from './client.constants'
 import { createEngineControl } from './engine-control'
 
@@ -58,6 +59,20 @@ async function openWorkerStore(
 	await store.open()
 	opened.push(store)
 	return store
+}
+
+/**
+ * The engine lock of `name` asked for from this page while its engine holds it: granted once that
+ * engine's worker has ended, then held `holdMs` - a dead worker's lock let go late, as on a loaded
+ * machine. Settles once let go.
+ */
+function holdLockOnceFree(params: { name: string; holdMs: number }): Promise<void> {
+	const { name, holdMs } = params
+	return navigator.locks.request(`${ENGINE_LOCK_PREFIX}${name}`, function holdAWhile() {
+		return new Promise<void>(function letGoLater(resolve) {
+			setTimeout(resolve, holdMs)
+		})
+	})
 }
 
 describe('a SQLite store whose engine runs in a worker of this realm', () => {
@@ -349,7 +364,25 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			await connector.destroy()
 		})
 
-		it('deaf to close, another connection of the name at once → it waits for the ended worker to let the lock go, then opens', async () => {
+		it('deaf to destroy, its lock let go 3 s after its worker ended → the fresh worker waits for the lock within its budget: the project destroyed', async () => {
+			const name = `worker-connector-${crypto.randomUUID()}`
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
+			})
+			const link = await connector.connect()
+			await (await link.engine()).registerDocument(makeDocument())
+			const lateRelease = holdLockOnceFree({ name, holdMs: 3_000 })
+			await connector.destroy()
+			await lateRelease
+			link.close()
+			const again = await connector.connect()
+			expect(await (await again.engine()).getDocuments()).toEqual([])
+			again.close()
+			await connector.destroy()
+		})
+
+		it('deaf to close, its lock let go 3 s after its worker ended, then destroyed → the destroy waits for the lock: the project destroyed', async () => {
 			const name = `worker-connector-${crypto.randomUUID()}`
 			const connector = createSqliteWorkerConnector({
 				name,
@@ -357,9 +390,53 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			})
 			const link = await connector.connect()
 			await (await link.engine()).registerDocument(makeDocument())
+			const lateRelease = holdLockOnceFree({ name, holdMs: 3_000 })
+			link.close()
+			await connector.destroy()
+			await lateRelease
+			const again = await connector.connect()
+			expect(await (await again.engine()).getDocuments()).toEqual([])
+			again.close()
+			await connector.destroy()
+		})
+
+		it('deaf to destroy, a call in flight on it → that call refused STORE_ENGINE_LOST host-gone once its worker is ended', async () => {
+			const name = `worker-connector-${crypto.randomUUID()}`
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
+			})
+			const link = await connector.connect()
+			const engine = await link.engine()
+			const hold = holdContractImport()
+			const importing = engine.importFile({
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+				writeId: 'w-deaf',
+			})
+			await untilHeld({ hold, importing })
+			const destroying = connector.destroy()
+			expect(toDialecteError(await rejectionOf(importing))).toMatchObject({
+				key: 'STORE_ENGINE_LOST',
+				meta: { reason: 'host-gone', writeId: 'w-deaf' },
+			})
+			hold.release()
+			await destroying
+			link.close()
+		})
+
+		it('deaf to close, its lock let go a moment after its worker ended, another connection at once → it waits for the lock, then opens', async () => {
+			const name = `worker-connector-${crypto.randomUUID()}`
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-close' }),
+			})
+			const link = await connector.connect()
+			await (await link.engine()).registerDocument(makeDocument())
+			const lateRelease = holdLockOnceFree({ name, holdMs: 1_000 })
 			link.close()
 			const again = await connector.connect()
 			expect(await (await again.engine()).getDocuments()).toEqual([makeDocument()])
+			await lateRelease
 			again.close()
 			await connector.destroy()
 		})

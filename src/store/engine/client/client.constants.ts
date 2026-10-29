@@ -11,5 +11,8 @@ export const ENGINE_CLOSE_BUDGET_MS = 2_000
  */
 export const ENGINE_HEARTBEAT_TIMEOUT_MS = 10_000
 
-/** What a destroy request answers once the engine has deleted the project (a budget running out answers nothing). */
+/** What a destroy request answers once the engine has deleted the project (a budget running out answers `UNANSWERED`). */
 export const DESTROYED = 'destroyed'
+
+/** What the work asked of an engine the realm ends answers once its budget passed with no answer: the engine is deaf. */
+export const UNANSWERED = 'unanswered'

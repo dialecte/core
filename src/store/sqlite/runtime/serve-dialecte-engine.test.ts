@@ -349,6 +349,23 @@ describe('an engine worker destroying its project', () => {
 		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
 	})
 
+	it('a pool file another worker holds a moment (as a worker just ended does) → the removal retried within the budget, the directory gone', async () => {
+		const project = uniqueProject()
+		await closedPoolWithDocument({ project })
+		const holder = await holdPoolFile({ project })
+		cleanups.push(holder.release)
+		const { control } = engineWorker({ project })
+		const destroying = control.request({
+			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+			expect: 'destroyed',
+		})
+		setTimeout(function letGo() {
+			void holder.release()
+		}, 300)
+		await destroying
+		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+	})
+
 	it('a pool file another worker holds → PROJECT_DESTROY_FAILED, the directory still there', async () => {
 		const project = uniqueProject()
 		await closedPoolWithDocument({ project })

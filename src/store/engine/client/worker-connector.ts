@@ -1,5 +1,10 @@
 import { ENGINE_LOCK_PREFIX } from '../engine.constants'
-import { DESTROYED, ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS } from './client.constants'
+import {
+	DESTROYED,
+	ENGINE_CLOSE_BUDGET_MS,
+	ENGINE_OPEN_BUDGET_MS,
+	UNANSWERED,
+} from './client.constants'
 import { createEngineClient } from './engine-client'
 import { createEngineControl } from './engine-control'
 
@@ -7,6 +12,7 @@ import { createDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
 
 import type { EngineConnector, EngineLink } from '../engine-store.types'
+import type { EngineLockMode } from '../engine.types'
 import type {
 	EngineClient,
 	EngineControl,
@@ -181,13 +187,19 @@ function endLostEngine(params: { name: string; engine: RealmEngine }): void {
 	engine.control.end({ error: lost })
 	// the next engine of the name starts once the page has let the lock go
 	if (engine.watch) holdNextEngine({ name, until: engine.watch.settled })
+	loseClientsOf({ engine })
+	engine.worker.terminate()
+}
+
+/** Every call in flight on the engine's clients refused `STORE_ENGINE_LOST` (`host-gone`): its worker is gone. */
+function loseClientsOf(params: { engine: RealmEngine }): void {
+	const { engine } = params
 	for (const link of engine.links) {
 		if (link.adoption?.generation !== engine.generation) continue
 		link.adoption.client.then(function loseClient(client) {
 			client.lose({ reason: 'host-gone' })
 		}, ignoreFailedAdoption)
 	}
-	engine.worker.terminate()
 }
 
 /** A client of its own for the connection: a new port, handed to the engine. */
@@ -256,32 +268,51 @@ async function destroyProject(params: WorkerConnectorParams<unknown>): Promise<v
 			engine: running,
 			worker: running.worker,
 			ending: withinBudget({
-				work: askDestroy({ name, control: running.control, budgetMs: openBudgetMs }),
+				work: askDestroy({
+					name,
+					control: running.control,
+					lock: 'if-available',
+					budgetMs: openBudgetMs,
+				}),
 				budgetMs: ENGINE_CLOSE_BUDGET_MS,
 			}),
 		})
 		if (answered === DESTROYED) return
-		// deaf: its worker ended, its lock let go, the project deleted from a fresh worker
+		// deaf: its worker ended; the fresh worker waits for the lock it lets go (late on a loaded machine)
 		await ENDING.get(name)
+		await destroyFromFreshWorker({ name, engineUrl, lock: 'wait', budgetMs: openBudgetMs })
+		return
 	}
+	await destroyFromFreshWorker({ name, engineUrl, lock: 'if-available', budgetMs: openBudgetMs })
+}
+
+/** A worker that opens nothing deletes the project, waiting for the lock or not; ended after. */
+async function destroyFromFreshWorker(params: {
+	name: string
+	engineUrl: string
+	lock: EngineLockMode
+	budgetMs: number
+}): Promise<void> {
+	const { name, engineUrl, lock, budgetMs } = params
 	const worker = new Worker(engineUrl, { type: 'module' })
 	await endEngine({
 		name,
 		engine: undefined,
 		worker,
-		ending: askDestroy({ name, control: createEngineControl({ worker }), budgetMs: openBudgetMs }),
+		ending: askDestroy({ name, control: createEngineControl({ worker }), lock, budgetMs }),
 	})
 }
 
-/** The engine asked to delete the project; `DESTROYED` once it has (a budget running out answers nothing). */
+/** The engine asked to delete the project; `DESTROYED` once it has (`withinBudget` answers `UNANSWERED` for one that does not). */
 async function askDestroy(params: {
 	name: string
 	control: EngineControl
+	lock: EngineLockMode
 	budgetMs: number
 }): Promise<typeof DESTROYED> {
-	const { name, control, budgetMs } = params
+	const { name, control, lock, budgetMs } = params
 	await control.request({
-		message: { type: 'destroy', project: name, lock: 'if-available', budgetMs },
+		message: { type: 'destroy', project: name, lock, budgetMs },
 		expect: 'destroyed',
 	})
 	return DESTROYED
@@ -331,23 +362,30 @@ function endEngine(params: {
 		if (ENGINES.get(name) === engine) ENGINES.delete(name)
 		engine.watch?.controller.abort()
 	}
+	let answered = true
 	const ended = ending.then(
 		function terminateWorker(answer: unknown) {
-			endWorker()
+			endWorker({ answered: answer !== UNANSWERED })
 			return answer
 		},
 		function terminateAfterFailure(thrown: unknown) {
-			endWorker()
+			endWorker({ answered: true })
 			throw thrown
 		},
 	)
-	function endWorker(): void {
+	function endWorker(params: { answered: boolean }): void {
+		answered = params.answered
 		engine?.control.end({ error: endedByRealm({ name }) })
 		worker.terminate()
+		// a call still in flight on a deaf engine is refused at once; one that answered drained its calls first
+		if (engine && !answered) loseClientsOf({ engine })
 	}
-	// the next engine waits for the ended worker to let the lock go (one ended deaf may still hold it a moment)
+	// the next engine waits for the ended worker to let the lock go: one ended deaf may hold it for seconds on a loaded machine
 	const lockFree = ended.then(settleNothing, settleNothing).then(function waitForLock() {
-		return untilLockFree({ name })
+		return untilLockFree({
+			name,
+			budgetMs: answered ? ENGINE_CLOSE_BUDGET_MS : ENGINE_OPEN_BUDGET_MS,
+		})
 	})
 	holdNextEngine({
 		name,
@@ -358,13 +396,13 @@ function endEngine(params: {
 
 /**
  * The page granted the engine's lock (let go at once): its last holder in this realm let it go - or
- * the close budget passed (another realm's engine may hold it: the next open answers that).
+ * the budget passed (another realm's engine may hold it: the next open answers that).
  */
-function untilLockFree(params: { name: string }): Promise<void> {
+function untilLockFree(params: { name: string; budgetMs: number }): Promise<void> {
 	return navigator.locks
 		.request(
 			`${ENGINE_LOCK_PREFIX}${params.name}`,
-			{ signal: AbortSignal.timeout(ENGINE_CLOSE_BUDGET_MS) },
+			{ signal: AbortSignal.timeout(params.budgetMs) },
 			settleNothing,
 		)
 		.then(settleNothing, settleNothing)
@@ -388,12 +426,12 @@ function endedByRealm(params: { name: string }): Error {
 	})
 }
 
-/** `work`, or nothing once `budgetMs` has passed (the timer cleared when the work ends first). */
+/** `work`, or `UNANSWERED` once `budgetMs` has passed (the timer cleared when the work ends first). */
 function withinBudget(params: { work: Promise<unknown>; budgetMs: number }): Promise<unknown> {
 	const { work, budgetMs } = params
 	let timer: ReturnType<typeof setTimeout> | undefined
 	const budget = new Promise(function waitBudget(resolve) {
-		timer = setTimeout(resolve, budgetMs)
+		timer = setTimeout(resolve, budgetMs, UNANSWERED)
 	})
 	return Promise.race([work, budget]).finally(function clearBudget() {
 		clearTimeout(timer)

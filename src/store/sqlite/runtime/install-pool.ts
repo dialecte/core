@@ -58,11 +58,14 @@ export async function openPool(params: {
 export async function destroyPool(params: {
 	project: string
 	pool: SAHPoolUtil | undefined
+	/** Until when a file still held (a worker that just ended lets its handles go a little later) is waited for. */
+	deadline: number
 }): Promise<void> {
-	const { project, pool } = params
+	const { project, pool, deadline } = params
 	const root = await privateRoot({ project })
 	if (pool) await pool.removeVfs()
-	else await removeDirectory({ root, project })
+	// what the pool's own removal left (a file held a moment), or the whole directory when no pool is open
+	await removeDirectoryWithin({ root, project, deadline })
 	if (await hasPoolDirectory({ root, project })) {
 		throw createDialecteError('PROJECT_DESTROY_FAILED', {
 			detail: `The files of project "${project}" are still there: another tab or worker may hold one`,
@@ -255,15 +258,29 @@ export async function explainOutOfSpace(params: {
 	})
 }
 
-async function removeDirectory(params: {
+/**
+ * The project's directory removed; a file still held is waited for with the probe's backoff until the
+ * deadline. Absent already, or failing otherwise: the check after says what is left.
+ */
+async function removeDirectoryWithin(params: {
 	root: FileSystemDirectoryHandle
 	project: string
+	deadline: number
 }): Promise<void> {
-	const parent = await existingDirectory({ root: params.root, path: [POOL_ROOT_DIRECTORY] })
-	try {
-		await parent?.removeEntry(encodeURIComponent(params.project), { recursive: true })
-	} catch {
-		// absent already, or a file still held: the check after says which
+	const { root, project, deadline } = params
+	for (let attempt = 0; ; attempt += 1) {
+		const parent = await existingDirectory({ root, path: [POOL_ROOT_DIRECTORY] })
+		try {
+			await parent?.removeEntry(encodeURIComponent(project), { recursive: true })
+			return
+		} catch (thrown) {
+			if (!isBusy({ thrown })) return
+			const wait = PROBE_BACKOFF_MS[Math.min(attempt, PROBE_BACKOFF_MS.length - 1)]!
+			if (performance.now() + wait > deadline) return
+			await new Promise(function waitBeforeRetry(resolve) {
+				setTimeout(resolve, wait)
+			})
+		}
 	}
 }
 

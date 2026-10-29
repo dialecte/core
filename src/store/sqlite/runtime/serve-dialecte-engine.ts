@@ -316,13 +316,14 @@ async function destroyProject(params: {
 }): Promise<void> {
 	const { state, request } = params
 	const { project, lock, budgetMs } = request
+	const deadline = performance.now() + budgetMs
 	await endEngineAndClients({ state })
 	if (!state.releaseLock) {
 		const held = await takeEngineLock({ project, mode: lock, budgetMs })
 		state.releaseLock = held.release
 	}
 	try {
-		await destroyPool({ project, pool: state.pool })
+		await destroyPool({ project, pool: state.pool, deadline })
 	} finally {
 		state.pool = undefined
 		state.project = undefined
