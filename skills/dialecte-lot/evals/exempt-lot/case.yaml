@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: exempt-lot
+expected_outcome: |
+  The wording lot (wording and rename only) is declared exempt by the orchestrator in `.dialecte/lot.json` at the package root
+  with `{ "tdd": "exempt: <reason>" }`, a file that is never committed nor put in a lot; the behaviour lot changes behaviour, so it
+  is not exempt: its tests go through the test station (`dialecte tdd red`) and the implement station
+  (`dialecte tdd green`) to earn the receipts.

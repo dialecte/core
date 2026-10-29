@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: red-first-through-tdd
+expected_outcome: |
+  The test comes first, from the spec, with a stub of the helper whose body throws `not implemented` (called inside
+  `expect(...)`) so it compiles; any `only` marker is removed before the red; `npx dialecte tdd red` proves each case
+  red on an assertion before any production code; then the helper is written, the test untouched, until `npx dialecte tdd green`; then `npx dialecte gate --fast`
+  (its tdd step checks the receipts).
