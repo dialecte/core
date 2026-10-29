@@ -61,6 +61,19 @@ describe('closing the engine', () => {
 		expect(state.releaseLock).toBeUndefined()
 	})
 
+	it('an engine whose close throws → the engine let go (the next open of the worker is not refused as open already), its client ports closed', async () => {
+		const { state, port } = openState({
+			closeEngine: function closeFailing() {
+				throw new Error('the database would not close')
+			},
+		})
+		const closePort = vi.spyOn(port, 'close')
+		await expect(closeEngine({ state })).rejects.toThrow('the database would not close')
+		expect(state.engine).toBeUndefined()
+		expect(state.clients.size).toBe(0)
+		expect(closePort).toHaveBeenCalledOnce()
+	})
+
 	it('a pool whose pause throws → the close refused with it, the lock released all the same', async () => {
 		const { state, releaseLock } = openState({
 			pauseVfs: function pauseFailing() {

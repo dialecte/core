@@ -7,6 +7,7 @@ import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
 import {
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DDL_MS,
+	SLOW_DESTROY_MS,
 	SLOW_DDL_PATTERN,
 	SLOW_STATEMENT_STEP_MS,
 	YIELDING_SLICE_MS,
@@ -17,6 +18,7 @@ import { serveDialecteEngine } from '@/engine'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type {
+	DestroyShape,
 	ProgressBeatOrder,
 	RuntimeFixtureMessage,
 	RuntimeFixtureNotice,
@@ -114,7 +116,9 @@ function fillDiskWhenOrdered(): void {
  */
 function serveEngine(): void {
 	if (scenario === 'ignore-close') ignoreClose()
-	if (scenario === 'ignore-destroy') ignoreDestroyWhileOpen()
+	if (scenario === 'ignore-destroy') shapeDestroy({ whileOpen: 'deaf', fresh: 'at-once' })
+	if (scenario === 'slow-destroy') shapeDestroy({ whileOpen: 'late', fresh: 'at-once' })
+	if (scenario === 'ignore-destroy-slow-fresh') shapeDestroy({ whileOpen: 'deaf', fresh: 'late' })
 	if (scenario === 'endable' || scenario === 'uncaught-error') followCaseOrders()
 	if (scenario === 'slow-statements' || scenario === 'slow-statements-silent') {
 		slowStatements({ silent: scenario === 'slow-statements-silent' })
@@ -312,13 +316,31 @@ function ignoreClose(): void {
 	})
 }
 
-/** Deaf to `destroy` once it has opened a project (a worker that opens nothing still answers it). */
-function ignoreDestroyWhileOpen(): void {
+/**
+ * Each `destroy` told on the fixture channel, then, as the scenario shapes it, swallowed (a deaf engine),
+ * handed to the engine `SLOW_DESTROY_MS` late (one still at work) or at once - by a worker that has
+ * opened a project, or by one that opens nothing (the fresh worker a realm destroys through).
+ */
+function shapeDestroy(params: { whileOpen: DestroyShape; fresh: DestroyShape }): void {
 	let opened = false
-	self.addEventListener('message', function swallowDestroy(event: MessageEvent<{ type?: string }>) {
-		if (event.data?.type === 'open') opened = true
-		if (event.data?.type === 'destroy' && opened) event.stopImmediatePropagation()
-	})
+	const replayed = new WeakSet<object>()
+	self.addEventListener(
+		'message',
+		function shapeEachDestroy(event: MessageEvent<{ type?: string }>) {
+			if (event.data?.type === 'open') opened = true
+			if (event.data?.type !== 'destroy' || replayed.has(event.data)) return
+			tellFixtureChannel({ type: 'destroy-asked' })
+			const shape = opened ? params.whileOpen : params.fresh
+			if (shape === 'at-once') return
+			event.stopImmediatePropagation()
+			if (shape === 'deaf') return
+			const { data } = event
+			replayed.add(data)
+			setTimeout(function handOver() {
+				self.dispatchEvent(new MessageEvent('message', { data }))
+			}, SLOW_DESTROY_MS)
+		},
+	)
 }
 
 /** The case's orders on the fixture channel: end this worker from inside, or throw from a timer. */
