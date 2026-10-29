@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
+import { parseXml } from '@/test/xml-dom'
 
 import type { DialecteErrorKey } from '@/errors'
 import type { BaseTestCase } from '@/test'
@@ -1300,17 +1301,14 @@ describe('writeXmlRecords', () => {
 				childRecord({ id: 'n-1', tagName: 'N', namespace: { prefix: 'ns1', uri: 'urn:x' } }),
 			]
 			for (const indent of [true, false]) {
-				const parsed = new DOMParser().parseFromString(
-					writeXmlRecords({ records, config: CONFIG, indent }),
-					'application/xml',
-				)
-				expect(parsed.getElementsByTagName('parsererror')).toHaveLength(0)
-				const root = parsed.documentElement
+				const parsed = parseXml({ xml: writeXmlRecords({ records, config: CONFIG, indent }) })
+				if ('error' in parsed) throw new Error(`the file is not well-formed: ${parsed.error}`)
+				const root = parsed.document.documentElement!
 				expect(root.getAttributeNS(NS.ext.uri, 'root')).toBe('2')
-				const x = [...root.children].find((child) => child.localName === 'X')!
-				expect(x.getAttributeNS(NS.ext.uri, 'cA')).toBe('v')
-				const n = [...root.children].find((child) => child.localName === 'N')!
-				expect(n.namespaceURI).toBe('urn:x')
+				const elementX = [...root.children].find((child) => child.localName === 'X')!
+				expect(elementX.getAttributeNS(NS.ext.uri, 'cA')).toBe('v')
+				const elementN = [...root.children].find((child) => child.localName === 'N')!
+				expect(elementN.namespaceURI).toBe('urn:x')
 			}
 		})
 	})

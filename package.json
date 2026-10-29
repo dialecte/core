@@ -48,8 +48,10 @@
 		"doc:build": "vitepress build",
 		"doc:preview": "vitepress preview",
 		"//====== TEST ======//": "",
-		"test": "vitest --project unit",
-		"test:node": "vitest run --project node",
+		"test": "npm run test:node && npm run test:browser",
+		"test:node": "vitest run --project node --project node-indexeddb",
+		"test:browser": "vitest run --project browser",
+		"test:browser:all": "vitest run --project browser-all",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
 		"//====== CHECK ======//": "",
 		"check": "run-p type-check type-check:test type-check:node lint:check format:check",
@@ -71,9 +73,11 @@
 	"dependencies": {
 		"@sqlite.org/sqlite-wasm": "3.54.1-build1",
 		"@types/sax": "1.2.7",
+		"@xmldom/xmldom": "0.9.12",
 		"comlink": "4.4.2",
 		"dexie": "4.4.6",
-		"sax": "^1.4.3"
+		"sax": "^1.4.3",
+		"xpath": "0.0.35"
 	},
 	"devDependencies": {
 		"@dialecte/cli": "0.0.3",
@@ -81,7 +85,6 @@
 		"@types/node": "^24.12.4",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"@vitest/browser-playwright": "^4.1.10",
-		"@xmldom/xmldom": "^0.8.11",
 		"fake-indexeddb": "^6.2.6",
 		"husky": "^9.1.7",
 		"jiti": "^2.4.2",
@@ -97,5 +100,52 @@
 		"vitepress": "^2.0.0-alpha.17",
 		"vitepress-plugin-llms": "^1.13.2",
 		"vitest": "^4.1.10"
+	},
+	"dialecte": {
+		"gate": {
+			"fast": [
+				{
+					"name": "check",
+					"run": "npm run check"
+				},
+				{
+					"name": "tests",
+					"run": "npx vitest run --changed --project node --project node-indexeddb",
+					"counts": "tests",
+					"changedOnly": true,
+					"heavy": false
+				}
+			],
+			"full": [
+				{
+					"name": "check",
+					"run": "npm run check"
+				},
+				{
+					"name": "build",
+					"run": "npm run build"
+				},
+				{
+					"name": "tests",
+					"run": "nice -n 10 npm run test:node",
+					"counts": "tests",
+					"heavy": false
+				},
+				{
+					"name": "browser tests",
+					"run": "nice -n 10 npx vitest run --project browser --no-file-parallelism",
+					"counts": "tests"
+				},
+				{
+					"name": "docs",
+					"run": "npm run doc:build",
+					"restoresGeneratedDocs": true
+				},
+				{
+					"name": "type-bench",
+					"run": "npm run type-bench:check"
+				}
+			]
+		}
 	}
 }

@@ -1,9 +1,12 @@
 import type { SqliteEngine } from '../engine/engine.types'
+import type { BenchFixture, BenchFixtureName, GcShare } from './bench-commands.types'
+
+/** The fixtures and the GC share are the node side's (`bench-commands.types.ts`); the pages read them from here too. */
+export type { BenchFixture, BenchFixtureName, GcShare } from './bench-commands.types'
 import type { BENCH_PHASE_MESSAGE } from './bench.constants'
 import type { ImportPhase } from '@/store/store.types'
 import type { AnyRawRecord, AnyRelationship, RecordPatch } from '@/types'
 import type { Database, SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
-import type { CDPSession } from 'playwright'
 
 //====== VARIANTS ======//
 
@@ -50,27 +53,6 @@ export type BenchVariant = {
 }
 
 //====== INPUTS ======//
-
-export type BenchFixtureName =
-	| 'composed-50-indented'
-	| 'composed-50-compact'
-	| 'composed-100-indented'
-	| 'composed-100-compact'
-	| 'composed-500-indented'
-	| 'composed-500-compact'
-	| 'composed-catalogue-small'
-	| 'structural-50'
-	| 'structural-100'
-	| 'structural-500'
-
-/** What the node side knows of a fixture file: where the browser fetches it, and its counts. */
-export type BenchFixture = {
-	name: BenchFixtureName
-	url: string
-	path: string
-	bytes: number
-	records: number
-}
 
 /** What a run measures beyond the import itself. */
 export type BenchMeasures = {
@@ -362,18 +344,6 @@ export type BenchDevice = {
 	deviceMemoryGiB: number | undefined
 }
 
-/** From the worker's CPU profile: GC self time over busy (non-idle) time, plus named functions' self time. */
-export type GcShare = {
-	gcMs: number
-	busyMs: number
-	idleMs: number
-	sampledMs: number
-	share: number
-	named: Record<string, number>
-	/** the functions with the most self time, worker-wide */
-	top: Array<{ name: string; ms: number }>
-}
-
 /** Memory of one realm at one point of a run; what the browser does not expose stays undefined. */
 export type BenchMemory = {
 	/** the sqlite3 WebAssembly.Memory buffer (worker only; wasm memory grows, it never shrinks) */
@@ -455,23 +425,6 @@ export type SyncAccessFileHandle = FileSystemFileHandle & {
 }
 
 //====== BROWSER COMMANDS ======//
-
-/** The parts of a CDP `Profiler.stop` profile the GC share needs. */
-export type BenchCpuProfile = {
-	nodes: Array<{ id: number; callFrame: { functionName: string } }>
-	samples: number[]
-	timeDeltas: number[]
-	startTime: number
-	endTime: number
-}
-
-/** The page's CDP session and the worker session it relays to (auto-attach without flatten). */
-export type BenchProfileState = {
-	session: CDPSession
-	workerSessionId: string
-	nextId: number
-	pending: Map<number, (message: { result?: unknown; error?: { message: string } }) => void>
-}
 
 export type BenchMachine = { load: number[]; swapUsedMiB?: number }
 export type BenchNodeDevice = Omit<BenchDevice, 'hardwareConcurrency' | 'deviceMemoryGiB'>

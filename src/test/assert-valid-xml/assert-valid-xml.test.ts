@@ -35,12 +35,12 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 					</A>
 				</Root>
 			`
-			expect(() => assertValidXml(xml, 'snippet', { requireComplete: false })).not.toThrow()
+			expect(() => assertValidXml({ xml, label: 'snippet', requireComplete: false })).not.toThrow()
 		})
 
 		it("a required attribute of a dialecte namespace, under another prefix than the dialecte's", () => {
 			const xml = /* xml */ `<x:DD_3 xmlns:x="${DIALECTE_TEST_NAMESPACES.ext.uri}" x:aDD_3="v" />`
-			expect(() => assertValidXml(xml, 'snippet', { requireComplete: true })).not.toThrow()
+			expect(() => assertValidXml({ xml, label: 'snippet', requireComplete: true })).not.toThrow()
 		})
 
 		it('a foreign-namespace element whose local name collides with a schema element', () => {
@@ -51,7 +51,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 					</A>
 				</Root>
 			`
-			expect(() => assertValidXml(xml, 'snippet', { requireComplete: false })).not.toThrow()
+			expect(() => assertValidXml({ xml, label: 'snippet', requireComplete: false })).not.toThrow()
 		})
 		it('a document in no namespace, for a schema that declares none', () => {
 			const NO_NAMESPACE = { prefix: '', uri: '' }
@@ -82,7 +82,9 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Plain>
 			`
 
-			expect(() => assertValidPlainXml(xml, 'snippet', { requireComplete: false })).not.toThrow()
+			expect(() =>
+				assertValidPlainXml({ xml, label: 'snippet', requireComplete: false }),
+			).not.toThrow()
 		})
 	})
 
@@ -125,16 +127,18 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Plain>
 			`
 			expect(() =>
-				assertValidTwoNamespaces(xml, 'snippet', { requireComplete: false }),
+				assertValidTwoNamespaces({ xml, label: 'snippet', requireComplete: false }),
 			).not.toThrow()
 		})
 
 		it('accepts it at the root in the namespace of its global declaration only', () => {
 			expect(() =>
-				assertValidTwoNamespaces('<Leaf />', 'snippet', { requireComplete: false }),
+				assertValidTwoNamespaces({ xml: '<Leaf />', label: 'snippet', requireComplete: false }),
 			).not.toThrow()
 			const message = captureErrorMessage(() =>
-				assertValidTwoNamespaces('<b:Leaf xmlns:b="urn:b" />', 'snippet', {
+				assertValidTwoNamespaces({
+					xml: '<b:Leaf xmlns:b="urn:b" />',
+					label: 'snippet',
 					requireComplete: false,
 				}),
 			)
@@ -168,7 +172,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Open>
 			`
 			expect(() =>
-				assertValidUnderWildcard(xml, 'snippet', { requireComplete: false }),
+				assertValidUnderWildcard({ xml, label: 'snippet', requireComplete: false }),
 			).not.toThrow()
 		})
 
@@ -179,7 +183,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Plain>
 			`
 			const message = captureErrorMessage(() =>
-				assertValidTwoNamespaces(xml, 'snippet', { requireComplete: false }),
+				assertValidTwoNamespaces({ xml, label: 'snippet', requireComplete: false }),
 			)
 			expect(message).toContain('[namespace] <Leaf> under <Plain>')
 		})
@@ -187,7 +191,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 
 	describe("a parent's own declaration", () => {
 		const NO_NAMESPACE = { prefix: '', uri: '' }
-		const H = { prefix: 'h', uri: 'urn:h' }
+		const HOLDER_NAMESPACE = { prefix: 'h', uri: 'urn:h' }
 		const empty = {
 			attributes: { sequence: [], details: {} },
 			children: { sequence: [], details: {} },
@@ -216,7 +220,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 					children: { sequence: ['Leaf'], details: { Leaf: { declarations: { '': ['1', '2'] } } } },
 					declarations: {
 						'1': { ...empty, namespace: NO_NAMESPACE, global: true, children: holds('1') },
-						'2': { ...empty, namespace: H, global: true, children: holds('2') },
+						'2': { ...empty, namespace: HOLDER_NAMESPACE, global: true, children: holds('2') },
 					},
 				},
 				Leaf: {
@@ -228,13 +232,13 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				},
 			},
 			types: {},
-			namespaces: { default: NO_NAMESPACE, h: H },
+			namespaces: { default: NO_NAMESPACE, h: HOLDER_NAMESPACE },
 			schemaName: 'Holder',
 		})
 
 		it('decides what its child requires', () => {
 			const message = captureErrorMessage(() =>
-				assertValidByParent('<Holder><Leaf y="1" /></Holder>', 'snippet'),
+				assertValidByParent({ xml: '<Holder><Leaf y="1" /></Holder>', label: 'snippet' }),
 			)
 			expect(message).toContain("[required] <Leaf> is missing required attribute 'x'")
 		})
@@ -281,7 +285,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 					<Plain xsi:type="t:tWide" wide="1" />
 				</Outer>
 			`
-			expect(() => assertValidTyped(xml, 'snippet')).not.toThrow()
+			expect(() => assertValidTyped({ xml, label: 'snippet' })).not.toThrow()
 		})
 
 		it('requires what the type requires', () => {
@@ -290,7 +294,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 					<Plain xsi:type="t:tWide" />
 				</Outer>
 			`
-			const message = captureErrorMessage(() => assertValidTyped(xml, 'snippet'))
+			const message = captureErrorMessage(() => assertValidTyped({ xml, label: 'snippet' }))
 			expect(message).toContain("[required] <Plain> is missing required attribute 'wide'")
 		})
 
@@ -300,7 +304,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 					<Plain wide="1" />
 				</Outer>
 			`
-			const message = captureErrorMessage(() => assertValidTyped(xml, 'snippet'))
+			const message = captureErrorMessage(() => assertValidTyped({ xml, label: 'snippet' }))
 			expect(message).toContain("[attribute] <Plain> has unknown attribute 'wide'")
 		})
 	})
@@ -310,7 +314,9 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 		const XMLNS_EXT_NAMESPACE = `xmlns:ext="${EXT}"`
 
 		function violationsOf(xml: string): string {
-			return captureErrorMessage(() => assertValidXml(xml, 'snippet', { requireComplete: false }))
+			return captureErrorMessage(() =>
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
+			)
 		}
 
 		it('accepts a declared one, under any prefix bound to its namespace', () => {
@@ -370,7 +376,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Root>
 			`
 			const message = captureErrorMessage(() =>
-				assertValidXml(xml, 'snippet', { requireComplete: false }),
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
 			)
 			expect(message).toContain('not valid TestDialecte')
 			expect(message).toContain('[namespace] <Root>')
@@ -388,7 +394,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Root>
 			`
 			const message = captureErrorMessage(() =>
-				assertValidXml(xml, 'snippet', { requireComplete: false }),
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
 			)
 			// AA_3's schema namespace is the ext namespace; here it inherits the default one.
 			expect(message).toContain('[namespace] <AA_3>')
@@ -403,7 +409,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Root>
 			`
 			const message = captureErrorMessage(() =>
-				assertValidXml(xml, 'snippet', { requireComplete: false }),
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
 			)
 			expect(message).toContain('[containment] <AAAA_1> is not a valid child of <A>')
 		})
@@ -415,7 +421,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Root>
 			`
 			const message = captureErrorMessage(() =>
-				assertValidXml(xml, 'snippet', { requireComplete: false }),
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
 			)
 			expect(message).toContain("[attribute] <A> has unknown attribute 'notASchemaAttribute'")
 		})
@@ -429,9 +435,9 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				</Root>
 			`
 			// aA is required on <A>; omitted here.
-			expect(() => assertValidXml(xml, 'snippet', { requireComplete: false })).not.toThrow()
+			expect(() => assertValidXml({ xml, label: 'snippet', requireComplete: false })).not.toThrow()
 			const message = captureErrorMessage(() =>
-				assertValidXml(xml, 'snippet', { requireComplete: true }),
+				assertValidXml({ xml, label: 'snippet', requireComplete: true }),
 			)
 			expect(message).toContain("[required] <A> is missing required attribute 'aA'")
 		})
@@ -442,11 +448,28 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" />
 			`
 			const message = captureErrorMessage(() =>
-				assertValidXml(xml, 'snippet', { requireComplete: false }),
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
 			)
 			expect(message).toContain('snippet: malformed XML')
 			expect(message).toContain('must be the very first characters')
 		})
+
+		const malformedCases: Record<string, string> = {
+			'a bare & in a text value': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">a & b</Root>`,
+			'a bare & in an attribute value': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="a & b" />`,
+			'a prefix bound to no namespace (xmlns:p="")': `<Root ${XMLNS_DEFAULT_NAMESPACE} xmlns:p="" root="1" />`,
+			'a tag closed by another name': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="1"><A aA="x"></Root>`,
+			'an attribute given twice': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" root="2" />`,
+		}
+
+		for (const [description, xml] of Object.entries(malformedCases)) {
+			it(`${description} → malformed XML`, () => {
+				const message = captureErrorMessage(() =>
+					assertValidXml({ xml, label: 'snippet', requireComplete: false }),
+				)
+				expect(message).toMatch(/^snippet: malformed XML — \S/)
+			})
+		}
 	})
 })
 

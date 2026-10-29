@@ -37,8 +37,9 @@ export default defineConfig({
 		},
 		rollupOptions: {
 			// sqlite-wasm resolved by whoever loads core's main side (node finds its own wasm); the engine
-			// build (vite.engine.config.ts) bundles it
-			external: ['vitest', /^@sqlite\.org\/sqlite-wasm/, 'comlink'],
+			// build (vite.engine.config.ts) bundles it. The test entry's XML DOM and XPath engine are
+			// dependencies the installer resolves.
+			external: ['vitest', /^@sqlite\.org\/sqlite-wasm/, 'comlink', '@xmldom/xmldom', 'xpath'],
 			output: {
 				entryFileNames: '[name].js',
 			},

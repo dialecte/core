@@ -1,12 +1,16 @@
 import { createPerf } from './create-perf'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-// Each test starts from a clean timeline so cross-test measures never leak.
-afterEach(() => {
+/** The timeline is the realm's: what a test before (of this file or another sharing the realm) measured is cleared. */
+function clearTimeline(): void {
 	performance.clearMarks()
 	performance.clearMeasures()
-})
+}
+
+// Each test starts from a clean timeline and leaves one, so measures never leak across tests or files.
+beforeEach(clearTimeline)
+afterEach(clearTimeline)
 
 describe('createPerf (enabled)', () => {
 	it('start()/stop() records a measure; report() sums it by the UNQUALIFIED name', () => {

@@ -2,7 +2,6 @@ import { TEST_DIALECTE_CONFIG } from './config'
 import { createTestContext, createTestProject } from './create-test-dialecte'
 import { TEST_DIALECTE } from './test-dialecte'
 
-import Dexie from 'dexie'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
@@ -30,8 +29,8 @@ describe('createTestProject', () => {
 	const projects: Array<{ destroy: () => Promise<void> }> = []
 
 	afterEach(async () => {
-		for (const p of projects) {
-			await p.destroy()
+		for (const project of projects) {
+			await project.destroy()
 		}
 		projects.length = 0
 	})
@@ -51,19 +50,7 @@ describe('createTestProject', () => {
 			validate: async ({ source }) => {
 				const records = await source.document.query.getRecordsByTagName('A')
 				expect(records).toHaveLength(2)
-				expect(records.every((r) => r.tagName === 'A')).toBe(true)
-			},
-		},
-		{
-			description: 'destroy removes the project database',
-			xmlString: '<Root />',
-			validate: async ({ project }) => {
-				const dbName = project.name
-				await project.destroy()
-				const exists = await Dexie.exists(dbName)
-				expect(exists).toBe(false)
-				// Prevent afterEach from double-destroying
-				projects.pop()
+				expect(records.every((record) => record.tagName === 'A')).toBe(true)
 			},
 		},
 		{
@@ -90,8 +77,8 @@ describe('createTestContext', () => {
 	const projects: Array<{ destroy: () => Promise<void> }> = []
 
 	afterEach(async () => {
-		for (const p of projects) {
-			await p.destroy()
+		for (const project of projects) {
+			await project.destroy()
 		}
 		projects.length = 0
 	})
@@ -136,7 +123,8 @@ describe('createTestContext', () => {
 			documentId: source.documentId,
 		})
 
-		expect(await context.store.getByTagNameInDocument('A', context.documentId)).toHaveLength(2)
+		const records = await context.store.getByTagNameInDocument('A', context.documentId)
+		expect(records).toHaveLength(2)
 	})
 
 	it('reads the store given instead of the local one', async () => {
@@ -170,9 +158,11 @@ describe('createTestContext', () => {
 			store,
 		})
 		expect(context.store).toBe(store)
-		expect(await context.store.getByTagNameInDocument('A', 'doc')).toHaveLength(1)
-		expect(await Dexie.exists('context-store')).toBe(false)
+		const records = await context.store.getByTagNameInDocument('A', 'doc')
+		expect(records).toHaveLength(1)
 		await store.destroy()
+		// the context opened no store of its own on that name: destroying the given one leaves no state behind
+		expect(findInMemoryState({ name: 'context-store' })).toBeUndefined()
 	})
 })
 
@@ -180,8 +170,8 @@ describe('createTestProject from a declaration', () => {
 	const projects: Array<{ destroy: () => Promise<void> }> = []
 
 	afterEach(async () => {
-		for (const p of projects) {
-			await p.destroy()
+		for (const project of projects) {
+			await project.destroy()
 		}
 		projects.length = 0
 	})
@@ -197,9 +187,11 @@ describe('createTestProject from a declaration', () => {
 		const { project, source } = await createTestProject({ dialecte, sourceXml: SIMPLE_XML })
 		projects.push(project)
 
-		expect((await project.getDocument(source.documentId))?.configKey).toBe('test')
+		const sourceDocument = await project.getDocument(source.documentId)
+		expect(sourceDocument?.configKey).toBe('test')
 		const second = await project.initEmptyDocument({ configKey: 'second' })
-		expect((await project.getDocument(second))?.configKey).toBe('second')
+		const secondDocument = await project.getDocument(second)
+		expect(secondDocument?.configKey).toBe('second')
 	})
 
 	it('imports the source and target under the config key given', async () => {
@@ -211,8 +203,10 @@ describe('createTestProject from a declaration', () => {
 		})
 		projects.push(project)
 
-		expect((await project.getDocument(source.documentId))?.configKey).toBe('second')
-		expect((await project.getDocument(target!.documentId))?.configKey).toBe('second')
+		const sourceDocument = await project.getDocument(source.documentId)
+		expect(sourceDocument?.configKey).toBe('second')
+		const targetDocument = await project.getDocument(target!.documentId)
+		expect(targetDocument?.configKey).toBe('second')
 	})
 
 	it('takes its store from the storage parameter', async () => {
@@ -223,7 +217,7 @@ describe('createTestProject from a declaration', () => {
 		})
 		projects.push(project)
 
-		expect(await Dexie.exists(project.name)).toBe(false)
+		expect(findInMemoryState({ name: project.name })).toBeDefined()
 	})
 
 	it("without a dialecte: core's own, its documents under the config key `default` as before", async () => {
@@ -231,13 +225,14 @@ describe('createTestProject from a declaration', () => {
 		projects.push(project)
 
 		expect(TEST_DIALECTE.defaultConfigKey).toBe('default')
-		expect((await project.getDocument(source.documentId))?.configKey).toBe('default')
+		const sourceDocument = await project.getDocument(source.documentId)
+		expect(sourceDocument?.configKey).toBe('default')
 	})
 })
 
 describe('createTestProject - a project the test leaves undestroyed', () => {
 	// the cases of this block run in order: each one checks what the one before it left
-	const left: { inMemory?: string; local?: string } = {}
+	const left: { inMemory?: string } = {}
 	const openedInBeforeEach: string[] = []
 	let fromBeforeAll: TestProjectResult<typeof TEST_DIALECTE_CONFIG> | undefined
 
@@ -261,10 +256,8 @@ describe('createTestProject - a project the test leaves undestroyed', () => {
 			sourceXml: SIMPLE_XML,
 			storage: { type: 'inMemory' },
 		})
-		const local = await createTestProject({ sourceXml: SIMPLE_XML, storage: { type: 'local' } })
 		const destroyedByTheTest = await createTestProject({ sourceXml: SIMPLE_XML })
 		left.inMemory = inMemory.project.name
-		left.local = local.project.name
 		await destroyedByTheTest.project.destroy()
 		expect(findInMemoryState({ name: inMemory.project.name })).toBeDefined()
 	})
@@ -272,16 +265,15 @@ describe('createTestProject - a project the test leaves undestroyed', () => {
 	it('the test before has ended → its projects and the one of its beforeEach are destroyed', async () => {
 		// run alone (`-t`, `.only`) the test before has left nothing to check
 		expect(left.inMemory).toBeDefined()
-		expect(left.local).toBeDefined()
 		expect(findInMemoryState({ name: left.inMemory ?? '' })).toBeUndefined()
-		expect(await Dexie.exists(left.local ?? '')).toBe(false)
 		expect(findInMemoryState({ name: openedInBeforeEach[0] ?? '' })).toBeUndefined()
 	})
 
 	it('a project opened in beforeAll → still open in the later tests, its records read', async () => {
 		const project = fromBeforeAll?.project
 		if (!project) throw new Error('beforeAll opened no project')
-		expect(await project.getDocuments()).toHaveLength(1)
+		const documents = await project.getDocuments()
+		expect(documents).toHaveLength(1)
 		await project.destroy()
 	})
 })

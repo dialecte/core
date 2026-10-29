@@ -1,3 +1,4 @@
+import { xmlFile } from './import.fixtures'
 import { Project } from './project'
 
 import { describe, expect, expectTypeOf, it } from 'vitest'
@@ -5,7 +6,6 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import { createDiagnostic, isKnownDiagnostic } from '@/diagnostics'
 import { createDialecteError, defineErrors } from '@/errors'
 import { InMemoryStore } from '@/store/in-memory/in-memory-store'
-import { TABLE_DOCUMENTS } from '@/store/store.constants'
 import { runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { StoreRuntime } from './io/store-runtime.types'
@@ -14,23 +14,18 @@ import type { Diagnostic, DiagnosticCatalogue } from '@/diagnostics'
 import type { DialecteError } from '@/errors'
 import type { BaseTestCase } from '@/test'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
-import type Dexie from 'dexie'
 
 // Through the public Project API on an in-memory store: what `import` and `importFile` return,
 // what lands, what is broadcast - one entry per file, a failing file its own entry.
 
 const CONFIG = TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig
-const NS = CONFIG.namespaces.default.uri
 
-function xmlFile(body: string, name: string): File {
-	return new File([`<Root xmlns="${NS}">${body}</Root>`], name, { type: 'text/xml' })
-}
-
-function imported(
-	fileName: string,
-	recordCount: number,
-	diagnostics: Diagnostic[] = [],
-): ImportEntry {
+function imported(params: {
+	fileName: string
+	recordCount: number
+	diagnostics?: Diagnostic[]
+}): ImportEntry {
+	const { fileName, recordCount, diagnostics = [] } = params
 	return { status: 'imported', fileName, documentId: expect.any(String), recordCount, diagnostics }
 }
 
@@ -137,9 +132,9 @@ function runtime(hooks?: DialecteHooks<AnyDialecteConfig>): StoreRuntime {
 }
 
 async function openProject(
-	hooks?: DialecteHooks<AnyDialecteConfig>,
-	storage: StorageParam = { type: 'inMemory' },
+	params: { hooks?: DialecteHooks<AnyDialecteConfig>; storage?: StorageParam } = {},
 ) {
+	const { hooks, storage = { type: 'inMemory' } } = params
 	return new Project({
 		configs: { default: CONFIG, other: CONFIG },
 		storage,
@@ -148,7 +143,11 @@ async function openProject(
 }
 
 /** Import hooks whose session records when each file starts and ends, and takes `delayMs` to end. */
-function recordingHooks(events: string[], delayMs = 0): DialecteHooks<AnyDialecteConfig> {
+function recordingHooks(params: {
+	events: string[]
+	delayMs?: number
+}): DialecteHooks<AnyDialecteConfig> {
+	const { events, delayMs = 0 } = params
 	return {
 		createImportSession: ({ documentId }) => {
 			events.push(`start ${documentId}`)
@@ -179,22 +178,26 @@ describe('Project.import - one entry per file', () => {
 		'three files, the second malformed → imported, failed (PARSE_ERROR), imported; the third landed':
 			{
 				files: [
-					xmlFile('<A/>', 'one.xml'),
-					xmlFile('<A><AA_1></A>', 'broken.xml'),
-					xmlFile('<A/><B/>', 'three.xml'),
+					xmlFile({ body: '<A/>', name: 'one.xml' }),
+					xmlFile({ body: '<A><AA_1></A>', name: 'broken.xml' }),
+					xmlFile({ body: '<A/><B/>', name: 'three.xml' }),
 				],
-				expectedEntries: [imported('one.xml', 2), PARSE_FAILURE, imported('three.xml', 3)],
+				expectedEntries: [
+					imported({ fileName: 'one.xml', recordCount: 2 }),
+					PARSE_FAILURE,
+					imported({ fileName: 'three.xml', recordCount: 3 }),
+				],
 				expectedDocuments: ['one', 'three'],
 			},
 		'a session hook throws a plain Error → failed, IMPORT_FAILED carrying it as cause, nothing landed':
 			{
-				files: [xmlFile('<A/>', 'hook.xml')],
+				files: [xmlFile({ body: '<A/>', name: 'hook.xml' })],
 				hooks: throwingHooks(HOOK_ERROR),
 				expectedEntries: [HOOK_FAILURE],
 				expectedDocuments: [],
 			},
 		"a session hook throws a dialecte's error → failed with that error, its key and meta kept": {
-			files: [xmlFile('<A/>', 'refused.xml')],
+			files: [xmlFile({ body: '<A/>', name: 'refused.xml' })],
 			hooks: throwingHooks(
 				createDialecteError(HOOK_ERRORS.HOOK_REFUSED, {
 					detail: 'refused by the test hook',
@@ -205,14 +208,20 @@ describe('Project.import - one entry per file', () => {
 			expectedDocuments: [],
 		},
 		'the session has one diagnostic → imported, carrying it': {
-			files: [xmlFile('<A/>', 'diagnosed.xml')],
+			files: [xmlFile({ body: '<A/>', name: 'diagnosed.xml' })],
 			hooks: DIAGNOSING_HOOKS,
-			expectedEntries: [imported('diagnosed.xml', 2, [UNRESOLVED_REFERENCE])],
+			expectedEntries: [
+				imported({
+					fileName: 'diagnosed.xml',
+					recordCount: 2,
+					diagnostics: [UNRESOLVED_REFERENCE],
+				}),
+			],
 			expectedDocuments: ['diagnosed'],
 		},
 		'a clean file, no hooks → imported, diagnostics empty': {
-			files: [xmlFile('<A/>', 'clean.xml')],
-			expectedEntries: [imported('clean.xml', 2)],
+			files: [xmlFile({ body: '<A/>', name: 'clean.xml' })],
+			expectedEntries: [imported({ fileName: 'clean.xml', recordCount: 2 })],
 			expectedDocuments: ['clean'],
 		},
 		'no file → no entry': {
@@ -221,16 +230,16 @@ describe('Project.import - one entry per file', () => {
 			expectedDocuments: [],
 		},
 		'a configKey naming another config → imported under that key': {
-			files: [xmlFile('<A/>', 'other.xml')],
+			files: [xmlFile({ body: '<A/>', name: 'other.xml' })],
 			options: { configKey: 'other' },
-			expectedEntries: [imported('other.xml', 2)],
+			expectedEntries: [imported({ fileName: 'other.xml', recordCount: 2 })],
 			expectedDocuments: ['other'],
 			expectedConfigKey: 'other',
 		},
 	}
 
 	runTestCases.generic(testCases, async (testCase) => {
-		const project = await openProject(testCase.hooks)
+		const project = await openProject({ hooks: testCase.hooks })
 		const listener = project.createChannel()
 		const broadcasts: unknown[] = []
 		listener.onmessage = (event) => broadcasts.push(event.data)
@@ -246,11 +255,13 @@ describe('Project.import - one entry per file', () => {
 			}
 
 			const landed = entries.filter((entry) => entry.status === 'imported')
-			expect([...project.state.documents.keys()]).toEqual(landed.map((e) => e.documentId))
+			expect([...project.state.documents.keys()]).toEqual(landed.map((entry) => entry.documentId))
 			// the registry lists in id order, and the ids are random: the names compared as a set
 			const documents = await project.getDocuments()
-			expect(documents.map((d) => d.name).sort()).toEqual([...testCase.expectedDocuments].sort())
-			expect(documents.map((d) => d.configKey)).toEqual(
+			expect(documents.map((stored) => stored.name).sort()).toEqual(
+				[...testCase.expectedDocuments].sort(),
+			)
+			expect(documents.map((stored) => stored.configKey)).toEqual(
 				documents.map(() => testCase.expectedConfigKey ?? 'default'),
 			)
 
@@ -274,16 +285,22 @@ describe('Project.import - what is about the call rejects, before any file', () 
 	it('an unknown configKey → UNKNOWN_CONFIG_KEY naming the keys, no entry, nothing registered, no session started', async () => {
 		const store = new InMemoryStore('import-config-key', { writable: true })
 		const events: string[] = []
-		const project = await openProject(recordingHooks(events), { type: 'custom', store })
+		const project = await openProject({
+			hooks: recordingHooks({ events }),
+			storage: { type: 'custom', store },
+		})
 		try {
-			const importing = project.import([xmlFile('<A/>', 'one.xml')], { configKey: 'nope' })
+			const importing = project.import([xmlFile({ body: '<A/>', name: 'one.xml' })], {
+				configKey: 'nope',
+			})
 			await expect(importing).rejects.toMatchObject({
 				cause: {
 					key: 'UNKNOWN_CONFIG_KEY',
 					detail: 'Unknown configKey: "nope". Available: default, other',
 				},
 			})
-			expect(await store.getDocuments()).toEqual([])
+			const storedDocuments = await store.getDocuments()
+			expect(storedDocuments).toEqual([])
 			expect([...project.state.documents.keys()]).toEqual([])
 			expect(events).toEqual([])
 		} finally {
@@ -294,7 +311,9 @@ describe('Project.import - what is about the call rejects, before any file', () 
 	it('a closed project → PROJECT_NOT_OPENED, no entry', async () => {
 		const project = await openProject()
 		await project.close()
-		await expect(project.import([xmlFile('<A/>', 'one.xml')])).rejects.toMatchObject({
+		await expect(
+			project.import([xmlFile({ body: '<A/>', name: 'one.xml' })]),
+		).rejects.toMatchObject({
 			cause: { key: 'PROJECT_NOT_OPENED' },
 		})
 		expect([...project.state.documents.keys()]).toEqual([])
@@ -304,11 +323,11 @@ describe('Project.import - what is about the call rejects, before any file', () 
 describe('Project - one file in flight per project', () => {
 	it('two importFile calls at once → the second starts once the first is in, both documents in', async () => {
 		const events: string[] = []
-		const project = await openProject(recordingHooks(events))
+		const project = await openProject({ hooks: recordingHooks({ events }) })
 		try {
 			const [one, two] = await Promise.all([
-				project.importFile(xmlFile('<A/>', 'one.xml')),
-				project.importFile(xmlFile('<B/>', 'two.xml')),
+				project.importFile(xmlFile({ body: '<A/>', name: 'one.xml' })),
+				project.importFile(xmlFile({ body: '<B/>', name: 'two.xml' })),
 			])
 			expect(events).toEqual([
 				`start ${one.documentId}`,
@@ -316,23 +335,26 @@ describe('Project - one file in flight per project', () => {
 				`start ${two.documentId}`,
 				`end ${two.documentId}`,
 			])
-			expect((await project.getDocuments()).map((d) => d.name).sort()).toEqual(['one', 'two'])
+			const documents = await project.getDocuments()
+			expect(documents.map((stored) => stored.name).sort()).toEqual(['one', 'two'])
 		} finally {
 			await project.close()
 		}
 	})
 
 	it('close() while an import is in flight → it lands, is in the store and broadcast once; only a call made after close rejects', async () => {
-		const hooks = recordingHooks([], 20)
+		const hooks = recordingHooks({ events: [], delayMs: 20 })
 		const store = new InMemoryStore('import-close', { runtime: runtime(hooks) })
-		const project = await openProject(hooks, { type: 'custom', store })
+		const project = await openProject({ hooks, storage: { type: 'custom', store } })
 		const listener = project.createChannel()
 		const broadcasts: unknown[] = []
 		listener.onmessage = (event) => broadcasts.push(event.data)
 		try {
-			const importing = project.importFile(xmlFile('<A/>', 'one.xml'))
+			const importing = project.importFile(xmlFile({ body: '<A/>', name: 'one.xml' }))
 			const closing = project.close()
-			await expect(project.importFile(xmlFile('<A/>', 'two.xml'))).rejects.toMatchObject({
+			await expect(
+				project.importFile(xmlFile({ body: '<A/>', name: 'two.xml' })),
+			).rejects.toMatchObject({
 				cause: { key: 'PROJECT_NOT_OPENED' },
 			})
 
@@ -346,7 +368,8 @@ describe('Project - one file in flight per project', () => {
 			})
 			// the project closed its store: opened again to read what landed
 			await store.open()
-			expect(await store.getDocuments()).toEqual([
+			const storedDocuments = await store.getDocuments()
+			expect(storedDocuments).toEqual([
 				expect.objectContaining({ id: document.documentId, name: 'one', status: 'ready' }),
 			])
 			await new Promise((resolve) => setTimeout(resolve, 10))
@@ -364,24 +387,24 @@ describe('Project - one file in flight per project', () => {
 	})
 
 	it('close() during an import of three files, the first in flight → it lands; the two after it are failed entries PROJECT_NOT_OPENED, nothing of them stored', async () => {
-		const hooks = recordingHooks([], 20)
+		const hooks = recordingHooks({ events: [], delayMs: 20 })
 		const store = new InMemoryStore('import-close-many', { runtime: runtime(hooks) })
-		const project = await openProject(hooks, { type: 'custom', store })
+		const project = await openProject({ hooks, storage: { type: 'custom', store } })
 		const listener = project.createChannel()
 		const broadcasts: unknown[] = []
 		listener.onmessage = (event) => broadcasts.push(event.data)
 		try {
 			const importing = project.import([
-				xmlFile('<A/>', 'one.xml'),
-				xmlFile('<A/>', 'two.xml'),
-				xmlFile('<A/>', 'three.xml'),
+				xmlFile({ body: '<A/>', name: 'one.xml' }),
+				xmlFile({ body: '<A/>', name: 'two.xml' }),
+				xmlFile({ body: '<A/>', name: 'three.xml' }),
 			])
 			const closing = project.close()
 
 			const entries = await importing
 			await closing
 			expect(entries.map((entry) => entry.status)).toEqual(['imported', 'failed', 'failed'])
-			expect(entries[0]).toStrictEqual(imported('one.xml', 2))
+			expect(entries[0]).toStrictEqual(imported({ fileName: 'one.xml', recordCount: 2 }))
 			for (const entry of entries.slice(1)) {
 				expect(entry).toMatchObject({
 					status: 'failed',
@@ -392,7 +415,8 @@ describe('Project - one file in flight per project', () => {
 			const landed = entries[0]?.status === 'imported' ? entries[0].documentId : ''
 			// the project closed its store: opened again to read what landed
 			await store.open()
-			expect(await store.getDocuments()).toEqual([
+			const storedDocuments = await store.getDocuments()
+			expect(storedDocuments).toEqual([
 				expect.objectContaining({ id: landed, name: 'one', status: 'ready' }),
 			])
 			await new Promise((resolve) => setTimeout(resolve, 10))
@@ -407,7 +431,7 @@ describe('Project - one file in flight per project', () => {
 
 	it('openDocument after close() → PROJECT_NOT_OPENED', async () => {
 		const project = await openProject()
-		const { documentId } = await project.importFile(xmlFile('<A/>', 'one.xml'))
+		const { documentId } = await project.importFile(xmlFile({ body: '<A/>', name: 'one.xml' }))
 		await project.close()
 		expect(() => project.openDocument(documentId)).toThrow(
 			expect.objectContaining({ cause: expect.objectContaining({ key: 'PROJECT_NOT_OPENED' }) }),
@@ -422,7 +446,7 @@ describe('Project.importFile - one file, the failure thrown', () => {
 		const broadcasts: unknown[] = []
 		listener.onmessage = (event) => broadcasts.push(event.data)
 		try {
-			const document = await project.importFile(xmlFile('<A/><B/>', 'one.xml'))
+			const document = await project.importFile(xmlFile({ body: '<A/><B/>', name: 'one.xml' }))
 
 			expect(document).toStrictEqual({
 				fileName: 'one.xml',
@@ -446,13 +470,16 @@ describe('Project.importFile - one file, the failure thrown', () => {
 	})
 
 	it('a session hook throws → IMPORT_FAILED thrown, the hook’s Error as its cause, nothing landed', async () => {
-		const project = await openProject(throwingHooks(HOOK_ERROR))
+		const project = await openProject({ hooks: throwingHooks(HOOK_ERROR) })
 		try {
-			await expect(project.importFile(xmlFile('<A/>', 'hook.xml'))).rejects.toMatchObject({
+			await expect(
+				project.importFile(xmlFile({ body: '<A/>', name: 'hook.xml' })),
+			).rejects.toMatchObject({
 				cause: { key: 'IMPORT_FAILED', cause: HOOK_ERROR },
 			})
 			expect([...project.state.documents.keys()]).toEqual([])
-			expect(await project.getDocuments()).toEqual([])
+			const documents = await project.getDocuments()
+			expect(documents).toEqual([])
 		} finally {
 			await project.close()
 		}
@@ -461,10 +488,13 @@ describe('Project.importFile - one file, the failure thrown', () => {
 	it('a malformed file → PARSE_ERROR thrown, nothing landed', async () => {
 		const project = await openProject()
 		try {
-			await expect(project.importFile(xmlFile('<A>', 'broken.xml'))).rejects.toMatchObject({
+			await expect(
+				project.importFile(xmlFile({ body: '<A>', name: 'broken.xml' })),
+			).rejects.toMatchObject({
 				cause: { key: 'PARSE_ERROR', meta: { reason: 'malformed-xml' } },
 			})
-			expect(await project.getDocuments()).toEqual([])
+			const documents = await project.getDocuments()
+			expect(documents).toEqual([])
 		} finally {
 			await project.close()
 		}
@@ -477,20 +507,23 @@ describe('Project.importFile - what the caller holds over it', () => {
 		try {
 			const progress: number[] = []
 			let listedWhileImporting: Promise<string[]> | undefined
-			const document = await project.importFile(xmlFile('<A/><B/><C/>', 'one.xml'), {
-				chunkOptions: { chunkSize: 16, batchSize: 1 },
-				onProgress: ({ bytesRead }) => {
-					progress.push(bytesRead)
-					listedWhileImporting ??= project
-						.getDocuments()
-						.then((documents) => documents.map((listed) => listed.id))
+			const document = await project.importFile(
+				xmlFile({ body: '<A/><B/><C/>', name: 'one.xml' }),
+				{
+					chunkOptions: { chunkSize: 16, batchSize: 1 },
+					onProgress: ({ bytesRead }) => {
+						progress.push(bytesRead)
+						listedWhileImporting ??= project
+							.getDocuments()
+							.then((documents) => documents.map((listed) => listed.id))
+					},
 				},
-			})
+			)
 			expect(progress.length).toBeGreaterThan(1)
-			expect(await listedWhileImporting).toEqual([])
-			expect((await project.getDocuments()).map((listed) => listed.id)).toEqual([
-				document.documentId,
-			])
+			const listedIds = await listedWhileImporting
+			expect(listedIds).toEqual([])
+			const documentsAfter = await project.getDocuments()
+			expect(documentsAfter.map((listed) => listed.id)).toEqual([document.documentId])
 		} finally {
 			await project.close()
 		}
@@ -504,14 +537,15 @@ describe('Project.importFile - what the caller holds over it', () => {
 		try {
 			const controller = new AbortController()
 			await expect(
-				project.importFile(xmlFile('<A/><B/><C/>', 'one.xml'), {
+				project.importFile(xmlFile({ body: '<A/><B/><C/>', name: 'one.xml' }), {
 					chunkOptions: { chunkSize: 16, batchSize: 1 },
 					onProgress: () => controller.abort(),
 					signal: controller.signal,
 				}),
 			).rejects.toMatchObject({ cause: { key: 'IMPORT_ABORTED', code: 'D5005' } })
 			expect([...project.state.documents.keys()]).toEqual([])
-			expect(await project.getDocuments()).toEqual([])
+			const documents = await project.getDocuments()
+			expect(documents).toEqual([])
 			await new Promise((resolve) => setTimeout(resolve, 10))
 			expect(broadcasts).toEqual([])
 		} finally {
@@ -528,7 +562,7 @@ describe('Project.importFile - what the caller holds over it', () => {
 		}).open(`import-perf-${crypto.randomUUID()}`)
 		try {
 			project.perf.reset()
-			await project.importFile(xmlFile('<A/>', 'one.xml'))
+			await project.importFile(xmlFile({ body: '<A/>', name: 'one.xml' }))
 			const report = project.perf.report()
 			for (const stage of ['store::import', 'store::import::insert', 'store::import::parse']) {
 				expect(report[stage]?.calls, stage).toBeGreaterThan(0)
@@ -539,29 +573,13 @@ describe('Project.importFile - what the caller holds over it', () => {
 			await project.close()
 		}
 	})
-
-	it('on IndexedDB: a malformed file → PARSE_ERROR, no row, no record table', async () => {
-		const project = await openProject(undefined, { type: 'local' })
-		try {
-			await expect(project.importFile(xmlFile('<A>', 'broken.xml'))).rejects.toMatchObject({
-				cause: { key: 'PARSE_ERROR' },
-			})
-			expect(await project.getDocuments()).toEqual([])
-			expect([...project.state.documents.keys()]).toEqual([])
-			const dexie = project.getDatabaseInstance() as Dexie
-			expect(await dexie.table(TABLE_DOCUMENTS).toArray()).toEqual([])
-			expect(dexie.tables.map((t) => t.name).filter((n) => n.startsWith('xel_'))).toEqual([])
-		} finally {
-			await project.destroy()
-		}
-	})
 })
 
 describe('ImportEntry.diagnostics - an open union a consumer narrows', () => {
 	it('isKnownDiagnostic narrows to the catalogue named, on source and code: the same code under another source does not match', async () => {
-		const project = await openProject(DIAGNOSING_HOOKS)
+		const project = await openProject({ hooks: DIAGNOSING_HOOKS })
 		try {
-			const [entry] = await project.import([xmlFile('<A/>', 'diagnosed.xml')])
+			const [entry] = await project.import([xmlFile({ body: '<A/>', name: 'diagnosed.xml' })])
 			if (entry?.status !== 'imported') throw new Error('expected an imported entry')
 
 			const known = entry.diagnostics.filter((diagnostic) =>
@@ -586,7 +604,7 @@ describe('ImportEntry.diagnostics - an open union a consumer narrows', () => {
 	})
 
 	it('ImportEntry narrows on status: imported → ImportedDocument, failed → fileName and error', () => {
-		const entry = imported('one.xml', 2)
+		const entry = imported({ fileName: 'one.xml', recordCount: 2 })
 		if (entry.status === 'imported') {
 			expectTypeOf(entry).toEqualTypeOf<{ status: 'imported' } & ImportedDocument>()
 		} else {
@@ -603,9 +621,12 @@ describe('Project - a document given a path', () => {
 	it('importFile at a path → the state’s document carries it, named after its file name', async () => {
 		const project = await openProject()
 		try {
-			const { documentId } = await project.importFile(xmlFile('<A/>', 'plant.xml'), {
-				path: 'substations/north.xml',
-			})
+			const { documentId } = await project.importFile(
+				xmlFile({ body: '<A/>', name: 'plant.xml' }),
+				{
+					path: 'substations/north.xml',
+				},
+			)
 			expect(project.state.documents.get(documentId)?.record).toMatchObject({
 				path: 'substations/north.xml',
 				name: 'north',
@@ -631,11 +652,15 @@ describe('Project - a document given a path', () => {
 		try {
 			const options: ImportDocumentOptions = { path: 'substations/north.xml' }
 			await expect(
-				project.import([xmlFile('<A/>', 'one.xml'), xmlFile('<A/>', 'two.xml')], options),
+				project.import(
+					[xmlFile({ body: '<A/>', name: 'one.xml' }), xmlFile({ body: '<A/>', name: 'two.xml' })],
+					options,
+				),
 			).rejects.toMatchObject({
 				cause: { key: 'DOCUMENT_PATH_INVALID', meta: { path: 'substations/north.xml' } },
 			})
-			expect(await project.getDocuments()).toEqual([])
+			const documents = await project.getDocuments()
+			expect(documents).toEqual([])
 		} finally {
 			await project.close()
 		}
@@ -670,14 +695,16 @@ describe('Project - a document given a path', () => {
 			const creating = project.initEmptyDocument(testCase.options)
 			if (!testCase.expected) {
 				await expect(creating).rejects.toMatchObject({ cause: { key: 'DOCUMENT_PATH_INVALID' } })
-				expect(await project.getDocuments()).toEqual([])
+				const documents = await project.getDocuments()
+				expect(documents).toEqual([])
 				expect([...project.state.documents.keys()]).toEqual([])
 				return
 			}
 			const documentId = await creating
 			const expected = { ...testCase.expected, path: testCase.options.path }
 			expect(project.state.documents.get(documentId)?.record).toMatchObject(expected)
-			expect(await project.getDocument(documentId)).toMatchObject(expected)
+			const stored = await project.getDocument(documentId)
+			expect(stored).toMatchObject(expected)
 		} finally {
 			await project.close()
 		}

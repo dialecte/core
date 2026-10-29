@@ -10,6 +10,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	XMLNS_EXT_NAMESPACE,
 } from '@/test'
+import { parseXml } from '@/test/xml-dom'
 import { admittedXsiTypes, resolveXsiType } from '@/utils'
 
 import type {
@@ -184,12 +185,11 @@ describe('xsi:type - one stored form', () => {
 			source,
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-			const { xmlDocument } = await project.export({
-				documentId: source.documentId,
-				indent: false,
-				xmlDocument: true,
-			})
-			const shape = xmlDocument.getElementsByTagNameNS(DEFAULT_URI, 'DD_1')[0]
+			const { file } = await project.export({ documentId: source.documentId, indent: false })
+			const xml = await file.text()
+			const parsed = parseXml({ xml })
+			if ('error' in parsed) throw new Error(`the export is not well-formed: ${parsed.error}`)
+			const shape = parsed.document.getElementsByTagNameNS(DEFAULT_URI, 'DD_1')[0]
 			const value = shape.getAttributeNS(XSI_NAMESPACE.uri, 'type') ?? ''
 			if (testCase.expectedValue !== undefined) expect(value).toBe(testCase.expectedValue)
 			const prefix = value.includes(':') ? value.slice(0, value.indexOf(':')) : null

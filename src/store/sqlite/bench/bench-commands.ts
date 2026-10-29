@@ -14,22 +14,29 @@
 import { execFileSync } from 'node:child_process'
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { cpus, loadavg, platform, release, totalmem } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
-import { FIXTURE_SOURCES, PROFILE_TOP_FUNCTIONS, XML_BYTES } from './bench.constants'
+import {
+	CORE_FIXTURES,
+	CORE_ROOT,
+	FIXTURE_SOURCES,
+	PROFILE_TOP_FUNCTIONS,
+	XML_BYTES,
+} from './bench-commands.constants'
 
 import type {
 	BenchCpuProfile,
 	BenchFixture,
 	BenchFixtureName,
+	BenchProfileStartParams,
 	BenchProfileState,
+	BenchProfileStopParams,
+	BenchRecordParams,
+	BenchWaitForQuietParams,
 	GcShare,
-} from './bench.types'
+} from './bench-commands.types'
 import type { BrowserCommand, BrowserCommandContext } from 'vitest/node'
 
-const CORE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
-const CORE_FIXTURES = join(CORE_ROOT, 'src/test/fixtures/data')
 //====== MACHINE ======//
 
 /** Swap in use (macOS `sysctl vm.swapusage`); undefined on other systems or when it cannot be read. */
@@ -44,23 +51,24 @@ function swapUsedMiB(): number | undefined {
 	}
 }
 
-const benchMachine: BrowserCommand<[]> = async function benchMachine() {
+async function benchMachine() {
 	return { load: loadavg(), swapUsedMiB: swapUsedMiB() }
 }
 
-const benchWaitForQuiet: BrowserCommand<[{ maxLoad: number; maxWaitMs: number }]> =
-	async function benchWaitForQuiet(_context, { maxLoad, maxWaitMs }) {
-		const startedAt = Date.now()
-		while (loadavg()[0]! >= maxLoad && Date.now() - startedAt < maxWaitMs)
-			await new Promise((done) => setTimeout(done, 10_000))
-		return { waitedMs: Date.now() - startedAt, load: loadavg() }
-	}
+async function benchWaitForQuiet(params: BenchWaitForQuietParams) {
+	const { maxLoad, maxWaitMs } = params
+	const startedAt = Date.now()
+	while (loadavg()[0]! >= maxLoad && Date.now() - startedAt < maxWaitMs)
+		await new Promise((done) => setTimeout(done, 10_000))
+	return { waitedMs: Date.now() - startedAt, load: loadavg() }
+}
 
 function browserName(context: BrowserCommandContext): string {
 	return context.context.browser()?.browserType().name() ?? 'unknown'
 }
 
-const benchDevice: BrowserCommand<[]> = async function benchDevice(context) {
+async function benchDevice(params: { context: BrowserCommandContext }) {
+	const { context } = params
 	const [cpu] = cpus()
 	return {
 		cpus: cpus().length,
@@ -76,10 +84,8 @@ const benchDevice: BrowserCommand<[]> = async function benchDevice(context) {
 //====== RESULTS ======//
 
 /** One file per run, never overwritten: `<dir>/<browser>/<name>.<ISO time>.json`. */
-const benchRecord: BrowserCommand<[{ name: string; data: unknown }]> = async function benchRecord(
-	context,
-	{ name, data },
-) {
+async function benchRecord(params: { context: BrowserCommandContext } & BenchRecordParams) {
+	const { context, name, data } = params
 	const directory = join(
 		process.env.BENCH_RESULTS_DIR ?? join(CORE_ROOT, '.tmp/bench-results'),
 		browserName(context),
@@ -177,10 +183,8 @@ export async function scanXml(params: {
 
 const fixtureCache = new Map<string, BenchFixture>()
 
-const benchFixture: BrowserCommand<[{ name: BenchFixtureName }]> = async function benchFixture(
-	_context,
-	{ name },
-) {
+async function benchFixture(params: { name: BenchFixtureName }): Promise<BenchFixture> {
+	const { name } = params
 	const cached = fixtureCache.get(name)
 	if (cached) return cached
 	const { path, compactOf } = fixturePath({ name })
@@ -222,9 +226,10 @@ function sendToWorker<GenericResult>(params: {
 	})
 }
 
-const benchProfileStart: BrowserCommand<
-	[{ workerUrlIncludes: string; samplingIntervalUs: number }]
-> = async function benchProfileStart(context, { workerUrlIncludes, samplingIntervalUs }) {
+async function benchProfileStart(
+	params: { context: BrowserCommandContext } & BenchProfileStartParams,
+) {
+	const { context, workerUrlIncludes, samplingIntervalUs } = params
 	const session = await context.context.newCDPSession(context.page)
 	const pending: BenchProfileState['pending'] = new Map()
 	const attached = new Promise<string>((done, failed) => {
@@ -293,9 +298,8 @@ function summarizeProfile(params: {
 	}
 }
 
-const benchProfileStop: BrowserCommand<
-	[{ gcNode: string; idleNodes: string[]; namedFunctions: string[] }]
-> = async function benchProfileStop(_context, { gcNode, idleNodes, namedFunctions }) {
+async function benchProfileStop(params: BenchProfileStopParams): Promise<GcShare> {
+	const { gcNode, idleNodes, namedFunctions } = params
 	const state = profiling
 	if (!state) throw new Error('no profile running')
 	profiling = undefined
@@ -310,12 +314,20 @@ const benchProfileStop: BrowserCommand<
 	}
 }
 
-export const BENCH_COMMANDS = {
-	benchMachine,
-	benchWaitForQuiet,
-	benchRecord,
-	benchDevice,
-	benchFixture,
-	benchProfileStart,
-	benchProfileStop,
+/** The commands as vitest calls them: the browser context first, then the page's payload. */
+export function benchCommands() {
+	return {
+		benchMachine: () => benchMachine(),
+		benchWaitForQuiet: (_context: BrowserCommandContext, payload: BenchWaitForQuietParams) =>
+			benchWaitForQuiet(payload),
+		benchRecord: (context: BrowserCommandContext, payload: BenchRecordParams) =>
+			benchRecord({ context, ...payload }),
+		benchDevice: (context: BrowserCommandContext) => benchDevice({ context }),
+		benchFixture: (_context: BrowserCommandContext, payload: { name: BenchFixtureName }) =>
+			benchFixture(payload),
+		benchProfileStart: (context: BrowserCommandContext, payload: BenchProfileStartParams) =>
+			benchProfileStart({ context, ...payload }),
+		benchProfileStop: (_context: BrowserCommandContext, payload: BenchProfileStopParams) =>
+			benchProfileStop(payload),
+	} satisfies Record<string, BrowserCommand<never[]>>
 }

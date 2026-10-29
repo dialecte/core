@@ -193,7 +193,7 @@ type BaseXmlTestCase = {
 
 1. Creates an isolated `Project` with source (and optionally target) XML imported via `createTestProject`
 2. Calls `act` with `{ project, source, target?, testCase }` - the project instance and mounted documents
-3. If `act` returns `ActResult`: exports the source or target document and runs XPath assertions
+3. If `act` returns `ActResult`: exports the source or target document as text (or takes the `xmlString` of `assertOn: 'custom'`) and runs the XPath assertions on it
 4. Destroys the project (cleans up all databases)
 
 The `project` instance is useful for multi-document operations (e.g. importing additional files, calling `project.getDatabaseInstance()`, or exporting intermediate states).
@@ -272,14 +272,25 @@ Attributes don't need a prefix unless they are in a specific namespace (e.g. `de
 
 Factory that returns a pair of XPath assertion helpers pre-bound to a namespace resolver. Used directly when tests need manual control over export and assertion (outside `runTestCases`).
 
+The assertions read XML the same way in node and in a browser: they parse with a pure-JS XML DOM (`@xmldom/xmldom`) and evaluate XPath with the `xpath` package, never with the page's `DOMParser` or `document.evaluate`. They take the XML as text (`xml`, what `project.export` writes) or a document already parsed (`xmlDocument`, a page's DOM from `project.export({ xmlDocument: true })` included).
+
 ### Signature
 
 ```ts
+// a document of the test entry's pure-JS XML DOM (@xmldom/xmldom), or a page's DOM
+type XmlQueryTarget = { xml: string } | { xmlDocument: XmlDomDocument | Document }
+
 function createXmlAssertions(params: { namespaces: Record<string, Namespace> }): {
-	assertExpectedElementQueries(params: { xmlDocument: XMLDocument; queries: string[] }): void
-	assertUnexpectedElementQueries(params: { xmlDocument: XMLDocument; queries: string[] }): void
+	assertExpectedElementQueries(params: XmlQueryTarget & { queries: string[] }): void
+	assertUnexpectedElementQueries(params: XmlQueryTarget & { queries: string[] }): void
 }
 ```
+
+XML text that is not well-formed is refused with `malformed XML — <the parser's reason>`. Where the parse differs from a browser's:
+
+- an entity declared in the internal DTD subset (`<!DOCTYPE a [<!ENTITY x "y">]>`, then `&x;`) is refused; a browser accepts it;
+- a byte order mark at the start of the string is refused; `file.text()` strips it, so an export read as text has none;
+- `]]>` in a text value is not caught; core's XML writer escapes `>`, so an export never holds it.
 
 ### assertExpectedElementQueries
 
@@ -320,14 +331,14 @@ const { project, source } = await createTestProject({
 
 try {
 	// ...transactions on source.document...
-	const { xmlDocument } = await project.export({
+	const { file } = await project.export({
 		documentId: source.documentId,
 		indent: false,
 		withDatabaseIds: true,
-		xmlDocument: true,
 	})
+	const xml = await file.text()
 	assertExpectedElementQueries({
-		xmlDocument,
+		xml,
 		queries: ['//default:A[@aA="parent"]/default:AA_1[@aAA_1="updated"]'],
 	})
 } finally {
@@ -352,7 +363,7 @@ function createXmlSchemaAssertions(params: {
 	namespaces: Record<string, Namespace>
 	schemaName?: string // names the schema in messages ("not valid SCL"); default 'XML'
 }): {
-	assertValidXml(xml: string, label?: string, options?: { requireComplete?: boolean }): void
+	assertValidXml(params: { xml: string; label?: string; requireComplete?: boolean }): void
 	assertValidXmlTestCases(params: {
 		testCases: Record<string, { sourceXml: string; targetXml?: string }>
 	}): void
@@ -368,6 +379,8 @@ Attributes are checked in every namespace, against the declaration that applies 
 - an attribute of a namespace the dialecte declares is looked up under the dialecte's prefix, whatever prefix the document binds to that namespace: `x:unknown`, with `x` bound to the `ext` namespace, is reported as `'ext:unknown'`;
 - an attribute of a namespace the dialecte does not declare is reported too, unless the element's attribute wildcard admits its namespace (`##any`, `##other`, a namespace list); an unprefixed attribute the element does not declare passes only where the wildcard admits no namespace;
 - namespace declarations (`xmlns`, `xmlns:*`), `xsi:*` and the test record id (`dev:db-id`) are always allowed.
+
+XML that is not well-formed (a bare `&`, a tag closed by another name, a prefix bound to no namespace) is refused as `<label>: malformed XML — <the parser's reason>`; `label` defaults to `'test XML'`.
 
 `requireComplete` (default `true`) also requires every schema-required attribute; a required attribute of a dialecte namespace is found under any prefix the document binds to it. Minimal fixtures pass `false`.
 
@@ -387,7 +400,7 @@ const { assertValidXml } = createXmlSchemaAssertions({
 	schemaName: 'SCL',
 })
 
-assertValidXml(fixtureXml, 'my fixture', { requireComplete: false })
+assertValidXml({ xml: fixtureXml, label: 'my fixture', requireComplete: false })
 ```
 
 Not yet enforced (planned with the validation feature): attribute value facets (uuid pattern, enums, datatypes) and cross-element constraints (unique keys, keyref resolution). In dialecte packages, instantiate once and re-export (see [Adapting to your dialecte](#adapting-to-your-dialecte)).
@@ -446,13 +459,13 @@ try {
 		await tx.update({ tagName: 'A', id: '2' }, { attributes: { aA: 'updated' } })
 	})
 
-	const { xmlDocument } = await project.export({
+	const { file } = await project.export({
 		documentId: source.documentId,
 		indent: false,
 		withDatabaseIds: true,
-		xmlDocument: true,
 	})
-	// assert manually on xmlDocument...
+	const xml = await file.text()
+	// assert on xml, e.g. with assertExpectedElementQueries({ xml, queries })
 } finally {
 	await project.destroy()
 }
@@ -683,7 +696,7 @@ const DIALECTE_NAMESPACES = {
 
 ## Choosing the store
 
-Every helper of this page opens its projects on the local store (IndexedDB) unless it is given another one: `storage` on `createTestHelpers`, `createTestRunner`, `createTestProject` and `createTestContext`. `{ type: 'inMemory' }` is the fast choice for unit and mutation runs; the local store is the one storage paths and end-to-end runs need.
+Every helper of this page opens its projects on the store a call names (`storage` on `createTestHelpers`, `createTestRunner`, `createTestProject` and `createTestContext`), else on the runner's default set by `useTestStorage`, else on the local store (IndexedDB). `{ type: 'inMemory' }` is the fast choice for unit and mutation runs; the local store is the one storage paths and end-to-end runs need.
 
 ### The store is a switch
 
@@ -695,41 +708,50 @@ A test gives the same result on every store; only its speed changes. A differenc
 
 ### Picking the store for a package's runs
 
-The store is the runner's choice, not each test's: a package passes `storage` once, in the one helper call its tests go through, and reads it from its runner however it likes. With vitest, a project of the config provides the choice and the helpers read it with `inject`, in node and in the browser alike:
+The store is the runner's choice, not each test's. A vitest project lists a setup file that calls `useTestStorage` from `@dialecte/core/test`: every helper of that run opens its projects there when a call names no store. It is set for the process, never read from an environment variable; a call's own `storage` still wins.
 
 ```ts
-// vitest.config.ts - each project says which store its tests run on
+// test/in-memory-storage.setup.ts - the setup of the node project
+import { useTestStorage } from '@dialecte/core/test'
+
+useTestStorage({ type: 'inMemory' })
+```
+
+```ts
+// vitest.config.ts - two tiers
 projects: [
-	{ test: { name: 'unit', browser: { ... }, provide: { dialecteTestStore: 'local' } } },
 	{
 		test: {
-			name: 'mutation',
+			name: 'node',
 			environment: 'node',
-			setupFiles: ['fake-indexeddb/auto'], // only for the local store in node
-			provide: { dialecteTestStore: process.env.DIALECTE_TEST_STORE ?? 'memory' },
+			include: ['src/**/*.test.ts'],
+			exclude: BROWSER_ONLY_TEST_FILES.map((file) => file.path), // { path, why } each
+			setupFiles: ['test/in-memory-storage.setup.ts'],
 		},
 	},
+	{
+		test: {
+			name: 'browser',
+			browser: { ... },
+			include: BROWSER_ONLY_TEST_FILES.map((file) => file.path),
+		},
+	},
+	{ test: { name: 'browser-all', browser: { ... }, include: ['src/**/*.test.ts'] } },
 ]
 ```
 
-```ts
-// the package's test helpers
-import { createTestHelpers } from '@dialecte/core/test'
-import { inject } from 'vitest'
+The browser projects set no default: their tests run on the local store. A test that needs a given store whatever the run (an IndexedDB path, a store's own behaviour) opens its own project on it, `createTestProject({ sourceXml, storage: { type: 'local' } })`, and its file is one of the browser-only ones.
 
-declare module 'vitest' {
-	export interface ProvidedContext {
-		dialecteTestStore: 'memory' | 'local'
-	}
-}
+### The two tiers of core
 
-export const helpers = createTestHelpers({
-	dialecte: MY_DIALECTE,
-	storage: inject('dialecteTestStore') === 'memory' ? { type: 'inMemory' } : { type: 'local' },
-})
-```
+| Project          | Runs                                                                                                                                                             | Store                                            | When                                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------- |
+| `node`           | every test file but the browser-only ones                                                                                                                        | in-memory, from `useTestStorage`                 | each step (`npm run test:node`, the pre-commit hook)                      |
+| `node-indexeddb` | the store contract and the project's store switch                                                                                                                | in-memory and IndexedDB through `fake-indexeddb` | with `node`                                                               |
+| `browser`        | the browser-only files: the store contract on IndexedDB and SQLite over OPFS, the engine workers, the save dialog, `xmlDocument: true`, IndexedDB-specific cases | local                                            | once per lot (`npm run test:browser`; `npm run test` runs node then this) |
+| `browser-all`    | the whole suite in Chromium                                                                                                                                      | local                                            | before a branch merges (`npm run test:browser:all`, CI)                   |
 
-A test that needs a given store whatever the run (an IndexedDB path, a store's own behaviour) opens its own project on it: `createTestProject({ sourceXml, storage: { type: 'local' } })`.
+The browser-only files are listed in `vitest.config.constants.ts`, each with what it needs that node lacks; a listed file that no longer exists fails the config. A test that passes in one tier and fails in the other is a bug of a store or of an assertion, never a reason to move it to the browser list.
 
 ### Teardown
 
@@ -739,7 +761,7 @@ A test that needs a given store whatever the run (an IndexedDB path, a store's o
 
 ### In node
 
-The in-memory store runs anywhere; the local store needs IndexedDB, given to node by `fake-indexeddb` (`import 'fake-indexeddb/auto'` in a setup file). Core runs its store contract suite and the project's store switch in node on both stores (`npm run test:node`); export and the XML assertions need a DOM, which node lacks.
+The in-memory store runs anywhere; the local store needs IndexedDB, given to node by `fake-indexeddb` (`import 'fake-indexeddb/auto'` in a setup file). Export writes text and the XML assertions parse it with a pure-JS DOM, so a runner's cases run in node as they do in a browser; only `project.export({ xmlDocument: true })` answers a page's DOM and needs a browser.
 
 ### In-memory projects
 

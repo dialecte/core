@@ -1,0 +1,7 @@
+export { createXPathDocument } from './create-xpath-document'
+export { evaluateXPath } from './evaluate-xpath'
+export { localNameOf } from './local-name-of'
+export { parseXml } from './parse-xml'
+export { selectFirstNode } from './select-first-node'
+export { serializeXmlNode } from './serialize-xml-node'
+export type * from './xml-dom.types'

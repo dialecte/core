@@ -3,6 +3,7 @@ import { Project } from './project'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { TEST_DIALECTE_CONFIG } from '@/test'
+import { resolveTestStorage } from '@/test/test-storage'
 
 import type { AnyDialecteConfig } from '@/types'
 
@@ -13,7 +14,7 @@ function projectName(): string {
 }
 
 function openProject(name: string) {
-	return new Project({ configs: { default: CONFIG }, storage: { type: 'local' } }).open(name)
+	return new Project({ configs: { default: CONFIG }, storage: resolveTestStorage({}) }).open(name)
 }
 
 describe('Project - blobs', () => {
@@ -39,7 +40,8 @@ describe('Project - blobs', () => {
 		expect(result?.entry.size).toBe(file.size)
 		expect(result?.entry.documentId).toBe(documentId)
 		expect(result?.entry.attachedTo).toEqual([])
-		expect(await result?.data.text()).toBe('payload')
+		const payload = await result?.data.text()
+		expect(payload).toBe('payload')
 	})
 
 	it('addBlob accepts initial attachments', async () => {
@@ -54,7 +56,7 @@ describe('Project - blobs', () => {
 		])
 
 		const result = await project.getBlobsByRecord(documentId, 'r1')
-		expect(result.map((b) => b.id)).toEqual([blobId])
+		expect(result.map((blob) => blob.id)).toEqual([blobId])
 	})
 
 	it('attachBlob/detachBlob update references', async () => {
@@ -65,11 +67,14 @@ describe('Project - blobs', () => {
 		const blobId = await project.addBlob(documentId, new File(['x'], 'a.txt'))
 
 		await project.attachBlob(blobId, { documentId, recordRef: 'r1' })
-		expect((await project.getBlobsByDocument(documentId)).map((b) => b.id)).toEqual([blobId])
+		const attachedBlobs = await project.getBlobsByDocument(documentId)
+		expect(attachedBlobs.map((blob) => blob.id)).toEqual([blobId])
 
 		await project.detachBlob(blobId, { documentId, recordRef: 'r1' })
-		expect(await project.getBlobsByDocument(documentId)).toEqual([])
-		expect((await project.getStandaloneBlobs()).map((b) => b.id)).toEqual([blobId])
+		const blobsAfterDetach = await project.getBlobsByDocument(documentId)
+		expect(blobsAfterDetach).toEqual([])
+		const standaloneBlobs = await project.getStandaloneBlobs()
+		expect(standaloneBlobs.map((blob) => blob.id)).toEqual([blobId])
 	})
 
 	it('removeBlob hard-deletes regardless of attachments', async () => {
@@ -82,7 +87,8 @@ describe('Project - blobs', () => {
 		])
 
 		await project.removeBlob(blobId)
-		expect(await project.getBlob(blobId)).toBeUndefined()
+		const removedBlob = await project.getBlob(blobId)
+		expect(removedBlob).toBeUndefined()
 	})
 
 	it('removeDocument cascades to owned blobs', async () => {
@@ -93,7 +99,8 @@ describe('Project - blobs', () => {
 		const blobId = await project.addBlob(documentId, new File(['x'], 'a.txt'))
 
 		await project.removeDocument(documentId)
-		expect(await project.getBlob(blobId)).toBeUndefined()
+		const removedBlob = await project.getBlob(blobId)
+		expect(removedBlob).toBeUndefined()
 	})
 
 	it('broadcasts blob-added / blob-attached / blob-detached / blob-removed', async () => {
@@ -105,7 +112,7 @@ describe('Project - blobs', () => {
 
 		const messages: unknown[] = []
 		const listener = new BroadcastChannel(`dialecte::project::${name}`)
-		listener.onmessage = (e) => messages.push(e.data)
+		listener.onmessage = (event) => messages.push(event.data)
 		cleanups.push(async () => listener.close())
 
 		const blobId = await project.addBlob(documentId, new File(['x'], 'a.txt'))
@@ -113,7 +120,7 @@ describe('Project - blobs', () => {
 		await project.detachBlob(blobId, { documentId, recordRef: 'r1' })
 		await project.removeBlob(blobId)
 
-		await new Promise((r) => setTimeout(r, 10))
+		await new Promise((resolve) => setTimeout(resolve, 10))
 
 		expect(messages).toContainEqual(
 			expect.objectContaining({ type: 'blob-added', blobId, documentId }),

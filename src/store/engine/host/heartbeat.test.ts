@@ -1,6 +1,8 @@
 import { createHeartbeat } from './heartbeat'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 
 /** What a case leaves: its ports closed. */
 const cleanups: (() => void)[] = []
@@ -9,8 +11,8 @@ afterEach(() => {
 	for (const cleanup of cleanups.splice(0).reverse()) cleanup()
 })
 
-/** A port the heartbeat may post on, and the signals its other end heard (after a message turn). */
-function listenedPort(): { port: MessagePort; heard: () => Promise<string[]> } {
+/** A port the heartbeat may post on, and the signals its other end has heard so far. */
+function listenedPort(): { port: MessagePort; signals: string[] } {
 	const channel = new MessageChannel()
 	const signals: string[] = []
 	channel.port2.onmessage = function hear(event: MessageEvent<{ type: string }>) {
@@ -20,28 +22,26 @@ function listenedPort(): { port: MessagePort; heard: () => Promise<string[]> } {
 		() => channel.port1.close(),
 		() => channel.port2.close(),
 	)
-	return {
-		port: channel.port1,
-		heard: async function heardAfterTurn() {
-			await new Promise((resolve) => setTimeout(resolve, 0))
-			return signals
-		},
-	}
+	return { port: channel.port1, signals }
 }
 
 describe('the engine’s heartbeat', () => {
 	it('a client port added while dialecte code runs → told busy at once', async () => {
 		const heartbeat = createHeartbeat({ intervalMs: 60_000 })
 		heartbeat.busy()
-		const { port, heard } = listenedPort()
+		const { port, signals } = listenedPort()
 		heartbeat.add(port)
-		expect(await heard()).toEqual(['busy'])
+		await vi.waitFor(function busyHeard() {
+			expect(signals).toEqual(['busy'])
+		})
 	})
 
 	it('a client port added while the engine is idle → told nothing until the next sign', async () => {
 		const heartbeat = createHeartbeat({ intervalMs: 60_000 })
-		const { port, heard } = listenedPort()
+		const { port, signals } = listenedPort()
 		heartbeat.add(port)
-		expect(await heard()).toEqual([])
+		// nothing to wait for: a bounded wait, longer than a message takes on a loaded machine
+		await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
+		expect(signals).toEqual([])
 	})
 })

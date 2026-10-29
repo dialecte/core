@@ -102,7 +102,7 @@ export function createTestHelpers<
 		]
 		// a fixture may leave out required attributes; its structure must still be the schema's
 		for (const { xml, label } of fixtures) {
-			assertions.assertValidXml(xml, label, { requireComplete: false })
+			assertions.assertValidXml({ xml, label, requireComplete: false })
 		}
 		if (!skipExtraChecks) {
 			for (const { xml, label } of fixtures) extraChecks?.fixture?.({ xml, label, configKey })

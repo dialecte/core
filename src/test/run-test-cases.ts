@@ -84,29 +84,29 @@ function xmlWithExport<
 				// `assertOn: 'custom'` asserts the queries against XML produced inside
 				// the act (e.g. a getSnapshot xml output), instead of exporting the
 				// stored document — lets custom XML be tested with the same matcher.
-				let xmlDocument: XMLDocument
+				let xml: string
 				if (result && result.assertOn === 'custom') {
-					xmlDocument = new DOMParser().parseFromString(result.xmlString, 'application/xml')
+					xml = result.xmlString
 				} else {
 					const assertOn = result?.assertOn ?? 'source'
 					const withDatabaseIds = result?.withDatabaseIds ?? true
 					const exportFileId = assertOn === 'target' ? target?.documentId : source.documentId
 
 					if (!exportFileId) throw new Error('documentId required for export')
-					;({ xmlDocument } = await project.export({
+					const { file } = await project.export({
 						documentId: exportFileId,
 						indent: false,
 						withDatabaseIds,
-						xmlDocument: true,
-					}))
+					})
+					xml = await file.text()
 				}
 
 				if (testCase.expectedQueries?.length) {
-					assertExpectedElementQueries({ xmlDocument, queries: testCase.expectedQueries })
+					assertExpectedElementQueries({ xml, queries: testCase.expectedQueries })
 				}
 
 				if (testCase.unexpectedQueries?.length) {
-					assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
+					assertUnexpectedElementQueries({ xml, queries: testCase.unexpectedQueries })
 				}
 			} finally {
 				crypto.randomUUID = originalRandomUUID
