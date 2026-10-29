@@ -41,7 +41,7 @@ export const ENGINE_WIRE_MEMBERS = {
 	// the metadata in the options lies one level down, as in the document the import registers
 	importFile: { json: [{ argument: 0, path: ['options'] }], listener: 1, identified: true },
 	abortImport: {},
-	exportFile: { listener: 1 },
+	exportFile: { listener: 1, abortable: true },
 	abortExport: {},
 	addBlob: { json: [{ argument: 0 }] },
 	getBlob: {},

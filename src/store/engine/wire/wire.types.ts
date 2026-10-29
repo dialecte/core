@@ -70,6 +70,8 @@ export type WireMemberSpec = {
 	json?: readonly WireJsonPlace[]
 	/** It is a write its caller identifies: its first argument carries the `writeId`. */
 	identified?: boolean
+	/** It is an export the caller can stop: its first argument carries the `exportId`. */
+	abortable?: boolean
 }
 
 /** A call of a member of the engine as a port carries it. */

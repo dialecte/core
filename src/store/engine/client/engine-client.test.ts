@@ -1,3 +1,4 @@
+import { ENGINE_SIGNAL } from '../engine.constants'
 import { createEngineClient } from './engine-client'
 
 import * as Comlink from 'comlink'
@@ -58,7 +59,39 @@ function silentEngine(params: { port: MessagePort }): WireRequest[] {
 	return calls
 }
 
+/** An engine that answers `getDocuments` at once and never answers anything else. */
+function documentsOnlyEngine(params: { port: MessagePort }): void {
+	const wire: EngineWire = {
+		call: function answerDocumentsOnly(request) {
+			return request.member === 'getDocuments'
+				? Promise.resolve({ ok: true, value: [] })
+				: new Promise(function neverAnswered() {})
+		},
+	}
+	Comlink.expose(wire, params.port)
+}
+
 describe('a client watching its engine', () => {
+	it('busy told, then an answer to another call, then silence past the timeout → no loss until a heartbeat; silent after it → lost', async () => {
+		const { client, engineSide } = watchedClient()
+		documentsOnlyEngine({ port: engineSide })
+		const waiting = outcomeOf(client.api.getByDocumentId('doc-1'))
+		engineSide.postMessage({ type: ENGINE_SIGNAL.busy })
+		expect(await client.api.getDocuments()).toEqual([])
+		const duringBusy = await Promise.race([
+			waiting,
+			new Promise((resolve) => setTimeout(() => resolve('waiting'), 700)),
+		])
+		expect(duringBusy).toBe('waiting')
+		engineSide.postMessage({ type: ENGINE_SIGNAL.heartbeat })
+		const afterBeat = await Promise.race([
+			waiting,
+			new Promise((resolve) => setTimeout(() => resolve('waiting'), 150)),
+		])
+		expect(afterBeat).toBe('waiting')
+		expect(await waiting).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } })
+	})
+
 	it('the document resumed (a frozen tab coming back) while a call waits → the silence counts from the resume', async () => {
 		const { client } = watchedClient()
 		const calling = outcomeOf(client.api.getDocuments())

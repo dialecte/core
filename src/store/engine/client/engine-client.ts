@@ -74,8 +74,7 @@ export function createEngineClient(params: {
 		const listener = spec.listener === undefined ? undefined : args[spec.listener]
 		const given = spec.listener === undefined ? args : args.slice(0, spec.listener)
 		const writeId = spec.identified ? (given[0] as { writeId?: string }).writeId : undefined
-		const exportId =
-			member === 'exportFile' ? (given[0] as { exportId?: string }).exportId : undefined
+		const exportId = spec.abortable ? (given[0] as { exportId?: string }).exportId : undefined
 		if (member === 'getWriteOutcome') {
 			const asked = (given[0] as { writeId: string }).writeId
 			if (unanswered.has(asked)) return Promise.resolve('running' satisfies WriteOutcome)
