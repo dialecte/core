@@ -14,7 +14,10 @@ Tier: <standard for a mechanical or fully specified lot | strong for a design-he
 
 Goal: <one sentence: the behaviour a user or caller gets>
 Spec: <the plan section(s) to read, by path and heading; the decisions that bind it>
-Worktree: <absolute path>, branch <branch>, base <sha>. Work only there. Never commit, stage, push.
+Worktree: <absolute path>, branch <branch>, base <sha>. Work only there. Never commit, stage, push,
+  `git stash` (one stash is shared by every worktree and session) or any git command that writes the index
+  (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`): read the base with
+  `git show <base>:<file>`.
 Scope: <files / folders this lot may touch>; out of scope: <what a neighbour lot owns>
 Reuse first: <existing functions, hooks, helpers you already know apply - name them>
 Red cases to start from: <the first 2-3 behaviours, as case keys "<state> → <outcome>">

@@ -154,10 +154,14 @@ that is rewritten every retro never settles.
   (never from uncommitted work). Concerns that touch the same files are one implementer, or run in order.
 - Write each brief from [references/briefs.md](references/briefs.md): the brief is the agent's whole
   context; synthesise, do not say "based on the findings".
-- Spawn each agent on the tier its brief names ([references/model-tiers.md](references/model-tiers.md)), and
-  note the tokens of each completion notice against its station as it lands: the ledger the retro and the
-  hand-over message report. When a station runs well above the lot's other stations, tell the user then, not
-  at the end.
+- Spawn the station's own agent when the host has it: Claude Code with `.claude/agents/dialecte-<station>.md`
+  (written by `npx @dialecte/cli skills sync`: `dialecte-implementer`, `dialecte-implementer-strong`,
+  `dialecte-reviewer`, `dialecte-fixer`, `dialecte-eval-runner`, `dialecte-grader`,
+  `dialecte-standard-reader`, `dialecte-searcher`). The file sets the model and the tools (the reviewer cannot
+  edit files), so the spawn names neither. Without the file, spawn a general sub-agent on the tier its brief
+  names ([references/model-tiers.md](references/model-tiers.md)). Note the tokens of each completion notice
+  against its station as it lands: the ledger the retro and the hand-over message report. When a station
+  runs well above the lot's other stations, tell the user then, not at the end.
 - Spawn the reviewer only after the implementer's report; give it the brief, not the implementer's
   conclusions. You review too: read the diff yourself before accepting a verdict.
 - Heavy runs share one machine: one browser test suite at a time (`--no-file-parallelism`), low
@@ -169,6 +173,9 @@ that is rewritten every retro never settles.
 - Skip the red step, the review, or the cap.
 - Name a model in a brief or a skill (name the tier), or down-tier a correctness review to save tokens.
 - Commit, push, stage, or merge.
+- `git stash` (one stash is shared by every worktree and session) and any git command that writes the index
+  (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`). To compare with the base, read it with
+  `git show <base>:<file>` or run it in a throwaway worktree; your own tree stays as it is.
 - Implement two lots in one station "because they are small".
 - Reach for `any`, `@ts-ignore` or a skipped test to get green.
 - Let an output live only in the chat.
