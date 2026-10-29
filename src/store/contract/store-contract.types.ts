@@ -30,16 +30,21 @@ export type StoreContractFactory = {
 	pending?: Partial<Record<StoreContractFeature, string>>
 	/** The store's storage made full: from now on a write that needs more room than it has is refused. */
 	fillStorage?: (params: { store: Store }) => Promise<void>
+	/**
+	 * Why a test cannot fill this leg's storage (set when `fillStorage` is not): the cases needing a full
+	 * storage are skipped on it with this reason.
+	 */
+	storageUnfillable?: string
 }
 
 /** A part of the port a leg may not serve yet. */
-export type StoreContractFeature = 'history' | 'blobs' | 'import' | 'export' | 'storage-limit'
+export type StoreContractFeature = 'history' | 'blobs' | 'import' | 'export'
 
 /**
  * What a case needs of a leg beyond the registry, the reads and the bulk writes: a second connection
- * (`connect`), or a part of the port.
+ * (`connect`), a storage it can fill (`fillStorage`), or a part of the port.
  */
-export type StoreContractNeed = 'second-connection' | StoreContractFeature
+export type StoreContractNeed = 'second-connection' | 'full-storage' | StoreContractFeature
 
 /** What a case is given: the store under test and the factory's two ways to see its state again. */
 export type StoreContractContext = {
@@ -50,7 +55,7 @@ export type StoreContractContext = {
 	connect: () => Promise<Store>
 	/** A fresh, open store of another name; destroyed after the case. */
 	createOther: () => Promise<Store>
-	/** The store's storage made full (`storage-limit`): a write needing more room than it has is refused. */
+	/** The store's storage made full (`full-storage`): a write needing more room than it has is refused. */
 	fillStorage: () => Promise<void>
 }
 
@@ -67,8 +72,9 @@ export type ContractImportHold = {
 
 export type StoreContractCase = BaseTestCase & {
 	/**
-	 * `second-connection`: skipped on a leg without `connect`; a part of the port: run as expected to
-	 * fail on a leg that has it pending.
+	 * `second-connection`: skipped on a leg without `connect`; `full-storage`: skipped on a leg whose
+	 * storage a test cannot fill, with its reason; a part of the port: run as expected to fail on a leg
+	 * that has it pending.
 	 */
 	needs?: StoreContractNeed[]
 	act: (context: StoreContractContext) => Promise<void>

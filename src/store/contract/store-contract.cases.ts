@@ -2113,7 +2113,7 @@ const failingImports: Record<string, FailingImport> = {
 				body: `${sessionRecords(2)}<B aB="x" bB="${CONTRACT_SESSION_FUNCTION_VALUE}"/>`,
 			}),
 			key: 'STORE_VALUE_NOT_JSON',
-			detail: /function is not a JSON value \(field "fix"\)/,
+			detail: /^A diagnostic of the import session: a function is not a JSON value \(field "fix"\)/,
 		},
 }
 
@@ -3070,7 +3070,7 @@ export function needing(params: {
 /** A write the store's storage has no room for: refused whole, as running out of space. */
 const fullStorage: StoreContractCases = {
 	'a commit the storage has no room for → STORE_QUOTA_EXCEEDED, nothing of it applied': {
-		needs: ['storage-limit'],
+		needs: ['full-storage'],
 		act: async (context) => {
 			await context.store.registerDocument(makeDocument())
 			await context.fillStorage()
@@ -3088,7 +3088,7 @@ const fullStorage: StoreContractCases = {
 		},
 	},
 	'a bulk write the storage has no room for → STORE_QUOTA_EXCEEDED, nothing of it applied': {
-		needs: ['storage-limit'],
+		needs: ['full-storage'],
 		act: async (context) => {
 			await context.store.registerDocument(makeDocument())
 			await context.fillStorage()
@@ -3104,7 +3104,7 @@ const fullStorage: StoreContractCases = {
 		},
 	},
 	'a document the storage has no room to register → STORE_QUOTA_EXCEEDED, not registered': {
-		needs: ['storage-limit'],
+		needs: ['full-storage'],
 		act: async (context) => {
 			await context.fillStorage()
 			await expectRejectsWith({

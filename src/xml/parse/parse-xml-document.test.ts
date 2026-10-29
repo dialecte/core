@@ -2,6 +2,7 @@ import { parseXmlFile } from './parse-xml-document'
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { Diagnostic } from '@/diagnostics'
@@ -472,6 +473,30 @@ describe('parseXmlFile', () => {
 			} else {
 				expect(store.bulkWriteCalls).toHaveLength(1)
 			}
+		})
+
+		it('session reports a diagnostic holding a function next to a create → STORE_VALUE_NOT_JSON naming the diagnostic, the create never written', async () => {
+			const store = createMockStore()
+			const holdingFunction: Diagnostic = { ...unresolved, meta: { fix: function fixLater() {} } }
+			const parsing = parseXmlFile({
+				file: xmlFile(minimalXml()),
+				documentId: 'f1',
+				configKey: 'test',
+				store,
+				config: CONFIG,
+				hooks: {
+					createImportSession: () => ({
+						afterImport: afterImport({ creates: [created], diagnostics: [holdingFunction] }),
+					}),
+				},
+			})
+			const refusal = await parsing.then(
+				() => undefined,
+				(thrown: unknown) => toDialecteError(thrown),
+			)
+			expect(refusal?.key).toBe('STORE_VALUE_NOT_JSON')
+			expect(refusal?.detail).toMatch(/^A diagnostic of the import session: .*field "fix"/)
+			expect(store.bulkWriteCalls).toHaveLength(1)
 		})
 
 		it('afterImport runs once the last record is stored', async () => {

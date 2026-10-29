@@ -3,7 +3,6 @@ import { resolveConfig } from './resolve-config'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
 import { splitFileName } from '@/store/document-path'
-import { checkJsonValues } from '@/store/json-values'
 import { parseXmlFile } from '@/xml'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
@@ -118,8 +117,6 @@ async function importRegistered(
 			control,
 		)
 		throwIfAborted({ signal: control.signal, file })
-		// what the dialecte says is answered by every store alike, through a port too: plain JSON only
-		checkJsonValues({ value: parsed.diagnostics })
 		perf.start('import::finalize')
 		try {
 			// a registry row removed meanwhile (by another connection) is never answered ready

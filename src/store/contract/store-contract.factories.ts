@@ -36,15 +36,13 @@ const inMemoryStoreFactory: StoreContractFactory = {
 	connect: async function connectInMemoryStore(store) {
 		return openInMemoryStore(store.name)
 	},
-	pending: { 'storage-limit': 'not run on this leg: an in-memory store has no storage limit' },
+	storageUnfillable: 'an in-memory store has no storage limit',
 }
 
 const dexieStoreFactory: StoreContractFactory = {
 	name: 'DexieStore',
-	pending: {
-		'storage-limit':
-			"not run on this leg (a test cannot fill IndexedDB): IndexedDB refusing a write for want of space answers the write's own key (STORE_COMMIT_FAILED, STORE_BULK_ADD_FAILED...), not STORE_QUOTA_EXCEEDED, until the local store moves to SQLite",
-	},
+	storageUnfillable:
+		"a test cannot fill IndexedDB; IndexedDB refusing a write for want of space answers the write's own key (STORE_COMMIT_FAILED, STORE_BULK_ADD_FAILED...), not STORE_QUOTA_EXCEEDED, until the local store moves to SQLite",
 	create: async function createDexieStore() {
 		const store = new DexieStore(uniqueName('store-contract-dexie'), {
 			runtime: createContractRuntime(),
@@ -118,10 +116,8 @@ const sqliteWorkerStoreFactory: StoreContractFactory = {
 	connect: async function connectWorkerStore(store) {
 		return openWorkerStore(store.name)
 	},
-	pending: {
-		'storage-limit':
-			"not run on this leg (a test cannot fill the private file system from the page): the runtime's disk-full cases cover it",
-	},
+	storageUnfillable:
+		"a test cannot fill the private file system from the page: the runtime's disk-full cases cover this leg",
 }
 
 /** Whether this realm can run an engine worker on the origin's private files (a browser, not node). */

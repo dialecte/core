@@ -24,11 +24,20 @@ function pendingReasonOf(params: {
 }): string | undefined {
 	const { factory, testCase } = params
 	for (const need of testCase.needs ?? []) {
-		if (need === 'second-connection') continue
+		if (need === 'second-connection' || need === 'full-storage') continue
 		const reason = factory.pending?.[need]
 		if (reason) return reason
 	}
 	return undefined
+}
+
+/** Why a leg's storage cannot be filled: its stated reason, required of a leg with no `fillStorage`. */
+function unfillableReasonOf(params: { factory: StoreContractFactory }): string {
+	const { factory } = params
+	if (!factory.storageUnfillable) {
+		throw new Error(`${factory.name} neither fills its storage nor says why it cannot`)
+	}
+	return factory.storageUnfillable
 }
 
 /**
@@ -90,6 +99,11 @@ function runStoreContract(factory: StoreContractFactory): void {
 		})) {
 			describe(group, () => {
 				for (const [description, testCase] of Object.entries(cases)) {
+					// skipped first: a case this leg cannot set up never runs as an expected failure
+					if (testCase.needs?.includes('full-storage') && !factory.fillStorage) {
+						it.skip(`${description} (skipped: ${unfillableReasonOf({ factory })})`)
+						continue
+					}
 					const pendingReason = pendingReasonOf({ factory, testCase })
 					if (pendingReason) {
 						// expected to fail: once the leg serves the part, the case passes and this flags the stale entry
