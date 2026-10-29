@@ -485,14 +485,16 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				detail,
 				work: function dropInTransaction() {
 					settleImport({ importing })
-					onLongStatement(function dropInOneTransaction() {
-						inWriteTransaction({
-							sqlite3,
-							db,
-							work: function deleteRowAndTable() {
-								deleteDocument({ db, documentId })
-							},
-						})
+					onLongStatement({
+						work: function dropInOneTransaction() {
+							inWriteTransaction({
+								sqlite3,
+								db,
+								work: function deleteRowAndTable() {
+									deleteDocument({ db, documentId })
+								},
+							})
+						},
 					})
 					counts.delete(documentId)
 				},
@@ -964,6 +966,6 @@ function writeRows(params: {
 }
 
 /** A long statement with no one to tell: run as it is. */
-function runStatement<GenericResult>(work: () => GenericResult): GenericResult {
-	return work()
+function runStatement<GenericResult>(params: { work: () => GenericResult }): GenericResult {
+	return params.work()
 }

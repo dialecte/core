@@ -302,6 +302,25 @@ describe('an engine worker opening its project', () => {
 		expect(await engine.getDocuments()).toEqual([makeDocument()])
 	})
 
+	it('a pool that failed to get ready, opened again in the same worker → installed this time, its document there', async () => {
+		const project = uniqueProject()
+		await closedPoolWithDocument({ project })
+		const { control } = engineWorker({
+			project,
+			url: fixtureUrl({ scenario: 'install-fails-once' }),
+		})
+		const first = await control
+			.request({ message: openMessage({ project }), expect: 'opened' })
+			.then(
+				() => 'opened',
+				() => 'refused',
+			)
+		expect(first).toBe('refused')
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const engine = await clientOf({ control, clientId: 'reader' })
+		expect(await engine.getDocuments()).toEqual([makeDocument()])
+	})
+
 	it('an import whose file would fit at twice its size but not at eight times (2 MiB free, a file of ~400 KB) → STORE_QUOTA_EXCEEDED, nothing registered', async () => {
 		const project = uniqueProject()
 		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'import-quota' }) })

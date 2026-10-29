@@ -1,13 +1,11 @@
 import { serveClient } from '../../engine/host/engine-wire'
 import { createHeartbeat, runToldBusy, withOpaquePhases } from '../../engine/host/heartbeat'
-import {
-	CLIENT_DRAIN_BUDGET_MS,
-	ENGINE_HEARTBEAT_INTERVAL_MS,
-} from '../../engine/host/host.constants'
+import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
 import { createStoreEvents } from '../../engine/host/store-events'
 import { toThrownData } from '../../engine/wire/error-envelope'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
+import { closeEngine, endEngineAndClients, releasePool } from './close-engine'
 import {
 	destroyPool,
 	explainOutOfSpace,
@@ -19,7 +17,6 @@ import { installProgressBeat } from './progress-beat'
 import { POOL_FILE, PROGRESS_BEAT_OPS } from './runtime.constants'
 
 import { createDialecteError } from '@/errors'
-import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { EngineControlAnswer, EngineControlRequest } from '../../engine/engine.types'
 import type { EngineDialecte } from '../../engine/host/host.types'
@@ -222,7 +219,7 @@ async function openEngine(params: {
 				return refuseShortSpace({ project, bytes })
 			},
 			onWork: heartbeat.beat,
-			onLongStatement: function longStatementToldBusy(work) {
+			onLongStatement: function longStatementToldBusy({ work }) {
 				return runToldBusy({ heartbeat, work })
 			},
 			explainIoFailure: function explainIoFailure({ thrown }) {
@@ -249,61 +246,6 @@ function openedEngine(params: { state: EngineRuntimeState }): {
 	throw createDialecteError('ASSERTION_FAILED', {
 		detail: 'No project is open in this engine worker',
 	})
-}
-
-/** Every import and export aborted, the database closed, the pool paused (its files kept), the lock released. */
-async function closeEngine(params: { state: EngineRuntimeState }): Promise<void> {
-	const { state } = params
-	try {
-		await endEngineAndClients({ state })
-	} finally {
-		// the lock let go whatever ending the engine did: in hub mode the next engine waits for it
-		releasePool({ state })
-	}
-}
-
-/**
- * The engine closed (every import and export aborted), then each client port closed once the calls it
- * was asked have answered (an aborted import answers `IMPORT_ABORTED`), within `CLIENT_DRAIN_BUDGET_MS`.
- */
-async function endEngineAndClients(params: { state: EngineRuntimeState }): Promise<void> {
-	const { state } = params
-	state.engine?.close()
-	state.engine = undefined
-	const clients = [...state.clients.values()]
-	state.clients.clear()
-	let budget: ReturnType<typeof setTimeout> | undefined
-	await Promise.race([
-		Promise.all(
-			clients.map(function drainedOf(client) {
-				return client.drained()
-			}),
-		),
-		new Promise(function waitDrainBudget(resolve) {
-			budget = setTimeout(resolve, CLIENT_DRAIN_BUDGET_MS)
-		}),
-	])
-	clearTimeout(budget)
-	// the answers posted first: a port closed a turn later never loses one
-	await yieldToQueue()
-	for (const client of clients) client.port.close()
-	state.events?.close()
-	state.events = undefined
-	state.heartbeat = undefined
-}
-
-/** The pool paused and the lock released whatever the pause does: the files stay, another engine may open them. */
-function releasePool(params: { state: EngineRuntimeState }): void {
-	const { state } = params
-	state.events?.close()
-	state.events = undefined
-	state.heartbeat = undefined
-	try {
-		state.pool?.pauseVfs()
-	} finally {
-		state.releaseLock?.()
-		state.releaseLock = undefined
-	}
 }
 
 /**

@@ -312,15 +312,17 @@ async function buildIndex(params: {
 			detail: `The ${index} index of document "${documentId}" could not be built`,
 			work: function buildAlone() {
 				// the build and its window's commit (the index's pages flushed in one step) told as one long statement
-				onLongStatement(function buildInItsWindow() {
-					window.alone(function createIndex() {
-						try {
-							createRecordIndex({ db, table, index })
-						} catch (thrown) {
-							refuseRepeatedIds({ sqlite3, db, table, documentId, thrown })
-							throw thrown
-						}
-					})
+				onLongStatement({
+					work: function buildInItsWindow() {
+						window.alone(function createIndex() {
+							try {
+								createRecordIndex({ db, table, index })
+							} catch (thrown) {
+								refuseRepeatedIds({ sqlite3, db, table, documentId, thrown })
+								throw thrown
+							}
+						})
+					},
 				})
 			},
 		})

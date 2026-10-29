@@ -1,6 +1,6 @@
 import type { Heartbeat, ServedClient, StoreEvents } from '../../engine/host/host.types'
 import type { SqliteEngine, SqliteEngineOptions } from '../engine/engine.types'
-import type { SAHPoolUtil } from '@sqlite.org/sqlite-wasm'
+import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** What a SQLite engine opens with besides what every engine is told (`EngineOpenParams.settings`). */
 export type SqliteEngineSettings = {
@@ -23,6 +23,12 @@ export type EngineRuntimeState = {
 	/** The engine's sign of life on the client ports, while it is open. */
 	heartbeat: Heartbeat | undefined
 	clients: Map<string, ServedClient>
+}
+
+/** What the pool's install is given: sqlite-wasm's options, with the one its types leave out. */
+export type PoolInstallOptions = Parameters<Sqlite3Static['installOpfsSAHPoolVfs']>[0] & {
+	/** An install that failed before in this worker tried again, not its failure answered again. */
+	forceReinitIfPreviouslyFailed?: boolean
 }
 
 /** The project's lock, held: release it once the engine no longer touches the files. */

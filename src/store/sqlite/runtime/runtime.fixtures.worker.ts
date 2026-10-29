@@ -51,7 +51,8 @@ if (scenario === 'no-opfs') {
 	})
 }
 if (scenario === 'disk-full') fillDiskWhenOrdered()
-if (scenario === 'install-fails') failPoolInstall()
+if (scenario === 'install-fails') failPoolInstall({ once: false })
+if (scenario === 'install-fails-once') failPoolInstall({ once: true })
 
 const freeBytes = scenario ? FREE_BYTES_OF_SCENARIO[scenario] : undefined
 if (freeBytes !== undefined) {
@@ -155,21 +156,22 @@ function slowStatements(params: { silent: boolean }): void {
 /**
  * A pool file's second handle refused (as a file that cannot be opened is): the probe, which opens and
  * closes each file once, passes; then the pool's install fails on each file it acquires - with no file
- * held by anyone else.
+ * held by anyone else. `once`: that second handle only, every later one opened (an install tried again).
  */
-function failPoolInstall(): void {
-	const opened = new Set<string>()
+function failPoolInstall(params: { once: boolean }): void {
+	const acquired = new Map<string, number>()
 	const createSyncAccessHandle = (FileSystemFileHandle.prototype as unknown as SyncAccessFileHandle)
 		.createSyncAccessHandle
 	Object.defineProperty(FileSystemFileHandle.prototype, 'createSyncAccessHandle', {
 		configurable: true,
-		value: function acquireOnce(this: FileSystemFileHandle) {
-			if (opened.has(this.name)) {
+		value: function acquireFailing(this: FileSystemFileHandle) {
+			const count = (acquired.get(this.name) ?? 0) + 1
+			acquired.set(this.name, count)
+			if (params.once ? count === 2 : count >= 2) {
 				return Promise.reject(
 					new DOMException('The file could not be opened.', 'InvalidStateError'),
 				)
 			}
-			opened.add(this.name)
 			return createSyncAccessHandle.call(this)
 		},
 	})

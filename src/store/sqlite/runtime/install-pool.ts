@@ -12,7 +12,7 @@ import {
 import { createDialecteError } from '@/errors'
 
 import type { EngineLockMode } from '../../engine/engine.types'
-import type { HeldEngineLock, SyncAccessFileHandle } from './runtime.types'
+import type { HeldEngineLock, PoolInstallOptions, SyncAccessFileHandle } from './runtime.types'
 import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
@@ -21,7 +21,8 @@ import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  * an existing pool probed (opened and closed again; one another engine still holds is waited for, then
  * refused PROJECT_ENGINE_BUSY), or the space a new pool needs checked, and only then the pool
  * installed - one whose install fails anyway keeps its files (`preserveOnInitFailure`: by default
- * sqlite-wasm removes the whole pool directory on a failed install).
+ * sqlite-wasm removes the whole pool directory on a failed install), and a later open in this worker
+ * installs it again (`forceReinitIfPreviouslyFailed`: by default the failure is kept and answered again).
  */
 export async function openPool(params: {
 	sqlite3: Sqlite3Static
@@ -37,12 +38,14 @@ export async function openPool(params: {
 		const files = await poolFilesOf({ root, project })
 		if (files.length === 0) await refuseShortSpace({ project, bytes: NEW_POOL_FREE_BYTES })
 		else await probePoolFiles({ project, files, deadline })
-		const pool = await sqlite3.installOpfsSAHPoolVfs({
+		const options: PoolInstallOptions = {
 			name: POOL_VFS_NAME,
 			directory: poolDirectoryOf({ project }),
 			initialCapacity: POOL_CAPACITY,
 			preserveOnInitFailure: true,
-		})
+			forceReinitIfPreviouslyFailed: true,
+		}
+		const pool = await sqlite3.installOpfsSAHPoolVfs(options)
 		return { pool, lock }
 	} catch (thrown) {
 		lock.release()

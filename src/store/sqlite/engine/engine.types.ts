@@ -91,7 +91,9 @@ export type OpenSqliteEngineParams = {
 }
 
 /** Runs a statement that may last long as one step of SQLite, telling who waits on the engine around it. */
-export type LongStatementRunner = <GenericResult>(work: () => GenericResult) => GenericResult
+export type LongStatementRunner = <GenericResult>(params: {
+	work: () => GenericResult
+}) => GenericResult
 
 /** An export as the engine runs it: the client that asked for it owns it. */
 export type SqliteEngineExportParams = EngineExportParams & {
