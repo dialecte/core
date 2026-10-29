@@ -509,6 +509,30 @@ describe('xsi:type - one stored form', () => {
 				},
 				'prefix bound nowhere → none': { attributes: [xsiType('q:tDD_1A')], expected: undefined },
 				'no xsi:type → none': { attributes: [], expected: undefined },
+				'padded with XML whitespace → read without it': {
+					attributes: [xsiType(' \t\r\next:tDD_1A\n ')],
+					expected: { clark: `{${EXT_URI}}tDD_1A`, namespace: EXT_URI, local: 'tDD_1A' },
+				},
+				'padded with a no-break space → its prefix is another one, bound nowhere → none': {
+					attributes: [xsiType('\u{A0}ext:tDD_1A\u{A0}')],
+					expected: undefined,
+				},
+				'unprefixed, a leading no-break space → part of the local name, in the default namespace': {
+					attributes: [xsiType('\u{A0}tDD_1B')],
+					expected: {
+						clark: `{${DEFAULT_URI}}\u{A0}tDD_1B`,
+						namespace: DEFAULT_URI,
+						local: '\u{A0}tDD_1B',
+					},
+				},
+				'a trailing no-break space → part of the local name': {
+					attributes: [xsiType('ext:tDD_1A\u{A0}')],
+					expected: {
+						clark: `{${EXT_URI}}tDD_1A\u{A0}`,
+						namespace: EXT_URI,
+						local: 'tDD_1A\u{A0}',
+					},
+				},
 			},
 			(testCase) => {
 				const record = { tagName: 'DD_1', attributes: testCase.attributes }

@@ -1,7 +1,11 @@
 import {
 	CONTRACT_BYTE_ORDER_MARK,
 	CONTRACT_LONE_SURROGATE_TEXT,
+	CONTRACT_NOT_XML_CHARACTER,
+	CONTRACT_NOT_XML_WHITESPACE_ATTRIBUTE,
+	CONTRACT_NOT_XML_WHITESPACE_TEXT,
 	CONTRACT_REPLACED_TEXT,
+	CONTRACT_XML_WHITESPACE_TEXT,
 	KEPT_TEXTS,
 } from './store-contract.constants'
 import {
@@ -18,6 +22,7 @@ import { XML_DECLARATION } from '@/xml/build/xml-writer.constants'
 
 import type { Store } from '../store.types'
 import type {
+	ImportedTextValue,
 	KeptTextWrite,
 	KeyedCall,
 	StoreContractCases,
@@ -127,9 +132,27 @@ const keptTextOrder: StoreContractCases = {
 	},
 }
 
+/** The body of a contract file whose `AA_1` holds `text` as its value. */
+function textValueBody(params: { text: string }): string {
+	return `<A aA="1"><AA_1 aAA_1="x">${params.text}</AA_1></A>`
+}
+
+/** `body` imported: the value `store` holds for its `AA_1` and, exported compact, the file's text. */
+async function importedTextValue(params: {
+	store: Store
+	body: string
+}): Promise<ImportedTextValue> {
+	const { store, body } = params
+	const { record } = await store.importFile({ file: contractFile({ body }) })
+	const [held] = await store.getByTagNameInDocument('AA_1', record.id)
+	const { file } = await store.exportFile({ documentId: record.id, options: { indent: false } })
+	const exported = await file.text()
+	return { value: held?.value, exported }
+}
+
 /**
- * A kept text through an import and an export, in an attribute value: the XML reader trims a text value and
- * collapses what JavaScript counts as whitespace in it (a byte order mark among them).
+ * Kept texts through an import and an export: the XML reader trims and collapses XML whitespace only (space, tab,
+ * carriage return, line feed), in a text value; an attribute value is read as written.
  */
 const keptTextExport: StoreContractCases = {
 	'an attribute value beginning with a byte order mark, imported then exported compact → the file holds it as written':
@@ -145,6 +168,50 @@ const keptTextExport: StoreContractCases = {
 				})
 				const source = await contractFile({ body }).text()
 				expect(await file.text()).toBe(`${XML_DECLARATION}${source}`)
+			},
+		},
+	'an attribute value holding a no-break space and a line separator → stored and exported compact as written':
+		{
+			needs: ['export'],
+			async act({ store }) {
+				const value = CONTRACT_NOT_XML_WHITESPACE_ATTRIBUTE
+				const body = `<A aA="1"><AA_1 aAA_1="${value}">x</AA_1></A>`
+				const { record } = await store.importFile({ file: contractFile({ body }) })
+				const [held] = await store.getByTagNameInDocument('AA_1', record.id)
+				expect(held?.attributes).toStrictEqual([{ name: 'aAA_1', value }])
+				const { file } = await store.exportFile({
+					documentId: record.id,
+					options: { indent: false },
+				})
+				const source = await contractFile({ body }).text()
+				const exported = await file.text()
+				expect(exported).toBe(`${XML_DECLARATION}${source}`)
+			},
+		},
+	'a text value beginning with a byte order mark, holding a no-break space, ending with a line separator → stored and exported compact as written':
+		{
+			needs: ['export'],
+			async act({ store }) {
+				const text = CONTRACT_NOT_XML_WHITESPACE_TEXT
+				const body = textValueBody({ text })
+				const { value, exported } = await importedTextValue({ store, body })
+				expect(value).toBe(text)
+				const source = await contractFile({ body }).text()
+				expect(exported).toBe(`${XML_DECLARATION}${source}`)
+			},
+		},
+	'a text value padded and split by XML whitespace → stored and exported trimmed, the inner run one space':
+		{
+			needs: ['export'],
+			async act({ store }) {
+				const { written, read } = CONTRACT_XML_WHITESPACE_TEXT
+				const { value, exported } = await importedTextValue({
+					store,
+					body: textValueBody({ text: written }),
+				})
+				expect(value).toBe(read)
+				const source = await contractFile({ body: textValueBody({ text: read }) }).text()
+				expect(exported).toBe(`${XML_DECLARATION}${source}`)
 			},
 		},
 }
@@ -310,8 +377,43 @@ const keysNamingNothing: StoreContractCases = Object.fromEntries(
 	]),
 )
 
+/** A character XML does not allow: no file is imported or exported holding it, on every store. */
+const notXmlCharacters: StoreContractCases = {
+	'a file holding a reference to a vertical tab in a text value → PARSE_ERROR, nothing kept': {
+		async act({ store }) {
+			const { reference, name } = CONTRACT_NOT_XML_CHARACTER
+			const file = contractFile({ body: textValueBody({ text: `x${reference}` }) })
+			await expectRejectsWith({
+				action: store.importFile({ file }),
+				key: 'PARSE_ERROR',
+				meta: { reason: 'not-xml-character', character: name },
+			})
+			const documents = await store.getDocuments()
+			expect(documents).toStrictEqual([])
+		},
+	},
+	'a record a write gave a vertical tab → its export refused with XML_CHARACTER_NOT_ALLOWED, no file':
+		{
+			needs: ['export'],
+			async act({ store }) {
+				const { text, name } = CONTRACT_NOT_XML_CHARACTER
+				const { record } = await store.importFile({
+					file: contractFile({ body: textValueBody({ text: 'x' }) }),
+				})
+				const [held] = await store.getByTagNameInDocument('AA_1', record.id)
+				await store.bulkWrite(record.id, { updates: [{ recordId: held!.id, value: text }] })
+				await expectRejectsWith({
+					action: store.exportFile({ documentId: record.id }),
+					key: 'XML_CHARACTER_NOT_ALLOWED',
+					meta: { recordId: held!.id, tagName: 'AA_1', part: 'value', character: name },
+				})
+			},
+		},
+}
+
 /** Text a store keeps: every store reads it back exactly as written. */
 export const STORE_TEXT_CONTRACT: StoreContractGroups = {
 	'text kept as written': { ...keptTexts, ...keptTextOrder, ...keptTextExport },
 	'a key that is not well-formed names nothing': keysNamingNothing,
+	'a character XML does not allow is never imported nor exported': notXmlCharacters,
 }

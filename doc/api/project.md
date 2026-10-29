@@ -156,10 +156,10 @@ await project.export({ documentId, download: true })
 - One store export per call when the options agree; a second one when `xmlDocument` is asked with a formatted `file` (the DOM is parsed from the compact layout) or `download` with a compact one (the saved file is formatted). Two exports may see two states of the document if a commit lands between them: pass `indent: false` with `xmlDocument: true` to export once.
 - The DOM and the save happen in the calling page; the store never builds them, so a store behind a worker exports the same way.
 - A cancelled save dialog saves nothing and the call still answers; a dialog refused because the user's gesture lapsed falls back to a download of the formatted file; any other save failure is thrown. The browser may create the chosen file as the dialog closes: an export that then fails (`EXPORT_CONFLICT`, an abort) can leave it empty.
-- A document not in the project throws `DOCUMENT_NOT_REGISTERED`; a commit on the document while it is exported restarts the export once, a second one throws `EXPORT_CONFLICT` (see [Export inside the store](/io/#export-inside-the-store)).
+- A document not in the project throws `DOCUMENT_NOT_REGISTERED`; a commit on the document while it is exported restarts the export once, a second one throws `EXPORT_CONFLICT` (see [Export inside the store](/io/#export-inside-the-store)). A record holding a character XML does not allow throws `XML_CHARACTER_NOT_ALLOWED`, no file.
 - The DOM equals the document the records make, element by element; its attributes also hold the namespace declarations written into the file (the root `xmlns` is an attribute of the xmlns namespace). The compact file writes a carriage return of a text value as `&#13;`, so the DOM keeps it (a raw one would be read as a line feed).
 
-The formatted file is indented by depth; an element that holds text is written as is on its line, children included (`<Item>2025-08-04 10:59:16</Item>`): no whitespace is added to a value. `getSnapshot({ as: 'xml' })` writes its XML the same way. The bytes are the same in every browser.
+The formatted file is indented by depth; an element that holds text is written as is on its line, children included (`<Item>2025-08-04 10:59:16</Item>`): no whitespace is added to a value. A value is written trimmed of XML whitespace only (space, tab, carriage return, line feed): a no-break space or a byte order mark at its ends is written back. `getSnapshot({ as: 'xml' })` writes its XML the same way. The bytes are the same in every browser.
 
 ## File registry
 

@@ -85,6 +85,21 @@ export const KEPT_TEXTS: Readonly<Record<string, string>> = {
 	'quotes and a backslash': `"'\\`,
 }
 
+/**
+ * A text value beginning with a byte order mark, holding a no-break space and ending with a line separator:
+ * characters JavaScript counts as whitespace and XML does not, kept as written through an import and an export.
+ */
+export const CONTRACT_NOT_XML_WHITESPACE_TEXT = '\u{FEFF}a\u{A0}b\u{2028}'
+
+/** An attribute value holding a no-break space and a line separator: read as written, every character kept. */
+export const CONTRACT_NOT_XML_WHITESPACE_ATTRIBUTE = 'a\u{A0}b\u{2028}c'
+
+/** A vertical tab: a character XML does not allow, as written or as a character reference (`&#11;`). */
+export const CONTRACT_NOT_XML_CHARACTER = { text: '\u{B}', reference: '&#11;', name: 'U+000B' }
+
+/** A text value padded and split by XML whitespace, as an import reads it: trimmed, the inner run one space. */
+export const CONTRACT_XML_WHITESPACE_TEXT = { written: ' \t\r\n a \n\t b \r\n', read: 'a b' }
+
 /** Text holding a lone surrogate: an id or a tag name a case looks up, or a value a case hands a store. */
 export const CONTRACT_LONE_SURROGATE_TEXT = 'x\uD800y'
 

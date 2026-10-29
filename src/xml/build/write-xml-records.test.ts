@@ -839,6 +839,49 @@ describe('writeXmlRecords', () => {
 					}),
 				],
 			},
+			'a value padded with XML whitespace and a no-break space, a byte order mark, a line separator -> only the XML whitespace trimmed':
+				{
+					expected: {
+						formatted: crlf([
+							'<?xml version="1.0" encoding="UTF-8"?>',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT">',
+							'    <A aA="x">\u{FEFF}\u{A0}x\u{A0}\u{2028}</A>',
+							'</Root>',
+						]),
+						compact:
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT"><A aA="x">\u{FEFF}\u{A0}x\u{A0}\u{2028}</A></Root>',
+					},
+					records: [
+						rootOf(['a-1']),
+						childRecord({
+							id: 'a-1',
+							tagName: 'A',
+							attributes: [{ name: 'aA', value: 'x' }],
+							value: ' \t\u{FEFF}\u{A0}x\u{A0}\u{2028}\r\n',
+						}),
+					],
+				},
+			'a value of no-break spaces only -> written as text': {
+				expected: {
+					formatted: crlf([
+						'<?xml version="1.0" encoding="UTF-8"?>',
+						'<Root xmlns="http://dialecte.dev/XML/DEFAULT">',
+						'    <A aA="x">\u{A0}\u{A0}</A>',
+						'</Root>',
+					]),
+					compact:
+						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT"><A aA="x">\u{A0}\u{A0}</A></Root>',
+				},
+				records: [
+					rootOf(['a-1']),
+					childRecord({
+						id: 'a-1',
+						tagName: 'A',
+						attributes: [{ name: 'aA', value: 'x' }],
+						value: '\u{A0}\u{A0}',
+					}),
+				],
+			},
 			'a one-line value next to children -> the whole subtree on one line': {
 				expected: {
 					formatted: crlf([
@@ -1213,6 +1256,7 @@ describe('writeXmlRecords', () => {
 		type ErrorCase = BaseTestCase & {
 			records: AnyRawRecord[]
 			rootId?: string
+			withDatabaseIds?: boolean
 			expectedKey: DialecteErrorKey
 			expectedError: string
 		}
@@ -1238,18 +1282,123 @@ describe('writeXmlRecords', () => {
 				expectedKey: 'EXPORT_ORPHAN_CHILD_REF',
 				expectedError: "Parent 'Root' references non-existent child 'missing-id' (id: missing-id)",
 			},
+			'a value holding a vertical tab -> XML_CHARACTER_NOT_ALLOWED, no file': {
+				records: [rootOf(['a-1']), childRecord({ id: 'a-1', tagName: 'A', value: 'x\u{B}' })],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError: "The value of <A> 'a-1' holds U+000B, a character XML does not allow.",
+			},
+			'an attribute value holding a form feed -> XML_CHARACTER_NOT_ALLOWED, naming it': {
+				records: [
+					rootOf(['a-1']),
+					childRecord({ id: 'a-1', tagName: 'A', attributes: [{ name: 'aA', value: '\u{C}' }] }),
+				],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError:
+					"The attribute aA of <A> 'a-1' holds U+000C, a character XML does not allow.",
+			},
+			'an element namespace whose URI holds a vertical tab -> XML_CHARACTER_NOT_ALLOWED': {
+				records: [
+					rootOf(['a-1']),
+					{
+						...childRecord({ id: 'a-1', tagName: 'A' }),
+						namespace: { prefix: 'x', uri: 'urn:\u{B}' },
+					},
+				],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError:
+					"The namespace URI of <A> 'a-1' holds U+000B, a character XML does not allow.",
+			},
+			'an attribute namespace whose URI holds a form feed -> XML_CHARACTER_NOT_ALLOWED': {
+				records: [
+					rootOf(['a-1']),
+					childRecord({
+						id: 'a-1',
+						tagName: 'A',
+						attributes: [{ name: 'x:a', value: 'v', namespace: { prefix: 'x', uri: 'urn:\u{C}' } }],
+					}),
+				],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError:
+					"The namespace URI of the attribute x:a of <A> 'a-1' holds U+000C, a character XML does not allow.",
+			},
+			'a tag name holding a vertical tab -> XML_CHARACTER_NOT_ALLOWED, naming it': {
+				records: [rootOf(['a-1']), childRecord({ id: 'a-1', tagName: 'A\u{B}' })],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError:
+					"The tag name of <A\u{B}> 'a-1' holds U+000B, a character XML does not allow.",
+			},
+			'an element prefix holding a vertical tab -> XML_CHARACTER_NOT_ALLOWED': {
+				records: [
+					rootOf(['a-1']),
+					{
+						...childRecord({ id: 'a-1', tagName: 'A' }),
+						namespace: { prefix: 'x\u{B}', uri: 'urn:x' },
+					},
+				],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError:
+					"The namespace prefix of <A> 'a-1' holds U+000B, a character XML does not allow.",
+			},
+			'an attribute name holding a form feed -> XML_CHARACTER_NOT_ALLOWED': {
+				records: [
+					rootOf(['a-1']),
+					childRecord({ id: 'a-1', tagName: 'A', attributes: [{ name: 'a\u{C}', value: 'v' }] }),
+				],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError:
+					"The name of the attribute a\u{C} of <A> 'a-1' holds U+000C, a character XML does not allow.",
+			},
+			'an attribute prefix holding a form feed -> XML_CHARACTER_NOT_ALLOWED': {
+				records: [
+					rootOf(['a-1']),
+					childRecord({
+						id: 'a-1',
+						tagName: 'A',
+						attributes: [
+							{ name: 'x:a', value: 'v', namespace: { prefix: 'x\u{C}', uri: 'urn:x' } },
+						],
+					}),
+				],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError:
+					"The namespace prefix of the attribute x:a of <A> 'a-1' holds U+000C, a character XML does not allow.",
+			},
+			'a record id holding a vertical tab, written with the database ids -> XML_CHARACTER_NOT_ALLOWED':
+				{
+					records: [rootOf(['a\u{B}']), childRecord({ id: 'a\u{B}', tagName: 'A' })],
+					withDatabaseIds: true,
+					expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+					expectedError: "The id of <A> 'a\u{B}' holds U+000B, a character XML does not allow.",
+				},
+			'a root value holding NUL -> XML_CHARACTER_NOT_ALLOWED': {
+				records: [{ ...rootOf([]), value: '\u{0}' }],
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedError: "The value of <Root> 'root-1' holds U+0000, a character XML does not allow.",
+			},
 		}
 
 		runTestCases.generic(testCases, (testCase) => {
 			let thrown: unknown
 			try {
-				writeXmlRecords({ records: testCase.records, config: CONFIG, rootId: testCase.rootId })
+				writeXmlRecords({
+					records: testCase.records,
+					config: CONFIG,
+					rootId: testCase.rootId,
+					withDatabaseIds: testCase.withDatabaseIds,
+				})
 			} catch (error) {
 				thrown = error
 			}
 			expect(toDialecteError(thrown)?.key).toBe(testCase.expectedKey)
 			expect(toDialecteError(thrown)?.detail).toBe(testCase.expectedError)
 		})
+	})
+
+	it('a record id holding a vertical tab, written without the database ids -> a file: the id is not written', function writesWithoutIds() {
+		const records = [rootOf(['a\u{B}']), childRecord({ id: 'a\u{B}', tagName: 'A' })]
+		expect(writeXmlRecords({ records, config: CONFIG, indent: false })).toBe(
+			'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT"><A aA=""/></Root>',
+		)
 	})
 
 	describe('hands its output in parts', () => {

@@ -447,6 +447,24 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			expect(message).toContain('snippet: malformed XML')
 			expect(message).toContain('must be the very first characters')
 		})
+
+		it('an XML declaration preceded by a byte order mark, naming it', function namesByteOrderMark() {
+			const xml = `\u{FEFF}<?xml version="1.0" encoding="UTF-8"?><Root ${XMLNS_DEFAULT_NAMESPACE} root="1" />`
+			const message = captureErrorMessage(function assertWithByteOrderMark() {
+				assertValidXml(xml, 'snippet', { requireComplete: false })
+			})
+			expect(message).toContain('must be the very first characters')
+			expect(message).toContain('the byte order mark (U+FEFF) before it')
+		})
+
+		it('an XML declaration preceded by a no-break space: not whitespace, the parser says why', function leavesNoBreakSpaceToParser() {
+			const xml = `\u{A0}<?xml version="1.0" encoding="UTF-8"?><Root ${XMLNS_DEFAULT_NAMESPACE} root="1" />`
+			const message = captureErrorMessage(function assertWithNoBreakSpace() {
+				assertValidXml(xml, 'snippet', { requireComplete: false })
+			})
+			expect(message).toContain('snippet: malformed XML')
+			expect(message).not.toContain('must be the very first characters')
+		})
 	})
 })
 

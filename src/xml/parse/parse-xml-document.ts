@@ -3,6 +3,7 @@ import { DEFAULT_BATCH_SIZE, DEFAULT_CHUNK_SIZE } from './parse-xml-document.con
 import { setSaxParser } from './parser'
 
 import { throwDialecteError, toDialecteError } from '@/errors'
+import { assertXmlCharacters } from '@/helpers/assert-xml-characters'
 import { NOOP_PERF } from '@/perf'
 import { checkJsonValues } from '@/store/json-values'
 import { invariant } from '@/utils'
@@ -12,7 +13,7 @@ import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-documen
 import type { Diagnostic } from '@/diagnostics'
 import type { Perf } from '@/perf'
 import type { ImportControl, ImportProgress, ImportTarget } from '@/store/store.types'
-import type { ImportSession } from '@/types'
+import type { AnyRawRecord, ImportSession, RecordPatch } from '@/types'
 
 export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
 
@@ -199,6 +200,7 @@ async function endImportSession(params: {
 	}
 	const { creates, updates, deletes, diagnostics = [] } = result
 	checkSessionDiagnostics({ diagnostics })
+	checkSessionWrites({ creates, updates })
 	const hasOps = creates?.length || updates?.length || deletes?.length
 	if (hasOps) {
 		throwIfAborted({ signal, file })
@@ -226,6 +228,19 @@ function checkSessionDiagnostics(params: { diagnostics: Diagnostic[] }): void {
 			cause: thrown instanceof Error ? thrown : undefined,
 		})
 	}
+}
+
+/**
+ * What the session writes holds XML characters only, as a transaction's writes (`XML_CHARACTER_NOT_ALLOWED`).
+ * Checked before its writes, so a refused import has written none of them.
+ */
+function checkSessionWrites(params: {
+	creates?: readonly AnyRawRecord[]
+	updates?: readonly RecordPatch[]
+}): void {
+	const { creates = [], updates = [] } = params
+	for (const record of creates) assertXmlCharacters({ record })
+	for (const patch of updates) assertXmlCharacters({ record: { ...patch, id: patch.recordId } })
 }
 
 /** An aborted import goes no further: `IMPORT_ABORTED`. */

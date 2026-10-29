@@ -1,9 +1,16 @@
+import { writeXmlRecords } from '../build/write-xml-records'
 import { parseXmlFile } from './parse-xml-document'
 
 import { describe, expect, it, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
-import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import {
+	DIALECTE_TEST_NAMESPACES,
+	runTestCases,
+	TEST_DIALECTE_CONFIG,
+	XMLNS_DEV_NAMESPACE,
+} from '@/test'
 
 import type { Diagnostic } from '@/diagnostics'
 import type { Store } from '@/store/store.types'
@@ -38,6 +45,29 @@ function createMockStore(): Store & { bulkWriteCalls: Array<Parameters<Store['bu
 		undo: vi.fn(),
 		redo: vi.fn(),
 	} as unknown as Store & { bulkWriteCalls: Array<Parameters<Store['bulkWrite']>> }
+}
+
+/** What `action` throws, `undefined` when it returns. */
+function captureThrown(action: () => void): unknown {
+	try {
+		action()
+	} catch (error) {
+		return error
+	}
+	return undefined
+}
+
+/** A record an import session creates: `A` with no attribute, value or child. */
+function sessionCreate(): AnyRawRecord {
+	return {
+		id: 'hook-1',
+		tagName: 'A',
+		namespace: NS.default,
+		value: '',
+		attributes: [],
+		parent: null,
+		children: [],
+	}
 }
 
 function xmlFile(content: string, name = 'test.xml'): File {
@@ -183,6 +213,86 @@ describe('parseXmlFile', () => {
 		})
 	})
 
+	describe('text values: XML whitespace trimmed and collapsed in each run of text, every other character kept', () => {
+		type TestCase = BaseTestCase & {
+			/** The content of the root's first child `A` (the root's own when `ofRoot`) */
+			content: string
+			ofRoot?: true
+			expectedValue: string
+		}
+
+		const testCases: Record<string, TestCase> = {
+			'a no-break space at both ends → kept': {
+				content: '\u{A0}x\u{A0}',
+				expectedValue: '\u{A0}x\u{A0}',
+			},
+			'a leading byte order mark → kept': { content: '\u{FEFF}x', expectedValue: '\u{FEFF}x' },
+			'a trailing line separator → kept': { content: 'x\u{2028}', expectedValue: 'x\u{2028}' },
+			'an ideographic space and an ogham space mark → kept': {
+				content: '\u{3000}x\u{1680}',
+				expectedValue: '\u{3000}x\u{1680}',
+			},
+			'two no-break spaces inside → kept, not collapsed': {
+				content: 'a\u{A0}\u{A0}b',
+				expectedValue: 'a\u{A0}\u{A0}b',
+			},
+			'a character reference to a no-break space → kept': {
+				content: '&#160;x',
+				expectedValue: '\u{A0}x',
+			},
+			'those characters inside XML whitespace → the XML whitespace trimmed, they kept': {
+				content: ' \n\t\u{FEFF}a\u{A0}b\u{2028}\r\n ',
+				expectedValue: '\u{FEFF}a\u{A0}b\u{2028}',
+			},
+			'XML whitespace around and inside → trimmed, each inner run one space': {
+				content: '  x \t\r\n y  ',
+				expectedValue: 'x y',
+			},
+			'XML whitespace only → no value': { content: ' \r\n\t ', expectedValue: '' },
+			'CDATA → as written, its whitespace kept': {
+				content: '<![CDATA[  x \u{A0} ]]>',
+				expectedValue: '  x \u{A0} ',
+			},
+			'text split by a comment → each run trimmed apart, then joined': {
+				content: ' x <!-- c --> y ',
+				expectedValue: 'xy',
+			},
+			'text around a child → each run trimmed apart, then joined': {
+				content: ' x <AA_1/> y ',
+				expectedValue: 'xy',
+			},
+			'a character reference to a tab, then text → the tab trimmed as XML whitespace': {
+				content: '&#x9;x',
+				expectedValue: 'x',
+			},
+			'indentation between elements → no value on their parent': {
+				content: '\r\n    <A/>\r\n',
+				ofRoot: true,
+				expectedValue: '',
+			},
+		}
+
+		runTestCases.generic(testCases, async function expectValue(testCase) {
+			const store = createMockStore()
+			const body = testCase.ofRoot ? testCase.content : `<A>${testCase.content}</A>`
+			await parseXmlFile({
+				file: xmlFile(minimalXml(body)),
+				documentId: 'f1',
+				configKey: 'test',
+				store,
+				config: CONFIG,
+			})
+			const records = store.bulkWriteCalls.flatMap(function createsOf([, operations]) {
+				return operations.creates ?? []
+			})
+			const tagName = testCase.ofRoot ? 'Root' : 'A'
+			const record = records.find(function isRead(candidate) {
+				return candidate.tagName === tagName
+			})
+			expect(record?.value).toBe(testCase.expectedValue)
+		})
+	})
+
 	describe('empty and invalid files', () => {
 		type TestCase = BaseTestCase & {
 			file: File
@@ -218,6 +328,30 @@ describe('parseXmlFile', () => {
 			'not XML at all → PARSE_ERROR': {
 				file: xmlFile('this is not xml', 'text.xml'),
 				expectError: { key: 'PARSE_ERROR' },
+			},
+			'a reference to a vertical tab in a text value → PARSE_ERROR naming it and its element': {
+				file: xmlFile(minimalXml('<A>x&#11;</A>')),
+				expectError: { key: 'PARSE_ERROR', detailIncludes: 'The value of <A> holds U+000B' },
+			},
+			'a form feed written in a text value → PARSE_ERROR': {
+				file: xmlFile(minimalXml('<A>\u{C}</A>')),
+				expectError: { key: 'PARSE_ERROR', detailIncludes: 'The value of <A> holds U+000C' },
+			},
+			'U+FFFE in CDATA → PARSE_ERROR': {
+				file: xmlFile(minimalXml('<A><![CDATA[x\u{FFFE}]]></A>')),
+				expectError: { key: 'PARSE_ERROR', detailIncludes: 'The value of <A> holds U+FFFE' },
+			},
+			'pin: a namespace declared with a URI holding a vertical tab → PARSE_ERROR, as any attribute value':
+				{
+					file: xmlFile(minimalXml('<A xmlns:x="urn:&#11;" x:a="1"/>')),
+					expectError: {
+						key: 'PARSE_ERROR',
+						detailIncludes: 'The attribute x of <A> holds U+000B',
+					},
+				},
+			'a reference to U+0001 in an attribute value → PARSE_ERROR naming the attribute': {
+				file: xmlFile(minimalXml('<A aA="&#x1;"/>')),
+				expectError: { key: 'PARSE_ERROR', detailIncludes: 'The attribute aA of <A> holds U+0001' },
 			},
 		}
 
@@ -575,6 +709,201 @@ describe('parseXmlFile', () => {
 			await parse('second', '<B/>')
 
 			expect(seen).toEqual({ first: ['AA_1', 'A', 'Root'], second: ['B', 'Root'] })
+		})
+	})
+
+	it('a record id read from the file (custom ids) holding a vertical tab → PARSE_ERROR naming it', async function refusesCustomId() {
+		const store = createMockStore()
+		const file = xmlFile(
+			`<Root xmlns="${NS.default.uri}" ${XMLNS_DEV_NAMESPACE}><A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a&#11;"/></Root>`,
+		)
+		await expect(
+			parseXmlFile({
+				file,
+				documentId: 'f1',
+				configKey: 'test',
+				store,
+				config: CONFIG,
+				useCustomRecordsIds: true,
+			}),
+		).rejects.toMatchObject({
+			cause: {
+				key: 'PARSE_ERROR',
+				detail: expect.stringContaining(
+					`The attribute ${CUSTOM_RECORD_ID_ATTRIBUTE} of <A> holds U+000B`,
+				),
+			},
+		})
+		expect(store.bulkWriteCalls).toHaveLength(0)
+	})
+
+	describe('import session writes holding a character XML does not allow', () => {
+		type TestCase = BaseTestCase & {
+			session: ImportSession
+			expectedKey: string
+			expectedMeta: Record<string, unknown>
+			/** The store writes made: the parse's batch only (1), or none when the parse fails (0) */
+			expectedWriteCount: number
+		}
+
+		const testCases: Record<string, TestCase> = {
+			'a create whose value holds a vertical tab → XML_CHARACTER_NOT_ALLOWED, never written': {
+				session: {
+					afterImport: async function createsControl() {
+						return {
+							creates: [
+								{
+									id: 'hook-1',
+									tagName: 'A',
+									namespace: NS.default,
+									value: 'x\u{B}',
+									attributes: [],
+									parent: null,
+									children: [],
+								},
+							],
+						}
+					},
+				},
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedMeta: { recordId: 'hook-1', tagName: 'A', part: 'value', character: 'U+000B' },
+				expectedWriteCount: 1,
+			},
+			'a create whose tag name holds a vertical tab → refused, naming the tag name': {
+				session: {
+					afterImport: async function createsBadTagName() {
+						return { creates: [{ ...sessionCreate(), tagName: 'A\u{B}' }] }
+					},
+				},
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedMeta: { recordId: 'hook-1', tagName: 'A\u{B}', part: 'name', character: 'U+000B' },
+				expectedWriteCount: 1,
+			},
+			'a create whose namespace prefix holds a vertical tab → refused, naming the prefix': {
+				session: {
+					afterImport: async function createsBadPrefix() {
+						return {
+							creates: [{ ...sessionCreate(), namespace: { prefix: 'x\u{B}', uri: 'urn:x' } }],
+						}
+					},
+				},
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedMeta: { recordId: 'hook-1', tagName: 'A', part: 'prefix', character: 'U+000B' },
+				expectedWriteCount: 1,
+			},
+			'a patch whose attribute name holds a vertical tab → refused, naming the name': {
+				session: {
+					afterImport: async function patchesBadName() {
+						return {
+							updates: [{ recordId: 'some-id', attributes: [{ name: 'a\u{B}', value: '1' }] }],
+						}
+					},
+				},
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedMeta: {
+					recordId: 'some-id',
+					attribute: 'a\u{B}',
+					part: 'name',
+					character: 'U+000B',
+				},
+				expectedWriteCount: 1,
+			},
+			'a patch whose attribute value holds a form feed → refused, naming the attribute': {
+				session: {
+					afterImport: async function patchesControl() {
+						return {
+							updates: [{ recordId: 'some-id', attributes: [{ name: 'a', value: '\u{C}' }] }],
+						}
+					},
+				},
+				expectedKey: 'XML_CHARACTER_NOT_ALLOWED',
+				expectedMeta: { recordId: 'some-id', attribute: 'a', part: 'value', character: 'U+000C' },
+				expectedWriteCount: 1,
+			},
+			'a per-record hook giving a record a namespace whose URI holds a vertical tab → PARSE_ERROR':
+				{
+					session: {
+						beforeImportRecord: function namespacesControl({ record }) {
+							record.namespace = { prefix: 'x', uri: 'urn:\u{B}' }
+						},
+					},
+					expectedKey: 'PARSE_ERROR',
+					expectedMeta: { reason: 'not-xml-character', character: 'U+000B' },
+					expectedWriteCount: 0,
+				},
+			'a per-record hook writing U+FFFF into a value → PARSE_ERROR, as if the file held it': {
+				session: {
+					beforeImportRecord: function writesControl({ record }) {
+						record.value = '\u{FFFF}'
+					},
+				},
+				expectedKey: 'PARSE_ERROR',
+				expectedMeta: { reason: 'not-xml-character', character: 'U+FFFF' },
+				expectedWriteCount: 0,
+			},
+		}
+
+		runTestCases.generic(testCases, async function expectRefused(testCase) {
+			const store = createMockStore()
+			const hooks = {
+				createImportSession: function sessionOf() {
+					return testCase.session
+				},
+			}
+			const thrown = await parseXmlFile({
+				file: xmlFile(minimalXml()),
+				documentId: 'f1',
+				configKey: 'test',
+				store,
+				config: CONFIG,
+				hooks,
+			}).then(
+				function imported() {
+					return undefined
+				},
+				function refused(error: unknown) {
+					return error
+				},
+			)
+			const error = toDialecteError(thrown)
+			expect(error?.key).toBe(testCase.expectedKey)
+			expect(error?.meta).toEqual(testCase.expectedMeta)
+			// the parse's own batch, or none when the parse fails: a session write would be one more
+			expect(store.bulkWriteCalls).toHaveLength(testCase.expectedWriteCount)
+		})
+	})
+
+	it('a name a per-record hook gives a record holding a vertical tab → imported, its export refused by the writer', async function splitsNameCheck() {
+		const store = createMockStore()
+		const hooks = {
+			createImportSession: function sessionOf() {
+				return {
+					beforeImportRecord: function namesControl({ record }: { record: AnyRawRecord }) {
+						if (record.tagName === 'A') record.attributes.push({ name: 'b\u{B}', value: '1' })
+					},
+				}
+			},
+		}
+		const result = await parseXmlFile({
+			file: xmlFile(minimalXml('<A aA="1"/>')),
+			documentId: 'f1',
+			configKey: 'test',
+			store,
+			config: CONFIG,
+			hooks,
+		})
+		expect(result.recordCount).toBe(2)
+		const records = store.bulkWriteCalls.flatMap(function createsOf([, operations]) {
+			return operations.creates ?? []
+		})
+		const thrown = captureThrown(function writeImported() {
+			writeXmlRecords({ records, config: CONFIG })
+		})
+		expect(toDialecteError(thrown)?.key).toBe('XML_CHARACTER_NOT_ALLOWED')
+		expect(toDialecteError(thrown)?.meta).toMatchObject({
+			tagName: 'A',
+			attribute: 'b\u{B}',
+			part: 'name',
 		})
 	})
 

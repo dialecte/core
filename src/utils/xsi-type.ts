@@ -1,3 +1,5 @@
+import { trimXmlWhitespace } from './xml-whitespace'
+
 import { XMLNS_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
 
 import type { NamespaceLookup, XsiTypeName } from './xsi-type.types'
@@ -28,7 +30,8 @@ export function xsiTypeNameOf(params: {
 	namespaceOf: NamespaceLookup
 }): XsiTypeName | undefined {
 	const { namespaceOf } = params
-	const value = params.value.trim()
+	// a QName collapses XML whitespace only: a no-break space is part of the name
+	const value = trimXmlWhitespace({ text: params.value })
 	if (value.startsWith('{')) {
 		const closing = value.indexOf('}')
 		if (closing === -1) return undefined

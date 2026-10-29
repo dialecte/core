@@ -188,6 +188,9 @@ export type KeyedCall = {
 	call: (store: Store) => Promise<unknown>
 } & ({ answers: unknown } | { refused: DialecteErrorKey; meta?: Record<string, unknown> })
 
+/** A text value through an import: what the store holds for the record, and the file it exports (compact). */
+export type ImportedTextValue = { value: string | undefined; exported: string }
+
 /** What a "text kept as written" case writes: each text of a document, a record, a commit and a blob holding one kept text. */
 export type KeptTextWrite = {
 	document: DocumentRecord

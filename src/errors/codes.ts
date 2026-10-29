@@ -148,6 +148,10 @@ export const ERROR_CATALOG = {
 		code: 'D3011',
 		message: 'The new xsi:type does not admit content the element still holds',
 	},
+	XML_CHARACTER_NOT_ALLOWED: {
+		code: 'D3012',
+		message: 'The text holds a character XML does not allow',
+	},
 
 	// D4xxx — Transaction lifecycle
 	ALREADY_COMMITTED: {

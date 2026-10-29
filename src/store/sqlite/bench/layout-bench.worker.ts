@@ -19,7 +19,9 @@ import sqlite3InitModule from '@sqlite.org/sqlite-wasm'
 import * as Comlink from 'comlink'
 import * as sax from 'sax'
 
+import { readXmlTextRun } from '@/utils/xml-whitespace'
 import { parseXmlFile } from '@/xml'
+import { SAX_PARSER_OPTIONS } from '@/xml/parse/parser.constants'
 
 import type {
 	BenchPhase,
@@ -191,13 +193,7 @@ function compareSignatures(params: {
 async function sourceSignatures(params: {
 	file: File
 }): Promise<Array<{ signature: number; depth: number }>> {
-	const parser = sax.parser(true, {
-		lowercase: false,
-		trim: true,
-		normalize: true,
-		position: false,
-		xmlns: true,
-	})
+	const parser = sax.parser(true, SAX_PARSER_OPTIONS)
 	const out: Array<{ signature: number; depth: number }> = []
 	const open: Array<{ index: number; tagName: string; values: string[]; value: string }> = []
 	parser.onopentag = function sourceOpen(node) {
@@ -212,7 +208,11 @@ async function sourceSignatures(params: {
 	}
 	parser.ontext = function sourceText(text) {
 		const current = open.at(-1)
-		if (current && text) current.value += text
+		if (current) current.value += readXmlTextRun({ text })
+	}
+	parser.oncdata = function sourceCdata(cdata) {
+		const current = open.at(-1)
+		if (current) current.value += cdata
 	}
 	parser.onclosetag = function sourceClose() {
 		const element = open.pop()

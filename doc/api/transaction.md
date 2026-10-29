@@ -107,6 +107,8 @@ Setting a schema attribute to `undefined`, `null`, or an empty string `''` remov
 
 An update that touches `xsi:type` is checked like a create (`XSI_TYPE_REQUIRED`, `XSI_TYPE_NOT_ADMITTED`), and one naming another type while attributes or children the new type does not admit remain is refused with `XSI_TYPE_CHANGE_LEAVES_CONTENT` - clear the attributes in the same update, delete the children first. An update that leaves `xsi:type` alone is never refused for it. See [`xsi:type` values](/guide/development/utils#xsi-type-values).
 
+Every record a transaction writes - created, updated, cloned, by its hooks too - holds XML characters only: a value, a namespace URI, a tag name, a namespace prefix, an attribute name, value or prefix holding a control character below U+0020 but tab, line feed and carriage return, U+FFFE or U+FFFF is refused with `XML_CHARACTER_NOT_ALLOWED` (`meta`: `recordId`, `tagName`, `attribute` when in an attribute, `part` - `'value'`, `'namespace'` for a namespace URI, `'name'`, `'prefix'` -, `character` as `U+000B`), nothing written. A name is not otherwise checked as an XML name (a space in it is written as is). No XML file can hold such a character, as written or as a character reference. The whole record written is checked: a record stored before that already holds one (IndexedDB data) is refused at any write of it - an update of another attribute, a child of it deleted (the delete updates it), a clone of its subtree - until an update replaces that value.
+
 `update` fires `hooks.afterUpdated` with the old and new record. See [Hooks — afterUpdated](/api/hooks#afterupdated) for the full reference.
 
 ### delete

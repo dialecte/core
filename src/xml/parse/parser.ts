@@ -1,12 +1,16 @@
 import { isSaxQualifiedTag } from './guards'
 import { ParseSession } from './parse-session'
+import { SAX_PARSER_OPTIONS } from './parser.constants'
 
 import * as sax from 'sax'
 
 import { throwDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE, standardizeRecord } from '@/helpers'
+import { describePlace, findNotXmlCharacterInText } from '@/helpers/assert-xml-characters'
 import { NOOP_PERF } from '@/perf'
 import { invariant } from '@/utils'
+import { notXmlCharacterOf } from '@/utils/xml-characters'
+import { readXmlTextRun } from '@/utils/xml-whitespace'
 import { withCanonicalXsiType } from '@/utils/xsi-type'
 
 import type { ParserInstance, ParserState } from './types'
@@ -58,16 +62,7 @@ export function setSaxParser(params: {
 		sawRoot: false,
 	}
 
-	const parser = sax.parser(
-		true, // strict mode
-		{
-			lowercase: false, // Preserve case
-			trim: true, // Trim text nodes
-			normalize: true, // Normalize whitespace
-			position: false, // Don't track position (performance boost)
-			xmlns: true, // Enable namespace handling
-		},
-	)
+	const parser = sax.parser(true /* strict mode */, SAX_PARSER_OPTIONS)
 
 	// The records the session asks for, when it names them: the others pass it by.
 	const sessionTags = importSession?.recordTagNames && new Set(importSession.recordTagNames)
@@ -81,7 +76,7 @@ export function setSaxParser(params: {
 	}
 
 	parser.oncdata = (cdata: string) => {
-		handleText({ text: cdata, state })
+		appendValue({ text: cdata, state })
 	}
 
 	parser.onclosetag = () => {
@@ -145,7 +140,7 @@ function handleOpenTag(params: {
 
 	const namespace = getElementNamespace(node, state.defaultNamespace)
 
-	const id = getElementId({ attributes: node.attributes, useCustomRecordsIds })
+	const id = getElementId({ attributes: node.attributes, useCustomRecordsIds, tagName })
 	const filteredAttributes = getFilteredAttributes({
 		attributes: node.attributes,
 		useCustomRecordsIds,
@@ -173,17 +168,49 @@ function handleOpenTag(params: {
 }
 
 /**
- * Handles the text event.
- * @param text Text content of the current element
+ * Handles the text event: a run of text between two markup events, trimmed of XML whitespace (space, tab,
+ * carriage return, line feed) and each inner run of it written as one space; every other character is kept.
+ * @param text The run of text, as written
  * @param state Current state
- * @returns Updated state
- *
  */
 function handleText(params: { text: string; state: ParserState }): void {
+	const { state } = params
+	appendValue({ text: readXmlTextRun({ text: params.text }), state })
+}
+
+/**
+ * Appends text to the open element's value (CDATA as written).
+ * @param text Text content of the current element
+ * @param state Current state
+ */
+function appendValue(params: { text: string; state: ParserState }): void {
 	const { text, state } = params
 
 	if (!text) return
 	if (state.stack.length > 0) state.stack[state.stack.length - 1].value += text
+}
+
+/**
+ * A record read from the file holds XML characters only - its value, its namespace URI, its attributes' values and
+ * namespace URIs, as the file and the hooks gave them -, else the file fails: sax reads a control character below
+ * U+0020 but tab, line feed and carriage return, U+FFFE or U+FFFF, written or as a character reference, which XML
+ * does not allow. Its names are not read here: sax reads the file's names as XML names; one a hook writes is
+ * refused by the writer.
+ */
+function assertParsedXmlCharacters(params: { record: AnyRawRecord }): void {
+	const { record } = params
+	const found = findNotXmlCharacterInText({ record })
+	if (!found) return
+	const place = describePlace({ place: found, element: `<${record.tagName}>` })
+	throwNotXmlCharacter({ character: found.character, where: place })
+}
+
+function throwNotXmlCharacter(params: { character: string; where: string }): never {
+	const { character, where } = params
+	throwDialecteError('PARSE_ERROR', {
+		detail: `XML parsing error: ${where} holds ${character}, a character XML does not allow (as written or as a character reference)`,
+		meta: { reason: 'not-xml-character', character },
+	})
 }
 
 /**
@@ -242,6 +269,7 @@ function handleCloseTag(params: {
 			beforeImportRecord({ record: currentRecord, ancestry: state.stack }),
 		)
 	}
+	assertParsedXmlCharacters({ record: currentRecord })
 
 	const parent = state.stack[state.stack.length - 1]
 	if (parent) {
@@ -346,15 +374,27 @@ function getParent(stack: AnyRawRecord[]): AnyRelationship | null {
 	return lastParent ? { id: lastParent.id, tagName: lastParent.tagName } : null
 }
 
+/**
+ * The record's id: the file's custom id attribute with `useCustomRecordsIds` (it is no attribute of the record then,
+ * so its characters are checked here: one XML does not allow fails the file), else a new uuid.
+ */
 function getElementId(params: {
 	attributes: Record<string, sax.QualifiedAttribute>
 	useCustomRecordsIds: boolean
+	tagName: string
 }): string {
-	const { attributes, useCustomRecordsIds } = params
+	const { attributes, useCustomRecordsIds, tagName } = params
 	const testIdAttribute = attributes[CUSTOM_RECORD_ID_ATTRIBUTE]
 
-	if (useCustomRecordsIds && testIdAttribute && testIdAttribute.value) return testIdAttribute.value
-	return crypto.randomUUID()
+	if (!useCustomRecordsIds || !testIdAttribute || !testIdAttribute.value) return crypto.randomUUID()
+	const character = notXmlCharacterOf({ text: testIdAttribute.value })
+	if (character) {
+		throwNotXmlCharacter({
+			character,
+			where: `The attribute ${CUSTOM_RECORD_ID_ATTRIBUTE} of <${tagName}>`,
+		})
+	}
+	return testIdAttribute.value
 }
 
 function getFilteredAttributes(params: {

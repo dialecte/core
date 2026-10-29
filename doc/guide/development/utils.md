@@ -388,7 +388,7 @@ A cancelled save-file picker (`AbortError`) resolves and saves nothing; a picker
 
 ### `formatXml`
 
-Formats an XML string to a canonical, readable shape: one structural tag per line, indented by depth, with pure-text leaves kept inline (`<Name ...>text</Name>`). **NON-VALIDATING** and tolerant of `${...}` template interpolations (treated as opaque characters), which is why it is used on XML embedded in JS/TS template literals — a real XML parser silently mis-parses a whole-attribute interpolation like `${templateUuid}` and drops the element. Only the insignificant whitespace _between_ elements is rewritten; attribute and leaf text are preserved verbatim, and mixed text + element content is emitted untouched. Idempotent. Options: `indent` (default `'\t'`), `baseIndent` (default `''`).
+Formats an XML string to a canonical, readable shape: one structural tag per line, indented by depth, with pure-text leaves kept inline (`<Name ...>text</Name>`). **NON-VALIDATING** and tolerant of `${...}` template interpolations (treated as opaque characters), which is why it is used on XML embedded in JS/TS template literals — a real XML parser silently mis-parses a whole-attribute interpolation like `${templateUuid}` and drops the element. Only the insignificant whitespace _between_ elements is rewritten - XML whitespace: space, tab, carriage return, line feed; a no-break space or a byte order mark is text -; attribute and leaf text are preserved verbatim, and mixed text + element content is emitted untouched. Idempotent. Options: `indent` (default `'\t'`), `baseIndent` (default `''`).
 
 ```ts
 import { formatXml } from '@dialecte/core/utils'

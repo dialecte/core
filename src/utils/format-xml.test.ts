@@ -47,6 +47,26 @@ describe('formatXml', () => {
 		const once = formatXml(input)
 		expect(formatXml(once)).toBe(once)
 	})
+
+	it('keeps a no-break space next to a child as text: the content stays as written', function keepsNoBreakSpace() {
+		const input = '<a>\n\t<b>\u{A0}<c/></b>\n</a>'
+		expect(formatXml(input)).toBe('<a>\n\t<b>\u{A0}<c/></b>\n</a>')
+	})
+
+	it('keeps a byte order mark or a line separator between children as text', function keepsFormatCharacters() {
+		const input = '<a><b/>\u{FEFF}<c/>\u{2028}</a>'
+		expect(formatXml(input)).toBe('<a><b/>\u{FEFF}<c/>\u{2028}</a>')
+	})
+
+	it('keeps a leading byte order mark glued to the first line', function keepsByteOrderMark() {
+		const input = '\u{FEFF}<?xml version="1.0"?><a><b/></a>'
+		expect(formatXml(input)).toBe('\u{FEFF}<?xml version="1.0"?>\n<a>\n\t<b/>\n</a>')
+	})
+
+	it('drops XML whitespace between children only', function dropsXmlWhitespace() {
+		const input = '<a> \t\r\n<b/>\r\n</a>'
+		expect(formatXml(input)).toBe('<a>\n\t<b/>\n</a>')
+	})
 })
 
 describe('formatEmbeddedXml', () => {

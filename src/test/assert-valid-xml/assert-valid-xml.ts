@@ -1,5 +1,9 @@
+import { XML_DECLARATION_START } from './assert-valid-xml.constants'
+
 import { DIALECTE_DEV_NAMESPACE, XMLNS_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
 import { isNamespaceAllowedByWildcard, resolveDefinition } from '@/utils'
+import { BYTE_ORDER_MARK } from '@/utils/xml-characters.constants'
+import { trimXmlWhitespace } from '@/utils/xml-whitespace'
 
 import type {
 	AssertValidXmlOptions,
@@ -238,8 +242,9 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 
 		// A template-literal snippet usually starts with a newline; an XML declaration after
 		// it is malformed for every XML parser, with a message that does not say why. Say it.
-		if (!xml.startsWith('<?xml') && xml.trimStart().startsWith('<?xml')) {
-			return `${label}: malformed XML — the XML declaration must be the very first characters of the string: remove the declaration (a snippet does not need one) or the whitespace before it`
+		const misplacedDeclaration = describeMisplacedDeclaration({ xml })
+		if (misplacedDeclaration) {
+			return `${label}: malformed XML — the XML declaration must be the very first characters of the string: remove the declaration (a snippet does not need one) or ${misplacedDeclaration}`
 		}
 
 		const xmlDocument = new DOMParser().parseFromString(xml, 'application/xml')
@@ -297,4 +302,23 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 	}
 
 	return { assertValidXml, assertValidXmlTestCases }
+}
+
+/**
+ * What stands before an XML declaration that does not open the string: `the whitespace before it` (XML whitespace
+ * only), `the byte order mark (U+FEFF) before it`, or both; `undefined` when the declaration opens it, or when
+ * something else stands before it (the parser says what).
+ */
+function describeMisplacedDeclaration(params: { xml: string }): string | undefined {
+	const { xml } = params
+	if (xml.startsWith(XML_DECLARATION_START)) return undefined
+	const withByteOrderMark = xml.startsWith(BYTE_ORDER_MARK)
+	const afterByteOrderMark = withByteOrderMark ? xml.slice(BYTE_ORDER_MARK.length) : xml
+	if (!trimXmlWhitespace({ text: afterByteOrderMark }).startsWith(XML_DECLARATION_START))
+		return undefined
+	const withWhitespace = !afterByteOrderMark.startsWith(XML_DECLARATION_START)
+	if (withByteOrderMark && withWhitespace)
+		return 'the byte order mark (U+FEFF) and the whitespace before it'
+	if (withByteOrderMark) return 'the byte order mark (U+FEFF) before it'
+	return 'the whitespace before it'
 }

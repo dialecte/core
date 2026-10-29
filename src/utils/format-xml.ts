@@ -1,3 +1,6 @@
+import { BYTE_ORDER_MARK } from './xml-characters.constants'
+import { trimXmlWhitespace } from './xml-whitespace'
+
 /**
  * Format an XML string to a canonical, readable shape: one structural tag per line, indented by depth,
  * with pure-text leaves kept inline (`<Name ...>text</Name>`).
@@ -15,10 +18,13 @@ export function formatXml(
 ): string {
 	const indent = options.indent ?? '\t'
 	const baseIndent = options.baseIndent ?? ''
-	const nodes = parseNodes(tokenize(source.trim()))
+	// a leading byte order mark is no node: kept glued to the first line
+	const byteOrderMark = source.startsWith(BYTE_ORDER_MARK) ? BYTE_ORDER_MARK : ''
+	const xml = source.slice(byteOrderMark.length)
+	const nodes = parseNodes(tokenize(trimXmlWhitespace({ text: xml })))
 	const lines: string[] = []
 	for (const node of nodes) printNode(node, baseIndent, indent, lines)
-	return lines.join('\n')
+	return byteOrderMark + lines.join('\n')
 }
 
 type Token =
@@ -132,11 +138,12 @@ function rawOf(node: XmlNode): string {
 
 function printNode(node: XmlNode, indentStr: string, unit: string, out: string[]): void {
 	if (node.kind === 'text') {
-		if (node.raw.trim() !== '') out.push(indentStr + node.raw.trim())
+		const text = trimXmlWhitespace({ text: node.raw })
+		if (text !== '') out.push(indentStr + text)
 		return
 	}
 	if (node.kind === 'comment' || node.kind === 'other') {
-		out.push(indentStr + node.raw.trim())
+		out.push(indentStr + trimXmlWhitespace({ text: node.raw }))
 		return
 	}
 	if (node.selfClosing) {
@@ -147,7 +154,7 @@ function printNode(node: XmlNode, indentStr: string, unit: string, out: string[]
 	const close = `</${node.name}>`
 	const hasElementChildren = node.children.some((child) => child.kind !== 'text')
 	const hasSignificantText = node.children.some(
-		(child) => child.kind === 'text' && child.raw.trim() !== '',
+		(child) => child.kind === 'text' && trimXmlWhitespace({ text: child.raw }) !== '',
 	)
 
 	if (!hasElementChildren) {
@@ -186,7 +193,8 @@ export function formatEmbeddedXml(sourceCode: string, options: { indent?: string
 		const formatted = formatXml(xml, { indent, baseIndent })
 		// a trivial single-line snippet stays inline; a nested one breaks, closing backtick on its own
 		// line aligned with the statement (the marker's own indent)
-		if (!formatted.includes('\n')) return `${lineIndent}${prefix}\`${formatted.trim()}\``
+		if (!formatted.includes('\n'))
+			return `${lineIndent}${prefix}\`${trimXmlWhitespace({ text: formatted })}\``
 		return `${lineIndent}${prefix}\`\n${formatted}\n${lineIndent}\``
 	})
 }

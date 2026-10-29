@@ -1,4 +1,5 @@
 import { toRawRecord } from '@/helpers'
+import { assertXmlCharacters } from '@/helpers/assert-xml-characters'
 import { invariant } from '@/utils'
 
 import type { Context } from '@/document'
@@ -42,6 +43,7 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 			detail: 'Record is required for created',
 			key: 'ELEMENT_NOT_FOUND',
 		})
+		assertXmlCharacters({ record: rawRecord })
 		const operation: Operation<GenericConfig> = {
 			status,
 			oldRecord: undefined,
@@ -54,6 +56,7 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 			detail: 'Old record and new record are required for updated',
 			key: 'ELEMENT_NOT_FOUND',
 		})
+		assertXmlCharacters({ record: rawNewRecord })
 		const operation: Operation<GenericConfig> = {
 			status,
 			oldRecord: rawOldRecord,

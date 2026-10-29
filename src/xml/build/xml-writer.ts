@@ -13,6 +13,9 @@ import {
 	XML_NAMESPACE_URI,
 } from './xml-writer.constants'
 
+import { assertXmlCharacters } from '@/helpers/assert-xml-characters'
+import { trimXmlWhitespace } from '@/utils/xml-whitespace'
+
 import type { RecordElementContext } from './record-element.types'
 import type { GeneratedPrefixes, NamespaceScope, XmlElement } from './xml-element.types'
 import type { OpenElement, XmlWriterParams } from './xml-writer.types'
@@ -56,9 +59,12 @@ export class XmlWriter {
 	/** Open the element of the next record in document order (the first is the written root). */
 	openElement(params: { record: AnyRawRecord }): void {
 		const { record } = params
+		// a character XML does not allow could be written neither as is nor as a reference: refused, no file
+		assertXmlCharacters({ record, withId: this.context.withDatabaseIds })
 		const parent = this.openElements.at(-1)
 		const element = createRecordElement({ context: this.context, record, parent: parent?.element })
-		const text = record.value ? record.value.trim() : ''
+		// trimmed of XML whitespace only: a no-break space or a byte order mark is text
+		const text = record.value ? trimXmlWhitespace({ text: record.value }) : ''
 		const hasChildren = record.children.length > 0
 		const level = parent ? parent.level + 1 : 0
 		const insideInline = parent ? parent.inline || parent.insideInline : false
