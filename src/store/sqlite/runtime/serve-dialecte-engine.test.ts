@@ -2,14 +2,16 @@ import { CONTRACT_ENGINE_URL } from '../../contract/store-contract.constants'
 import { contractFile, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
 import { EngineStore } from '../../engine/engine-store'
-import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
 import { POOL_CAPACITY } from './runtime.constants'
 import {
 	TEST_ENGINE_URL,
 	clientOf,
+	engineLockQueue,
 	fixtureUrl,
+	holdEngineLock,
 	holdPoolFile,
 	openMessage,
+	poolFileDigests,
 	poolState,
 	removePoolDirectory,
 	startEngineWorker,
@@ -17,6 +19,9 @@ import {
 } from './runtime.fixtures'
 import {
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	INSTALL_REFUSAL,
+	LOCK_QUEUE_TIMEOUT_MS,
+	LOCK_RACE_BUDGET_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 } from './runtime.fixtures.constants'
 
@@ -25,7 +30,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { toDialecteError } from '@/errors'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 
-import type { RuntimeFixtureNotice, RuntimeFixtureOrder } from './runtime.fixtures.types'
+import type {
+	RuntimeFixtureNotice,
+	RuntimeFixtureOrder,
+	RuntimeFixtureScenario,
+} from './runtime.fixtures.types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
@@ -79,23 +88,9 @@ describe('an engine worker opening its project', () => {
 	})
 
 	describe('the project’s engine lock held elsewhere', () => {
-		/** The project's engine lock held by the page until the returned release. */
-		async function holdLock(params: { project: string }): Promise<() => void> {
-			let release: () => void = () => {}
-			await new Promise<void>((granted) => {
-				void navigator.locks.request(`${ENGINE_LOCK_PREFIX}${params.project}`, async () => {
-					granted()
-					await new Promise<void>((done) => {
-						release = done
-					})
-				})
-			})
-			return release
-		}
-
 		it('taken only if free → PROJECT_OPEN_ELSEWHERE without waiting, nothing created', async () => {
 			const project = uniqueProject()
-			const release = await holdLock({ project })
+			const release = await holdEngineLock({ project })
 			cleanups.push(release)
 			const { control } = engineWorker({ project })
 			const budgetMs = 10_000
@@ -115,7 +110,7 @@ describe('an engine worker opening its project', () => {
 
 		it('waited for within 300 ms → PROJECT_ENGINE_BUSY once they have passed', async () => {
 			const project = uniqueProject()
-			const release = await holdLock({ project })
+			const release = await holdEngineLock({ project })
 			cleanups.push(release)
 			const { control } = engineWorker({ project })
 			const startedAt = performance.now()
@@ -284,38 +279,84 @@ describe('an engine worker opening its project', () => {
 		})
 	})
 
-	it('a pool that fails to get ready (its files cannot be opened, none held elsewhere) → refused, the pool kept: a later engine finds its document', async () => {
-		const project = uniqueProject()
-		await closedPoolWithDocument({ project })
-		const broken = engineWorker({ project, url: fixtureUrl({ scenario: 'install-fails' }) })
-		const refused = await broken.control
-			.request({ message: openMessage({ project }), expect: 'opened' })
-			.then(
-				() => 'opened',
-				() => 'refused',
-			)
-		expect(refused).toBe('refused')
-		broken.end()
-		const { control } = engineWorker({ project })
-		await control.request({ message: openMessage({ project }), expect: 'opened' })
-		const engine = await clientOf({ control, clientId: 'reader' })
-		expect(await engine.getDocuments()).toEqual([makeDocument()])
+	describe('a pool that fails to get ready (its files cannot be opened, none held elsewhere)', () => {
+		/** The install-failure fixtures: every file refused, or one file refused while the others are acquired. */
+		const failures = {
+			'every file refused': { scenario: 'install-fails' },
+			'one file refused, the others acquired': { scenario: 'install-fails-on-one' },
+		} satisfies Record<string, { scenario: RuntimeFixtureScenario }>
+
+		it.each(Object.entries(failures))(
+			'%s → refused, the pool kept byte for byte: a later engine finds its document',
+			async (_label, { scenario }) => {
+				const project = uniqueProject()
+				await closedPoolWithDocument({ project })
+				const written = await poolFileDigests({ project })
+				expect(Object.keys(written)).toHaveLength(POOL_CAPACITY)
+				const broken = engineWorker({ project, url: fixtureUrl({ scenario }) })
+				expect(
+					await rejectionKey({
+						action: broken.control.request({ message: openMessage({ project }), expect: 'opened' }),
+					}),
+				).toBe(INSTALL_REFUSAL.text)
+				expect(await poolFileDigests({ project })).toEqual(written)
+				broken.end()
+				const { control } = engineWorker({ project })
+				await control.request({ message: openMessage({ project }), expect: 'opened' })
+				const engine = await clientOf({ control, clientId: 'reader' })
+				expect(await engine.getDocuments()).toEqual([makeDocument()])
+			},
+		)
+
+		it.each(Object.entries(failures))(
+			'%s, while another engine waits for its lock → that engine opens as the lock is let go and finds the document',
+			async (_label, { scenario }) => {
+				const project = uniqueProject()
+				await closedPoolWithDocument({ project })
+				// the page holds the lock until both engines wait for it, the failing one first: locks are granted in order
+				const release = await holdEngineLock({ project })
+				cleanups.push(release)
+				const waiting = openMessage({ project, lock: 'wait', budgetMs: LOCK_RACE_BUDGET_MS })
+				const broken = engineWorker({ project, url: fixtureUrl({ scenario }) })
+				const refused = rejectionKey({
+					action: broken.control.request({ message: waiting, expect: 'opened' }),
+				})
+				await expect
+					.poll(() => engineLockQueue({ project }), { timeout: LOCK_QUEUE_TIMEOUT_MS })
+					.toEqual({ held: 1, pending: 1 })
+				const reader = engineWorker({ project })
+				// settled either way, so a red case never leaves its rejection unhandled; a refusal says its key
+				const opened = reader.control.request({ message: waiting, expect: 'opened' }).then(
+					() => 'opened',
+					(thrown: unknown) => toDialecteError(thrown)?.key ?? String(thrown),
+				)
+				await expect
+					.poll(() => engineLockQueue({ project }), { timeout: LOCK_QUEUE_TIMEOUT_MS })
+					.toEqual({ held: 1, pending: 2 })
+				release()
+				expect(await refused).toBe(INSTALL_REFUSAL.text)
+				expect(await opened).toBe('opened')
+				const engine = await clientOf({ control: reader.control, clientId: 'reader' })
+				expect(await engine.getDocuments()).toEqual([makeDocument()])
+			},
+		)
 	})
 
 	it('a pool that failed to get ready, opened again in the same worker → installed this time, its document there', async () => {
 		const project = uniqueProject()
 		await closedPoolWithDocument({ project })
+		const written = await poolFileDigests({ project })
+		expect(Object.keys(written)).toHaveLength(POOL_CAPACITY)
 		const { control } = engineWorker({
 			project,
 			url: fixtureUrl({ scenario: 'install-fails-once' }),
 		})
-		const first = await control
-			.request({ message: openMessage({ project }), expect: 'opened' })
-			.then(
-				() => 'opened',
-				() => 'refused',
-			)
-		expect(first).toBe('refused')
+		expect(
+			await rejectionKey({
+				action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+			}),
+		).toBe(INSTALL_REFUSAL.text)
+		expect(await poolFileDigests({ project })).toEqual(written)
 		await control.request({ message: openMessage({ project }), expect: 'opened' })
 		const engine = await clientOf({ control, clientId: 'reader' })
 		expect(await engine.getDocuments()).toEqual([makeDocument()])
