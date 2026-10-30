@@ -10,7 +10,7 @@ import {
 	XMLNS_DEV_NAMESPACE,
 	XMLNS_EXT_NAMESPACE,
 } from '@/test'
-import { parseXml } from '@/test/xml-dom'
+import { selectFirstNode, withXmlDocument } from '@/test/xml'
 import { admittedXsiTypes, resolveXsiType } from '@/utils'
 
 import type {
@@ -21,6 +21,7 @@ import type {
 	TestCases,
 	TestDialecteConfig,
 } from '@/test'
+import type { XmlElement } from '@/test/xml'
 import type {
 	AttributesValueObjectOf,
 	ElementsOf,
@@ -187,13 +188,26 @@ describe('xsi:type - one stored form', () => {
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
 			const { file } = await project.export({ documentId: source.documentId, indent: false })
 			const xml = await file.text()
-			const parsed = parseXml({ xml })
-			if ('error' in parsed) throw new Error(`the export is not well-formed: ${parsed.error}`)
-			const shape = parsed.document.getElementsByTagNameNS(DEFAULT_URI, 'DD_1')[0]
-			const value = shape.getAttributeNS(XSI_NAMESPACE.uri, 'type') ?? ''
+			const { value, boundNamespace } = withXmlDocument(
+				{ xml, label: 'the export' },
+				function readShape(document) {
+					const shape = selectFirstNode({
+						context: document,
+						expression: '//default:DD_1',
+						namespaces: { default: DEFAULT_URI },
+					}) as XmlElement
+					const typeAttribute = selectFirstNode({
+						context: shape,
+						expression: '@xsi:type',
+						namespaces: { xsi: XSI_NAMESPACE.uri },
+					})
+					const typeValue = typeAttribute?.content ?? ''
+					const prefix = typeValue.includes(':') ? typeValue.slice(0, typeValue.indexOf(':')) : ''
+					return { value: typeValue, boundNamespace: shape.namespaceForPrefix(prefix) }
+				},
+			)
 			if (testCase.expectedValue !== undefined) expect(value).toBe(testCase.expectedValue)
-			const prefix = value.includes(':') ? value.slice(0, value.indexOf(':')) : null
-			expect(shape.lookupNamespaceURI(prefix)).toBe(testCase.expectedNamespace)
+			expect(boundNamespace).toBe(testCase.expectedNamespace)
 		}
 
 		runTestCases.withoutExport<TestCase>({ testCases, act })

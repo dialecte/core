@@ -23,6 +23,7 @@
 	"include": ["src/**/*"],
 	"exclude": [
 		"**/*.test.ts",
+		"**/*.script.ts",
 		"**/*.fixtures.ts",
 		"**/*.fixtures.*.ts",
 		"**/__tests__/**",

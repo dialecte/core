@@ -6,3 +6,6 @@ export const ALWAYS_ALLOWED_NAMESPACE_URIS: readonly string[] = [
 	XSI_NAMESPACE.uri,
 	DIALECTE_DEV_NAMESPACE.uri,
 ]
+
+/** The local name of `xsi:type`, in the XSI namespace. */
+export const XSI_TYPE_ATTRIBUTE_NAME = 'type'

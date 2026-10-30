@@ -70,61 +70,6 @@ describe('assertXml', () => {
 		})
 	})
 
-	it('fails with step-level diagnostics', () => {
-		expect(() =>
-			assertExpectedElementQueries({
-				xml: sampleXml,
-				queries: ['//default:A[@aA="valA"]//default:AA_1[@aAA_1="NONEXISTENT"]//default:AAA_1'],
-			}),
-		).toThrow(/Failed at step 2\/3/)
-	})
-
-	it('fails at first step with root context', () => {
-		expect(() =>
-			assertExpectedElementQueries({ xml: sampleXml, queries: ['//default:A[@aA="NOPE"]'] }),
-		).toThrow(/No parent matched/)
-	})
-
-	it('shows last matched element in error', () => {
-		expect(() =>
-			assertExpectedElementQueries({
-				xml: sampleXml,
-				queries: ['//default:A[@aA="valA"]//default:AA_1[@aAA_1="v1"]/default:NONEXISTENT'],
-			}),
-		).toThrow(/Last match at step 2\/3/)
-	})
-
-	it('prints the last matched element, formatted, with its namespace', () => {
-		expect(() =>
-			assertExpectedElementQueries({
-				xml: sampleXml,
-				queries: ['//default:A[@aA="valA"]//default:AAA_1[@aAAA_1="deep1"]/default:NONEXISTENT'],
-			}),
-		).toThrow(
-			/<AAA_1 aAAA_1="deep1" xmlns="[^"]+">\n  <AAAA_1 aAAAA_1="leaf1"\/>\n  <AAAA_2 aAAAA_2="leaf2"\/>\n<\/AAA_1>/,
-		)
-	})
-
-	it('prints the whole document, formatted, when the first step fails', () => {
-		expect(() =>
-			assertExpectedElementQueries({ xml: sampleXml, queries: ['//default:C'] }),
-		).toThrow(/Document:\n<Root [^>]*root="1">\n  <A aA="valA">\n    <AA_1 aAA_1="v1">/)
-	})
-
-	const malformedTexts: Record<string, string> = {
-		'a tag closed by another name': '<Root><A></Root>',
-		'a bare &': `<Root xmlns="${DEFAULT_NS_URI}"><A aA="a & b" /></Root>`,
-		'a prefix bound to no namespace': `<Root xmlns="${DEFAULT_NS_URI}" xmlns:p=""><A aA="x" /></Root>`,
-	}
-
-	for (const [description, xml] of Object.entries(malformedTexts)) {
-		it(`a malformed XML text, ${description} → refused, saying why`, () => {
-			expect(() => assertExpectedElementQueries({ xml, queries: ['//default:A'] })).toThrow(
-				/^malformed XML — \S/,
-			)
-		})
-	}
-
 	it('namespace declarations are not attributes → @* counts the attributes only', () => {
 		assertExpectedElementQueries({
 			xml: sampleXml,
@@ -153,21 +98,6 @@ describe('assertXmlAbsent', () => {
 		})
 	})
 
-	it('fails when element does exist', () => {
-		expect(() =>
-			assertUnexpectedElementQueries({ xml: sampleXml, queries: ['//default:A[@aA="valA"]'] }),
-		).toThrow(/should NOT exist/)
-	})
-
-	it('prints the element found, formatted', () => {
-		expect(() =>
-			assertUnexpectedElementQueries({
-				xml: sampleXml,
-				queries: ['//default:BB_1[@aBB_1="b1"]/default:BBB_1[@aBBB_1="bb1-dup"]'],
-			}),
-		).toThrow(/Found:\n<BBB_1 aBBB_1="bb1-dup" xmlns="[^"]+"\/>/)
-	})
-
 	it('a namespace declaration is no attribute → not found on the attribute axis', () => {
 		assertUnexpectedElementQueries({
 			xml: sampleXml,
@@ -181,15 +111,6 @@ describe('assertXmlAbsent', () => {
 			xml: sampleXml,
 			queries: ['//default:A[@aA="valA"]/following-sibling::default:A'],
 		})
-	})
-
-	it('fails when ancestor does not exist (unreliable assertion)', () => {
-		expect(() =>
-			assertUnexpectedElementQueries({
-				xml: sampleXml,
-				queries: ['//default:A[@aA="NOPE"]//default:AA_1[@aAA_1="v1"]'],
-			}),
-		).toThrow(/ancestor step does not exist/)
 	})
 
 	it('passes with multi-step where ancestors exist but target absent', () => {

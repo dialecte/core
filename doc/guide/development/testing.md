@@ -270,45 +270,53 @@ Attributes don't need a prefix unless they are in a specific namespace (e.g. `de
 
 ## createXmlAssertions
 
-Factory that returns a pair of XPath assertion helpers pre-bound to a namespace resolver. Used directly when tests need manual control over export and assertion (outside `runTestCases`).
+Factory that returns a pair of XPath assertion helpers pre-bound to the dialecte's namespaces: the XPath prefixes are the config's namespace keys (`default`, `ext`, ...). Used directly when tests need manual control over export and assertion (outside `runTestCases`).
 
-The assertions read XML the same way in node and in a browser: they parse with a pure-JS XML DOM (`@xmldom/xmldom`) and evaluate XPath with the `xpath` package, never with the page's `DOMParser` or `document.evaluate`. They take the XML as text (`xml`, what `project.export` writes) or a document already parsed (`xmlDocument`, a page's DOM from `project.export({ xmlDocument: true })` included).
+The assertions read XML the same way in node and in a browser: they parse and query with libxml2 (compiled to WebAssembly, bundled into `@dialecte/core/test`), never with the page's `DOMParser` or `document.evaluate`. They take XML **text** only - what `project.export` writes (`await file.text()`); a caller holding a page `Document` serializes it first. Each call parses its text once, for all its queries; `runTestCases` parses a case's output once for its expected and unexpected queries.
 
 ### Signature
 
 ```ts
-// a document of the test entry's pure-JS XML DOM (@xmldom/xmldom), or a page's DOM
-type XmlQueryTarget = { xml: string } | { xmlDocument: XmlDomDocument | Document }
-
 function createXmlAssertions(params: { namespaces: Record<string, Namespace> }): {
-	assertExpectedElementQueries(params: XmlQueryTarget & { queries: string[] }): void
-	assertUnexpectedElementQueries(params: XmlQueryTarget & { queries: string[] }): void
+	assertExpectedElementQueries(params: { xml: string; queries: string[] }): void
+	assertUnexpectedElementQueries(params: { xml: string; queries: string[] }): void
 }
 ```
 
-XML text that is not well-formed is refused with `malformed XML — <the parser's reason>`. Where the parse differs from a browser's:
+XML text that is not well-formed is refused with `queried XML: malformed XML - <line>:<column> <libxml2's reason>`. As in XPath 1.0: namespace declarations are not attributes (`@*` and `count(@*)` leave them out), the XML declaration and the whitespace around the root are no nodes of the document, and a query naming a prefix the namespaces do not bind is refused, whatever the document.
 
-- an entity declared in the internal DTD subset (`<!DOCTYPE a [<!ENTITY x "y">]>`, then `&x;`) is refused; a browser accepts it;
-- a byte order mark at the start of the string is refused; `file.text()` strips it, so an export read as text has none;
-- `]]>` in a text value is not caught; core's XML writer escapes `>`, so an export never holds it.
+### XPath for small exact output, record expectations for big files
+
+A query pins one fact of a small, exact output: an element, its attributes, its place. On a big export (a whole substation, megabytes) a long list of XPath queries is hard to read and slow to fail: assert on the records instead - `query.findDescendants(parent, { collect: [{ AA_1: { where: { aAA_1: 'v1' } } }] })` for the records of a tag holding the attributes they must have, under a `parent` read with `query.getRecord(ref)` - and keep XPath for the few places where the written XML itself is the point.
 
 ### assertExpectedElementQueries
 
-Each query must match at least one element. On failure, the error shows **exactly which step of the XPath failed** and the XML context at the last successful match:
+Each query must select at least one node. On failure the message says, in labelled lines, which step of the XPath matched last, which step failed, where the last match sits, what the failing step finds there without its predicates, and the XML around it (cut at 200 lines):
 
 ```
-Element not found in XML.
-  Failed at step 2/3: /default:AA_1/default:AAA_1[@aAAA_1="val"]
-  Full XPath: //default:A[@aA="parent"]/default:AA_1/default:AAA_1[@aAAA_1="val"]
-  [Last match at step 1/3]:
-  <A aA="parent" ...>...</A>
+Expected element not found
+  query    //default:A[@aA="a1"]/default:AA_1[@aAA_1="zz"]
+  matched  //default:A[@aA="a1"]  step 1 of 2
+  failed                        /default:AA_1[@aAA_1="zz"]
+  at       /Root[1]/A[1]  line 2
+  nearby   AA_1 aAA_1="v1" (line 3), AA_1 aAA_1="v2" (line 4)
+  context
+    <A aA="a1">
+      <AA_1 aAA_1="v1"/>
+      <AA_1 aAA_1="v2" other="o"/>
+    </A>
 ```
+
+- `nearby` evaluates the failing step without its predicates under every node the matched steps select: up to ten candidates with the attributes the predicates name, or `none: A has no AA_1 child` when the name itself is absent - then the same local name in another namespace is named with the prefix to type (`ext:AA_3 exists (ext = <uri>)`).
+- libxml2 keeps a node's line up to 65535; past it the message says `line ≥ 65535`.
+- A query with a top-level `|` (a union) is reported as a whole: its branches have no common steps.
+- A query the engine refuses (a syntax error, a prefix the namespaces do not bind, an expression that answers a number, a string or a boolean) fails as `Query refused`, with the query and the reason.
 
 This makes it cheap to write chained paths like `//default:A/default:AA_1/default:AAA_1[...]` - if the `AAA_1` is missing you see immediately whether `A` or `AA_1` was the problem.
 
 ### assertUnexpectedElementQueries
 
-Each query must match **zero** elements. Uses the same progressive evaluation: all steps except the last must exist (guards against false positives from a broken test setup), then asserts the final step is absent.
+Each query must select **no** node. Every step but the last must still select one (guards against a pass for the wrong reason: a broken test setup), then the whole query must select nothing. A node found is printed with its place (`Unexpected element found`, `at`, `element`); a missing ancestor fails as `Unexpected element check unreliable`, with the same lines as an expected query.
 
 ```ts
 // All ancestors must exist, only the final target must be absent
@@ -380,7 +388,7 @@ Attributes are checked in every namespace, against the declaration that applies 
 - an attribute of a namespace the dialecte does not declare is reported too, unless the element's attribute wildcard admits its namespace (`##any`, `##other`, a namespace list); an unprefixed attribute the element does not declare passes only where the wildcard admits no namespace;
 - namespace declarations (`xmlns`, `xmlns:*`), `xsi:*` and the test record id (`dev:db-id`) are always allowed.
 
-XML that is not well-formed (a bare `&`, a tag closed by another name, a prefix bound to no namespace) is refused as `<label>: malformed XML — <the parser's reason>`; `label` defaults to `'test XML'`.
+The check walks the document libxml2 parses. XML that is not well-formed (a bare `&`, a tag closed by another name, a prefix bound to the empty namespace) is refused as `<label>: malformed XML - <line>:<column> <libxml2's reason>`; an XML declaration after leading whitespace (a template-literal snippet starting with a newline) is refused as `<label>: malformed XML - the XML declaration must be the very first characters ...`; `label` defaults to `'test XML'`.
 
 `requireComplete` (default `true`) also requires every schema-required attribute; a required attribute of a dialecte namespace is found under any prefix the document binds to it. Minimal fixtures pass `false`.
 
@@ -750,8 +758,10 @@ The browser projects set no default: their tests run on the local store. A test 
 | `node-indexeddb` | the store contract and the project's store switch                                                                                                                | in-memory and IndexedDB through `fake-indexeddb` | with `node`                                                               |
 | `browser`        | the browser-only files: the store contract on IndexedDB and SQLite over OPFS, the engine workers, the save dialog, `xmlDocument: true`, IndexedDB-specific cases | local                                            | once per lot (`npm run test:browser`; `npm run test` runs node then this) |
 | `browser-all`    | the whole suite in Chromium                                                                                                                                      | local                                            | before a branch merges (`npm run test:browser:all`, CI)                   |
+| `perf`           | the benches in Chromium (`*.bench.test.ts`), one file at a time                                                                                                  | local                                            | on demand (`npm run test:perf`)                                           |
+| `perf-node`      | the benches that measure in node: the XML assertions on a generated 5 MB file (parse + one query under 200 ms)                                                   | -                                                | on demand (`npm run test:perf:node`)                                      |
 
-The browser-only files are listed in `vitest.config.constants.ts`, each with what it needs that node lacks; a listed file that no longer exists fails the config. A test that passes in one tier and fails in the other is a bug of a store or of an assertion, never a reason to move it to the browser list.
+The browser-only files, the node-only ones and the node benches are listed in `vitest.config.constants.ts`, each with what it needs; a listed file that no longer exists fails the config. A test that passes in one tier and fails in the other is a bug of a store or of an assertion, never a reason to move it to the browser list.
 
 ### Teardown
 
@@ -761,7 +771,7 @@ The browser-only files are listed in `vitest.config.constants.ts`, each with wha
 
 ### In node
 
-The in-memory store runs anywhere; the local store needs IndexedDB, given to node by `fake-indexeddb` (`import 'fake-indexeddb/auto'` in a setup file). Export writes text and the XML assertions parse it with a pure-JS DOM, so a runner's cases run in node as they do in a browser; only `project.export({ xmlDocument: true })` answers a page's DOM and needs a browser.
+The in-memory store runs anywhere; the local store needs IndexedDB, given to node by `fake-indexeddb` (`import 'fake-indexeddb/auto'` in a setup file). Export writes text and the XML assertions parse it with libxml2 (WebAssembly, the same engine in node and in a browser), so a runner's cases run in node as they do in a browser; only `project.export({ xmlDocument: true })` answers a page's DOM and needs a browser.
 
 ### In-memory projects
 

@@ -37,9 +37,11 @@ export default defineConfig({
 		},
 		rollupOptions: {
 			// sqlite-wasm resolved by whoever loads core's main side (node finds its own wasm); the engine
-			// build (vite.engine.config.ts) bundles it. The test entry's XML DOM and XPath engine are
-			// dependencies the installer resolves.
-			external: ['vitest', /^@sqlite\.org\/sqlite-wasm/, 'comlink', '@xmldom/xmldom', 'xpath'],
+			// build (vite.engine.config.ts) bundles it. libxml2-wasm, the test entry's XML engine, is bundled into
+			// the test entry: it binds the console while its module loads, and must bind the forwarders the XML
+			// seam puts on it first, an order an external import, hoisted above the bundled code, would not keep.
+			// It stays a dependency all the same: the emitted type declarations import its types.
+			external: ['vitest', /^@sqlite\.org\/sqlite-wasm/, 'comlink'],
 			output: {
 				entryFileNames: '[name].js',
 			},

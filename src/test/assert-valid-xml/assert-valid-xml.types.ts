@@ -1,4 +1,4 @@
-import type { XmlDomElement } from '../xml-dom'
+import type { XmlElement } from '../xml'
 import type { AnyDefinition, AnyDialecteConfig, AnyTypes, ResolvedDefinition } from '@/types'
 
 /** One XML string to validate, how it is named in the messages and how strict the validation is. */
@@ -26,14 +26,14 @@ export type CreateXmlSchemaAssertionsParams = {
 }
 
 export type CollectElementViolationsParams = {
-	element: XmlDomElement
+	element: XmlElement
 	/** The parent element's definition as it applies there; `undefined` at the root or under a foreign element. */
 	parent: { localName: string; definition: ResolvedDefinition | undefined } | undefined
 	requireComplete: boolean
 }
 
 export type CollectAttributeViolationsParams = {
-	element: XmlDomElement
+	element: XmlElement
 	elementDefinition: ResolvedDefinition
 	requireComplete: boolean
 }

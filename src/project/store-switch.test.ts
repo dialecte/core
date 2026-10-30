@@ -3,7 +3,7 @@ import { Project } from './project'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
-import { parseXml } from '@/test/xml-dom'
+import { selectFirstNode, withXmlDocument } from '@/test/xml'
 
 import type { StorageParam } from './types'
 import type { BaseTestCase } from '@/test'
@@ -79,11 +79,14 @@ const CASES: Record<
 
 			const { file } = await project.export({ documentId, indent: false })
 			const xml = await file.text()
-			const parsed = parseXml({ xml })
-			if ('error' in parsed) throw new Error(`the export is not well-formed: ${parsed.error}`)
-
-			const [leaf] = Array.from(parsed.document.getElementsByTagName('CCCC_1'))
-			expect(leaf?.textContent).toBe(HOOK_TEXT)
+			const leafText = withXmlDocument({ xml, label: 'the export' }, function readLeaf(document) {
+				return selectFirstNode({
+					context: document,
+					expression: '//*[local-name() = "CCCC_1"]',
+					namespaces: {},
+				})?.content
+			})
+			expect(leafText).toBe(HOOK_TEXT)
 		},
 	},
 	'a project closed, then a new project opened under its name → the document is there, its records read':

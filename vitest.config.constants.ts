@@ -65,16 +65,12 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	{ path: 'src/project/io/export-blob.test.ts', why: 'the save dialog and the download link' },
 	{ path: 'src/utils/save-to-disk.test.ts', why: 'the save dialog and the download link' },
 	{
+		path: 'src/test/xml/xml-parity.page.test.ts',
+		why: "the test entry's XML seam compared with the page's DOMParser and document.evaluate",
+	},
+	{
 		path: 'src/xml/dom/xml-document-from-file.test.ts',
 		why: "parses a file with the page's DOMParser",
-	},
-	{
-		path: 'src/test/xml-dom/xpath-parity.page.test.ts',
-		why: "the test entry's XPath compared with the page's DOMParser and document.evaluate",
-	},
-	{
-		path: 'src/test/assert-xml/assert-xml.page-document.test.ts',
-		why: "the XML assertions on a page's own DOM document, as `xmlDocument: true` answers it",
 	},
 ]
 
@@ -87,6 +83,22 @@ export const NODE_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	{
 		path: 'src/test/test-entry-environment.test.ts',
 		why: 'reads the sources of the test entry from disk',
+	},
+	{
+		path: 'src/test/dependencies.test.ts',
+		why: 'reads package.json and the sources from disk: no retired XML module',
+	},
+	{
+		path: 'src/test/assert-valid-xml/assert-valid-xml-imports.test.ts',
+		why: 'reads the sources of the shape check from disk',
+	},
+	{
+		path: 'src/test/xml/engine-import.test.ts',
+		why: 'reads the sources from disk: only the XML seam imports the engine',
+	},
+	{
+		path: 'src/test/xml/refusal-output.test.ts',
+		why: 'starts node to read what a refused XPath expression writes',
 	},
 ]
 
@@ -111,6 +123,14 @@ export const NODE_STORE_CONTRACT_TEST_FILES: readonly string[] = [
 export const UNIT_TEST_PATTERN = 'src/**/*.test.{js,ts,jsx,tsx}'
 
 export const BENCH_TEST_PATTERN = 'src/**/*.bench.test.{js,ts}'
+
+/** The benches that measure in node, not in a browser: the `perf-node` project runs them, `perf` leaves them out. */
+export const NODE_BENCH_TEST_FILES: readonly TierOnlyTestFile[] = [
+	{
+		path: 'src/test/xml/xml-assert.bench.test.ts',
+		why: 'the XML assertions on a generated 5 MB file, in node: the budget of a node test run',
+	},
+]
 
 /**
  * The run order of the browser projects after the node ones (group 0): each its own group, so a run naming

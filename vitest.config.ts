@@ -7,6 +7,7 @@ import {
 	BENCH_TEST_PATTERN,
 	BROWSER_GROUP_ORDER,
 	BROWSER_ONLY_TEST_FILES,
+	NODE_BENCH_TEST_FILES,
 	NODE_ONLY_TEST_FILES,
 	NODE_STORE_CONTRACT_TEST_FILES,
 	UNIT_TEST_PATTERN,
@@ -101,6 +102,7 @@ function browserTestInstances(): BrowserConfigOptions['instances'] {
 
 const browserOnlyPaths = pathsOf({ project: 'browser', files: BROWSER_ONLY_TEST_FILES })
 const nodeOnlyPaths = pathsOf({ project: 'node', files: NODE_ONLY_TEST_FILES })
+const nodeBenchPaths = pathsOf({ project: 'perf-node', files: NODE_BENCH_TEST_FILES })
 const nodeStoreContractPaths = assertEachIncludeMatches({
 	project: 'node-indexeddb',
 	include: NODE_STORE_CONTRACT_TEST_FILES,
@@ -214,7 +216,21 @@ export default mergeConfig(
 						// one headless tab per bench file: one at a time on a shared machine
 						fileParallelism: false,
 						browser: { ...createBrowser(benchInstances()), commands: benchCommands() },
-						include: ['src/**/*.bench.test.{js,ts}'],
+						include: [BENCH_TEST_PATTERN],
+						exclude: [...configDefaults.exclude, ...nodeBenchPaths],
+						root,
+					},
+				},
+				{
+					// the benches that measure in node (`npm run test:perf:node`), one file at a time
+					resolve: viteConfig.resolve,
+					plugins: [],
+					test: {
+						name: 'perf-node',
+						environment: 'node',
+						testTimeout: 180_000,
+						fileParallelism: false,
+						include: nodeBenchPaths,
 						root,
 					},
 				},

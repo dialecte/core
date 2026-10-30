@@ -53,6 +53,7 @@
 		"test:browser": "vitest run --project browser",
 		"test:browser:all": "vitest run --project browser-all",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
+		"test:perf:node": "VITE_BENCH=1 vitest run --project perf-node --mode bench --reporter=verbose",
 		"//====== CHECK ======//": "",
 		"check": "run-p type-check type-check:test type-check:node lint:check format:check",
 		"type-check": "tsc -p tsconfig.build.json --noEmit --skipLibCheck",
@@ -73,11 +74,10 @@
 	"dependencies": {
 		"@sqlite.org/sqlite-wasm": "3.54.1-build1",
 		"@types/sax": "1.2.7",
-		"@xmldom/xmldom": "0.9.12",
 		"comlink": "4.4.2",
 		"dexie": "4.4.6",
-		"sax": "^1.4.3",
-		"xpath": "0.0.35"
+		"libxml2-wasm": "0.7.2",
+		"sax": "^1.4.3"
 	},
 	"devDependencies": {
 		"@dialecte/cli": "0.0.3",

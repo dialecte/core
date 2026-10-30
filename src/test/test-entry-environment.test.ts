@@ -40,8 +40,8 @@ describe('the test entry reads XML the same way in every environment', () => {
 		expect(found).toEqual(BROWSER_ONLY_XML_APIS.map((api) => [api.name]))
 	})
 
-	it('the pure-JS XML DOM, read through its namespace import, is not a browser global', () => {
-		const source = 'new xmlDom.DOMParser().parseFromString(xml, type); new xmlDom.XMLSerializer()'
+	it('a DOM library, read through its namespace import, is not a browser global', () => {
+		const source = 'new lib.DOMParser().parseFromString(xml, type); new lib.XMLSerializer()'
 		expect(findBrowserOnlyXmlApis({ source })).toEqual([])
 	})
 })

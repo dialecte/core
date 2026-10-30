@@ -288,6 +288,25 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			expect(() => assertValidTyped({ xml, label: 'snippet' })).not.toThrow()
 		})
 
+		it('resolves the prefix of the type to the nearest binding, two levels up and rebound below', () => {
+			const deeper = /* xml */ `
+				<Outer xmlns:t="urn:t" ${XSI}>
+					<Plain xmlns:t="urn:other" xsi:type="t:tWide" wide="1" />
+				</Outer>
+			`
+			expect(
+				captureErrorMessage(() => assertValidTyped({ xml: deeper, label: 'snippet' })),
+			).toContain("[attribute] <Plain> has unknown attribute 'wide'")
+			const inherited = /* xml */ `
+				<Outer xmlns:t="urn:t" ${XSI}>
+					<Plain xsi:type="t:tWide" wide="1" />
+				</Outer>
+			`
+			expect(
+				captureErrorMessage(() => assertValidTyped({ xml: inherited, label: 'snippet' })),
+			).toBe('')
+		})
+
 		it('requires what the type requires', () => {
 			const xml = /* xml */ `
 				<Outer xmlns:t="urn:t" ${XSI}>
@@ -328,6 +347,21 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			expect(
 				violationsOf(/* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} xmlns:x="${EXT}" x:cA="v" />`),
 			).toBe('')
+		})
+
+		it('keeps an attribute of the dialecte namespace apart from a bare one of the same local name', () => {
+			const message = violationsOf(
+				/* xml */ `<A ${XMLNS_DEFAULT_NAMESPACE} xmlns:x="${EXT}" x:cA="1" cA="2" />`,
+			)
+			expect(message).toContain("[attribute] <A> has unknown attribute 'cA'")
+			expect(message).not.toContain("'ext:cA'")
+		})
+
+		it('requires a required attribute of the dialecte namespace, found under another prefix than its own', () => {
+			const xml = /* xml */ `<x:DD_3 xmlns:x="${EXT}" />`
+			expect(
+				captureErrorMessage(() => assertValidXml({ xml, label: 'snippet', requireComplete: true })),
+			).toContain("[required] <DD_3> is missing required attribute 'ext:aDD_3'")
 		})
 
 		it('rejects one of a dialecte namespace the element does not declare, by its stored name', () => {
@@ -400,6 +434,33 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			expect(message).toContain('[namespace] <AA_3>')
 		})
 
+		it('an element reset to no namespace by xmlns="" under a default-namespace parent', () => {
+			const xml = /* xml */ `
+				<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">
+					<A xmlns="" aA="VALID" />
+				</Root>
+			`
+			const message = captureErrorMessage(() =>
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
+			)
+			expect(message).toContain(
+				`[namespace] <A> under <Root>: is in (no namespace), schema declares ${DIALECTE_TEST_NAMESPACES.default.uri}`,
+			)
+		})
+
+		it('an element in the default namespace under a parent that has none, told apart from no namespace', () => {
+			const xml = /* xml */ `
+				<Root root="1">
+					<A xmlns="${DIALECTE_TEST_NAMESPACES.default.uri}" aA="VALID" />
+				</Root>
+			`
+			const message = captureErrorMessage(() =>
+				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
+			)
+			expect(message).toContain('[namespace] <Root>: is in (no namespace)')
+			expect(message).not.toContain('[namespace] <A>')
+		})
+
 		it('a child the schema does not allow under its parent', () => {
 			const xml = /* xml */ `
 				<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">
@@ -450,14 +511,15 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 			const message = captureErrorMessage(() =>
 				assertValidXml({ xml, label: 'snippet', requireComplete: false }),
 			)
-			expect(message).toContain('snippet: malformed XML')
-			expect(message).toContain('must be the very first characters')
+			expect(message).toContain(
+				'snippet: malformed XML - the XML declaration must be the very first characters',
+			)
 		})
 
 		const malformedCases: Record<string, string> = {
 			'a bare & in a text value': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="1">a & b</Root>`,
 			'a bare & in an attribute value': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="a & b" />`,
-			'a prefix bound to no namespace (xmlns:p="")': `<Root ${XMLNS_DEFAULT_NAMESPACE} xmlns:p="" root="1" />`,
+			'a prefix bound to the empty namespace (xmlns:p="")': `<Root ${XMLNS_DEFAULT_NAMESPACE} xmlns:p="" root="1" />`,
 			'a tag closed by another name': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="1"><A aA="x"></Root>`,
 			'an attribute given twice': `<Root ${XMLNS_DEFAULT_NAMESPACE} root="1" root="2" />`,
 		}
@@ -467,7 +529,7 @@ describe('createXmlSchemaAssertions › assertValidXml', () => {
 				const message = captureErrorMessage(() =>
 					assertValidXml({ xml, label: 'snippet', requireComplete: false }),
 				)
-				expect(message).toMatch(/^snippet: malformed XML — \S/)
+				expect(message).toMatch(/^snippet: malformed XML - \d+:\d+ \S/)
 			})
 		}
 	})
@@ -481,6 +543,14 @@ describe('createXmlSchemaAssertions › assertValidXmlTestCases', () => {
 			},
 		}
 		expect(() => assertValidXmlTestCases({ testCases })).not.toThrow()
+	})
+
+	it('a malformed sourceXml → named by its case, in the libxml2 format', () => {
+		const testCases = {
+			'broken case': { sourceXml: `<Root ${XMLNS_DEFAULT_NAMESPACE}><A></Root>` },
+		}
+		const message = captureErrorMessage(() => assertValidXmlTestCases({ testCases }))
+		expect(message).toMatch(/^broken case › sourceXml: malformed XML - \d+:\d+ \S/)
 	})
 
 	it('reports the violations of every invalid case at once, attributed to the case name', () => {

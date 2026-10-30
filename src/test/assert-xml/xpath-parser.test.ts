@@ -88,6 +88,30 @@ describe('splitXpathIntoSteps', () => {
 				'//default:BB_1[@aBB_1="b1"]/following-sibling::d:BB_1[@aBB_1="b2"]',
 			],
 		},
+		'top-level union of two paths': {
+			input: '//A | //B',
+			expected: ['//A | //B'],
+		},
+		'top-level union of multi-step paths': {
+			input: '//A/B | //C/D',
+			expected: ['//A/B | //C/D'],
+		},
+		'top-level union after a step': {
+			input: '//A//B | //C',
+			expected: ['//A//B | //C'],
+		},
+		'union inside a predicate': {
+			input: '//A[B | C]//D',
+			expected: ['//A[B | C]', '//A[B | C]//D'],
+		},
+		'union inside parentheses, followed by a step': {
+			input: '(//A | //B)/C',
+			expected: ['(//A | //B)', '(//A | //B)/C'],
+		},
+		'pipe inside a quoted attribute value': {
+			input: '//A[@x="a|b"]//B',
+			expected: ['//A[@x="a|b"]', '//A[@x="a|b"]//B'],
+		},
 	}
 
 	function act({ input, expected }: TestCase) {

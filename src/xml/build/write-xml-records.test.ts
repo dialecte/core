@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
-import { parseXml } from '@/test/xml-dom'
+import { selectFirstNode, withXmlDocument } from '@/test/xml'
 
 import type { DialecteErrorKey } from '@/errors'
 import type { BaseTestCase } from '@/test'
+import type { XmlElement } from '@/test/xml'
 import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
 const NS = DIALECTE_TEST_NAMESPACES
@@ -1301,14 +1302,33 @@ describe('writeXmlRecords', () => {
 				childRecord({ id: 'n-1', tagName: 'N', namespace: { prefix: 'ns1', uri: 'urn:x' } }),
 			]
 			for (const indent of [true, false]) {
-				const parsed = parseXml({ xml: writeXmlRecords({ records, config: CONFIG, indent }) })
-				if ('error' in parsed) throw new Error(`the file is not well-formed: ${parsed.error}`)
-				const root = parsed.document.documentElement!
-				expect(root.getAttributeNS(NS.ext.uri, 'root')).toBe('2')
-				const elementX = [...root.children].find((child) => child.localName === 'X')!
-				expect(elementX.getAttributeNS(NS.ext.uri, 'cA')).toBe('v')
-				const elementN = [...root.children].find((child) => child.localName === 'N')!
-				expect(elementN.namespaceURI).toBe('urn:x')
+				const read = withXmlDocument(
+					{ xml: writeXmlRecords({ records, config: CONFIG, indent }), label: 'the file' },
+					function readRoot(document) {
+						const namespaces = { ext: NS.ext.uri }
+						const root = document.root
+						const elementX = selectFirstNode({
+							context: root,
+							expression: '*[local-name() = "X"]',
+							namespaces,
+						}) as XmlElement
+						const elementN = selectFirstNode({
+							context: root,
+							expression: '*[local-name() = "N"]',
+							namespaces,
+						}) as XmlElement
+						return {
+							rootAttribute: selectFirstNode({ context: root, expression: '@ext:root', namespaces })
+								?.content,
+							xAttribute: selectFirstNode({ context: elementX, expression: '@ext:cA', namespaces })
+								?.content,
+							nNamespace: elementN.namespaceUri,
+						}
+					},
+				)
+				expect(read.rootAttribute).toBe('2')
+				expect(read.xAttribute).toBe('v')
+				expect(read.nNamespace).toBe('urn:x')
 			}
 		})
 	})

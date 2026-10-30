@@ -1,9 +1,13 @@
-import { localNameOf, parseXml } from '../xml-dom'
-import { ALWAYS_ALLOWED_NAMESPACE_URIS } from './assert-valid-xml.constants'
+import { MalformedXmlError, XmlElement, withXmlDocument } from '../xml'
+import {
+	ALWAYS_ALLOWED_NAMESPACE_URIS,
+	XSI_TYPE_ATTRIBUTE_NAME,
+} from './assert-valid-xml.constants'
 
+import { XSI_NAMESPACE } from '@/helpers/constant'
 import { isNamespaceAllowedByWildcard, resolveDefinition } from '@/utils'
 
-import type { XmlDomAttribute, XmlDomElement } from '../xml-dom'
+import type { XmlAttribute } from '../xml'
 import type {
 	AssertValidXmlParams,
 	AssertValidXmlTestCasesParams,
@@ -45,8 +49,8 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 		(namespace) => namespace.uri,
 	)
 
-	function isForeignNamespaceElement(element: XmlDomElement): boolean {
-		return element.namespaceURI !== null && !knownNamespaceUris.includes(element.namespaceURI)
+	function isForeignNamespaceElement(element: XmlElement): boolean {
+		return element.namespaceUri !== '' && !knownNamespaceUris.includes(element.namespaceUri)
 	}
 
 	/**
@@ -79,25 +83,28 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 	}
 
 	/** The element as a record resolving reads it: its attributes, the xsi:type prefix bound where it is in scope. */
-	function asRecord(params: { element: XmlDomElement; parentLocalName: string | undefined }) {
+	function asRecord(params: { element: XmlElement; parentLocalName: string | undefined }) {
 		const { element, parentLocalName } = params
-		const attributes: AnyAttribute[] = Array.from(element.attributes).map((attribute) => ({
-			name: attribute.name,
+		const attributes: AnyAttribute[] = element.attrs.map((attribute) => ({
+			name: qualifiedNameOf(attribute),
 			value: attribute.value,
-			...(attribute.namespaceURI
-				? { namespace: { prefix: attribute.prefix ?? '', uri: attribute.namespaceURI } }
+			...(attribute.namespaceUri
+				? { namespace: { prefix: attribute.prefix, uri: attribute.namespaceUri } }
 				: {}),
 		}))
-		const xsiType = element.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'type')
+		const xsiType = element.attrs.find(
+			(attribute) =>
+				attribute.namespaceUri === XSI_NAMESPACE.uri && attribute.name === XSI_TYPE_ATTRIBUTE_NAME,
+		)?.value
 		const colon = xsiType?.indexOf(':') ?? -1
-		const prefix = xsiType && colon !== -1 ? xsiType.slice(0, colon) : null
-		const bound = xsiType === null ? null : element.lookupNamespaceURI(prefix)
+		const prefix = xsiType !== undefined && colon !== -1 ? xsiType.slice(0, colon) : ''
+		const bound = xsiType === undefined ? null : element.namespaceForPrefix(prefix)
 		if (bound !== null)
 			attributes.push({ name: prefix ? `xmlns:${prefix}` : 'xmlns', value: bound })
 		return {
-			tagName: localNameOf({ node: element }),
+			tagName: element.name,
 			parent: parentLocalName ? { id: '', tagName: parentLocalName } : null,
-			namespace: { prefix: element.prefix ?? '', uri: element.namespaceURI ?? '' },
+			namespace: { prefix: element.prefix, uri: element.namespaceUri },
 			attributes,
 		}
 	}
@@ -125,48 +132,51 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 	 * Whether the element carries a definition attribute: `prefix:local` is the dialecte's prefix, which a document may
 	 * bind to its namespace under another - the attribute is looked up by namespace and local name.
 	 */
-	function hasSchemaAttribute(params: { element: XmlDomElement; attributeName: string }): boolean {
+	function hasSchemaAttribute(params: { element: XmlElement; attributeName: string }): boolean {
 		const { element, attributeName } = params
 		const colon = attributeName.indexOf(':')
-		if (colon === -1) return element.hasAttribute(attributeName)
+		if (colon === -1) return hasAttribute({ element, namespaceUri: '', localName: attributeName })
 		const prefix = attributeName.slice(0, colon)
 		const namespace = Object.values(namespaces).find((candidate) => candidate.prefix === prefix)
-		return namespace === undefined
-			? element.hasAttribute(attributeName)
-			: element.hasAttributeNS(namespace.uri, attributeName.slice(colon + 1))
+		if (namespace === undefined)
+			return element.attrs.some((attribute) => qualifiedNameOf(attribute) === attributeName)
+		return hasAttribute({
+			element,
+			namespaceUri: namespace.uri,
+			localName: attributeName.slice(colon + 1),
+		})
 	}
 
 	/**
 	 * The name the definition keys an attribute by: bare in no namespace or the default one, `prefix:local` under the
 	 * dialecte's prefix for another namespace it declares (whatever prefix the document bound), as written otherwise.
 	 */
-	function storedAttributeName(attribute: XmlDomAttribute): string {
-		const localName = localNameOf({ node: attribute })
-		if (attribute.namespaceURI === null) return localName
+	function storedAttributeName(attribute: XmlAttribute): string {
+		if (attribute.namespaceUri === '') return attribute.name
 		const namespace = Object.values(namespaces).find(
-			(candidate) => candidate.uri === attribute.namespaceURI,
+			(candidate) => candidate.uri === attribute.namespaceUri,
 		)
-		if (namespace === undefined) return attribute.name
-		return namespace.prefix ? `${namespace.prefix}:${localName}` : localName
+		if (namespace === undefined) return qualifiedNameOf(attribute)
+		return namespace.prefix ? `${namespace.prefix}:${attribute.name}` : attribute.name
 	}
 
 	function collectAttributeViolations(params: CollectAttributeViolationsParams): string[] {
 		const { element, elementDefinition, requireComplete } = params
 
 		const allowed = allowedAttributes(elementDefinition)
-		const unknownAttributeViolations = Array.from(element.attributes)
-			.filter((attribute) => !ALWAYS_ALLOWED_NAMESPACE_URIS.includes(attribute.namespaceURI ?? ''))
+		const unknownAttributeViolations = element.attrs
+			.filter((attribute) => !ALWAYS_ALLOWED_NAMESPACE_URIS.includes(attribute.namespaceUri))
 			.filter(
 				(attribute) =>
 					!allowed.has(storedAttributeName(attribute)) &&
 					!isNamespaceAllowedByWildcard({
 						wildcard: elementDefinition.attributes.any,
-						namespaceUri: attribute.namespaceURI ?? '',
+						namespaceUri: attribute.namespaceUri,
 					}),
 			)
 			.map(
 				(attribute) =>
-					`[attribute] <${element.localName}> has unknown attribute '${storedAttributeName(attribute)}'`,
+					`[attribute] <${element.name}> has unknown attribute '${storedAttributeName(attribute)}'`,
 			)
 		if (!requireComplete) return unknownAttributeViolations
 
@@ -176,14 +186,14 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 			)
 			.map(
 				([attributeName]) =>
-					`[required] <${element.localName}> is missing required attribute '${attributeName}'`,
+					`[required] <${element.name}> is missing required attribute '${attributeName}'`,
 			)
 		return [...unknownAttributeViolations, ...missingAttributeViolations]
 	}
 
 	function collectElementViolations(params: CollectElementViolationsParams): string[] {
 		const { element, parent, requireComplete } = params
-		const childElements = Array.from(element.children)
+		const childElements = childElementsOf(element)
 
 		// Opaque: not checked itself, and no parent context for its children — a schema
 		// element nested inside is still validated on its own namespace and attributes.
@@ -193,23 +203,21 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 			)
 		}
 
-		const localName = localNameOf({ node: element })
+		const localName = element.name
 		const violations: string[] = []
 
-		// 1. namespace (context-aware). "No namespace" has two encodings: the DOM reports it as
-		// null, a schema with no target namespace declares ''. Normalize the element's side to ''
-		// so a no-namespace element matches a no-namespace schema. (Foreignness above deliberately
-		// stays on null: a no-namespace element is never foreign - it forgot its namespace.)
+		// 1. namespace (context-aware). No namespace is '' on both sides: the engine's and a schema with no
+		// target namespace. (A no-namespace element is never foreign above: it forgot its namespace.)
 		const expectedNamespaces = expectedNamespaceUris({
 			parentDefinition: parent?.definition,
 			childLocalName: localName,
 		})
-		const actualNamespace = element.namespaceURI ?? ''
+		const actualNamespace = element.namespaceUri
 		if (expectedNamespaces !== undefined && !expectedNamespaces.includes(actualNamespace)) {
 			const where = parent ? ` under <${parent.localName}>` : ''
 			const declared = expectedNamespaces.map((uri) => uri || '(no namespace)').join(' or ')
 			violations.push(
-				`[namespace] <${element.tagName}>${where}: is in ${element.namespaceURI ?? '(no namespace)'}, schema declares ${declared}`,
+				`[namespace] <${qualifiedNameOf(element)}>${where}: is in ${actualNamespace || '(no namespace)'}, schema declares ${declared}`,
 			)
 		}
 
@@ -249,22 +257,24 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 		// A template-literal snippet usually starts with a newline; an XML declaration after
 		// it is malformed for every XML parser, with a message that does not say why. Say it.
 		if (!xml.startsWith('<?xml') && xml.trimStart().startsWith('<?xml')) {
-			return `${label}: malformed XML — the XML declaration must be the very first characters of the string: remove the declaration (a snippet does not need one) or the whitespace before it`
+			return `${label}: malformed XML - the XML declaration must be the very first characters of the string: remove the declaration (a snippet does not need one) or the whitespace before it`
 		}
 
-		const parsed = parseXml({ xml })
-		if ('error' in parsed) return `${label}: malformed XML — ${parsed.error}`
-		const { documentElement } = parsed.document
-		if (!documentElement) return undefined
-
-		const violations = collectElementViolations({
-			element: documentElement,
-			parent: undefined,
-			requireComplete,
-		})
-		return violations.length > 0
-			? `${label}: not valid ${schemaName}:\n  ${violations.join('\n  ')}`
-			: undefined
+		try {
+			const violations = withXmlDocument({ xml, label }, function collectViolations(document) {
+				return collectElementViolations({
+					element: document.root,
+					parent: undefined,
+					requireComplete,
+				})
+			})
+			return violations.length > 0
+				? `${label}: not valid ${schemaName}:\n  ${violations.join('\n  ')}`
+				: undefined
+		} catch (error) {
+			if (error instanceof MalformedXmlError) return error.message
+			throw error
+		}
 	}
 
 	/**
@@ -303,4 +313,29 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 	}
 
 	return { assertValidXml, assertValidXmlTestCases }
+}
+
+/** The name as the document writes it: `prefix:name`, or `name` without a prefix. */
+function qualifiedNameOf(node: XmlElement | XmlAttribute): string {
+	return node.prefix ? `${node.prefix}:${node.name}` : node.name
+}
+
+/** The element children of an element, in document order. */
+function childElementsOf(element: XmlElement): XmlElement[] {
+	const children: XmlElement[] = []
+	for (let child = element.firstChild; child; child = child.next) {
+		if (child instanceof XmlElement) children.push(child)
+	}
+	return children
+}
+
+function hasAttribute(params: {
+	element: XmlElement
+	namespaceUri: string
+	localName: string
+}): boolean {
+	const { element, namespaceUri, localName } = params
+	return element.attrs.some(
+		(attribute) => attribute.name === localName && attribute.namespaceUri === namespaceUri,
+	)
 }

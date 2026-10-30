@@ -1,4 +1,4 @@
-import { createXmlAssertions } from './assert-xml'
+import { assertXmlQueries, toXmlNamespaces } from './assert-xml/assert-xml'
 import { TEST_DIALECTE } from './test-dialecte'
 import {
 	openTestProject,
@@ -52,9 +52,7 @@ function xmlWithExport<
 	const setup = overrideTestDialecte({ setup: params.setup, configKey, dialecteConfig, hooks })
 	const { config } = resolveTestConfig({ setup, configKey })
 
-	const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
-		namespaces: config.namespaces,
-	})
+	const namespaces = toXmlNamespaces(config.namespaces)
 
 	for (const [description, testCase] of Object.entries(testCases)) {
 		const testFn = testCase.only ? it.only : it
@@ -101,12 +99,14 @@ function xmlWithExport<
 					xml = await file.text()
 				}
 
-				if (testCase.expectedQueries?.length) {
-					assertExpectedElementQueries({ xml, queries: testCase.expectedQueries })
-				}
-
-				if (testCase.unexpectedQueries?.length) {
-					assertUnexpectedElementQueries({ xml, queries: testCase.unexpectedQueries })
+				// one parse of the output for both lists: the expected queries, then the unexpected ones
+				if (testCase.expectedQueries?.length || testCase.unexpectedQueries?.length) {
+					assertXmlQueries({
+						xml,
+						namespaces,
+						expectedQueries: testCase.expectedQueries,
+						unexpectedQueries: testCase.unexpectedQueries,
+					})
 				}
 			} finally {
 				crypto.randomUUID = originalRandomUUID
