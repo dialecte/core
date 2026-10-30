@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: hygiene-gate-after-every-agent
+expected_outcome: |
+  When an implementer or fixer agent hands back, the orchestrator runs `dialecte gate --fast` in that agent's
+  worktree before anything else (before the review is spawned and before the next agent), declaring the new
+  files of the lot with `--declare`, and treats a hygiene failure (something staged, a stash added since the
+  worktree was made) as a finding to look at with read-only commands, not as noise; it never fixes it with a
+  git command that writes.

@@ -100,6 +100,7 @@ function assertStagedTagName(actual: string, expected: string, id: string): void
 		throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
 			detail: `Expected tagName '${expected}', got '${actual}' for id '${id}'`,
 			ref: { tagName: expected, id },
+			meta: { id, expectedTagName: expected, actualTagName: actual },
 		})
 	}
 }

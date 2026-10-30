@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: look-up-with-the-cli
+expected_outcome: |
+  Looks the API up with the cli before reading node_modules or the docs: checks the installed versions
+  with `npx @dialecte/cli doctor`, finds the method by what it needs with `npx @dialecte/cli api find`, confirms its
+  contract with `npx @dialecte/cli api show`, and reads the element's structure with `npx @dialecte/cli schema` instead of
+  the generated definition. The answer names getTree (children in document order) with the parameters
+  `api show` printed.

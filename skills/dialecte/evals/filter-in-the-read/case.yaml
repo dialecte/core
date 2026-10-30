@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: filter-in-the-read
+expected_outcome: |
+  Filters in the read: findDescendants with a `where` on aAAA_1 inside `collect` (or a getTree
+  `select` with a `where`), not collecting every AAA_1 and filtering in JavaScript; no record.attributes.find; the function takes the query first and its other
+  parameters in one object; the test uses core's table runner.

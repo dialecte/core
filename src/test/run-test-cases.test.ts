@@ -6,6 +6,7 @@ import Dexie from 'dexie'
 import { describe, expect } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
+import { createSeededRandomUuid } from '@/utils'
 
 import type { BaseXmlTestCase, TestCases, ActParams, ActResult } from './run-test-cases.type'
 
@@ -132,6 +133,16 @@ describe('runTestCases', () => {
 				expectedQueries: [
 					'//default:A[@aA="original"]',
 					'//default:A/default:AA_1[@aAA_1="added"]',
+				],
+			},
+			'element created in act → its id is the first of the seeded sequence': {
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A aA="original"/>
+					</Root>
+				`,
+				expectedQueries: [
+					`//default:A/default:AA_1[@_temp-idb-id="${createSeededRandomUuid({ seed: 0 })()}"]`,
 				],
 			},
 		}

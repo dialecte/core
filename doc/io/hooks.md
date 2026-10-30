@@ -181,7 +181,7 @@ type Diagnostic<GenericCode extends string = string> = {
 }
 ```
 
-A dialecte declares its codes once, in a catalogue - `source`, and per code the severity, the family (`'value' | 'attribute' | 'structure' | 'identity' | 'reference' | 'import'`, a property of the entry, not of the diagnostic) and the default wording - and builds each diagnostic from it with `createDiagnostic`, which fills `severity`, `source` and `message` from the entry and keeps the type of the `meta` and `related` given:
+A dialecte declares its codes once, in a catalogue - `source`, and per code the severity, the family (`'value' | 'attribute' | 'structure' | 'identity' | 'reference' | 'import'`, a property of the entry, not of the diagnostic) and the default wording, optionally an `explanation` (`when` it is raised, the usual `fix`, a `docs` page) - and builds each diagnostic from it with `createDiagnostic`, which fills `severity`, `source` and `message` from the entry and keeps the type of the `meta` and `related` given:
 
 ```ts
 import { createDiagnostic } from '@dialecte/core'
@@ -194,6 +194,11 @@ export const MY_IMPORT_DIAGNOSTICS = {
 			severity: 'warning',
 			family: 'reference',
 			message: 'A reference names an element the file does not hold',
+			// optional: what `dialecte explain unresolved-reference` prints
+			explanation: {
+				when: 'The path a reference holds names no element of the file',
+				fix: 'Import the file that holds the element, or correct the path',
+			},
 		},
 	},
 } as const satisfies DiagnosticCatalogue

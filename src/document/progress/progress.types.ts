@@ -35,12 +35,29 @@ export type PlanInput = {
  * whole stack.
  */
 export type ProgressReporter = {
-	/** Push a plan level (child of the current innermost, or the main if none). */
+	/**
+	 * Push a plan level (child of the current innermost, or the main if none).
+	 *
+	 * @intent report progress of a long operation, announce how many steps a transaction or nested step has, show a progress bar caption
+	 */
 	plan(plan: PlanInput): void
-	/** Advance the innermost plan by one step (close-previous); optionally recaption. */
+	/**
+	 * Advance the innermost plan by one step (close-previous); optionally recaption.
+	 *
+	 * @intent mark a progress step done, update the progress caption
+	 */
 	nextStep(label?: string): void
-	/** Pop the innermost plan. Clears progress only once the stack is empty. */
+	/**
+	 * Pop the innermost plan. Clears progress only once the stack is empty.
+	 *
+	 * @intent close a nested progress plan, finish reporting progress for a step
+	 */
 	endPlan(): void
-	/** Unconditional clear — empties the whole plan stack regardless of balance. */
+	/**
+	 * Unconditional clear — empties the whole plan stack regardless of balance. `Document.transaction`
+	 * calls it when it ends or fails.
+	 *
+	 * @internal Used by the transaction to reset progress when it ends.
+	 */
 	forceClear(): void
 }

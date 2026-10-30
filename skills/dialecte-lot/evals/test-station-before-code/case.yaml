@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: test-station-before-code
+expected_outcome: |
+  Step 1 runs as test station -> test review -> implement station, three different agents: the test station
+  (dialecte-test-writer, standard tier) writes the tests and the stubs from the brief and the existing code only
+  and proves them red with `dialecte tdd red`; the test review (dialecte-test-reviewer, strong tier, read-only)
+  reads only the tests against the spec and gives its verdict before any code; the implement station (another
+  agent) changes production code only until `dialecte tdd green`. A test the implementer finds wrong goes back to
+  the test station with the reason; the implementer never edits it.

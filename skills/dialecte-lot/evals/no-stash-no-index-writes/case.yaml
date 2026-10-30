@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: no-stash-no-index-writes
+expected_outcome: |
+  An implementer that wants to compare against the base commit without losing its uncommitted work does not
+  `git stash` (the stash is shared by every worktree and session) and runs no git command that writes the index
+  (add, rm, reset, checkout --). It looks at the base without touching its own tree: a throwaway worktree
+  elsewhere, `git show <base>:<file>`, or a copy of the files; its tree and index stay as they are.

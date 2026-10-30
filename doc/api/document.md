@@ -61,7 +61,7 @@ const prepared = await doc.prepare(async (tx) => {
 })
 
 // Preview
-console.log(prepared.summary) // { creates: 5, updates: 0, deletes: 0 }
+console.log(prepared.summary) // { creates: 5, updates: 1, deletes: 0, byTag: { A: { created: 1, updated: 0, deleted: 0 }, ... } }
 console.log(prepared.operations) // ReadonlyArray<Operation>
 
 // User confirms
@@ -73,13 +73,15 @@ await prepared.commit()
 
 ### PreparedTransaction
 
-| Field        | Type                            | Description                                                                                                          |
-| ------------ | ------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `operations` | `ReadonlyArray<Operation>`      | Staged operations for preview                                                                                        |
-| `summary`    | `{ creates, updates, deletes }` | Counts by operation type                                                                                             |
-| `query`      | `Query`                         | Read-only view of the uncommitted state — use `query.getSnapshot()` to preview the staged tree/XML before committing |
-| `commit()`   | `() => Promise<void>`           | Apply all staged operations                                                                                          |
-| `discard()`  | `() => void`                    | Throw away all staged operations                                                                                     |
+`summarizeOperations(operations)` (exported from `@dialecte/core`) gives the same summary for any list of staged operations.
+
+| Field        | Type                       | Description                                                                                                          |
+| ------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `operations` | `ReadonlyArray<Operation>` | Staged operations for preview                                                                                        |
+| `summary`    | `OperationsSummary`        | One count per record, as the commit merges the operations (created then updated is one creation): totals and `byTag` |
+| `query`      | `Query`                    | Read-only view of the uncommitted state — use `query.getSnapshot()` to preview the staged tree/XML before committing |
+| `commit()`   | `() => Promise<void>`      | Apply all staged operations                                                                                          |
+| `discard()`  | `() => void`               | Throw away all staged operations                                                                                     |
 
 ## channelName
 

@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: fast-gate-through-cli
+expected_outcome: |
+  At the fast gate the implementer runs `dialecte gate --fast` and `dialecte rules`, fixes the rules
+  errors before asking for a review, and its implement report carries the lines the gate printed (one per
+  step, with the counts) on the Gates line, not a summary of its own.

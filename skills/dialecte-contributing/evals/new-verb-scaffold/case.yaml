@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: new-verb-scaffold
+expected_outcome: |
+  The agent starts the new extension verb from `dialecte new verb <namespace> query <name>` rather than
+  writing the files by hand, fills every `FILL:` placeholder it prints (summary, @intent, the red case),
+  keeps the red case marked `only` until it fails for the right reason, and checks the result with
+  `dialecte rules` and `dialecte gate --fast`.

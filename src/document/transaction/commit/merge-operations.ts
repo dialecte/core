@@ -15,7 +15,7 @@ import type { AnyDialecteConfig, Operation } from '@/types'
  * @returns Object containing arrays of merged creates, updates, and deletes
  */
 export function mergeOperations<GenericConfig extends AnyDialecteConfig>(
-	operations: Operation<GenericConfig>[],
+	operations: ReadonlyArray<Operation<GenericConfig>>,
 ) {
 	const operationMap = new Map<string, Operation<GenericConfig>>()
 

@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: frozen-test-goes-back
+expected_outcome: |
+  The implementer puts the test file back as the test station left it (its edit is undone, not kept), does not
+  re-record a red itself (no `dialecte tdd red` by the implementer) and sends the case with the reason (the brief
+  says DEPTH_INVALID, the test asserts INVALID_DEPTH) back to the test station through the orchestrator; the test
+  station fixes it, proves it red again, the test review sees it, then the implementer runs `dialecte tdd green`.

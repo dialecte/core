@@ -1,0 +1,738 @@
+{
+	"package": "@dialecte/core",
+	"methods": [
+		{
+			"path": "doc.close",
+			"root": "doc",
+			"otherRoutes": [],
+			"signature": "() => void",
+			"summary": "Close the connection to the project's store, shared by every document of the project: after it, no document of this project can read or write. With a built-in store (local, in-memory), opening the project again gives a new store: documents opened before stay closed, open them again from the project. A custom store is reopened in place. To finish with the project, use `project.close`.",
+			"intents": ["close the project's database connection from a document"],
+			"declaredAt": "src/document/document.ts:379"
+		},
+		{
+			"path": "doc.destroy",
+			"root": "doc",
+			"otherRoutes": [],
+			"signature": "() => Promise<void>",
+			"summary": "Close the connection and delete the whole project database: every document of the project, its history and its blobs - not only this document. To delete one document, use `project.removeDocument`.",
+			"intents": [
+				"delete the whole project database from a document",
+				"wipe every document of the project"
+			],
+			"declaredAt": "src/document/document.ts:390"
+		},
+		{
+			"path": "doc.prepare",
+			"root": "doc",
+			"otherRoutes": [],
+			"signature": "(fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<void>, options?: { label?: string; }) => Promise<PreparedTransaction<GenericConfig, GenericExtension>>",
+			"summary": "Build up operations without committing. Returns a PreparedTransaction with staged operations for preview, then call commit() to apply or discard() to throw away.",
+			"intents": [
+				"preview changes before committing",
+				"ask a user to confirm an edit",
+				"dry-run a transaction"
+			],
+			"declaredAt": "src/document/document.ts:251"
+		},
+		{
+			"path": "doc.query.findAncestors",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options?: FindAncestorsOptions<GenericConfig>) => Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]>",
+			"summary": "Walk the parent chain from an element upward, one store read per step; for the parent alone, `getRecord(record.parent)` is enough.",
+			"intents": [
+				"list the ancestors of an element",
+				"find the enclosing element of a tag",
+				"build a path from the root"
+			],
+			"declaredAt": "src/document/query/main.ts:390",
+			"example": "const ancestors = await query.findAncestors(aa1)\n// [A, Root]"
+		},
+		{
+			"path": "doc.query.findByAttributes",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(params: { tagName: GenericElement; attributes: FilterAttributes<GenericConfig, GenericElement>; }) => Promise<TrackedRecord<GenericConfig, GenericElement>[]>",
+			"summary": "Find records of one tag matching specific attribute values; it scans every element of that tag in the document.",
+			"intents": [
+				"find elements by attribute value",
+				"look up an element by an identifying attribute",
+				"filter one tag's elements by attribute"
+			],
+			"declaredAt": "src/document/query/main.ts:600",
+			"example": "const records = await query.findByAttributes({\n  tagName: 'A',\n  attributes: { aA: 'val' },\n})"
+		},
+		{
+			"path": "doc.query.findDescendants",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<Partial<Record<DescendantsOf<GenericConfig, GenericElement>, TrackedRecord<GenericConfig, DescendantsOf<GenericConfig, GenericElement>>[]>>>\n<GenericElement extends ElementsOf<GenericConfig>, GenericCollect extends Collect<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>) => Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>>",
+			"summary": "Find all descendants of an element, grouped by tag name, in no guaranteed order: walk a `getTree` result for document order.",
+			"intents": [
+				"collect descendants of given tag names under an element",
+				"find nested elements at any depth below a scope"
+			],
+			"declaredAt": "src/document/query/main.ts:329",
+			"example": "// All descendants\nconst all = await query.findDescendants(a)\n// Specific collect\nconst { AA_1 } = await query.findDescendants(a, { collect: 'AA_1' })"
+		},
+		{
+			"path": "doc.query.getAttribute",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { name: AttributesOf<GenericConfig, GenericElement> | (string & {}); namespace?: NamespaceKeysUsedByElement<GenericConfig, GenericElement> | (string & {}); fullObject?: false; defaults?: AttributeDefaults; }) => Promise<FullAttributeObjectOf<GenericConfig, GenericElement>['value'] | ''>\n<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { name: AttributesOf<GenericConfig, GenericElement> | (string & {}); namespace?: NamespaceKeysUsedByElement<GenericConfig, GenericElement> | (string & {}); fullObject: true; defaults?: AttributeDefaults; }) => Promise<FullAttributeObjectOf<GenericConfig, GenericElement> | undefined>",
+			"summary": "Get a single attribute value from a record.",
+			"intents": [
+				"read one attribute value",
+				"read a namespaced attribute",
+				"read an attribute with its schema default"
+			],
+			"declaredAt": "src/document/query/main.ts:475",
+			"example": "const val = await query.getAttribute(a, { name: 'aA' })\nconst cA = await query.getAttribute(a, { name: 'cA', namespace: 'ext' })"
+		},
+		{
+			"path": "doc.query.getAttributes",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params?: { namespace?: undefined; fullObject?: false; defaults?: AttributeDefaults; }) => Promise<AttributesValueObjectOf<GenericConfig, GenericElement>>\n<GenericElement extends ElementsOf<GenericConfig>, GenericNamespaceKey extends NamespaceKeysUsedByElement<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { namespace: GenericNamespaceKey; fullObject?: false; defaults?: AttributeDefaults; }) => Promise<NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey>>\n<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { namespace: string; fullObject?: false; defaults?: AttributeDefaults; }) => Promise<Record<string, string>>\n<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { fullObject: true; defaults?: AttributeDefaults; }) => Promise<FullAttributeObjectOf<GenericConfig, GenericElement>[]>",
+			"summary": "Get a record's attributes as a destructurable value object, each under the name it is stored by - what a write takes back. Get a record's attributes for a namespace scope, keyed by **local** name. Get a record's attributes for a custom namespace scope not declared in the config, keyed by local name. Get all attributes of a record as an array of full attribute objects.",
+			"intents": [
+				"read all attribute values of an element",
+				"destructure several attributes at once",
+				"read attributes of one namespace"
+			],
+			"declaredAt": "src/document/query/main.ts:525",
+			"example": "const { aA, 'ext:cA': cA } = await query.getAttributes(a)"
+		},
+		{
+			"path": "doc.query.getChild",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement> | undefined>",
+			"summary": "Get the first direct child of an element matching a given tag name; it looks one level down only.",
+			"intents": ["get one direct child by tag name", "check whether a child exists"],
+			"declaredAt": "src/document/query/main.ts:245",
+			"example": "const aa1 = await query.getChild(a, 'AA_1')"
+		},
+		{
+			"path": "doc.query.getChildren",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement>[]>",
+			"summary": "Get all direct children of an element matching a given tag name; it looks one level down only, no recursion.",
+			"intents": ["list direct children of one tag name", "iterate one level below an element"],
+			"declaredAt": "src/document/query/main.ts:270",
+			"example": "const children = await query.getChildren(a, 'AA_1')"
+		},
+		{
+			"path": "doc.query.getDefinition",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<ResolvedDefinition | undefined>",
+			"summary": "The definition of an element in its context: the declaration its parent holds when the schema declares the tag several ways, and what the type it names with xsi:type lets it hold.",
+			"intents": [
+				"read the schema definition of an element",
+				"list allowed attributes or enumeration values",
+				"know what an xsi:type lets an element hold"
+			],
+			"declaredAt": "src/document/query/main.ts:205",
+			"example": "const definition = await query.getDefinition(p)\ndefinition?.attributes.details.type?.type?.facets?.enumeration // as declared under p's parent"
+		},
+		{
+			"path": "doc.query.getDocumentInfo",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "() => Promise<DocumentRecord>",
+			"summary": "Get the full metadata record of this document.",
+			"intents": [
+				"read the document name or extension",
+				"get document metadata",
+				"find which config a document uses"
+			],
+			"declaredAt": "src/document/query/main.ts:132",
+			"example": "const { name, extension } = await query.getDocumentInfo()"
+		},
+		{
+			"path": "doc.query.getRecord",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<TrackedRecord<GenericConfig, GenericElement> | undefined>",
+			"summary": "Get a single record by ref, record, or relationship, in one store read.",
+			"intents": [
+				"load one element by id",
+				"resolve a ref or parent/child relationship to its record",
+				"refresh a record"
+			],
+			"declaredAt": "src/document/query/main.ts:184",
+			"example": "const a = await query.getRecord({ tagName: 'A', id: knownId })"
+		},
+		{
+			"path": "doc.query.getRecords",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refsOrRecords: (RefOrRecord<GenericConfig, GenericElement> | undefined)[]) => Promise<(TrackedRecord<GenericConfig, GenericElement> | undefined)[]>",
+			"summary": "Get multiple records in a single call.",
+			"intents": [
+				"load several elements by ref at once",
+				"resolve a list of children or relationships in one batched read"
+			],
+			"declaredAt": "src/document/query/main.ts:224",
+			"example": "const [a1, a2] = await query.getRecords([ref1, ref2])"
+		},
+		{
+			"path": "doc.query.getRecordsByTagName",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(tagName: GenericElement) => Promise<TrackedRecord<GenericConfig, GenericElement>[]>",
+			"summary": "Get all records of a given tag name in the whole document, read from the tag index: the cheapest whole-document scan.",
+			"intents": [
+				"list every element of a tag in the whole document",
+				"scan all elements of one type regardless of position"
+			],
+			"declaredAt": "src/document/query/main.ts:295",
+			"example": "const records = await query.getRecordsByTagName('A')"
+		},
+		{
+			"path": "doc.query.getRoot",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "() => Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>>>",
+			"summary": "Get the root element of the document.",
+			"intents": ["get the root element", "start a walk from the top of the document"],
+			"declaredAt": "src/document/query/main.ts:155",
+			"example": "const root = await query.getRoot()"
+		},
+		{
+			"path": "doc.query.getSnapshot",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(options?: GetSnapshotOptions<GenericConfig, GenericElement> & { as?: 'tree'; }) => Promise<AnyTreeRecord>\n<GenericElement extends ElementsOf<GenericConfig>>(options: GetSnapshotOptions<GenericConfig, GenericElement> & { as: 'xml'; }) => Promise<string>\n<GenericElement extends ElementsOf<GenericConfig>>(options: GetSnapshotOptions<GenericConfig, GenericElement> & { as: 'both'; }) => Promise<SnapshotResult>",
+			"summary": "Snapshot the (uncommitted) document state as a tree, XML string, or both: a view that includes staged changes. The stored file, to save or download, comes from `project.export`.",
+			"intents": [
+				"preview what a transaction would commit",
+				"read staged changes as XML or as a tree",
+				"show what a prepared transaction would produce"
+			],
+			"declaredAt": "src/document/query/main.ts:441",
+			"example": "const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))\nconst { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })"
+		},
+		{
+			"path": "doc.query.getTree",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options?: GetTreeParams<GenericConfig, GenericElement>) => Promise<TreeRecord<GenericConfig, GenericElement> | undefined>",
+			"summary": "Build a full tree structure from an element down. It loads the whole document unless it is a committed read with an id and a depth.",
+			"intents": [
+				"read a subtree in document order",
+				"walk children recursively",
+				"project a filtered tree with select or omit",
+				"read a subtree to copy it with deepClone"
+			],
+			"declaredAt": "src/document/query/main.ts:413",
+			"example": "const tree = await query.getTree(a)"
+		},
+		{
+			"path": "doc.query.perf.count",
+			"root": "q",
+			"otherRoutes": ["doc.perf.count", "project.perf.count"],
+			"signature": "(name: string) => void",
+			"summary": "O(1) tally for a hot per-node primitive (e.g. store round-trips, cache hits/misses) — cheaper than a span and safe in a node loop where per-call `start`/`stop` would flood the timeline. Surfaced as `count` in `report()`.",
+			"intents": [
+				"count store reads or cache hits in dev",
+				"tally calls of a hot function cheaply"
+			],
+			"declaredAt": "src/perf/perf.types.ts:55"
+		},
+		{
+			"path": "doc.query.perf.log",
+			"root": "q",
+			"otherRoutes": ["doc.perf.log", "project.perf.log"],
+			"signature": "() => void",
+			"summary": "Print the perf report as a console table (`console.table(report())`).",
+			"intents": ["print perf metrics to the console"],
+			"declaredAt": "src/perf/perf.types.ts:83"
+		},
+		{
+			"path": "doc.query.perf.merge",
+			"root": "q",
+			"otherRoutes": ["doc.perf.merge", "project.perf.merge"],
+			"signature": "(params: { report: PerfSnapshot; prefix: string; }) => void",
+			"summary": "Fold another realm's snapshot in under `<prefix>::<name>`: its spans placed on this realm's timeline (shifted by the difference of the two `timeOrigin`s), its tallies added to this one's.",
+			"intents": [
+				"combine timings measured in a worker with the page's",
+				"one report across realms"
+			],
+			"declaredAt": "src/perf/perf.types.ts:102"
+		},
+		{
+			"path": "doc.query.perf.profile",
+			"root": "q",
+			"otherRoutes": ["doc.perf.profile", "project.perf.profile"],
+			"signature": "<GenericResult>(name: string, fn: () => Promise<GenericResult>) => Promise<GenericResult>",
+			"summary": "Run `fn` inside a DevTools CPU profile (no-op in node/headless).",
+			"intents": ["capture a CPU profile of an async operation in DevTools"],
+			"declaredAt": "src/perf/perf.types.ts:71"
+		},
+		{
+			"path": "doc.query.perf.report",
+			"root": "q",
+			"otherRoutes": ["doc.perf.report", "project.perf.report"],
+			"signature": "() => PerfReport",
+			"summary": "Aggregate the timeline synchronously on demand — no `PerformanceObserver`.",
+			"intents": ["read collected perf metrics", "assert on store read counts in a test"],
+			"declaredAt": "src/perf/perf.types.ts:77"
+		},
+		{
+			"path": "doc.query.perf.reset",
+			"root": "q",
+			"otherRoutes": ["doc.perf.reset", "project.perf.reset"],
+			"signature": "() => void",
+			"summary": "Clear all marks + measures (bound memory between measured scenarios).",
+			"intents": ["reset perf metrics between measured scenarios"],
+			"declaredAt": "src/perf/perf.types.ts:89"
+		},
+		{
+			"path": "doc.query.perf.snapshot",
+			"root": "q",
+			"otherRoutes": ["doc.perf.snapshot", "project.perf.snapshot"],
+			"signature": "() => PerfSnapshot",
+			"summary": "This realm's spans (the shared timeline's; this perf's own with `timeline: false`) and this perf's tallies, to hand to another realm.",
+			"intents": [
+				"send a worker's or another realm's timings to the page",
+				"collect perf from the store engine"
+			],
+			"declaredAt": "src/perf/perf.types.ts:95"
+		},
+		{
+			"path": "doc.query.perf.start",
+			"root": "q",
+			"otherRoutes": ["doc.perf.start", "project.perf.start"],
+			"signature": "(name: string) => void",
+			"summary": "Open a span. Name-keyed pair (like `console.time`); name = `layer::op`.",
+			"intents": ["time a code section in dev", "measure how long an operation takes"],
+			"declaredAt": "src/perf/perf.types.ts:41"
+		},
+		{
+			"path": "doc.query.perf.stop",
+			"root": "q",
+			"otherRoutes": ["doc.perf.stop", "project.perf.stop"],
+			"signature": "(name: string) => void",
+			"summary": "Close the most recent open span for `name`. Unmatched `stop` is a no-op.",
+			"intents": ["end a timed section opened with start"],
+			"declaredAt": "src/perf/perf.types.ts:47"
+		},
+		{
+			"path": "doc.query.perf.time",
+			"root": "q",
+			"otherRoutes": ["doc.perf.time", "project.perf.time"],
+			"signature": "<GenericResult>(name: string, fn: () => GenericResult) => GenericResult",
+			"summary": "O(1) wall-time accumulator: runs `fn`, adds its elapsed time to a running total keyed by `name` WITHOUT emitting a timeline measure per call (unlike `start`/`stop`). Surfaced as calls/totalMs/avgMs in `report()`. Use to time a hot per-node primitive (e.g. the SAX handlers) where millions of measures would flood the timeline.",
+			"intents": [
+				"accumulate time spent in a hot per-node function",
+				"time a callback without flooding the timeline"
+			],
+			"declaredAt": "src/perf/perf.types.ts:65"
+		},
+		{
+			"path": "doc.subscribe",
+			"root": "doc",
+			"otherRoutes": [],
+			"signature": "(callback: (terminal: boolean) => void) => () => void",
+			"summary": "Register a callback fired (synchronously, same-realm) whenever this document's shared state changes: progress steps + loading toggles during a transaction, undo/redo, and folded-in cross-realm commits. `terminal` is `true` for the final frame of an operation, letting a consumer flush it without coalescing. Returns an unsubscribe function. Wired from the owning Project's registry.",
+			"intents": [
+				"react to document changes in a UI",
+				"refresh a view after a commit or an undo",
+				"follow transaction progress"
+			],
+			"declaredAt": "src/document/document.ts:67"
+		},
+		{
+			"path": "doc.transaction",
+			"root": "doc",
+			"otherRoutes": [],
+			"signature": "<T>(fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<T>, options?: { label?: string; }) => Promise<T>",
+			"summary": "Run `fn` against a new transaction and commit everything it staged as one undoable step; on a throw nothing is written. A second transaction started on this Document while one runs throws `CONCURRENT_TRANSACTION`.",
+			"intents": [
+				"change a document",
+				"add or update or delete elements and commit them",
+				"group edits into one undo step"
+			],
+			"declaredAt": "src/document/document.ts:183",
+			"example": "await doc.transaction(async (tx) => {\n  await tx.addChild(root, { tagName: 'A', attributes: { aA: 'a' } })\n}, { label: 'Add A' })"
+		},
+		{
+			"path": "project.addBlob",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string, file: File, attachedTo?: BlobAttachment[]) => Promise<string>",
+			"summary": "Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`. Returns the generated blob id.",
+			"intents": ["store a binary file in the project", "add an attachment owned by a document"],
+			"declaredAt": "src/project/project.ts:627"
+		},
+		{
+			"path": "project.attachBlob",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(blobId: string, ref: BlobAttachment) => Promise<void>",
+			"summary": "Reference an existing blob from an element of a document (optionally from one of its attributes) and tell other tabs.",
+			"intents": ["link a stored file to an element", "attach a blob to a record"],
+			"declaredAt": "src/project/project.ts:697"
+		},
+		{
+			"path": "project.close",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "() => Promise<void>",
+			"summary": "Close the store and release resources, once the imports in flight have landed - they broadcast on the live channel. From the call on, the project is closed: a new call throws `PROJECT_NOT_OPENED`. The stored documents stay.",
+			"intents": ["close a project", "release the database connection when leaving a page"],
+			"declaredAt": "src/project/project.ts:307"
+		},
+		{
+			"path": "project.createChannel",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "() => BroadcastChannel",
+			"summary": "Convenience: a fresh BroadcastChannel on this project's channel. The caller owns it — call channel.close() when done listening.",
+			"intents": ["listen to project events", "receive commits and imports made in other tabs"],
+			"declaredAt": "src/project/project.ts:134"
+		},
+		{
+			"path": "project.destroy",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "() => Promise<void>",
+			"summary": "Destroy the project - deletes the database entirely, every document with its history and blobs, once the imports in flight have landed. To delete one document, use `removeDocument`.",
+			"intents": ["delete a whole project", "wipe the project database with every document"],
+			"declaredAt": "src/project/project.ts:320"
+		},
+		{
+			"path": "project.detachBlob",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>",
+			"summary": "Drop the reference from an element of a document to a blob; the blob itself stays stored.",
+			"intents": ["unlink a file from an element", "detach a blob from a record"],
+			"declaredAt": "src/project/project.ts:707"
+		},
+		{
+			"path": "project.export",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(params: ProjectExportParams & { xmlDocument: true; }) => Promise<ProjectExportResultWithDocument>\n(params: ProjectExportParams & { xmlDocument?: false; }) => Promise<ProjectExportResult>\n(params: ProjectExportParams) => Promise<ProjectExportResultMaybeDocument>",
+			"summary": "Export a document through the store: its file (`Blob`, formatted unless `indent: false`) and filename. On the page, `xmlDocument: true` also answers its DOM (parsed from the compact file: pass `indent: false` to export once) and `download` saves the formatted file (the save dialog is asked first). Two store exports made for one call may see two states of the document if a commit lands between them.",
+			"intents": [
+				"export a document to an XML file",
+				"get a document as a Blob",
+				"download a document",
+				"save a document as XML",
+				"read the exported XML as a DOM"
+			],
+			"declaredAt": "src/project/project.ts:471"
+		},
+		{
+			"path": "project.exportBlob",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(params: ProjectExportBlobParams) => Promise<ExportBlobResult>",
+			"summary": "Export a blob from the store: `{ entry, data, filename }`; `download` also saves it (the save dialog, or a browser download), under its name or the one given.",
+			"intents": [
+				"download a stored file",
+				"save a blob to disk",
+				"read a blob with its file name"
+			],
+			"declaredAt": "src/project/project.ts:661"
+		},
+		{
+			"path": "project.getBlob",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>",
+			"summary": "Read a stored blob: its metadata entry and its binary data, or `undefined` when the id is unknown.",
+			"intents": ["read an attached file's content", "load a blob by id"],
+			"declaredAt": "src/project/project.ts:651"
+		},
+		{
+			"path": "project.getBlobsByDocument",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => Promise<BlobRecord[]>",
+			"summary": "The blobs referenced from a document (any of their attachments points into it).",
+			"intents": ["list the files attached to a document"],
+			"declaredAt": "src/project/project.ts:670"
+		},
+		{
+			"path": "project.getBlobsByRecord",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string, recordRef: string) => Promise<BlobRecord[]>",
+			"summary": "The blobs referenced from one element of a document.",
+			"intents": ["list the files attached to one element"],
+			"declaredAt": "src/project/project.ts:679"
+		},
+		{
+			"path": "project.getDatabaseInstance",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "() => ReturnType<GenericStore['getDatabaseInstance']>",
+			"summary": "Expose the underlying database instance. Return type is inferred from the store (Dexie for local storage).",
+			"intents": ["inspect the underlying database", "debug what the store holds"],
+			"declaredAt": "src/project/project.ts:770"
+		},
+		{
+			"path": "project.getDocument",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => Promise<DocumentRecord | undefined>",
+			"summary": "The metadata record of one document of the project, or `undefined` when it is unknown or still importing.",
+			"intents": ["check a document exists", "read a document's name or config key by id"],
+			"declaredAt": "src/project/project.ts:502"
+		},
+		{
+			"path": "project.getDocumentConfig",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => GenericConfig | undefined",
+			"summary": "Get the dialecte config a document uses, or `undefined` for a document the project does not know.",
+			"intents": ["get the dialecte config of a document", "know which schema a document uses"],
+			"declaredAt": "src/project/project.ts:567"
+		},
+		{
+			"path": "project.getDocuments",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "() => Promise<DocumentRecord[]>",
+			"summary": "The documents of the project; one still importing - here or in another realm - is not among them.",
+			"intents": ["list the documents of a project", "show the files a project holds"],
+			"declaredAt": "src/project/project.ts:493"
+		},
+		{
+			"path": "project.getDocumentStatus",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => Promise<{ live: boolean; ready: boolean; }>",
+			"summary": "Reconcile this realm's store against persisted state, then report the document's liveness and readiness: - `live` — the document is registered in this realm's registry (so `openDocument` will not throw DOCUMENT_NOT_REGISTERED). - `ready` — the store can serve the document's records (so reads / export will not throw, e.g. a missing per-document table).",
+			"intents": [
+				"check that a document imported in another tab can be opened",
+				"wait for a document from another realm"
+			],
+			"declaredAt": "src/project/project.ts:554"
+		},
+		{
+			"path": "project.getStandaloneBlobs",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "() => Promise<BlobRecord[]>",
+			"summary": "The blobs of the project that no document references (no attachment).",
+			"intents": ["list unattached files", "find orphan blobs to clean up"],
+			"declaredAt": "src/project/project.ts:688"
+		},
+		{
+			"path": "project.import",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(files: File[], options?: ImportFilesOptions) => Promise<ImportEntry[]>",
+			"summary": "Import Files into the project: one entry per file, in the order given. The files are imported one after the other - memory is bounded by one file's batches, the registry sees one import - and a file that fails is its own `failed` entry, the next file still attempted: nothing of a failed file lands. The call itself rejects only for what is about the call: an unknown `configKey`, a project not open, a `path` (`DOCUMENT_PATH_INVALID`: a path names one file, `importFile` takes it).",
+			"intents": [
+				"import several XML files at once",
+				"get one result per file without a throw for a failed file"
+			],
+			"declaredAt": "src/project/project.ts:399"
+		},
+		{
+			"path": "project.importFile",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(file: File, options?: ImportDocumentOptions) => Promise<ImportedDocument>",
+			"summary": "Import one File into the project: the store registers, parses and stores it next to the data. The document is in the project state and broadcast once the store answers it `ready`; whatever fails before that, or an abort through `options.signal`, leaves nothing and is thrown (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign error). `options.onProgress` is told after each stored batch, never awaited. One file is in flight per project: a call made while another import runs waits for it.",
+			"intents": ["import an XML file", "load a file into the project", "parse XML into records"],
+			"declaredAt": "src/project/project.ts:435"
+		},
+		{
+			"path": "project.initEmptyDocument",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(options?: InitEmptyDocumentOptions) => Promise<string>",
+			"summary": "Register a new empty document in the project. Returns the new documentId. Records are added later via import or transactions.",
+			"intents": ["create a new empty document", "start a document from scratch without a file"],
+			"declaredAt": "src/project/project.ts:339"
+		},
+		{
+			"path": "project.open",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(name: string) => Promise<this>",
+			"summary": "Open a named project: resolve store, open DB connection, hydrate state. Must be called before import/export/openDocument.",
+			"intents": [
+				"open or create a project database",
+				"start working on a project",
+				"reopen a project after close"
+			],
+			"declaredAt": "src/project/project.ts:205"
+		},
+		{
+			"path": "project.openDocument",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => Document<GenericConfig, MergedExtensions<GenericModules>>",
+			"summary": "Open a file-scoped Document for querying and mutating a specific file.",
+			"intents": ["open a document to read or write it", "get the Document of an id"],
+			"declaredAt": "src/project/project.ts:514"
+		},
+		{
+			"path": "project.queryAll",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "<Result>(queryFunction: (query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>) => Promise<Result[]>) => Promise<Result[]>",
+			"summary": "Run a query function across all documents, collect and flatten results. Iterates documents sequentially; merges all non-empty arrays.",
+			"intents": ["collect results from every document", "run one query over all documents"],
+			"declaredAt": "src/project/project.ts:749"
+		},
+		{
+			"path": "project.queryFirst",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "<Result>(queryFunction: (query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>) => Promise<Result | undefined>) => Promise<Result | undefined>",
+			"summary": "Run a query function across all documents, return the first non-undefined result. Iterates documents sequentially; stops at the first match.",
+			"intents": [
+				"find the first match across every document",
+				"search all documents of a project"
+			],
+			"declaredAt": "src/project/project.ts:730"
+		},
+		{
+			"path": "project.redo",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => Promise<void>",
+			"summary": "Re-apply the last undone transaction of a document and tell other tabs. Does nothing when there is nothing to redo.",
+			"intents": ["redo an undone change to a document"],
+			"declaredAt": "src/project/project.ts:603"
+		},
+		{
+			"path": "project.removeBlob",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(blobId: string) => Promise<void>",
+			"summary": "Delete a blob and its binary data from the project and tell other tabs. Does nothing when the id is unknown.",
+			"intents": ["delete a stored file", "remove a blob for good"],
+			"declaredAt": "src/project/project.ts:717"
+		},
+		{
+			"path": "project.removeDocument",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => Promise<void>",
+			"summary": "Remove one document from the project - its records, history and blobs - and tell other tabs. The other documents stay.",
+			"intents": ["delete a document from the project", "remove one file and its records"],
+			"declaredAt": "src/project/project.ts:366"
+		},
+		{
+			"path": "project.undo",
+			"root": "project",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => Promise<void>",
+			"summary": "Revert the last committed transaction of a document and tell other tabs. Does nothing when there is nothing to undo.",
+			"intents": ["undo the last change to a document", "roll back a commit"],
+			"declaredAt": "src/project/project.ts:580"
+		},
+		{
+			"path": "tx.addChild",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(parentRefOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>) => Promise<RawRecord<GenericConfig, GenericChildElement>>",
+			"summary": "Add a child element to a parent. It always creates one; `ensureChild` reuses an existing child.",
+			"intents": [
+				"create a new element under a parent",
+				"insert a child with attributes",
+				"build new content in a transaction"
+			],
+			"declaredAt": "src/document/transaction/main.ts:137",
+			"example": "const aRecord = await tx.addChild(root, {\n  tagName: 'A',\n  attributes: { name: 'aA1' },\n})"
+		},
+		{
+			"path": "tx.deepClone",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(parentRefOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, record: TreeRecord<GenericConfig, GenericChildElement>) => Promise<CloneResult<GenericConfig, GenericChildElement>>",
+			"summary": "Deep-clone a subtree under a new parent.",
+			"intents": [
+				"copy a subtree with fresh ids",
+				"duplicate an element under another parent",
+				"paste a tree read with getTree",
+				"map old ids to new ids"
+			],
+			"declaredAt": "src/document/transaction/main.ts:267",
+			"example": "const tree = await tx.getTree(aa1) // an AA_1 to copy\nconst { record, mappings } = await tx.deepClone(a, tree) // under an A"
+		},
+		{
+			"path": "tx.delete",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>>",
+			"summary": "Delete an element and its entire subtree.",
+			"intents": ["remove an element", "delete a subtree", "prune a child from its parent"],
+			"declaredAt": "src/document/transaction/main.ts:240",
+			"example": "const parentRecord = await tx.delete(aRecord)"
+		},
+		{
+			"path": "tx.ensureChild",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(parentRefOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>) => Promise<RawRecord<GenericConfig, GenericChildElement>>",
+			"summary": "Get an existing child record or create it under the given parent.",
+			"intents": [
+				"get or create a child",
+				"make sure a singleton container exists before adding under it",
+				"add a child without duplicating it"
+			],
+			"declaredAt": "src/document/transaction/main.ts:180",
+			"example": "const a = await tx.ensureChild(root, {\n  tagName: 'A',\n  attributes: {},\n})"
+		},
+		{
+			"path": "tx.progress.endPlan",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "() => void",
+			"summary": "Pop the innermost plan. Clears progress only once the stack is empty.",
+			"intents": ["close a nested progress plan", "finish reporting progress for a step"],
+			"declaredAt": "src/document/progress/progress.types.ts:55"
+		},
+		{
+			"path": "tx.progress.nextStep",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "(label?: string | undefined) => void",
+			"summary": "Advance the innermost plan by one step (close-previous); optionally recaption.",
+			"intents": ["mark a progress step done", "update the progress caption"],
+			"declaredAt": "src/document/progress/progress.types.ts:49"
+		},
+		{
+			"path": "tx.progress.plan",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "(plan: PlanInput) => void",
+			"summary": "Push a plan level (child of the current innermost, or the main if none).",
+			"intents": [
+				"report progress of a long operation",
+				"announce how many steps a transaction or nested step has",
+				"show a progress bar caption"
+			],
+			"declaredAt": "src/document/progress/progress.types.ts:43"
+		},
+		{
+			"path": "tx.update",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: UpdateParams<GenericConfig, GenericElement>) => Promise<RawRecord<GenericConfig, GenericElement>>",
+			"summary": "Update attributes of an existing element.",
+			"intents": [
+				"change attribute values",
+				"set or clear an attribute",
+				"rename an element through its name attribute",
+				"set an element's text value"
+			],
+			"declaredAt": "src/document/transaction/main.ts:213",
+			"example": "await tx.update(root, {\n  attributes: { name: 'aA1', desc: 'new element' },\n})"
+		}
+	]
+}

@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: tiers-per-station
+expected_outcome: |
+  Each brief names the tier of the agent to spawn, never a model or a vendor: the implementer of a mechanical,
+  fully specified lot on the standard tier, the reviewer on the strong tier for both passes, the fix round on wording and naming findings on the standard tier; the briefs say how a tier
+  becomes a model (`dialecte models`) instead of naming one, and that a failed round may go one tier up.

@@ -83,6 +83,7 @@ export async function getRecord<
 		throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
 			detail: `Expected tagName '${ref.tagName}', got '${raw.tagName}' for id '${ref.id}'`,
 			ref,
+			meta: { id: ref.id, expectedTagName: ref.tagName, actualTagName: raw.tagName },
 		})
 	}
 

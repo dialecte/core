@@ -340,3 +340,23 @@ const report = inspectXml(xml, {
 | `params.config`   | `AnyDialecteConfig` (opt.) | Dialecte config - enables typed attribute access on the report |
 
 **Returns** A `Record<ElementName, InspectedElement | undefined>`. Keys are the requested element names; `undefined` when not found in the input.
+
+## Expectations
+
+### `evaluateExpectations`
+
+Checks what a document holds against expectations written before the script that builds it, without a DOM (Node or a worker alike). Each expectation names a tag, optionally attribute values (`where`, matched as `findByAttributes` matches them: one value or any of several) and an element it must be under (`under`, anywhere below it); with `count` exactly that many must exist (`0`: none), without it at least one. Given a prepared transaction's `query`, it checks what `commit()` would write.
+
+```ts
+import { evaluateExpectations } from '@dialecte/core/helpers'
+
+const { passed, failed } = await evaluateExpectations(doc.query, {
+	expectations: [
+		{ tag: 'Part', under: { tag: 'Assembly', where: { name: 'A1' } }, count: 2 },
+		{ tag: 'Part', where: { kind: 'obsolete' }, count: 0 },
+	],
+})
+// failed: [{ expectation, actualCount: 1, message: 'expected 2 Part under Assembly[name="A1"], found 1' }]
+```
+
+Every expectation is answered, in the order given. An element under several matching scopes counts once. `dialecte run --expect` reads its expectations file in this shape. Types `Expectation`, `ExpectationScope`, `ExpectationFailure`, `ExpectationsOutcome`, `EvaluateExpectationsParams`.

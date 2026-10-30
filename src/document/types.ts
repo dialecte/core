@@ -1,6 +1,7 @@
 import type { Document } from './document'
 import type { ProgressReporter, DocumentProgress } from './progress/progress.types'
 import type { Query } from './query'
+import type { OperationsSummary } from './transaction/commit/summarize-operations.types'
 import type { ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { ExtensionModules, MergedExtensions } from './types.extensions'
 import type { DialecteError } from '@/errors'
@@ -68,7 +69,8 @@ export type PreparedTransaction<
 	GenericExtension extends ExtensionsRegistry = {},
 > = {
 	readonly operations: ReadonlyArray<Operation<GenericConfig>>
-	readonly summary: { creates: number; updates: number; deletes: number }
+	/** One count per record, as the commit merges the operations: totals and per tag. */
+	readonly summary: OperationsSummary
 	/**
 	 * Read-only view of the in-progress transaction.
 	 *

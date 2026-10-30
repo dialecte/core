@@ -232,7 +232,7 @@ Errors use a typed catalog organized by domain:
 | `D6xxx` | Config                | `EXTENSION_METHOD_COLLISION`                                                                                                                                                                                                          |
 | `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `DOCUMENT_NOT_REGISTERED`, `PROJECT_LAYOUT_OUTDATED`, `PROJECT_DESTROY_FAILED`, `PROJECT_OPEN_ELSEWHERE`                                                                                                        |
 
-The full catalog is in `core/src/errors/codes.ts`.
+The full catalog is in `core/src/errors/codes.ts`. Every entry also carries an `explanation`: `when` it is raised, the usual `fix`, and the `docs` page about it - what `npx @dialecte/cli explain <code>` prints.
 
 ### Errors of a dialecte
 
@@ -245,7 +245,12 @@ import { defineErrors } from '@dialecte/core'
 import { invariant } from '@dialecte/core/utils'
 
 export const MY_ERRORS = defineErrors({
-	NAME_TAKEN: { code: 'X1001', message: 'The name is already taken' },
+	NAME_TAKEN: {
+		code: 'X1001',
+		message: 'The name is already taken',
+		// optional: what `dialecte explain X1001` prints
+		explanation: { when: 'A sibling already holds the name', fix: 'Pick another name' },
+	},
 })
 
 invariant(isFree, {

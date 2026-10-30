@@ -41,6 +41,7 @@ export default defineConfig({
 					items: [
 						{ text: 'Introduction', link: '/guide/introduction/what-is-dialecte' },
 						{ text: 'Quick Start', link: '/guide/introduction/getting-started' },
+						{ text: 'Working with AI agents', link: '/guide/introduction/ai-agents' },
 					],
 				},
 				{

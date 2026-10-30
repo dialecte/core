@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: standard-cross-check
+expected_outcome: |
+  The decision changes what the engine accepts, so the standard is cross-checked: the PDF is converted to markdown
+  first and kept out of the repositories; two or three independent readers answer the same question without shared
+  notes, every claim with a file:line reference, one reading the whole relevant part and the others split by
+  section; an adjudicator on a stronger tier compares them, agreed claims with matching lines pass, a disagreement
+  or a claim without a line goes to the user or the domain expert; the result is stored next to the plan for later
+  lots; the committed text (code comment, CHANGELOG, doc, pull request) states the behaviour without quoting or
+  citing the standard.

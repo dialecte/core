@@ -25,10 +25,13 @@ import {
 	compareQualifiedAttributes,
 	orderAttributesBySequence,
 	orderByConfigSequence,
+	childOccurrences,
+	requiredChoices,
 	invariant,
 	saveToDisk,
 	formatXml,
 	formatEmbeddedXml,
+	createSeededRandomUuid,
 } from '@dialecte/core/utils'
 ```
 
@@ -349,6 +352,38 @@ const ordered = orderByConfigSequence({
 // → reordered to the parent's declared sequence, e.g. ['A', 'B', 'C']
 ```
 
+### `childOccurrences`
+
+How often each child may appear under an element, from its resolved definition: one entry per child in
+`children.sequence` order, `{ min, max }` with `max` undefined when unbounded. A choice makes its alternatives
+optional, a repeated group multiplies what it holds, and a child the content model does not name (an element
+without one, or a child only a variant holds) is optional and unbounded. Resolve first, so a declaration chosen
+by the parent or a type named with `xsi:type` is the one read.
+
+```ts
+import { childOccurrences, resolveDefinition } from '@dialecte/core/utils'
+
+const definition = resolveDefinition({ dialecteConfig, record })
+childOccurrences({ definition }) // e.g. { AA_1: { min: 1, max: 1 }, AA_2: { min: 0, max: 2 } }
+```
+
+### `requiredChoices`
+
+The choices an element's content model requires, which `childOccurrences` reads as optional children (a choice
+keeps the widest of its branches): each one reached through required groups only, with how many times it is
+taken (`min`, the groups' own minimum occurrences multiplied) and its `branches` in order. A branch gives how
+often it holds each child, counted as `childOccurrences` counts them, and the choices it requires in turn when it
+is taken. An optional choice, or a required one inside an optional group, is not listed. Use it to build a valid
+element: take one branch of every required choice.
+
+```ts
+import { requiredChoices, resolveDefinition } from '@dialecte/core/utils'
+
+const definition = resolveDefinition({ dialecteConfig, record })
+requiredChoices({ definition })
+// e.g. [{ min: 1, branches: [{ children: { X: { min: 1, max: 1 } }, choices: [] }, { children: { Y: { min: 1, max: 1 } }, choices: [] }] }]
+```
+
 ---
 
 ## Assertions
@@ -411,4 +446,17 @@ It backs the **`dialecte-xmlfmt` bin**, so a consuming package needs no wrapper 
 	"format:xml": "dialecte-xmlfmt 'src/**/*.test.ts'",
 	"format:xml:check": "dialecte-xmlfmt --check 'src/**/*.test.ts'"
 }
+```
+
+## Deterministic ids
+
+### `createSeededRandomUuid`
+
+A stand-in for `crypto.randomUUID` whose ids follow from a seed: the same seed gives the same sequence, every id in the layout of a version 4 UUID. Install it before a script runs and two runs mint the same ids - what `dialecte run` and the test runner's `act` do. No vitest needed. Not for ids that must be unguessable.
+
+```ts
+import { createSeededRandomUuid } from '@dialecte/core/utils'
+
+crypto.randomUUID = createSeededRandomUuid({ seed: 1 })
+crypto.randomUUID() // the same id on every run with seed 1
 ```

@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: orchestrator-briefs
+expected_outcome: |
+  Briefs follow the dialecte-lot templates: one implementer per concern, each in its own worktree
+  cut from a committed base; the cli concern waits for the core helper (it depends on it) or is
+  told how to build on it; red-first cases named, the core brief saying what the helper answers
+  for a record that does not exist, distinct from the root; the reviewer is a different agent, read-only,
+  given the brief and the diff, not the implementer's conclusions; nobody commits or pushes;
+  reports in the station shapes; a cap of three review rounds; ORDER.md puts the review after each
+  implement report and a human hand-over at the end.

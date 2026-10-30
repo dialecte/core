@@ -1,6 +1,7 @@
 import { bindExtensions } from './bind-extensions'
 import { Query } from './query'
 import { Transaction } from './transaction'
+import { summarizeOperations } from './transaction/commit/summarize-operations'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 
@@ -60,6 +61,8 @@ export class Document<
 	 * undo/redo, and folded-in cross-realm commits. `terminal` is `true` for the
 	 * final frame of an operation, letting a consumer flush it without coalescing.
 	 * Returns an unsubscribe function. Wired from the owning Project's registry.
+	 *
+	 * @intent react to document changes in a UI, refresh a view after a commit or an undo, follow transaction progress
 	 */
 	readonly subscribe: (callback: (terminal: boolean) => void) => () => void
 
@@ -163,15 +166,25 @@ export class Document<
 		)
 	}
 
+	/**
+	 * Run `fn` against a new transaction and commit everything it staged as one undoable step; on a
+	 * throw nothing is written. A second transaction started on this Document while one runs throws
+	 * `CONCURRENT_TRANSACTION`.
+	 *
+	 * @intent change a document, add or update or delete elements and commit them, group edits into one undo step
+	 *
+	 * @example
+	 * ```ts
+	 * await doc.transaction(async (tx) => {
+	 *   await tx.addChild(root, { tagName: 'A', attributes: { aA: 'a' } })
+	 * }, { label: 'Add A' })
+	 * ```
+	 */
 	async transaction<T>(
 		fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<T>,
 		options?: { label?: string },
 	): Promise<T> {
-		if (this.activeTransactions > 0) {
-			throwDialecteError('CONCURRENT_TRANSACTION', {
-				detail: `${this.activeTransactions} transaction(s) already active. Concurrent transactions risk lost updates — serialize them or implement a transaction queue.`,
-			})
-		}
+		this.assertNoActiveTransaction()
 
 		this.activeTransactions++
 		this.state.loading = true
@@ -218,6 +231,8 @@ export class Document<
 	 * Returns a PreparedTransaction with staged operations for preview,
 	 * then call commit() to apply or discard() to throw away.
 	 *
+	 * @intent preview changes before committing, ask a user to confirm an edit, dry-run a transaction
+	 *
 	 * @example
 	 * ```ts
 	 * const prepared = await doc.prepare(async (tx) => {
@@ -237,6 +252,7 @@ export class Document<
 		fn: (tx: Transaction<GenericConfig> & AllExtensions<GenericExtension>) => Promise<void>,
 		options?: { label?: string },
 	): Promise<PreparedTransaction<GenericConfig, GenericExtension>> {
+		this.assertNoActiveTransaction()
 		this.activeTransactions++
 		this.state.loading = true
 		this.state.error = null
@@ -257,11 +273,7 @@ export class Document<
 		this.state.loading = false
 
 		const operations = tx.getStagedOperations()
-		const summary = {
-			creates: operations.filter((op) => op.status === 'created').length,
-			updates: operations.filter((op) => op.status === 'updated').length,
-			deletes: operations.filter((op) => op.status === 'deleted').length,
-		}
+		const summary = summarizeOperations(operations)
 
 		let settled = false
 
@@ -278,6 +290,7 @@ export class Document<
 				if (settled) {
 					return
 				}
+				this.assertNoActiveTransaction()
 				settled = true
 
 				this.activeTransactions++
@@ -342,12 +355,38 @@ export class Document<
 
 	//== Lifecycle
 
-	/** Close the store connection */
+	/**
+	 * One write at a time on this Document: a transaction, a prepare or a prepared commit started while
+	 * another is open would stage against records the other is about to overwrite.
+	 */
+	private assertNoActiveTransaction(): void {
+		if (this.activeTransactions > 0) {
+			throwDialecteError('CONCURRENT_TRANSACTION', {
+				detail: `${this.activeTransactions} transaction(s) already active. Concurrent transactions risk lost updates — serialize them or implement a transaction queue.`,
+			})
+		}
+	}
+
+	/**
+	 * Close the connection to the project's store, shared by every document of the project: after it,
+	 * no document of this project can read or write. With a built-in store (local, in-memory), opening
+	 * the project again gives a new store: documents opened before stay closed, open them again from
+	 * the project. A custom store is reopened in place. To finish with the
+	 * project, use `project.close`.
+	 *
+	 * @intent close the project's database connection from a document
+	 */
 	close(): void {
 		this.store.close()
 	}
 
-	/** Close connection and delete the database entirely */
+	/**
+	 * Close the connection and delete the whole project database: every document of the project, its
+	 * history and its blobs - not only this document. To delete one document, use
+	 * `project.removeDocument`.
+	 *
+	 * @intent delete the whole project database from a document, wipe every document of the project
+	 */
 	async destroy(): Promise<void> {
 		await this.store.destroy()
 	}

@@ -1,8 +1,10 @@
 export { Transaction } from './main'
 export { AnyTransaction } from './any'
 export { isTransactionContext } from './guard'
+export { summarizeOperations } from './commit/summarize-operations'
 
 export type * from './any'
 export type * from './clone'
 export type * from './create'
 export type * from './update'
+export type * from './commit/summarize-operations.types'
