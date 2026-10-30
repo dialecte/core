@@ -52,6 +52,10 @@ export type EngineControlRequest<GenericSettings = unknown> =
 			type: 'destroy'
 			requestId: number
 			project: string
+			/**
+			 * Direct mode takes the lock only if free (a holder is another realm's engine); through the hub
+			 * the destroy waits for it (the engine the hub just released may hold it a moment).
+			 */
 			lock: EngineLockMode
 			budgetMs: number
 	  }
@@ -63,6 +67,8 @@ export type EngineControlAnswer =
 			requestId: number
 			dialecteId: string
 			dialecteVersion: string
+			/** The wire the engine speaks (`ENGINE_WIRE_PROTOCOL` of its copy of the library). */
+			wireProtocol: number
 			/** Whether the engine took its files back in this worker (closed then opened again) rather than set them up. */
 			resumed: boolean
 	  }

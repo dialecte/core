@@ -231,6 +231,27 @@ function engineEnded(params: { generation: number; now?: number }): HubEvent {
 	return { type: 'engine-ended', now, project: PROJECT, generation }
 }
 
+function destroy(params: { realmId: string; now?: number }): HubEvent {
+	const { realmId, now = 0 } = params
+	return { type: 'destroy', now, realmId, project: PROJECT }
+}
+
+function destroyed(params: { realmId: string; now?: number }): HubEvent {
+	const { realmId, now = 0 } = params
+	return { type: 'destroyed', now, realmId, project: PROJECT }
+}
+
+/** The engine the shell is asked to spawn for the project, by generation. */
+const SPAWN_SHELL_1: HubCommand = {
+	type: 'spawn-engine',
+	realmId: 'shell',
+	project: PROJECT,
+	dialecteId: 'scl',
+	generation: 1,
+	openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+}
+const SPAWN_SHELL_2: HubCommand = { ...SPAWN_SHELL_1, generation: 2 }
+
 /** An engine's error as the hub receives it: the router forwards it untouched. */
 const BUSY_ERROR = { key: 'PROJECT_ENGINE_BUSY', detail: 'the engine lock is held' }
 const QUOTA_ERROR = { key: 'STORE_QUOTA_EXCEEDED', detail: 'no room for a new project' }
@@ -1553,6 +1574,200 @@ describe('createHubRouter', () => {
 					},
 				],
 			},
+		'a realm destroys the project while another realm is its client → refused PROJECT_OPEN_ELSEWHERE, nothing changes':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					open({ realmId: 'shell' }),
+					engineOpened({ generation: 1 }),
+					open({ realmId: 'other-tab' }),
+					leave({ realmId: 'shell' }),
+				],
+				steps: [
+					{
+						event: destroy({ realmId: 'shell' }),
+						commands: [
+							{
+								type: 'refuse-destroy',
+								realmId: 'shell',
+								project: PROJECT,
+								refusal: {
+									origin: 'hub',
+									key: 'PROJECT_OPEN_ELSEWHERE',
+									detail: `"${PROJECT}" is open in 1 other view(s)`,
+									meta: { project: PROJECT, views: 1 },
+								},
+							},
+						],
+					},
+				],
+			},
+		'a realm destroys the project its engine idles in → engine released, destroy granted; an open meanwhile waits until destroyed, then is elected':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					open({ realmId: 'shell' }),
+					engineOpened({ generation: 1 }),
+					leave({ realmId: 'shell' }),
+				],
+				steps: [
+					{
+						event: destroy({ realmId: 'shell' }),
+						commands: [
+							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT },
+						],
+						wakeAt: undefined,
+					},
+					{ event: open({ realmId: 'other-tab' }), commands: [] },
+					{
+						event: destroyed({ realmId: 'shell' }),
+						// the opener, a client of the project, hosts
+						commands: [{ ...SPAWN_SHELL_2, realmId: 'other-tab' }],
+					},
+				],
+			},
+		'a realm destroys the project while still its client (another connection of the realm) → told its engine is gone, held, given a new engine once destroyed':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					open({ realmId: 'shell' }),
+					engineOpened({ generation: 1 }),
+				],
+				steps: [
+					{
+						event: destroy({ realmId: 'shell' }),
+						commands: [
+							{ type: 'engine-lost', realmId: 'shell', project: PROJECT, generation: 1 },
+							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT },
+						],
+					},
+					{ event: destroyed({ realmId: 'shell' }), commands: [SPAWN_SHELL_2] },
+					{
+						event: engineOpened({ generation: 2 }),
+						commands: [
+							{ type: 'connect-client', project: PROJECT, generation: 2, realmId: 'shell' },
+						],
+					},
+				],
+			},
+		'a realm destroys a project no engine runs → granted at once; a second destroy meanwhile refused':
+			{
+				history: [hello({ realmId: 'shell' }), hello({ realmId: 'other-tab' })],
+				steps: [
+					{
+						event: destroy({ realmId: 'shell' }),
+						commands: [{ type: 'destroy-granted', realmId: 'shell', project: PROJECT }],
+					},
+					{
+						event: destroy({ realmId: 'other-tab' }),
+						commands: [
+							{
+								type: 'refuse-destroy',
+								realmId: 'other-tab',
+								project: PROJECT,
+								refusal: {
+									origin: 'hub',
+									key: 'PROJECT_OPEN_ELSEWHERE',
+									detail: `"${PROJECT}" is being destroyed by another view`,
+									meta: { project: PROJECT },
+								},
+							},
+						],
+					},
+					{ event: destroyed({ realmId: 'other-tab' }), commands: [] },
+					{ event: destroyed({ realmId: 'shell' }), commands: [] },
+				],
+			},
+		'the destroying realm dies before it is done → the hold lifted: the open made meanwhile is elected':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					destroy({ realmId: 'other-tab' }),
+					open({ realmId: 'shell' }),
+				],
+				steps: [
+					{
+						event: realmGone({ realmId: 'other-tab' }),
+						commands: [{ type: 'drop-realm', realmId: 'other-tab' }, SPAWN_SHELL_1],
+					},
+				],
+			},
+		'a destroy never said done → the open made meanwhile refused PROJECT_ENGINE_UNAVAILABLE once the open budget has passed; the project still held':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					destroy({ realmId: 'shell' }),
+				],
+				steps: [
+					{
+						event: open({ realmId: 'other-tab', now: 1_000 }),
+						commands: [],
+						wakeAt: 1_000 + HUB_OPEN_BUDGET_MS,
+					},
+					{
+						event: tick({ now: 1_000 + HUB_OPEN_BUDGET_MS }),
+						commands: [
+							{
+								type: 'refuse-open',
+								realmId: 'other-tab',
+								project: PROJECT,
+								refusal: {
+									origin: 'hub',
+									key: 'PROJECT_ENGINE_UNAVAILABLE',
+									detail: `"${PROJECT}" is being destroyed and was not done within ${HUB_OPEN_BUDGET_MS} ms`,
+									meta: { project: PROJECT, openBudgetMs: HUB_OPEN_BUDGET_MS },
+								},
+							},
+						],
+						wakeAt: undefined,
+					},
+					{ event: open({ realmId: 'other-tab', now: 2_000 + HUB_OPEN_BUDGET_MS }), commands: [] },
+					{
+						event: destroyed({ realmId: 'shell', now: 3_000 + HUB_OPEN_BUDGET_MS }),
+						commands: [{ ...SPAWN_SHELL_1, realmId: 'other-tab' }],
+					},
+				],
+			},
+		'a realm leaves a project held by a destroy → its open dropped: nothing elected once destroyed':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					destroy({ realmId: 'shell' }),
+					open({ realmId: 'other-tab' }),
+				],
+				steps: [
+					{ event: leave({ realmId: 'other-tab' }), commands: [], wakeAt: undefined },
+					{ event: destroyed({ realmId: 'shell' }), commands: [] },
+				],
+			},
+		'a realm unknown to the hub destroys a project → refused STORE_REALM_UNKNOWN': {
+			history: [],
+			steps: [
+				{
+					event: destroy({ realmId: 'ghost' }),
+					commands: [
+						{
+							type: 'refuse-destroy',
+							realmId: 'ghost',
+							project: PROJECT,
+							refusal: {
+								origin: 'hub',
+								key: 'STORE_REALM_UNKNOWN',
+								detail: 'the hub knows no view "ghost"',
+								meta: { realmId: 'ghost' },
+							},
+						},
+					],
+				},
+			],
+		},
 	}
 
 	runTestCases.generic(testCases, function replayAndAssert(testCase) {

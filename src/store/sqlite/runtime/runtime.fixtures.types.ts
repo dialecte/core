@@ -16,6 +16,10 @@ export type RuntimeFixtureScenario =
 	| 'ignore-destroy'
 	| 'slow-destroy'
 	| 'ignore-destroy-slow-fresh'
+	| 'ignore-destroy-always'
+	| 'close-throws'
+	| 'end-on-destroy'
+	| 'other-wire'
 	| 'install-fails'
 	| 'install-fails-on-one'
 	| 'install-fails-once'
@@ -32,17 +36,18 @@ export type RuntimeFixtureOrder =
 	| { type: 'disk-full'; afterWrites?: number }
 	| { type: 'disk-free' }
 	| { type: 'write-fails' }
+	| { type: 'close-throws' }
 
 /** What the fixture's engine workers say on the fixture channel: an order taken, a phase reached. */
 export type RuntimeFixtureNotice =
 	| { type: 'ack'; of: RuntimeFixtureOrder['type'] }
 	/** The import reached a pause its file marks: `pause` (the parse), `after-pause` or `after-yield-pause`. */
 	| { type: 'reached'; marker: 'pause' | 'after-pause' | 'after-yield-pause' }
-	/** A `destroy` reached the worker (the destroy scenarios): one per worker asked. */
-	| { type: 'destroy-asked' }
+	/** A `destroy` of `project` reached the worker (the destroy scenarios): one per worker asked. */
+	| { type: 'destroy-asked'; project: string }
 
-/** How a fixture engine worker takes a `destroy`: swallowed, handed over late, or at once. */
-export type DestroyShape = 'deaf' | 'late' | 'at-once'
+/** How a fixture engine worker takes a `destroy`: swallowed, handed over late, at once, or its worker ended unanswered. */
+export type DestroyShape = 'deaf' | 'late' | 'at-once' | 'end'
 
 /** What a runtime test tells its holder worker. */
 export type RuntimeFixtureMessage = { type: 'hold'; project: string } | { type: 'release' }

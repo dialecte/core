@@ -1,5 +1,9 @@
 import { createRunningOperations } from '../running-operations'
 import { throwStoreClosed } from '../store-errors'
+import { ENGINE_WIRE_MEMBERS } from './wire/wire.constants'
+
+import { toDialecteError } from '@/errors'
+import { throwIfExportAborted } from '@/project/io/run-export'
 
 import type {
 	ChangeLogEntry,
@@ -12,6 +16,7 @@ import type {
 } from '../store.types'
 import type { EngineConnector, EngineLink, EngineStoreParams } from './engine-store.types'
 import type { EngineApi } from './engine.types'
+import type { WireMemberSpec } from './wire/wire.types'
 import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
@@ -71,114 +76,124 @@ export class EngineStore implements Store {
 
 	/** Nothing to bring in sync: the engine answers every connection from one state. */
 	async reconcile(): Promise<void> {
-		return this.operation(async () => undefined)
+		return this.operation({ readRetried: false, run: async () => undefined })
 	}
 
 	/** A document is readable once registered, as on every store. */
 	async isDocumentReadable(documentId: string): Promise<boolean> {
-		return this.operation(async (engine) => {
-			const document = await engine.getDocument(documentId)
-			return document !== undefined
-		})
+		const document = await this.call('getDocument', documentId)
+		return document !== undefined
 	}
 
 	// --- File registry ---
 
 	async registerDocument(file: DocumentRecord): Promise<void> {
-		return this.operation((engine) => engine.registerDocument(file))
+		return this.call('registerDocument', file)
 	}
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
-		return this.operation((engine) => engine.getDocument(documentId))
+		return this.call('getDocument', documentId)
 	}
 
 	async getDocuments(): Promise<DocumentRecord[]> {
-		return this.operation((engine) => engine.getDocuments())
+		return this.call('getDocuments')
 	}
 
 	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
-		return this.operation((engine) => engine.updateDocument(documentId, updates))
+		return this.call('updateDocument', documentId, updates)
 	}
 
 	async removeDocument(documentId: string): Promise<void> {
-		return this.operation((engine) => engine.removeDocument(documentId))
+		return this.call('removeDocument', documentId)
 	}
 
 	// --- Record access ---
 
 	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
-		return this.operation((engine) => engine.get(id, documentId))
+		return this.call('get', id, documentId)
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
-		return this.operation((engine) => engine.getByDocumentId(documentId))
+		return this.call('getByDocumentId', documentId)
 	}
 
 	async count(documentId: string): Promise<number> {
-		return this.operation((engine) => engine.count(documentId))
+		return this.call('count', documentId)
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
-		return this.operation((engine) => engine.getByTagNameInDocument(tagName, documentId))
+		return this.call('getByTagNameInDocument', tagName, documentId)
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
-		return this.operation((engine) => engine.getMany(ids, documentId))
+		return this.call('getMany', ids, documentId)
 	}
 
 	// --- Import ---
 
 	/**
-	 * The import runs in the engine; its progress listener crosses as an argument of its own and its
-	 * abort as a call of its own, by `writeId`: made only once the import was asked for, so the engine
+	 * The import runs in the engine; its progress listener stays here (the engine's ticks come back on
+	 * the call's port, before its answer) and its abort crosses as a call of its own, by `writeId`: made only once the import was asked for, so the engine
 	 * knows it (a signal already aborted is told at once), and the engine answers in every store's
 	 * order (a store with no dialecte refuses first).
 	 */
 	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
 		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
-		return this.operation(async (engine) => {
-			const importing = engine.importFile({ file, options, writeId }, onProgress)
-			const stopForwarding = forwardAbort({
-				signal,
-				abort: function abortInEngine() {
-					return engine.abortImport({ writeId })
-				},
-			})
-			try {
-				return await importing
-			} finally {
-				stopForwarding()
-			}
+		// a write its caller identifies: never made again, its outcome asked by its id
+		return this.operation({
+			readRetried: false,
+			run: async (engine) => {
+				const importing = engine.importFile({ file, options, writeId }, onProgress)
+				const stopForwarding = forwardAbort({
+					signal,
+					abort: function abortInEngine() {
+						return engine.abortImport({ writeId })
+					},
+				})
+				try {
+					return await importing
+				} finally {
+					stopForwarding()
+				}
+			},
 		})
 	}
 
 	// --- Export ---
 
 	/**
-	 * The export runs in the engine; its progress listener crosses as an argument of its own and its
-	 * abort as a call of its own, by an id of this call.
+	 * The export runs in the engine; its progress listener stays here (the engine's ticks come back on
+	 * the call's port, before its answer) and its abort crosses as a call of its own, by an id of this call. The engine may finish before that call reaches
+	 * it: an export its caller aborted before the answer is `EXPORT_ABORTED` all the same (an export
+	 * leaves nothing behind); an error the engine answered stays.
 	 */
 	async exportFile(params: ExportFileParams): Promise<ExportFileResult> {
 		const { documentId, options, onProgress, signal } = params
 		const exportId = crypto.randomUUID()
-		return this.operation(async (engine) => {
-			const exporting = engine.exportFile({ documentId, options, exportId }, onProgress)
-			const stopForwarding = forwardAbort({
-				signal,
-				abort: function abortInEngine() {
-					return engine.abortExport({ exportId })
-				},
-			})
-			try {
-				return await exporting
-			} finally {
-				stopForwarding()
-			}
+		// never made again: an export can be large, its caller asks again
+		return this.operation({
+			readRetried: false,
+			run: async (engine) => {
+				const exporting = engine.exportFile({ documentId, options, exportId }, onProgress)
+				const stopForwarding = forwardAbort({
+					signal,
+					abort: function abortInEngine() {
+						return engine.abortExport({ exportId })
+					},
+				})
+				try {
+					const exported = await exporting
+					throwIfExportAborted({ signal, documentId })
+					return exported
+				} finally {
+					stopForwarding()
+				}
+			},
 		})
 	}
 
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
-		return this.operation((engine) => engine.getWriteOutcome(params))
+		return this.call('getWriteOutcome', params)
 	}
 
 	// --- Writes ---
@@ -187,10 +202,10 @@ export class EngineStore implements Store {
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
-		return this.operation((engine) => engine.bulkWrite(documentId, ops))
+		return this.call('bulkWrite', documentId, ops)
 	}
 
-	/** The commit runs in the engine; its progress listener crosses as an argument of its own. */
+	/** The commit runs in the engine; its progress listener stays here, its ticks heard before the answer. */
 	async commit(params: {
 		documentId: string
 		writeId?: string
@@ -207,27 +222,25 @@ export class EngineStore implements Store {
 			deletes,
 			onProgress,
 		} = params
-		return this.operation((engine) =>
-			engine.commit({ documentId, writeId, creates, updates, deletes }, onProgress),
-		)
+		return this.call('commit', { documentId, writeId, creates, updates, deletes }, onProgress)
 	}
 
 	// --- History ---
 
 	async undo(documentId: string): Promise<void> {
-		return this.operation((engine) => engine.undo(documentId))
+		return this.call('undo', documentId)
 	}
 
 	async redo(documentId: string): Promise<void> {
-		return this.operation((engine) => engine.redo(documentId))
+		return this.call('redo', documentId)
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
-		return this.operation((engine) => engine.getHistoryStatus(documentId))
+		return this.call('getHistoryStatus', documentId)
 	}
 
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
-		return this.operation((engine) => engine.getChangeLog(documentId))
+		return this.call('getChangeLog', documentId)
 	}
 
 	/** No database object crosses the port: the engine owns it. */
@@ -238,50 +251,79 @@ export class EngineStore implements Store {
 	// --- Blob storage ---
 
 	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
-		return this.operation((engine) => engine.addBlob(entry, data))
+		return this.call('addBlob', entry, data)
 	}
 
 	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
-		return this.operation((engine) => engine.getBlob(blobId))
+		return this.call('getBlob', blobId)
 	}
 
 	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
-		return this.operation((engine) => engine.getBlobsByDocument(documentId))
+		return this.call('getBlobsByDocument', documentId)
 	}
 
 	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
-		return this.operation((engine) => engine.getBlobsByRecord(documentId, recordRef))
+		return this.call('getBlobsByRecord', documentId, recordRef)
 	}
 
 	async getStandaloneBlobs(): Promise<BlobRecord[]> {
-		return this.operation((engine) => engine.getStandaloneBlobs())
+		return this.call('getStandaloneBlobs')
 	}
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
-		return this.operation((engine) => engine.attachBlob(blobId, ref))
+		return this.call('attachBlob', blobId, ref)
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
-		return this.operation((engine) => engine.detachBlob(blobId, ref))
+		return this.call('detachBlob', blobId, ref)
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
-		return this.operation((engine) => engine.removeBlob(blobId))
+		return this.call('removeBlob', blobId)
 	}
 
 	// --- Private ---
 
 	/**
-	 * One operation of the port: refused once the store is closed; counted while it runs, so a
-	 * `close()` meanwhile lets it complete and releases the link after it.
+	 * A call of the engine's `member` as one operation of the port; a read (the wire table says which,
+	 * for the member this calls) whose engine ended with its host is made once more on the link's next
+	 * engine. Its arguments are the member's own, forwarded as they are (not one params object).
 	 */
-	private async operation<GenericResult>(
-		run: (engine: EngineApi) => Promise<GenericResult>,
-	): Promise<GenericResult> {
+	private async call<GenericMember extends keyof EngineApi>(
+		member: GenericMember,
+		...args: Parameters<EngineApi[GenericMember]>
+	): Promise<Awaited<ReturnType<EngineApi[GenericMember]>>> {
+		const spec: WireMemberSpec = ENGINE_WIRE_MEMBERS[member]
+		return this.operation({
+			readRetried: spec.read === true,
+			run: function callMember(engine) {
+				return Reflect.apply(engine[member], engine, args) as Promise<
+					Awaited<ReturnType<EngineApi[GenericMember]>>
+				>
+			},
+		})
+	}
+
+	/**
+	 * One operation of the port: refused once the store is closed; counted while it runs, so a
+	 * `close()` meanwhile lets it complete and releases the link after it. `readRetried`: refused
+	 * because its engine ended with its host, it is made once more, on the link's next engine.
+	 */
+	private async operation<GenericResult>(params: {
+		readRetried: boolean
+		run: (engine: EngineApi) => Promise<GenericResult>
+	}): Promise<GenericResult> {
+		const { readRetried, run } = params
 		if (this.closed) throwStoreClosed({ storeName: this.name })
 		return this.tracked(async () => {
 			const engine = await this.currentEngine()
-			return run(engine)
+			try {
+				return await run(engine)
+			} catch (thrown) {
+				if (!readRetried || !isHostGone({ thrown })) throw thrown
+				const nextEngine = await this.currentEngine()
+				return run(nextEngine)
+			}
 		})
 	}
 
@@ -341,6 +383,12 @@ function forwardAbort(params: { signal?: AbortSignal; abort: () => Promise<void>
 	return function stopForwarding() {
 		signal.removeEventListener('abort', abortQuietly)
 	}
+}
+
+/** Refused because its engine ended with its host (not because it went silent: it may still be running). */
+function isHostGone(params: { thrown: unknown }): boolean {
+	const error = toDialecteError(params.thrown)
+	return error?.key === 'STORE_ENGINE_LOST' && error.meta?.reason === 'host-gone'
 }
 
 function stopNothing(): void {}

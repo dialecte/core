@@ -62,9 +62,28 @@ export type WireJsonPlace = {
 	path?: readonly string[]
 }
 
-/** How a member of the engine crosses a port. */
-export type WireMemberSpec = {
-	/** The place of its progress listener among its arguments (it crosses as a proxy of the caller's copy). */
+/**
+ * How one member of the engine crosses a port. A member marked a read is made again on the next engine:
+ * it carries no progress listener, write id or abort (the type refuses them); that it writes nothing is the
+ * wire table's word, checked by the store's own cases. An abort is only ever made from inside its import
+ * or export, never made again: a `read` flag on one would change nothing.
+ */
+export type WireMemberSpec = WireReadSpec | WireCallSpec
+
+/** A member that only reads: refused because its engine ended with its host, it is made once more on the next one. */
+export type WireReadSpec = {
+	read: true
+	/** The places of its arguments holding values the engine's JSON check reads (copied as plain data). */
+	json?: readonly WireJsonPlace[]
+	listener?: never
+	identified?: never
+	abortable?: never
+}
+
+/** Any other member: never made again. */
+export type WireCallSpec = {
+	read?: false
+	/** The place of its progress listener among its arguments (it stays with the caller: its ticks cross as signals). */
 	listener?: number
 	/** The places of its arguments holding values the engine's JSON check reads (copied as plain data). */
 	json?: readonly WireJsonPlace[]
@@ -79,6 +98,11 @@ export type WireRequest = {
 	member: string
 	args: unknown[]
 	standIns: WireStandIn[]
+	/**
+	 * The call's progress listener, by an id of the client's: the engine posts each tick on the client's
+	 * port under it (one port: every tick reaches the caller before the answer). None, no tick.
+	 */
+	progressId?: number
 }
 
 /** What the engine answers a call: its value, or what it threw as data. */
@@ -86,5 +110,5 @@ export type WireAnswer = { ok: true; value: unknown } | { ok: false; thrown: Thr
 
 /** What the engine exposes on a client's port: one member, every call through it. */
 export type EngineWire = {
-	call: (request: WireRequest, listener?: (...progress: unknown[]) => void) => Promise<WireAnswer>
+	call: (request: WireRequest) => Promise<WireAnswer>
 }

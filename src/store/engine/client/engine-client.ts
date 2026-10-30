@@ -10,16 +10,23 @@ import { createDialecteError } from '@/errors'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { EngineApi } from '../engine.types'
+import type { ProgressSignal } from '../host/host.types'
 import type { EngineWire, WireMemberSpec } from '../wire/wire.types'
-import type { CallInFlight, EngineClient, EngineLostReason, HeartbeatWatch } from './client.types'
+import type {
+	CallInFlight,
+	EngineClient,
+	EngineLostReason,
+	HeartbeatWatch,
+	ProgressListeners,
+} from './client.types'
 import type { WriteOutcome } from '@/store/store.types'
 
 /**
  * The engine as one client reaches it through its port: a plain object of the engine's members
  * (it answers no `then` and no symbol key, so it never looks like a promise), each call crossing as
- * the wire table says - its JSON values copied as plain data, its progress listener wrapped by this
- * copy of the library (Comlink's proxy marker is per copy), its answer an envelope: a value, or what
- * the engine threw, rebuilt. The calls in flight are known: once the engine is lost they are refused
+ * the wire table says - its JSON values copied as plain data, its progress listener kept here under an
+ * id (the engine posts each tick on this port: every tick is told before the answer), its answer an
+ * envelope: a value, or what the engine threw, rebuilt. The calls in flight are known: once the engine is lost they are refused
  * `STORE_ENGINE_LOST` (a write with its `writeId`); a write refused so while its engine may still run
  * it is `running` for `getWriteOutcome` until its answer arrives.
  */
@@ -30,6 +37,7 @@ export function createEngineClient(params: {
 	const { port, heartbeatTimeoutMs = ENGINE_HEARTBEAT_TIMEOUT_MS } = params
 	const remote = Comlink.wrap<EngineWire>(port)
 	const inFlight = new Set<CallInFlight>()
+	const listeners = createProgressListeners({ port })
 	/** Writes refused lost whose engine may still apply them: their answer has not come. */
 	const unanswered = new Set<string>()
 	const watch = watchHeartbeat({
@@ -53,6 +61,7 @@ export function createEngineClient(params: {
 			}
 		}
 		inFlight.clear()
+		listeners.clear()
 		// a gone engine took its queued writes with it: the next one answers for them
 		if (reason === 'host-gone') unanswered.clear()
 	}
@@ -81,15 +90,18 @@ export function createEngineClient(params: {
 		}
 		const wire = toWireArgs({ args: given, places: spec.json ?? [] })
 		return new Promise(function callEngine(resolve, reject) {
-			// made before the call is in flight: a listener Comlink cannot proxy (a frozen one) leaves nothing waiting
-			const proxied =
-				typeof listener === 'function' ? Comlink.proxy(listener as () => void) : undefined
+			const progressId =
+				typeof listener === 'function'
+					? listeners.add({ listener: listener as (...progress: unknown[]) => unknown })
+					: undefined
 			const entry: CallInFlight = { writeId, exportId, reject, lost: false }
 			// a call starting while none waited: the engine's silence counts from now
 			if (inFlight.size === 0) watch.restart()
 			inFlight.add(entry)
-			remote.call({ member, args: wire.args, standIns: wire.standIns }, proxied).then(
+			remote.call({ member, args: wire.args, standIns: wire.standIns, progressId }).then(
 				function answered(answer) {
+					// every tick of the call came before its answer, on this port: the listener is done
+					listeners.remove({ progressId })
 					inFlight.delete(entry)
 					if (writeId !== undefined) unanswered.delete(writeId)
 					if (entry.lost) return
@@ -97,6 +109,7 @@ export function createEngineClient(params: {
 					else reject(fromThrownData({ data: answer.thrown }))
 				},
 				function notSent(thrown: unknown) {
+					listeners.remove({ progressId })
 					inFlight.delete(entry)
 					if (!entry.lost) reject(thrown)
 				},
@@ -124,6 +137,7 @@ export function createEngineClient(params: {
 		 */
 		close: function closeClient({ storeName }) {
 			watch.stop()
+			listeners.stop()
 			for (const entry of inFlight) {
 				entry.lost = true
 				entry.reject(
@@ -138,6 +152,48 @@ export function createEngineClient(params: {
 		},
 	}
 }
+
+/**
+ * The progress listeners of the calls in flight, each under the id its call sends: a tick the engine
+ * posts on the port reaches its listener; a listener that throws is the caller's own affair.
+ */
+function createProgressListeners(params: { port: MessagePort }): ProgressListeners {
+	const { port } = params
+	const listeners = new Map<number, (...progress: unknown[]) => unknown>()
+	let nextId = 0
+	function hear(event: MessageEvent<ProgressSignal | undefined>): void {
+		const signal = event.data
+		if (signal?.type !== ENGINE_SIGNAL.progress) return
+		try {
+			const told = listeners.get(signal.progressId)?.(...signal.progress)
+			// a listener answering a promise that rejects fails as one that throws: its call goes on
+			Promise.resolve(told).catch(ignoreListenerFailure)
+		} catch {
+			// the caller's listener failed: its call goes on
+		}
+	}
+	// beside Comlink's own listener: one port, the ticks heard in their order with the answers
+	port.addEventListener('message', hear)
+	return {
+		add: function addListener({ listener }) {
+			nextId += 1
+			listeners.set(nextId, listener)
+			return nextId
+		},
+		remove: function removeListener({ progressId }) {
+			if (progressId !== undefined) listeners.delete(progressId)
+		},
+		clear: function clearListeners() {
+			listeners.clear()
+		},
+		stop: function stopHearing() {
+			listeners.clear()
+			port.removeEventListener('message', hear)
+		},
+	}
+}
+
+function ignoreListenerFailure(): void {}
 
 /** A call in flight refused: its engine is lost; a write's id kept to say it may still be running. */
 function refuseLost(params: {

@@ -1,4 +1,9 @@
+import type { EngineControlRequest } from '../engine/engine.types'
 import type { ImportFileOptions, Store } from '../store.types'
+import type {
+	STORE_CONTRACT_DIFFERENCES,
+	STORE_CONTRACT_FEATURES,
+} from './store-contract.constants'
 import type { DialecteErrorKey } from '@/errors'
 import type { DocumentRecord } from '@/project/types'
 import type { BaseTestCase } from '@/test'
@@ -29,6 +34,11 @@ export type StoreContractFactory = {
 	 * once the leg serves the part and the entry is left behind.
 	 */
 	pending?: Partial<Record<StoreContractFeature, string>>
+	/**
+	 * Where this leg answers otherwise by design, each with why: a case needing one is skipped on this leg
+	 * with that reason (never run in a weaker form). A leg with no `endEngine` must say why here.
+	 */
+	differs?: Partial<Record<StoreContractDifference, string>>
 	/** The store's storage made full: from now on a write that needs more room than it has is refused. */
 	fillStorage?: (params: { store: Store }) => Promise<void>
 	/**
@@ -36,16 +46,37 @@ export type StoreContractFactory = {
 	 * storage are skipped on it with this reason.
 	 */
 	storageUnfillable?: string
+	/** What the leg opened for the case beside its stores (a realm, a connection), let go once the case is done. */
+	afterCase?: () => Promise<void>
+	/** The store's engine ended at once, as one that dies (its work in flight lost); the store opens again later. */
+	endEngine?: (params: { store: Store }) => Promise<void>
 }
 
 /** A part of the port a leg may not serve yet. */
-export type StoreContractFeature = 'history' | 'blobs' | 'import' | 'export'
+export type StoreContractFeature = (typeof STORE_CONTRACT_FEATURES)[number]
+
+/** What a leg may answer otherwise by design (`STORE_CONTRACT_DIFFERENCES` says what each is). */
+export type StoreContractDifference = (typeof STORE_CONTRACT_DIFFERENCES)[number]
+
+/** What a case tells the contract's engine workers on their channel. */
+export type ContractEngineOrder = { type: 'end'; project: string }
+
+/** A control message the contract's engine worker notes the project of (an open, a close, a destroy). */
+export type ContractControlMessage = {
+	type?: EngineControlRequest['type']
+	project?: string
+}
 
 /**
  * What a case needs of a leg beyond the registry, the reads and the bulk writes: a second connection
- * (`connect`), a storage it can fill (`fillStorage`), or a part of the port.
+ * (`connect`), a storage it can fill (`fillStorage`), a part of the port, or something a leg may answer
+ * otherwise by design (a difference).
  */
-export type StoreContractNeed = 'second-connection' | 'full-storage' | StoreContractFeature
+export type StoreContractNeed =
+	| 'second-connection'
+	| 'full-storage'
+	| StoreContractFeature
+	| StoreContractDifference
 
 /** What a case is given: the store under test and the factory's two ways to see its state again. */
 export type StoreContractContext = {
@@ -56,6 +87,8 @@ export type StoreContractContext = {
 	connect: () => Promise<Store>
 	/** A fresh, open store of another name; destroyed after the case. */
 	createOther: () => Promise<Store>
+	/** The store's engine ended at once, as one that dies; on a leg with no engine, refused. */
+	endEngine: () => Promise<void>
 	/** The store's storage made full (`full-storage`): a write needing more room than it has is refused. */
 	fillStorage: () => Promise<void>
 }
@@ -74,8 +107,8 @@ export type ContractImportHold = {
 export type StoreContractCase = BaseTestCase & {
 	/**
 	 * `second-connection`: skipped on a leg without `connect`; `full-storage`: skipped on a leg whose
-	 * storage a test cannot fill, with its reason; a part of the port: run as expected to fail on a leg
-	 * that has it pending.
+	 * storage a test cannot fill, with its reason; a difference: skipped on a leg that states it, with its
+	 * reason; a part of the port: run as expected to fail on a leg that has it pending.
 	 */
 	needs?: StoreContractNeed[]
 	act: (context: StoreContractContext) => Promise<void>

@@ -12,9 +12,3 @@ export const CLIENT_DRAIN_BUDGET_MS = 1_000
  * beat inside (a whole large document read): its client is told the engine is busy around it.
  */
 export const LARGE_ANSWER_RECORDS = 10_000
-
-/**
- * How long an answer waits for the progress its call told last to reach the caller (a listener on a
- * page gone holds no answer longer).
- */
-export const LISTENER_FLUSH_BUDGET_MS = 1_000

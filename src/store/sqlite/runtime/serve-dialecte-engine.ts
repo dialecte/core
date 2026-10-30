@@ -3,6 +3,7 @@ import { createHeartbeat, runToldBusy, withOpaquePhases } from '../../engine/hos
 import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
 import { createStoreEvents } from '../../engine/host/store-events'
 import { toThrownData } from '../../engine/wire/error-envelope'
+import { ENGINE_WIRE_PROTOCOL } from '../../engine/wire/wire.constants'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
 import { closeEngine, endEngineAndClients, releasePool } from './close-engine'
@@ -103,6 +104,7 @@ async function answerControl(params: {
 					requestId,
 					dialecteId: dialecte.id,
 					dialecteVersion: dialecte.version,
+					wireProtocol: ENGINE_WIRE_PROTOCOL,
 					resumed,
 				}
 				break
@@ -254,7 +256,9 @@ function openedEngine(params: { state: EngineRuntimeState }): {
 
 /**
  * The project removed: its engine closed when open, the lock held (taken when no engine held it), the
- * pool removed and its directory checked gone; the lock released whatever happened.
+ * pool removed and its directory checked gone; the lock released whatever happened. A destroy that
+ * fails before the removal starts keeps the pool, paused as a close leaves it: the worker may open the
+ * project again.
  */
 async function destroyProject(params: {
 	state: EngineRuntimeState
@@ -263,18 +267,22 @@ async function destroyProject(params: {
 	const { state, request } = params
 	const { project, lock, budgetMs } = request
 	const deadline = performance.now() + budgetMs
-	await endEngineAndClients({ state })
-	if (!state.releaseLock) {
-		const held = await takeEngineLock({ project, mode: lock, budgetMs })
-		state.releaseLock = held.release
-	}
+	let removing = false
 	try {
+		await endEngineAndClients({ state })
+		if (!state.releaseLock) {
+			const held = await takeEngineLock({ project, mode: lock, budgetMs })
+			state.releaseLock = held.release
+		}
+		removing = true
 		await destroyPool({ project, pool: state.pool, deadline })
 	} finally {
-		state.pool = undefined
-		state.project = undefined
-		state.releaseLock?.()
-		state.releaseLock = undefined
+		if (removing) {
+			state.pool = undefined
+			state.project = undefined
+		}
+		// the lock let go whatever the destroy did: a hub keeps this worker alive for the next engine
+		releasePool({ state })
 	}
 }
 

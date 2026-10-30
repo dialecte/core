@@ -4,21 +4,53 @@ import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
 import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
 import { poolDirectoryOf } from './install-pool'
 import { OPAQUE_DIRECTORY, POOL_FILE_HEADER } from './runtime.constants'
+import { RUNTIME_FIXTURE_CHANNEL } from './runtime.fixtures.constants'
 
 import type { EngineControl } from '../../engine/client/client.types'
 import type { EngineApi, EngineLockMode } from '../../engine/engine.types'
-import type { RuntimeFixtureScenario } from './runtime.fixtures.types'
+import type {
+	RuntimeFixtureNotice,
+	RuntimeFixtureOrder,
+	RuntimeFixtureScenario,
+} from './runtime.fixtures.types'
 import type { SqliteEngineSettings } from './runtime.types'
 
 /** The engine of core's test dialecte, as a dialecte's worker entry serves it. */
 export const TEST_ENGINE_URL = new URL('../../../test/test-dialecte.worker.ts', import.meta.url)
 	.href
 
+/** Whether the project's engine lock is free now (taken and let go at once when it is). */
+export function isEngineLockFree(params: { project: string }): Promise<boolean> {
+	return navigator.locks.request(
+		`${ENGINE_LOCK_PREFIX}${params.project}`,
+		{ ifAvailable: true },
+		function grantedOrNot(lock) {
+			return lock !== null
+		},
+	)
+}
+
 /** The runtime's fixture worker on the platform a scenario shapes. */
 export function fixtureUrl(params: { scenario: RuntimeFixtureScenario }): string {
 	const url = new URL('./runtime.fixtures.worker.ts', import.meta.url)
 	url.searchParams.set('scenario', params.scenario)
 	return url.href
+}
+
+/** The fixture's engine workers given an order; resolves once one of them has taken it. */
+export async function orderFixture(params: { order: RuntimeFixtureOrder }): Promise<void> {
+	const { order } = params
+	const listener = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	const acknowledged = new Promise<void>(function waitForAck(resolve) {
+		listener.addEventListener('message', function hear(event: MessageEvent<RuntimeFixtureNotice>) {
+			if (event.data.type === 'ack' && event.data.of === order.type) resolve()
+		})
+	})
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.postMessage(order)
+	channel.close()
+	await acknowledged
+	listener.close()
 }
 
 /** A project name of its own. */

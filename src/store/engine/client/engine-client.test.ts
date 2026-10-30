@@ -1,10 +1,13 @@
 import { ENGINE_SIGNAL } from '../engine.constants'
+import { createEngineClient } from './engine-client'
 import { outcomeOf, watchedClient } from './engine-client.fixtures'
 
 import * as Comlink from 'comlink'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import type { ProgressSignal } from '../host/host.types'
 import type { EngineWire, WireRequest } from '../wire/wire.types'
+import type { EngineClient } from './client.types'
 
 /** What a case leaves: its clients closed, its fake engines' ports closed. */
 const cleanups: (() => void)[] = []
@@ -107,5 +110,161 @@ describe('a client watching its engine', () => {
 		})
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		expect(calls.map((call) => call.member)).toEqual(['importFile'])
+	})
+})
+
+/** What one commit of a fake engine is: its progress id, and how to tick or answer it. */
+type HeldCommit = {
+	progressId: number | undefined
+	tick: (params: { current: number }) => void
+	answer: () => void
+}
+
+/** An engine holding every commit until the case ticks and answers it, on the engine's side of the port. */
+function holdingEngine(params: { port: MessagePort }): HeldCommit[] {
+	const { port } = params
+	const held: HeldCommit[] = []
+	const wire: EngineWire = {
+		call: function holdCall(request) {
+			return new Promise(function holdUntilAnswered(resolve) {
+				held.push({
+					progressId: request.progressId,
+					tick: function postTick({ current }) {
+						const signal: ProgressSignal = {
+							type: ENGINE_SIGNAL.progress,
+							progressId: request.progressId!,
+							progress: [current, 3],
+						}
+						port.postMessage(signal)
+					},
+					answer: function answerCall() {
+						resolve({ ok: true, value: undefined })
+					},
+				})
+			})
+		},
+	}
+	Comlink.expose(wire, port)
+	return held
+}
+
+function commitOf(params: { client: EngineClient; heard: number[] }): Promise<void> {
+	return params.client.api.commit(
+		{ documentId: 'doc-1', operations: [] } as never,
+		function hearProgress(current: number) {
+			params.heard.push(current)
+		},
+	)
+}
+
+/** The fake engine's held commits, once `count` of them have reached it. */
+async function heldCommits(params: { held: HeldCommit[]; count: number }): Promise<HeldCommit[]> {
+	await vi.waitFor(function commitsReached() {
+		expect(params.held).toHaveLength(params.count)
+	})
+	return params.held
+}
+
+describe('a client hearing its calls’ progress', () => {
+	it('two calls in flight → each listener hears only its own ticks, every one before its call’s answer', async () => {
+		const { client, engineSide } = watchedClient({ cleanups })
+		const held = holdingEngine({ port: engineSide })
+		const first: number[] = []
+		const second: number[] = []
+		const firstCall = commitOf({ client, heard: first })
+		const secondCall = commitOf({ client, heard: second })
+		const [one, two] = await heldCommits({ held, count: 2 })
+		one!.tick({ current: 1 })
+		two!.tick({ current: 10 })
+		one!.tick({ current: 2 })
+		one!.answer()
+		await firstCall
+		expect(first).toEqual([1, 2])
+		two!.tick({ current: 20 })
+		two!.answer()
+		await secondCall
+		expect(second).toEqual([10, 20])
+	})
+
+	it('a listener that throws, or answers a promise that rejects → its call answered all the same', async () => {
+		const { client, engineSide } = watchedClient({ cleanups })
+		const held = holdingEngine({ port: engineSide })
+		const throwing = client.api.commit(
+			{ documentId: 'doc-1', operations: [] } as never,
+			function fail() {
+				throw new Error('the caller’s listener failed')
+			},
+		)
+		const rejecting = client.api.commit(
+			{ documentId: 'doc-1', operations: [] } as never,
+			async function failLater() {
+				throw new Error('the caller’s listener failed later')
+			},
+		)
+		const [one, two] = await heldCommits({ held, count: 2 })
+		one!.tick({ current: 1 })
+		two!.tick({ current: 1 })
+		one!.answer()
+		two!.answer()
+		const outcomes = await Promise.all([outcomeOf(throwing), outcomeOf(rejecting)])
+		expect(outcomes).toEqual(['resolved', 'resolved'])
+	})
+
+	it('a tick after the client lost its engine → told to nobody', async () => {
+		const { client, engineSide } = watchedClient({ cleanups })
+		const held = holdingEngine({ port: engineSide })
+		const heard: number[] = []
+		const calling = outcomeOf(commitOf({ client, heard }))
+		const [one] = await heldCommits({ held, count: 1 })
+		one!.tick({ current: 1 })
+		await vi.waitFor(function firstTickHeard() {
+			expect(heard).toEqual([1])
+		})
+		client.lose({ reason: 'host-gone' })
+		one!.tick({ current: 2 })
+		// a later call's tick, heard: the port's order says the lost call's tick came through first
+		const later: number[] = []
+		const laterCall = commitOf({ client, heard: later })
+		const [, two] = await heldCommits({ held, count: 2 })
+		two!.tick({ current: 9 })
+		await vi.waitFor(function laterTickHeard() {
+			expect(later).toEqual([9])
+		})
+		expect(heard).toEqual([1])
+		two!.answer()
+		await laterCall
+		const outcome = await calling
+		expect(outcome).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'host-gone' } })
+	})
+
+	it('closed → every listener it put on the port taken off', () => {
+		const channel = new MessageChannel()
+		const added: EventListenerOrEventListenerObject[] = []
+		const removed: EventListenerOrEventListenerObject[] = []
+		const addListener = channel.port1.addEventListener.bind(channel.port1)
+		const removeListener = channel.port1.removeEventListener.bind(channel.port1)
+		channel.port1.addEventListener = function recordAdd(
+			type: string,
+			listener: EventListenerOrEventListenerObject,
+		) {
+			if (type === 'message') added.push(listener)
+			addListener(type, listener)
+		} as MessagePort['addEventListener']
+		channel.port1.removeEventListener = function recordRemove(
+			type: string,
+			listener: EventListenerOrEventListenerObject,
+		) {
+			if (type === 'message') removed.push(listener)
+			removeListener(type, listener)
+		} as MessagePort['removeEventListener']
+		const client = createEngineClient({ port: channel.port1 })
+		client.close({ storeName: 'closed' })
+		channel.port2.close()
+		// every listener taken off but Comlink's own, which goes with the port it closes
+		const left = added.filter(function stillOn(listener) {
+			return !removed.includes(listener)
+		})
+		expect(added.length).toBeGreaterThanOrEqual(3)
+		expect(left).toHaveLength(1)
 	})
 })

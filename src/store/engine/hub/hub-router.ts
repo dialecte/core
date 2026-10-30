@@ -10,6 +10,7 @@ import type {
 	HubCandidate,
 	HubEngine,
 	HubEvent,
+	HubHold,
 	HubOutput,
 	HubProject,
 	HubRealm,
@@ -30,6 +31,7 @@ export function createHubRouter(): HubRouter {
 	const state: HubState = {
 		realms: new Map(),
 		projects: new Map(),
+		holds: new Map(),
 		nextGeneration: 1,
 		nextOrder: 0,
 	}
@@ -59,6 +61,10 @@ function routeEvent(params: { step: HubStep; event: HubEvent }): void {
 			return engineOpenFailed({ step, failed: event })
 		case 'engine-ended':
 			return engineEnded({ step, ended: event })
+		case 'destroy':
+			return destroyProject({ step, destroy: event })
+		case 'destroyed':
+			return liftHold({ step, project: event.project, realmId: event.realmId })
 		case 'tick':
 			return passDeadlines({ step })
 		default:
@@ -146,6 +152,13 @@ function openProject(params: { step: HubStep; open: Extract<HubEvent, { type: 'o
 				meta: { realmId: open.realmId },
 			},
 		})
+		return
+	}
+	const hold = step.state.holds.get(open.project)
+	if (hold) {
+		// the project is being destroyed: the open is answered once it is done, or refused once the open
+		// budget has passed
+		hold.opens.set(open.realmId, open)
 		return
 	}
 	const existing = step.state.projects.get(open.project)
@@ -269,8 +282,101 @@ function leaveProject(params: {
 	leave: Extract<HubEvent, { type: 'leave' }>
 }): void {
 	const { step, leave } = params
+	step.state.holds.get(leave.project)?.opens.delete(leave.realmId)
 	const project = step.state.projects.get(leave.project)
 	if (project) removeClient({ step, project, realmId: leave.realmId })
+}
+
+/**
+ * A realm destroys the project: refused while another realm is its client (or another destroy runs);
+ * else its engine released - the asking realm, if still a client, told its engine is gone and held -
+ * and the realm granted it. Opens wait until the realm says it is done, or is gone.
+ */
+function destroyProject(params: {
+	step: HubStep
+	destroy: Extract<HubEvent, { type: 'destroy' }>
+}): void {
+	const { step, destroy } = params
+	const { realmId } = destroy
+	const refusal = destroyRefusal({ state: step.state, destroy })
+	if (refusal) {
+		step.commands.push({ type: 'refuse-destroy', realmId, project: destroy.project, refusal })
+		return
+	}
+	const hold: HubHold = { project: destroy.project, realmId, opens: new Map() }
+	const project = step.state.projects.get(destroy.project)
+	if (project) {
+		const version = project.clients.get(realmId)
+		if (version !== undefined) {
+			hold.opens.set(realmId, {
+				type: 'open',
+				now: step.now,
+				realmId,
+				project: project.project,
+				dialecteId: project.dialecteId,
+				dialecteVersion: version,
+			})
+			if (project.engine.status === 'ready') {
+				step.commands.push({
+					type: 'engine-lost',
+					realmId,
+					project: project.project,
+					generation: project.engine.generation,
+				})
+			}
+		}
+		releaseEngine({ step, project })
+		step.state.projects.delete(project.project)
+	}
+	step.state.holds.set(destroy.project, hold)
+	step.commands.push({ type: 'destroy-granted', realmId, project: destroy.project })
+}
+
+/** Why a realm may not destroy the project now: unknown to the hub, another destroy runs, another realm uses it. */
+function destroyRefusal(params: {
+	state: HubState
+	destroy: Extract<HubEvent, { type: 'destroy' }>
+}): HubRefusal | undefined {
+	const { state, destroy } = params
+	const { realmId, project } = destroy
+	if (!state.realms.has(realmId)) {
+		return {
+			origin: 'hub',
+			key: 'STORE_REALM_UNKNOWN',
+			detail: `the hub knows no view "${realmId}"`,
+			meta: { realmId },
+		}
+	}
+	if (state.holds.has(project)) {
+		return {
+			origin: 'hub',
+			key: 'PROJECT_OPEN_ELSEWHERE',
+			detail: `"${project}" is being destroyed by another view`,
+			meta: { project },
+		}
+	}
+	const clients = [...(state.projects.get(project)?.clients.keys() ?? [])]
+	const others = clients.filter(function isOtherRealm(clientId) {
+		return clientId !== realmId
+	})
+	if (others.length === 0) return undefined
+	return {
+		origin: 'hub',
+		key: 'PROJECT_OPEN_ELSEWHERE',
+		detail: `"${project}" is open in ${others.length} other view(s)`,
+		meta: { project, views: others.length },
+	}
+}
+
+/** The destroy done (or its realm gone): the opens made meanwhile go on, in their order. */
+function liftHold(params: { step: HubStep; project: string; realmId: string }): void {
+	const { step, project, realmId } = params
+	const hold = step.state.holds.get(project)
+	if (hold?.realmId !== realmId) return
+	step.state.holds.delete(project)
+	for (const open of hold.opens.values()) {
+		openProject({ step, open: { ...open, now: step.now } })
+	}
 }
 
 /**
@@ -302,6 +408,11 @@ function removeRealm(params: { step: HubStep; realmId: string }): void {
 	for (const goneId of gone) {
 		step.state.realms.delete(goneId)
 		step.commands.push({ type: 'drop-realm', realmId: goneId })
+	}
+	for (const hold of step.state.holds.values()) {
+		for (const goneId of gone) hold.opens.delete(goneId)
+		if (gone.includes(hold.realmId))
+			liftHold({ step, project: hold.project, realmId: hold.realmId })
 	}
 	for (const project of step.state.projects.values()) {
 		if (gone.includes(project.engine.hostRealmId)) {
@@ -615,6 +726,30 @@ function passDeadlines(params: { step: HubStep }): void {
 		releaseEngine({ step, project })
 		step.state.projects.delete(project.project)
 	}
+	for (const hold of step.state.holds.values()) refuseLateHeldOpens({ step, hold })
+}
+
+/**
+ * The opens a destroy has held for the whole open budget refused (the realm destroying it may never say
+ * it is done): the project stays held, a later open waits again.
+ */
+function refuseLateHeldOpens(params: { step: HubStep; hold: HubHold }): void {
+	const { step, hold } = params
+	for (const open of hold.opens.values()) {
+		if (open.now + HUB_OPEN_BUDGET_MS > step.now) continue
+		hold.opens.delete(open.realmId)
+		refuseOpen({
+			step,
+			realmId: open.realmId,
+			project: hold.project,
+			refusal: {
+				origin: 'hub',
+				key: 'PROJECT_ENGINE_UNAVAILABLE',
+				detail: `"${hold.project}" is being destroyed and was not done within ${HUB_OPEN_BUDGET_MS} ms`,
+				meta: { project: hold.project, openBudgetMs: HUB_OPEN_BUDGET_MS },
+			},
+		})
+	}
 }
 
 /** The project whose engine is that generation, while it is: an answer from a released engine finds none. */
@@ -663,6 +798,9 @@ function earliestDeadline(params: { state: HubState }): number | undefined {
 	const deadlines = [...params.state.projects.values()].flatMap((project) =>
 		[project.openDeadline, project.idleDeadline].filter((deadline) => deadline !== undefined),
 	)
+	for (const hold of params.state.holds.values()) {
+		for (const open of hold.opens.values()) deadlines.push(open.now + HUB_OPEN_BUDGET_MS)
+	}
 	return deadlines.length > 0 ? Math.min(...deadlines) : undefined
 }
 

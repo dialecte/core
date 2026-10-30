@@ -51,6 +51,18 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'starts the engine in a dedicated or shared worker',
 	},
 	{
+		path: 'src/store/engine/client/hub-connector.test.ts',
+		why: "a store reaching its project's engine through the origin's SharedWorker hub",
+	},
+	{
+		path: 'src/store/engine/hub/hub-client.test.ts',
+		why: "a page joining the origin's SharedWorker hub: its realm lock, frozen and restored pages, child ports",
+	},
+	{
+		path: 'src/store/engine/hub/realm-host.test.ts',
+		why: 'a page hosting engine workers for the hub, their locks let go',
+	},
+	{
 		path: 'src/store/engine/client/engine-client.page-lifecycle.test.ts',
 		why: "the page's `resume` event (a frozen tab coming back)",
 	},

@@ -37,7 +37,14 @@ export type WorkerConnectorParams<GenericSettings> = {
 	engineUrl: string
 	/** Measure the import's and the export's stages in the engine (`dev.perf`). */
 	perf?: boolean
-	/** How long the engine's open may take in all (its lock and its own setup). */
+	/**
+	 * The realm's budget for the project's engine (`ENGINE_OPEN_BUDGET_MS` when absent): how long its
+	 * open may take in all (its lock and its own setup); how long a running engine has to destroy the
+	 * project, and a fresh worker too, each with the close budget besides to answer before it counts as
+	 * deaf and is ended; and how long the realm waits for the lock of an engine it ended deaf (to close or
+	 * to destroy) before the next engine of the name starts, or the destroy is refused
+	 * `PROJECT_ENGINE_BUSY`.
+	 */
 	openBudgetMs?: number
 	/** How the engine and its clients tell a busy engine from a lost one (the defaults when absent). */
 	liveness?: {
@@ -98,5 +105,26 @@ export type EngineControl = {
 export type HeartbeatWatch = {
 	/** The silence counts from now (a call starts while none waited, the page resumed). */
 	restart: () => void
+	stop: () => void
+}
+
+/** A page's request of an engine lock its engine holds: granted once the engine let it go. */
+export type LockLetGoWatch = {
+	granted: Promise<void>
+	/** Settles once the request was let go, or withdrawn. */
+	settled: Promise<void>
+	/** Withdraw the request, if not granted yet. */
+	stop: () => void
+}
+
+/** The progress listeners of a client's calls in flight, each under the id its call sends the engine. */
+export type ProgressListeners = {
+	/** Keep the listener of a call; answers the id the call sends. */
+	add: (params: { listener: (...progress: unknown[]) => unknown }) => number
+	/** The call answered: its listener let go. */
+	remove: (params: { progressId: number | undefined }) => void
+	/** The engine lost: every listener let go (their calls are refused). */
+	clear: () => void
+	/** The client closed: nothing heard any more. */
 	stop: () => void
 }

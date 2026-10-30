@@ -1,3 +1,5 @@
+import { OUTCOME_WAIT_MS } from './store-contract.constants'
+
 import { expect } from 'vitest'
 
 import { toDialecteError } from '@/errors'
@@ -126,4 +128,30 @@ export function nestedArrays(params: { levels: number }): unknown {
 	let value: unknown = 1
 	for (let level = 0; level < params.levels; level++) value = [value]
 	return value
+}
+
+/** What a promise came to within `withinMs`: `settled`, its error's catalog key (`refused` without one), or `pending`. */
+export async function outcomeOf(params: {
+	promise: Promise<unknown>
+	withinMs?: number
+}): Promise<string> {
+	const { promise, withinMs = OUTCOME_WAIT_MS } = params
+	let timer: ReturnType<typeof setTimeout> | undefined
+	try {
+		return await Promise.race([
+			promise.then(
+				function settled() {
+					return 'settled'
+				},
+				function refused(error: unknown) {
+					return toDialecteError(error)?.key ?? 'refused'
+				},
+			),
+			new Promise<string>(function stillPending(resolve) {
+				timer = setTimeout(resolve, withinMs, 'pending')
+			}),
+		])
+	} finally {
+		clearTimeout(timer)
+	}
 }

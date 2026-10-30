@@ -1,3 +1,4 @@
+import { ENGINE_SIGNAL } from '../engine.constants'
 import { serveClient } from './engine-wire'
 import { createHeartbeat } from './heartbeat'
 import { LARGE_ANSWER_RECORDS } from './host.constants'
@@ -120,7 +121,7 @@ describe('an answer that does not clone as it is', () => {
 })
 
 describe('progress told while a call runs', () => {
-	it('a listener taking time over each tick → the answer comes once the last tick has been told', async () => {
+	it('a commit telling three ticks → each posted on the client port as a progress signal of its call, all before the answer', async () => {
 		const channel = new MessageChannel()
 		const heartbeat = createHeartbeat({ intervalMs: 60_000 })
 		const view = {
@@ -133,17 +134,66 @@ describe('progress told while a call runs', () => {
 			},
 		} as unknown as EngineApi
 		serveClient({ port: channel.port2, clientId: 'a', view, events: QUIET_EVENTS, heartbeat })
+		const seen: unknown[] = []
+		channel.port1.addEventListener('message', function record(event: MessageEvent) {
+			const data = event.data as { type?: string; progressId?: number; progress?: unknown[] }
+			seen.push(
+				data?.type === ENGINE_SIGNAL.progress
+					? { progressId: data.progressId, progress: data.progress }
+					: 'answer',
+			)
+		})
 		const remote = Comlink.wrap<EngineWire>(channel.port1)
 		cleanups.push(
-			() => channel.port1.close(),
-			() => channel.port2.close(),
+			function closeClientEnd() {
+				channel.port1.close()
+			},
+			function closeEngineEnd() {
+				channel.port2.close()
+			},
 		)
-		const told: number[] = []
-		const listener = Comlink.proxy(async function slowListener(...progress: unknown[]) {
-			await new Promise((resolve) => setTimeout(resolve, 50))
-			told.push(progress[0] as number)
+		await remote.call({
+			member: 'commit',
+			args: [{ documentId: 'doc-1' }],
+			standIns: [],
+			progressId: 7,
 		})
-		await remote.call({ member: 'commit', args: [{ documentId: 'doc-1' }], standIns: [] }, listener)
-		expect(told).toEqual([1, 2, 3])
+		expect(seen).toEqual([
+			{ progressId: 7, progress: [1, 3] },
+			{ progressId: 7, progress: [2, 3] },
+			{ progressId: 7, progress: [3, 3] },
+			'answer',
+		])
+	})
+
+	it('a call with no progress id → no tick posted, the answer alone', async () => {
+		const channel = new MessageChannel()
+		const heartbeat = createHeartbeat({ intervalMs: 60_000 })
+		const view = {
+			commit: function commitTelling(
+				_params: unknown,
+				onProgress: ((current: number, total: number) => void) | undefined,
+			) {
+				onProgress?.(1, 1)
+				return Promise.resolve()
+			},
+		} as unknown as EngineApi
+		serveClient({ port: channel.port2, clientId: 'a', view, events: QUIET_EVENTS, heartbeat })
+		const seen: string[] = []
+		channel.port1.addEventListener('message', function record(event: MessageEvent) {
+			const type = (event.data as { type?: string } | undefined)?.type
+			seen.push(type === ENGINE_SIGNAL.progress ? 'progress' : 'answer')
+		})
+		const remote = Comlink.wrap<EngineWire>(channel.port1)
+		cleanups.push(
+			function closeClientEnd() {
+				channel.port1.close()
+			},
+			function closeEngineEnd() {
+				channel.port2.close()
+			},
+		)
+		await remote.call({ member: 'commit', args: [{ documentId: 'doc-1' }], standIns: [] })
+		expect(seen).toEqual(['answer'])
 	})
 })

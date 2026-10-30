@@ -69,3 +69,9 @@ export const OPEN_FAILURE = {
  * case measuring that one budget covers the wait for the lock and the probe of the files together.
  */
 export const ONE_BUDGET_SLACK_MS = 1_000
+
+/**
+ * The open budget of a case whose engine is deaf to `destroy` and needs no long lock wait: the realm
+ * counts it deaf after this and the close budget.
+ */
+export const DEAF_DESTROY_BUDGET_MS = 1_500
