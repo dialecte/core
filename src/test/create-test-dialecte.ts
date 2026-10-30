@@ -15,6 +15,7 @@ import type {
 	TestProjectResult,
 } from './create-test-dialecte.types'
 import type { Context, ExtensionModules } from '@/document'
+import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig } from '@/types'
 
 /**
@@ -57,10 +58,14 @@ export async function createTestProject(
 	})
 }
 
+/** The stores `createTestContext` opened by name: connections of their own, closed by `closeTestContexts`. */
+const OPENED_CONTEXT_STORES = new Set<Store>()
+
 /**
  * Create a Context directly for testing FP query functions: on `store` when given, else on the store
  * of the project named `databaseName` - of the kind `storage` names, else the test helpers' default
- * (`useTestStorage`), else the local store - opened to discover its tables.
+ * (`useTestStorage`), else the local store - opened to discover its tables. Opened by name, it is a
+ * connection of its own: the project cannot be destroyed while it is open - `closeTestContexts()` first.
  */
 export async function createTestContext<GenericConfig extends AnyDialecteConfig>(
 	params: TestContextParams<GenericConfig>,
@@ -78,6 +83,7 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 				})
 			: params.store
 	await store.open()
+	if (params.store === undefined) OPENED_CONTEXT_STORES.add(store)
 	return {
 		dialecteConfig,
 		store,
@@ -93,4 +99,10 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 		}),
 		perf: NOOP_PERF,
 	}
+}
+
+/** Close every store `createTestContext` opened by name, so the projects they read can be destroyed. */
+export function closeTestContexts(): void {
+	for (const store of OPENED_CONTEXT_STORES) store.close()
+	OPENED_CONTEXT_STORES.clear()
 }

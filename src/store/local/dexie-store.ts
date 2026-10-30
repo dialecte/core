@@ -1,12 +1,16 @@
 import { applyRecordPatch } from '../apply-record-patch'
+import { createClosingConnections } from '../closing-connections'
 import { tellCommitProgress } from '../commit-progress'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
+import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
+import { createOpenConnections } from '../open-connections'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
 	throwDocumentNotRegistered,
 	throwDuplicateRecordIds,
+	throwOpenElsewhere,
 	throwRecordToUpdateNotFound,
 	throwStoreClosed,
 } from '../store-errors'
@@ -26,7 +30,14 @@ import {
 import { toStoredRecords } from '../stored-record'
 import { removeUnfinishedImports } from '../unfinished-imports'
 import { writeOutcomeOf } from '../write-outcome'
-import { DISCARDED_SEQUENCE, IMPORT_LOCK_PREFIX, VERSION_KEY_PREFIX } from './dexie-store.constants'
+import {
+	DESTROY_LOCK_ASK_INTERVAL_MS,
+	DESTROY_LOCK_WAIT_MS,
+	DISCARDED_SEQUENCE,
+	IMPORT_LOCK_PREFIX,
+	OPEN_LOCK_PREFIX,
+	VERSION_KEY_PREFIX,
+} from './dexie-store.constants'
 
 import Dexie from 'dexie'
 
@@ -63,6 +74,31 @@ function versionKey(documentId: string): string {
 
 function importLockName(params: { storeName: string; writeId: string }): string {
 	return `${IMPORT_LOCK_PREFIX}${params.storeName}:${params.writeId}`
+}
+
+/** The local connections of each name open in this realm: the count a destroy reads where there are no Web Locks. */
+const OPEN_LOCAL_CONNECTIONS = createOpenConnections()
+/** The local connections of each name closed with operations running, in this realm: a destroy of the name lets them complete first. */
+const CLOSING_LOCAL_CONNECTIONS = createClosingConnections()
+
+/** The destroys of each name in this realm, in turn: settled when the last one called has. */
+const LOCAL_DESTROY_TURNS = new Map<string, Promise<void>>()
+
+/** `run` once every destroy of the name called before it in this realm has settled. */
+function inDestroyTurn(params: { name: string; run: () => Promise<void> }): Promise<void> {
+	const { name, run } = params
+	const turn = (LOCAL_DESTROY_TURNS.get(name) ?? Promise.resolve()).then(run)
+	const settled = turn.catch(ignoreDestroyOutcome)
+	LOCAL_DESTROY_TURNS.set(name, settled)
+	void settled.then(function forgetTurn() {
+		if (LOCAL_DESTROY_TURNS.get(name) === settled) LOCAL_DESTROY_TURNS.delete(name)
+	})
+	return turn
+}
+
+/** A hold of the open lock let go, once granted. */
+function letHoldGo(release: () => void): void {
+	release()
 }
 
 /**
@@ -148,6 +184,15 @@ export class DexieStore implements Store {
 	private closings = 0
 	/** The operations running: `close()` closes the connection, `open()` and `destroy()` go on, once none is left. */
 	private readonly operations = createRunningOperations()
+	/**
+	 * This connection's shared hold of the open lock, from its ask until let go: its release once
+	 * granted (none while this connection holds none).
+	 */
+	private openHold: Promise<() => void> | undefined
+	/** This store's own destroy while it runs: an operation started meanwhile goes on once it has ended. */
+	private destroying: Promise<void> | undefined
+	/** Settles once this connection's last hold of the open lock is let go for good. */
+	private openHoldEnded: Promise<unknown> = Promise.resolve()
 
 	constructor(projectName: string, options?: DexieStoreOptions) {
 		this.name = projectName
@@ -165,16 +210,19 @@ export class DexieStore implements Store {
 	 */
 	async open(): Promise<void> {
 		const closingsAtCall = this.closings
-		// an operation still running keeps its connection: the store opens once it is done
+		// an operation still running keeps its connection: the store opens once it is done, and once its
+		// own destroy has ended
 		await this.operations.whenIdle()
+		while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
 		// a close() called after this open() wins: the store stays closed
 		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
 		this.closed = false
+		await this.holdOpen()
 		// counted as an operation: a close() meanwhile closes the connection this reopens
 		await this.tracked(async () => {
 			await this.reloadFromPersisted()
 			await removeUnfinishedImports({
-				store: this,
+				store: this.ownSweepTarget(),
 				isRunning: (document) => isImportRunning({ storeName: this.name, document }),
 			})
 		})
@@ -187,12 +235,106 @@ export class DexieStore implements Store {
 	close(): void {
 		this.closed = true
 		this.closings += 1
-		if (this.operations.count === 0) this.db.close()
+		if (this.operations.count === 0) {
+			this.letOpenHoldGo()
+			this.db.close()
+			return
+		}
+		this.holdUntilIdle()
 	}
 
+	/**
+	 * Closed with operations running: its hold of the open lock is let go once they end - a destroy of
+	 * another tab is refused until then, as a SQLite store of another tab counts - and a destroy of the
+	 * name in this realm lets them complete first.
+	 */
+	private holdUntilIdle(): void {
+		const hold = this.openHold
+		const holdEnded = this.openHoldEnded
+		// an open() after this close() takes a hold of its own
+		this.openHold = undefined
+		const until = this.operations.whenIdle().then(function letGoOnceIdle() {
+			void hold?.then(letHoldGo)
+			return holdEnded
+		})
+		CLOSING_LOCAL_CONNECTIONS.markClosing({ name: this.name, until })
+	}
+
+	/**
+	 * Delete the database, once the operations running complete; refused `PROJECT_OPEN_ELSEWHERE` while
+	 * another connection - of this tab or another - is open, nothing removed.
+	 */
 	async destroy(): Promise<void> {
+		// one destroy of this store at a time: another one called meanwhile starts once it has ended
+		while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
+		const destroying = this.destroyOnceIdle()
+		this.destroying = destroying
+		try {
+			await destroying
+		} finally {
+			if (this.destroying === destroying) this.destroying = undefined
+		}
+	}
+
+	private async destroyOnceIdle(): Promise<void> {
 		// an operation still running completes before the database goes
 		await this.operations.whenIdle()
+		// one destroy of the name at a time in this realm: none finds another's hold let go meanwhile
+		await inDestroyTurn({ name: this.name, run: this.destroyIfAlone.bind(this) })
+	}
+
+	private async destroyIfAlone(): Promise<void> {
+		const closingsAtCall = this.closings
+		// a store never opened, or closed, holds none: refused, it takes none
+		const wasOpen = this.openHold !== undefined
+		this.letOpenHoldGo()
+		// its own hold let go for good first, and the holds of the connections of the realm closed with
+		// operations running: the lock is then free unless another connection holds it
+		await this.openHoldEnded
+		await CLOSING_LOCAL_CONNECTIONS.settled({ name: this.name })
+		const destroyed = navigator.locks
+			? await this.deleteWhenAlone()
+			: await this.deleteWhenAloneInRealm()
+		if (destroyed) return
+		// refused: this connection stays as it was, unless closed meanwhile
+		if (wasOpen && this.closings === closingsAtCall) await this.holdOpen()
+		throwOpenElsewhere({ storeName: this.name })
+	}
+
+	/**
+	 * The database deleted under the open lock had alone - waited for a moment, as a connection closed
+	 * just before lets it go asynchronously; `false` when another connection still holds it.
+	 */
+	private async deleteWhenAlone(): Promise<boolean> {
+		const deadline = performance.now() + DESTROY_LOCK_WAIT_MS
+		for (;;) {
+			const destroyed = await navigator.locks.request(
+				`${OPEN_LOCK_PREFIX}${this.name}`,
+				{ mode: 'exclusive', ifAvailable: true },
+				this.deleteIfAlone.bind(this),
+			)
+			if (destroyed) return true
+			if (performance.now() >= deadline) return false
+			await new Promise(function waitAMoment(resolve) {
+				setTimeout(resolve, DESTROY_LOCK_ASK_INTERVAL_MS)
+			})
+		}
+	}
+
+	/** The database deleted when the open lock is had alone; nothing done when another connection holds it. */
+	private async deleteIfAlone(lock: Lock | null): Promise<boolean> {
+		if (lock === null) return false
+		return this.deleteDatabase()
+	}
+
+	/** With no Web Locks: the database deleted when no other connection of the realm is open, as above. */
+	private async deleteWhenAloneInRealm(): Promise<boolean> {
+		if (OPEN_LOCAL_CONNECTIONS.others({ name: this.name, connection: this }) > 0) return false
+		return this.deleteDatabase()
+	}
+
+	/** The database deleted, its connection closed first; what this connection knew of it forgotten. */
+	private async deleteDatabase(): Promise<true> {
 		if (this.db.isOpen()) {
 			this.db.close()
 			await tick()
@@ -200,6 +342,54 @@ export class DexieStore implements Store {
 		await Dexie.delete(this.name)
 		this.knownDocuments.clear()
 		this.recordCounts.clear()
+		// its next operation builds the connection again, under the schema lock, on a new database: the store
+		// reads empty, as every store does
+		this.stale = true
+		return true
+	}
+
+	/**
+	 * This connection counted open: the open lock held shared (seen by every tab), or, with no Web Locks,
+	 * counted in the realm. Waits while a destroy holds the lock alone; an open at once shares the hold.
+	 */
+	private async holdOpen(): Promise<void> {
+		this.openHold ??= this.askOpenHold()
+		await this.openHold
+	}
+
+	/** The open lock asked for shared, its release once granted; with no Web Locks, counted in the realm. */
+	private askOpenHold(): Promise<() => void> {
+		const name = this.name
+		if (!navigator.locks) {
+			OPEN_LOCAL_CONNECTIONS.markOpen({ name, connection: this })
+			return Promise.resolve(this.countClosed.bind(this))
+		}
+		let ended: Promise<unknown> = Promise.resolve()
+		const granted = new Promise<() => void>(function requestHold(grant) {
+			ended = navigator.locks.request(
+				`${OPEN_LOCK_PREFIX}${name}`,
+				{ mode: 'shared' },
+				function holdShared() {
+					return new Promise<void>(function holdUntilLetGo(letGo) {
+						grant(letGo)
+					})
+				},
+			)
+		})
+		this.openHoldEnded = ended
+		return granted
+	}
+
+	/** This connection counted open in the realm no more (where there are no Web Locks). */
+	private countClosed(): void {
+		OPEN_LOCAL_CONNECTIONS.markClosed({ name: this.name, connection: this })
+	}
+
+	/** The hold let go: at once when granted, else once it is (a close while the open waits for it). */
+	private letOpenHoldGo(): void {
+		const hold = this.openHold
+		this.openHold = undefined
+		void hold?.then(letHoldGo)
 	}
 
 	// --- Cross-realm reconciliation ---
@@ -239,11 +429,7 @@ export class DexieStore implements Store {
 	}
 
 	async getDocuments(): Promise<DocumentRecord[]> {
-		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const rows = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
-			return rows.map(withStatus)
-		})
+		return this.operation(() => this.getDocumentsUnguarded())
 	}
 
 	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
@@ -324,7 +510,7 @@ export class DexieStore implements Store {
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
 		return this.operation(async () => {
 			const { writeId } = params
-			const documents = await this.getDocuments()
+			const documents = await this.getDocumentsUnguarded()
 			await this.ensureCurrentSchema()
 			const committed = await this.db
 				.table<ChangeLogEntry>(TABLE_CHANGELOG)
@@ -671,6 +857,18 @@ export class DexieStore implements Store {
 		run: () => Promise<GenericResult>,
 	): Promise<GenericResult> {
 		if (this.closed) throwStoreClosed({ storeName: this.name })
+		// one started while this store's own destroy runs goes on once it has ended: it keeps that destroy
+		// from nothing
+		if (this.destroying) {
+			while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
+			// closed while it waited: refused before it holds the store open again
+			if (this.closed) throwStoreClosed({ storeName: this.name })
+		}
+		// counted open again after its own destroy (or a destroy racing its open), as a SQLite store
+		// connects again on its next operation
+		if (this.openHold === undefined) await this.holdOpen()
+		// closed while it waited: refused, as one started after the close is
+		if (this.closed) throwStoreClosed({ storeName: this.name })
 		return this.tracked(run)
 	}
 
@@ -698,6 +896,18 @@ export class DexieStore implements Store {
 				this.tracked(() => this.updateDocumentUnguarded(documentId, updates)),
 			removeDocument: (documentId) => this.tracked(() => this.removeDocumentUnguarded(documentId)),
 			bulkWrite: (documentId, ops) => this.tracked(() => this.bulkWriteUnguarded(documentId, ops)),
+		}
+	}
+
+	/**
+	 * The store the open's sweep of unfinished imports goes through: the open is one operation, so a
+	 * destroy of this store meanwhile, which waits for it, does not hold the sweep back.
+	 */
+	private ownSweepTarget(): Pick<Store, 'getDocuments' | 'getDocument' | 'removeDocument'> {
+		return {
+			getDocuments: () => this.tracked(() => this.getDocumentsUnguarded()),
+			getDocument: (documentId) => this.tracked(() => this.getDocumentUnguarded(documentId)),
+			removeDocument: (documentId) => this.tracked(() => this.removeDocumentUnguarded(documentId)),
 		}
 	}
 
@@ -767,6 +977,12 @@ export class DexieStore implements Store {
 				? []
 				: await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
 		assertDocumentPlace({ document, documents })
+	}
+
+	private async getDocumentsUnguarded(): Promise<DocumentRecord[]> {
+		await this.ensureCurrentSchema()
+		const rows = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+		return rows.map(withStatus)
 	}
 
 	private async getDocumentUnguarded(documentId: string): Promise<DocumentRecord | undefined> {

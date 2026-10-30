@@ -11,30 +11,43 @@ import { EngineStore } from './engine-store'
 import { INNER_MEMBERS } from './engine-store.fixtures.constants'
 import { ENGINE_WIRE_MEMBERS } from './wire/wire.constants'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { EngineLostReason } from './client/client.types'
-import type { CallLog, InnerMember, MemberActs, StoreState } from './engine-store.fixtures.types'
+import type {
+	CallLog,
+	GatedCall,
+	GatedConnector,
+	GatedDestroy,
+	InnerMember,
+	MemberActs,
+	StoreState,
+} from './engine-store.fixtures.types'
 import type { EngineConnector } from './engine-store.types'
 import type { EngineApi } from './engine.types'
 import type { WireMemberSpec } from './wire/wire.types'
 
 /** The names a case used: destroyed after it, whatever state its stores were left in. */
 const usedNames: string[] = []
+/** The stores a case made: closed after it, so that no connection keeps its project from being destroyed. */
+const madeStores: EngineStore[] = []
 
 afterEach(async () => {
+	for (const store of madeStores.splice(0)) store.close()
 	for (const name of usedNames.splice(0)) await openStore({ name }).destroy()
 })
 
 function openStore(params: { name: string }): EngineStore {
 	const { name } = params
-	return new EngineStore({
+	const store = new EngineStore({
 		name,
 		connector: createInProcessConnector({ name, dialecteId: TEST_DIALECTE.id }),
 	})
+	madeStores.push(store)
+	return store
 }
 
 /** An open store of a name of its own, holding `doc-1` with record `r1`. */
@@ -165,6 +178,7 @@ async function losingStore(params: {
 		name: seeded.name,
 		connector: losingConnector({ name: seeded.name, calls, ...params }),
 	})
+	madeStores.push(store)
 	await store.open()
 	return { store, calls }
 }
@@ -355,6 +369,138 @@ describe('EngineStore, an engine lost while a call waited', () => {
 		const { store, calls } = await losingStore({ member: 'count', reason: 'no-heartbeat' })
 		await expectRejectsWith({ action: store.count('doc-1'), key: 'STORE_ENGINE_LOST' })
 		expect(callsOf({ calls, member: 'count' })).toBe(1)
+		store.close()
+	})
+})
+
+function gatedConnector(params: { destroy: GatedDestroy }): GatedConnector {
+	let openLinks = 0
+	let connects = 0
+	let destroys = 0
+	let destroysRunning = 0
+	let mostDestroysAtOnce = 0
+	const held: { connect?: Promise<void>; destroy?: Promise<void> } = {}
+	function takeHold({ call }: { call: GatedCall }): Promise<void> {
+		const hold = held[call] ?? Promise.resolve()
+		held[call] = undefined
+		return hold
+	}
+	return {
+		connector: {
+			connect: async function connectGated() {
+				connects += 1
+				await takeHold({ call: 'connect' })
+				openLinks += 1
+				let closed = false
+				return {
+					engine: async function noEngine() {
+						if (closed)
+							throw createDialecteError('STORE_CLOSED', { detail: 'the link was released' })
+						return {} as EngineApi
+					},
+					close: function closeLink() {
+						if (closed) return
+						closed = true
+						openLinks -= 1
+					},
+				}
+			},
+			destroy: async function destroyGated(destroyParams) {
+				destroys += 1
+				destroysRunning += 1
+				mostDestroysAtOnce = Math.max(mostDestroysAtOnce, destroysRunning)
+				try {
+					await takeHold({ call: 'destroy' })
+				} finally {
+					destroysRunning -= 1
+				}
+				if (params.destroy === 'refuse') {
+					throw createDialecteError('PROJECT_OPEN_ELSEWHERE', {
+						detail: 'another connection is open',
+					})
+				}
+				// gone ahead: the store's own link let go, then the files not removed
+				destroyParams?.own?.letGo()
+				throw createDialecteError('PROJECT_DESTROY_FAILED', { detail: 'the files are still there' })
+			},
+		},
+		openLinks: function countOpenLinks() {
+			return openLinks
+		},
+		asked: function countAsked() {
+			return { connects, destroys }
+		},
+		mostDestroysAtOnce: function countMostDestroysAtOnce() {
+			return mostDestroysAtOnce
+		},
+		holdNext: function holdNext({ call }) {
+			let letGo: () => void = function noHoldYet() {}
+			held[call] = new Promise<void>(function holdUntilLetGo(resolve) {
+				letGo = resolve
+			})
+			return letGo
+		},
+	}
+}
+
+describe('EngineStore, a destroy refused', () => {
+	it('its link kept as it was: never released, never made again; the store closed → none left open', async () => {
+		const gated = gatedConnector({ destroy: 'refuse' })
+		const store = new EngineStore({
+			name: `engine-store-${crypto.randomUUID()}`,
+			connector: gated.connector,
+		})
+		await store.open()
+
+		await expectRejectsWith({ action: store.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
+
+		expect(gated.asked().connects).toBe(1)
+		expect(gated.openLinks()).toBe(1)
+		store.close()
+		expect(gated.openLinks()).toBe(0)
+	})
+
+	it('destroyed twice at once → the second destroy asks once the first has ended', async () => {
+		const gated = gatedConnector({ destroy: 'refuse' })
+		const store = new EngineStore({
+			name: `engine-store-${crypto.randomUUID()}`,
+			connector: gated.connector,
+		})
+		await store.open()
+		const letDestroyGo = gated.holdNext({ call: 'destroy' })
+		const first = store.destroy().catch(() => undefined)
+		await vi.waitFor(() => {
+			expect(gated.asked().destroys).toBe(1)
+		})
+		const second = store.destroy().catch(() => undefined)
+		// long enough for a second destroy that does not wait to reach the connector
+		await new Promise(function letTheSecondDestroyAsk(resolve) {
+			setTimeout(resolve, 50)
+		})
+		letDestroyGo()
+		await Promise.all([first, second])
+
+		expect(gated.asked().destroys).toBe(2)
+		expect(gated.mostDestroysAtOnce()).toBe(1)
+		store.close()
+		expect(gated.openLinks()).toBe(0)
+	})
+})
+
+describe('EngineStore, a destroy gone ahead, then failed', () => {
+	it('its link let go → the next operation connects again', async () => {
+		const gated = gatedConnector({ destroy: 'fail-gone-ahead' })
+		const store = new EngineStore({
+			name: `engine-store-${crypto.randomUUID()}`,
+			connector: gated.connector,
+		})
+		await store.open()
+
+		await expectRejectsWith({ action: store.destroy(), key: 'PROJECT_DESTROY_FAILED' })
+		await store.reconcile()
+
+		expect(gated.asked().connects).toBe(2)
+		expect(gated.openLinks()).toBe(1)
 		store.close()
 	})
 })

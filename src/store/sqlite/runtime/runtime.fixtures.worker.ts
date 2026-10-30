@@ -123,11 +123,9 @@ function fillDiskWhenOrdered(): void {
  */
 function serveEngine(): void {
 	if (scenario === 'ignore-close') ignoreClose()
-	if (scenario === 'ignore-destroy') shapeDestroy({ whileOpen: 'deaf', fresh: 'at-once' })
-	if (scenario === 'slow-destroy') shapeDestroy({ whileOpen: 'late', fresh: 'at-once' })
-	if (scenario === 'ignore-destroy-slow-fresh') shapeDestroy({ whileOpen: 'deaf', fresh: 'late' })
-	if (scenario === 'ignore-destroy-always') shapeDestroy({ whileOpen: 'deaf', fresh: 'deaf' })
-	if (scenario === 'end-on-destroy') shapeDestroy({ whileOpen: 'end', fresh: 'at-once' })
+	if (scenario === 'destroy-told') shapeDestroy({ shape: 'at-once' })
+	if (scenario === 'ignore-destroy') shapeDestroy({ shape: 'deaf' })
+	if (scenario === 'slow-destroy') shapeDestroy({ shape: 'late' })
 	if (scenario === 'endable' || scenario === 'uncaught-error') followCaseOrders()
 	if (scenario === 'slow-statements' || scenario === 'slow-statements-silent') {
 		slowStatements({ silent: scenario === 'slow-statements-silent' })
@@ -391,28 +389,21 @@ function ignoreClose(): void {
 }
 
 /**
- * Each `destroy` told on the fixture channel, then, as the scenario shapes it, swallowed (a deaf engine),
- * handed to the engine `SLOW_DESTROY_MS` late (one still at work), at once, or the worker ended with no
- * answer (one that crashes) - by a worker that has
- * opened a project, or by one that opens nothing (the fresh worker a realm destroys through).
+ * Each `destroy` told on the fixture channel, then, as the scenario shapes it, swallowed (a deaf worker),
+ * handed to the engine `SLOW_DESTROY_MS` late (one still at work), or at once - asked of the worker that
+ * opens nothing a realm destroys through.
  */
-function shapeDestroy(params: { whileOpen: DestroyShape; fresh: DestroyShape }): void {
-	let opened = false
+function shapeDestroy(params: { shape: DestroyShape }): void {
+	const { shape } = params
 	const replayed = new WeakSet<object>()
 	self.addEventListener(
 		'message',
 		function shapeEachDestroy(event: MessageEvent<{ type?: string; project?: string }>) {
-			if (event.data?.type === 'open') opened = true
 			if (event.data?.type !== 'destroy' || replayed.has(event.data)) return
 			tellFixtureChannel({ type: 'destroy-asked', project: event.data.project ?? '' })
-			const shape = opened ? params.whileOpen : params.fresh
 			if (shape === 'at-once') return
 			event.stopImmediatePropagation()
 			if (shape === 'deaf') return
-			if (shape === 'end') {
-				self.close()
-				return
-			}
 			const { data } = event
 			replayed.add(data)
 			setTimeout(function handOver() {

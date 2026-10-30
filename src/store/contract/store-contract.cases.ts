@@ -2568,20 +2568,244 @@ const oneState: StoreContractCases = {
 	},
 }
 
+/** The key a destroy was refused with, or `undefined` once it destroyed. */
+function refusalKeyOf(params: { destroying: Promise<void> }): Promise<string | undefined> {
+	return params.destroying.then(
+		function destroyed() {
+			return undefined
+		},
+		function refused(thrown: unknown) {
+			return toDialecteError(thrown)?.key
+		},
+	)
+}
+
+/** The ids of the documents a store reads. */
+async function documentIdsOf(params: { store: Store }): Promise<string[]> {
+	const documents = await params.store.getDocuments()
+	return documents.map(function idOf(document) {
+		return document.id
+	})
+}
+
+/** The documents of a list but the one of `id`. */
+function otherThan(params: { documents: DocumentRecord[]; id: string }): DocumentRecord[] {
+	return params.documents.filter(function isOther(document) {
+		return document.id !== params.id
+	})
+}
+
 const oneStateAfterDestroy: StoreContractCases = {
-	'destroy through one connection → the other reads empty; what it registers then, a new connection reads':
+	'destroy while another connection has the project open → refused PROJECT_OPEN_ELSEWHERE, nothing removed, both read on; the other closed → destroyed: the name opens empty':
 		{
-			needs: ['second-connection', 'destroy-while-connected'],
+			needs: ['second-connection'],
 			act: async ({ store, connect }) => {
 				await store.registerDocument(makeDocument())
 				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 				const other = await connect()
+				await expectRejectsWith({ action: store.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
+				expect(await documentIdsOf({ store: store })).toEqual(['doc-1'])
+				expect(await other.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
+				await other.close()
 				await store.destroy()
-				expect(await other.getDocuments()).toEqual([])
-				expect(await other.get('r1', 'doc-1')).toBeUndefined()
-				await other.registerDocument(makeDocument({ id: 'doc-2' }))
 				const fresh = await connect()
-				expect((await fresh.getDocuments()).map((document) => document.id)).toEqual(['doc-2'])
+				expect(await fresh.getDocuments()).toEqual([])
+			},
+		},
+	'a destroy refused while another connection has the project open → the refused one still counts open: the other closed, a third connection’s destroy refused too; the refused one closed → destroyed':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				const other = await connect()
+				await expectRejectsWith({ action: store.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
+				await other.close()
+				const third = await connect()
+				await expectRejectsWith({ action: third.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
+				store.close()
+				await third.destroy()
+				const fresh = await connect()
+				expect(await fresh.getDocuments()).toEqual([])
+			},
+		},
+	'two connections destroy at once → both refused PROJECT_OPEN_ELSEWHERE, nothing removed: both read on':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				const other = await connect()
+				const outcomes = await Promise.all([
+					refusalKeyOf({ destroying: store.destroy() }),
+					refusalKeyOf({ destroying: other.destroy() }),
+				])
+				expect(outcomes).toEqual(['PROJECT_OPEN_ELSEWHERE', 'PROJECT_OPEN_ELSEWHERE'])
+				expect(await documentIdsOf({ store: store })).toEqual(['doc-1'])
+				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+			},
+		},
+	'a connection made while another one’s destroy runs → either it counts (the destroy refused, the document kept) or it waits for the destroy and reads empty; it never fails':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				const destroying = refusalKeyOf({ destroying: store.destroy() })
+				// a task later: past the destroy's check where the store decides it there and then
+				await new Promise(function aTaskLater(resolve) {
+					setTimeout(resolve, 0)
+				})
+				const reading = connect().then(function readThrough(other) {
+					return documentIdsOf({ store: other })
+				})
+				const outcome = [await destroying, await reading]
+				expect([
+					[undefined, []],
+					['PROJECT_OPEN_ELSEWHERE', ['doc-1']],
+				]).toContainEqual(outcome)
+			},
+		},
+	'a store closed right after its destroy() call, another connection open → refused PROJECT_OPEN_ELSEWHERE, nothing removed':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				const other = await connect()
+				const destroying = refusalKeyOf({ destroying: store.destroy() })
+				store.close()
+				expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
+				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+			},
+		},
+	'a store destroyed twice at once → both destroys go on, one after the other: the name reads empty':
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument())
+				await Promise.all([store.destroy(), store.destroy()])
+				expect(await store.getDocuments()).toEqual([])
+			},
+		},
+	'destroyed through one connection left open, then a new connection of the name destroys → destroyed: the destroyed one counts no more':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				await store.destroy()
+				const next = await connect()
+				await next.registerDocument(makeDocument())
+				await next.destroy()
+				const fresh = await connect()
+				expect(await fresh.getDocuments()).toEqual([])
+			},
+		},
+	'destroyed through one connection, then used again through it → it reads empty, then open again: another connection’s destroy refused PROJECT_OPEN_ELSEWHERE; it closed → destroyed':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				await store.destroy()
+				expect(await store.getDocuments()).toEqual([])
+				await store.registerDocument(makeDocument())
+				const other = await connect()
+				await expectRejectsWith({ action: other.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
+				expect(await documentIdsOf({ store: store })).toEqual(['doc-1'])
+				store.close()
+				await other.destroy()
+				const fresh = await connect()
+				expect(await fresh.getDocuments()).toEqual([])
+			},
+		},
+	'a read and a write through a store while its own destroy runs → each goes on once the destroy has ended: the read answers empty, the write is kept':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				const destroying = store.destroy()
+				await new Promise(function aTaskLater(resolve) {
+					setTimeout(resolve, 0)
+				})
+				const reading = store.getDocuments()
+				const writing = store.registerDocument(makeDocument({ id: 'doc-2' }))
+				await destroying
+				// nothing of before the destroy; the write started after the read may land before it, as no store
+				// orders a read before a write started next
+				expect(otherThan({ documents: await reading, id: 'doc-2' })).toEqual([])
+				await writing
+				store.close()
+				const fresh = await connect()
+				expect(await documentIdsOf({ store: fresh })).toEqual(['doc-2'])
+			},
+		},
+	'a store opened again while its own destroy runs → the open waits for it: the destroy goes on, the store reads empty':
+		{
+			act: async ({ store }) => {
+				await store.registerDocument(makeDocument())
+				const destroying = store.destroy()
+				const opening = store.open()
+				await destroying
+				await opening
+				expect(await store.getDocuments()).toEqual([])
+			},
+		},
+	'an import running through a store, then its own destroy, then a read and a write through it → the destroy waits for the import, they for the destroy: the read answers empty, the write is kept':
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+					writeId: 'w-held',
+				})
+				try {
+					await untilHeld({ hold, importing })
+					const destroying = store.destroy()
+					await new Promise(function aTaskLater(resolve) {
+						setTimeout(resolve, 0)
+					})
+					const reading = store.getDocuments()
+					const writing = store.registerDocument(makeDocument({ id: 'doc-2' }))
+					hold.release()
+					await importing
+					await destroying
+					// nothing of before the destroy (the import's document neither); the write started after the read
+					// may land before it
+					expect(otherThan({ documents: await reading, id: 'doc-2' })).toEqual([])
+					await writing
+					expect(await documentIdsOf({ store: store })).toEqual(['doc-2'])
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
+	'an import running through a connection closed since, another connection destroys → the destroy waits for it: the import completes, then the name reads empty':
+		{
+			needs: ['second-connection', 'import'],
+			act: async ({ store, connect }) => {
+				const other = await connect()
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+					writeId: 'w-held',
+				})
+				try {
+					await untilHeld({ hold, importing })
+					store.close()
+					let destroyed = false
+					const destroying = other.destroy().then(function markDestroyed() {
+						destroyed = true
+					})
+					await new Promise(function letTheDestroyWait(resolve) {
+						setTimeout(resolve, 200)
+					})
+					expect(destroyed).toBe(false)
+					hold.release()
+					await importing
+					await destroying
+					const fresh = await connect()
+					expect(await fresh.getDocuments()).toEqual([])
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
 			},
 		},
 	'an import running through one connection → kept when another connection opens, applied once done':

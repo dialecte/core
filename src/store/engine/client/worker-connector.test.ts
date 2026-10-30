@@ -50,11 +50,13 @@ import type { AnyRawRecord } from '@/types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
-/** The stores a case opened, destroyed after it. */
+/** The stores a case opened, destroyed after it: all closed first, as a project is destroyed only once no other connection has it open. */
 const opened: EngineStore[] = []
 
 afterEach(async function destroyOpenedStores() {
-	for (const store of opened.splice(0)) await store.destroy()
+	const stores = opened.splice(0)
+	for (const store of stores) store.close()
+	for (const store of stores) await store.destroy()
 })
 
 async function openWorkerStore(
@@ -470,51 +472,11 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			await connector.destroy()
 		})
 
-		it('deaf to destroy while it serves the project → ended once its open and close budgets have passed, the project destroyed from a fresh worker', async () => {
+		it('the worker it is destroyed through deaf to destroy → PROJECT_DESTROY_FAILED within the open and close budgets, the next connection not held', async () => {
 			const name = projectName()
 			const connector = createSqliteWorkerConnector({
 				name,
 				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
-				openBudgetMs: DEAF_DESTROY_BUDGET_MS,
-			})
-			const link = await connector.connect()
-			await registerThrough({ link })
-			await connector.destroy()
-			const again = await connector.connect()
-			const documents = await documentsOf({ link: again })
-			expect(documents).toEqual([])
-			again.close()
-			link.close()
-			await connector.destroy()
-		})
-
-		it('ended during its destroy with no answer → seen once it lets the lock go: the project destroyed from a fresh worker at once, not after the open budget', async () => {
-			const name = projectName()
-			const connector = createSqliteWorkerConnector({
-				name,
-				engineUrl: fixtureUrl({ scenario: 'end-on-destroy' }),
-			})
-			const link = await connector.connect()
-			await registerThrough({ link })
-			const asked = countDestroysAsked({ project: name })
-			const startedAt = performance.now()
-			await connector.destroy()
-			expect(performance.now() - startedAt).toBeLessThan(ENGINE_OPEN_BUDGET_MS)
-			// the running engine, then the fresh worker (its notice may come after its answer)
-			await expect.poll(asked.count).toBe(2)
-			link.close()
-			const again = await connector.connect()
-			const documents = await documentsOf({ link: again })
-			expect(documents).toEqual([])
-			again.close()
-			await connector.destroy()
-		})
-
-		it('deaf to destroy, the fresh worker it is destroyed through deaf too → PROJECT_DESTROY_FAILED within the open and close budgets, the next connection not held', async () => {
-			const name = projectName()
-			const connector = createSqliteWorkerConnector({
-				name,
-				engineUrl: fixtureUrl({ scenario: 'ignore-destroy-always' }),
 				openBudgetMs: DEAF_DESTROY_BUDGET_MS,
 			})
 			const startedAt = performance.now()
@@ -524,7 +486,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				meta: { project: name, budgetMs: DEAF_DESTROY_BUDGET_MS },
 			})
 			expect(performance.now() - startedAt).toBeLessThan(
-				2 * (DEAF_DESTROY_BUDGET_MS + ENGINE_CLOSE_BUDGET_MS),
+				DEAF_DESTROY_BUDGET_MS + 2 * ENGINE_CLOSE_BUDGET_MS,
 			)
 			const plain = createSqliteWorkerConnector({ name, engineUrl: TEST_ENGINE_URL })
 			const link = await plain.connect()
@@ -532,25 +494,6 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			expect(documents).toEqual([])
 			link.close()
 			await plain.destroy()
-		})
-
-		it('deaf to destroy, its lock let go 3 s after its worker ended → the realm waits for the lock within its open budget, then a fresh worker destroys: the project destroyed', async () => {
-			const name = projectName()
-			const connector = createSqliteWorkerConnector({
-				name,
-				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
-			})
-			const link = await connector.connect()
-			await registerThrough({ link })
-			const lateRelease = holdLockOnceFree({ name, holdMs: 3_000 })
-			await connector.destroy()
-			await lateRelease
-			link.close()
-			const again = await connector.connect()
-			const documents = await documentsOf({ link: again })
-			expect(documents).toEqual([])
-			again.close()
-			await connector.destroy()
 		})
 
 		it('deaf to close, its lock let go 3 s after its worker ended, then destroyed → the destroy waits for the lock: the project destroyed', async () => {
@@ -572,84 +515,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			await connector.destroy()
 		})
 
-		it('deaf to destroy, its lock still held past the open budget after its worker ended → PROJECT_ENGINE_BUSY, no fresh worker tried', async () => {
-			const name = projectName()
-			const connector = createSqliteWorkerConnector({
-				name,
-				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
-				openBudgetMs: DEAF_DESTROY_BUDGET_MS,
-			})
-			const link = await connector.connect()
-			await registerThrough({ link })
-			const asked = countDestroysAsked({ project: name })
-			const lateRelease = holdLockOnceFree({ name, holdMs: 2 * DEAF_DESTROY_BUDGET_MS })
-			const refused = await errorOfRejection(connector.destroy())
-			expect(refused).toMatchObject({
-				key: 'PROJECT_ENGINE_BUSY',
-				meta: { project: name, budgetMs: DEAF_DESTROY_BUDGET_MS },
-			})
-			// the running engine only: no fresh worker was asked
-			expect(asked.count()).toBe(1)
-			await lateRelease
-			link.close()
-			await connector.destroy()
-		})
-
-		it('deaf to destroy, a call in flight on it → that call refused STORE_ENGINE_LOST host-gone once its worker is ended', async () => {
-			const name = projectName()
-			const connector = createSqliteWorkerConnector({
-				name,
-				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
-				openBudgetMs: DEAF_DESTROY_BUDGET_MS,
-			})
-			const link = await connector.connect()
-			const engine = await link.engine()
-			const hold = holdContractImport()
-			const importing = engine.importFile({
-				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
-				writeId: 'w-deaf',
-			})
-			await untilHeld({ hold, importing })
-			const destroying = connector.destroy()
-			const lost = await errorOfRejection(importing)
-			expect(lost).toMatchObject({
-				key: 'STORE_ENGINE_LOST',
-				meta: { reason: 'host-gone', writeId: 'w-deaf' },
-			})
-			hold.release()
-			await destroying
-			link.close()
-		})
-
-		it('deaf to destroy, a call in flight refused host-gone, the connection called again at once → that call waits for the destroy (a fresh worker slow to take it): the project destroyed, read empty', async () => {
-			const name = projectName()
-			const connector = createSqliteWorkerConnector({
-				name,
-				engineUrl: fixtureUrl({ scenario: 'ignore-destroy-slow-fresh' }),
-				openBudgetMs: DEAF_DESTROY_BUDGET_MS,
-			})
-			const link = await connector.connect()
-			const engine = await link.engine()
-			await engine.registerDocument(makeDocument())
-			const hold = holdContractImport()
-			const importing = engine.importFile({
-				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
-				writeId: 'w-deaf',
-			})
-			await untilHeld({ hold, importing })
-			const destroying = connector.destroy()
-			await rejectionOf(importing)
-			hold.release()
-			// the caller's retry, before the realm has destroyed the project through a fresh worker
-			const again = documentsOf({ link })
-			await destroying
-			const documents = await again
-			expect(documents).toEqual([])
-			link.close()
-			await connector.destroy()
-		})
-
-		it('a running engine slow to destroy (past the close budget, within its own) → its answer awaited: one destroy asked, no fresh worker', async () => {
+		it('the worker it is destroyed through slow to destroy (past the close budget, within its own) → its answer awaited: one destroy asked, the project destroyed', async () => {
 			const name = projectName()
 			const connector = createSqliteWorkerConnector({
 				name,
@@ -657,16 +523,248 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			})
 			const link = await connector.connect()
 			await registerThrough({ link })
+			link.close()
 			const asked = countDestroysAsked({ project: name })
 			expect(SLOW_DESTROY_MS).toBeGreaterThan(ENGINE_CLOSE_BUDGET_MS)
 			await connector.destroy()
 			await pause({ ms: 200 })
 			expect(asked.count()).toBe(1)
-			link.close()
 			const again = await connector.connect()
 			const documents = await documentsOf({ link: again })
 			expect(documents).toEqual([])
 			again.close()
+			await connector.destroy()
+		})
+
+		it('a connection made while the worker it is destroyed through is still at work → it waits for the destroy, then opens: the project read empty', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'slow-destroy' }),
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			link.close()
+			const asked = countDestroysAsked({ project: name })
+			const destroying = connector.destroy()
+			await expect.poll(asked.count).toBe(1)
+			const again = await connector.connect()
+			await destroying
+			const documents = await documentsOf({ link: again })
+			expect(documents).toEqual([])
+			again.close()
+			await connector.destroy()
+		})
+
+		it('its last connection closed, destroyed at once → the destroy waits for the engine to close, then a fresh worker destroys: one destroy asked, the project destroyed', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'destroy-told' }),
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			const asked = countDestroysAsked({ project: name })
+			link.close()
+			await connector.destroy()
+			// the fresh worker's notice may come after its answer
+			await expect.poll(asked.count).toBe(1)
+			const again = await connector.connect()
+			const documents = await documentsOf({ link: again })
+			expect(documents).toEqual([])
+			again.close()
+			await connector.destroy()
+		})
+
+		it('deaf to close, its last connection closed, destroyed at once → the destroy waits the close budget for it, then destroys: the project destroyed', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-close' }),
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			const startedAt = performance.now()
+			link.close()
+			await connector.destroy()
+			expect(performance.now() - startedAt).toBeGreaterThanOrEqual(ENGINE_CLOSE_BUDGET_MS - 100)
+			const again = await connector.connect()
+			const documents = await documentsOf({ link: again })
+			expect(documents).toEqual([])
+			again.close()
+			await connector.destroy()
+		})
+
+		it('deaf to close, its last connection closed, destroyed, a connection made while the destroy waits for it → that connection waits for the destroy: it opens on the project emptied', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-close' }),
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			link.close()
+			const destroying = connector.destroy()
+			const connecting = connector.connect()
+			await destroying
+			const again = await connecting
+			const documents = await documentsOf({ link: again })
+			expect(documents).toEqual([])
+			again.close()
+			await connector.destroy()
+		})
+
+		it('a connector whose open budget is 500 ms, deaf to close, its lock let go 3 s after its worker ended, then destroyed → PROJECT_OPEN_ELSEWHERE: the project kept', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'ignore-close' }),
+				openBudgetMs: 500,
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			const lateRelease = holdLockOnceFree({ name, holdMs: 3_000 })
+			link.close()
+			const key = await keyOfRejection(connector.destroy())
+			expect(key).toBe('PROJECT_OPEN_ELSEWHERE')
+			await lateRelease
+			const again = await connector.connect()
+			const documents = await documentsOf({ link: again })
+			expect(documents).toEqual([makeDocument()])
+			again.close()
+			await connector.destroy()
+		})
+
+		it('a destroy whose fresh worker is refused (another tab holds the project) → the next connect of the name waits the close budget for that worker, not the open budget', async () => {
+			const name = projectName()
+			const openBudgetMs = 6_000
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: TEST_ENGINE_URL,
+				openBudgetMs,
+			})
+			let letGo: () => void = function noHoldYet() {}
+			await new Promise<void>(function holdAsAnotherTab(held) {
+				void navigator.locks.request(`${ENGINE_LOCK_PREFIX}${name}`, function holdUntilLetGo() {
+					held()
+					return new Promise<void>(function untilLetGo(resolve) {
+						letGo = resolve
+					})
+				})
+			})
+			try {
+				expect(await keyOfRejection(connector.destroy())).toBe('PROJECT_OPEN_ELSEWHERE')
+				const startedAt = performance.now()
+				expect(await keyOfRejection(connector.connect())).toBe('PROJECT_OPEN_ELSEWHERE')
+				expect(performance.now() - startedAt).toBeLessThan(openBudgetMs - 1_000)
+			} finally {
+				letGo()
+			}
+		})
+
+		it('ended on its own, its connection still open → the destroy refused PROJECT_OPEN_ELSEWHERE: the project kept, read through that connection', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'endable' }),
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			orderFixtures({ type: 'end' })
+			await expect
+				.poll(function lockFree() {
+					return isEngineLockFree({ project: name })
+				})
+				.toBe(true)
+			const refused = await errorOfRejection(connector.destroy())
+			expect(refused).toMatchObject({
+				key: 'PROJECT_OPEN_ELSEWHERE',
+				meta: { project: name, connections: 1 },
+			})
+			const documents = await documentsOf({ link })
+			expect(documents).toEqual([makeDocument()])
+			link.close()
+			await connector.destroy()
+		})
+
+		it('ended on its own, its connection closed as its next call starts → that call refused STORE_CLOSED, no other engine started: the project free at once', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'endable' }),
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			orderFixtures({ type: 'end' })
+			await expect
+				.poll(function lockFree() {
+					return isEngineLockFree({ project: name })
+				})
+				.toBe(true)
+			const calling = documentsOf({ link })
+			link.close()
+			const key = await keyOfRejection(calling)
+			expect(key).toBe('STORE_CLOSED')
+			const lockFree = await isEngineLockFree({ project: name })
+			expect(lockFree).toBe(true)
+			await connector.destroy()
+		})
+
+		it('ended on its own, two connections calling again, the first closed while the engine they started still opens → the second’s call answered: the project read', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'endable' }),
+			})
+			const first = await connector.connect()
+			const second = await connector.connect()
+			await registerThrough({ link: first })
+			orderFixtures({ type: 'end' })
+			await expect
+				.poll(function lockFree() {
+					return isEngineLockFree({ project: name })
+				})
+				.toBe(true)
+			const firstCalling = rejectionOf(documentsOf({ link: first }))
+			const secondCalling = documentsOf({ link: second })
+			// a turn later: the other engine started, its worker still loading
+			await pause({ ms: 0 })
+			first.close()
+			await firstCalling
+			const documents = await secondCalling
+			expect(documents).toEqual([makeDocument()])
+			second.close()
+			await connector.destroy()
+		})
+
+		it('ended on its own, its connection closed while the engine its next call started still opens → that call refused STORE_CLOSED, that engine closed: the project free', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'endable' }),
+			})
+			const link = await connector.connect()
+			await registerThrough({ link })
+			orderFixtures({ type: 'end' })
+			await expect
+				.poll(function lockFree() {
+					return isEngineLockFree({ project: name })
+				})
+				.toBe(true)
+			const calling = documentsOf({ link })
+			// a turn later: the other engine started, its worker still loading
+			await pause({ ms: 0 })
+			link.close()
+			const key = await keyOfRejection(calling)
+			expect(key).toBe('STORE_CLOSED')
+			await expect
+				.poll(
+					function lockFree() {
+						return isEngineLockFree({ project: name })
+					},
+					{ timeout: ENGINE_CLOSE_BUDGET_MS + 3_000, interval: 100 },
+				)
+				.toBe(true)
 			await connector.destroy()
 		})
 

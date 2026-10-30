@@ -1,4 +1,4 @@
-import { throwStoreClosed } from '../../store-errors'
+import { throwOpenElsewhere, throwStoreClosed } from '../../store-errors'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
 import { realmWasmUrl } from '../sqlite-wasm-url'
@@ -9,7 +9,7 @@ import type { InProcessConnectorParams, InProcessFile } from './in-process-link.
 
 /** The in-memory project files of this realm, by name: one state per name, as the origin's files are. */
 const FILES = new Map<string, InProcessFile>()
-/** The connections open on each name; they outlive a destroy of the name and follow its new file. */
+/** The connections open on each name: a destroy of the name is refused while one is. */
 const CLIENTS = new Map<string, Set<EngineLink>>()
 
 /**
@@ -23,7 +23,12 @@ export function createInProcessConnector(params: InProcessConnectorParams): Engi
 		connect: function connectInProcess() {
 			return connectToEngine(params)
 		},
-		destroy: async function destroyInProcess() {
+		destroy: async function destroyInProcess(destroyParams) {
+			const own = destroyParams?.own
+			const clients = CLIENTS.get(params.name)
+			const open = (clients?.size ?? 0) - (own !== undefined && clients?.has(own.link) ? 1 : 0)
+			if (open > 0) throwOpenElsewhere({ storeName: params.name, connections: open })
+			own?.letGo()
 			closeFile({ name: params.name })
 		},
 	}

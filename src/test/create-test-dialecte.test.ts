@@ -1,10 +1,11 @@
 import { TEST_DIALECTE_CONFIG } from './config'
-import { createTestContext, createTestProject } from './create-test-dialecte'
+import { closeTestContexts, createTestContext, createTestProject } from './create-test-dialecte'
 import { TEST_DIALECTE } from './test-dialecte'
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
+import { toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
 import { findInMemoryState } from '@/store/in-memory/in-memory-state'
 
@@ -77,6 +78,8 @@ describe('createTestContext', () => {
 	const projects: Array<{ destroy: () => Promise<void> }> = []
 
 	afterEach(async () => {
+		// the contexts opened by name are connections of their own: closed first, or the destroy is refused
+		closeTestContexts()
 		for (const project of projects) {
 			await project.destroy()
 		}
@@ -94,6 +97,28 @@ describe('createTestContext', () => {
 		})
 		const records = await context.store.getByTagNameInDocument('A', context.documentId)
 		expect(records).toHaveLength(2)
+	})
+
+	it('a context opened by its project’s name → that project’s destroy refused until closeTestContexts()', async () => {
+		const { project, source } = await createTestProject({ sourceXml: SIMPLE_XML })
+		projects.push(project)
+		await createTestContext({
+			databaseName: project.name,
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+			documentId: source.documentId,
+		})
+
+		const refused = await project.destroy().then(
+			function destroyed() {
+				return undefined
+			},
+			function refusedKey(thrown: unknown) {
+				return toDialecteError(thrown)?.key
+			},
+		)
+		expect(refused).toBe('PROJECT_OPEN_ELSEWHERE')
+		closeTestContexts()
+		await project.destroy()
 	})
 
 	it('returns a fresh recordCache and empty stagedOperations', async () => {

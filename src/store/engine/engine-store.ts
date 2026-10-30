@@ -1,3 +1,5 @@
+import { createClosingConnections } from '../closing-connections'
+import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { createRunningOperations } from '../running-operations'
 import { throwStoreClosed } from '../store-errors'
 import { ENGINE_WIRE_MEMBERS } from './wire/wire.constants'
@@ -20,6 +22,9 @@ import type { WireMemberSpec } from './wire/wire.types'
 import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
+/** The stores of each name in this realm closed with operations running: a destroy of the name waits for those. */
+const CLOSING_ENGINE_STORES = createClosingConnections()
+
 /**
  * EngineStore - the store port over a project's engine (the SQLite one today), reached through a link: the engine
  * holds the data and answers every connection of the project alike (one state per name). This
@@ -33,6 +38,8 @@ export class EngineStore implements Store {
 	private connecting: Promise<EngineLink> | undefined
 	/** Set by `close()`, cleared by `open()`: a closed store refuses every operation started after it. */
 	private closed = false
+	/** This store's own destroy while it runs: an operation started meanwhile connects once it has ended. */
+	private destroying: Promise<void> | undefined
 	/** How many times `close()` was called: an `open()` refuses when one came after it was called. */
 	private closings = 0
 	/** The operations running: `close()` releases the link, `open()` and `destroy()` go on, once none is left. */
@@ -48,8 +55,10 @@ export class EngineStore implements Store {
 	/** Connect to the project's engine (started when none runs: a file of another layout is refused there). */
 	async open(): Promise<void> {
 		const closingsAtCall = this.closings
-		// an operation still running keeps the link: the store opens once it is done
+		// an operation still running keeps the link: the store opens once it is done, and once its own
+		// destroy has ended
 		await this.operations.whenIdle()
+		while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
 		// a close() called after this open() wins: the store stays closed
 		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
 		this.closed = false
@@ -58,18 +67,45 @@ export class EngineStore implements Store {
 		})
 	}
 
-	/** Refuse every operation started from now on until opened again; the link goes once the running ones end. */
+	/**
+	 * Refuse every operation started from now on until opened again; the link goes once the running ones
+	 * end - a destroy of the name in the realm waits for them, as for its own.
+	 */
 	close(): void {
 		this.closed = true
 		this.closings += 1
-		if (this.operations.count === 0) this.releaseLink()
+		if (this.operations.count === 0) {
+			this.releaseLink()
+			return
+		}
+		CLOSING_ENGINE_STORES.markClosing({ name: this.name, until: this.operations.whenIdle() })
 	}
 
-	/** Delete the project, once the operations running complete: every store of the name then reads empty. */
+	/**
+	 * Delete the project, once the operations running complete - its own, and those of a store of the name
+	 * closed with operations running - every store of the name then reads empty; refused
+	 * `PROJECT_OPEN_ELSEWHERE` while another connection has it open.
+	 */
 	async destroy(): Promise<void> {
+		// one destroy of this store at a time: another one called meanwhile starts once it has ended
+		while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
+		const destroying = this.destroyOnceIdle()
+		this.destroying = destroying
+		try {
+			await destroying
+		} finally {
+			if (this.destroying === destroying) this.destroying = undefined
+		}
+	}
+
+	private async destroyOnceIdle(): Promise<void> {
 		await this.operations.whenIdle()
+		await CLOSING_ENGINE_STORES.settled({ name: this.name })
+		// its own link counts not against it, and goes only once the destroy goes ahead: refused, the store
+		// stays as it was - no other destroy finds it let go meanwhile
+		const own = this.link && { link: this.link, letGo: this.releaseLink.bind(this) }
+		await this.connector.destroy({ own })
 		this.releaseLink()
-		await this.connector.destroy()
 	}
 
 	// --- Cross-realm reconciliation ---
@@ -315,6 +351,13 @@ export class EngineStore implements Store {
 	}): Promise<GenericResult> {
 		const { readRetried, run } = params
 		if (this.closed) throwStoreClosed({ storeName: this.name })
+		// one started while this store's own destroy runs goes on once it has ended, not counted meanwhile:
+		// it keeps that destroy, which waits for the operations counted, from nothing
+		if (this.destroying) {
+			while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
+			// closed while it waited: refused, as one started after the close is
+			if (this.closed) throwStoreClosed({ storeName: this.name })
+		}
 		return this.tracked(async () => {
 			const engine = await this.currentEngine()
 			try {

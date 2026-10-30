@@ -543,11 +543,11 @@ export const ERROR_CATALOG = {
 	},
 	PROJECT_OPEN_ELSEWHERE: {
 		code: 'D7011',
-		message: 'The project is open in another tab or window',
+		message: 'The project is open in another tab, window or connection',
 		explanation: {
-			when: 'Another tab or window has the project open and there is no shared connection between them.',
-			fix: 'Close the project in the other tab or window, then open it here again.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			when: 'Another tab or window has the project open and there is no shared connection between them; or a destroy was asked while another connection - a store or project of the name in this page, or another tab - has the project open (`meta.connections`, where the store counts them).',
+			fix: 'Close the project in the other tab, window or connection, then open or destroy it here again.',
+			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
 	PROJECT_DATABASE_LOST: {

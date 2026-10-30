@@ -9,7 +9,6 @@ import {
 	ENGINE_END_POLL_MS,
 	HUB_DESTROY_ASK_INTERVAL_MS,
 	HUB_DESTROY_ASKS,
-	HUB_DESTROY_REFUSED_REASON,
 	IN_PAGE_IMPORT_REASON,
 	IN_PROCESS_ENGINE_REASON,
 } from './store-contract.constants'
@@ -279,7 +278,6 @@ const sqliteHubStoreFactory: StoreContractFactory = {
 		// the page hosting it goes, as a tab closed: its engines with it
 		realmOf(store).close()
 	},
-	differs: { 'destroy-while-connected': HUB_DESTROY_REFUSED_REASON },
 	storageUnfillable:
 		"a test cannot fill the private file system from the page: the runtime's disk-full cases cover this leg",
 	afterCase: async function closeCaseRealms() {

@@ -399,8 +399,9 @@ export class Document<
 	}
 
 	/**
-	 * Close the connection and delete the whole project database: every document of the project, its
-	 * history and its blobs - not only this document. To delete one document, use
+	 * Delete the whole project database and let the connection go: every document of the project, its
+	 * history and its blobs - not only this document; refused `PROJECT_OPEN_ELSEWHERE`, nothing removed and
+	 * the connection kept, while another connection has the project open. To delete one document, use
 	 * `project.removeDocument`.
 	 *
 	 * @intent delete the whole project database from a document, wipe every document of the project

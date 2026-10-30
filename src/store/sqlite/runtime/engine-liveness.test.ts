@@ -20,10 +20,13 @@ import type { RuntimeFixtureNotice, RuntimeFixtureScenario } from './runtime.fix
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
-/** What a case leaves: its stores destroyed, its pools removed. */
+/** What a case leaves: its stores closed, then destroyed, its pools removed. */
 const cleanups: (() => Promise<void> | void)[] = []
+/** The stores a case opened: all closed first, as a project is destroyed only once no other connection has it open. */
+const stores: EngineStore[] = []
 
 afterEach(async () => {
+	for (const store of stores.splice(0)) store.close()
 	for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
@@ -47,6 +50,7 @@ async function openStore(params: {
 		progressBeatOps,
 	})
 	const store = new EngineStore({ name, connector })
+	stores.push(store)
 	await store.open()
 	cleanups.push(
 		() => store.destroy(),

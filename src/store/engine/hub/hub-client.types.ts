@@ -24,8 +24,15 @@ export type HubConnection = {
 	realmId: () => string
 	/** The realm's link to a project's engine: one per project, shared by the realm's connections to it. */
 	openProject: (params: HubProjectParams) => HubProjectLink
-	/** Destroy a project once the hub grants it (no other view uses it): `destroy` deletes the files. */
-	destroyProject: (params: { project: string; destroy: () => Promise<void> }) => Promise<void>
+	/**
+	 * Destroy a project once the hub grants it (no other view uses it): `destroy` deletes the files. `own`,
+	 * the destroying connection's link, does not count, and is let go once the destroy goes ahead.
+	 */
+	destroyProject: (params: {
+		project: string
+		destroy: () => Promise<void>
+		own?: OwnHubLink
+	}) => Promise<void>
 	/** A port for a child realm that cannot reach the hub: it joins through it with `adoptHubPort`. */
 	createHubPort: () => HubPortHandle
 	/**
@@ -52,6 +59,9 @@ export type HubProjectLink = {
 	/** This connection done with the project; the realm leaves it with its last connection. */
 	release: () => void
 }
+
+/** The destroying connection's own link, and how to let it go (its store forgetting it). */
+export type OwnHubLink = { link: HubProjectLink; letGo: () => void }
 
 /** A port bound to this realm for a child realm, and how to say the child is gone. */
 export type HubPortHandle = {

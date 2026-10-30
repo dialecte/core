@@ -1,3 +1,4 @@
+import { throwOpenElsewhere } from '../../store-errors'
 import { createEngineClient } from '../client/engine-client'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
@@ -204,6 +205,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		welcomeBudgetMs = HUB_WELCOME_BUDGET_MS,
 	} = params
 	const entries = new Map<string, ProjectEntry>()
+	/** The links of this realm counted among their project's users: from their open until released. */
+	const countedLinks = new WeakSet<HubProjectLink>()
 	const destroys = new Map<string, PendingDestroy>()
 	const queued: QueuedMessage[] = []
 	const lifecycleWatch = new AbortController()
@@ -455,6 +458,12 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		}
 	}
 
+	/** The users of the project in this realm but `own`, while that one is counted. */
+	function otherUsers(params: { project: string; own: HubProjectLink | undefined }): number {
+		const users = entries.get(params.project)?.users ?? 0
+		return users - (params.own !== undefined && countedLinks.has(params.own) ? 1 : 0)
+	}
+
 	/** Why a call cannot wait for the hub now: refused for good, or the hub out of reach while suspended. */
 	function cannotWait(): unknown {
 		if (refusal !== undefined) return refusal
@@ -505,7 +514,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			entries.set(entry.project, entry)
 			entry.users += 1
 			let released = false
-			return {
+			const link: HubProjectLink = {
 				engine: function currentEngine() {
 					// a released link reaches no engine, and asks the hub for none
 					if (released) return Promise.reject(releasedLinkError({ project: entry.project }))
@@ -521,6 +530,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				release: function releaseLink() {
 					if (released) return
 					released = true
+					countedLinks.delete(link)
 					entry.users -= 1
 					if (entry.users > 0) return
 					entries.delete(entry.project)
@@ -532,10 +542,16 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 					if (entry.asked) send({ type: 'leave', project: entry.project })
 				},
 			}
+			countedLinks.add(link)
+			return link
 		},
-		destroyProject: async function destroyThroughHub({ project, destroy }) {
+		destroyProject: async function destroyThroughHub({ project, destroy, own }) {
 			const refused = cannotWait()
 			if (refused !== undefined) throw refused
+			// another connection of this realm on the project (the hub sees one realm): refused here; its own
+			// stays until the destroy goes ahead, the realm a client the hub does not count against it
+			const open = otherUsers({ project, own: own?.link })
+			if (open > 0) throwOpenElsewhere({ storeName: project, connections: open })
 			if (destroys.has(project)) {
 				throw createDialecteError('PROJECT_OPEN_ELSEWHERE', {
 					detail: `"${project}" is being destroyed from this view already`,
@@ -549,6 +565,10 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				destroys.delete(project)
 			})
 			try {
+				// a connection of this realm made while the grant was awaited keeps the project
+				const openSince = otherUsers({ project, own: own?.link })
+				if (openSince > 0) throwOpenElsewhere({ storeName: project, connections: openSince })
+				own?.letGo()
 				await destroy()
 			} finally {
 				// to the instance granted it: one suspended since is forgotten by the hub, its hold lifted

@@ -1,3 +1,6 @@
+import { createClosingConnections } from '../closing-connections'
+import { createOpenConnections } from '../open-connections'
+
 import type { InMemoryState } from './types'
 
 /**
@@ -6,6 +9,12 @@ import type { InMemoryState } from './types'
  * in the realm; nothing crosses realms. A name's state lives until a store of that name is destroyed.
  */
 const STATES = new Map<string, InMemoryState>()
+
+/** The instances of each name opened and not closed since: a destroy is refused while another one is. */
+export const OPEN_IN_MEMORY_CONNECTIONS = createOpenConnections()
+
+/** The instances of each name closed while operations of theirs run: a destroy lets those complete first. */
+export const CLOSING_IN_MEMORY_CONNECTIONS = createClosingConnections()
 
 /** The state of the name, or none when nothing was written under it since it was last destroyed. */
 export function findInMemoryState(params: { name: string }): InMemoryState | undefined {

@@ -39,11 +39,10 @@ export type WorkerConnectorParams<GenericSettings> = {
 	perf?: boolean
 	/**
 	 * The realm's budget for the project's engine (`ENGINE_OPEN_BUDGET_MS` when absent): how long its
-	 * open may take in all (its lock and its own setup); how long a running engine has to destroy the
-	 * project, and a fresh worker too, each with the close budget besides to answer before it counts as
-	 * deaf and is ended; and how long the realm waits for the lock of an engine it ended deaf (to close or
-	 * to destroy) before the next engine of the name starts, or the destroy is refused
-	 * `PROJECT_ENGINE_BUSY`.
+	 * open may take in all (its lock and its own setup); how long the worker a destroy runs through has
+	 * to delete the project, with the close budget besides to answer before it counts as deaf and is
+	 * ended (`PROJECT_DESTROY_FAILED`); and how long the realm waits for the lock of a worker it ended
+	 * deaf to close or to destroy before the next engine of the name starts, or the destroy runs.
 	 */
 	openBudgetMs?: number
 	/** How the engine and its clients tell a busy engine from a lost one (the defaults when absent). */
@@ -77,6 +76,15 @@ export type RealmEngine = {
 	watch: { controller: AbortController; settled: Promise<void> } | undefined
 }
 
+/**
+ * A worker the realm ends: `ended` answers the work asked of it; `released` settles once the next engine of the
+ * name may start (its lock let go, or waited for within the budget its answer gave it).
+ */
+export type EngineEnding = { ended: Promise<unknown>; released: Promise<void> }
+
+/** A destroy through a fresh worker: `done` answers it, `released` as for any worker the realm ends. */
+export type FreshWorkerDestroy = { done: Promise<void>; released: Promise<void> }
+
 /** One connection of the realm to its engine worker: its client, and the engine that adopted it. */
 export type WorkerLinkState = {
 	clientId: string
@@ -105,15 +113,6 @@ export type EngineControl = {
 export type HeartbeatWatch = {
 	/** The silence counts from now (a call starts while none waited, the page resumed). */
 	restart: () => void
-	stop: () => void
-}
-
-/** A page's request of an engine lock its engine holds: granted once the engine let it go. */
-export type LockLetGoWatch = {
-	granted: Promise<void>
-	/** Settles once the request was let go, or withdrawn. */
-	settled: Promise<void>
-	/** Withdraw the request, if not granted yet. */
 	stop: () => void
 }
 

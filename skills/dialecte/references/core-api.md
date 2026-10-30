@@ -31,7 +31,10 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
 ## Project (`project/project.ts`)
 
 - `open(name)` - must come first; opens the store, hydrates `state.documents`. `close()` is async
-  and waits for running imports. `destroy()` deletes the database.
+  and waits for running imports. `destroy()` deletes the database; it is refused `PROJECT_OPEN_ELSEWHERE`,
+  nothing removed and the project closed, while another connection of the name is open (another project
+  or store, in this page or another tab): close that one, then call `destroy()` again. A test closes the stores
+  `createTestContext` opened by name with `closeTestContexts()` before destroying their project.
 - `importFile(file)` → `{ documentId, fileName, recordCount, diagnostics }` or throws; `import(files)`
   → per-file `{ status: 'imported' | 'failed' }`, never rejects. The import runs inside the store; imports
   are serialised per project; a document being imported is invisible until ready.

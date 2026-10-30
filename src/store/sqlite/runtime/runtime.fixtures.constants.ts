@@ -10,7 +10,7 @@ export const SLOW_STATEMENT_STEP_MS = 200
  */
 export const SLOW_DDL_MS = 3_000
 
-/** How late the slow-destroy fixture answers a `destroy` once open: past the realm's close budget, within its own. */
+/** How late the slow-destroy fixture answers a `destroy`: past the realm's close budget, within its own. */
 export const SLOW_DESTROY_MS = 3_000
 
 /** The statements `slow-ddl` makes long: a record table's index built, a table dropped. */
@@ -71,7 +71,7 @@ export const OPEN_FAILURE = {
 export const ONE_BUDGET_SLACK_MS = 1_000
 
 /**
- * The open budget of a case whose engine is deaf to `destroy` and needs no long lock wait: the realm
- * counts it deaf after this and the close budget.
+ * The open budget of a case whose worker is deaf to `destroy`: the realm counts it deaf after this and
+ * the close budget.
  */
 export const DEAF_DESTROY_BUDGET_MS = 1_500

@@ -13,12 +13,10 @@ export type RuntimeFixtureScenario =
 	| 'progress-beat'
 	| 'liveness'
 	| 'disk-full'
+	| 'destroy-told'
 	| 'ignore-destroy'
 	| 'slow-destroy'
-	| 'ignore-destroy-slow-fresh'
-	| 'ignore-destroy-always'
 	| 'close-throws'
-	| 'end-on-destroy'
 	| 'other-wire'
 	| 'install-fails'
 	| 'install-fails-on-one'
@@ -46,8 +44,8 @@ export type RuntimeFixtureNotice =
 	/** A `destroy` of `project` reached the worker (the destroy scenarios): one per worker asked. */
 	| { type: 'destroy-asked'; project: string }
 
-/** How a fixture engine worker takes a `destroy`: swallowed, handed over late, at once, or its worker ended unanswered. */
-export type DestroyShape = 'deaf' | 'late' | 'at-once' | 'end'
+/** How a fixture engine worker takes a `destroy`: swallowed, handed over late, or at once. */
+export type DestroyShape = 'deaf' | 'late' | 'at-once'
 
 /** What a runtime test tells its holder worker. */
 export type RuntimeFixtureMessage = { type: 'hold'; project: string } | { type: 'release' }

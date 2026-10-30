@@ -127,10 +127,9 @@ export const STORE_CONTRACT_FEATURES = ['history', 'blobs', 'import', 'export'] 
 
 /**
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
- * engine of its own has none to end), a destroy while another connection of the project is open
- * (`destroy-while-connected`: through the hub, refused while another view uses the project).
+ * engine of its own has none to end).
  */
-export const STORE_CONTRACT_DIFFERENCES = ['engine-end', 'destroy-while-connected'] as const
+export const STORE_CONTRACT_DIFFERENCES = ['engine-end'] as const
 
 /** How long a case waits for a promise before it calls it pending. */
 export const OUTCOME_WAIT_MS = 200
@@ -138,10 +137,6 @@ export const OUTCOME_WAIT_MS = 200
 /** Why the in-process leg has no engine a case can end mid-import. */
 export const IN_PROCESS_ENGINE_REASON =
 	'the in-process engine runs in the page itself: nothing ends it mid-import, short of the page'
-
-/** Why the hub leg refuses a destroy while another connection of the project is open. */
-export const HUB_DESTROY_REFUSED_REASON =
-	'through the hub a destroy is refused PROJECT_OPEN_ELSEWHERE while another view uses the project: that view leaves first'
 
 /** How long a contract engine told to end may take to let its lock go. */
 export const ENGINE_END_BUDGET_MS = 5_000

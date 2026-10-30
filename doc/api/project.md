@@ -418,6 +418,8 @@ try {
 }
 ```
 
+`destroy()` is refused with `PROJECT_OPEN_ELSEWHERE` (`meta.project`, and `meta.connections` where the store counts them), nothing removed, while another project or store of the name has it open - in this page, or in another tab: close that one, then call `destroy()` again. The refused one closed the project all the same, as `close()` does. One closed counts open no more, and a destroy lets the operations it still runs complete first (a store of another tab counts until they end); one destroyed counts open no more either, until it is used again. Two connections destroying at once are both refused - but two tabs destroying a local store at once may both go ahead. A connection made while another connection's destroy runs either counts - the destroy refused, its data kept - or waits for the destroy and reads the project empty; it never fails, and never reads the old data after a destroy that resolved.
+
 ## In-Memory Storage
 
 Use `{ type: 'inMemory' }` for tests, demos, or UI placeholder documents that need a valid `Document` instance without IndexedDB.

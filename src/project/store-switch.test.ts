@@ -104,6 +104,28 @@ const CASES: Record<
 				expect(leaf?.value).toBe('as imported')
 			},
 		},
+	'a destroy refused while another project of the name is open → nothing removed, the project closed; the other closed → destroyed when called again':
+		{
+			act: async function destroyRefusedThenAgain(storage) {
+				const project = await openProject({ storage })
+				const { documentId } = await project.importFile(leafFile())
+				const other = await openProject({ storage, name: project.name })
+
+				await expect(project.destroy()).rejects.toMatchObject({
+					cause: { key: 'PROJECT_OPEN_ELSEWHERE' },
+				})
+
+				const documents = await other.getDocuments()
+				expect(documents.map((document) => document.id)).toEqual([documentId])
+				await expect(project.getDocuments()).rejects.toMatchObject({
+					cause: { key: 'PROJECT_NOT_OPENED' },
+				})
+				await other.close()
+				await project.destroy()
+				const fresh = await openProject({ storage, name: project.name })
+				expect(await fresh.getDocuments()).toEqual([])
+			},
+		},
 	'a destroyed project → getDocuments rejects with PROJECT_NOT_OPENED': {
 		act: async function readAfterDestroy(storage) {
 			const project = await openProject({ storage })
@@ -120,7 +142,10 @@ const CASES: Record<
 
 describe('Project - the same on every store', () => {
 	afterEach(async () => {
-		for (const project of opened.splice(0)) await project.destroy()
+		const projects = opened.splice(0)
+		// every one closed first: a project is destroyed only once no other connection has it open
+		for (const project of projects) await project.close()
+		for (const project of projects) await project.destroy()
 	})
 
 	for (const [storageName, storage] of Object.entries(STORAGES)) {

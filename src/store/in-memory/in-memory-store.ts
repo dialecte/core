@@ -2,12 +2,14 @@ import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
 import { compareById } from '../compare-by-id'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
+import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
 	throwDocumentNotRegistered,
 	throwDuplicateRecordIds,
+	throwOpenElsewhere,
 	throwRecordToUpdateNotFound,
 	throwStoreClosed,
 } from '../store-errors'
@@ -17,9 +19,11 @@ import { removeUnfinishedImports } from '../unfinished-imports'
 import { writeOutcomeOf } from '../write-outcome'
 import {
 	bumpVersion,
+	CLOSING_IN_MEMORY_CONNECTIONS,
 	dropInMemoryState,
 	ensureInMemoryState,
 	findInMemoryState,
+	OPEN_IN_MEMORY_CONNECTIONS,
 } from './in-memory-state'
 import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
 
@@ -104,6 +108,8 @@ export class InMemoryStore implements Store {
 	private closings = 0
 	/** The imports this instance runs (its only operations that span awaits): `open()` and `destroy()` wait for them. */
 	private readonly operations = createRunningOperations()
+	/** This store's own destroy while it runs: an operation started meanwhile goes on once it has ended. */
+	private destroying: Promise<void> | undefined
 
 	constructor(name: string, options?: InMemoryStoreOptions) {
 		this.name = name
@@ -116,11 +122,14 @@ export class InMemoryStore implements Store {
 	/** Open: an import found unfinished - it never outlives the store - is removed; one it runs stays. */
 	async open(): Promise<void> {
 		const closingsAtCall = this.closings
-		// an import still running completes first
+		// an import still running completes first, and this store's own destroy
 		await this.operations.whenIdle()
+		while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
 		// a close() called after this open() wins: the store stays closed
 		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
 		this.closed = false
+		// a placeholder never holds the name's state: it keeps no destroy of the name from going on
+		if (this.writable) OPEN_IN_MEMORY_CONNECTIONS.markOpen({ name: this.name, connection: this })
 		await removeUnfinishedImports({
 			store: this,
 			isRunning: (document) =>
@@ -135,14 +144,43 @@ export class InMemoryStore implements Store {
 	close(): void {
 		this.closed = true
 		this.closings += 1
+		OPEN_IN_MEMORY_CONNECTIONS.markClosed({ name: this.name, connection: this })
+		if (this.operations.count > 0) {
+			CLOSING_IN_MEMORY_CONNECTIONS.markClosing({
+				name: this.name,
+				until: this.operations.whenIdle(),
+			})
+		}
 	}
 
-	/** Drop the state of the name, for every instance of it; a placeholder has none to drop. */
+	/**
+	 * Drop the state of the name, for every instance of it; refused `PROJECT_OPEN_ELSEWHERE` while another
+	 * instance of the name is open. A placeholder has none to drop.
+	 */
 	async destroy(): Promise<void> {
 		if (!this.writable) return
+		// one destroy of this store at a time: another one called meanwhile starts once it has ended
+		while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
+		const destroying = this.destroyOnceIdle()
+		this.destroying = destroying
+		try {
+			await destroying
+		} finally {
+			if (this.destroying === destroying) this.destroying = undefined
+		}
+	}
+
+	private async destroyOnceIdle(): Promise<void> {
 		// an import still running completes before the state goes
 		await this.operations.whenIdle()
+		// another instance closed with operations running counts open no more: they complete first
+		await CLOSING_IN_MEMORY_CONNECTIONS.settled({ name: this.name })
+		const others = OPEN_IN_MEMORY_CONNECTIONS.others({ name: this.name, connection: this })
+		if (others > 0) throwOpenElsewhere({ storeName: this.name, connections: others })
 		dropInMemoryState({ name: this.name })
+		// destroyed, it holds the name no more until its next operation, as a SQLite store's destroy lets its
+		// connection go
+		OPEN_IN_MEMORY_CONNECTIONS.markClosed({ name: this.name, connection: this })
 	}
 
 	// --- Cross-realm reconciliation ---
@@ -153,7 +191,7 @@ export class InMemoryStore implements Store {
 	 * extensions) will not see documents imported in another realm with this store.
 	 */
 	async reconcile(): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		if (!InMemoryStore.reconcileWarned) {
 			InMemoryStore.reconcileWarned = true
 			console.warn(
@@ -165,68 +203,70 @@ export class InMemoryStore implements Store {
 
 	/** Readiness reduces to liveness for in-memory: readable iff registered. */
 	async isDocumentReadable(documentId: string): Promise<boolean> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.readState().documents.has(documentId)
 	}
 
 	// --- File registry ---
 
 	async registerDocument(file: DocumentRecord): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.registerDocumentUnguarded(file)
 	}
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.getDocumentUnguarded(documentId)
 	}
 
 	async getDocuments(): Promise<DocumentRecord[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return structuredClone([...this.readState().documents.values()].sort(compareById))
 	}
 
 	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.updateDocumentUnguarded(documentId, updates)
 	}
 
 	async removeDocument(documentId: string): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.removeDocumentUnguarded(documentId)
 	}
 
 	// --- Record access ---
 
 	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
-		this.guardOpen()
+		await this.guardOpen()
 		return structuredClone(this.readTable(documentId).get(id))
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return structuredClone([...this.readTable(documentId).values()].sort(compareById))
 	}
 
 	async count(documentId: string): Promise<number> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.countUnguarded(documentId)
 	}
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.getByTagNameInDocumentUnguarded(tagName, documentId)
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.getManyUnguarded(ids, documentId)
 	}
 
 	// --- Import ---
 
 	async importFile(params: ImportFileParams): Promise<ImportFileResult> {
-		this.guardOpen()
+		// counted at once when no destroy of this store runs: a close() right after it lets it complete
+		const waiting = this.guardOpen()
+		if (waiting) await waiting
 		this.guardWritable()
 		const { file, options, writeId = crypto.randomUUID(), onProgress, signal } = params
 		const runtime = requireStoreRuntime({
@@ -251,7 +291,9 @@ export class InMemoryStore implements Store {
 	// --- Export ---
 
 	async exportFile(params: ExportFileParams): Promise<ExportFileResult> {
-		this.guardOpen()
+		// counted at once when no destroy of this store runs: a close() right after it lets it complete
+		const waiting = this.guardOpen()
+		if (waiting) await waiting
 		const { documentId, options, onProgress, signal } = params
 		const runtime = requireStoreRuntime({
 			runtime: this.runtime,
@@ -270,7 +312,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
-		this.guardOpen()
+		await this.guardOpen()
 		const { writeId } = params
 		const { documents, changelog, discardedCommits } = this.readState()
 		const committed =
@@ -286,7 +328,7 @@ export class InMemoryStore implements Store {
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		return this.bulkWriteUnguarded(documentId, ops)
 	}
 
@@ -298,7 +340,7 @@ export class InMemoryStore implements Store {
 		deletes: string[]
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		this.guardWritable()
 		const { documentId, writeId = crypto.randomUUID(), deletes, onProgress } = params
 		const { state, table } = this.writeTarget(documentId)
@@ -367,7 +409,7 @@ export class InMemoryStore implements Store {
 
 	/** Undo the last applied entry, its parts in reverse: the deleted records back, the befores, the creates gone. */
 	async undo(documentId: string): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
 		const head = state?.heads.get(documentId) ?? 0
@@ -389,7 +431,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async redo(documentId: string): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
 		if (!state) return
@@ -412,7 +454,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
-		this.guardOpen()
+		await this.guardOpen()
 		const { heads, changelog } = this.readState()
 		const head = heads.get(documentId) ?? 0
 		const entries = changelog.get(documentId) ?? []
@@ -423,7 +465,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return structuredClone([...(this.readState().changelog.get(documentId) ?? [])])
 	}
 
@@ -434,7 +476,7 @@ export class InMemoryStore implements Store {
 	// --- Blob storage ---
 
 	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
 		if (!state?.documents.has(entry.documentId)) {
@@ -446,7 +488,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
-		this.guardOpen()
+		await this.guardOpen()
 		const { blobs, blobData } = this.readState()
 		const entry = blobs.get(blobId)
 		if (!entry) return undefined
@@ -456,7 +498,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return structuredClone(
 			[...this.readState().blobs.values()]
 				.filter((b) => b.attachedTo.some((a) => a.documentId === documentId))
@@ -465,7 +507,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return structuredClone(
 			[...this.readState().blobs.values()]
 				.filter((b) =>
@@ -476,7 +518,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async getStandaloneBlobs(): Promise<BlobRecord[]> {
-		this.guardOpen()
+		await this.guardOpen()
 		return structuredClone(
 			[...this.readState().blobs.values()]
 				.filter((b) => b.attachedTo.length === 0)
@@ -485,7 +527,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
 		const entry = state?.blobs.get(blobId)
@@ -507,7 +549,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
 		const entry = state?.blobs.get(blobId)
@@ -521,7 +563,7 @@ export class InMemoryStore implements Store {
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
-		this.guardOpen()
+		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
 		const entry = state?.blobs.get(blobId)
@@ -650,8 +692,22 @@ export class InMemoryStore implements Store {
 		return { state, table }
 	}
 
-	private guardOpen(): void {
+	/**
+	 * Refused once closed; else the store counts open - again after its own destroy, as a SQLite store
+	 * connects again on its next operation (a placeholder never does). One started while this store's
+	 * own destroy runs goes on once it has ended: it keeps that destroy from nothing.
+	 */
+	private guardOpen(): Promise<void> | undefined {
 		if (this.closed) throwStoreClosed({ storeName: this.name })
+		if (this.destroying) return this.guardOpenAfterOwnDestroy({ destroying: this.destroying })
+		if (this.writable) OPEN_IN_MEMORY_CONNECTIONS.markOpen({ name: this.name, connection: this })
+		return undefined
+	}
+
+	/** Guarded once this store's own destroy has ended: closed meanwhile, refused, as one started after the close is. */
+	private async guardOpenAfterOwnDestroy(params: { destroying: Promise<void> }): Promise<void> {
+		await params.destroying.catch(ignoreDestroyOutcome)
+		await this.guardOpen()
 	}
 
 	/**

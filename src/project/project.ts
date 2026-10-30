@@ -466,10 +466,14 @@ export class Project<
 
 	/**
 	 * Destroy the project - deletes the database entirely, every document with its history and blobs,
-	 * once the imports in flight have landed. To delete one document, use `removeDocument`.
+	 * once the imports in flight have landed; refused `PROJECT_OPEN_ELSEWHERE`, nothing removed, while another
+	 * connection - a project or store of the name, in this page or another tab - has it open. To delete one
+	 * document, use `removeDocument`.
 	 *
 	 * The project destroyed is the one this Project last opened, or the one whose `open` its store refused
 	 * (`PROJECT_DATABASE_LOST`): that store is not opened again, and `open` then makes the project again, empty.
+	 * Refused, the project is closed all the same, as by `close()`: a `destroy()` called again once the other
+	 * connection closed removes it.
 	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls.
 	 *
 	 * Never await it inside a hook or a transaction callback: the close waits for that work, which waits for it.

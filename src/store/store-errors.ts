@@ -84,6 +84,18 @@ function unique(ids: string[]): string[] {
 	return [...new Set(ids)]
 }
 
+/**
+ * A destroy refused while another connection - of this realm, or of another tab - has the project open:
+ * nothing is removed; it can be destroyed once that connection is closed.
+ */
+export function throwOpenElsewhere(params: { storeName: string; connections?: number }): never {
+	const { storeName, connections } = params
+	throwDialecteError('PROJECT_OPEN_ELSEWHERE', {
+		detail: `Project "${storeName}" cannot be destroyed while another connection has it open: close that one first`,
+		meta: { project: storeName, ...(connections !== undefined && { connections }) },
+	})
+}
+
 /** An operation through a store closed by `close()`: refused until the store is opened again. */
 export function throwStoreClosed(params: { storeName: string }): never {
 	const { storeName } = params

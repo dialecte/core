@@ -80,8 +80,12 @@ export interface Store {
 
 	/**
 	 * Delete the state of the name entirely (the database, not just its content), once the operations
-	 * still running have completed: every store of the name then reads empty, until something is
-	 * registered again.
+	 * still running have completed - this store's, and those of a store of the name closed while they
+	 * ran: every store of the name then reads empty, until something is registered again. Refused
+	 * `PROJECT_OPEN_ELSEWHERE`, nothing removed, while another connection - a store of the name in this
+	 * page or in another tab - has it open. A store closed counts open no more (a store of another tab
+	 * only once the operations it still runs have ended), and neither does one destroyed, until its
+	 * next operation.
 	 */
 	destroy(): Promise<void>
 

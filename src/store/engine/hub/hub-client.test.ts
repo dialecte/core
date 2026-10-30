@@ -916,6 +916,115 @@ describe('a realm connected to the hub', () => {
 		expect(closed).toBe('STORE_CLOSED')
 	})
 
+	it('a destroy while another link of the realm has the project → refused PROJECT_OPEN_ELSEWHERE in the realm, the hub not asked', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		openLink({ connection, project })
+		let destroyed = false
+		const outcome = await outcomeOf({
+			promise: connection.destroyProject({
+				project,
+				destroy: async function destroyFiles() {
+					destroyed = true
+				},
+			}),
+		})
+		expect(outcome).toBe('PROJECT_OPEN_ELSEWHERE')
+		expect(destroyed).toBe(false)
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('destroy')
+	})
+
+	it('a link of the realm opened while the destroy waits for its grant → granted, the destroy refused PROJECT_OPEN_ELSEWHERE, nothing removed, the hub told it is done', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		let destroyed = false
+		const destroying = outcomeOf({
+			promise: connection.destroyProject({
+				project,
+				destroy: async function destroyFiles() {
+					destroyed = true
+				},
+			}),
+		})
+		await hub.next('destroy')
+		openLink({ connection, project })
+		hub.reply({ type: 'destroy-granted', project })
+		const outcome = await destroying
+		expect(outcome).toBe('PROJECT_OPEN_ELSEWHERE')
+		expect(destroyed).toBe(false)
+		const done = await hub.next('destroyed')
+		expect(done.project).toBe(project)
+	})
+
+	it('its own link given, refused after the grant (another link of the realm opened meanwhile) → that link kept: it reaches the next engine, and the realm stays on the project once the other link goes', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const own = openLink({ connection, project })
+		await connectEngine({ hub, link: own, project })
+		let destroyed = false
+		const destroying = outcomeOf({
+			promise: connection.destroyProject({
+				project,
+				destroy: async function destroyFiles() {
+					destroyed = true
+				},
+				own: { link: own, letGo: own.release },
+			}),
+		})
+		await hub.next('destroy')
+		const other = openLink({ connection, project })
+		hub.reply({ type: 'engine-lost', project, generation: 1 })
+		hub.reply({ type: 'destroy-granted', project })
+
+		expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
+		expect(destroyed).toBe(false)
+		await hub.next('destroyed')
+		const reaching = own.engine()
+		const channel = new MessageChannel()
+		onTestFinished(function closeEnginePort() {
+			channel.port2.close()
+		})
+		hub.reply({ type: 'engine-ready', project, generation: 2, port: channel.port1 }, [
+			channel.port1,
+		])
+		expect(await outcomeOf({ promise: reaching })).toBe('settled')
+		other.release()
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('leave')
+	})
+
+	it('its own link released while the grant is awaited, another link of the realm open → refused PROJECT_OPEN_ELSEWHERE after the grant, nothing removed', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const own = openLink({ connection, project })
+		let destroyed = false
+		const destroying = outcomeOf({
+			promise: connection.destroyProject({
+				project,
+				destroy: async function destroyFiles() {
+					destroyed = true
+				},
+				own: { link: own, letGo: own.release },
+			}),
+		})
+		await hub.next('destroy')
+		own.release()
+		openLink({ connection, project })
+		hub.reply({ type: 'destroy-granted', project })
+
+		expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
+		expect(destroyed).toBe(false)
+	})
+
 	it('a project refused for now, its link kept → asked again when the page comes back, with no call waiting', async () => {
 		const hub = fakeHub()
 		const page = fakePage()

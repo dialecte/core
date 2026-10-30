@@ -7,6 +7,7 @@ import {
 	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
+	closeTestContexts,
 	createTestContext,
 	createTestProject,
 	runTestCases,
@@ -122,6 +123,7 @@ describe('getRecordsByTagName', () => {
 					expect(records[0].status).toBe('created')
 				})
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -148,6 +150,7 @@ describe('getRecordsByTagName', () => {
 					expect(records[0].id).toBe('aa2')
 				})
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -171,6 +174,7 @@ describe('getRecordsByTagName', () => {
 					expect(records[0].status).toBe('updated')
 				})
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -201,6 +205,7 @@ describe('getRecordsByTagName', () => {
 				expect(context.recordCache!.has('a1')).toBe(true)
 				expect(context.recordCache!.has('a2')).toBe(true)
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})

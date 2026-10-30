@@ -8,6 +8,7 @@ import {
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	TEST_DIALECTE_CONFIG,
+	closeTestContexts,
 	createTestContext,
 	createTestProject,
 	runTestCases,
@@ -123,6 +124,7 @@ describe('getRecord', () => {
 					expect(record?.status).toBe('created')
 				})
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -147,6 +149,7 @@ describe('getRecord', () => {
 					expect(record).toBeUndefined()
 				})
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -169,6 +172,7 @@ describe('getRecord', () => {
 					expect(record?.status).toBe('updated')
 				})
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -197,6 +201,7 @@ describe('getRecord', () => {
 				expect(context.recordCache!.has('a1')).toBe(true)
 				expect(context.recordCache!.get('a1')).toMatchObject({ id: 'a1', tagName: 'A' })
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -225,6 +230,7 @@ describe('getRecord', () => {
 				// The raw in the cache is the same object used for the second result
 				expect(second).toMatchObject(cachedRaw!)
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -251,6 +257,7 @@ describe('getRecord', () => {
 				expect(context.recordCache!.has('__singleton_Root')).toBe(true)
 				expect(context.recordCache!.get(rootId)).toBe(context.recordCache!.get('__singleton_Root'))
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})
@@ -279,6 +286,7 @@ describe('getRecord', () => {
 				expect(record).toBeDefined()
 				expect(record?.id).toBe('a1')
 			} finally {
+				closeTestContexts()
 				await project.destroy()
 			}
 		})

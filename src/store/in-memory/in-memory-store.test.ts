@@ -152,7 +152,7 @@ describe('InMemoryStore - the state of its name', () => {
 		expect(findInMemoryState({ name })).toBeUndefined()
 	})
 
-	it('a placeholder of a name holding data → reads empty, its destroy leaves the data', async () => {
+	it('a placeholder of a name holding data → reads empty, its destroy leaves the data; open, it keeps no destroy of the name from going on', async () => {
 		const name = `state-${crypto.randomUUID()}`
 		const store = new InMemoryStore(name)
 		await store.registerDocument(makeDocument())
@@ -166,6 +166,21 @@ describe('InMemoryStore - the state of its name', () => {
 		expect(await store.get('r1', 'doc-1')).toEqual(makeRecord('r1'))
 
 		await store.destroy()
+	})
+
+	it('a store destroyed while open, then another of the name opened and destroyed → destroyed: the first counts open no more', async () => {
+		const name = `state-${crypto.randomUUID()}`
+		const first = new InMemoryStore(name)
+		await first.open()
+		await first.registerDocument(makeDocument())
+		await first.destroy()
+
+		const second = new InMemoryStore(name)
+		await second.open()
+		await second.registerDocument(makeDocument())
+		await second.destroy()
+
+		expect(findInMemoryState({ name })).toBeUndefined()
 	})
 })
 
