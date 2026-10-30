@@ -5,11 +5,14 @@ import { poolDirectoryOf } from './install-pool'
 import { installProgressBeat } from './progress-beat'
 import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
 import {
+	INSTALL_REFUSAL,
+	OPEN_FAILURE,
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DDL_MS,
 	SLOW_DESTROY_MS,
 	SLOW_DDL_PATTERN,
 	SLOW_STATEMENT_STEP_MS,
+	UNSAFE_POOL_SQLITE,
 	YIELDING_SLICE_MS,
 } from './runtime.fixtures.constants'
 
@@ -19,6 +22,7 @@ import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type {
 	DestroyShape,
+	PoolInstallFailure,
 	ProgressBeatOrder,
 	RuntimeFixtureMessage,
 	RuntimeFixtureNotice,
@@ -31,7 +35,9 @@ import type { AnyRawRecord } from '@/types'
 /**
  * The contract dialecte's engine worker on a platform a case shapes (`?scenario=`): no private file
  * system, a quota nearly used up, room for a pool but not for a large import, a worker deaf to
- * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load;
+ * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load, one
+ * whose SQLite reports a version too old to keep a pool on a failed install, one whose dialecte fails to make
+ * its hooks, one whose pool refuses every database;
  * or, `holder`, no engine at all - a worker holding one file of a project's pool, as an engine that
  * ended may still do.
  */
@@ -53,8 +59,9 @@ if (scenario === 'no-opfs') {
 	})
 }
 if (scenario === 'disk-full') fillDiskWhenOrdered()
-if (scenario === 'install-fails') failPoolInstall({ once: false })
-if (scenario === 'install-fails-once') failPoolInstall({ once: true })
+if (scenario === 'install-fails') failPoolInstall({ files: 'every', once: false })
+if (scenario === 'install-fails-on-one') failPoolInstall({ files: 'first', once: false })
+if (scenario === 'install-fails-once') failPoolInstall({ files: 'every', once: true })
 
 const freeBytes = scenario ? FREE_BYTES_OF_SCENARIO[scenario] : undefined
 if (freeBytes !== undefined) {
@@ -124,6 +131,8 @@ function serveEngine(): void {
 		slowStatements({ silent: scenario === 'slow-statements-silent' })
 	}
 	if (scenario === 'liveness') slowDdlWhenOrdered()
+	if (scenario === 'sqlite-3-53') reportUnsafeSqlite()
+	if (scenario === 'database-fails') failDatabaseOpen()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -159,11 +168,13 @@ function slowStatements(params: { silent: boolean }): void {
 
 /**
  * A pool file's second handle refused (as a file that cannot be opened is): the probe, which opens and
- * closes each file once, passes; then the pool's install fails on each file it acquires - with no file
- * held by anyone else. `once`: that second handle only, every later one opened (an install tried again).
+ * closes each file once, passes; then the pool's install fails on each file it acquires (`every`) or on
+ * the first file probed only, the others acquired (`first`) - with no file held by anyone else. `once`:
+ * that second handle only, every later one opened (an install tried again).
  */
-function failPoolInstall(params: { once: boolean }): void {
+function failPoolInstall(params: PoolInstallFailure): void {
 	const acquired = new Map<string, number>()
+	let first: string | undefined
 	const createSyncAccessHandle = (FileSystemFileHandle.prototype as unknown as SyncAccessFileHandle)
 		.createSyncAccessHandle
 	Object.defineProperty(FileSystemFileHandle.prototype, 'createSyncAccessHandle', {
@@ -171,13 +182,37 @@ function failPoolInstall(params: { once: boolean }): void {
 		value: function acquireFailing(this: FileSystemFileHandle) {
 			const count = (acquired.get(this.name) ?? 0) + 1
 			acquired.set(this.name, count)
-			if (params.once ? count === 2 : count >= 2) {
-				return Promise.reject(
-					new DOMException('The file could not be opened.', 'InvalidStateError'),
-				)
+			first ??= this.name
+			const failing = params.files === 'every' || this.name === first
+			if (failing && (params.once ? count === 2 : count >= 2)) {
+				return Promise.reject(new DOMException(INSTALL_REFUSAL.message, INSTALL_REFUSAL.name))
 			}
 			return createSyncAccessHandle.call(this)
 		},
+	})
+}
+
+/** The realm's SQLite reports itself as 3.53.4 (`UNSAFE_POOL_SQLITE`), as an install of an older sqlite-wasm would. */
+function reportUnsafeSqlite(): void {
+	// chained on the realm's one load before the engine's open awaits it: reported before any pool opens
+	void loadSqlite().then(function reportVersion(sqlite3) {
+		sqlite3.version.libVersion = UNSAFE_POOL_SQLITE.libVersion
+		sqlite3.version.libVersionNumber = UNSAFE_POOL_SQLITE.libVersionNumber
+	})
+}
+
+/** Every database the pool opens refused, as a file SQLite cannot open is. */
+function failDatabaseOpen(): void {
+	// chained on the realm's one load before the engine's open awaits it: patched before any pool is installed
+	void loadSqlite().then(function patchInstall(sqlite3) {
+		const install = sqlite3.installOpfsSAHPoolVfs
+		sqlite3.installOpfsSAHPoolVfs = async function installRefusingDatabases(options) {
+			const pool = await install(options)
+			pool.OpfsSAHPoolDb = function refuseDatabase() {
+				throw new Error(OPEN_FAILURE.database)
+			} as unknown as typeof pool.OpfsSAHPoolDb
+			return pool
+		}
 	})
 }
 
@@ -258,6 +293,7 @@ const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
 	configs: CONTRACT_DIALECTE.configs,
 	defaultConfigKey: CONTRACT_DIALECTE.defaultConfigKey,
 	createHooks: function createPausingHooks() {
+		if (scenario === 'hooks-fail') throw new Error(OPEN_FAILURE.hooks)
 		const hooks = CONTRACT_DIALECTE.createHooks()
 		const createContractSession = hooks.createImportSession!
 		return {

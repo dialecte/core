@@ -230,7 +230,7 @@ Errors use a typed catalog organized by domain:
 | `D4xxx` | Transaction lifecycle | `ALREADY_COMMITTED`, `CONCURRENT_TRANSACTION`                                                                                                                                                                                         |
 | `D5xxx` | Import/Export         | `EXPORT_ROOT_NOT_FOUND`, `EXPORT_ORPHAN_CHILD_REF`, `PARSE_ERROR`, `IMPORT_FAILED`, `IMPORT_ABORTED`, `EXPORT_CONFLICT`, `EXPORT_ABORTED`                                                                                             |
 | `D6xxx` | Config                | `EXTENSION_METHOD_COLLISION`                                                                                                                                                                                                          |
-| `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `DOCUMENT_NOT_REGISTERED`, `PROJECT_LAYOUT_OUTDATED`, `PROJECT_DESTROY_FAILED`, `PROJECT_OPEN_ELSEWHERE`                                                                                                        |
+| `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `DOCUMENT_NOT_REGISTERED`, `PROJECT_LAYOUT_OUTDATED`, `PROJECT_DESTROY_FAILED`, `PROJECT_OPEN_ELSEWHERE`, `PROJECT_DATABASE_LOST`                                                                               |
 
 The full catalog is in `core/src/errors/codes.ts`. Every entry also carries an `explanation`: `when` it is raised, the usual `fix`, and the `docs` page about it - what `npx @dialecte/cli explain <code>` prints.
 

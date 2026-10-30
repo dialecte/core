@@ -13,13 +13,16 @@ description: API reference for the Project class - multi-document container mana
 ```ts
 import { Project } from '@dialecte/core'
 
-const project = await new Project({
+const project = new Project({
 	configs: { scl: sclConfig },
 	storage: { type: 'local' },
 	extensions: { base: sclExtensions, custom: myExtensions },
 	hooks: sclHooks,
-}).open('my-project')
+})
+await project.open('my-project')
 ```
+
+Keep the instance before opening it: when `open` is refused, that Project is the one that can reset the project (see [Lifecycle](#lifecycle)).
 
 **Constructor - `ProjectParams`**
 
@@ -388,11 +391,32 @@ type ProjectState = {
 ## Lifecycle
 
 ```ts
-await project.close() // wait for the imports in flight, close store connection and BroadcastChannel
-await project.destroy() // wait for the imports in flight, delete the database entirely and clear state
+await project.close() // wait for the imports and writes in flight and the channel's work, close the store and BroadcastChannel, empty the state
+await project.destroy() // the same, then delete the database entirely
 ```
 
+`open`, `close` and `destroy` run one at a time, in the order called: a call waits for the one before it to settle. `open` on a Project already open - on another project or on the same one - first closes it as `close()` does, and a call made from the `open` call on is refused until the last `open`, `close` or `destroy` called has settled (`open(a)` twice without waiting: the first caller's calls are refused until the second has settled). A batch `import` and a Document belong to the open they were made in: a file whose turn comes after that open closed is a failed entry (`PROJECT_NOT_OPENED`), and a Document's commits tell no later open. The Documents of the previous open answer `STORE_CLOSED` when the store is made for each open (`local`, `inMemory`); a `custom` store is the same one opened again - open the Documents again after `open`. A close waits for the imports in flight (running and queued), the project's writes running (a Document's transaction or prepared commit included) and the work other realms' messages started, then closes the store and the channel, empties `state.documents` and drops the Documents' subscriptions.
+
 Once `close()` or `destroy()` is called the project is closed: `import`, `importFile`, `openDocument`, `export`, the registry reads and the blob methods throw `PROJECT_NOT_OPENED`; an import that was in flight still lands.
+
+An `open` whose store refuses, or whose documents cannot be read, leaves the Project closed. `queryFirst` and `queryAll` answer `PROJECT_NOT_OPENED` when the project closes, or another opens, while they run - never a partial answer.
+
+Never await `open`, `close` or `destroy` inside a hook or a transaction callback: the close waits for that work, which waits for the close - after 10 seconds the console says what the close still waits for.
+
+An `open` its store refused is reset as follows. When it answers `PROJECT_DATABASE_LOST` (the project's data cannot be read back), offer the user a reset - never do it on your own: `destroy()` on that same Project removes the project the refused store holds, without opening it, and `open` then makes it again, empty.
+
+```ts
+const project = new Project(params)
+try {
+	await project.open(name)
+} catch (thrown) {
+	if (toDialecteError(thrown)?.key !== 'PROJECT_DATABASE_LOST') throw thrown
+	if (await askUserToReset()) {
+		await project.destroy()
+		await project.open(name)
+	}
+}
+```
 
 ## In-Memory Storage
 

@@ -76,6 +76,13 @@ export class Document<
 	 */
 	private refreshHistoryStatus: () => Promise<void>
 
+	/**
+	 * Count a write of this Document (a transaction, a prepared commit) with the owning Project until the
+	 * function it answers is called: the Project's close waits for it before it closes the store. Throws
+	 * `PROJECT_NOT_OPENED` while that Project closes (provided by the owning Project).
+	 */
+	private startWrite: () => () => void
+
 	/** Track concurrent transactions to manage loading flag */
 	private activeTransactions = 0
 
@@ -93,6 +100,7 @@ export class Document<
 			perf: Perf
 			subscribeState: (callback: (terminal: boolean) => void) => () => void
 			signalStateChange: (terminal: boolean) => void
+			startWrite: () => () => void
 		},
 	) {
 		this.store = store
@@ -107,6 +115,7 @@ export class Document<
 		this.perf = project.perf
 		this.subscribe = project.subscribeState
 		this.signalStateChange = project.signalStateChange
+		this.startWrite = project.startWrite
 	}
 
 	//== Query access (read-only, no mutations exposed)
@@ -185,19 +194,22 @@ export class Document<
 		options?: { label?: string },
 	): Promise<T> {
 		this.assertNoActiveTransaction()
-
-		this.activeTransactions++
-		this.state.loading = true
-		this.state.error = null
-		this.signalStateChange(false)
-
-		const tx = this.withAllExtensions(this.createTransaction())
+		// refused while the Project closes, before anything changed
+		const endWrite = this.startWrite()
+		let tx: (Transaction<GenericConfig> & AllExtensions<GenericExtension>) | undefined
 
 		try {
-			const result = await fn(tx)
+			this.activeTransactions++
+			this.state.loading = true
+			this.state.error = null
+			this.signalStateChange(false)
 
-			await tx.finishStaging()
-			await tx.commit()
+			const transaction = this.withAllExtensions(this.createTransaction())
+			tx = transaction
+			const result = await fn(transaction)
+
+			await transaction.finishStaging()
+			await transaction.commit()
 			// Refresh canUndo/canRedo on the shared entry locally (mirrors
 			// Project.undo/redo) so state is correct synchronously — no channel
 			// echo required.
@@ -207,8 +219,8 @@ export class Document<
 				documentId: this.documentId,
 				timestamp: this.state.lastUpdate ?? Date.now(),
 			})
-			tx.clearStagedOperations()
-			tx.clearRecordCache()
+			transaction.clearStagedOperations()
+			transaction.clearRecordCache()
 			this.state.history.push({
 				method: 'commit',
 				message: options?.label ?? 'Changes committed',
@@ -219,9 +231,12 @@ export class Document<
 		} catch (error) {
 			throw this.reportFailure(error)
 		} finally {
-			tx.progress.forceClear()
+			// the transaction's own state ended first: a subscriber that throws as it is told below never holds the
+			// Project's close nor leaves this Document holding a transaction
+			endWrite()
 			this.activeTransactions--
 			this.state.loading = false
+			tx?.progress.forceClear()
 			this.signalStateChange(true)
 		}
 	}
@@ -291,6 +306,8 @@ export class Document<
 					return
 				}
 				this.assertNoActiveTransaction()
+				// refused while the Project closes: the prepared commit can be committed again later
+				const endWrite = this.startWrite()
 				settled = true
 
 				this.activeTransactions++
@@ -319,6 +336,7 @@ export class Document<
 				} finally {
 					this.activeTransactions--
 					this.state.loading = false
+					endWrite()
 				}
 			},
 

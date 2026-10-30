@@ -17,7 +17,11 @@ export type RuntimeFixtureScenario =
 	| 'slow-destroy'
 	| 'ignore-destroy-slow-fresh'
 	| 'install-fails'
+	| 'install-fails-on-one'
 	| 'install-fails-once'
+	| 'sqlite-3-53'
+	| 'hooks-fail'
+	| 'database-fails'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =
@@ -45,3 +49,9 @@ export type RuntimeFixtureMessage = { type: 'hold'; project: string } | { type: 
 
 /** A long statement the progress-beat fixture runs, its beats posted on `port`. */
 export type ProgressBeatOrder = { port: MessagePort; intervalMs: number; rows: number }
+
+/**
+ * How the install-failure fixtures refuse a pool file's second handle (the probe opened the first): on every
+ * file or on the first file probed only (the others acquired), every time or once.
+ */
+export type PoolInstallFailure = { files: 'every' | 'first'; once: boolean }

@@ -38,5 +38,21 @@ export type HeldEngineLock = {
 
 /** A file of the private file system as a dedicated worker reaches it (the page's types lack this member). */
 export type SyncAccessFileHandle = FileSystemFileHandle & {
-	createSyncAccessHandle: () => Promise<{ close: () => void }>
+	createSyncAccessHandle: () => Promise<PoolFileAccess>
 }
+
+/** The synchronous access a worker has to a pool file, as far as the runtime uses it. */
+export type PoolFileAccess = {
+	close: () => void
+	getSize: () => number
+	read: (buffer: Uint8Array, options: { at: number }) => number
+}
+
+/** A pool file as the probe read it: its size, and its first bytes (its header's path, flags and digest). */
+export type PoolFileHead = { size: number; header: Uint8Array }
+
+/**
+ * What an existing pool holds: the project's database, nothing but headers (it never held pages), or data with no
+ * database (the database's header damaged).
+ */
+export type PoolContents = 'database' | 'blank' | 'lost'

@@ -15,7 +15,7 @@ export const ERROR_CATALOG = {
 		code: 'D0002',
 		message: 'Assertion failed',
 		explanation: {
-			when: 'An `invariant` without its own key failed, or core met a state it never expects (a catalogue built wrong, an inconsistent export).',
+			when: 'An `invariant` without its own key failed, or core met a state it never expects (a catalogue built wrong, an inconsistent export, an engine running an sqlite-wasm older than 3.54.1, which removes a project on a failed install).',
 			fix: 'Read `detail`: it names the condition. Give `invariant` a key of its own when the failure is one a caller should handle.',
 			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
 		},
@@ -473,8 +473,8 @@ export const ERROR_CATALOG = {
 		code: 'D7003',
 		message: 'Project not opened',
 		explanation: {
-			when: 'The project was used before `open(name)` resolved, or after `close()`.',
-			fix: 'Await `createProject(...).open(name)` before using the project; open it again after `close()`.',
+			when: "The project was used before `open(name)` resolved, or once `close()`, `destroy()` or another `open()` was called on it - a batch import's file whose turn came after that is refused the same.",
+			fix: 'Keep the instance and await its `open(name)` before using the project; open it again after `close()` or `destroy()`, and await an `open()` of another project before using the Project again.',
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
@@ -548,6 +548,15 @@ export const ERROR_CATALOG = {
 			when: 'Another tab or window has the project open and there is no shared connection between them.',
 			fix: 'Close the project in the other tab or window, then open it here again.',
 			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+		},
+	},
+	PROJECT_DATABASE_LOST: {
+		code: 'D7012',
+		message: "The project's database is gone",
+		explanation: {
+			when: "The project's files hold data but none of them is its database any more: the database file's header was damaged (by the disk, another program, or site data changed outside the app). Nothing is opened or changed: no empty database is made in its place. `meta.project` names the project.",
+			fix: "The project's data cannot be read back. Offer the user a reset, never automatically: `destroy()` on the same Project instance whose `open` was refused (keep it: `const project = new Project(params)`, then `await project.open(name)`) removes what the refused store holds, without opening it; `open(name)` then makes it again, empty, and its documents can be imported again.",
+			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
 	DOCUMENT_PATH_INVALID: {
