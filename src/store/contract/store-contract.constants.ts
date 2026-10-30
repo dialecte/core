@@ -21,6 +21,12 @@ export const HOLD_ID_SEPARATOR = ':'
 /** The channel a held import and its case talk on (one per hold), whatever realm the import runs in. */
 export const CONTRACT_HOLD_CHANNEL = 'dialecte::store-contract::hold'
 
+/**
+ * Where a contract engine worker tells each client gone it was told of, once it has aborted that client's imports
+ * and exports: a case releases a held import of a client it removed only then, or the import may complete first.
+ */
+export const CONTRACT_CLIENT_GONE_CHANNEL = 'dialecte::store-contract::client-gone'
+
 /** The attribute the contract's import session writes on every record of its tag, after the parse. */
 export const CONTRACT_SESSION_SEEN_ATTRIBUTE = 'seen'
 

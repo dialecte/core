@@ -179,8 +179,8 @@ export const ERROR_CATALOG = {
 		code: 'D1018',
 		message: 'The project engine stopped answering',
 		explanation: {
-			when: "A call to a project engine served from a worker lost that engine: it ended with what hosted it or gave no answer within its budget (`meta.reason` `'host-gone'`), or it sent nothing for too long while the call waited (`'no-heartbeat'`, it may still finish).",
-			fix: 'Ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again, then open the project again.',
+			when: "A call to a project engine served from a worker lost that engine: it ended with what hosted it or gave no answer within its budget (`meta.reason` `'host-gone'`), it sent nothing for too long while the call waited (`'no-heartbeat'`, it may still finish), or the hub dropped this view with the page that bound it - frozen, gone, or unbinding it (`'realm-dropped'`: every call, `getWriteOutcome` too, is refused so until the view is bound again).",
+			fix: "Ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again, then open the project again. For `'realm-dropped'`, opening again is refused too: the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`); then ask `getWriteOutcome`.",
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},

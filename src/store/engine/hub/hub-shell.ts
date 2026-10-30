@@ -62,6 +62,12 @@ export function serveHub(): HubShell {
 				})
 				return
 			}
+			// a child letting its bound port go before any hello: that binding forgotten
+			if (message.type === 'port-unused' && realmId === undefined) {
+				if (bindingId !== undefined) state.bindings.delete(bindingId)
+				port.close()
+				return
+			}
 			// nothing but a hello before the hub welcomed the realm
 			if (realmId === undefined || state.realms.get(realmId)?.port !== port) return
 			hearWelcomedRealm({ realmId, message })
@@ -254,13 +260,18 @@ function welcomeRealm(params: {
 	post({ port: hello.port, message: { type: 'welcome', realmId } })
 }
 
-/** The realm forgotten: its lock watch withdrawn, its port closed, the clients' ports it waited for closed. */
+/**
+ * The realm forgotten: its lock watch withdrawn, its port closed - a child bound by another realm told
+ * `dropped` first (it lives on, bound again by a new port; a top-level realm gone hears nothing) - and the
+ * clients' ports it waited for closed.
+ */
 function dropRealm(params: { state: HubShellState; realmId: string }): void {
 	const { state, realmId } = params
 	const realm = state.realms.get(realmId)
 	if (!realm) return
 	state.realms.delete(realmId)
 	realm.watch?.abort()
+	if (isBoundChild({ state, realmId })) post({ port: realm.port, message: { type: 'dropped' } })
 	realm.port.close()
 	for (const [adoptionId, adoption] of state.adoptions) {
 		if (adoption.clientRealmId !== realmId) continue
@@ -287,6 +298,14 @@ function dropRealm(params: { state: HubShellState; realmId: string }): void {
 			state.bindings.delete(bindingId)
 		}
 	}
+}
+
+/** A realm a parent bound through a port of its own, welcomed under that binding. */
+function isBoundChild(params: { state: HubShellState; realmId: string }): boolean {
+	for (const binding of params.state.bindings.values()) {
+		if (binding.realmId === params.realmId) return true
+	}
+	return false
 }
 
 /** The realm's lock asked for: granted once the realm let it go (it died, or suspended). */
@@ -321,12 +340,14 @@ function unbindChild(params: {
 	const { state, bindingId, feed } = params
 	const binding = state.bindings.get(bindingId)
 	if (!binding) return
-	state.bindings.delete(bindingId)
 	if (binding.realmId === undefined) {
+		state.bindings.delete(bindingId)
 		binding.port.close()
 		return
 	}
+	// kept while the child is dropped: it is told why its port closes
 	feed({ event: { type: 'realm-gone', now: performance.now(), realmId: binding.realmId } })
+	state.bindings.delete(bindingId)
 }
 
 /** A client's port made: one end to the engine's host to adopt, the other kept for the client until then. */

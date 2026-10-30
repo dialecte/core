@@ -59,6 +59,10 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: "a page joining the origin's SharedWorker hub: its realm lock, frozen and restored pages, child ports",
 	},
 	{
+		path: 'src/store/engine/hub/hub.browser.test.ts',
+		why: "realms of the page in iframes of their own, on the origin's SharedWorker hub",
+	},
+	{
 		path: 'src/store/engine/hub/realm-host.test.ts',
 		why: 'a page hosting engine workers for the hub, their locks let go',
 	},

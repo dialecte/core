@@ -2,7 +2,7 @@ import { ENGINE_SIGNAL } from '../engine.constants'
 import { fromThrownData } from '../wire/error-envelope'
 import { toWireArgs } from '../wire/wire-values'
 import { ENGINE_WIRE_MEMBERS } from '../wire/wire.constants'
-import { ENGINE_HEARTBEAT_TIMEOUT_MS } from './client.constants'
+import { ENGINE_HEARTBEAT_TIMEOUT_MS, ENGINE_LOST_DETAILS } from './client.constants'
 
 import * as Comlink from 'comlink'
 
@@ -206,10 +206,7 @@ function refuseLost(params: {
 	if (entry.writeId !== undefined && reason === 'no-heartbeat') unanswered.add(entry.writeId)
 	entry.reject(
 		createDialecteError('STORE_ENGINE_LOST', {
-			detail:
-				reason === 'host-gone'
-					? 'The project engine ended with the view that hosted it'
-					: 'The project engine sent nothing for too long while a call waited',
+			detail: ENGINE_LOST_DETAILS[reason],
 			meta: { reason, ...(entry.writeId !== undefined && { writeId: entry.writeId }) },
 		}),
 	)

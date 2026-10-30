@@ -1,4 +1,5 @@
 import { throwOpenElsewhere } from '../../store-errors'
+import { ENGINE_LOST_DETAILS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
@@ -17,6 +18,7 @@ import { createRealmHost } from './realm-host'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 
+import type { EngineLostReason } from '../client/client.types'
 import type {
 	ConnectHubParams,
 	EngineWaiter,
@@ -60,16 +62,26 @@ export function openHubConnection(
  * the hub's script): a client only, whose liveness is its parent's. A port nobody answers (its parent
  * unbound it) fails the join `STORE_CONNECTION_FAILED` once the welcome budget has passed. The realm's
  * connection made or under way already, if any, is answered instead - `undefined` when that attempt
- * found no hub.
+ * found no hub - and it takes the new port as the one it joins on once the hub drops it (at once if it
+ * has): that join runs on its own, its calls waiting for the welcome; failed, the realm stays dropped
+ * until the next port.
  */
 export function adoptHubConnection(params: {
 	port: MessagePort
 }): Promise<HubConnection | undefined> {
 	const kept = (globalThis as HubRegistry)[HUB_REGISTRY_KEY]
 	if (kept) {
-		// the realm is connected already: the port handed over is not used, its binding let go with it
-		params.port.close()
-		return kept
+		return kept.then(
+			function bindAgainOrLetGo(connection) {
+				// taken by a bound child as its next port; else not used, its binding let go with it
+				if (!connection?.adoptPort({ port: params.port })) letHandedPortGo({ port: params.port })
+				return connection
+			},
+			function joinOnHandedPort() {
+				// that attempt failed (and is forgotten): the next one joins on the port handed meanwhile
+				return adoptHubConnection(params)
+			},
+		)
 	}
 	return keptAttempt({
 		attempt: function adoptPort() {
@@ -81,6 +93,7 @@ export function adoptHubConnection(params: {
 				spawners: [],
 				holdsLock: false,
 				lifecycle: undefined,
+				bound: true,
 			})
 		},
 	})
@@ -203,6 +216,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		holdsLock,
 		lifecycle,
 		welcomeBudgetMs = HUB_WELCOME_BUDGET_MS,
+		bound = false,
 	} = params
 	const entries = new Map<string, ProjectEntry>()
 	/** The links of this realm counted among their project's users: from their open until released. */
@@ -211,13 +225,22 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	const queued: QueuedMessage[] = []
 	const lifecycleWatch = new AbortController()
 	let realmId = crypto.randomUUID()
-	let opening = openPort()
+	/** The realm's way to its hub port: a child bound again opens on the port its page handed over. */
+	let openPortNow = openPort
+	let opening = openPortNow()
 	let port = opening.port
 	let releaseLock: () => void = releaseNothing
 	let phase: RealmPhase = 'joining'
 	let refusal: unknown
 	/** Why the hub could not be reached when the page came back: the calls are refused it until it can. */
 	let unreachable: unknown
+	/** Why a child dropped with its page refuses its calls, until a new port binds it again. */
+	let droppedError: unknown
+	/** Told each time the realm is welcomed back, never on its first welcome. */
+	const rejoinListeners = new Set<() => void>()
+	let welcomedOnce = false
+	/** The port a child's page handed it to join on next: at once when dropped, else once it is. */
+	let standbyPort: MessagePort | undefined
 	let rejoinTimer: ReturnType<typeof setTimeout> | undefined
 	let rejoinDelayMs = HUB_REJOIN_FIRST_DELAY_MS
 	let markEnded: (reason: unknown) => void = releaseNothing
@@ -258,6 +281,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			case 'destroy-refused':
 				destroys.get(message.project)?.refused(fromThrownData({ data: message.error }))
 				return
+			case 'dropped':
+				return stayDropped({})
 			case 'spawn-engine':
 				if (phase !== 'suspended') host.spawn(message)
 				return
@@ -329,6 +354,16 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		for (const entry of entries.values()) {
 			if (entry.waiters.length > 0 || entry.users > 0) ask(entry)
 		}
+		// welcomed back: the page binds its children again (each listener on its own, so one failing stops none;
+		// one unsubscribed meanwhile is not called)
+		if (welcomedOnce) {
+			for (const listener of rejoinListeners) {
+				queueMicrotask(function callIfListening() {
+					if (rejoinListeners.has(listener)) listener()
+				})
+			}
+		}
+		welcomedOnce = true
 	}
 
 	/**
@@ -346,12 +381,15 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		})
 	}
 
-	/** This realm instance over: its engines ended, its clients dropped, its lock let go, its port closed. */
-	function endInstance(): void {
+	/**
+	 * This realm instance over: its engines ended, its clients dropped (their calls in flight refused for
+	 * `reason`), its lock let go, its port closed.
+	 */
+	function endInstance(params: { reason: EngineLostReason }): void {
 		abandonJoin()
 		host.endAll()
 		for (const entry of entries.values()) {
-			dropClient({ entry })
+			dropClient({ entry, reason: params.reason })
 			entry.asked = false
 		}
 		releaseLock()
@@ -389,7 +427,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	function suspend(): void {
 		if (phase === 'suspended' || phase === 'refused') return
 		phase = 'suspended'
-		endInstance()
+		endInstance({ reason: 'host-gone' })
 		refuseDestroys({
 			error: createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
 				detail: 'The page was suspended before the hub granted the destroy',
@@ -406,7 +444,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		clearTimeout(rejoinTimer)
 		markEnded(error)
 		lifecycleWatch.abort()
-		endInstance()
+		endInstance({ reason: 'host-gone' })
+		if (standbyPort) letHandedPortGo({ port: standbyPort })
+		standbyPort = undefined
 		dropQueued({ error })
 		for (const entry of entries.values()) {
 			entry.refusal = error
@@ -422,7 +462,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		const { error } = params
 		phase = 'suspended'
 		unreachable = error
-		endInstance()
+		endInstance({ reason: 'host-gone' })
 		dropQueued({ error })
 		for (const entry of entries.values()) {
 			for (const waiter of entry.waiters.splice(0)) rejectWaiter({ waiter, error })
@@ -431,19 +471,66 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		rejoinDelayMs = Math.min(rejoinDelayMs * 2, HUB_REJOIN_MAX_DELAY_MS)
 	}
 
+	/**
+	 * The hub dropped this bound child with the page that bound it (that page gone, frozen, or unbinding
+	 * it), or its join on a new port failed (`cause`): its calls in flight, those waiting and what was said
+	 * meanwhile refused `STORE_ENGINE_LOST` (`realm-dropped`), and every later one until it joins again - on
+	 * the next port its page hands it, at once if it has one already.
+	 */
+	function stayDropped(params: { cause?: unknown }): void {
+		const { cause } = params
+		const error = createDialecteError('STORE_ENGINE_LOST', {
+			detail: ENGINE_LOST_DETAILS['realm-dropped'],
+			meta: { reason: 'realm-dropped' },
+			// a join on a new port that failed: why, kept for whoever looks
+			...(cause instanceof Error && { cause }),
+		})
+		droppedError = error
+		phase = 'dropped'
+		endInstance({ reason: 'realm-dropped' })
+		dropQueued({ error })
+		for (const entry of entries.values()) {
+			for (const waiter of entry.waiters.splice(0)) rejectWaiter({ waiter, error })
+		}
+		joinOnStandby()
+	}
+
+	/**
+	 * A bound child joining on a handed port that a newer one supersedes: that join is left (its port closed;
+	 * the hub ends that instance with its parent), the newer port joined at once. What waits keeps waiting.
+	 */
+	function joinNewerPort(): void {
+		abandonJoin()
+		phase = 'dropped'
+		endInstance({ reason: 'realm-dropped' })
+		joinOnStandby()
+	}
+
+	/** A dropped child joins again, as a new realm instance, on the port its page handed it - if any. */
+	function joinOnStandby(): void {
+		const next = standbyPort
+		if (!next) return
+		standbyPort = undefined
+		openPortNow = function handedPort() {
+			return { port: next }
+		}
+		void resume()
+	}
+
 	function rejoin(): void {
 		rejoinTimer = undefined
 		void resume()
 	}
 
+	/** A new realm instance says hello: the page back, or a dropped child on the port it was handed. */
 	async function resume(): Promise<void> {
-		if (phase !== 'suspended') return
+		if (phase !== 'suspended' && phase !== 'dropped') return
 		clearTimeout(rejoinTimer)
 		rejoinTimer = undefined
 		phase = 'joining'
 		realmId = crypto.randomUUID()
 		try {
-			opening = openHubPort({ openPort })
+			opening = openHubPort({ openPort: openPortNow })
 			port = opening.port
 			// false: suspended again while saying hello
 			if (!(await join())) return
@@ -453,7 +540,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		} catch (error) {
 			// closed meanwhile, or suspended again: this attempt is over
 			if (phase !== 'joining') return
-			if (toDialecteError(error)?.key === 'STORE_CONNECTION_FAILED') stayUnreachable({ error })
+			// a bound child waits for the next port its page hands it; a realm of its own tries again, or ends refused
+			if (bound) stayDropped({ cause: error })
+			else if (toDialecteError(error)?.key === 'STORE_CONNECTION_FAILED') stayUnreachable({ error })
 			else refuse({ error })
 		}
 	}
@@ -467,6 +556,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	/** Why a call cannot wait for the hub now: refused for good, or the hub out of reach while suspended. */
 	function cannotWait(): unknown {
 		if (refusal !== undefined) return refusal
+		if (phase === 'dropped') return droppedError
 		if (phase === 'suspended') return unreachable
 		return undefined
 	}
@@ -575,6 +665,23 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				send({ type: 'destroyed', project })
 			}
 		},
+		onRejoined: function listenForRejoin(listener) {
+			rejoinListeners.add(listener)
+			return function stopListening() {
+				rejoinListeners.delete(listener)
+			}
+		},
+		adoptPort: function adoptNewPort({ port: newPort }) {
+			// a realm of its own joins on its own ports; a connection ended for good joins no more
+			if (!bound || phase === 'refused') return false
+			// the page may be welcomed back, and hand it, before the hub has dropped this child
+			if (standbyPort) letHandedPortGo({ port: standbyPort })
+			standbyPort = newPort
+			if (phase === 'dropped') joinOnStandby()
+			// joining on an older handed port (its page frozen again meanwhile, say): that join left for this one
+			else if (phase === 'joining') joinNewerPort()
+			return true
+		},
 		createHubPort: function createChildPort(): HubPortHandle {
 			const refused = cannotWait()
 			if (refused !== undefined) throw refused
@@ -650,7 +757,7 @@ function engineReady(params: {
 		message.port.close()
 		return
 	}
-	dropClient({ entry })
+	dropClient({ entry, reason: 'host-gone' })
 	const client = createEngineClient({
 		port: message.port,
 		heartbeatTimeoutMs: entry.heartbeatTimeoutMs,
@@ -661,7 +768,7 @@ function engineReady(params: {
 
 /** The engine's host is gone: the calls in flight refused `host-gone`, the next ones wait for the hub. */
 function engineLost(params: { entry: ProjectEntry | undefined }): void {
-	if (params.entry) dropClient({ entry: params.entry })
+	if (params.entry) dropClient({ entry: params.entry, reason: 'host-gone' })
 }
 
 /** The hub refused the project: the calls waiting refused; a lasting refusal kept for the link. */
@@ -683,13 +790,13 @@ function rejectWaiter(params: { waiter: EngineWaiter; error: unknown }): void {
 	params.waiter.reject(params.error)
 }
 
-/** The engine client of the link let go: its calls in flight refused `host-gone`, its port closed. */
-function dropClient(params: { entry: ProjectEntry }): void {
-	const { entry } = params
+/** The engine client of the link let go: its calls in flight refused for `reason`, its port closed. */
+function dropClient(params: { entry: ProjectEntry; reason: EngineLostReason }): void {
+	const { entry, reason } = params
 	const current = entry.current
 	entry.current = undefined
 	if (!current) return
-	current.client.lose({ reason: 'host-gone' })
+	current.client.lose({ reason })
 	current.client.close({ storeName: entry.project })
 }
 
@@ -812,3 +919,10 @@ function holdRealmLock(params: { realmId: string }): Promise<() => void> {
 }
 
 function releaseNothing(): void {}
+
+/** A port handed to this realm let go unused: the hub told first, so it forgets the binding, then closed. */
+function letHandedPortGo(params: { port: MessagePort }): void {
+	const unused: RealmToHubMessage = { type: 'port-unused' }
+	params.port.postMessage(unused)
+	params.port.close()
+}

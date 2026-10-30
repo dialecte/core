@@ -11,6 +11,8 @@ import {
 	HOLD_ID_SEPARATOR,
 } from './store-contract.constants'
 
+import { onTestFinished } from 'vitest'
+
 import { createDiagnostic } from '@/diagnostics'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 import { TEST_CONFIG_KEY } from '@/test/constant'
@@ -32,10 +34,17 @@ export function holdContractImport(): ContractImportHold {
 	const reached = new Promise<void>(function waitForReached(resolve) {
 		markReached = resolve
 	})
-	channel.onmessage = function hearHold(event: MessageEvent<ContractHoldMessage>) {
-		if (event.data.type === 'reached') markReached()
-	}
 	let released = false
+	// open until the case ends: a released hold answers a later import of the same file too
+	onTestFinished(function closeHoldChannel() {
+		channel.close()
+	})
+	channel.onmessage = function hearHold(event: MessageEvent<ContractHoldMessage>) {
+		if (event.data.type !== 'reached') return
+		markReached()
+		// released for good: a later import of the same file reaching it goes on at once
+		if (released) channel.postMessage({ type: 'release' } satisfies ContractHoldMessage)
+	}
 	return {
 		value: `${CONTRACT_SESSION_HOLD_VALUE}${HOLD_ID_SEPARATOR}${id}`,
 		reached,
@@ -43,7 +52,6 @@ export function holdContractImport(): ContractImportHold {
 			if (released) return
 			released = true
 			channel.postMessage({ type: 'release' } satisfies ContractHoldMessage)
-			channel.close()
 		},
 	}
 }

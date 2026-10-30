@@ -19,7 +19,9 @@ export async function connectHub(params: ConnectHubParams = {}): Promise<HubReal
  * Join the hub through a port a page made with `createHubPort` (a document that cannot reach the
  * hub's script): a client only, whose liveness is that page's. A port nobody answers fails the join
  * `STORE_CONNECTION_FAILED` once the welcome budget has passed. A document that connected already gets
- * its connection - `undefined` when that one found no hub.
+ * its connection - `undefined` when that one found no hub. One the hub dropped with its page (its calls
+ * refused `STORE_ENGINE_LOST`, `realm-dropped`) joins again on the new port, on its own: the page makes
+ * it one from `onRejoined`, and a join that fails leaves it dropped until the next one.
  */
 export async function adoptHubPort(params: { port: MessagePort }): Promise<HubRealm | undefined> {
 	const connection = await adoptHubConnection(params)
@@ -29,5 +31,9 @@ export async function adoptHubPort(params: { port: MessagePort }): Promise<HubRe
 /** What a page may do with its connection; its projects go through the stores. */
 function toHubRealm(params: { connection: HubConnection }): HubRealm {
 	const { connection } = params
-	return { realmId: connection.realmId, createHubPort: connection.createHubPort }
+	return {
+		realmId: connection.realmId,
+		createHubPort: connection.createHubPort,
+		onRejoined: connection.onRejoined,
+	}
 }

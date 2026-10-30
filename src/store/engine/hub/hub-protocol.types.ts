@@ -20,6 +20,11 @@ export type RealmToHubMessage =
 	| { type: 'leave'; project: string }
 	| { type: 'destroy'; project: string }
 	| { type: 'destroyed'; project: string }
+	/**
+	 * Said on a port a parent bound for a child, before any hello, when the child lets it go unused (a newer one
+	 * handed to it): the hub forgets that binding. A hub of the same protocol that does not know it ignores it.
+	 */
+	| { type: 'port-unused' }
 	/** A port for a child realm (one with no hub of its own), bound to this realm under `bindingId`. */
 	| { type: 'bind-child'; bindingId: string; port: MessagePort }
 	/** The child realm bound under `bindingId` is gone (its iframe removed): the hub treats it as dead. */
@@ -48,6 +53,12 @@ export type HubToRealmMessage =
 	| { type: 'open-refused'; project: string; error: ThrownData }
 	| { type: 'destroy-granted'; project: string }
 	| { type: 'destroy-refused'; project: string; error: ThrownData }
+	/**
+	 * Said to a child realm before its port closes, when the hub drops it with the page that bound it (that
+	 * page gone, frozen, or unbinding it): its calls are refused until a new port binds it again. A realm
+	 * of the same protocol that does not know it ignores it.
+	 */
+	| { type: 'dropped' }
 	// what the hub asks of a host realm
 	| {
 			type: 'spawn-engine'

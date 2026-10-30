@@ -105,6 +105,38 @@ async function joinRealm(params: {
 	return realm
 }
 
+/** A child realm bound by `parent` under `bindingId`: its hello said through the port, welcomed. */
+async function bindChild(params: { parent: FakeRealm; bindingId: string }): Promise<FakeRealm> {
+	const { parent, bindingId } = params
+	const channel = new MessageChannel()
+	parent.send({ type: 'bind-child', bindingId, port: channel.port2 }, [channel.port2])
+	const realmId = uniqueRealm('child')
+	const child = realmOn({ realmId, port: channel.port1 })
+	child.send({
+		type: 'hello',
+		protocol: HUB_PROTOCOL_VERSION,
+		realmId,
+		topLevel: false,
+		spawners: [],
+	})
+	await child.next('welcome')
+	return child
+}
+
+/** The hub's watch of the realm's lock granted and let go: the realm dropped. */
+async function untilDropped(params: { realm: FakeRealm }): Promise<void> {
+	await vi.waitFor(
+		async function realmDropped() {
+			const { held = [], pending = [] } = await navigator.locks.query()
+			const watched = [...held, ...pending].filter(function isRealmLock(lock) {
+				return lock.name === `${REALM_LOCK_PREFIX}${params.realm.realmId}`
+			})
+			expect(watched).toEqual([])
+		},
+		{ timeout: 5_000 },
+	)
+}
+
 /** A Web Lock held until the returned release is called. */
 async function holdLock(params: { name: string }): Promise<() => void> {
 	let release: () => void = function releaseNothing() {}
@@ -364,6 +396,60 @@ describe('the hub serving realms on their control ports', () => {
 		expect(keyOf(refused.error)).toBe('STORE_REALM_UNKNOWN')
 		await pause({ ms: 300 })
 		// told once, before its port closed: its hello answered by nobody
+		expect(child.received).toEqual([])
+	})
+
+	it('a child welcomed, its parent’s lock let go → the child told `dropped` before its port closes, nothing after', async () => {
+		const hub = serveHub()
+		const shell = await joinRealm({ hub, name: 'shell' })
+		const child = await bindChild({ parent: shell, bindingId: 'frame-1' })
+		shell.die()
+		const dropped = await child.next('dropped')
+		expect(dropped).toEqual({ type: 'dropped' })
+		await pause({ ms: 300 })
+		expect(child.received).toEqual([])
+	})
+
+	it('a child welcomed, then unbound by its parent → the child told `dropped`', async () => {
+		const hub = serveHub()
+		const shell = await joinRealm({ hub, name: 'shell' })
+		const child = await bindChild({ parent: shell, bindingId: 'frame-1' })
+		shell.send({ type: 'unbind-child', bindingId: 'frame-1' })
+		const dropped = await child.next('dropped')
+		expect(dropped).toEqual({ type: 'dropped' })
+	})
+
+	it('a child bound by a child, the top page’s lock let go → both told `dropped`', async () => {
+		const hub = serveHub()
+		const shell = await joinRealm({ hub, name: 'shell' })
+		const child = await bindChild({ parent: shell, bindingId: 'frame-1' })
+		const grandchild = await bindChild({ parent: child, bindingId: 'frame-1-1' })
+		shell.die()
+		expect(await child.next('dropped')).toEqual({ type: 'dropped' })
+		expect(await grandchild.next('dropped')).toEqual({ type: 'dropped' })
+	})
+
+	it('a top-level realm’s lock let go → nothing posted to its port', async () => {
+		const hub = serveHub()
+		const tab = await joinRealm({ hub, name: 'tab' })
+		tab.die()
+		await untilDropped({ realm: tab })
+		await pause({ ms: 300 })
+		expect(tab.received).toEqual([])
+	})
+
+	it('a bound port its child says it will not use, before any hello → its binding forgotten: nothing posted to it when its parent goes', async () => {
+		const hub = serveHub()
+		const shell = await joinRealm({ hub, name: 'shell' })
+		const channel = new MessageChannel()
+		shell.send({ type: 'bind-child', bindingId: 'frame-1', port: channel.port2 }, [channel.port2])
+		const child = realmOn({ realmId: 'child', port: channel.port1 })
+		await flushMessages()
+		child.send({ type: 'port-unused' })
+		await flushMessages()
+		shell.die()
+		await untilDropped({ realm: shell })
+		await pause({ ms: 300 })
 		expect(child.received).toEqual([])
 	})
 

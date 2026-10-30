@@ -11,12 +11,13 @@ export type ConnectHubParams = {
 export type HubRegistry = Partial<Record<symbol, Promise<HubConnection | undefined>>>
 
 /**
- * What a page holds of its connection to the hub: its realm id, and ports for the documents that cannot
- * reach the hub themselves. A child bound to a page that freezes is dropped by the hub with the page and
- * is not told yet: its calls waiting hang, its calls in flight end at the engine's heartbeat timeout, and
- * a second `adoptHubPort` in that child answers its first, dead connection.
+ * What a page holds of its connection to the hub: its realm id, ports for the documents that cannot
+ * reach the hub themselves, and a call each time it is welcomed back. A child bound to a page that
+ * freezes is dropped by the hub with the page and told: its calls are refused `STORE_ENGINE_LOST`
+ * (`realm-dropped`) until the page, welcomed back (`onRejoined`), hands it a new port from
+ * `createHubPort` and the child calls `adoptHubPort` with it.
  */
-export type HubRealm = Pick<HubConnection, 'realmId' | 'createHubPort'>
+export type HubRealm = Pick<HubConnection, 'realmId' | 'createHubPort' | 'onRejoined'>
 
 /** This realm's connection to the origin's hub, shared by every copy of the library in the realm. */
 export type HubConnection = {
@@ -42,6 +43,19 @@ export type HubConnection = {
 	close: () => void
 	/** Settles once the connection ended for good, with why. */
 	ended: Promise<unknown>
+	/**
+	 * `listener` called each time the realm is welcomed back after a freeze, the back/forward cache or
+	 * being dropped - not on its first join: the moment to bind its children again (`createHubPort`).
+	 * Answers its unsubscribe.
+	 */
+	onRejoined: (listener: () => void) => () => void
+	/**
+	 * A child realm takes `port` as the one it joins on next, as a new realm instance, its links kept: at
+	 * once if the hub has dropped it with the page that bound it, else once it does (that page may be back
+	 * first); a port it held for that is let go. Answers whether it took it: a page, or a connection ended
+	 * for good, takes none.
+	 */
+	adoptPort: (params: { port: MessagePort }) => boolean
 }
 
 export type HubProjectParams = {
@@ -92,7 +106,7 @@ export type ProjectEntry = HubProjectParams & {
  * may ask for projects and host engines), suspended (frozen, or in the back/forward cache), or refused
  * by the hub (another protocol): done for good.
  */
-export type RealmPhase = 'joining' | 'joined' | 'suspended' | 'refused'
+export type RealmPhase = 'joining' | 'joined' | 'suspended' | 'dropped' | 'refused'
 
 /** A message for the hub kept until the realm instance is welcomed (one sent before is dropped). */
 export type QueuedMessage = { message: RealmToHubMessage; transfer: Transferable[] }
@@ -127,4 +141,9 @@ export type HubConnectionParams = {
 	holdsLock: boolean
 	/** The page's lifecycle to watch (freeze, the back/forward cache, the page going away); none for a child realm. */
 	lifecycle: HubLifecycleTargets | undefined
+	/**
+	 * Joined through a port its parent made (`adoptHubPort`), not on its own: dropped with its parent, it
+	 * waits for the next port its page hands it. A realm that connected itself, top-level or not, is not.
+	 */
+	bound?: boolean
 }

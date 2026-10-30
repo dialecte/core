@@ -15,10 +15,11 @@ export type EngineClient = {
 }
 
 /**
- * Why an engine is lost: the view hosting it ended (its lock released), or it sent nothing for too
- * long while a call waited (busy beyond reach, paused, frozen).
+ * Why an engine is lost: the view hosting it ended (its lock released), it sent nothing for too long
+ * while a call waited (busy beyond reach, paused, frozen), or the hub dropped this view with the page
+ * that bound it (it reaches the engine again once bound again).
  */
-export type EngineLostReason = 'host-gone' | 'no-heartbeat'
+export type EngineLostReason = 'host-gone' | 'no-heartbeat' | 'realm-dropped'
 
 /** A call waiting for the engine's answer: refused at once if the engine is lost. */
 export type CallInFlight = {

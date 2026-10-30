@@ -1,0 +1,197 @@
+import { makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
+import { sqliteHubSpawner } from '../../sqlite/adapter/sqlite-hub-spawner'
+import { TEST_ENGINE_URL } from '../../sqlite/runtime/runtime.fixtures'
+import { createHubConnector } from '../client/hub-connector'
+import { EngineStore } from '../engine-store'
+import { adoptHubConnection, openHubConnection } from './hub-client'
+
+import { toDialecteError } from '@/errors'
+import { TEST_DIALECTE } from '@/test'
+
+import type { HubConnection } from './hub-client.types'
+import type { BootRealmParams, BrowserRealm, HubPortMessage } from './hub.browser.fixtures.types'
+
+/**
+ * A realm of the cross-realm cases, booted in an iframe of the test page: joined to the origin's hub on
+ * its own (its lock, its lifecycle) or through a port its parent hands it, its stores reaching their
+ * engines through that hub.
+ */
+export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> {
+	const {
+		canStartEngines,
+		engineUrl = TEST_ENGINE_URL,
+		dialecteVersion = TEST_DIALECTE.version,
+		bound = false,
+	} = params
+	const joined = bound
+		? await adoptHubConnection({ port: await handedPorts() })
+		: await openHubConnection({
+				spawners: canStartEngines
+					? [
+							sqliteHubSpawner({
+								dialecteId: TEST_DIALECTE.id,
+								dialecteVersion: TEST_DIALECTE.version,
+								engineUrl,
+							}),
+						]
+					: [],
+			})
+	if (!joined) throw new Error('the realm found no hub')
+	const connection: HubConnection = joined
+	const stores = new Map<string, Promise<EngineStore>>()
+
+	function storeOf(params: { project: string }): Promise<EngineStore> {
+		const { project } = params
+		const kept = stores.get(project)
+		if (kept) return kept
+		const opening = openStore({ connection, project, engineUrl, dialecteVersion })
+		stores.set(project, opening)
+		return opening
+	}
+
+	return {
+		realmId: function currentRealmId() {
+			return connection.realmId()
+		},
+		registerDocument: async function registerThrough({ project, id }) {
+			const store = await storeOf({ project })
+			await store.registerDocument(makeDocument({ id }))
+		},
+		documentIds: async function documentIdsThrough({ project }) {
+			const store = await storeOf({ project })
+			const documents = await store.getDocuments()
+			return documents.map(function idOf(document) {
+				return document.id
+			})
+		},
+		importHeld: async function importThrough({ project, writeId, file }) {
+			const store = await storeOf({ project })
+			const { record } = await store.importFile({ file, writeId })
+			return { documentId: record.id }
+		},
+		writeOutcome: async function writeOutcomeThrough({ project, writeId }) {
+			const store = await storeOf({ project })
+			return store.getWriteOutcome({ writeId })
+		},
+		commitRecord: async function commitThrough({ project, documentId, id }) {
+			const store = await storeOf({ project })
+			await store.commit({
+				documentId,
+				creates: [makeRecord({ id })],
+				updates: [],
+				deletes: [],
+				onProgress: ignoreProgress,
+			})
+		},
+		recordIds: async function recordIdsThrough({ project, documentId }) {
+			const store = await storeOf({ project })
+			const records = await store.getByDocumentId(documentId)
+			return records.map(function idOf(record) {
+				return record.id
+			})
+		},
+		exportUnder: async function exportThroughEngine({
+			project,
+			documentId,
+			exportId,
+			onFirstProgress,
+		}) {
+			const link = await createHubConnector({
+				name: project,
+				connection,
+				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion,
+				engineUrl,
+			}).connect()
+			let told = false
+			try {
+				const engine = await link.engine()
+				const { file } = await engine.exportFile(
+					{ documentId, options: { batchSize: 1 }, exportId },
+					function tellFirstProgress() {
+						if (told) return
+						told = true
+						onFirstProgress?.()
+					},
+				)
+				return file.size
+			} catch (thrown) {
+				return toDialecteError(thrown)?.key ?? String(thrown)
+			} finally {
+				link.close()
+			}
+		},
+		createHubPort: function createChildPort() {
+			return connection.createHubPort()
+		},
+		lifecycle: function dispatchLifecycle({ type, persisted = false }) {
+			if (type === 'freeze' || type === 'resume') document.dispatchEvent(new Event(type))
+			else window.dispatchEvent(new PageTransitionEvent(type, { persisted }))
+		},
+		rebindOnRejoin: function rebindChild({ child }) {
+			connection.onRejoined(function bindChildAgain() {
+				const handle = connection.createHubPort()
+				const message: HubPortMessage = { type: 'hub-port', port: handle.port }
+				child.postMessage(message, '*', [handle.port])
+			})
+		},
+		closeStore: function closeStoreOf({ project }) {
+			void stores.get(project)?.then(function closeIt(store) {
+				store.close()
+			})
+			stores.delete(project)
+		},
+		destroyProject: async function destroyThrough({ project }) {
+			const store = await storeOf({ project })
+			stores.delete(project)
+			await store.destroy()
+		},
+	}
+}
+
+/** The project's store through the realm's hub connection, opened. */
+async function openStore(params: {
+	connection: HubConnection
+	project: string
+	engineUrl: string
+	dialecteVersion: string
+}): Promise<EngineStore> {
+	const { connection, project, engineUrl, dialecteVersion } = params
+	const store = new EngineStore({
+		name: project,
+		connector: createHubConnector({
+			name: project,
+			connection,
+			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion,
+			engineUrl,
+		}),
+	})
+	await store.open()
+	return store
+}
+
+/**
+ * The first hub port this realm's parent posts it; every later one handed to `adoptHubConnection` too,
+ * as a child does when its page binds it again.
+ */
+function handedPorts(): Promise<MessagePort> {
+	let first = true
+	return new Promise(function waitForPort(resolve) {
+		window.addEventListener('message', function takePort(event: MessageEvent<HubPortMessage>) {
+			if (event.data?.type !== 'hub-port') return
+			if (first) {
+				first = false
+				resolve(event.data.port)
+				return
+			}
+			adoptHubConnection({ port: event.data.port }).catch(function boundAgainNoMore(
+				thrown: unknown,
+			) {
+				console.error('the realm could not be bound again:', thrown)
+			})
+		})
+	})
+}
+
+function ignoreProgress(): void {}

@@ -65,7 +65,15 @@ export type ContractEngineOrder = { type: 'end'; project: string }
 export type ContractControlMessage = {
 	type?: EngineControlRequest['type']
 	project?: string
+	clientId?: string
+	requestId?: number
 }
+
+/** What a contract engine worker posts its realm, as far as the worker watches it: an answer to a control request. */
+export type ContractControlAnswer = { type?: string; requestId?: number } | undefined
+
+/** A client gone, as a contract engine worker tells it once it has aborted that client's imports and exports. */
+export type ContractClientGoneNotice = { type: 'client-gone'; clientId: string }
 
 /**
  * What a case needs of a leg beyond the registry, the reads and the bulk writes: a second connection
@@ -101,6 +109,7 @@ export type ContractImportHold = {
 	/** What a file's record of the session's tag carries in `bB` to be held by this hold. */
 	value: string
 	reached: Promise<void>
+	/** Lets the held import go on, and every later one reaching the hold (the same file imported again). */
 	release: () => void
 }
 

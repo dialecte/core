@@ -82,6 +82,8 @@ type FakeHub = {
 	received: RealmToHubMessage[]
 	/** Said to the realm on its latest port. */
 	reply: (message: HubToRealmMessage, transfer?: Transferable[]) => void
+	/** Said to the realm on the port it opened at that rank (from 0). */
+	replyOn: (params: { portIndex: number; message: HubToRealmMessage }) => void
 }
 
 /**
@@ -162,6 +164,9 @@ function fakeHub(
 		},
 		reply: function replyOnLatest(message, transfer = []) {
 			ports.at(-1)?.postMessage(message, transfer)
+		},
+		replyOn: function replyOnPort({ portIndex, message }) {
+			ports[portIndex]?.postMessage(message)
 		},
 	}
 }
@@ -283,7 +288,7 @@ describe('a realm connected to the hub', () => {
 		).toEqual([TEST_DIALECTE.id, 'relative'])
 	})
 
-	it('connected twice, from any copy of the library → one connection, kept under the protocol’s key; the page holds its realm id and child ports only', async () => {
+	it('connected twice, from any copy of the library → one connection, kept under the protocol’s key; the page holds its realm id, child ports and its rejoin listeners only', async () => {
 		withEmptyRegistry()
 		const first = openHubConnection()
 		const second = openHubConnection()
@@ -294,7 +299,7 @@ describe('a realm connected to the hub', () => {
 		expect(connection?.realmId()).toMatch(/^[0-9a-f-]{36}$/)
 		onTestFinished(connection!.close)
 		const realm = await connectHub()
-		expect(Object.keys(realm ?? {}).toSorted()).toEqual(['createHubPort', 'realmId'])
+		expect(Object.keys(realm ?? {}).toSorted()).toEqual(['createHubPort', 'onRejoined', 'realmId'])
 		expect(realm?.realmId()).toBe(connection?.realmId())
 	})
 
@@ -738,19 +743,351 @@ describe('a realm connected to the hub', () => {
 		expect(opened).toBe(2)
 	})
 
-	it('a realm already connected adopting another port → that port closed, the connection it has answered', async () => {
+	it('a child already connected adopting another port → kept for its next join, the connection it has answered; a later port lets it go, and closing the connection the last', async () => {
 		withEmptyRegistry()
 		const hub = fakeHub()
 		const first = await adoptHubConnection({ port: hub.openPort() })
-		onTestFinished(first!.close)
+		const spare = new MessageChannel()
+		const later = new MessageChannel()
+		onTestFinished(function closeSpares() {
+			spare.port2.close()
+			later.port2.close()
+		})
+		const spareClosed = vi.spyOn(spare.port1, 'close')
+		const laterClosed = vi.spyOn(later.port1, 'close')
+		const second = await adoptHubConnection({ port: spare.port1 })
+		expect(second).toBe(first)
+		expect(spareClosed).not.toHaveBeenCalled()
+		await adoptHubConnection({ port: later.port1 })
+		expect(spareClosed).toHaveBeenCalled()
+		first!.close()
+		expect(laterClosed).toHaveBeenCalled()
+	})
+
+	it('a page’s connection handed a port → that port closed, the connection answered', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub()
+		const page = await joinFakeHub({ hub })
+		onTestFinished(page.close)
+		;(globalThis as unknown as Record<symbol, unknown>)[HUB_REGISTRY_KEY] = Promise.resolve(page)
 		const spare = new MessageChannel()
 		onTestFinished(function closeSpare() {
 			spare.port2.close()
 		})
 		const closeSpy = vi.spyOn(spare.port1, 'close')
-		const second = await adoptHubConnection({ port: spare.port1 })
-		expect(second).toBe(first)
+		const answered = await adoptHubConnection({ port: spare.port1 })
+		expect(answered).toBe(page)
 		expect(closeSpy).toHaveBeenCalled()
+	})
+
+	it('a child told `dropped` → its call in flight and its waiting call refused STORE_ENGINE_LOST realm-dropped, a later call the same', async () => {
+		const hub = fakeHub()
+		const child = await joinFakeHubAsChild({ hub })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		const client = await link.engine()
+		const inFlight = lostReasonOf({ promise: client.api.getDocuments() })
+		const waiting = lostReasonOf({
+			promise: openLink({ connection: child, project: uniqueProject() }).engine(),
+		})
+		await hub.next('open')
+		hub.reply({ type: 'dropped' })
+		expect(await inFlight).toBe('realm-dropped')
+		expect(await waiting).toBe('realm-dropped')
+		const later = await lostReasonOf({ promise: link.engine() })
+		expect(later).toBe('realm-dropped')
+	})
+
+	it('a dropped child adopting a new port → the same connection joins as a new realm id, a link opened before asked for again, no second connection', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub()
+		const adopted = await adoptHubConnection({ port: hub.openPort() })
+		onTestFinished(adopted!.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: adopted!, project })
+		await connectEngine({ hub, link, project })
+		hub.reply({ type: 'dropped' })
+		await vi.waitFor(async function dropped() {
+			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+		})
+		const again = await adoptHubConnection({ port: hub.openPort() })
+		expect(again).toBe(adopted)
+		await vi.waitFor(function helloAgain() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		expect(hub.hellos[1]!.realmId).not.toBe(hub.hellos[0]!.realmId)
+		expect(adopted!.realmId()).toBe(hub.hellos[1]!.realmId)
+		await connectEngine({ hub, link, project })
+	})
+
+	it('a child handed a new port before it is told `dropped` → once dropped, it joins again on that port at once', async () => {
+		const hub = fakeHub()
+		const child = await joinFakeHubAsChild({ hub })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		expect(child.adoptPort({ port: hub.openPort() })).toBe(true)
+		await pause({ ms: 100 })
+		expect(hub.hellos).toHaveLength(1)
+		hub.replyOn({ portIndex: 0, message: { type: 'dropped' } })
+		await vi.waitFor(function helloOnTheNewPort() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		await connectEngine({ hub, link, project })
+	})
+
+	it('a dropped child whose new port is refused (its parent gone before the hello) → dropped still: refused realm-dropped, the next port binds it', async () => {
+		const hub = fakeHub({ refuses: refuseSecond })
+		const child = await joinFakeHubAsChild({ hub })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		hub.reply({ type: 'dropped' })
+		await vi.waitFor(async function dropped() {
+			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+		})
+		child.adoptPort({ port: hub.openPort() })
+		await vi.waitFor(function secondHelloSaid() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		await vi.waitFor(async function droppedStill() {
+			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+		})
+		// the hub's refusal kept as why
+		const refused = await link.engine().catch(function keepThrown(thrown: unknown) {
+			return thrown
+		})
+		expect(toDialecteError(refused)?.cause).toMatchObject({
+			cause: { key: 'STORE_PROTOCOL_MISMATCH' },
+		})
+		child.adoptPort({ port: hub.openPort() })
+		await connectEngine({ hub, link, project })
+		expect(hub.hellos).toHaveLength(3)
+	})
+
+	it('a realm of its own that is not top-level (an iframe that connected itself), unanswered when it comes back → it tries again on its own, not dropped', async () => {
+		const hub = fakeHub({ silences: silenceSecond })
+		const page = fakePage()
+		const frame = await startHubConnection({
+			openPort: function fakeHubPort() {
+				return { port: hub.openPort() }
+			},
+			topLevel: false,
+			spawners: [SPAWNER],
+			holdsLock: true,
+			lifecycle: page,
+			welcomeBudgetMs: 300,
+		})
+		onTestFinished(frame.close)
+		page.freeze()
+		page.resume()
+		await vi.waitFor(
+			function helloAgainOnItsOwn() {
+				expect(hub.hellos).toHaveLength(3)
+			},
+			{ timeout: 5_000 },
+		)
+		const handed = new MessageChannel()
+		onTestFinished(function closeHanded() {
+			handed.port2.close()
+		})
+		expect(frame.adoptPort({ port: handed.port1 })).toBe(false)
+	})
+
+	it('a bound child joining on a handed port that gets a newer one → it leaves that join and joins on the newer port at once', async () => {
+		const hub = fakeHub({ silences: silenceSecond })
+		const child = await joinFakeHubAsChild({ hub })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		hub.reply({ type: 'dropped' })
+		await vi.waitFor(async function dropped() {
+			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+		})
+		child.adoptPort({ port: hub.openPort() })
+		await vi.waitFor(function silentHelloSaid() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		const handedAt = performance.now()
+		child.adoptPort({ port: hub.openPort() })
+		await connectEngine({ hub, link, project })
+		expect(hub.hellos).toHaveLength(3)
+		expect(performance.now() - handedAt).toBeLessThan(HUB_WELCOME_BUDGET_MS / 2)
+	})
+
+	it('a port a bound child lets go unused (a newer one handed) → the hub told it is unused before it closes', async () => {
+		const hub = fakeHub()
+		const child = await joinFakeHubAsChild({ hub })
+		onTestFinished(child.close)
+		const unused = new MessageChannel()
+		onTestFinished(function closeUnused() {
+			unused.port2.close()
+		})
+		const heard: unknown[] = []
+		unused.port2.onmessage = function hear(event) {
+			heard.push(event.data)
+		}
+		child.adoptPort({ port: unused.port1 })
+		const newer = new MessageChannel()
+		onTestFinished(function closeNewer() {
+			newer.port2.close()
+		})
+		child.adoptPort({ port: newer.port1 })
+		await vi.waitFor(function told() {
+			expect(heard).toEqual([{ type: 'port-unused' }])
+		})
+	})
+
+	it('a dropped child whose new port stays silent → dropped again once the welcome budget has passed, no hello said again on its own', async () => {
+		const hub = fakeHub({ silences: silenceSecond })
+		const child = await joinFakeHubAsChild({ hub, welcomeBudgetMs: 300 })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		hub.reply({ type: 'dropped' })
+		await vi.waitFor(async function dropped() {
+			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+		})
+		child.adoptPort({ port: hub.openPort() })
+		const waiting = lostReasonOf({ promise: link.engine() })
+		expect(await waiting).toBe('realm-dropped')
+		await pause({ ms: 1_500 })
+		expect(hub.hellos).toHaveLength(2)
+	})
+
+	it('a child told `dropped` while a destroy waits for its grant → that destroy refused realm-dropped', async () => {
+		const hub = fakeHub()
+		const child = await joinFakeHubAsChild({ hub })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const destroying = lostReasonOf({
+			promise: child.destroyProject({ project, destroy: settleNothing }),
+		})
+		await hub.next('destroy')
+		hub.reply({ type: 'dropped' })
+		expect(await destroying).toBe('realm-dropped')
+	})
+
+	it('a port handed while the realm’s first attempt fails → the next attempt joins on that port', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub({ refuses: refuseFirst })
+		const first = adoptHubConnection({ port: hub.openPort() })
+		const second = adoptHubConnection({ port: hub.openPort() })
+		expect(await outcomeOf({ promise: first })).toBe('STORE_PROTOCOL_MISMATCH')
+		const connection = await second
+		onTestFinished(connection!.close)
+		expect(hub.hellos).toHaveLength(2)
+		expect(connection!.realmId()).toBe(hub.hellos[1]!.realmId)
+	})
+
+	it('a page suspended during its first hello, then welcomed → its rejoin listeners not called: that is its first welcome', async () => {
+		const hub = fakeHub()
+		const page = fakePage()
+		const connecting = startHubConnection({
+			openPort: function fakeHubPort() {
+				return { port: hub.openPort() }
+			},
+			topLevel: true,
+			spawners: [SPAWNER],
+			holdsLock: true,
+			lifecycle: page,
+		})
+		page.freeze()
+		const connection = await connecting
+		onTestFinished(connection.close)
+		let calls = 0
+		connection.onRejoined(function countRejoin() {
+			calls += 1
+		})
+		// a link in use: once welcomed, the realm asks the hub for its engine - the proof it joined
+		openLink({ connection, project: uniqueProject() })
+		page.resume()
+		await hub.next('open')
+		await pause({ ms: 0 })
+		expect(calls).toBe(0)
+		page.freeze()
+		page.resume()
+		await vi.waitFor(
+			function welcomedBack() {
+				expect(calls).toBe(1)
+			},
+			{ timeout: 5_000 },
+		)
+	})
+
+	it('a rejoin listener unsubscribing another before it is called → that other one not called', async () => {
+		const hub = fakeHub()
+		const page = fakePage()
+		const connection = await joinFakeHub({ hub, page })
+		onTestFinished(connection.close)
+		let firstCalls = 0
+		let laterCalls = 0
+		let stopLater: () => void = function stopNothing() {}
+		// the listeners run in the order they were added: the first stops the later one
+		connection.onRejoined(function stopTheOther() {
+			firstCalls += 1
+			stopLater()
+		})
+		stopLater = connection.onRejoined(function countLater() {
+			laterCalls += 1
+		})
+		page.freeze()
+		page.resume()
+		await vi.waitFor(function firstCalled() {
+			expect(firstCalls).toBe(1)
+		})
+		await pause({ ms: 50 })
+		expect(laterCalls).toBe(0)
+	})
+
+	it('onRejoined → called once the page is welcomed back after a resume; not on its first join nor while it says hello; unsubscribed → not again', async () => {
+		const hub = fakeHub({ silences: silenceSecond })
+		const page = fakePage()
+		const connection = await startHubConnection({
+			openPort: function fakeHubPort() {
+				return { port: hub.openPort() }
+			},
+			topLevel: true,
+			spawners: [SPAWNER],
+			holdsLock: true,
+			lifecycle: page,
+			welcomeBudgetMs: 300,
+		})
+		onTestFinished(connection.close)
+		let calls = 0
+		const stop = connection.onRejoined(function countRejoin() {
+			calls += 1
+		})
+		await pause({ ms: 50 })
+		expect(calls).toBe(0)
+		page.freeze()
+		page.resume()
+		// the second hello unanswered: no welcome, no call; the page tries again after a while, welcomed
+		await vi.waitFor(function secondHelloSaid() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		await pause({ ms: 100 })
+		expect(calls).toBe(0)
+		await vi.waitFor(
+			function welcomedBack() {
+				expect(calls).toBe(1)
+			},
+			{ timeout: 5_000 },
+		)
+		stop()
+		page.freeze()
+		page.resume()
+		await vi.waitFor(function fourthHelloSaid() {
+			expect(hub.hellos).toHaveLength(4)
+		})
+		await pause({ ms: 100 })
+		expect(calls).toBe(1)
 	})
 
 	it('a connection closed → refused STORE_CLOSED for good, and forgotten: the next connectHub connects again', async () => {
@@ -1158,7 +1495,7 @@ describe('a realm connected to the hub', () => {
 		expect(realmLocksAfter).toBe(realmLocksBefore + 2)
 	})
 
-	it('a child realm joining through a port its parent made → a client of the project’s engine; unbound → answered no more', async () => {
+	it('a child realm joining through a port its parent made → a client of the project’s engine; unbound → refused STORE_ENGINE_LOST realm-dropped', async () => {
 		const hub = serveHub()
 		const shell = await joinHub({ hub })
 		const project = uniqueProject()
@@ -1175,16 +1512,61 @@ describe('a realm connected to the hub', () => {
 			spawners: [],
 			holdsLock: false,
 			lifecycle: undefined,
+			bound: true,
 		})
 		const documents = await documentsThrough({ link: openLink({ connection: child, project }) })
 		expect(documents).toEqual([makeDocument()])
 		handle.unbind()
-		await pause({ ms: 100 })
-		const outcome = await outcomeOf({
-			promise: openLink({ connection: child, project: other }).engine(),
-			withinMs: 1_000,
+		await vi.waitFor(
+			async function childDropped() {
+				const reason = await lostReasonOf({
+					promise: openLink({ connection: child, project: other }).engine(),
+				})
+				expect(reason).toBe('realm-dropped')
+			},
+			{ timeout: 5_000 },
+		)
+	})
+
+	it('a page with a bound child frozen, then resumed → the child’s call refused realm-dropped; bound again from onRejoined, it reads the project', async () => {
+		const hub = serveHub()
+		const page = fakePage()
+		const shell = await joinHub({ hub, lifecycle: page })
+		const project = uniqueProject()
+		await registerThrough({ link: openLink({ connection: shell, project }) })
+		const child = await startHubConnection({
+			openPort: function boundPort() {
+				return { port: shell.createHubPort().port }
+			},
+			topLevel: false,
+			spawners: [],
+			holdsLock: false,
+			lifecycle: undefined,
+			bound: true,
 		})
-		expect(outcome).toBe('pending')
+		onTestFinished(child.close)
+		const childLink = openLink({ connection: child, project })
+		await documentsThrough({ link: childLink })
+		const stop = shell.onRejoined(function bindChildAgain() {
+			child.adoptPort({ port: shell.createHubPort().port })
+		})
+		onTestFinished(stop)
+		page.freeze()
+		await vi.waitFor(
+			async function childDropped() {
+				const reason = await lostReasonOf({ promise: documentsThrough({ link: childLink }) })
+				expect(reason).toBe('realm-dropped')
+			},
+			{ timeout: 5_000 },
+		)
+		page.resume()
+		await vi.waitFor(
+			async function childBackOnTheProject() {
+				const documents = await documentsThrough({ link: childLink })
+				expect(documents).toEqual([makeDocument()])
+			},
+			{ timeout: 10_000 },
+		)
 	})
 
 	it('the page into the back/forward cache → its engines ended, the other realm hosts; back from it → a new realm id, a client again', async () => {
@@ -1225,6 +1607,35 @@ describe('a realm connected to the hub', () => {
 			.toBe(true)
 	})
 })
+
+/** A child realm on a fake hub: no lock of its own, no lifecycle, joined through the hub's port. */
+function joinFakeHubAsChild(params: {
+	hub: FakeHub
+	welcomeBudgetMs?: number
+}): Promise<HubConnection> {
+	return startHubConnection({
+		openPort: function fakeHubPort() {
+			return { port: params.hub.openPort() }
+		},
+		topLevel: false,
+		spawners: [],
+		holdsLock: false,
+		lifecycle: undefined,
+		welcomeBudgetMs: params.welcomeBudgetMs,
+		bound: true,
+	})
+}
+
+/** Why a call was refused `STORE_ENGINE_LOST` (its `meta.reason`), or what else it settled with. */
+async function lostReasonOf(params: { promise: Promise<unknown> }): Promise<unknown> {
+	try {
+		await params.promise
+		return 'resolved'
+	} catch (thrown) {
+		const error = toDialecteError(thrown)
+		return error?.key === 'STORE_ENGINE_LOST' ? error.meta?.reason : error?.key
+	}
+}
 
 /** The link asks, the fake hub hands it an engine port (generation 1): the link's engine is a client on it. */
 async function connectEngine(params: {
@@ -1278,6 +1689,14 @@ function silenceSecond(helloIndex: number): boolean {
 }
 
 /** The first hello welcomed, every later one refused (the page came back to a hub of another version). */
+function refuseFirst(helloIndex: number): boolean {
+	return helloIndex === 0
+}
+
+function refuseSecond(helloIndex: number): boolean {
+	return helloIndex === 1
+}
+
 function refuseAfterFirst(helloIndex: number): boolean {
 	return helloIndex > 0
 }
