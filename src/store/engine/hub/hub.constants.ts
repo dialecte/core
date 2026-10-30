@@ -1,3 +1,5 @@
+import type { DialecteErrorKey } from '@/errors'
+
 /** The wire protocol a realm and the hub speak; a realm speaking another one is refused. */
 export const HUB_PROTOCOL_VERSION = 1
 
@@ -18,3 +20,16 @@ export const HUB_OPEN_BUDGET_MS = 30_000
 
 /** The prefix of a realm's Web Lock, held for the realm's life: the hub's grant of it means the realm is gone. */
 export const REALM_LOCK_PREFIX = 'dialecte:realm:'
+
+/** The name of the origin's hub SharedWorker. */
+export const HUB_WORKER_NAME = 'dialecte-hub'
+
+/**
+ * The refusals that hold for the rest of a project's link (another dialecte, another version, another
+ * wire); any other refusal answers the calls waiting, and the next call asks the hub again.
+ */
+export const LASTING_REFUSALS: readonly DialecteErrorKey[] = [
+	'PROJECT_DIALECTE_MISMATCH',
+	'PROJECT_DIALECTE_VERSION_MISMATCH',
+	'STORE_PROTOCOL_MISMATCH',
+]

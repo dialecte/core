@@ -57,6 +57,46 @@ async function textOf(params: { file: string }): Promise<string> {
 	return readFile(params.file, 'utf8')
 }
 
+/** The hub's worker chunk, as core's build names it. */
+const HUB_CHUNK = /^assets\/hub\.worker-[\w-]+\.js$/
+
+function isHubChunk(file: string): boolean {
+	return HUB_CHUNK.test(file)
+}
+
+/** A worker a consumer's build emits for the hub (named after core's chunk). */
+function isHubWorker(file: string): boolean {
+	return file.includes('hub.worker')
+}
+
+/** A dialecte's engine worker in a consumer's build (the hub is a worker too). */
+function isEngineWorker(file: string): boolean {
+	return file.includes('.worker') && !isHubWorker(file)
+}
+
+/** A script of core's main side: not the hub's chunk. */
+function isCoreMainScript(file: string): boolean {
+	return file.endsWith('.js') && !isHubChunk(file)
+}
+
+/** A script of a consumer's main side: no worker. */
+function isAppMainScript(file: string): boolean {
+	return file.endsWith('.js') && !file.includes('.worker')
+}
+
+/** The first of `files` (relative to `directory`) whose text holds `fragment`. */
+async function fileHolding(params: {
+	directory: string
+	files: string[]
+	fragment: string
+}): Promise<string | undefined> {
+	for (const file of params.files) {
+		const text = await textOf({ file: path.join(params.directory, file) })
+		if (text.includes(params.fragment)) return file
+	}
+	return undefined
+}
+
 /** What must never be in an engine chunk: an inlined wasm, the async proxy inlined, sqlite-wasm's worker1. */
 const NO_ASSET_OF_SQLITE = [
 	'data:application/wasm',
@@ -118,7 +158,8 @@ beforeAll(async () => {
 		path.join(APP, 'main.js'),
 		[
 			`import { SQLITE_WASM_URL, ENGINE_URLS } from '${path.join(DIALECTE, 'dist', 'index.js')}'`,
-			'console.log(SQLITE_WASM_URL, ENGINE_URLS)',
+			"import { connectHub } from '@dialecte/core'",
+			'console.log(SQLITE_WASM_URL, ENGINE_URLS, connectHub)',
 		].join('\n'),
 	)
 	await writeFile(path.join(APP, 'index.html'), '<script type="module" src="./main.js"></script>')
@@ -171,7 +212,8 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		expect(files.filter((file) => file.endsWith('.wasm'))).toEqual([
 			expect.stringMatching(/^assets\/sqlite3-[\w-]+\.wasm$/),
 		])
-		expect(files.filter((file) => file.includes('.worker'))).toHaveLength(2)
+		// the two engines (the hub is a worker too, of core's main side)
+		expect(files.filter(isEngineWorker)).toHaveLength(2)
 		const [wasm] = files.filter((file) => file.endsWith('.wasm'))
 		const mainChunks = files.filter((file) => file.endsWith('.js') && !file.includes('.worker'))
 		const holding = await Promise.all(
@@ -202,6 +244,71 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 			expect(response.status).toBe(200)
 			const head = new Uint8Array(await response.arrayBuffer()).slice(0, 4)
 			expect([...head]).toEqual([0x00, 0x61, 0x73, 0x6d])
+		} finally {
+			await server.close()
+		}
+	})
+
+	it('core’s main build → the hub a worker chunk of its own, holding all it runs, reached from the main side as a SharedWorker', async () => {
+		const files = await filesUnder({ directory: CORE_DIST })
+		const hubChunks = files.filter(isHubChunk)
+		expect(hubChunks).toHaveLength(1)
+		const hub = await textOf({ file: path.join(CORE_DIST, hubChunks[0]!) })
+		expect(hub).toContain('onconnect')
+		expect(hub).not.toMatch(/^\s*import\b|\bfrom\s*["']/m)
+		const referring = await fileHolding({
+			directory: CORE_DIST,
+			files: files.filter(isCoreMainScript),
+			fragment: path.basename(hubChunks[0]!),
+		})
+		expect(referring).toBeDefined()
+		const main = await textOf({ file: path.join(CORE_DIST, referring!) })
+		expect(main).toContain('new SharedWorker(')
+	})
+
+	it('a consumer’s app build → the hub’s worker emitted once, reached from its main side', async () => {
+		const files = await filesUnder({ directory: path.join(APP, 'dist') })
+		const hubChunks = files.filter(isHubWorker)
+		expect(hubChunks).toHaveLength(1)
+		const referring = await fileHolding({
+			directory: path.join(APP, 'dist'),
+			files: files.filter(isAppMainScript),
+			fragment: path.basename(hubChunks[0]!),
+		})
+		expect(referring).toBeDefined()
+	})
+
+	it('a consumer’s dev server → the hub’s URL in core’s main side answers its worker', async () => {
+		const server = await createServer({
+			configFile: false,
+			root: APP,
+			logLevel: 'silent',
+			resolve: { alias: CORE_ALIASES },
+			// core's main side imports comlink: no dependency run, which the close would wait for
+			optimizeDeps: { noDiscovery: true },
+			server: { port: 0, fs: { allow: [WORK, CORE_ROOT] } },
+		})
+		await server.listen()
+		try {
+			const files = await filesUnder({ directory: CORE_DIST })
+			const referring = await fileHolding({
+				directory: CORE_DIST,
+				files: files.filter(isCoreMainScript),
+				fragment: 'new SharedWorker(',
+			})
+			const modulePath = `/@fs${path.join(CORE_DIST, referring!)}`
+			const transformed = await server.transformRequest(modulePath)
+			const hubPath = /new URL\(["']([^"']*hub\.worker[^"']*\.js)["']/.exec(
+				transformed?.code ?? '',
+			)?.[1]
+			expect(hubPath).toBeDefined()
+			// the dev server maps it to the hub's chunk (served as a file: a transform would wait for the
+			// dependency scan this case never lets finish)
+			const resolved = await server.pluginContainer.resolveId(hubPath!)
+			const hubChunk = files.find(isHubChunk)
+			expect(resolved?.id).toBe(path.join(CORE_DIST, hubChunk!))
+			const hub = await textOf({ file: resolved!.id })
+			expect(hub).toContain('onconnect')
 		} finally {
 			await server.close()
 		}

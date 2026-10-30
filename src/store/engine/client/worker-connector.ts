@@ -1,5 +1,5 @@
 import { ENGINE_LOCK_PREFIX } from '../engine.constants'
-import { ENGINE_WIRE_PROTOCOL } from '../wire/wire.constants'
+import { refuseAnotherWire } from './check-engine-wire'
 import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS, UNANSWERED } from './client.constants'
 import { createEngineClient } from './engine-client'
 import { createEngineControl } from './engine-control'
@@ -156,16 +156,6 @@ function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
 			},
 		)
 	return engine
-}
-
-/** An engine of another library version speaks another wire: refused (it is ended as a failed open is). */
-function refuseAnotherWire(params: { found: number }): void {
-	const { found } = params
-	if (found === ENGINE_WIRE_PROTOCOL) return
-	throw createDialecteError('STORE_PROTOCOL_MISMATCH', {
-		detail: `The project engine speaks wire version ${found}, this page ${ENGINE_WIRE_PROTOCOL}: another version of the library`,
-		meta: { expected: ENGINE_WIRE_PROTOCOL, found },
-	})
 }
 
 /**
