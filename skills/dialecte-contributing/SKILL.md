@@ -8,6 +8,7 @@ metadata:
 ---
 
 <!-- dialecte-skills workspace -->
+<!-- dialecte-skills ignore: test:browser:all -->
 
 # Dialecte (changing it)
 
@@ -34,7 +35,8 @@ optionally `$DIALECTE_ROOT`).
 | `playground`        | Vue/Monaco sandbox                            | run a script against a document; `DIALECTE_LOCAL=../x npm run dev`                        |
 
 All of them are **npm** projects formatted with **oxfmt**, linted with **oxlint**, tested with
-**vitest in a real browser** (Playwright Chromium). Never run pnpm or prettier inside them.
+**vitest**: in core, in Node on the in-memory store, and in Playwright Chromium for the tests that
+need a browser ([Test tiers](#test-tiers)). Never run pnpm or prettier inside them.
 
 Inside a dialecte package (`src/<version>/`):
 
@@ -134,11 +136,39 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
    command writes the hand-over folder and prints the card the user gets
    ([references/landing-changes.md](references/landing-changes.md)). The agent never commits or pushes.
 
+## Test tiers
+
+In a package whose vitest config has a `node` project (core), a test runs in one of two tiers.
+
+- **Node by default.** Every test file runs in the `node` project, on the in-memory store, unless it is
+  declared browser-only. Iterate with `npx vitest run --project node <path>`. The files of
+  `NODE_STORE_CONTRACT_TEST_FILES` (the store contract, the IndexedDB-specific tests) run in the
+  `node-indexeddb` project instead, on fake-indexeddb: `npx vitest run --project node-indexeddb <path>`.
+  A new IndexedDB-specific test goes in that list AND in `BROWSER_ONLY_TEST_FILES` (real IndexedDB
+  once per lot).
+- **Browser only for a browser API** (`navigator.storage`, OPFS, a worker, real IndexedDB, the page's
+  `DOMParser`, the save dialog or a download link): add the file to `BROWSER_ONLY_TEST_FILES` in
+  `vitest.config.constants.ts`, `{ path, why }`, the `why` naming that API. Iterate with
+  `npx vitest run --project browser <path>`. A file that reads the package from disk or starts node goes
+  to `NODE_ONLY_TEST_FILES` the same way. The config refuses a listed path that names no file.
+- **A difference between the tiers is a bug**, of the store or of the assertion. Never move a test to
+  the browser list to hide it, never retry it. Reproduce it with `--project node`, pin it with a red
+  case first: in the store contract (`src/store/contract`) when a store answers differently, beside
+  core's assertion helper (`src/test/assert-xml`) when it reads the XML differently between tiers.
+  Then fix it. When the test's own assertion depends on something no store promises (an XPath `[1]`
+  relying on an order the contract leaves open), fix that assertion in the test instead, with the
+  reason in a comment. Then run the file in both tiers (`--project node` and `--project browser-all`).
+- **No test names its store**: the runner's `useTestStorage` chooses (the `node` project's setup file
+  sets the in-memory store, the browser keeps the local one). See the `dialecte` skill's
+  references/testing.md for the assertions: XML text, XPath for small output, record expectations for
+  big files.
+
 ## Definition of Done - every change, in the changed package
 
 Run it with `npx dialecte gate --fast` while iterating and `npx dialecte gate --full` once per lot,
-from the package root. The gate runs each step below unfiltered and judges it on its exit code and
-on the counts the step printed (a test step that counts no test fails), prints one line per step,
+from the package root; before the branch merges, also the whole suite in the browser (step 4
+below). The gate runs each step below unfiltered and judges it on its exit code and on the counts
+the step printed (a test step that counts no test fails), prints one line per step,
 restores the generated docs the package declares after the docs build, and refuses to run while a
 hand-over script holds the repository. With `--fast`, a change that touches no test (a doc edit)
 passes the tests step with the note "no test file is affected by the change"; any other run that
@@ -176,8 +206,12 @@ an older cli in the package, run `npx @dialecte/cli@latest gate`, or the steps b
 2. `npx oxfmt <changed files>`.
 3. `npm run build` - runs the type-check in parallel and emits declarations (vite-plugin-dts),
    which catches union-assignability errors the editor misses.
-4. `npx vitest run` - full suite green (`npm run test` is watch mode in some packages; create uses
-   `npm run test:ts` + `test:py`). `npx vitest run <path>` while iterating.
+4. The tests, by tier: `npm run test:node` per step (the fast gate runs its changed files), the
+   browser-only list once per lot (`npx vitest run --project browser --no-file-parallelism`, in the full
+   gate), and `npm run test:browser:all` - the whole suite in the browser - once before the branch
+   merges: any difference fails it, never retried. A package without a `node` project: `npx vitest run`
+   (`npm run test` is watch mode in some packages; create uses `npm run test:ts` + `test:py`).
+   One file while iterating: [Test tiers](#test-tiers).
 5. `npm run doc:build` - the VitePress docs build.
 
 If public API or user-visible behaviour changed, it is not done until you also:

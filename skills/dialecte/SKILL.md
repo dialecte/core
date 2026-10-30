@@ -224,7 +224,10 @@ Each dialecte package exports table-driven runners from its `/test` entry
 and the case format: [references/testing.md](references/testing.md). Short version: one table per
 behaviour, inline XML fixtures with `dev:db-id` ids that say intent, `.withExport` asserts the
 resulting XML with XPath, `.withoutExport` asserts inside `act`, `.generic` for pure functions.
-Red first, one case at a time.
+Red first, one case at a time. No test names its store: the runner chooses it (in Node on the
+in-memory store under a node vitest project whose setup file calls `useTestStorage`, core 0.8+).
+Assertions take XML text; on a big file, check record expectations (tag, attributes, parent,
+count) with the query API instead of XPath on the whole export.
 
 ## Check a behaviour by running it
 
