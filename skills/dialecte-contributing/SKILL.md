@@ -8,7 +8,6 @@ metadata:
 ---
 
 <!-- dialecte-skills workspace -->
-<!-- dialecte-skills ignore: test:browser:all -->
 
 # Dialecte (changing it)
 
