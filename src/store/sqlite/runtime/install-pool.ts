@@ -1,9 +1,11 @@
 import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
+import { classifyPool } from './pool-header'
 import {
 	NEW_POOL_FREE_BYTES,
 	OUT_OF_SPACE_BYTES,
 	OPAQUE_DIRECTORY,
 	POOL_CAPACITY,
+	POOL_FILE_HEADER,
 	POOL_ROOT_DIRECTORY,
 	POOL_VFS_NAME,
 	PROBE_BACKOFF_MS,
@@ -13,7 +15,13 @@ import {
 import { createDialecteError } from '@/errors'
 
 import type { EngineLockMode } from '../../engine/engine.types'
-import type { HeldEngineLock, PoolInstallOptions, SyncAccessFileHandle } from './runtime.types'
+import type {
+	HeldEngineLock,
+	PoolContents,
+	PoolFileHead,
+	PoolInstallOptions,
+	SyncAccessFileHandle,
+} from './runtime.types'
 import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
@@ -21,7 +29,9 @@ import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  * keep a pool whose install fails (`refuseUnsafeSqlite`), then the origin's private files checked,
  * the engine lock taken, then - inside one try that releases the lock on any failure - every file of
  * an existing pool probed (opened and closed again; one another engine still holds is waited for, then
- * refused PROJECT_ENGINE_BUSY), or the space a new pool needs checked, and only then the pool
+ * refused PROJECT_ENGINE_BUSY) and refused PROJECT_DATABASE_LOST when it holds data but no database
+ * (`refuseLostDatabase`), then, for a pool that never held pages (none yet, or blank files), the space
+ * a new pool needs checked, and only then the pool
  * installed - one whose install fails anyway keeps its files (`preserveOnInitFailure`: by default
  * sqlite-wasm removes the whole pool directory on a failed install), and a later open in this worker
  * installs it again (`forceReinitIfPreviouslyFailed`: by default the failure is kept and answered again).
@@ -39,8 +49,11 @@ export async function openPool(params: {
 	const lock = await takeEngineLock({ project, mode, budgetMs })
 	try {
 		const files = await poolFilesOf({ root, project })
-		if (files.length === 0) await refuseShortSpace({ project, bytes: NEW_POOL_FREE_BYTES })
-		else await probePoolFiles({ project, files, deadline })
+		const heads = files.length === 0 ? [] : await probePoolFiles({ project, files, deadline })
+		// a pool that never held pages (none, or blank files an install that ended left) is made as a new one
+		if (refuseLostDatabase({ project, heads }) === 'blank') {
+			await refuseShortSpace({ project, bytes: NEW_POOL_FREE_BYTES })
+		}
 		const options: PoolInstallOptions = {
 			name: POOL_VFS_NAME,
 			directory: poolDirectoryOf({ project }),
@@ -69,6 +82,23 @@ function refuseUnsafeSqlite(params: { sqlite3: Sqlite3Static; project: string })
 		detail: `Project "${project}" is not opened: sqlite-wasm ${libVersion} removes a project's files when their install fails; ${versionLabel({ number: SAFE_POOL_SQLITE_VERSION })} or later is needed (install the version @dialecte/core depends on)`,
 		meta: { project, sqliteVersion: libVersion },
 	})
+}
+
+/**
+ * The pool this worker paused (a close), checked again before it is taken back, the engine lock held:
+ * its files probed and the open refused `PROJECT_DATABASE_LOST` when they hold data but no database
+ * any more - sqlite-wasm reads the headers again as it unpauses and would drop a damaged one.
+ */
+export async function probePausedPool(params: {
+	project: string
+	/** The open's own deadline, set before it waited for the lock: one budget covers both. */
+	deadline: number
+}): Promise<void> {
+	const { project, deadline } = params
+	const root = await privateRoot({ project })
+	const files = await poolFilesOf({ root, project })
+	const heads = await probePoolFiles({ project, files, deadline })
+	refuseLostDatabase({ project, heads })
 }
 
 /**
@@ -189,23 +219,30 @@ async function poolFilesOf(params: {
 }
 
 /**
- * Every file of the pool opened and closed again: a file another engine still holds (its lock gone,
- * its handles not yet) is tried again with backoff until the deadline, then `PROJECT_ENGINE_BUSY`
- * (`meta.retriedOn`); a file that cannot be opened for another reason refuses the open
- * (`STORE_CONNECTION_FAILED`), the pool untouched.
+ * Every file of the pool opened, its size and header read, and closed again: a file another engine
+ * still holds (its lock gone, its handles not yet) is tried again with backoff until the deadline, then
+ * `PROJECT_ENGINE_BUSY` (`meta.retriedOn`); a file that cannot be opened for another reason refuses the
+ * open (`STORE_CONNECTION_FAILED`), the pool untouched.
  */
 async function probePoolFiles(params: {
 	project: string
 	files: FileSystemFileHandle[]
 	deadline: number
-}): Promise<void> {
+}): Promise<PoolFileHead[]> {
 	const { project, files, deadline } = params
 	const retriedOn = new Set<string>()
+	const heads: PoolFileHead[] = []
 	for (const file of files) {
 		for (let attempt = 0; ; attempt += 1) {
 			try {
 				const handle = await (file as SyncAccessFileHandle).createSyncAccessHandle()
-				handle.close()
+				try {
+					const header = new Uint8Array(POOL_FILE_HEADER.headBytes)
+					handle.read(header, { at: 0 })
+					heads.push({ size: handle.getSize(), header })
+				} finally {
+					handle.close()
+				}
 				break
 			} catch (thrown) {
 				if (!isBusy({ thrown })) {
@@ -230,6 +267,23 @@ async function probePoolFiles(params: {
 			}
 		}
 	}
+	return heads
+}
+
+/**
+ * What the pool holds (`classifyPool`), or `PROJECT_DATABASE_LOST` when it holds data but no database: its database's
+ * header was damaged, and sqlite-wasm would drop it with the pages behind it while SQLite made a new
+ * empty database. Refused before the install: every file is kept as it is, the refusal holds on every
+ * later open, and destroying the project removes them.
+ */
+function refuseLostDatabase(params: { project: string; heads: PoolFileHead[] }): PoolContents {
+	const { project, heads } = params
+	const contents = classifyPool({ files: heads })
+	if (contents !== 'lost') return contents
+	throw createDialecteError('PROJECT_DATABASE_LOST', {
+		detail: `Project "${project}" holds data but its database is gone (its file's header is damaged): nothing was opened or changed`,
+		meta: { project },
+	})
 }
 
 /** A file another handle holds: what OPFS answers while a successor's predecessor still closes its handles. */

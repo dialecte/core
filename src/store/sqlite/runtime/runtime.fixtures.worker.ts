@@ -6,6 +6,7 @@ import { installProgressBeat } from './progress-beat'
 import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
 import {
 	INSTALL_REFUSAL,
+	OPEN_FAILURE,
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DDL_MS,
 	SLOW_DESTROY_MS,
@@ -35,7 +36,8 @@ import type { AnyRawRecord } from '@/types'
  * The contract dialecte's engine worker on a platform a case shapes (`?scenario=`): no private file
  * system, a quota nearly used up, room for a pool but not for a large import, a worker deaf to
  * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load, one
- * whose SQLite reports a version too old to keep a pool on a failed install;
+ * whose SQLite reports a version too old to keep a pool on a failed install, one whose dialecte fails to make
+ * its hooks, one whose pool refuses every database;
  * or, `holder`, no engine at all - a worker holding one file of a project's pool, as an engine that
  * ended may still do.
  */
@@ -130,6 +132,7 @@ function serveEngine(): void {
 	}
 	if (scenario === 'liveness') slowDdlWhenOrdered()
 	if (scenario === 'sqlite-3-53') reportUnsafeSqlite()
+	if (scenario === 'database-fails') failDatabaseOpen()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -195,6 +198,21 @@ function reportUnsafeSqlite(): void {
 	void loadSqlite().then(function reportVersion(sqlite3) {
 		sqlite3.version.libVersion = UNSAFE_POOL_SQLITE.libVersion
 		sqlite3.version.libVersionNumber = UNSAFE_POOL_SQLITE.libVersionNumber
+	})
+}
+
+/** Every database the pool opens refused, as a file SQLite cannot open is. */
+function failDatabaseOpen(): void {
+	// chained on the realm's one load before the engine's open awaits it: patched before any pool is installed
+	void loadSqlite().then(function patchInstall(sqlite3) {
+		const install = sqlite3.installOpfsSAHPoolVfs
+		sqlite3.installOpfsSAHPoolVfs = async function installRefusingDatabases(options) {
+			const pool = await install(options)
+			pool.OpfsSAHPoolDb = function refuseDatabase() {
+				throw new Error(OPEN_FAILURE.database)
+			} as unknown as typeof pool.OpfsSAHPoolDb
+			return pool
+		}
 	})
 }
 
@@ -275,6 +293,7 @@ const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
 	configs: CONTRACT_DIALECTE.configs,
 	defaultConfigKey: CONTRACT_DIALECTE.defaultConfigKey,
 	createHooks: function createPausingHooks() {
+		if (scenario === 'hooks-fail') throw new Error(OPEN_FAILURE.hooks)
 		const hooks = CONTRACT_DIALECTE.createHooks()
 		const createContractSession = hooks.createImportSession!
 		return {

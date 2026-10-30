@@ -12,6 +12,8 @@ export type DialecteHooks<Config> = IOHooks & TransactionHooks<Config>
 const project = await new Project({ configs, storage, hooks }).open(name)
 ```
 
+A hook runs inside the work a close waits for: never await the Project's `open`, `close` or `destroy` from a hook (or from a transaction callback) - the close would wait for the hook, the hook for the close ([Lifecycle](/api/project#lifecycle)).
+
 Providing hooks on the instance keeps them fully typed against the dialecte's concrete config (no cast). Each hook returns additional `Operation[]` to stage (or `void` for read-only hooks), keeping the extension model composable.
 
 ## Transaction hooks

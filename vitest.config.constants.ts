@@ -19,6 +19,10 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'a refused import leaves no row and no table in IndexedDB',
 	},
 	{
+		path: 'src/project/project-lifecycle.indexeddb.test.ts',
+		why: 'a project its store refused to open, destroyed on IndexedDB: the database deleted, never opened',
+	},
+	{
 		path: 'src/project/open-sweep.indexeddb.test.ts',
 		why: 'open() on IndexedDB: a leftover table removed, a row from before `status` read',
 	},

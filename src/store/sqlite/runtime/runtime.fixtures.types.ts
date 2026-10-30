@@ -20,6 +20,8 @@ export type RuntimeFixtureScenario =
 	| 'install-fails-on-one'
 	| 'install-fails-once'
 	| 'sqlite-3-53'
+	| 'hooks-fail'
+	| 'database-fails'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =

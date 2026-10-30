@@ -57,3 +57,15 @@ export const INSTALL_REFUSAL = {
 	message: 'The file could not be opened.',
 	text: 'InvalidStateError: The file could not be opened.',
 } as const
+
+/** What the open-failure fixtures throw (an `Error` of this message): a refusal of it came from the fixture. */
+export const OPEN_FAILURE = {
+	hooks: 'a dialecte failing to make its hooks',
+	database: 'the database could not be opened',
+} as const
+
+/**
+ * How far past its budget a refused open may answer in a case: the realm's messages and one probe backoff step - a
+ * case measuring that one budget covers the wait for the lock and the probe of the files together.
+ */
+export const ONE_BUDGET_SLACK_MS = 1_000

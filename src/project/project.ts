@@ -2,6 +2,7 @@ import { resolveStore } from '../store/resolve-store'
 import { exportBlob, exportDocument, initEmptyDocument } from './io'
 import { resolveConfig } from './io/resolve-config'
 import { projectChannelName } from './project-channel'
+import { CLOSE_WAIT_REPORT_MS } from './project.constants'
 import { buildDocumentState, reconcileDocumentState } from './state'
 import { isImporting, openableDocuments } from './state/document-lifecycle'
 
@@ -9,6 +10,7 @@ import { Document } from '@/document'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
+import { createRunningOperations } from '@/store/running-operations'
 import { invariant } from '@/utils'
 
 import type {
@@ -47,7 +49,10 @@ export class Project<
 	GenericStore extends Store = Store,
 > {
 	private _name?: string
+	/** The store of the project last opened: open, or closed once `closing`. */
 	private _store?: GenericStore
+	/** The store of an `open` it refused, closed again: kept only for `destroy()`, the reset of that project. */
+	private refusedStore?: Store
 	/**
 	 * The project channel: posts this realm's mutations and listens for other
 	 * realms' (other tab / iframe / second Project instance). BroadcastChannel
@@ -99,7 +104,70 @@ export class Project<
 	private enqueueImport<GenericResult>(work: () => Promise<GenericResult>): Promise<GenericResult> {
 		const queued = this.importChain.then(work, work)
 		this.importChain = queued
+		this.importsInFlight += 1
+		const settle = this.settleImportInFlight
+		void queued.then(settle, settle)
 		return queued
+	}
+
+	/** The imports queued and not settled yet, the one running included: what a close says it waits for. */
+	private importsInFlight = 0
+
+	/** One import in flight settled, however it settled (bound: handed to a promise). */
+	private readonly settleImportInFlight = (): void => {
+		this.importsInFlight -= 1
+	}
+
+	/**
+	 * The Project's `open`, `close` and `destroy`, one at a time in the order called: each runs once the one
+	 * called before it has settled, however it settled.
+	 */
+	private lifecycle: Promise<unknown> = Promise.resolve()
+
+	/** How many times a project was opened in this Project: what a batch import or a Document belongs to. */
+	private opens = 0
+
+	/** How many opens, closes and destroys are called and not settled yet, the one running included. */
+	private lifecycleTurns = 0
+
+	/** Run `work` in its turn among the Project's opens, closes and destroys. */
+	private inLifecycleTurn<GenericResult>(
+		work: () => Promise<GenericResult>,
+	): Promise<GenericResult> {
+		this.lifecycleTurns += 1
+		const turn = this.lifecycle.then(work, work).finally(() => {
+			this.lifecycleTurns -= 1
+		})
+		this.lifecycle = turn
+		return turn
+	}
+
+	/**
+	 * The writes of the open project running (a document made or removed, an undo, a redo, a blob's
+	 * change): the whole close waits for them, as for the imports, before it closes the store.
+	 */
+	private readonly writes = createRunningOperations()
+
+	/** A write of the open project counted in `writes` until the function answered is called (once). */
+	private startCountedWrite(): () => void {
+		const writes = this.writes
+		writes.start()
+		let ended = false
+		return function endCountedWrite() {
+			if (ended) return
+			ended = true
+			writes.end()
+		}
+	}
+
+	/** Run a write of the open project, counted in `writes`; it reads the store at the call. */
+	private async counted<GenericResult>(work: () => Promise<GenericResult>): Promise<GenericResult> {
+		this.writes.start()
+		try {
+			return await work()
+		} finally {
+			this.writes.end()
+		}
 	}
 
 	/** Resolved once every import queued so far has settled, however it settled. */
@@ -200,18 +268,80 @@ export class Project<
 	 * Open a named project: resolve store, open DB connection, hydrate state.
 	 * Must be called before import/export/openDocument.
 	 *
+	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls. On a Project already open -
+	 * on another project or on the same one - it first closes it as `close()` does, and a call made from the
+	 * `open` call on is refused until the last `open`, `close` or `destroy` called has settled; a Document of that
+	 * open answers `STORE_CLOSED` when the store is made for each open (`local`, `inMemory`) - a `custom` store is
+	 * the same one opened again: open the Documents again. An open whose store refuses, or whose documents cannot
+	 * be read, leaves the Project closed; `destroy()` on it still removes that project (the reset of
+	 * `PROJECT_DATABASE_LOST`), then `open` makes it again, empty.
+	 *
+	 * Never await `open`, `close` or `destroy` inside a hook or a transaction callback: the close waits for that
+	 * work, which waits for the close (after 10 seconds the console says what it waits for).
+	 *
 	 * @intent open or create a project database, start working on a project, reopen a project after close
 	 */
 	async open(name: string): Promise<this> {
-		this._name = name
-		this.closing = false
-		this._channel = new BroadcastChannel(this.channelName)
-		this._channel.addEventListener('message', (event: MessageEvent<ProjectChannelMessage>) => {
-			this.onChannelMessage(event.data)
-		})
+		// a project open now is closed first: a call made from now on is refused, as after close()
+		if (this._channel !== undefined) this.closing = true
+		return this.inLifecycleTurn(() => this.openNow({ name }))
+	}
 
-		const store = resolveStore({
-			name,
+	private async openNow(params: { name: string }): Promise<this> {
+		const { name } = params
+		await this.closeNow()
+		this._store = undefined
+		this.refusedStore = undefined
+		this._name = name
+		let store: Store | undefined
+		let channel: BroadcastChannel | undefined
+		try {
+			store = this.resolveProjectStore({ name })
+			channel = new BroadcastChannel(this.channelName)
+			channel.addEventListener('message', (event: MessageEvent<ProjectChannelMessage>) => {
+				this.onChannelMessage(event.data)
+			})
+			// The store removes, as it opens, any import left unfinished.
+			await store.open()
+		} catch (thrown) {
+			// what this open opened is closed again; its store is kept only for destroy()
+			channel?.close()
+			this.refusedStore = store
+			closeRefusedStore({ store })
+			throw thrown
+		}
+		this._channel = channel
+		this._store = store as GenericStore
+		this.opens += 1
+		// open from now on - unless a close, a destroy or another open was called after this one
+		this.closing = this.lifecycleTurns > 1
+
+		try {
+			// A document still `importing` is an import in progress elsewhere: not opened.
+			const files = openableDocuments(await store.getDocuments())
+			for (const file of files) {
+				this.state.documents.set(file.id, buildDocumentState(file))
+			}
+			await Promise.all(files.map((file) => this.refreshHistoryStatus(file.id)))
+		} catch (thrown) {
+			// what this open made is closed again, as for a store that refused to open
+			this.closing = true
+			channel!.close()
+			this._channel = undefined
+			this._store = undefined
+			this.state.documents.clear()
+			this.refusedStore = store
+			closeRefusedStore({ store })
+			throw thrown
+		}
+
+		return this
+	}
+
+	/** The store of the project named, resolved from the storage option and never opened here. */
+	private resolveProjectStore(params: { name: string }): Store {
+		return resolveStore({
+			name: params.name,
 			storage: this.storage,
 			runtime: {
 				configs: this.configs,
@@ -223,18 +353,6 @@ export class Project<
 			},
 			perf: this.perf,
 		})
-		// The store removes, as it opens, any import left unfinished.
-		await store.open()
-		this._store = store as GenericStore
-
-		// A document still `importing` is an import in progress elsewhere: not opened.
-		const files = openableDocuments(await store.getDocuments())
-		for (const file of files) {
-			this.state.documents.set(file.id, buildDocumentState(file))
-		}
-		await Promise.all(files.map((file) => this.refreshHistoryStatus(file.id)))
-
-		return this
 	}
 
 	/**
@@ -298,34 +416,79 @@ export class Project<
 	}
 
 	/**
-	 * Close the store and release resources, once the imports in flight have landed - they
-	 * broadcast on the live channel. From the call on, the project is closed: a new call throws
-	 * `PROJECT_NOT_OPENED`. The stored documents stay.
+	 * Close the store and release resources, once the imports in flight (running and queued), the project's
+	 * writes running (a Document's transaction or prepared commit included) and the work other realms' messages
+	 * started have settled. Then the channel and the store
+	 * are closed, `state.documents` is emptied and the Documents' subscriptions are dropped. From the call on,
+	 * the project is closed: a new call throws `PROJECT_NOT_OPENED`, a Document opened before answers
+	 * `STORE_CLOSED` (on a `custom` store opened again it writes but tells nothing: open it again). The stored documents stay.
+	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls.
+	 *
+	 * Never await it inside a hook or a transaction callback: the close waits for that work, which waits for it.
 	 *
 	 * @intent close a project, release the database connection when leaving a page
 	 */
 	async close(): Promise<void> {
+		// a call made from now on is refused, though the close waits for its turn
 		this.closing = true
-		await this.settledImports()
+		return this.inLifecycleTurn(() => this.closeNow())
+	}
+
+	/** The whole close of an open project (the channel is there only while one is); nothing when none is open. */
+	private async closeNow(): Promise<void> {
+		this.closing = true
+		if (this._channel === undefined) return
+		// a close waiting long is told once: never a write lost by giving up the wait
+		const report = setTimeout(() => this.reportCloseWait(), CLOSE_WAIT_REPORT_MS)
+		try {
+			await this.settledImports()
+			await this.writes.whenIdle()
+			// Wait for any in-flight foreign-message work to settle on the live store
+			// before closing it, so no read/reconcile outlives it.
+			await Promise.allSettled(this.pendingBroadcastWork)
+		} finally {
+			clearTimeout(report)
+		}
 		this._channel?.close()
+		this._channel = undefined
 		this._store?.close()
+		this.state.documents.clear()
+		// the Documents of this open are told nothing more
+		this.stateSubscribers.clear()
+	}
+
+	/** What a close still waits for, told once on the console: a close that never ends is a call awaited inside the work it waits for. */
+	private reportCloseWait(): void {
+		console.warn(
+			`Project "${this._name}" has waited ${CLOSE_WAIT_REPORT_MS} ms to close for ${this.importsInFlight} import(s), ${this.writes.count} write(s) and ${this.pendingBroadcastWork.size} other-tab update(s) in flight; it goes on waiting. If it never ends, a hook or a transaction callback is awaiting this Project's open, close or destroy.`,
+		)
 	}
 
 	/**
 	 * Destroy the project - deletes the database entirely, every document with its history and blobs,
 	 * once the imports in flight have landed. To delete one document, use `removeDocument`.
 	 *
+	 * The project destroyed is the one this Project last opened, or the one whose `open` its store refused
+	 * (`PROJECT_DATABASE_LOST`): that store is not opened again, and `open` then makes the project again, empty.
+	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls.
+	 *
+	 * Never await it inside a hook or a transaction callback: the close waits for that work, which waits for it.
+	 *
 	 * @intent delete a whole project, wipe the project database with every document
 	 */
 	async destroy(): Promise<void> {
+		// a call made from now on is refused, though the destroy waits for its turn
 		this.closing = true
-		await this.settledImports()
-		this._channel?.close()
-		// Wait for any in-flight foreign-message work to settle on the live store
-		// before deleting it, so no read/reconcile outlives the database.
-		await Promise.allSettled(this.pendingBroadcastWork)
-		await this._store?.destroy()
-		this.state.documents.clear()
+		return this.inLifecycleTurn(() => this.destroyNow())
+	}
+
+	private async destroyNow(): Promise<void> {
+		// the project this destroy is for, taken before anything else is awaited
+		const store = this._store ?? this.refusedStore
+		await this.closeNow()
+		await store?.destroy()
+		this._store = undefined
+		this.refusedStore = undefined
 	}
 
 	// ── File management ──────────────────────────────────────────────────────
@@ -337,24 +500,26 @@ export class Project<
 	 * @intent create a new empty document, start a document from scratch without a file
 	 */
 	async initEmptyDocument(options?: InitEmptyDocumentOptions): Promise<string> {
-		const result = await initEmptyDocument({
-			store: this.store,
-			configs: this.configs,
-			defaultConfigKey: this.defaultConfigKey,
-			options,
-			// Erase to the config-agnostic pipeline shape at this single core-internal
-			// boundary (the IO/init pipeline is config-registry-driven).
-			hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
-		})
+		return this.counted(async () => {
+			const result = await initEmptyDocument({
+				store: this.store,
+				configs: this.configs,
+				defaultConfigKey: this.defaultConfigKey,
+				options,
+				// Erase to the config-agnostic pipeline shape at this single core-internal
+				// boundary (the IO/init pipeline is config-registry-driven).
+				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
+			})
 
-		this.state.documents.set(result.documentId, result.documentState)
-		this.broadcast({
-			type: 'init-empty-document',
-			documentId: result.documentId,
-			timestamp: Date.now(),
-		})
+			this.state.documents.set(result.documentId, result.documentState)
+			this.broadcast({
+				type: 'init-empty-document',
+				documentId: result.documentId,
+				timestamp: Date.now(),
+			})
 
-		return result.documentId
+			return result.documentId
+		})
 	}
 
 	/**
@@ -364,9 +529,11 @@ export class Project<
 	 * @intent delete a document from the project, remove one file and its records
 	 */
 	async removeDocument(documentId: string): Promise<void> {
-		await this.store.removeDocument(documentId)
-		this.state.documents.delete(documentId)
-		this.broadcast({ type: 'document-removed', documentId, timestamp: Date.now() })
+		return this.counted(async () => {
+			await this.store.removeDocument(documentId)
+			this.state.documents.delete(documentId)
+			this.broadcast({ type: 'document-removed', documentId, timestamp: Date.now() })
+		})
 	}
 
 	// ── Import / Export ──────────────────────────────────────────────────────
@@ -399,10 +566,14 @@ export class Project<
 	async import(files: File[], options?: ImportFilesOptions): Promise<ImportEntry[]> {
 		this.importStore(options)
 		refuseBatchPath({ options })
+		// the batch is for the project open now: a file whose turn comes once it closed is refused, never
+		// imported into a project opened since
+		const opened = this.opens
 
 		const entries: ImportEntry[] = []
 		for (const file of files) {
 			try {
+				this.refuseClosedOpen({ opened })
 				entries.push({ status: 'imported', ...(await this.importFile(file, options)) })
 			} catch (thrown) {
 				// the structured error thrown - `PARSE_ERROR`, a dialecte's own from a hook - or
@@ -512,6 +683,8 @@ export class Project<
 	 * @intent open a document to read or write it, get the Document of an id
 	 */
 	openDocument(documentId: string): Document<GenericConfig, MergedExtensions<GenericModules>> {
+		// a closed project answers so first: its state is emptied as it closes
+		const store = this.store
 		const documentState = this.state.documents.get(documentId)
 
 		invariant(documentState, {
@@ -520,19 +693,37 @@ export class Project<
 		})
 
 		const config = this.configs[documentState.record.configKey]
-		return new Document(this.store, config, documentId, this.mergedExtensions, this.hooks, {
+		// the Document belongs to this open: once it closed, what it tells reaches no later open
+		const opened = this.opens
+		return new Document(store, config, documentId, this.mergedExtensions, this.hooks, {
 			// Shared with project state: every Document instance for this
 			// documentId mutates the same entry the Project (and its channel
 			// fold) maintains.
 			state: documentState,
 			channelName: this.channelName,
-			broadcast: (message) => this.broadcast(message),
+			broadcast: (message) => {
+				if (this.isCurrentOpen({ opened })) this.broadcast(message)
+			},
 			// Lets a local commit refresh canUndo/canRedo on the shared entry
 			// synchronously, without a channel round-trip.
-			refreshHistoryStatus: () => this.refreshHistoryStatus(documentId),
+			refreshHistoryStatus: async () => {
+				if (this.isCurrentOpen({ opened })) await this.refreshHistoryStatus(documentId)
+			},
 			perf: this.perf,
-			subscribeState: (callback) => this.subscribeState(documentId, callback),
-			signalStateChange: (terminal) => this.signalStateChange(documentId, terminal),
+			subscribeState: (callback) =>
+				this.isCurrentOpen({ opened })
+					? this.subscribeState(documentId, callback)
+					: unsubscribeNothing,
+			signalStateChange: (terminal) => {
+				if (this.isCurrentOpen({ opened })) this.signalStateChange(documentId, terminal)
+			},
+			// a commit of this open is waited for by its close; one of an open that closed writes to its closed store
+			startWrite: () => {
+				if (!this.isCurrentOpen({ opened })) return endNothing
+				// refused while this open closes, as the Project's own writes are
+				this.refuseClosedOpen({ opened })
+				return this.startCountedWrite()
+			},
 		})
 	}
 
@@ -578,21 +769,23 @@ export class Project<
 	 * @intent undo the last change to a document, roll back a commit
 	 */
 	async undo(documentId: string): Promise<void> {
-		const documentState = this.state.documents.get(documentId)
+		return this.counted(async () => {
+			const documentState = this.state.documents.get(documentId)
 
-		invariant(documentState, {
-			key: 'DOCUMENT_NOT_REGISTERED',
-			detail: `Document "${documentId}" not registered in project "${this.name}"`,
+			invariant(documentState, {
+				key: 'DOCUMENT_NOT_REGISTERED',
+				detail: `Document "${documentId}" not registered in project "${this.name}"`,
+			})
+
+			await this.store.undo(documentId)
+			// Update local state deterministically (the channel echo would do this
+			// too, but asynchronously) before announcing.
+			const timestamp = Date.now()
+			documentState.lastUpdate = timestamp
+			await this.refreshHistoryStatus(documentId)
+			this.signalStateChange(documentId, true)
+			this.broadcast({ type: 'commit', documentId, timestamp })
 		})
-
-		await this.store.undo(documentId)
-		// Update local state deterministically (the channel echo would do this
-		// too, but asynchronously) before announcing.
-		const timestamp = Date.now()
-		documentState.lastUpdate = timestamp
-		await this.refreshHistoryStatus(documentId)
-		this.signalStateChange(documentId, true)
-		this.broadcast({ type: 'commit', documentId, timestamp })
 	}
 
 	/**
@@ -601,19 +794,21 @@ export class Project<
 	 * @intent redo an undone change to a document
 	 */
 	async redo(documentId: string): Promise<void> {
-		const documentState = this.state.documents.get(documentId)
+		return this.counted(async () => {
+			const documentState = this.state.documents.get(documentId)
 
-		invariant(documentState, {
-			key: 'DOCUMENT_NOT_REGISTERED',
-			detail: `Document "${documentId}" not registered in project "${this.name}"`,
+			invariant(documentState, {
+				key: 'DOCUMENT_NOT_REGISTERED',
+				detail: `Document "${documentId}" not registered in project "${this.name}"`,
+			})
+
+			await this.store.redo(documentId)
+			const timestamp = Date.now()
+			documentState.lastUpdate = timestamp
+			await this.refreshHistoryStatus(documentId)
+			this.signalStateChange(documentId, true)
+			this.broadcast({ type: 'commit', documentId, timestamp })
 		})
-
-		await this.store.redo(documentId)
-		const timestamp = Date.now()
-		documentState.lastUpdate = timestamp
-		await this.refreshHistoryStatus(documentId)
-		this.signalStateChange(documentId, true)
-		this.broadcast({ type: 'commit', documentId, timestamp })
 	}
 
 	// ── Blobs ────────────────────────────────────────────────────────────────
@@ -629,18 +824,20 @@ export class Project<
 		file: File,
 		attachedTo: BlobAttachment[] = [],
 	): Promise<string> {
-		const entry: BlobRecord = {
-			id: crypto.randomUUID(),
-			documentId,
-			name: file.name,
-			mimeType: file.type || undefined,
-			size: file.size,
-			createdAt: Date.now(),
-			attachedTo,
-		}
-		await this.store.addBlob(entry, file)
-		this.broadcast({ type: 'blob-added', blobId: entry.id, documentId, timestamp: Date.now() })
-		return entry.id
+		return this.counted(async () => {
+			const entry: BlobRecord = {
+				id: crypto.randomUUID(),
+				documentId,
+				name: file.name,
+				mimeType: file.type || undefined,
+				size: file.size,
+				createdAt: Date.now(),
+				attachedTo,
+			}
+			await this.store.addBlob(entry, file)
+			this.broadcast({ type: 'blob-added', blobId: entry.id, documentId, timestamp: Date.now() })
+			return entry.id
+		})
 	}
 
 	/**
@@ -695,8 +892,10 @@ export class Project<
 	 * @intent link a stored file to an element, attach a blob to a record
 	 */
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
-		await this.store.attachBlob(blobId, ref)
-		this.broadcast({ type: 'blob-attached', blobId, ref, timestamp: Date.now() })
+		return this.counted(async () => {
+			await this.store.attachBlob(blobId, ref)
+			this.broadcast({ type: 'blob-attached', blobId, ref, timestamp: Date.now() })
+		})
 	}
 
 	/**
@@ -705,8 +904,10 @@ export class Project<
 	 * @intent unlink a file from an element, detach a blob from a record
 	 */
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
-		await this.store.detachBlob(blobId, ref)
-		this.broadcast({ type: 'blob-detached', blobId, ref, timestamp: Date.now() })
+		return this.counted(async () => {
+			await this.store.detachBlob(blobId, ref)
+			this.broadcast({ type: 'blob-detached', blobId, ref, timestamp: Date.now() })
+		})
 	}
 
 	/**
@@ -715,8 +916,10 @@ export class Project<
 	 * @intent delete a stored file, remove a blob for good
 	 */
 	async removeBlob(blobId: string): Promise<void> {
-		await this.store.removeBlob(blobId)
-		this.broadcast({ type: 'blob-removed', blobId, timestamp: Date.now() })
+		return this.counted(async () => {
+			await this.store.removeBlob(blobId)
+			this.broadcast({ type: 'blob-removed', blobId, timestamp: Date.now() })
+		})
 	}
 
 	// ── Cross-document queries ───────────────────────────────────────────────
@@ -732,12 +935,14 @@ export class Project<
 			query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>,
 		) => Promise<Result | undefined>,
 	): Promise<Result | undefined> {
-		for (const documentId of this.state.documents.keys()) {
-			const doc = this.openDocument(documentId)
-			const result = await queryFunction(doc.query)
-			if (result !== undefined) return result
-		}
-		return undefined
+		let found: Result | undefined
+		await this.visitOpenDocuments({
+			visit: async (doc) => {
+				found = await queryFunction(doc.query)
+				return found !== undefined
+			},
+		})
+		return found
 	}
 
 	/**
@@ -752,12 +957,47 @@ export class Project<
 		) => Promise<Result[]>,
 	): Promise<Result[]> {
 		const results: Result[] = []
-		for (const documentId of this.state.documents.keys()) {
-			const doc = this.openDocument(documentId)
-			const result = await queryFunction(doc.query)
-			results.push(...result)
-		}
+		await this.visitOpenDocuments({
+			visit: async (doc) => {
+				results.push(...(await queryFunction(doc.query)))
+				return false
+			},
+		})
 		return results
+	}
+
+	/**
+	 * Visit each document of the open project in turn, until `visit` answers `true`: the ids taken at the call, a
+	 * document removed meanwhile skipped; refused `PROJECT_NOT_OPENED` once that open closes or another one opens,
+	 * never a partial answer or one mixing two opens.
+	 */
+	private async visitOpenDocuments(params: {
+		visit: (doc: Document<GenericConfig, MergedExtensions<GenericModules>>) => Promise<boolean>
+	}): Promise<void> {
+		// a project not open answers so, not with an empty answer
+		void this.store
+		const opened = this.opens
+		// the ids taken now: closing empties the map, an open refills it
+		for (const documentId of Array.from(this.state.documents.keys())) {
+			this.refuseClosedOpen({ opened })
+			if (!this.state.documents.has(documentId)) continue
+			const done = await params.visit(this.openDocument(documentId))
+			this.refuseClosedOpen({ opened })
+			if (done) return
+		}
+	}
+
+	/** Whether the open a Document was made in is still the open one, its channel there. */
+	private isCurrentOpen(params: { opened: number }): boolean {
+		return this.opens === params.opened && this._channel !== undefined
+	}
+
+	/** `PROJECT_NOT_OPENED` once the open a call was made in has closed, or another one opened. */
+	private refuseClosedOpen(params: { opened: number }): void {
+		invariant(this.opens === params.opened && !this.closing, {
+			key: 'PROJECT_NOT_OPENED',
+			detail: 'The project was closed, or another one opened, while this call ran: open it again.',
+		})
 	}
 
 	// ── Internal ─────────────────────────────────────────────────────────────
@@ -800,3 +1040,18 @@ function refuseBatchPath(params: { options: ImportFilesOptions | undefined }): v
 		})
 	}
 }
+
+/** A refused open's store closed again: its own failure to close is not the open's answer, which is the refusal. */
+function closeRefusedStore(params: { store: Store | undefined }): void {
+	try {
+		params.store?.close()
+	} catch {
+		// the refusal is what the caller is told; the store is destroyed or opened again from here
+	}
+}
+
+/** The unsubscribe of a subscription never made: a Document of an open that closed is told nothing. */
+function unsubscribeNothing(): void {}
+
+/** The end of a write never counted: a Document of an open that closed. */
+function endNothing(): void {}

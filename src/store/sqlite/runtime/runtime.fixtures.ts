@@ -3,7 +3,7 @@ import { createEngineControl } from '../../engine/client/engine-control'
 import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
 import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
 import { poolDirectoryOf } from './install-pool'
-import { OPAQUE_DIRECTORY } from './runtime.constants'
+import { OPAQUE_DIRECTORY, POOL_FILE_HEADER } from './runtime.constants'
 
 import type { EngineControl } from '../../engine/client/client.types'
 import type { EngineApi, EngineLockMode } from '../../engine/engine.types'
@@ -123,6 +123,58 @@ export async function poolFileDigests(params: {
 		digests[handle.name] = [...new Uint8Array(digest)].map(hexOf).join('')
 	}
 	return digests
+}
+
+/**
+ * The database file's header damaged in the project's pool, its pages kept: its digest overwritten, or the whole head
+ * (path, flags, digest) blanked - as a disk or another program may leave it. The database is the largest file: the
+ * journal (TRUNCATE mode) keeps its header only.
+ */
+export async function damageDatabaseHeader(params: {
+	project: string
+	damage: 'digest' | 'blank'
+}): Promise<void> {
+	const { damage } = params
+	let directory = await navigator.storage.getDirectory()
+	for (const name of [...poolDirectoryOf(params).split('/'), OPAQUE_DIRECTORY]) {
+		directory = await directory.getDirectoryHandle(name)
+	}
+	let database: { handle: FileSystemFileHandle; size: number } | undefined
+	for await (const handle of directory.values()) {
+		if (handle.kind !== 'file') continue
+		const file = await (handle as FileSystemFileHandle).getFile()
+		if (!database || file.size > database.size) {
+			database = { handle: handle as FileSystemFileHandle, size: file.size }
+		}
+	}
+	const writable = await database!.handle.createWritable({ keepExistingData: true })
+	await writable.write(
+		damage === 'digest'
+			? {
+					type: 'write',
+					position: POOL_FILE_HEADER.digestOffset,
+					data: new Uint8Array(POOL_FILE_HEADER.digestBytes).fill(0xff),
+				}
+			: { type: 'write', position: 0, data: new Uint8Array(POOL_FILE_HEADER.headBytes) },
+	)
+	await writable.close()
+}
+
+/**
+ * The project's pool made of blank files of the given sizes, no database: what an install or a creation that ended
+ * early leaves (a blank header each, or a file not yet written).
+ */
+export async function makeBlankPool(params: { project: string; sizes: number[] }): Promise<void> {
+	let directory = await navigator.storage.getDirectory()
+	for (const name of [...poolDirectoryOf(params).split('/'), OPAQUE_DIRECTORY]) {
+		directory = await directory.getDirectoryHandle(name, { create: true })
+	}
+	for (const [index, size] of params.sizes.entries()) {
+		const handle = await directory.getFileHandle(`blank${index}`, { create: true })
+		const writable = await handle.createWritable()
+		await writable.write(new Uint8Array(size))
+		await writable.close()
+	}
 }
 
 /** How many realms hold, and how many wait for, the project's engine lock across the origin. */

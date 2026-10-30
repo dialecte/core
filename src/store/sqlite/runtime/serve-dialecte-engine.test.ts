@@ -6,10 +6,12 @@ import { POOL_CAPACITY } from './runtime.constants'
 import {
 	TEST_ENGINE_URL,
 	clientOf,
+	damageDatabaseHeader,
 	engineLockQueue,
 	fixtureUrl,
 	holdEngineLock,
 	holdPoolFile,
+	makeBlankPool,
 	openMessage,
 	poolFileDigests,
 	poolState,
@@ -22,6 +24,8 @@ import {
 	INSTALL_REFUSAL,
 	LOCK_QUEUE_TIMEOUT_MS,
 	LOCK_RACE_BUDGET_MS,
+	ONE_BUDGET_SLACK_MS,
+	OPEN_FAILURE,
 	RUNTIME_FIXTURE_CHANNEL,
 	UNSAFE_POOL_SQLITE,
 } from './runtime.fixtures.constants'
@@ -29,13 +33,17 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { rejectionKey } from '@/errors/errors.fixtures'
+import { Project } from '@/project/project'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
+import { TEST_DIALECTE_CONFIG } from '@/test'
 
 import type {
 	RuntimeFixtureNotice,
 	RuntimeFixtureOrder,
 	RuntimeFixtureScenario,
 } from './runtime.fixtures.types'
+import type { AnyDialecteConfig } from '@/types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
@@ -54,16 +62,6 @@ function engineWorker(params: {
 	const started = startEngineWorker({ url: params.url })
 	cleanups.push(started.end, () => removePoolDirectory({ project: params.project }))
 	return started
-}
-
-/** The key of what a promise rejected with; `resolved` when it did not. */
-async function rejectionKey(params: { action: Promise<unknown> }): Promise<string> {
-	try {
-		await params.action
-		return 'resolved'
-	} catch (thrown) {
-		return toDialecteError(thrown)?.key ?? String(thrown)
-	}
 }
 
 /** A pool made by an engine that wrote a document then closed. */
@@ -408,6 +406,216 @@ describe('an engine worker opening its project', () => {
 				}),
 			).toBe('ASSERTION_FAILED')
 			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		})
+	})
+
+	describe('a project whose pool holds data but whose database is gone (its header damaged, the pages there)', () => {
+		const damages = {
+			'its header digest damaged': { damage: 'digest' },
+			'its header blanked': { damage: 'blank' },
+		} satisfies Record<string, { damage: 'digest' | 'blank' }>
+
+		it.each(Object.entries(damages))(
+			'%s → PROJECT_DATABASE_LOST, every file byte for byte: the next engine is refused the same',
+			async (_label, { damage }) => {
+				const project = uniqueProject()
+				await closedPoolWithDocument({ project })
+				await damageDatabaseHeader({ project, damage })
+				const damaged = await poolFileDigests({ project })
+				const { control } = engineWorker({ project })
+				const thrown = await control
+					.request({ message: openMessage({ project }), expect: 'opened' })
+					.catch((error: unknown) => error)
+				expect(toDialecteError(thrown)).toMatchObject({
+					key: 'PROJECT_DATABASE_LOST',
+					meta: { project },
+				})
+				expect(await poolFileDigests({ project })).toEqual(damaged)
+				const next = engineWorker({ project })
+				expect(
+					await rejectionKey({
+						action: next.control.request({ message: openMessage({ project }), expect: 'opened' }),
+					}),
+				).toBe('PROJECT_DATABASE_LOST')
+			},
+		)
+
+		it('its header damaged while the worker that closed the project keeps the pool paused, opened again in that worker → PROJECT_DATABASE_LOST, every file byte for byte', async () => {
+			const project = uniqueProject()
+			const { control } = engineWorker({ project })
+			await control.request({ message: openMessage({ project }), expect: 'opened' })
+			const writer = await clientOf({ control, clientId: 'writer' })
+			await writer.registerDocument(makeDocument())
+			await control.request({ message: { type: 'close' }, expect: 'closed' })
+			await damageDatabaseHeader({ project, damage: 'digest' })
+			const damaged = await poolFileDigests({ project })
+			function open(): Promise<string> {
+				return rejectionKey({
+					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+				})
+			}
+			expect(await open()).toBe('PROJECT_DATABASE_LOST')
+			expect(await poolFileDigests({ project })).toEqual(damaged)
+			// the pool the worker keeps paused removed there
+			await control.request({
+				message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+				expect: 'destroyed',
+			})
+			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+			expect(await open()).toBe('resolved')
+			const reader = await clientOf({ control, clientId: 'reader' })
+			expect(await reader.getDocuments()).toEqual([])
+		})
+
+		it('refused through a Project, which then destroys the project → the pool gone; opened again → an empty project', async () => {
+			const name = uniqueProject()
+			await closedPoolWithDocument({ project: name })
+			await damageDatabaseHeader({ project: name, damage: 'digest' })
+			cleanups.push(() => removePoolDirectory({ project: name }))
+			const store = new EngineStore({
+				name,
+				connector: createSqliteWorkerConnector({ name, engineUrl: TEST_ENGINE_URL }),
+			})
+			const project = new Project({
+				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
+				storage: { type: 'custom', store },
+			})
+			expect(await rejectionKey({ action: project.open(name) })).toBe('PROJECT_DATABASE_LOST')
+			await project.destroy()
+			expect(await poolState({ project: name })).toEqual({ exists: false, files: 0 })
+			await project.open(name)
+			expect(await project.getDocuments()).toEqual([])
+			await project.destroy()
+		})
+
+		it('a paused pool taken back after a wait for its lock, one of its files held → PROJECT_ENGINE_BUSY within one budget for both', async () => {
+			const project = uniqueProject()
+			const { control } = engineWorker({ project })
+			await control.request({ message: openMessage({ project }), expect: 'opened' })
+			await control.request({ message: { type: 'close' }, expect: 'closed' })
+			const holder = await holdPoolFile({ project })
+			cleanups.push(holder.release)
+			const release = await holdEngineLock({ project })
+			cleanups.push(release)
+			const budgetMs = 2_000
+			const startedAt = performance.now()
+			const reopening = control
+				.request({ message: openMessage({ project, lock: 'wait', budgetMs }), expect: 'opened' })
+				.catch((error: unknown) => error)
+			// the lock let go three quarters into the budget: the probe has the rest of it, not a budget of its own
+			setTimeout(release, (budgetMs * 3) / 4)
+			// refused by the probe (the file it retried on), not by the wait for the lock
+			expect(toDialecteError(await reopening)).toMatchObject({
+				key: 'PROJECT_ENGINE_BUSY',
+				meta: { project, retriedOn: [holder.file] },
+			})
+			expect(performance.now() - startedAt).toBeLessThan(budgetMs + ONE_BUDGET_SLACK_MS)
+		})
+
+		it('refused, then opened again in the same worker → refused again; destroyed there → opened empty', async () => {
+			const project = uniqueProject()
+			await closedPoolWithDocument({ project })
+			await damageDatabaseHeader({ project, damage: 'digest' })
+			const { control } = engineWorker({ project })
+			function open(): Promise<string> {
+				return rejectionKey({
+					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+				})
+			}
+			expect(await open()).toBe('PROJECT_DATABASE_LOST')
+			expect(await open()).toBe('PROJECT_DATABASE_LOST')
+			await control.request({
+				message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+				expect: 'destroyed',
+			})
+			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+			expect(await open()).toBe('resolved')
+			const engine = await clientOf({ control, clientId: 'reader' })
+			expect(await engine.getDocuments()).toEqual([])
+		})
+	})
+
+	describe('a pool that never held a database (an install or a creation that ended early) → opened as a new project', () => {
+		const pools = {
+			'every file a blank header': { sizes: Array.from({ length: POOL_CAPACITY }, () => 4096) },
+			'a partial pool: a blank header and a file not yet written': { sizes: [4096, 0] },
+		} satisfies Record<string, { sizes: number[] }>
+
+		it('a partial pool where too little space is left → STORE_QUOTA_EXCEEDED, as for a new project; its files unchanged', async () => {
+			const project = uniqueProject()
+			await makeBlankPool({ project, sizes: [4096, 0] })
+			const blank = await poolFileDigests({ project })
+			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'small-quota' }) })
+			expect(
+				await rejectionKey({
+					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+				}),
+			).toBe('STORE_QUOTA_EXCEEDED')
+			expect(await poolFileDigests({ project })).toEqual(blank)
+		})
+
+		it.each(Object.entries(pools))('%s', async (_label, { sizes }) => {
+			const project = uniqueProject()
+			await makeBlankPool({ project, sizes })
+			const { control } = engineWorker({ project })
+			await control.request({ message: openMessage({ project }), expect: 'opened' })
+			const engine = await clientOf({ control, clientId: 'writer' })
+			expect(await engine.getDocuments()).toEqual([])
+			await engine.registerDocument(makeDocument())
+			expect(await engine.getDocuments()).toEqual([makeDocument()])
+		})
+	})
+
+	describe('an open that fails before its database is opened', () => {
+		const failures = {
+			'the dialecte fails to make its hooks': {
+				scenario: 'hooks-fail',
+				refusal: `Error: ${OPEN_FAILURE.hooks}`,
+			},
+			'the database cannot be opened': {
+				scenario: 'database-fails',
+				refusal: `Error: ${OPEN_FAILURE.database}`,
+			},
+		} satisfies Record<string, { scenario: RuntimeFixtureScenario; refusal: string }>
+
+		it.each(Object.entries(failures))(
+			'%s, on a new project → refused with that failure; the next engine makes the project',
+			async (_label, { scenario, refusal }) => {
+				const project = uniqueProject()
+				const failing = engineWorker({ project, url: fixtureUrl({ scenario }) })
+				expect(
+					await rejectionKey({
+						action: failing.control.request({
+							message: openMessage({ project }),
+							expect: 'opened',
+						}),
+					}),
+				).toBe(refusal)
+				failing.end()
+				const { control } = engineWorker({ project })
+				await control.request({ message: openMessage({ project }), expect: 'opened' })
+				const engine = await clientOf({ control, clientId: 'reader' })
+				expect(await engine.getDocuments()).toEqual([])
+			},
+		)
+
+		it('the database cannot be opened, on a project with a document → refused, the pool kept byte for byte: the next engine reads it', async () => {
+			const project = uniqueProject()
+			await closedPoolWithDocument({ project })
+			const written = await poolFileDigests({ project })
+			expect(Object.keys(written)).toHaveLength(POOL_CAPACITY)
+			const failing = engineWorker({ project, url: fixtureUrl({ scenario: 'database-fails' }) })
+			expect(
+				await rejectionKey({
+					action: failing.control.request({ message: openMessage({ project }), expect: 'opened' }),
+				}),
+			).toBe(`Error: ${OPEN_FAILURE.database}`)
+			expect(await poolFileDigests({ project })).toEqual(written)
+			failing.end()
+			const { control } = engineWorker({ project })
+			await control.request({ message: openMessage({ project }), expect: 'opened' })
+			const engine = await clientOf({ control, clientId: 'reader' })
+			expect(await engine.getDocuments()).toEqual([makeDocument()])
 		})
 	})
 

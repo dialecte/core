@@ -10,6 +10,7 @@ import {
 	destroyPool,
 	explainOutOfSpace,
 	openPool,
+	probePausedPool,
 	refuseShortSpace,
 	takeEngineLock,
 } from './install-pool'
@@ -182,10 +183,13 @@ async function openEngine(params: {
 	const sqlite3 = await loadSqlite({ wasmUrl })
 	const resumed = state.pool !== undefined
 	if (state.pool) {
-		// closed earlier in this worker: its pool paused, taken back under the lock (no install)
+		// closed earlier in this worker: its pool paused, checked again and taken back under the lock (no install);
+		// one budget for the wait for the lock and the probe together
+		const deadline = performance.now() + budgetMs
 		const lockHeld = await takeEngineLock({ project, mode: lock, budgetMs })
 		state.releaseLock = lockHeld.release
 		try {
+			await probePausedPool({ project, deadline })
 			await state.pool.unpauseVfs()
 		} catch (thrown) {
 			releasePool({ state })
