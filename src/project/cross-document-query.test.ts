@@ -4,6 +4,7 @@ import { describe, expect } from 'vitest'
 
 import { runTestCases } from '@/test'
 import { TEST_DIALECTE_CONFIG } from '@/test'
+import { resolveTestStorage } from '@/test/test-storage'
 
 import type { BaseTestCase } from '@/test'
 import type { AnyDialecteConfig } from '@/types'
@@ -18,7 +19,7 @@ function projectName(): string {
 }
 
 async function openProjectWithDocs(xmlFiles: { name: string; content: string }[]) {
-	const project = new Project({ configs: { default: CONFIG }, storage: { type: 'local' } })
+	const project = new Project({ configs: { default: CONFIG }, storage: resolveTestStorage({}) })
 	await project.open(projectName())
 	for (const file of xmlFiles) {
 		await project.importFile(new File([file.content], file.name, { type: 'text/xml' }))
@@ -78,7 +79,8 @@ describe('Project.queryFirst', () => {
 				callCount++
 				const records = await query.getRecordsByTagName('A')
 				const match = records.find(
-					(r) => r.attributes.find((a) => a.name === 'aA')?.value === tc.searchFor,
+					(record) =>
+						record.attributes.find((attribute) => attribute.name === 'aA')?.value === tc.searchFor,
 				)
 				return match
 			})
@@ -87,7 +89,9 @@ describe('Project.queryFirst', () => {
 				expect(result).toBeUndefined()
 			} else {
 				expect(result).toBeDefined()
-				expect(result!.attributes.find((a) => a.name === 'aA')?.value).toBe(tc.expectedValue)
+				expect(result!.attributes.find((attribute) => attribute.name === 'aA')?.value).toBe(
+					tc.expectedValue,
+				)
 			}
 
 			if (tc.expectedCallCount !== undefined) {
@@ -135,7 +139,9 @@ describe('Project.queryAll', () => {
 				return query.getRecordsByTagName('A')
 			})
 
-			const names = result.map((r) => r.attributes.find((a) => a.name === 'aA')?.value)
+			const names = result.map(
+				(record) => record.attributes.find((attribute) => attribute.name === 'aA')?.value,
+			)
 			expect(names).toHaveLength(tc.expectedNames.length)
 			for (const name of tc.expectedNames) {
 				expect(names).toContain(name)

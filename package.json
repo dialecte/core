@@ -51,9 +51,12 @@
 		"doc:build": "vitepress build",
 		"doc:preview": "vitepress preview",
 		"//====== TEST ======//": "",
-		"test": "vitest --project unit",
-		"test:node": "vitest run --project node",
+		"test": "npm run test:node && npm run test:browser",
+		"test:node": "vitest run --project node --project node-indexeddb",
+		"test:browser": "vitest run --project browser",
+		"test:browser:all": "vitest run --project browser-all",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
+		"test:perf:node": "VITE_BENCH=1 vitest run --project perf-node --mode bench --reporter=verbose",
 		"//====== CHECK ======//": "",
 		"check": "run-p type-check type-check:test type-check:node lint:check format:check",
 		"skills:generate": "dialecte skills generate",
@@ -78,6 +81,7 @@
 		"@types/sax": "1.2.7",
 		"comlink": "4.4.2",
 		"dexie": "4.4.6",
+		"libxml2-wasm": "0.7.2",
 		"sax": "^1.4.3"
 	},
 	"devDependencies": {
@@ -86,7 +90,6 @@
 		"@types/node": "^24.12.4",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"@vitest/browser-playwright": "^4.1.10",
-		"@xmldom/xmldom": "^0.8.11",
 		"fake-indexeddb": "^6.2.6",
 		"husky": "^9.1.7",
 		"jiti": "^2.4.2",
@@ -116,9 +119,10 @@
 				},
 				{
 					"name": "tests",
-					"run": "npx vitest run --project unit --changed",
+					"run": "npx vitest run --changed --project node --project node-indexeddb",
 					"counts": "tests",
-					"changedOnly": true
+					"changedOnly": true,
+					"heavy": false
 				}
 			],
 			"full": [
@@ -136,12 +140,19 @@
 				},
 				{
 					"name": "tests",
-					"run": "nice -n 10 npx vitest run --project unit --project node --no-file-parallelism",
+					"run": "nice -n 10 npm run test:node",
+					"counts": "tests",
+					"heavy": false
+				},
+				{
+					"name": "browser tests",
+					"run": "nice -n 10 npx vitest run --project browser --no-file-parallelism",
 					"counts": "tests"
 				},
 				{
 					"name": "docs",
-					"run": "npm run doc:build"
+					"run": "npm run doc:build",
+					"restoresGeneratedDocs": true
 				},
 				{
 					"name": "type-bench",

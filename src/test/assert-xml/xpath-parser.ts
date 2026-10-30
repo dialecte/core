@@ -11,7 +11,8 @@
  * - `[...]` predicates (including nested `[A[B]]` and paths inside `[@x="a/b"]`)
  * - `(...)` grouping
  * - Quoted strings with `/` inside (`@path="a/b/c"`)
- * - `|` union operator (treated as separate branches, not step boundaries)
+ * - `|` union operator: a top-level union is not split (one step, the whole query); one inside `[]` or `()` is
+ *   part of its step
  * - Leading `/` or `//` (absolute paths)
  * - Axis selectors like `following-sibling::` (not confused with `/`)
  */
@@ -68,6 +69,11 @@ function findStepBoundaries(xpath: string): number[] {
 
 		if (bracketDepth > 0 || parenDepth > 0) {
 			continue
+		}
+
+		// a union at the top level is one expression: its branches have no common prefix to step through
+		if (ch === '|') {
+			return []
 		}
 
 		if (ch === '/') {

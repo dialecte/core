@@ -3,9 +3,10 @@ import { createHeartbeat } from './heartbeat'
 import { LARGE_ANSWER_RECORDS } from './host.constants'
 
 import * as Comlink from 'comlink'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createDialecteError } from '@/errors'
+import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 
 import type { EngineApi } from '../engine.types'
 import type { EngineWire, WireAnswer } from '../wire/wire.types'
@@ -52,14 +53,19 @@ describe('an answer cloned onto the port', () => {
 	it(`${LARGE_ANSWER_RECORDS} records → busy told before it, a beat after it`, async () => {
 		const { read, seen } = servedRead({ count: LARGE_ANSWER_RECORDS })
 		await read()
-		await new Promise((resolve) => setTimeout(resolve, 50))
-		expect(seen).toEqual(['busy', 'answer', 'heartbeat'])
+		await vi.waitFor(function beatSeen() {
+			expect(seen).toEqual(['busy', 'answer', 'heartbeat'])
+		})
 	})
 
 	it(`${LARGE_ANSWER_RECORDS - 1} records → the answer alone`, async () => {
 		const { read, seen } = servedRead({ count: LARGE_ANSWER_RECORDS - 1 })
 		await read()
-		await new Promise((resolve) => setTimeout(resolve, 50))
+		await vi.waitFor(function answerSeen() {
+			expect(seen).toEqual(['answer'])
+		})
+		// no beat follows: a bounded wait, longer than a message takes on a loaded machine
+		await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
 		expect(seen).toEqual(['answer'])
 	})
 })

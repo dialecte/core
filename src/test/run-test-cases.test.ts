@@ -2,10 +2,10 @@ import { TEST_DIALECTE_CONFIG } from './config'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, XMLNS_EXT_NAMESPACE } from './constant'
 import { createTestRunner, runTestCases } from './run-test-cases'
 
-import Dexie from 'dexie'
 import { describe, expect } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
+import { findInMemoryState } from '@/store/in-memory/in-memory-state'
 import { createSeededRandomUuid } from '@/utils'
 
 import type { BaseXmlTestCase, TestCases, ActParams, ActResult } from './run-test-cases.type'
@@ -90,7 +90,8 @@ describe('runTestCases', () => {
 		runTestCases.withoutExport<BaseXmlTestCase>({
 			testCases: { 'source registered under `default`': { sourceXml: /* xml */ `<Root ${ns}/>` } },
 			act: async ({ project, source }) => {
-				expect((await project.getDocument(source.documentId))?.configKey).toBe('default')
+				const sourceDocument = await project.getDocument(source.documentId)
+				expect(sourceDocument?.configKey).toBe('default')
 			},
 		})
 	})
@@ -159,6 +160,30 @@ describe('runTestCases', () => {
 				})
 				return {}
 			},
+		})
+	})
+
+	describe('custom XML from the act', () => {
+		type TestCase = BaseXmlTestCase
+
+		const testCases: TestCases<TestCase> = {
+			'act answers its own XML → the queries run on it, not on the stored document': {
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<B aB="stored"/>
+					</Root>
+				`,
+				expectedQueries: ['//default:Root/default:A[@aA="from the act"]'],
+				unexpectedQueries: ['//default:Root/default:B[@aB="stored"]'],
+			},
+		}
+
+		runTestCases.withExport<TestCase>({
+			testCases,
+			act: async (): Promise<ActResult> => ({
+				assertOn: 'custom',
+				xmlString: /* xml */ `<Root ${ns}><A aA="from the act"/></Root>`,
+			}),
 		})
 	})
 
@@ -235,11 +260,13 @@ describe('createTestRunner from a declaration', () => {
 	runDeclaredTestCases.withoutExport<TestCase>({
 		testCases,
 		act: async ({ testCase, source, project }) => {
-			expect(await source.query.counting.countA()).toBe(testCase.expectedCount)
+			const countOfA = await source.query.counting.countA()
+			expect(countOfA).toBe(testCase.expectedCount)
 			// one import per case: a shared instance would be seen more often than instances were made
 			expect(hookInstances).toHaveLength(hooksCreated)
 			expect(hookInstances.at(-1)).toBe(hooksCreated)
-			expect((await project.getDocument(source.documentId))?.configKey).toBe('test')
+			const sourceDocument = await project.getDocument(source.documentId)
+			expect(sourceDocument?.configKey).toBe('test')
 			await expect(project.initEmptyDocument({ configKey: 'second' })).resolves.toBeTypeOf('string')
 		},
 	})
@@ -267,7 +294,7 @@ describe('createTestRunner from a declaration', () => {
 		runInMemory.withoutExport<BaseXmlTestCase>({
 			testCases: { 'the project runs in memory': { sourceXml: /* xml */ `<Root ${ns}/>` } },
 			act: async ({ project }) => {
-				expect(await Dexie.exists(project.name)).toBe(false)
+				expect(findInMemoryState({ name: project.name })).toBeDefined()
 			},
 		})
 	})

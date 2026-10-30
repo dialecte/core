@@ -39,5 +39,8 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
-      - name: Run Tests
-        run: npm run test
+      - name: Run the node tests
+        run: npm run test:node
+
+      - name: Run the whole suite in the browser
+        run: npm run test:browser:all

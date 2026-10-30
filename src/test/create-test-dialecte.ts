@@ -1,5 +1,6 @@
 import { TEST_CONFIG_KEY } from './constant'
 import { openTestProject, resolveTestDialecte } from './test-dialecte-setup'
+import { resolveTestStorage } from './test-storage'
 
 import { createStagedOperations } from '@/document'
 import { createProgressReporter } from '@/document/progress'
@@ -58,8 +59,8 @@ export async function createTestProject(
 
 /**
  * Create a Context directly for testing FP query functions: on `store` when given, else on the store
- * of the project named `databaseName` - of the kind `storage` names, the local store by default -
- * opened to discover its tables.
+ * of the project named `databaseName` - of the kind `storage` names, else the test helpers' default
+ * (`useTestStorage`), else the local store - opened to discover its tables.
  */
 export async function createTestContext<GenericConfig extends AnyDialecteConfig>(
 	params: TestContextParams<GenericConfig>,
@@ -69,7 +70,7 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 		params.store === undefined
 			? resolveStore({
 					name: params.databaseName,
-					storage: params.storage ?? { type: 'local' },
+					storage: resolveTestStorage({ storage: params.storage }),
 					runtime: {
 						configs: { [TEST_CONFIG_KEY]: dialecteConfig },
 						defaultConfigKey: TEST_CONFIG_KEY,

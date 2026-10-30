@@ -1,7 +1,11 @@
+import type { XmlElement } from '../xml'
 import type { AnyDefinition, AnyDialecteConfig, AnyTypes, ResolvedDefinition } from '@/types'
 
-/** Options controlling how strict a single-document validation is. */
-export type AssertValidXmlOptions = {
+/** One XML string to validate, how it is named in the messages and how strict the validation is. */
+export type AssertValidXmlParams = {
+	xml: string
+	/** Names the XML in the messages. Default `'test XML'`. */
+	label?: string
 	/**
 	 * Also require every schema-required attribute to be present. Default `true`;
 	 * minimal fixtures legitimately omit required attributes (a bare `<SCL>` without
@@ -22,14 +26,14 @@ export type CreateXmlSchemaAssertionsParams = {
 }
 
 export type CollectElementViolationsParams = {
-	element: Element
+	element: XmlElement
 	/** The parent element's definition as it applies there; `undefined` at the root or under a foreign element. */
 	parent: { localName: string; definition: ResolvedDefinition | undefined } | undefined
 	requireComplete: boolean
 }
 
 export type CollectAttributeViolationsParams = {
-	element: Element
+	element: XmlElement
 	elementDefinition: ResolvedDefinition
 	requireComplete: boolean
 }

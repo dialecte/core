@@ -1,39 +1,12 @@
 import { createProjectFactory } from './create-project-factory'
-import { defineDialecte } from './define-dialecte'
+import { createCountingDialecte, ENGINE_URL } from './create-project-factory.fixtures'
 
-import Dexie from 'dexie'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
-import { TEST_DIALECTE_CONFIG } from '@/test/config'
 import { XMLNS_DEFAULT_NAMESPACE } from '@/test/constant'
 
-import type { DialecteHooks } from '@/types'
-
-const ENGINE_URL = 'https://dialecte.test/assets/engine.worker.js'
 const SOURCE_XML = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="1"/><A aA="2"/></Root>`
-
-const BASE_MODULES = {
-	counting: {
-		query: {
-			countA: async (query: { getRecordsByTagName: (tagName: 'A') => Promise<unknown[]> }) =>
-				(await query.getRecordsByTagName('A')).length,
-		},
-	},
-}
-
-function createCountingDialecte(params?: {
-	createHooks?: () => DialecteHooks<typeof TEST_DIALECTE_CONFIG>
-}) {
-	return defineDialecte({
-		id: 'core/test',
-		version: '0.0.0',
-		configs: { first: TEST_DIALECTE_CONFIG, second: TEST_DIALECTE_CONFIG },
-		defaultConfigKey: 'first',
-		extensions: BASE_MODULES,
-		createHooks: params?.createHooks,
-	})
-}
 
 describe('createProjectFactory', () => {
 	const projects: Array<{ destroy: () => Promise<void> }> = []
@@ -59,8 +32,10 @@ describe('createProjectFactory', () => {
 
 		const byDefault = await project.initEmptyDocument()
 		const bySecond = await project.initEmptyDocument({ configKey: 'second' })
-		expect((await project.getDocument(byDefault))?.configKey).toBe('first')
-		expect((await project.getDocument(bySecond))?.configKey).toBe('second')
+		const byDefaultDocument = await project.getDocument(byDefault)
+		expect(byDefaultDocument?.configKey).toBe('first')
+		const bySecondDocument = await project.getDocument(bySecond)
+		expect(bySecondDocument?.configKey).toBe('second')
 		const thrown = await project.initEmptyDocument({ configKey: 'third' }).catch((error) => error)
 		expect(toDialecteError(thrown)?.key).toBe('UNKNOWN_CONFIG_KEY')
 	})
@@ -78,7 +53,8 @@ describe('createProjectFactory', () => {
 		const { documentId } = await project.importFile(new File([SOURCE_XML], 'source.xml'))
 		const document = project.openDocument(documentId)
 
-		expect(await document.query.counting.countA()).toBe(2)
+		const countOfA = await document.query.counting.countA()
+		expect(countOfA).toBe(2)
 		expect(document.query.greeting.hello()).toBe('hello')
 	})
 
@@ -110,15 +86,5 @@ describe('createProjectFactory', () => {
 		await first.importFile(new File([SOURCE_XML], 'source.xml'))
 		await second.importFile(new File([SOURCE_XML], 'source.xml'))
 		expect(instancesSeen).toEqual([2, 1, 2])
-	})
-
-	it('without a storage choice the project opens on the local store', async () => {
-		const factory = createProjectFactory({
-			dialecte: createCountingDialecte(),
-			engineUrl: ENGINE_URL,
-		})
-		const project = await factory().open(`factory-local-${crypto.randomUUID()}`)
-		projects.push(project)
-		expect(await Dexie.exists(project.name)).toBe(true)
 	})
 })

@@ -3,6 +3,7 @@ import { Project } from './project'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { TEST_DIALECTE_CONFIG } from '@/test'
+import { resolveTestStorage } from '@/test/test-storage'
 
 import type { AnyDialecteConfig } from '@/types'
 
@@ -15,7 +16,7 @@ function projectName(): string {
 }
 
 function openProject(name: string) {
-	return new Project({ configs: { default: CONFIG }, storage: { type: 'local' } }).open(name)
+	return new Project({ configs: { default: CONFIG }, storage: resolveTestStorage({}) }).open(name)
 }
 
 function minimalXml(): string {
@@ -28,7 +29,11 @@ async function importOne(project: Project<AnyDialecteConfig>): Promise<string> {
 	return documentId
 }
 
-async function commitChild(project: Project<AnyDialecteConfig>, documentId: string): Promise<void> {
+async function commitChild(params: {
+	project: Project<AnyDialecteConfig>
+	documentId: string
+}): Promise<void> {
+	const { project, documentId } = params
 	const doc = project.openDocument(documentId)
 	await doc.transaction(async (tx) => {
 		const root = await tx.getRoot()
@@ -45,10 +50,11 @@ async function commitChild(project: Project<AnyDialecteConfig>, documentId: stri
  * actual condition converges immediately when it's already true and only waits as long as needed
  * otherwise.
  */
-async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+async function waitUntil(params: { predicate: () => boolean; timeoutMs?: number }): Promise<void> {
+	const { predicate, timeoutMs = 2000 } = params
 	const deadline = Date.now() + timeoutMs
 	while (!predicate() && Date.now() < deadline) {
-		await new Promise((r) => setTimeout(r, 5))
+		await new Promise((resolve) => setTimeout(resolve, 5))
 	}
 }
 
@@ -78,7 +84,7 @@ describe('canUndo/canRedo history status', () => {
 		cleanups.push(() => project.destroy())
 
 		const documentId = await importOne(project)
-		await commitChild(project, documentId)
+		await commitChild({ project, documentId })
 		// No settle(): a local commit refreshes the flags inline, not via a
 		// channel round-trip.
 
@@ -92,7 +98,7 @@ describe('canUndo/canRedo history status', () => {
 		cleanups.push(() => project.destroy())
 
 		const documentId = await importOne(project)
-		await commitChild(project, documentId)
+		await commitChild({ project, documentId })
 
 		const before = project.state.documents.get(documentId)?.lastUpdate
 		await project.undo(documentId)
@@ -108,7 +114,7 @@ describe('canUndo/canRedo history status', () => {
 		cleanups.push(() => project.destroy())
 
 		const documentId = await importOne(project)
-		await commitChild(project, documentId)
+		await commitChild({ project, documentId })
 		await project.undo(documentId)
 		await project.redo(documentId)
 
@@ -122,13 +128,13 @@ describe('canUndo/canRedo history status', () => {
 		cleanups.push(() => project.destroy())
 
 		const documentId = await importOne(project)
-		await commitChild(project, documentId)
-		await commitChild(project, documentId)
+		await commitChild({ project, documentId })
+		await commitChild({ project, documentId })
 		await project.undo(documentId)
 		expect(project.state.documents.get(documentId)?.canRedo).toBe(true)
 
-		await commitChild(project, documentId)
-		await waitUntil(() => project.state.documents.get(documentId)?.canRedo === false)
+		await commitChild({ project, documentId })
+		await waitUntil({ predicate: () => project.state.documents.get(documentId)?.canRedo === false })
 
 		const entry = project.state.documents.get(documentId)
 		expect(entry?.canUndo).toBe(true)
@@ -140,8 +146,8 @@ describe('canUndo/canRedo history status', () => {
 		const project = await openProject(name)
 
 		const documentId = await importOne(project)
-		await commitChild(project, documentId)
-		await waitUntil(() => project.state.documents.get(documentId)?.canUndo === true)
+		await commitChild({ project, documentId })
+		await waitUntil({ predicate: () => project.state.documents.get(documentId)?.canUndo === true })
 		await project.close()
 
 		const reopened = await openProject(name)
@@ -161,8 +167,8 @@ describe('canUndo/canRedo history status', () => {
 		cleanups.push(async () => projectB.close())
 		cleanups.push(() => projectA.destroy())
 
-		await commitChild(projectA, documentId)
-		await waitUntil(() => projectB.state.documents.get(documentId)?.canUndo === true)
+		await commitChild({ project: projectA, documentId })
+		await waitUntil({ predicate: () => projectB.state.documents.get(documentId)?.canUndo === true })
 
 		const entryB = projectB.state.documents.get(documentId)
 		expect(entryB?.lastUpdate).not.toBeNull()

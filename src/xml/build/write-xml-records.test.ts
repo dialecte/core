@@ -5,9 +5,11 @@ import { describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
+import { selectFirstNode, withXmlDocument } from '@/test/xml'
 
 import type { DialecteErrorKey } from '@/errors'
 import type { BaseTestCase } from '@/test'
+import type { XmlElement } from '@/test/xml'
 import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
 const NS = DIALECTE_TEST_NAMESPACES
@@ -1449,17 +1451,33 @@ describe('writeXmlRecords', () => {
 				childRecord({ id: 'n-1', tagName: 'N', namespace: { prefix: 'ns1', uri: 'urn:x' } }),
 			]
 			for (const indent of [true, false]) {
-				const parsed = new DOMParser().parseFromString(
-					writeXmlRecords({ records, config: CONFIG, indent }),
-					'application/xml',
+				const read = withXmlDocument(
+					{ xml: writeXmlRecords({ records, config: CONFIG, indent }), label: 'the file' },
+					function readRoot(document) {
+						const namespaces = { ext: NS.ext.uri }
+						const root = document.root
+						const elementX = selectFirstNode({
+							context: root,
+							expression: '*[local-name() = "X"]',
+							namespaces,
+						}) as XmlElement
+						const elementN = selectFirstNode({
+							context: root,
+							expression: '*[local-name() = "N"]',
+							namespaces,
+						}) as XmlElement
+						return {
+							rootAttribute: selectFirstNode({ context: root, expression: '@ext:root', namespaces })
+								?.content,
+							xAttribute: selectFirstNode({ context: elementX, expression: '@ext:cA', namespaces })
+								?.content,
+							nNamespace: elementN.namespaceUri,
+						}
+					},
 				)
-				expect(parsed.getElementsByTagName('parsererror')).toHaveLength(0)
-				const root = parsed.documentElement
-				expect(root.getAttributeNS(NS.ext.uri, 'root')).toBe('2')
-				const x = [...root.children].find((child) => child.localName === 'X')!
-				expect(x.getAttributeNS(NS.ext.uri, 'cA')).toBe('v')
-				const n = [...root.children].find((child) => child.localName === 'N')!
-				expect(n.namespaceURI).toBe('urn:x')
+				expect(read.rootAttribute).toBe('2')
+				expect(read.xAttribute).toBe('v')
+				expect(read.nNamespace).toBe('urn:x')
 			}
 		})
 	})

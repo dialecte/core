@@ -3,6 +3,7 @@ import { Project } from './project'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
+import { selectFirstNode, withXmlDocument } from '@/test/xml'
 
 import type { StorageParam } from './types'
 import type { BaseTestCase } from '@/test'
@@ -68,20 +69,24 @@ async function openProject(params: {
 const CASES: Record<
 	string,
 	BaseTestCase & {
-		/** `dom`: the case exports a document, which needs a DOM; skipped where there is none (node). */
-		needs?: 'dom'
 		act: (storage: StorageParam) => Promise<void>
 	}
 > = {
 	'an import hook rewrites a text value → the export carries the hook’s text': {
-		needs: 'dom',
 		act: async function hookTextReachesExport(storage) {
 			const project = await openProject({ storage, hooks: TEXT_WRITING_HOOKS })
 			const { documentId } = await project.importFile(leafFile())
 
-			const { xmlDocument } = await project.export({ documentId, indent: false, xmlDocument: true })
-
-			expect(xmlDocument.getElementsByTagName('CCCC_1')[0]?.textContent).toBe(HOOK_TEXT)
+			const { file } = await project.export({ documentId, indent: false })
+			const xml = await file.text()
+			const leafText = withXmlDocument({ xml, label: 'the export' }, function readLeaf(document) {
+				return selectFirstNode({
+					context: document,
+					expression: '//*[local-name() = "CCCC_1"]',
+					namespaces: {},
+				})?.content
+			})
+			expect(leafText).toBe(HOOK_TEXT)
 		},
 	},
 	'a project closed, then a new project opened under its name → the document is there, its records read':
@@ -93,7 +98,8 @@ const CASES: Record<
 
 				const second = await openProject({ storage, name: first.name })
 
-				expect((await second.getDocuments()).map((document) => document.id)).toEqual([documentId])
+				const documents = await second.getDocuments()
+				expect(documents.map((document) => document.id)).toEqual([documentId])
 				const [leaf] = await second.openDocument(documentId).query.getRecordsByTagName('CCCC_1')
 				expect(leaf?.value).toBe('as imported')
 			},
@@ -120,8 +126,7 @@ describe('Project - the same on every store', () => {
 	for (const [storageName, storage] of Object.entries(STORAGES)) {
 		describe(storageName, () => {
 			for (const [description, testCase] of Object.entries(CASES)) {
-				const skipped = testCase.needs === 'dom' && typeof document === 'undefined'
-				const testFn = skipped ? it.skip : testCase.only ? it.only : it
+				const testFn = testCase.only ? it.only : it
 				testFn(description, () => testCase.act(storage))
 			}
 		})

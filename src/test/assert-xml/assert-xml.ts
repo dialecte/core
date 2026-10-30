@@ -1,187 +1,164 @@
+import { XmlQueryRefusedError, selectFirstNode, withXmlDocument } from '../xml'
+import { FAILURE_HEADERS, QUERIED_XML_LABEL } from './assert-xml.constants'
+import {
+	describeMissingElement,
+	describeRefusedQuery,
+	describeUnexpectedElement,
+} from './query-failure-message'
 import { splitXpathIntoSteps } from './xpath-parser'
 
-import { expect } from 'vitest'
-
-import { formatXml as formatXmlSource } from '@/utils/format-xml'
-
-import type { NsResolver } from './types'
+import type { XmlDocument, XmlNamespaces, XmlNode } from '../xml'
+import type {
+	QueryTrace,
+	XmlQueriesParams,
+	XmlQueriesWithNamespacesParams,
+	XmlQueryChecks,
+} from './assert-xml.types'
 import type { Namespace } from '@/types'
 
 /**
- * Creates a pair of assertion functions pre-configured with a namespace resolver
- * derived from a prefix → URI map. Intended to be instantiated once per dialecte
- * (e.g. in scl test) and re-exported alongside createTestProject.
+ * The query assertions of a dialecte: XPath prefixes are its config's namespace keys, mapped to their URIs
+ * once here. Made once per dialecte (e.g. in scl's test entry) and offered beside `createTestProject`.
  */
 export function createXmlAssertions(params: { namespaces: Record<string, Namespace> }) {
-	const { namespaces } = params
-	const nsResolver = buildNsResolver(namespaces)
-
+	const namespaces = toXmlNamespaces(params.namespaces)
 	return {
-		assertExpectedElementQueries(params: { xmlDocument: XMLDocument; queries: string[] }) {
-			assertExpectedElementQueries({ ...params, nsResolver })
+		assertExpectedElementQueries(params: XmlQueriesParams) {
+			assertXmlQueries({ xml: params.xml, namespaces, expectedQueries: params.queries })
 		},
-		assertUnexpectedElementQueries(params: { xmlDocument: XMLDocument; queries: string[] }) {
-			assertUnexpectedElementQueries({ ...params, nsResolver })
+		assertUnexpectedElementQueries(params: XmlQueriesParams) {
+			assertXmlQueries({ xml: params.xml, namespaces, unexpectedQueries: params.queries })
 		},
 	}
 }
+
 /**
- * Assert that each XPath query matches at least one element in the document.
- * When a query fails, the error message shows which step failed
- * and the XML of the last successful match for debugging.
+ * Asserts that each XPath query selects at least one node of the XML text, parsed once for all of them.
+ * A failure names the steps that matched, the step that failed, where the last match sits, what the failing
+ * step finds there without its predicates, and the XML around it.
  */
-export function assertExpectedElementQueries(params: {
-	xmlDocument: XMLDocument
-	queries: string[]
-	nsResolver?: NsResolver
-}) {
-	const { xmlDocument, queries, nsResolver } = params
-	for (const query of queries) {
-		assertExpectedXPath({ xmlDocument, xpath: query, nsResolver })
-	}
+export function assertExpectedElementQueries(params: XmlQueriesWithNamespacesParams): void {
+	const { xml, queries, namespaces = {} } = params
+	assertXmlQueries({ xml, namespaces: toXmlNamespaces(namespaces), expectedQueries: queries })
 }
 
 /**
- *  Builds a namespace resolver function from a map of prefix to URI.
- * @param namespaces
- * @returns
- */
-function buildNsResolver(namespaces: Record<string, Namespace>): NsResolver {
-	return (prefix: string | null) => (prefix ? (namespaces[prefix]?.uri ?? null) : null)
-}
-
-/**
- * Assert that each XPath query does NOT match any element in the document.
+ * Asserts that no XPath query selects a node of the XML text, parsed once for all of them.
  *
- * Progressive evaluation: all steps except the last one MUST exist
- * (to confirm the assertion is meaningful), and only the final step
- * must be absent. This prevents false positives where the query passes
- * because an ancestor doesn't exist (test setup bug) rather than the
- * target element being properly absent.
- *
- * For single-step queries, the full XPath is simply asserted as absent.
+ * Every step but the last must still select a node: an absence is only meaningful when the ancestors
+ * exist, so a missing ancestor (a fixture bug) fails the assertion instead of passing it for the wrong
+ * reason.
  */
-export function assertUnexpectedElementQueries(params: {
-	xmlDocument: XMLDocument
-	queries: string[]
-	nsResolver?: NsResolver
-}) {
-	const { xmlDocument, queries, nsResolver } = params
-	for (const query of queries) {
-		assertUnexpectedXPath({ xmlDocument, xpath: query, nsResolver })
-	}
+export function assertUnexpectedElementQueries(params: XmlQueriesWithNamespacesParams): void {
+	const { xml, queries, namespaces = {} } = params
+	assertXmlQueries({ xml, namespaces: toXmlNamespaces(namespaces), unexpectedQueries: queries })
 }
 
-function assertExpectedXPath(params: {
-	xmlDocument: XMLDocument
-	xpath: string
-	nsResolver?: NsResolver
-}) {
-	const { xmlDocument, xpath, nsResolver } = params
-	const steps = splitXpathIntoSteps(xpath)
-
-	let prevElement: Element | null = null
-	let lastSuccessfulStep = 0
-
-	for (let i = 0; i < steps.length; i++) {
-		const stepXpath = steps[i]
-		const result = xmlDocument.evaluate(
-			stepXpath,
-			xmlDocument,
-			nsResolver ?? null,
-			XPathResult.FIRST_ORDERED_NODE_TYPE,
-			null,
-		)
-		const element = result.singleNodeValue as Element | null
-
-		if (element) {
-			prevElement = element
-			lastSuccessfulStep = i + 1
-			continue
-		}
-
-		const failedSegment = i === 0 ? steps[0] : xpath.slice(steps[i - 1].length)
-
-		const contextInfo =
-			lastSuccessfulStep === 0
-				? `[No parent matched — failed from document root]\n  Document:\n${formatXml({ xml: new XMLSerializer().serializeToString(xmlDocument) })}`
-				: `[Last match at step ${lastSuccessfulStep}/${steps.length}]:\n${prevElement ? formatXml({ xml: prevElement.outerHTML }) : '(none)'}`
-
-		expect(
-			element,
-			`Element not found in XML.\n` +
-				`  Failed at step ${i + 1}/${steps.length}: ${failedSegment.trim()}\n` +
-				`  Full XPath: ${xpath}\n` +
-				`  ${contextInfo}`,
-		).toBeTruthy()
-
-		return
-	}
+/** The expected then the unexpected queries of one text, on one parse of it. */
+export function assertXmlQueries(params: XmlQueryChecks): void {
+	const { xml, namespaces, expectedQueries = [], unexpectedQueries = [] } = params
+	withXmlDocument({ xml, label: QUERIED_XML_LABEL }, function assertOnDocument(document) {
+		for (const query of expectedQueries) assertExpectedQuery({ document, namespaces, query })
+		for (const query of unexpectedQueries) assertUnexpectedQuery({ document, namespaces, query })
+	})
 }
 
-/** A failure message's XML, indented by depth for reading. */
-function formatXml(params: { xml: string }): string {
-	return formatXmlSource(params.xml, { indent: '  ' })
-}
-
-function assertUnexpectedXPath(params: {
-	xmlDocument: XMLDocument
-	xpath: string
-	nsResolver?: NsResolver
-}) {
-	const { xmlDocument, xpath, nsResolver } = params
-	const steps = splitXpathIntoSteps(xpath)
-
-	// For multi-step queries, verify all steps except the last one DO exist
-	// This ensures the absence assertion is meaningful
-	if (steps.length > 1) {
-		let prevElement: Element | null = null
-
-		for (let i = 0; i < steps.length - 1; i++) {
-			const stepXpath = steps[i]
-			const result = xmlDocument.evaluate(
-				stepXpath,
-				xmlDocument,
-				nsResolver ?? null,
-				XPathResult.FIRST_ORDERED_NODE_TYPE,
-				null,
-			)
-			const element = result.singleNodeValue as Element | null
-
-			const failedSegment = i === 0 ? steps[0] : xpath.slice(steps[i - 1].length)
-
-			const contextInfo =
-				i === 0
-					? '[Document root — no parent context]'
-					: `[Parent element found at step ${i}]:\n${prevElement ? formatXml({ xml: prevElement.outerHTML }) : '(none)'}`
-
-			expect(
-				element,
-				`Absent assertion is unreliable: ancestor step does not exist.\n` +
-					`  The query passes but for the wrong reason — an ancestor is missing, not the target element.\n` +
-					`  Missing at step ${i + 1}/${steps.length}: ${failedSegment.trim()}\n` +
-					`  Full XPath: ${xpath}\n` +
-					`  ${contextInfo}`,
-			).toBeTruthy()
-
-			prevElement = element
-		}
-	}
-
-	// Now assert the full query does NOT match
-	const result = xmlDocument.evaluate(
-		xpath,
-		xmlDocument,
-		nsResolver ?? null,
-		XPathResult.FIRST_ORDERED_NODE_TYPE,
-		null,
+/** XPath prefix to namespace URI, from a config's namespaces. */
+export function toXmlNamespaces(namespaces: Record<string, Namespace>): XmlNamespaces {
+	return Object.fromEntries(
+		Object.entries(namespaces).map(([prefix, namespace]) => [prefix, namespace.uri]),
 	)
-	const element = result.singleNodeValue as Element | null
+}
 
-	expect(
-		element,
-		`Element should NOT exist in XML but was found.\n` +
-			`  XPath: ${xpath}\n` +
-			`  Found:\n${element ? formatXml({ xml: element.outerHTML }) : '(none)'}`,
-	).toBeFalsy()
+function assertExpectedQuery(params: {
+	document: XmlDocument
+	namespaces: XmlNamespaces
+	query: string
+}): void {
+	const { document, namespaces, query } = params
+	if (selectQueryNode({ document, namespaces, query })) return
+	const trace = traceQuerySteps({ document, namespaces, query, stepCount: undefined })
+	throw new Error(
+		describeMissingElement({
+			header: FAILURE_HEADERS.expectedNotFound,
+			query,
+			trace,
+			document,
+			namespaces,
+		}),
+	)
+}
+
+function assertUnexpectedQuery(params: {
+	document: XmlDocument
+	namespaces: XmlNamespaces
+	query: string
+}): void {
+	const { document, namespaces, query } = params
+	const node = selectQueryNode({ document, namespaces, query })
+	if (node) throw new Error(describeUnexpectedElement({ query, node }))
+	const ancestorSteps = splitXpathIntoSteps(query).length - 1
+	const trace = traceQuerySteps({ document, namespaces, query, stepCount: ancestorSteps })
+	if (trace.matchedSteps === ancestorSteps) return
+	throw new Error(
+		describeMissingElement({
+			header: `${FAILURE_HEADERS.unreliable}: step ${trace.matchedSteps + 1} of ${trace.steps.length} matches nothing, so the absence proves nothing`,
+			query,
+			trace,
+			document,
+			namespaces,
+		}),
+	)
+}
+
+/** The first node the whole query selects; a query the engine refuses fails with why. */
+function selectQueryNode(params: {
+	document: XmlDocument
+	namespaces: XmlNamespaces
+	query: string
+}): XmlNode | undefined {
+	const { document, namespaces, query } = params
+	try {
+		return selectFirstNode({ context: document, expression: query, namespaces })
+	} catch (error) {
+		if (!(error instanceof XmlQueryRefusedError)) throw error
+		throw new Error(describeRefusedQuery({ query, reason: error.reason }))
+	}
+}
+
+/**
+ * Runs the query's progressive steps in order, the first `stepCount` of them (all when undefined), until one
+ * selects nothing. A step the engine refuses on its own counts as selecting nothing: the whole query compiled.
+ */
+function traceQuerySteps(params: {
+	document: XmlDocument
+	namespaces: XmlNamespaces
+	query: string
+	stepCount: number | undefined
+}): QueryTrace {
+	const { document, namespaces, query, stepCount } = params
+	const steps = splitXpathIntoSteps(query)
+	let lastMatch: XmlNode | undefined
+	let matchedSteps = 0
+	for (const step of steps.slice(0, stepCount ?? steps.length)) {
+		const node = selectStepNode({ document, namespaces, step })
+		if (!node) break
+		lastMatch = node
+		matchedSteps += 1
+	}
+	return { steps, matchedSteps, lastMatch }
+}
+
+function selectStepNode(params: {
+	document: XmlDocument
+	namespaces: XmlNamespaces
+	step: string
+}): XmlNode | undefined {
+	const { document, namespaces, step } = params
+	try {
+		return selectFirstNode({ context: document, expression: step, namespaces })
+	} catch (error) {
+		if (error instanceof XmlQueryRefusedError) return undefined
+		throw error
+	}
 }

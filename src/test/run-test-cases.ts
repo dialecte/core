@@ -1,4 +1,4 @@
-import { createXmlAssertions } from './assert-xml'
+import { assertXmlQueries, toXmlNamespaces } from './assert-xml/assert-xml'
 import { TEST_DIALECTE } from './test-dialecte'
 import {
 	openTestProject,
@@ -57,9 +57,7 @@ function xmlWithExport<
 	const setup = overrideTestDialecte({ setup: params.setup, configKey, dialecteConfig, hooks })
 	const { config } = resolveTestConfig({ setup, configKey })
 
-	const { assertExpectedElementQueries, assertUnexpectedElementQueries } = createXmlAssertions({
-		namespaces: config.namespaces,
-	})
+	const namespaces = toXmlNamespaces(config.namespaces)
 
 	for (const [description, testCase] of Object.entries(testCases)) {
 		const testFn = testCase.only ? it.only : it
@@ -89,29 +87,31 @@ function xmlWithExport<
 				// `assertOn: 'custom'` asserts the queries against XML produced inside
 				// the act (e.g. a getSnapshot xml output), instead of exporting the
 				// stored document — lets custom XML be tested with the same matcher.
-				let xmlDocument: XMLDocument
+				let xml: string
 				if (result && result.assertOn === 'custom') {
-					xmlDocument = new DOMParser().parseFromString(result.xmlString, 'application/xml')
+					xml = result.xmlString
 				} else {
 					const assertOn = result?.assertOn ?? 'source'
 					const withDatabaseIds = result?.withDatabaseIds ?? true
 					const exportFileId = assertOn === 'target' ? target?.documentId : source.documentId
 
 					if (!exportFileId) throw new Error('documentId required for export')
-					;({ xmlDocument } = await project.export({
+					const { file } = await project.export({
 						documentId: exportFileId,
 						indent: false,
 						withDatabaseIds,
-						xmlDocument: true,
-					}))
+					})
+					xml = await file.text()
 				}
 
-				if (testCase.expectedQueries?.length) {
-					assertExpectedElementQueries({ xmlDocument, queries: testCase.expectedQueries })
-				}
-
-				if (testCase.unexpectedQueries?.length) {
-					assertUnexpectedElementQueries({ xmlDocument, queries: testCase.unexpectedQueries })
+				// one parse of the output for both lists: the expected queries, then the unexpected ones
+				if (testCase.expectedQueries?.length || testCase.unexpectedQueries?.length) {
+					assertXmlQueries({
+						xml,
+						namespaces,
+						expectedQueries: testCase.expectedQueries,
+						unexpectedQueries: testCase.unexpectedQueries,
+					})
 				}
 			} finally {
 				crypto.randomUUID = originalRandomUUID

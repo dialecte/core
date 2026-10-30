@@ -65,6 +65,26 @@ const NO_ASSET_OF_SQLITE = [
 	'new URL("sqlite3.wasm"',
 ]
 
+/** What libxml2-wasm leaves in a chunk that bundles it. */
+const LIBXML2_MARKERS = ['libxml2', 'xmlReadString', 'XmlParseError']
+
+/** The entry's chunk and every chunk it imports, by static import, in core's build. */
+async function chunksReachedFrom(params: { entry: string }): Promise<Map<string, string>> {
+	const reached = new Map<string, string>()
+	const pending = [params.entry]
+	while (pending.length > 0) {
+		const file = pending.pop()!
+		if (reached.has(file)) continue
+		const text = await textOf({ file: path.join(CORE_DIST, file) })
+		reached.set(file, text)
+		// static (`from "./x.js"`, `import "./x.js"`) and dynamic (`import("../x.js")`) imports, from the importer's folder
+		for (const match of text.matchAll(/(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+\.js)["']/g)) {
+			pending.push(path.posix.normalize(path.posix.join(path.posix.dirname(file), match[1]!)))
+		}
+	}
+	return reached
+}
+
 beforeAll(async () => {
 	await rm(WORK, { recursive: true, force: true })
 	// core's two library builds, as `npm run build` makes them, into one folder
@@ -144,6 +164,17 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		for (const forbidden of NO_ASSET_OF_SQLITE) expect(engine, forbidden).not.toContain(forbidden)
 		const main = await textOf({ file: path.join(CORE_DIST, 'index.js') })
 		expect(main).not.toContain('sqlite3ApiBootstrap')
+	})
+
+	it('core’s main entry → no chunk it reaches holds libxml2, which only the test entry bundles', async () => {
+		const mainChunks = await chunksReachedFrom({ entry: 'index.js' })
+		expect(mainChunks.has('index.js')).toBe(true)
+		const holdingLibxml2 = [...mainChunks]
+			.filter(([, text]) => LIBXML2_MARKERS.some((marker) => text.includes(marker)))
+			.map(([file]) => file)
+		expect(holdingLibxml2).toEqual([])
+		const testEntry = await textOf({ file: path.join(CORE_DIST, 'test.js') })
+		expect(LIBXML2_MARKERS.some((marker) => testEntry.includes(marker))).toBe(true)
 	})
 
 	it('core’s main side (a synthetic entry of the wasm URL module, until the local store moves to SQLite) → the one wasm beside it, referenced by a URL a consumer’s bundler resolves', async () => {

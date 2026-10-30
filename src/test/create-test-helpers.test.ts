@@ -2,11 +2,11 @@ import { TEST_DIALECTE_CONFIG } from './config'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from './constant'
 import { createTestHelpers } from './create-test-helpers'
 
-import Dexie from 'dexie'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
 import { toDialecteError } from '@/errors'
+import { InMemoryStore } from '@/store'
 
 import type { TestDialecteConfig } from './config'
 import type { BaseXmlTestCase } from './run-test-cases.type'
@@ -77,8 +77,10 @@ describe('createTestHelpers', () => {
 		projects.push(project)
 
 		expect(createHooks).toHaveBeenCalledTimes(1)
-		expect((await project.getDocument(source.documentId))?.configKey).toBe('test')
-		expect(await source.document.query.counting.countA()).toBe(1)
+		const sourceDocument = await project.getDocument(source.documentId)
+		expect(sourceDocument?.configKey).toBe('test')
+		const countOfA = await source.document.query.counting.countA()
+		expect(countOfA).toBe(1)
 		await expect(project.initEmptyDocument({ configKey: 'second' })).resolves.toBeTypeOf('string')
 	})
 
@@ -93,44 +95,25 @@ describe('createTestHelpers', () => {
 		expect(Object.keys(source.document.perf.report()).length).toBeGreaterThan(0)
 	})
 
-	const storageCases: Record<
-		string,
-		{ helperStorage?: 'inMemory'; callStorage: 'absent' | 'undefined' | 'local'; inMemory: boolean }
-	> = {
-		'the helpers storage when the call names none': {
-			helperStorage: 'inMemory',
-			callStorage: 'absent',
-			inMemory: true,
-		},
-		'the helpers storage when the call forwards an undefined one': {
-			helperStorage: 'inMemory',
-			callStorage: 'undefined',
-			inMemory: true,
-		},
-		'the call storage over the helpers one': {
-			helperStorage: 'inMemory',
-			callStorage: 'local',
-			inMemory: false,
-		},
-		'the local store when neither names one': { callStorage: 'absent', inMemory: false },
+	const storageCases: Record<string, { callStorage: 'absent' | 'undefined' }> = {
+		'the helpers storage when the call names none': { callStorage: 'absent' },
+		'the helpers storage when the call forwards an undefined one': { callStorage: 'undefined' },
 	}
 
-	for (const [description, { helperStorage, callStorage, inMemory }] of Object.entries(
-		storageCases,
-	)) {
+	for (const [description, { callStorage }] of Object.entries(storageCases)) {
 		it(`createTestProject runs on ${description}`, async () => {
-			const bound = createTestHelpers({
-				dialecte,
-				storage: helperStorage ? { type: helperStorage } : undefined,
+			// a store of the helpers' own, which is no runner's default: the project lands in it
+			const givenStore = new InMemoryStore(`given-${crypto.randomUUID()}`, {
+				runtime: { configs: dialecte.configs, defaultConfigKey: dialecte.defaultConfigKey },
 			})
-			const { project } = await bound.createTestProject({
+			const bound = createTestHelpers({ dialecte, storage: { type: 'custom', store: givenStore } })
+			const { project, source } = await bound.createTestProject({
 				sourceXml: VALID_XML,
-				...(callStorage === 'absent'
-					? {}
-					: { storage: callStorage === 'local' ? { type: 'local' } : undefined }),
+				...(callStorage === 'absent' ? {} : { storage: undefined }),
 			})
 			projects.push(project)
-			expect(await Dexie.exists(project.name)).toBe(!inMemory)
+			const storedDocuments = await givenStore.getDocuments()
+			expect(storedDocuments.map((document) => document.id)).toEqual([source.documentId])
 		})
 	}
 
@@ -187,14 +170,11 @@ describe('createTestHelpers', () => {
 	it('the XML assertions resolve the default config namespaces', async () => {
 		const { project, source } = await helpers.createTestProject({ sourceXml: VALID_XML })
 		projects.push(project)
-		const { xmlDocument } = await project.export({
-			documentId: source.documentId,
-			indent: false,
-			xmlDocument: true,
-		})
+		const { file } = await project.export({ documentId: source.documentId, indent: false })
+		const xml = await file.text()
 
-		helpers.assertExpectedElementQueries({ xmlDocument, queries: ['//default:A[@aA="ONE"]'] })
-		helpers.assertUnexpectedElementQueries({ xmlDocument, queries: ['//default:C'] })
+		helpers.assertExpectedElementQueries({ xml, queries: ['//default:A[@aA="ONE"]'] })
+		helpers.assertUnexpectedElementQueries({ xml, queries: ['//default:C'] })
 	})
 
 	describe('runTestCases runs valid cases on the declared dialecte', () => {
@@ -206,7 +186,8 @@ describe('createTestHelpers', () => {
 				},
 			},
 			act: async ({ source }) => {
-				expect(await source.query.counting.countA()).toBe(1)
+				const countOfA = await source.query.counting.countA()
+				expect(countOfA).toBe(1)
 				return {}
 			},
 		})
@@ -217,7 +198,8 @@ describe('createTestHelpers', () => {
 			testCases: { 'AA_1 under Root, allowed by the case config': { sourceXml: MISPLACED_XML } },
 			dialecteConfig: AA_1_UNDER_ROOT_CONFIG,
 			act: async ({ source }) => {
-				expect(await source.query.getRecordsByTagName('AA_1')).toHaveLength(1)
+				const recordsOfAA_1 = await source.query.getRecordsByTagName('AA_1')
+				expect(recordsOfAA_1).toHaveLength(1)
 			},
 		})
 	})
@@ -236,8 +218,10 @@ describe('createTestHelpers', () => {
 				configKey: 'loose',
 			})
 			projects.push(project)
-			expect((await project.getDocument(source.documentId))?.configKey).toBe('loose')
-			expect((await project.getDocument(target!.documentId))?.configKey).toBe('loose')
+			const sourceDocument = await project.getDocument(source.documentId)
+			expect(sourceDocument?.configKey).toBe('loose')
+			const targetDocument = await project.getDocument(target!.documentId)
+			expect(targetDocument?.configKey).toBe('loose')
 		})
 
 		it('createTestProject refuses an unknown key before touching a store', async () => {
@@ -266,8 +250,10 @@ describe('createTestHelpers', () => {
 				testCases: { 'AA_1 under Root, allowed by the loose config': { sourceXml: MISPLACED_XML } },
 				configKey: 'loose',
 				act: async ({ project, source }) => {
-					expect((await project.getDocument(source.documentId))?.configKey).toBe('loose')
-					expect(await source.query.getRecordsByTagName('AA_1')).toHaveLength(1)
+					const sourceDocument = await project.getDocument(source.documentId)
+					expect(sourceDocument?.configKey).toBe('loose')
+					const recordsOfAA_1 = await source.query.getRecordsByTagName('AA_1')
+					expect(recordsOfAA_1).toHaveLength(1)
 				},
 			})
 		})
