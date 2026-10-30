@@ -25,6 +25,7 @@ import type {
 	HubPortOpening,
 	HubRegistry,
 	HubPortHandle,
+	HubProjectLink,
 	HubProjectParams,
 	PendingDestroy,
 	ProjectEntry,
@@ -492,12 +493,22 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			})
 		},
 		openProject: function openProjectLink(projectParams) {
-			const entry = entries.get(projectParams.project) ?? newEntry(projectParams)
+			const existing = entries.get(projectParams.project)
+			// another copy of the library in the realm on another dialecte: refused as another realm would be
+			// (a connection ended for good answers why it ended first, as for any link)
+			const mismatch =
+				refusal === undefined &&
+				existing &&
+				dialecteMismatch({ entry: existing, asked: projectParams })
+			if (mismatch) return refusedLink({ error: mismatch, project: projectParams.project })
+			const entry = existing ?? newEntry(projectParams)
 			entries.set(entry.project, entry)
 			entry.users += 1
 			let released = false
 			return {
 				engine: function currentEngine() {
+					// a released link reaches no engine, and asks the hub for none
+					if (released) return Promise.reject(releasedLinkError({ project: entry.project }))
 					const refused = cannotWait()
 					if (refused !== undefined) return Promise.reject(refused)
 					if (entry.refusal !== undefined) return Promise.reject(entry.refusal)
@@ -556,6 +567,51 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 					sendWhenJoined({ type: 'unbind-child', bindingId })
 				},
 			}
+		},
+	}
+}
+
+/** Why a link of the realm cannot join the project's link already there: another dialecte, or another version. */
+function dialecteMismatch(params: {
+	entry: ProjectEntry
+	asked: HubProjectParams
+}): Error | undefined {
+	const { entry, asked } = params
+	if (asked.dialecteId !== entry.dialecteId) {
+		return createDialecteError('PROJECT_DIALECTE_MISMATCH', {
+			detail: `"${entry.project}" is open in this view as ${entry.dialecteId}, asked as ${asked.dialecteId}`,
+			meta: {
+				project: entry.project,
+				projectDialecteId: entry.dialecteId,
+				realmDialecteId: asked.dialecteId,
+			},
+		})
+	}
+	if (asked.dialecteVersion !== entry.dialecteVersion) {
+		return createDialecteError('PROJECT_DIALECTE_VERSION_MISMATCH', {
+			detail: `"${entry.project}" is open in this view with ${entry.dialecteId} ${entry.dialecteVersion}, asked with ${asked.dialecteVersion}`,
+			meta: {
+				project: entry.project,
+				dialecteId: entry.dialecteId,
+				engineVersion: entry.dialecteVersion,
+				realmVersion: asked.dialecteVersion,
+			},
+		})
+	}
+	return undefined
+}
+
+/** A link refused for good: every call for its engine answers `error`, `STORE_CLOSED` once released; nothing to let go. */
+function refusedLink(params: { error: Error; project: string }): HubProjectLink {
+	const { error, project } = params
+	let released = false
+	return {
+		engine: function refusedEngine() {
+			// released, it reaches no engine: closed, as any released link
+			return Promise.reject(released ? releasedLinkError({ project }) : error)
+		},
+		release: function releaseRefused() {
+			released = true
 		},
 	}
 }
@@ -713,10 +769,10 @@ function waitForever(): void {}
 
 function ignoreLateFailure(): void {}
 
-/** What a call waiting for a link's engine gets when its last connection releases the link. */
+/** What a call for a link's engine gets once the link is released (waiting then, or made after). */
 function releasedLinkError(params: { project: string }): Error {
 	return createDialecteError('STORE_CLOSED', {
-		detail: `The link to project "${params.project}" was released before its engine came`,
+		detail: `The link to project "${params.project}" was released: it reaches no engine`,
 		meta: { storeName: params.project },
 	})
 }

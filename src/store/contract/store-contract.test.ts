@@ -1,6 +1,7 @@
 import { POOL_ROOT_DIRECTORY } from '../sqlite/runtime/runtime.constants'
 import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../sqlite/runtime/runtime.fixtures.constants'
 import { STORE_CONTRACT } from './store-contract.cases'
+import { STORE_CONTRACT_DIFFERENCES, STORE_CONTRACT_FEATURES } from './store-contract.constants'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_CONTRACT_FACTORIES } from './store-contract.factories'
 import { STORE_PATH_CONTRACT } from './store-contract.path.cases'
@@ -13,7 +14,10 @@ import type { Store } from '../store.types'
 import type {
 	StoreContractCase,
 	StoreContractContext,
+	StoreContractDifference,
 	StoreContractFactory,
+	StoreContractFeature,
+	StoreContractNeed,
 } from './store-contract.types'
 
 // one leg spawns an engine worker per case: seconds apiece on a loaded machine
@@ -26,9 +30,37 @@ function pendingReasonOf(params: {
 }): string | undefined {
 	const { factory, testCase } = params
 	for (const need of testCase.needs ?? []) {
-		if (need === 'second-connection' || need === 'full-storage') continue
+		if (!isFeature(need)) continue
 		const reason = factory.pending?.[need]
 		if (reason) return reason
+	}
+	return undefined
+}
+
+function isDifference(need: StoreContractNeed): need is StoreContractDifference {
+	return (STORE_CONTRACT_DIFFERENCES as readonly string[]).includes(need)
+}
+
+function isFeature(need: StoreContractNeed): need is StoreContractFeature {
+	return (STORE_CONTRACT_FEATURES as readonly string[]).includes(need)
+}
+
+/**
+ * How the leg answers otherwise, by design, a case needing it: its stated reason; a leg with no engine
+ * to end and no reason stated stops the run.
+ */
+function differenceOf(params: {
+	factory: StoreContractFactory
+	testCase: StoreContractCase
+}): string | undefined {
+	const { factory, testCase } = params
+	for (const need of testCase.needs ?? []) {
+		if (!isDifference(need)) continue
+		const reason = factory.differs?.[need]
+		if (reason) return reason
+		if (need === 'engine-end' && !factory.endEngine) {
+			throw new Error(`${factory.name} neither ends its engine nor says why it cannot`)
+		}
 	}
 	return undefined
 }
@@ -74,6 +106,10 @@ function runStoreContract(factory: StoreContractFactory): void {
 					others.push(other)
 					return other
 				},
+				endEngine: async function endEngine() {
+					if (!factory.endEngine) throw new Error(`${factory.name} has no engine to end`)
+					await factory.endEngine({ store: current.store })
+				},
 				fillStorage: async function fillStorage() {
 					if (!factory.fillStorage) throw new Error(`${factory.name} cannot fill its storage`)
 					await factory.fillStorage({ store: current.store })
@@ -84,14 +120,19 @@ function runStoreContract(factory: StoreContractFactory): void {
 
 		afterEach(async () => {
 			if (!context) return
-			for (const store of opened) {
-				if (store !== context.store) await store.close()
+			try {
+				for (const store of opened) {
+					if (store !== context.store) await store.close()
+				}
+				await context.store.destroy()
+				for (const other of others) await other.destroy()
+			} finally {
+				// whatever a destroy did: what the leg opened for the case goes with it
+				await factory.afterCase?.()
+				context = undefined
+				opened = []
+				others = []
 			}
-			await context.store.destroy()
-			for (const other of others) await other.destroy()
-			context = undefined
-			opened = []
-			others = []
 		})
 
 		for (const [group, cases] of Object.entries({
@@ -106,6 +147,11 @@ function runStoreContract(factory: StoreContractFactory): void {
 					// skipped first: a case this leg cannot set up never runs as an expected failure
 					if (testCase.needs?.includes('full-storage') && !factory.fillStorage) {
 						it.skip(`${description} (skipped: ${unfillableReasonOf({ factory })})`)
+						continue
+					}
+					const differs = differenceOf({ factory, testCase })
+					if (differs) {
+						it.skip(`${description} (differs here: ${differs})`)
 						continue
 					}
 					const pendingReason = pendingReasonOf({ factory, testCase })

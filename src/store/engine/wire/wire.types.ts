@@ -62,8 +62,27 @@ export type WireJsonPlace = {
 	path?: readonly string[]
 }
 
-/** How a member of the engine crosses a port. */
-export type WireMemberSpec = {
+/**
+ * How one member of the engine crosses a port. A member marked a read is made again on the next engine:
+ * it carries no progress listener, write id or abort (the type refuses them); that it writes nothing is the
+ * wire table's word, checked by the store's own cases. An abort is only ever made from inside its import
+ * or export, never made again: a `read` flag on one would change nothing.
+ */
+export type WireMemberSpec = WireReadSpec | WireCallSpec
+
+/** A member that only reads: refused because its engine ended with its host, it is made once more on the next one. */
+export type WireReadSpec = {
+	read: true
+	/** The places of its arguments holding values the engine's JSON check reads (copied as plain data). */
+	json?: readonly WireJsonPlace[]
+	listener?: never
+	identified?: never
+	abortable?: never
+}
+
+/** Any other member: never made again. */
+export type WireCallSpec = {
+	read?: false
 	/** The place of its progress listener among its arguments (it stays with the caller: its ticks cross as signals). */
 	listener?: number
 	/** The places of its arguments holding values the engine's JSON check reads (copied as plain data). */

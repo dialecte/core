@@ -1,4 +1,4 @@
-import { makeDocument } from '../../contract/store-contract.fixtures'
+import { makeDocument, outcomeOf } from '../../contract/store-contract.fixtures'
 import { isEngineLockFree, TEST_ENGINE_URL } from '../../sqlite/runtime/runtime.fixtures'
 import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../../sqlite/runtime/runtime.fixtures.constants'
 import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
@@ -13,12 +13,14 @@ import { HUB_REGISTRY_KEY, HUB_WELCOME_BUDGET_MS } from './hub-client.constants'
 import { connectHub } from './hub-public'
 import { serveHub } from './hub-shell'
 import { HUB_PROTOCOL_VERSION, REALM_LOCK_PREFIX } from './hub.constants'
+import { fakePage } from './hub.fixtures'
 
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test'
 
+import type { ThrownData } from '../wire/wire.types'
 import type {
 	HubConnection,
 	HubLifecycleTargets,
@@ -27,7 +29,9 @@ import type {
 } from './hub-client.types'
 import type { HubToRealmMessage, RealmToHubMessage } from './hub-protocol.types'
 import type { HubShell } from './hub-shell.types'
+import type { FakePage } from './hub.fixtures.types'
 import type { HubEngineSpawner } from './realm-host.types'
+import type { DialecteErrorKey } from '@/errors'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
@@ -44,35 +48,6 @@ const links: HubProjectLink[] = []
 afterEach(function releaseLinks() {
 	for (const link of links.splice(0)) link.release()
 })
-
-/** A page's lifecycle as a case drives it: targets of its own, so no other connection hears it. */
-type FakePage = HubLifecycleTargets & {
-	freeze: () => void
-	resume: () => void
-	hide: (params: { persisted: boolean }) => void
-	show: () => void
-}
-
-function fakePage(): FakePage {
-	const page = new EventTarget()
-	const window = new EventTarget()
-	return {
-		page,
-		window,
-		freeze: function freezePage() {
-			page.dispatchEvent(new Event('freeze'))
-		},
-		resume: function resumePage() {
-			page.dispatchEvent(new Event('resume'))
-		},
-		hide: function hidePage({ persisted }) {
-			window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted }))
-		},
-		show: function showPage() {
-			window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
-		},
-	}
-}
 
 /** A realm of this page connected to `hub` on a port of its own (a new one for each realm instance). */
 function joinHub(params: {
@@ -106,7 +81,7 @@ type FakeHub = {
 	) => Promise<Extract<RealmToHubMessage, { type: GenericType }>>
 	received: RealmToHubMessage[]
 	/** Said to the realm on its latest port. */
-	reply: (message: HubToRealmMessage) => void
+	reply: (message: HubToRealmMessage, transfer?: Transferable[]) => void
 }
 
 /**
@@ -185,8 +160,8 @@ function fakeHub(
 				waiters.push({ type, resolve: resolve as (message: RealmToHubMessage) => void })
 			})
 		},
-		reply: function replyOnLatest(message) {
-			ports.at(-1)?.postMessage(message)
+		reply: function replyOnLatest(message, transfer = []) {
+			ports.at(-1)?.postMessage(message, transfer)
 		},
 	}
 }
@@ -258,27 +233,6 @@ function withEmptyRegistry(): void {
 	onTestFinished(function restoreRegistry() {
 		registry[HUB_REGISTRY_KEY] = kept
 	})
-}
-
-/** What a promise came to: its error's key, or `settled` / `pending` after `withinMs`. */
-async function outcomeOf(params: {
-	promise: Promise<unknown>
-	withinMs?: number
-}): Promise<string> {
-	const { promise, withinMs = 200 } = params
-	return Promise.race([
-		promise.then(
-			function settled() {
-				return 'settled'
-			},
-			function refused(error: unknown) {
-				return toDialecteError(error)?.key ?? 'refused'
-			},
-		),
-		pause({ ms: withinMs }).then(function stillPending() {
-			return 'pending'
-		}),
-	])
 }
 
 function pause(params: { ms: number }): Promise<void> {
@@ -846,6 +800,122 @@ describe('a realm connected to the hub', () => {
 		expect(outcome).toBe('STORE_CLOSED')
 	})
 
+	it('a link released → its engine asked of it after refused STORE_CLOSED, the hub not asked again', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const link = connection.openProject({
+			project: uniqueProject(),
+			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion: TEST_DIALECTE.version,
+		})
+		link.release()
+		const outcome = await outcomeOf({ promise: link.engine() })
+		expect(outcome).toBe('STORE_CLOSED')
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('open')
+	})
+
+	it('two links of a project → the realm leaves it once, with its last link', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const first = openLink({ connection, project })
+		const second = openLink({ connection, project })
+		void first.engine().catch(settleNothing)
+		await hub.next('open')
+		first.release()
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('leave')
+		second.release()
+		const left = await hub.next('leave')
+		expect(left.project).toBe(project)
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('leave')
+	})
+
+	it('a connected link whose engine is lost, its next engine refused for good (another version) → every later call refused so, the hub not asked again', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const link = openLink({ connection, project })
+		await connectEngine({ hub, link, project })
+		hub.reply({ type: 'engine-lost', project, generation: 1 })
+		await engineLostHeard({ link })
+		const waiting = link.engine()
+		hub.reply({
+			type: 'open-refused',
+			project,
+			error: refusalData({ key: 'PROJECT_DIALECTE_VERSION_MISMATCH' }),
+		})
+		const refused = await outcomeOf({ promise: waiting })
+		expect(refused).toBe('PROJECT_DIALECTE_VERSION_MISMATCH')
+		const later = await outcomeOf({ promise: link.engine() })
+		expect(later).toBe('PROJECT_DIALECTE_VERSION_MISMATCH')
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('open')
+	})
+
+	it('a connected link whose engine is lost, its next engine refused for now (no host) → the waiting call refused, the next call asks the hub again', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const link = openLink({ connection, project })
+		await connectEngine({ hub, link, project })
+		hub.reply({ type: 'engine-lost', project, generation: 1 })
+		await engineLostHeard({ link })
+		const waiting = link.engine()
+		hub.reply({
+			type: 'open-refused',
+			project,
+			error: refusalData({ key: 'PROJECT_ENGINE_UNAVAILABLE' }),
+		})
+		const refused = await outcomeOf({ promise: waiting })
+		expect(refused).toBe('PROJECT_ENGINE_UNAVAILABLE')
+		void link.engine().catch(settleNothing)
+		const askedAgain = await hub.next('open')
+		expect(askedAgain.project).toBe(project)
+	})
+
+	it('a second link of a project in the realm on another version of the dialecte → refused PROJECT_DIALECTE_VERSION_MISMATCH, as another realm would be; the first link kept', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const first = openLink({ connection, project })
+		await connectEngine({ hub, link: first, project })
+		const other = connection.openProject({
+			project,
+			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion: '9.9.9',
+		})
+		const refused = await outcomeOf({ promise: other.engine() })
+		expect(refused).toBe('PROJECT_DIALECTE_VERSION_MISMATCH')
+		other.release()
+		const afterRelease = await outcomeOf({ promise: other.engine() })
+		expect(afterRelease).toBe('STORE_CLOSED')
+		const kept = await outcomeOf({ promise: first.engine() })
+		expect(kept).toBe('settled')
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('leave')
+	})
+
+	it('a second link of a project in the realm as another dialecte → refused PROJECT_DIALECTE_MISMATCH; on a closed connection, refused STORE_CLOSED first', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		const project = uniqueProject()
+		await connectEngine({ hub, link: openLink({ connection, project }), project })
+		const otherDialecte = { project, dialecteId: 'other', dialecteVersion: TEST_DIALECTE.version }
+		const refused = await outcomeOf({ promise: connection.openProject(otherDialecte).engine() })
+		expect(refused).toBe('PROJECT_DIALECTE_MISMATCH')
+		connection.close()
+		const closed = await outcomeOf({ promise: connection.openProject(otherDialecte).engine() })
+		expect(closed).toBe('STORE_CLOSED')
+	})
+
 	it('a project refused for now, its link kept → asked again when the page comes back, with no call waiting', async () => {
 		const hub = fakeHub()
 		const page = fakePage()
@@ -1046,6 +1116,38 @@ describe('a realm connected to the hub', () => {
 			.toBe(true)
 	})
 })
+
+/** The link asks, the fake hub hands it an engine port (generation 1): the link's engine is a client on it. */
+async function connectEngine(params: {
+	hub: FakeHub
+	link: HubProjectLink
+	project: string
+}): Promise<void> {
+	const { hub, link, project } = params
+	const connecting = link.engine()
+	await hub.next('open')
+	const channel = new MessageChannel()
+	onTestFinished(function closeEnginePort() {
+		channel.port2.close()
+	})
+	hub.reply({ type: 'engine-ready', project, generation: 1, port: channel.port1 }, [channel.port1])
+	await connecting
+}
+
+/** Once the link has heard its engine is lost: a call for its engine waits (it answered at once before). */
+async function engineLostHeard(params: { link: HubProjectLink }): Promise<void> {
+	await vi.waitFor(async function engineDropped() {
+		const outcome = await outcomeOf({ promise: params.link.engine(), withinMs: 20 })
+		expect(outcome).toBe('pending')
+	})
+}
+
+/** A hub refusal of that key, as the hub sends it. */
+function refusalData(params: { key: DialecteErrorKey }): ThrownData {
+	return toThrownData({
+		thrown: createDialecteError(params.key, { detail: 'refused by the case' }),
+	})
+}
 
 function typeOfMessage(message: RealmToHubMessage): string {
 	return message.type

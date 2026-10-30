@@ -8,6 +8,7 @@ import { createDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
 
 import type { EngineConnector, EngineLink } from '../engine-store.types'
+import type { EngineLockMode } from '../engine.types'
 import type {
 	EngineClient,
 	EngineControl,
@@ -267,7 +268,7 @@ async function destroyProject(params: WorkerConnectorParams<unknown>): Promise<v
 		running = undefined
 	}
 	if (!running) {
-		await destroyFromFreshWorker({ name, engineUrl, budgetMs: openBudgetMs })
+		await destroyFromFreshWorker({ name, engineUrl, budgetMs: openBudgetMs, lock: 'if-available' })
 		return
 	}
 	// its lock watch ends with it: an engine that crashes during the destroy is seen once it lets the lock go
@@ -278,29 +279,41 @@ async function destroyProject(params: WorkerConnectorParams<unknown>): Promise<v
 		worker: running.worker,
 		lockBudgetMs: openBudgetMs,
 		ending: withinBudget({
-			work: askDestroy({ name, control: running.control, budgetMs: openBudgetMs }),
+			work: askDestroy({
+				name,
+				control: running.control,
+				budgetMs: openBudgetMs,
+				lock: 'if-available',
+			}),
 			budgetMs: openBudgetMs + ENGINE_CLOSE_BUDGET_MS,
 			cutShort: letGo.granted,
 		}).finally(letGo.stop),
 		// a grant let go a moment after the destroy settled: this realm's next engine waits for it
 		watchSettled: letGo.settled,
 		ifDeaf: function destroyThroughFreshWorker() {
-			return destroyFromFreshWorker({ name, engineUrl, budgetMs: openBudgetMs })
+			return destroyFromFreshWorker({
+				name,
+				engineUrl,
+				budgetMs: openBudgetMs,
+				lock: 'if-available',
+			})
 		},
 	})
 }
 
 /**
- * A worker that opens nothing deletes the project, the lock taken only if free; ended after. It has
- * the open budget to delete and the close budget to answer: one that does not is ended, and the
- * destroy refused `PROJECT_DESTROY_FAILED` (the project may still be there).
+ * A worker that opens nothing deletes the project, the lock taken as `lock` says (only if free in
+ * direct mode; waited for through the hub, whose engine just released may hold it a moment); ended
+ * after. It has the open budget to delete and the close budget to answer: one that does not is ended,
+ * and the destroy refused `PROJECT_DESTROY_FAILED` (the project may still be there).
  */
-async function destroyFromFreshWorker(params: {
+export async function destroyFromFreshWorker(params: {
 	name: string
 	engineUrl: string
 	budgetMs: number
+	lock: EngineLockMode
 }): Promise<void> {
-	const { name, engineUrl, budgetMs } = params
+	const { name, engineUrl, budgetMs, lock } = params
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const answer = await endEngine({
 		name,
@@ -308,7 +321,7 @@ async function destroyFromFreshWorker(params: {
 		worker,
 		lockBudgetMs: budgetMs,
 		ending: withinBudget({
-			work: askDestroy({ name, control: createEngineControl({ worker }), budgetMs }),
+			work: askDestroy({ name, control: createEngineControl({ worker }), budgetMs, lock }),
 			budgetMs: budgetMs + ENGINE_CLOSE_BUDGET_MS,
 		}),
 	})
@@ -325,10 +338,11 @@ async function askDestroy(params: {
 	name: string
 	control: EngineControl
 	budgetMs: number
+	lock: EngineLockMode
 }): Promise<void> {
-	const { name, control, budgetMs } = params
+	const { name, control, budgetMs, lock } = params
 	await control.request({
-		message: { type: 'destroy', project: name, lock: 'if-available', budgetMs },
+		message: { type: 'destroy', project: name, lock, budgetMs },
 		expect: 'destroyed',
 	})
 }

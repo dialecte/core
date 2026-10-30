@@ -52,6 +52,10 @@ export type EngineControlRequest<GenericSettings = unknown> =
 			type: 'destroy'
 			requestId: number
 			project: string
+			/**
+			 * Direct mode takes the lock only if free (a holder is another realm's engine); through the hub
+			 * the destroy waits for it (the engine the hub just released may hold it a moment).
+			 */
 			lock: EngineLockMode
 			budgetMs: number
 	  }

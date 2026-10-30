@@ -90,3 +90,43 @@ export const CONTRACT_LONE_SURROGATE_TEXT = 'x\uD800y'
 
 /** `CONTRACT_LONE_SURROGATE_TEXT`, its lone surrogate replaced by U+FFFD (as a UTF-8 encoder writes it). */
 export const CONTRACT_REPLACED_TEXT = 'x\u{FFFD}y'
+
+/** Where a case tells the contract's engine workers to end, by project: an engine ended mid-import. */
+export const CONTRACT_ENGINE_CHANNEL = 'dialecte::contract-engine'
+
+/** Between two looks at an ended engine's lock. */
+export const ENGINE_END_POLL_MS = 50
+
+/** How many times the hub leg asks a destroy that another realm's leave, still on its way, may refuse. */
+export const HUB_DESTROY_ASKS = 20
+
+/** Between two such asks. */
+export const HUB_DESTROY_ASK_INTERVAL_MS = 100
+
+/** Why a leg that imports in the page has no engine a case can end mid-import. */
+export const IN_PAGE_IMPORT_REASON =
+	'this store imports in the page itself: no engine to end mid-import, short of the page'
+
+/** The parts of the port a leg may have pending (the others a case needs are set-ups or differences). */
+export const STORE_CONTRACT_FEATURES = ['history', 'blobs', 'import', 'export'] as const
+
+/**
+ * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
+ * engine of its own has none to end), a destroy while another connection of the project is open
+ * (`destroy-while-connected`: through the hub, refused while another view uses the project).
+ */
+export const STORE_CONTRACT_DIFFERENCES = ['engine-end', 'destroy-while-connected'] as const
+
+/** How long a case waits for a promise before it calls it pending. */
+export const OUTCOME_WAIT_MS = 200
+
+/** Why the in-process leg has no engine a case can end mid-import. */
+export const IN_PROCESS_ENGINE_REASON =
+	'the in-process engine runs in the page itself: nothing ends it mid-import, short of the page'
+
+/** Why the hub leg refuses a destroy while another connection of the project is open. */
+export const HUB_DESTROY_REFUSED_REASON =
+	'through the hub a destroy is refused PROJECT_OPEN_ELSEWHERE while another view uses the project: that view leaves first'
+
+/** How long a contract engine told to end may take to let its lock go. */
+export const ENGINE_END_BUDGET_MS = 5_000
