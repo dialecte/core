@@ -1,6 +1,8 @@
 import { createRunningOperations } from '../running-operations'
 import { throwStoreClosed } from '../store-errors'
 
+import { throwIfExportAborted } from '@/project/io/run-export'
+
 import type {
 	ChangeLogEntry,
 	ExportFileParams,
@@ -129,8 +131,8 @@ export class EngineStore implements Store {
 	// --- Import ---
 
 	/**
-	 * The import runs in the engine; its progress listener crosses as an argument of its own and its
-	 * abort as a call of its own, by `writeId`: made only once the import was asked for, so the engine
+	 * The import runs in the engine; its progress listener stays here (the engine's ticks come back on
+	 * the call's port, before its answer) and its abort crosses as a call of its own, by `writeId`: made only once the import was asked for, so the engine
 	 * knows it (a signal already aborted is told at once), and the engine answers in every store's
 	 * order (a store with no dialecte refuses first).
 	 */
@@ -155,8 +157,10 @@ export class EngineStore implements Store {
 	// --- Export ---
 
 	/**
-	 * The export runs in the engine; its progress listener crosses as an argument of its own and its
-	 * abort as a call of its own, by an id of this call.
+	 * The export runs in the engine; its progress listener stays here (the engine's ticks come back on
+	 * the call's port, before its answer) and its abort crosses as a call of its own, by an id of this call. The engine may finish before that call reaches
+	 * it: an export its caller aborted before the answer is `EXPORT_ABORTED` all the same (an export
+	 * leaves nothing behind); an error the engine answered stays.
 	 */
 	async exportFile(params: ExportFileParams): Promise<ExportFileResult> {
 		const { documentId, options, onProgress, signal } = params
@@ -170,7 +174,9 @@ export class EngineStore implements Store {
 				},
 			})
 			try {
-				return await exporting
+				const exported = await exporting
+				throwIfExportAborted({ signal, documentId })
+				return exported
 			} finally {
 				stopForwarding()
 			}
@@ -190,7 +196,7 @@ export class EngineStore implements Store {
 		return this.operation((engine) => engine.bulkWrite(documentId, ops))
 	}
 
-	/** The commit runs in the engine; its progress listener crosses as an argument of its own. */
+	/** The commit runs in the engine; its progress listener stays here, its ticks heard before the answer. */
 	async commit(params: {
 		documentId: string
 		writeId?: string

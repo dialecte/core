@@ -64,7 +64,7 @@ export type WireJsonPlace = {
 
 /** How a member of the engine crosses a port. */
 export type WireMemberSpec = {
-	/** The place of its progress listener among its arguments (it crosses as a proxy of the caller's copy). */
+	/** The place of its progress listener among its arguments (it stays with the caller: its ticks cross as signals). */
 	listener?: number
 	/** The places of its arguments holding values the engine's JSON check reads (copied as plain data). */
 	json?: readonly WireJsonPlace[]
@@ -79,6 +79,11 @@ export type WireRequest = {
 	member: string
 	args: unknown[]
 	standIns: WireStandIn[]
+	/**
+	 * The call's progress listener, by an id of the client's: the engine posts each tick on the client's
+	 * port under it (one port: every tick reaches the caller before the answer). None, no tick.
+	 */
+	progressId?: number
 }
 
 /** What the engine answers a call: its value, or what it threw as data. */
@@ -86,5 +91,5 @@ export type WireAnswer = { ok: true; value: unknown } | { ok: false; thrown: Thr
 
 /** What the engine exposes on a client's port: one member, every call through it. */
 export type EngineWire = {
-	call: (request: WireRequest, listener?: (...progress: unknown[]) => void) => Promise<WireAnswer>
+	call: (request: WireRequest) => Promise<WireAnswer>
 }

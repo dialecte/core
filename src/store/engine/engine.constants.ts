@@ -7,4 +7,6 @@ export const ENGINE_SIGNAL = {
 	heartbeat: 'heartbeat',
 	/** The engine runs dialecte code that may take long with nothing to tell: wait for its next message. */
 	busy: 'busy',
+	/** A tick of a call's progress, for the listener the client registered under its `progressId`. */
+	progress: 'progress',
 } as const

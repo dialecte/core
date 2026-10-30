@@ -417,21 +417,27 @@ const history: StoreContractCases = {
 			expect(await store.count('doc-1')).toBe(1)
 		},
 	},
-	'commit reports progress up to the number of operations': {
-		act: async ({ store }) => {
-			await seedTwoRecords(store)
-			const reported: [number, number][] = []
-			await store.commit({
-				documentId: 'doc-1',
-				creates: [makeRecord({ id: 'r3' })],
-				updates: [makeRecord({ id: 'r1', value: 'v' })],
-				deletes: ['r2'],
-				onProgress: (current, total) => reported.push([current, total]),
-			})
-			expect(reported.at(-1)).toEqual([3, 3])
-			expect(reported.every(([current, total]) => current <= total)).toBe(true)
+	'commit reports progress up to the number of operations; a listener slow on every tick still hears the last one before the commit resolves':
+		{
+			// a guard every store keeps; the order of ticks and answer is pinned where it is made (the engine's wire)
+			act: async ({ store }) => {
+				await seedTwoRecords(store)
+				const reported: [number, number][] = []
+				await store.commit({
+					documentId: 'doc-1',
+					creates: [makeRecord({ id: 'r3' })],
+					updates: [makeRecord({ id: 'r1', value: 'v' })],
+					deletes: ['r2'],
+					onProgress: function stallOnEachTick(current, total) {
+						reported.push([current, total])
+						const until = performance.now() + 30
+						while (performance.now() < until);
+					},
+				})
+				expect(reported.at(-1)).toEqual([3, 3])
+				expect(reported.every(([current, total]) => current <= total)).toBe(true)
+			},
 		},
-	},
 	'undo reverts the last commit: creates gone, updates back, deletes back': {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)

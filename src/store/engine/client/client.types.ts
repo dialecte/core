@@ -116,3 +116,15 @@ export type LockLetGoWatch = {
 	/** Withdraw the request, if not granted yet. */
 	stop: () => void
 }
+
+/** The progress listeners of a client's calls in flight, each under the id its call sends the engine. */
+export type ProgressListeners = {
+	/** Keep the listener of a call; answers the id the call sends. */
+	add: (params: { listener: (...progress: unknown[]) => unknown }) => number
+	/** The call answered: its listener let go. */
+	remove: (params: { progressId: number | undefined }) => void
+	/** The engine lost: every listener let go (their calls are refused). */
+	clear: () => void
+	/** The client closed: nothing heard any more. */
+	stop: () => void
+}

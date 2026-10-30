@@ -19,6 +19,7 @@ export type RuntimeFixtureScenario =
 	| 'ignore-destroy-always'
 	| 'close-throws'
 	| 'end-on-destroy'
+	| 'other-wire'
 	| 'install-fails'
 	| 'install-fails-once'
 

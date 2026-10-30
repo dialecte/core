@@ -26,6 +26,7 @@ import {
 import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
 import { EngineStore } from '../engine-store'
 import { ENGINE_LOCK_PREFIX } from '../engine.constants'
+import { ENGINE_WIRE_PROTOCOL } from '../wire/wire.constants'
 import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS } from './client.constants'
 import { createEngineControl } from './engine-control'
 
@@ -356,6 +357,29 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				// told by the worker's error, not by the open budget running out
 				expect(performance.now() - startedAt).toBeLessThan(ENGINE_OPEN_BUDGET_MS)
 			}
+		})
+
+		it('an engine speaking another wire → STORE_PROTOCOL_MISMATCH naming both, its worker ended: the project free', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'other-wire' }),
+			})
+			const refused = await errorOfRejection(connector.connect())
+			expect(refused).toMatchObject({
+				key: 'STORE_PROTOCOL_MISMATCH',
+				meta: { expected: ENGINE_WIRE_PROTOCOL, found: -1 },
+			})
+			await expect
+				.poll(
+					function lockFree() {
+						return isEngineLockFree({ project: name })
+					},
+					{ timeout: ENGINE_CLOSE_BUDGET_MS },
+				)
+				.toBe(true)
+			const plain = createSqliteWorkerConnector({ name, engineUrl: TEST_ENGINE_URL })
+			await plain.destroy()
 		})
 
 		it('ended from inside during an import → STORE_ENGINE_LOST host-gone with the import’s id; the next call starts another engine, which says not applied', async () => {

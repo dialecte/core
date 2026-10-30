@@ -3,6 +3,7 @@ import { createHeartbeat, runToldBusy, withOpaquePhases } from '../../engine/hos
 import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
 import { createStoreEvents } from '../../engine/host/store-events'
 import { toThrownData } from '../../engine/wire/error-envelope'
+import { ENGINE_WIRE_PROTOCOL } from '../../engine/wire/wire.constants'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
 import { closeEngine, endEngineAndClients, releasePool } from './close-engine'
@@ -102,6 +103,7 @@ async function answerControl(params: {
 					requestId,
 					dialecteId: dialecte.id,
 					dialecteVersion: dialecte.version,
+					wireProtocol: ENGINE_WIRE_PROTOCOL,
 					resumed,
 				}
 				break

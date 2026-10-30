@@ -1,7 +1,8 @@
+import { ENGINE_SIGNAL } from '../engine.constants'
 import { toThrownData } from '../wire/error-envelope'
 import { fromWireArgs } from '../wire/wire-values'
 import { ENGINE_WIRE_MEMBERS } from '../wire/wire.constants'
-import { LARGE_ANSWER_RECORDS, LISTENER_FLUSH_BUDGET_MS } from './host.constants'
+import { LARGE_ANSWER_RECORDS } from './host.constants'
 
 import * as Comlink from 'comlink'
 
@@ -10,13 +11,14 @@ import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { EngineApi } from '../engine.types'
 import type { EngineWire, WireAnswer, WireMemberSpec, WireRequest } from '../wire/wire.types'
-import type { Heartbeat, ProgressRelay, ServedClient, StoreEvents } from './host.types'
+import type { Heartbeat, ProgressSignal, ServedClient, StoreEvents } from './host.types'
 
 /**
  * Serve one client's port: one member, `call`, every call of the engine through it - a member outside
- * the wire table refused, the values the client sent as stand-ins rebuilt, the listener told without
- * waiting (a dead port never holds the engine) and let go once the call settles, a success announced
- * on the project's channel, the answer an envelope: what the engine answered, or what it threw as data.
+ * the wire table refused, the values the client sent as stand-ins rebuilt, each progress tick posted on
+ * the same port without waiting (a dead port never holds the engine; one port, so every tick reaches
+ * the caller before the answer), a success announced on the project's channel, the answer an envelope:
+ * what the engine answered, or what it threw as data.
  */
 export function serveClient(params: {
 	port: MessagePort
@@ -30,10 +32,10 @@ export function serveClient(params: {
 	let answering = 0
 	const whenDrained: (() => void)[] = []
 	const wire: EngineWire = {
-		call: async function callMember(request, listener) {
+		call: async function callMember(request) {
 			answering += 1
 			try {
-				const answer = await answerCall({ view, request, listener, clientId, events })
+				const answer = await answerCall({ view, request, port, clientId, events })
 				if (isLargeAnswer({ answer })) {
 					// Comlink clones it once this call resolves; the beat after it comes a message turn later
 					heartbeat.busy()
@@ -61,12 +63,12 @@ export function serveClient(params: {
 async function answerCall(params: {
 	view: EngineApi
 	request: WireRequest
-	listener: ((...progress: unknown[]) => void) | undefined
+	port: MessagePort
 	clientId: string
 	events: StoreEvents
 }): Promise<WireAnswer> {
-	const { view, request, listener, clientId, events } = params
-	const relay = listener ? relayProgress({ listener }) : undefined
+	const { view, request, port, clientId, events } = params
+	const { progressId } = request
 	try {
 		const member = request.member
 		if (!Object.hasOwn(ENGINE_WIRE_MEMBERS, member)) {
@@ -83,7 +85,7 @@ async function answerCall(params: {
 		})
 		if (spec.listener !== undefined) {
 			args.length = spec.listener
-			args.push(relay?.tell)
+			args.push(progressId === undefined ? undefined : tellProgress({ port, progressId }))
 		}
 		const name = member as keyof EngineApi
 		const run = view[name] as (...given: unknown[]) => Promise<unknown>
@@ -92,11 +94,6 @@ async function answerCall(params: {
 		return { ok: true, value }
 	} catch (thrown) {
 		return { ok: false, thrown: toThrownData({ thrown }) }
-	} finally {
-		// the progress told last reaches the caller before its answer and before its proxy is let go: the
-		// two travel on ports of their own, nothing else orders them
-		await relay?.told()
-		if (listener) releaseListener({ listener })
 	}
 }
 
@@ -112,47 +109,25 @@ function announceQuietly(
 	}
 }
 
-/** The caller's listener let go (its port closed on both sides); a port already gone is ignored. */
-function releaseListener(params: { listener: unknown }): void {
-	const remote = params.listener as { [Comlink.releaseProxy]?: () => void }
-	try {
-		remote[Comlink.releaseProxy]?.()
-	} catch {
-		// released already, or its port gone: nothing to let go
-	}
-}
-
 /**
- * The caller's listener, told across the port and never awaited by the work: its failure (a closed port)
- * is dropped. `told` settles once the last tick has reached the caller, or `LISTENER_FLUSH_BUDGET_MS`
- * has passed (a listener on a page gone holds no answer longer).
+ * The call's listener as the engine calls it: each tick posted on the client's port under the call's
+ * progress id, never awaited; a tick the port cannot clone, or a port closed, is dropped - the engine
+ * goes on.
  */
-function relayProgress(params: { listener: (...progress: unknown[]) => unknown }): ProgressRelay {
-	const { listener } = params
-	let last: Promise<unknown> = Promise.resolve()
-	return {
-		tell: function tellCaller(...progress) {
-			try {
-				last = Promise.resolve(listener(...progress)).catch(ignoreListenerFailure)
-			} catch {
-				// a port that cannot post any more: the listener is gone, the engine goes on
-			}
-		},
-		told: function lastTold() {
-			let timer: ReturnType<typeof setTimeout> | undefined
-			const budget = new Promise<void>(function waitBudget(resolve) {
-				timer = setTimeout(resolve, LISTENER_FLUSH_BUDGET_MS)
-			})
-			return Promise.race([last.then(settleNothing), budget]).finally(function clearBudget() {
-				clearTimeout(timer)
-			})
-		},
+function tellProgress(params: {
+	port: MessagePort
+	progressId: number
+}): (...progress: unknown[]) => void {
+	const { port, progressId } = params
+	return function tellCaller(...progress: unknown[]) {
+		const signal: ProgressSignal = { type: ENGINE_SIGNAL.progress, progressId, progress }
+		try {
+			port.postMessage(signal)
+		} catch {
+			// not clonable, or the port gone: the caller misses a tick, the engine goes on
+		}
 	}
 }
-
-function settleNothing(): void {}
-
-function ignoreListenerFailure(): void {}
 
 /** An answer holding a list of records long enough that cloning it onto the port takes long (one step). */
 function isLargeAnswer(params: { answer: WireAnswer }): boolean {

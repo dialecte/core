@@ -361,6 +361,23 @@ const refusedExports: StoreContractCases = {
 			})
 		},
 	},
+	'aborted from its progress listener, the export one batch long -> EXPORT_ABORTED (an engine may finish first)':
+		{
+			act: async ({ store }) => {
+				const documentId = await importSource({ store })
+				const controller = new AbortController()
+				await expectRejectsWith({
+					action: store.exportFile({
+						documentId,
+						onProgress: function abortOnFirstTick() {
+							controller.abort()
+						},
+						signal: controller.signal,
+					}),
+					key: 'EXPORT_ABORTED',
+				})
+			},
+		},
 }
 
 /** What every store answers when it exports a document; merged into the store contract. */

@@ -63,6 +63,8 @@ export type EngineControlAnswer =
 			requestId: number
 			dialecteId: string
 			dialecteVersion: string
+			/** The wire the engine speaks (`ENGINE_WIRE_PROTOCOL` of its copy of the library). */
+			wireProtocol: number
 			/** Whether the engine took its files back in this worker (closed then opened again) rather than set them up. */
 			resumed: boolean
 	  }

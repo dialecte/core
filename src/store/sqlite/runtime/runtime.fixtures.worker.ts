@@ -127,6 +127,7 @@ function serveEngine(): void {
 	}
 	if (scenario === 'liveness') slowDdlWhenOrdered()
 	if (scenario === 'close-throws') failCloseWhenOrdered()
+	if (scenario === 'other-wire') answerAnotherWire()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -244,6 +245,16 @@ function failCloseWhenOrdered(): void {
 			throw new Error('the database would not close')
 		} as typeof close
 	})
+}
+
+/** Every `opened` answered with a wire version no client speaks: an engine of another library version. */
+function answerAnotherWire(): void {
+	const post = self.postMessage.bind(self)
+	self.postMessage = function postAnotherWire(message: unknown, ...rest: unknown[]) {
+		const answer = message as { type?: string }
+		const changed = answer?.type === 'opened' ? { ...answer, wireProtocol: -1 } : message
+		return (post as (...given: unknown[]) => void)(changed, ...rest)
+	} as typeof self.postMessage
 }
 
 /** Answer `run-statement` with a database of its own: the heartbeat on the port given, one long statement, its times. */
