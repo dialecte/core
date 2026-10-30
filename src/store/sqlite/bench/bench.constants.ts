@@ -1,12 +1,7 @@
 import { RECORD_COLUMNS } from '../engine/engine.constants'
 
-import type {
-	BenchFixtureName,
-	BenchLayout,
-	BenchPhase,
-	BenchVariant,
-	KillScenario,
-} from './bench.types'
+import type { BenchFixtureName } from './bench-commands.types'
+import type { BenchLayout, BenchPhase, BenchVariant, KillScenario } from './bench.types'
 
 //====== RECORD TABLE ======//
 
@@ -72,17 +67,6 @@ export const OTHER_DOCUMENT_ID = 'other'
 export const WORKER_URL_PART = 'layout-bench.worker'
 /** Functions whose self time the profile reports: the synthetic session's per-record hook and its build. */
 export const PROFILED_FUNCTIONS = ['benchSessionBeforeRecord', 'benchSessionAfterImport']
-export const PROFILE_TOP_FUNCTIONS = 25
-/** Bytes the fixture scanner looks at (record count, compact arm). */
-export const XML_BYTES = {
-	lt: 0x3c,
-	gt: 0x3e,
-	slash: 0x2f,
-	bang: 0x21,
-	question: 0x3f,
-	quote: 0x22,
-	apostrophe: 0x27,
-} as const
 /** The machine is shared: a run starts once the 1-minute load average is below this. */
 export const QUIET_LOAD = 10
 export const QUIET_WAIT_MAX_MS = 60 * 60_000
@@ -227,14 +211,6 @@ export const MAIN_DIMENSIONS = [VARIANTS.base, VARIANTS.L2, VARIANTS.I1, VARIANT
 export const STRUCTURAL: BenchFixtureName[] = ['structural-50', 'structural-100', 'structural-500']
 
 //====== FIXTURES ======//
-
-/** How to get a fixture the bench reads (said when one is missing). */
-export const FIXTURE_SOURCES = {
-	structural: 'generate it with src/test/fixtures/generate-stress-fixtures.ts',
-	composed: 'composed fixtures are read from the folder named by BENCH_SCL_FIXTURES_DIR',
-	compact:
-		'write it from its indented source: drop every whitespace-only text run, trim every text value, copy markup as is (the record count must not change)',
-} as const
 
 /** Root element and default namespace per fixture family (the bench config parses every element as unknown). */
 export const FIXTURE_ROOTS = {

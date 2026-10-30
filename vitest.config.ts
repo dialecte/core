@@ -1,7 +1,7 @@
 import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { BENCH_COMMANDS } from './src/store/sqlite/bench/bench-commands'
+import { benchCommands } from './src/store/sqlite/bench/bench-commands'
 import viteConfig from './vite.config'
 
 import { playwright } from '@vitest/browser-playwright'
@@ -145,7 +145,7 @@ export default mergeConfig(
 						testTimeout: 180_000,
 						// one headless tab per bench file: one at a time on a shared machine
 						fileParallelism: false,
-						browser: { ...createBrowser(benchInstances()), commands: BENCH_COMMANDS },
+						browser: { ...createBrowser(benchInstances()), commands: benchCommands() },
 						include: ['src/**/*.bench.test.{js,ts}'],
 						root,
 					},
