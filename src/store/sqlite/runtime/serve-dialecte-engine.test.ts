@@ -9,23 +9,22 @@ import {
 	clientOf,
 	fixtureUrl,
 	holdPoolFile,
+	isEngineLockFree,
 	openMessage,
+	orderFixture,
 	poolState,
 	removePoolDirectory,
 	startEngineWorker,
 	uniqueProject,
 } from './runtime.fixtures'
-import {
-	ENGINE_WORKER_CASE_TIMEOUT_MS,
-	RUNTIME_FIXTURE_CHANNEL,
-} from './runtime.fixtures.constants'
+import { ENGINE_WORKER_CASE_TIMEOUT_MS } from './runtime.fixtures.constants'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 
-import type { RuntimeFixtureNotice, RuntimeFixtureOrder } from './runtime.fixtures.types'
+import type { RuntimeFixtureOrder } from './runtime.fixtures.types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
@@ -219,21 +218,8 @@ describe('an engine worker opening its project', () => {
 		}
 
 		/** The fixture told how its disk is; resolves once the engine worker has taken the order. */
-		async function orderDisk(order: RuntimeFixtureOrder): Promise<void> {
-			const listener = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
-			const acknowledged = new Promise<void>(function waitForAck(resolve) {
-				listener.addEventListener(
-					'message',
-					function hear(event: MessageEvent<RuntimeFixtureNotice>) {
-						if (event.data.type === 'ack' && event.data.of === order.type) resolve()
-					},
-				)
-			})
-			const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
-			channel.postMessage(order)
-			channel.close()
-			await acknowledged
-			listener.close()
+		function orderDisk(order: RuntimeFixtureOrder): Promise<void> {
+			return orderFixture({ order })
 		}
 
 		it('a commit → STORE_QUOTA_EXCEEDED, nothing of it applied', async () => {
@@ -352,6 +338,62 @@ describe('an engine worker opening its project', () => {
 		expect(await (await clientOf({ control, clientId: 'reader' })).getDocuments()).toEqual([
 			makeDocument(),
 		])
+	})
+})
+
+describe('an engine worker whose database close throws', () => {
+	/** An engine open on the project in the close-throws fixture, a document written, the next close ordered to throw. */
+	async function engineWhoseCloseThrows(params: { project: string }): Promise<{
+		control: ReturnType<typeof startEngineWorker>['control']
+	}> {
+		const { control } = engineWorker({
+			project: params.project,
+			url: fixtureUrl({ scenario: 'close-throws' }),
+		})
+		await control.request({ message: openMessage(params), expect: 'opened' })
+		const writer = await clientOf({ control, clientId: 'writer' })
+		await writer.registerDocument(makeDocument())
+		await orderFixture({ order: { type: 'close-throws' } })
+		return { control }
+	}
+
+	it('destroyed → the destroy refused with the close’s error, the engine lock released all the same', async () => {
+		const project = uniqueProject()
+		const { control } = await engineWhoseCloseThrows({ project })
+		const destroying = control.request({
+			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+			expect: 'destroyed',
+		})
+		const refused = await rejectionKey({ action: destroying })
+		expect(refused).toMatch(/the database would not close/)
+		const free = await isEngineLockFree({ project })
+		expect(free).toBe(true)
+	})
+
+	it('destroyed (refused), then opened again in the same worker → opened, its document there', async () => {
+		const project = uniqueProject()
+		const { control } = await engineWhoseCloseThrows({ project })
+		const destroying = control.request({
+			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+			expect: 'destroyed',
+		})
+		await rejectionKey({ action: destroying })
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const reader = await clientOf({ control, clientId: 'reader' })
+		const documents = await reader.getDocuments()
+		expect(documents).toEqual([makeDocument()])
+	})
+
+	it('closed, then opened again in the same worker → opened, its document there', async () => {
+		const project = uniqueProject()
+		const { control } = await engineWhoseCloseThrows({ project })
+		const closing = control.request({ message: { type: 'close' }, expect: 'closed' })
+		const refused = await rejectionKey({ action: closing })
+		expect(refused).toMatch(/the database would not close/)
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const reader = await clientOf({ control, clientId: 'reader' })
+		const documents = await reader.getDocuments()
+		expect(documents).toEqual([makeDocument()])
 	})
 })
 

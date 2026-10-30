@@ -31,3 +31,9 @@ export const CROSS_REALM_CLOCK_SLACK_MS = 5
  * load of 15-20) - a timeout catches a hang, it never measures speed.
  */
 export const ENGINE_WORKER_CASE_TIMEOUT_MS = 60_000
+
+/**
+ * The open budget of a case whose engine is deaf to `destroy` and needs no long lock wait: the realm
+ * counts it deaf after this and the close budget.
+ */
+export const DEAF_DESTROY_BUDGET_MS = 1_500

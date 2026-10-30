@@ -119,11 +119,14 @@ function serveEngine(): void {
 	if (scenario === 'ignore-destroy') shapeDestroy({ whileOpen: 'deaf', fresh: 'at-once' })
 	if (scenario === 'slow-destroy') shapeDestroy({ whileOpen: 'late', fresh: 'at-once' })
 	if (scenario === 'ignore-destroy-slow-fresh') shapeDestroy({ whileOpen: 'deaf', fresh: 'late' })
+	if (scenario === 'ignore-destroy-always') shapeDestroy({ whileOpen: 'deaf', fresh: 'deaf' })
+	if (scenario === 'end-on-destroy') shapeDestroy({ whileOpen: 'end', fresh: 'at-once' })
 	if (scenario === 'endable' || scenario === 'uncaught-error') followCaseOrders()
 	if (scenario === 'slow-statements' || scenario === 'slow-statements-silent') {
 		slowStatements({ silent: scenario === 'slow-statements-silent' })
 	}
 	if (scenario === 'liveness') slowDdlWhenOrdered()
+	if (scenario === 'close-throws') failCloseWhenOrdered()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -216,6 +219,30 @@ function slowDdlWhenOrdered(): void {
 				busyWait({ ms: SLOW_DDL_MS })
 			return (exec as (...given: unknown[]) => unknown).apply(this, args)
 		} as typeof exec
+	})
+}
+
+/**
+ * Once the case orders `close-throws`, the next database close closes the database, then throws - a
+ * close that reports a failure (the engine must let go of the files all the same).
+ */
+function failCloseWhenOrdered(): void {
+	let failNext = false
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.addEventListener('message', function armClose(event: MessageEvent<RuntimeFixtureOrder>) {
+		if (event.data.type !== 'close-throws') return
+		failNext = true
+		acknowledge({ channel, order: event.data })
+	})
+	void loadSqlite().then(function patchClose(sqlite3) {
+		const prototype = sqlite3.oo1.DB.prototype
+		const close = prototype.close
+		prototype.close = function closeThenThrow(this: typeof prototype, ...args: unknown[]) {
+			const closed = (close as (...given: unknown[]) => unknown).apply(this, args)
+			if (!failNext) return closed
+			failNext = false
+			throw new Error('the database would not close')
+		} as typeof close
 	})
 }
 
@@ -318,7 +345,8 @@ function ignoreClose(): void {
 
 /**
  * Each `destroy` told on the fixture channel, then, as the scenario shapes it, swallowed (a deaf engine),
- * handed to the engine `SLOW_DESTROY_MS` late (one still at work) or at once - by a worker that has
+ * handed to the engine `SLOW_DESTROY_MS` late (one still at work), at once, or the worker ended with no
+ * answer (one that crashes) - by a worker that has
  * opened a project, or by one that opens nothing (the fresh worker a realm destroys through).
  */
 function shapeDestroy(params: { whileOpen: DestroyShape; fresh: DestroyShape }): void {
@@ -326,14 +354,18 @@ function shapeDestroy(params: { whileOpen: DestroyShape; fresh: DestroyShape }):
 	const replayed = new WeakSet<object>()
 	self.addEventListener(
 		'message',
-		function shapeEachDestroy(event: MessageEvent<{ type?: string }>) {
+		function shapeEachDestroy(event: MessageEvent<{ type?: string; project?: string }>) {
 			if (event.data?.type === 'open') opened = true
 			if (event.data?.type !== 'destroy' || replayed.has(event.data)) return
-			tellFixtureChannel({ type: 'destroy-asked' })
+			tellFixtureChannel({ type: 'destroy-asked', project: event.data.project ?? '' })
 			const shape = opened ? params.whileOpen : params.fresh
 			if (shape === 'at-once') return
 			event.stopImmediatePropagation()
 			if (shape === 'deaf') return
+			if (shape === 'end') {
+				self.close()
+				return
+			}
 			const { data } = event
 			replayed.add(data)
 			setTimeout(function handOver() {
