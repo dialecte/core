@@ -93,3 +93,47 @@ createTestHelpers({
 ```
 
 The builders it is made of take the declaration too: `createTestRunner({ dialecte, storage? })` and `createTestProject({ dialecte?, sourceXml, ... })`, without the fixture check. `createTestProject` without a `dialecte` builds core's own test dialecte (`TEST_DIALECTE`, its one config under the key `default`). Passing `dialecteConfig`, `extensions` and `hooks` one by one still works and is deprecated: the one config goes under the key `default` and one hooks instance is shared across every project. See [Testing](/guide/development/testing).
+
+## Views sharing a project: the origin's hub
+
+The origin's hub is a SharedWorker through which every tab, window and iframe of an app will share one engine per project, once the engine is a storage option of `Project` - no store reaches it yet. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already:
+
+```ts
+import { adoptHubPort, connectHub } from '@dialecte/core'
+
+// a page: joins the hub once, offering the engines it can start (their worker of its own origin)
+const realm = await connectHub({ spawners })
+
+// an iframe that cannot reach the hub's script (another origin, a sandbox): its page makes it a port and hands it
+// over - the message is the app's own
+if (realm) {
+	const handle = realm.createHubPort()
+	frame.contentWindow?.postMessage({ type: 'hub-port', port: handle.port }, childOrigin, [
+		handle.port,
+	])
+}
+
+// in the iframe: the port its page handed it
+window.addEventListener('message', async function joinThroughPage(event) {
+	if (event.origin !== pageOrigin || event.data?.type !== 'hub-port') return
+	const childRealm = await adoptHubPort({ port: event.data.port })
+})
+```
+
+- `connectHub({ spawners? })` answers the page's connection, the same one for every call and every copy of the library of the same protocol in the page; `undefined` where the browser has no SharedWorker or the hub never welcomed the page (its script failed to load, was blocked or stayed silent) - a later call tries again. A spawner whose engine worker is of another origin is left out: the page cannot start it.
+- `createHubPort()` makes a port bound to the page for a child view; `unbind()` on its handle tells the hub the child is gone (its iframe removed).
+- `adoptHubPort({ port })`, in the child, joins the hub through that port. A port nobody answers fails it `STORE_CONNECTION_FAILED` once the welcome budget has passed.
+- **Page lifecycle.** A page that freezes or enters the back/forward cache lets the engines it hosts go (another view hosts them) and joins again under a new realm id when it comes back; a page going away ends them. The children it bound are dropped with it: their calls are refused `STORE_ENGINE_LOST` (`meta.reason: 'realm-dropped'`) until the page binds them again. `realm.onRejoined(listener)` is called each time the page is welcomed back (never on its first welcome; it answers its unsubscribe): make each child a new port there, and the child calls `adoptHubPort` with it - the same connection joins again, its projects kept.
+
+What a view's calls through the hub will answer, and what joining it answers already:
+
+| Key                                 | When                                                                                                                                                                                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PROJECT_ENGINE_UNAVAILABLE`        | No open view can start the project's engine worker (none offered a spawner for its dialecte), or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it. |
+| `PROJECT_ENGINE_BUSY`               | Another engine still holds the project (another tab, or a worker that did not stop).                                                                                                                                                        |
+| `PROJECT_DIALECTE_MISMATCH`         | The project is open with another dialecte than the one this view declares.                                                                                                                                                                  |
+| `PROJECT_DIALECTE_VERSION_MISMATCH` | The project's engine runs another version of the dialecte than this view.                                                                                                                                                                   |
+| `STORE_PROTOCOL_MISMATCH`           | Another version of the library holds the hub, or the engine speaks another wire: every view of an app must run the same build.                                                                                                              |
+| `STORE_REALM_ID_TAKEN`              | A view joined with an id another connected view already uses.                                                                                                                                                                               |
+| `STORE_REALM_UNKNOWN`               | A view spoke to the hub without having joined it, or after it left (a child whose page went before it said hello).                                                                                                                          |
+| `STORE_ENGINE_LOST`                 | The engine was lost while the call waited: `host-gone`, `no-heartbeat`, or `realm-dropped` for a child dropped with its page - see the error.                                                                                               |
