@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: review-round-three-nit-to-follow-ups
+expected_outcome: |
+  At round 3 the severity floor is blocking + should fix: a nit raised there opens no fix round; the orchestrator logs it
+  in the findings ledger as a follow-up (state logged <follow-up>), the lot goes on to the full gate and the hand-over,
+  and no fourth review round is run.

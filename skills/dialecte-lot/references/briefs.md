@@ -78,25 +78,42 @@ Report: the implement report shape of dialecte-lot, nothing else.
 ## Reviewer brief
 
 ```
-You review lot <id>, as the review station of the dialecte-lot skill. Read-only: modify nothing, no git
-command that writes.
+You review lot <id>, round <n> of 3, as the review station of the dialecte-lot skill. Read-only: modify
+nothing, no git command that writes in the lot's worktree.
 Tier: strong, effort high, for both passes - never lower.
 
-Spec: <plan path + sections>; the implementer's brief: <inline or path>.
-Diff: `git -C <worktree> diff <base>` and untracked files (`git status --porcelain`). Compare each file with
-  `git show <base>:<file>`.
+Spec: <plan path + sections>; the implementer's brief: <inline or path> - not the implementer's conclusions.
+Findings ledger: <hand-over folder>/findings-ledger.md (round 1: empty), written by the orchestrator only.
+  Raise nothing fixed or accepted there again unless the fix is wrong; propose rows, do not write the file.
+Round 1 - full review, every severity. Diff: `git -C <worktree> diff <base>` and untracked files
+  (`git status --porcelain`); compare each file with `git show <base>:<file>`. Answer each angle, even empty:
+  correctness; test soundness (each test fails for the right reason); the consumer's view (build the package:
+  run the build, then read the built dist, the emitted .d.ts, the docs - is the change there?); code rules;
+  docs and CHANGELOG against the code.
+Rounds 2-3 - delta review of the fix diff and its blast radius only. HEAD is still the base; the tree round
+  n-1 reviewed is the snapshot <hand-over folder>/round-<n-1>/ (files at repository-relative paths, beside it
+  round-<n-1>.deleted, NUL-separated). Fix diff, per file (`--no-index` exits 1 on differences and on a missing side
+  alike): in both, `git diff --no-index --no-color --no-ext-diff round-<n-1>/<file> <worktree>/<file>`; not
+  in round-<n-1>/ (at the base then), `git -C <worktree> diff --no-color --no-ext-diff HEAD -- <file>`, or
+  /dev/null as the left side for a file the base does not have or that round-<n-1>.deleted lists; gone from the worktree, /dev/null as the right
+  side. Throwaway worktree: <path, made by the orchestrator with `dialecte worktree add <repository>
+  <lot-branch>-round-<n-1> --from <base>`, round-<n-1>/ copied over, `git -C <throwaway> rm -q
+  --pathspec-from-file=<folder>/round-<n-1>.deleted --pathspec-file-nul` | none>. Verify each fix: copy
+  its new test file in and run it there - it must fail - and in the lot's worktree, where it passes; with
+  none, read the snapshot and say the guard was reasoned, not run. One line naming what round 1 did not look
+  at. Severity floor: round 2 blocking + should fix (nits optional); round 3 blocking + should fix only.
 Rules: dialecte-contributing (code rules, Definition of Done), dialecte (reuse ladder).
 Run (read-only): the tests of the lot, `skills check`, the type-check - report the real counts.
 Check: every time bound of a test reading the disk, spawning a process or measuring time holds under load;
   a hand-written commit or merge script in the hand-over is a finding (it goes through `dialecte handover`).
-Answer: would you approve? Use the review report shape: pass 1 correctness, pass 2 fit, verdict.
+Answer: would you approve? Use the review report shape, with a severity per finding and the proposed findings-ledger rows.
 Max ~80 lines, most severe first, file:line for each finding.
 ```
 
 ## Fix-mode brief
 
 ```
-Fix mode for lot <id> (round <n>). Findings: <the list, verbatim>.
+Fix mode for lot <id> (round <n>). Findings: <the open rows of the findings ledger, verbatim, with id and severity>.
 Tier: <standard for wording or naming findings | the implementer's tier otherwise> (resume the implementer
   when it is on that tier: its context is warm)
 For each: agree (fix, test if behaviour changed) / disagree (one line why) / needs the user.

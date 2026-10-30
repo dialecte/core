@@ -22,26 +22,26 @@ are what the next station reads. A decision that is not in one of them was not a
 
 ## The stations
 
-| #   | Station     | Who                         | Tier                                                        | Reads                                                                           | Leaves                                                                                                       |
-| --- | ----------- | --------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 0   | Orchestrate | orchestrator                | strong                                                      | the plan, the user's decisions                                                  | one brief per implementer (template in [references/briefs.md](references/briefs.md))                         |
-| 1a  | Test        | test station (own agent)    | standard                                                    | its brief step, the existing code                                               | tests + stubs, proven red by `dialecte tdd red` (its receipts)                                               |
-| 1b  | Test review | **a different agent**       | strong                                                      | the tests of the step, the brief                                                | a verdict on the tests, before any code                                                                      |
-| 1c  | Implement   | implementer (another agent) | standard or strong, by lot kind                             | its brief, the tests, the code it changes                                       | production code until `dialecte tdd green`; an implement report                                              |
-| 2   | Fast gate   | implementer                 | no agent                                                    | -                                                                               | `dialecte gate --fast` + `dialecte rules`: type-check, lint, format, touched tests, skills check, code rules |
-| 3   | Review      | **a different agent**       | strong, both passes                                         | the brief, the diff, the previous version (`git show <base>:<file>`), the rules | a review report: pass 1 correctness, pass 2 fit, verdict                                                     |
-| 4   | Fix         | the implementer, fix mode   | standard for wording or naming, else the implementer's tier | the findings                                                                    | each finding fixed, disagreed (one line why) or escalated                                                    |
-| 5   | Full gate   | implementer                 | no agent                                                    | -                                                                               | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
-| 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                 | `dialecte handover`: a hand-over folder and its card; a human runs it; nothing committed, nothing pushed     |
-| 7   | Retro       | orchestrator                | strong                                                      | reports, loops, the user's corrections                                          | retro entries; skill edits drafted, applied on approval                                                      |
+| #   | Station     | Who                         | Tier                                                        | Reads                                                                                                | Leaves                                                                                                       |
+| --- | ----------- | --------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 0   | Orchestrate | orchestrator                | strong                                                      | the plan, the user's decisions                                                                       | one brief per implementer (template in [references/briefs.md](references/briefs.md))                         |
+| 1a  | Test        | test station (own agent)    | standard                                                    | its brief step, the existing code                                                                    | tests + stubs, proven red by `dialecte tdd red` (its receipts)                                               |
+| 1b  | Test review | **a different agent**       | strong                                                      | the tests of the step, the brief                                                                     | a verdict on the tests, before any code                                                                      |
+| 1c  | Implement   | implementer (another agent) | standard or strong, by lot kind                             | its brief, the tests, the code it changes                                                            | production code until `dialecte tdd green`; an implement report                                              |
+| 2   | Fast gate   | implementer                 | no agent                                                    | -                                                                                                    | `dialecte gate --fast` + `dialecte rules`: type-check, lint, format, touched tests, skills check, code rules |
+| 3   | Review      | **a different agent**       | strong, both passes                                         | the brief, the diff, the previous version (`git show <base>:<file>`), the rules, the findings ledger | a review report: pass 1 correctness, pass 2 fit, verdict; proposed findings-ledger rows                      |
+| 4   | Fix         | the implementer, fix mode   | standard for wording or naming, else the implementer's tier | the findings                                                                                         | each finding fixed, disagreed (one line why) or escalated                                                    |
+| 5   | Full gate   | implementer                 | no agent                                                    | -                                                                                                    | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
+| 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                                      | `dialecte handover`: a hand-over folder and its card; a human runs it; nothing committed, nothing pushed     |
+| 7   | Retro       | orchestrator                | strong                                                      | reports, loops, the user's corrections                                                               | retro entries; skill edits drafted, applied on approval                                                      |
 
 The Tier column names the kind of model a station runs on, never a model: the tiers, the rules that go with
 them (escalate one tier after a failed round, never down-tier a correctness review, effort as a second knob)
 and how to learn which model a tier is (`npx @dialecte/cli models`) are in
 [references/model-tiers.md](references/model-tiers.md).
 
-Stations 3-4 loop on the same lot. **Cap: three review rounds.** A fourth round means the plan or the
-brief is wrong - stop and bring the disagreement to the user. Re-review only the hunks that changed.
+Stations 3-4 loop on the same lot. **Cap: three review rounds** (round 1 full, rounds 2-3 delta: Station 3).
+A fourth round means the plan or the brief is wrong - stop and bring the disagreement to the user.
 
 ## Station 1 - test, test review, implement (per brief step)
 
@@ -186,22 +186,92 @@ and skills updated in the same lot; generated files untouched; a hand-written co
 hand-over is a finding (hand-overs go through `dialecte handover`, which writes the folder and its card), not a
 script to review line by line. Three findings that matter beat ten that do not.
 
+### Rounds
+
+Each round is a **fresh agent** (unanchored by the previous verdict) and each finding carries a severity:
+**blocking**, **should fix** or **nit**.
+
+**Before round 1** the orchestrator creates the lot's hand-over folder, `_commit-plan/<topic>-<yyyy-mm-dd>/`
+(outside every repository; `lots.json` lands there at Station 6), with an empty `findings-ledger.md`. **When it
+spawns round n** it snapshots the tree that round reviews into `round-<n>/` in the same folder: a copy of every
+file `git status --porcelain -z --untracked-files=all` lists at the worktree root as changed or untracked, at
+its path relative to the repository root, and beside it `round-<n>.deleted`, NUL-separated, naming each deleted
+file and the old path of each rename (beside the copy, never in it: it is no file of the lot). A copy, not a patch: nothing to apply, binary files included. The lot stays
+uncommitted until the hand-over, so HEAD is the base for the whole loop: these snapshots are the only refs the
+later rounds have. These mechanics move into the planned `dialecte record snapshot` (and a review-delta command);
+the text here is the manual fallback.
+
+- **Round 1 - full review**, blind to the implementer's conclusions, every severity. The checklist, each angle
+  answered even when empty: correctness; test soundness (each test fails for the right reason); **the
+  consumer's view** - build the package and read what a consumer receives: the built `dist`, the emitted
+  `.d.ts`, the docs (a fix that worked from sources was a no-op for every consumer once the bundler copied the
+  dependency into `dist`; only the reviewer who built the package saw it); the code rules; docs and
+  CHANGELOG against the code.
+- **Rounds 2-3 - delta review**, given the findings ledger. Round 2 reports blocking and should fix, nits
+  optional: the orchestrator fixes a round-2 nit in the lot or logs it as a follow-up, and records which in the
+  findings ledger. Round 3 reports blocking and should fix only; a nit there is logged as a follow-up, not fixed
+  in the lot. The floor rises so the rounds converge. The review has three parts:
+  - (a) **Each fix verified on the old code.** The orchestrator makes a throwaway worktree on its own branch
+    (never the lot's), copies the snapshot over it, removes its deleted files - the one place a `git rm` is
+    allowed, never in the lot's worktree - and passes the path (`worktree prune` lists it after the lot):
+
+    ```
+    npx dialecte worktree add <repository> <lot-branch>-round-<n-1> --from <base>
+    cp -R <folder>/round-<n-1>/. <throwaway>/
+    git -C <throwaway> rm -q --pathspec-from-file=<folder>/round-<n-1>.deleted --pathspec-file-nul
+    ```
+
+    The reviewer copies the fix's new test file in and runs it: it must fail there and pass in the lot's
+    worktree. Without a throwaway worktree the reviewer reads the snapshot and says the guard was reasoned, not
+    run.
+
+  - (b) **Only the fix diff and its blast radius**, per file of either snapshot or of the lot now, read-only.
+    `--no-index` exits 1 on differences and on a missing side alike, so pick the form by where the file is:
+
+    ```
+    # in round-<n-1>/ and in the worktree
+    git diff --no-index --no-color --no-ext-diff <folder>/round-<n-1>/<file> <worktree>/<file>
+    # not in round-<n-1>/ and not in round-<n-1>.deleted: it was at the base then
+    git -C <worktree> diff --no-color --no-ext-diff HEAD -- <file>
+    # new since round n-1 and absent from the base, or listed in round-<n-1>.deleted
+    git diff --no-index --no-color --no-ext-diff /dev/null <worktree>/<file>
+    # in round-<n-1>/, gone from the worktree
+    git diff --no-index --no-color --no-ext-diff <folder>/round-<n-1>/<file> /dev/null
+    ```
+
+  - (c) **One line naming what round 1 did not look at.**
+
+**The findings ledger** (`findings-ledger.md` in the hand-over folder) is the lot's memory across rounds. Only
+the orchestrator writes it - by hand until the cli does (planned: `dialecte record review`, which will append to
+the hand-over folder); reviewers propose rows. One row per finding: id, round raised, severity, file:line,
+state - `open`, `fix to verify` (the fixer says fixed), `fixed <n>` (n = the round that verified the fix),
+`accepted <reason>`, `logged <follow-up>`. Every reviewer reads it; a finding fixed or accepted is not raised
+again unless the fix is wrong. Outside every repository, it is never committed nor caught by the hygiene.
+Once the lots are committed, `worktree prune` lists the folder (it holds `lots.json` and `commit.sh` by then),
+findings ledger and snapshots with it - the retro reads them first. An abandoned lot's folder has no `lots.json`,
+so neither `prune` nor `handover list` sees it: keep it for the retro, or hand the user its removal command with
+its absolute `cd`.
+
 Report:
 
 ```
 ## Review - lot <id> (round <n>)
+Scope: full | delta against round-<n-1>/     Not looked at by round 1: <one line>   (rounds 2-3)
 **Pass 1 (correctness)**
-- <file:line> - <what is wrong> - <why it matters>   | nothing
+- <id> <severity> <file:line> - <what is wrong> - <why it matters>   | nothing
+- <id> fix verified: <the guard> fails on round-<n-1>/, passes now (run | reasoned) | <what is wrong with the fix>   (rounds 2-3)
 **Pass 2 (fit)**
-- <file:line> - <finding>
-**Verdict**: approve | fix-then-repass
+- <id> <severity> <file:line> - <finding>
+**Proposed findings-ledger rows**: the new ids above; <id> -> fixed <n> | fix wrong
+**Verdict**: approve | fix-then-repass (blocking or should fix open)
 ```
 
 ## Station 4 - fix mode
 
 For each finding: **agree** (fix it, with a test when behaviour changed), **disagree** (one line why, do
 not fix), or **needs the user** (it reopens a decision). Report per finding: fixed / disagreed / escalated.
-You never drop a finding on your own: disagreements go back to the orchestrator.
+You never drop a finding on your own: disagreements go back to the orchestrator, who sets each state in the
+findings ledger (`fix to verify`, `accepted <reason>`, `logged <follow-up>`) before the next round.
 
 ## Station 6 - hand over
 
@@ -292,7 +362,7 @@ orchestrator launches in the background gets a **deadline** when it is launched:
 - Name a model in a brief or a skill (name the tier), or down-tier a correctness review to save tokens.
 - Commit, push, stage, or merge.
 - `git stash` (one stash is shared by every worktree and session) and any git command that writes the index
-  (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`). To compare with the base, read it with
+  (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`; the one exception is the `git rm` of a review round's throwaway worktree). To compare with the base, read it with
   `git show <base>:<file>` or run it in a throwaway worktree; your own tree stays as it is.
 - Wait on a background run with no deadline, or on its completion notice alone.
 - Hand over a hand-written commit or merge script.
