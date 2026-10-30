@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { BROWSER_ONLY_XML_APIS } from './test-entry-environment.constants'
+import { SOURCE_SCAN_TIMEOUT_MS } from './test-timing.constants'
 
 import { describe, expect, it } from 'vitest'
 
@@ -27,13 +28,17 @@ function findBrowserOnlyXmlApis(params: { source: string }): string[] {
 describe('the test entry reads XML the same way in every environment', () => {
 	const folder = fileURLToPath(new URL('.', import.meta.url)).replace(/\/$/, '')
 
-	it('no source of the test entry uses a browser-only XML API', () => {
-		const offenders = listTestEntrySources({ folder }).flatMap(function apisOf(path) {
-			const apis = findBrowserOnlyXmlApis({ source: readFileSync(path, 'utf8') })
-			return apis.map((api) => `${path.slice(folder.length + 1)}: ${api}`)
-		})
-		expect(offenders).toEqual([])
-	})
+	it(
+		'no source of the test entry uses a browser-only XML API',
+		() => {
+			const offenders = listTestEntrySources({ folder }).flatMap(function apisOf(path) {
+				const apis = findBrowserOnlyXmlApis({ source: readFileSync(path, 'utf8') })
+				return apis.map((api) => `${path.slice(folder.length + 1)}: ${api}`)
+			})
+			expect(offenders).toEqual([])
+		},
+		SOURCE_SCAN_TIMEOUT_MS,
+	)
 
 	it('the check sees each API it bans', () => {
 		const found = BROWSER_ONLY_XML_APIS.map((api) => findBrowserOnlyXmlApis({ source: api.sample }))

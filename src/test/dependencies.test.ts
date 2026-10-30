@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { SOURCE_SCAN_TIMEOUT_MS } from './test-timing.constants'
+
 import { describe, expect, it } from 'vitest'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url))
@@ -45,15 +47,19 @@ describe('the test entry reads XML through one engine', () => {
 		expect(manifest.dependencies.sax).toBeDefined()
 	})
 
-	it('the sources of src/ → none imports a retired module or the retired xml-dom folder', () => {
-		const offenders = listSourceFiles(SOURCE_ROOT)
-			.filter((file) => {
-				const source = readFileSync(file, 'utf8')
-				return IMPORT_OF_RETIRED_MODULE.test(source) || IMPORT_OF_DOM_FOLDER.test(source)
-			})
-			.map((file) => relative(SOURCE_ROOT, file))
-		expect(offenders).toEqual([])
-	})
+	it(
+		'the sources of src/ → none imports a retired module or the retired xml-dom folder',
+		() => {
+			const offenders = listSourceFiles(SOURCE_ROOT)
+				.filter((file) => {
+					const source = readFileSync(file, 'utf8')
+					return IMPORT_OF_RETIRED_MODULE.test(source) || IMPORT_OF_DOM_FOLDER.test(source)
+				})
+				.map((file) => relative(SOURCE_ROOT, file))
+			expect(offenders).toEqual([])
+		},
+		SOURCE_SCAN_TIMEOUT_MS,
+	)
 
 	it('src/test → the retired xml-dom folder is gone', () => {
 		const folders = readdirSync(join(SOURCE_ROOT, 'test'), { withFileTypes: true })

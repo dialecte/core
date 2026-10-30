@@ -2,10 +2,11 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { SOURCE_SCAN_TIMEOUT_MS } from '../test-timing.constants'
+
 import { describe, expect, it } from 'vitest'
 
 describe('the engine import', () => {
-	const SCAN_TIMEOUT_MILLISECONDS = 30_000
 	const SOURCE_ROOT = join(fileURLToPath(new URL('../../', import.meta.url)))
 	const SEAM_FOLDER = `test${sep}xml${sep}`
 	const ENGINE = ['libxml2', 'wasm'].join('-')
@@ -41,6 +42,6 @@ describe('the engine import', () => {
 				seamOpensDocuments: seamFilesWithValueImport.length > 0,
 			}).toEqual({ outside: [], seamOpensDocuments: true })
 		},
-		SCAN_TIMEOUT_MILLISECONDS,
+		SOURCE_SCAN_TIMEOUT_MS,
 	)
 })
