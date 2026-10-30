@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: node-tier-test-and-run
+expected_outcome: |
+  The case uses the runner as it is and names no store (the runner's `useTestStorage` chooses: in-memory in the
+  node tier). While iterating, the file runs alone in node: `npx vitest run --project node <path>`. The node tier
+  (`npm run test:node`, or `dialecte gate --fast`) runs per step, the browser-only list once per lot
+  (`dialecte gate --full`), and the whole suite in the browser (`npm run test:browser:all`) once before merge.

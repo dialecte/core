@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: node-fails-browser-passes
+expected_outcome: |
+  The file is not moved to the browser-only list: that list is only for tests that need a browser API, and a result
+  that differs per tier is a store bug (the in-memory store of the node tier against the local store of the browser)
+  or an assertion bug, never hidden. Reproduce in node (`npx vitest run --project node <path>`), pin the difference
+  first with a red test in the store contract (or beside the assertion helper) and fix it - or, when the test's own
+  assertion relies on an order no store promises, correct that assertion with the reason - and confirm both tiers.

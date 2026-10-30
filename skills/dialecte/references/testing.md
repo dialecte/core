@@ -3,10 +3,10 @@
 Every dialecte package ships table-driven runners built on core's `createTestRunner`. Use them;
 do not hand-roll project setup, import, export and cleanup in each test.
 
-| Package                        | Import                     | Runner                                                                                                                         |
-| ------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| core (its dummy test dialecte) | `@dialecte/core/test`      | `createTestHelpers({ dialecte, storage })` → `runTestCases`, `createTestProject`, ...; the dummy dialecte's own `runTestCases` |
-| a dialecte package             | `<package>/<version>/test` | `run<Name>TestCases`, `create<Name>TestProject`, ... (see that dialecte's skill)                                               |
+| Package                        | Import                     | Runner                                                                                                                |
+| ------------------------------ | -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| core (its dummy test dialecte) | `@dialecte/core/test`      | `createTestHelpers({ dialecte })` → `runTestCases`, `createTestProject`, ...; the dummy dialecte's own `runTestCases` |
+| a dialecte package             | `<package>/<version>/test` | `run<Name>TestCases`, `create<Name>TestProject`, ... (see that dialecte's skill)                                      |
 
 ## The three modes
 
@@ -76,10 +76,38 @@ A dialecte package's runner has the same shape with its own types (`<Name>Test.T
   dialecte (`createTestRunner`) validates nothing.
 - **Test the function directly** (`fn(source.query, params)` / `fn(tx, params)`), not through the
   bound extension method. Use public interfaces; no mocks of internal collaborators.
-- **The store is chosen by the runner**: runners default to the local store (IndexedDB); pass
-  `storage` (to the helper, or to one `createTestProject` call) to switch, e.g. `{ type: 'inMemory' }`
-  for fast unit runs. The interface is the truth; a result that differs per store is a store bug,
-  never a reason to pin one store.
+- **No test names its store: the runner chooses it.** A node vitest project whose setup file calls
+  `useTestStorage({ type: 'inMemory' })` (core 0.8+) runs your tests in Node on the in-memory store;
+  without one, the runner's default store. A test file never calls `useTestStorage` and passes no
+  `storage`; only a test about one store itself (an IndexedDB-only behaviour) names it. The
+  interface is the truth: a result that differs per store is a store bug, never a reason to pin one
+  store.
+- **XML assertions take XML text.** `expectedQueries`, `assertOn: 'custom'` (`xmlString`), and the
+  `assertExpectedElementQueries({ xml, queries })` / `assertUnexpectedElementQueries({ xml, queries })`
+  that `createXmlAssertions({ namespaces })` returns, read a string, the same way in Node and in the
+  browser. Holding a DOM? Serialize it first. Never build one for a test (`xmlDocument: true`,
+  `DOMParser`, `document.evaluate`): they exist only in the page.
+- **XPath for small exact output, record expectations for big files.** On a fixture of megabytes, a
+  `//` query over the whole export takes seconds and its failure prints too much. State what must
+  hold as record expectations - a tag, attribute values, the parent, a count - and check them on
+  the records in `.withoutExport`, with the query API:
+
+  ```ts
+  // .withoutExport: the expectations read the records, no export, no XPath
+  async function act({ testCase, source }: ActParams<Config, TestCase>): Promise<void> {
+  	await source.transaction(async (tx) => renameParts(tx, testCase.params))
+  	const root = await source.query.getRoot()
+  	const { Part = [], Assembly = [] } = await source.query.findDescendants(root, {
+  		collect: ['Part', 'Assembly'],
+  	})
+  	expect(Part).toHaveLength(3) // count
+  	for (const assembly of Assembly) {
+  		const parent = await source.query.getRecord(assembly.parent) // the parent
+  		expect(parent?.tagName).toBe('Line')
+  	}
+  }
+  ```
+
 - **Green by accident** is the classic trap: last-wins indexes, id order, an XPath matching a
   sibling. When a case passes on the first run, break the code on purpose and watch it fail.
 - Re-indent `/* xml */` fixtures with core's `dialecte-xmlfmt "<glob>"`; the code formatter does not
