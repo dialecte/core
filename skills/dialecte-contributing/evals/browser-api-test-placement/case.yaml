@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: browser-api-test-placement
+expected_outcome: |
+  A test goes to the node tier unless it needs a browser API. quota-estimate needs `navigator.storage` and OPFS: it
+  is added to the declared browser-only list (`BROWSER_ONLY_TEST_FILES` in `vitest.config.constants.ts`) with its
+  reason, and runs with `npx vitest run --project browser <path>`. format-bytes stays in the node tier, nothing to
+  declare, and runs with `npx vitest run --project node <path>`.

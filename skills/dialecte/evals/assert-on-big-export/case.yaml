@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: assert-on-big-export
+expected_outcome: |
+  On a big file the test does not run XPath over the whole export nor build a DOM: it states record expectations
+  (a tag, attribute values, the parent, a count) and checks them on the records through the query API, in
+  `.withoutExport`. XML assertions take XML text only (no `xmlDocument`, no page `Document`). The test names no
+  store: the runner's `useTestStorage` chooses (in-memory in the node tier).
