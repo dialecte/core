@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: scan-test-bound-under-load
+expected_outcome: |
+  A test review of a test that reads every source file from disk (or spawns a process, or measures time) checks its
+  time bound: the test carries an explicit bound with wide slack, named as a constant like core's
+  SOURCE_SCAN_TIMEOUT_MS in src/test/test-timing.constants.ts, because the runner's default timeout fails under a
+  loaded machine (another suite running, a commit hook) while it passes on a quiet one.

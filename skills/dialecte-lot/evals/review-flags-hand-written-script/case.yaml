@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: review-flags-hand-written-script
+# Regression guard: the text before this case already passed it (Station 6, "Never a hand-written script").
+expected_outcome: |
+  A reviewer that finds a hand-written commit or merge script among what the lot hands over reports it as a finding
+  (the hand-over goes through `dialecte handover`, which writes the folder and its card), instead of reviewing the
+  script's commands and approving it.

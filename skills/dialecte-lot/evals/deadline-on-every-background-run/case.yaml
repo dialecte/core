@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: deadline-on-every-background-run
+expected_outcome: |
+  The orchestrator gives every agent and command it runs in the background a deadline when it launches it: the
+  station's deadline (model-tiers.md), or three times a duration measured on earlier runs of the command. In
+  Claude Code it arms the check at launch (a scheduled check or a monitor), on another host it polls at the
+  deadline. At the deadline it checks the run itself - the process tree and its CPU time, the agent's last
+  activity, `dialecte runs` once it exists - instead of only waiting for a completion notice; a run with no new
+  output and no CPU time gained is reported and stopped, one still working is watched, never killed on the clock.
