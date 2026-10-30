@@ -10,6 +10,12 @@ export const POOL_FILE = '/project.sqlite3'
 /** The files a new pool is given: the database, its journal and the temporary files SQLite opens. */
 export const POOL_CAPACITY = 6
 
+/**
+ * The oldest SQLite (`sqlite3.version.libVersionNumber`) whose sqlite-wasm keeps a pool's files when its install
+ * fails (`preserveOnInitFailure`, 3.54.1-build1): an older one ignores the option and removes the whole pool.
+ */
+export const SAFE_POOL_SQLITE_VERSION = 3_054_001
+
 /** The subdirectory where sqlite-wasm keeps a pool's files. */
 export const OPAQUE_DIRECTORY = '.opaque'
 

@@ -7,6 +7,7 @@ import {
 	POOL_ROOT_DIRECTORY,
 	POOL_VFS_NAME,
 	PROBE_BACKOFF_MS,
+	SAFE_POOL_SQLITE_VERSION,
 } from './runtime.constants'
 
 import { createDialecteError } from '@/errors'
@@ -16,7 +17,8 @@ import type { HeldEngineLock, PoolInstallOptions, SyncAccessFileHandle } from '.
 import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
- * The project's pool, opened for this engine within `budgetMs`: the origin's private files checked,
+ * The project's pool, opened for this engine within `budgetMs`: first the loaded sqlite-wasm checked to
+ * keep a pool whose install fails (`refuseUnsafeSqlite`), then the origin's private files checked,
  * the engine lock taken, then - inside one try that releases the lock on any failure - every file of
  * an existing pool probed (opened and closed again; one another engine still holds is waited for, then
  * refused PROJECT_ENGINE_BUSY), or the space a new pool needs checked, and only then the pool
@@ -31,6 +33,7 @@ export async function openPool(params: {
 	budgetMs: number
 }): Promise<{ pool: SAHPoolUtil; lock: HeldEngineLock }> {
 	const { sqlite3, project, lock: mode, budgetMs } = params
+	refuseUnsafeSqlite({ sqlite3, project })
 	const deadline = performance.now() + budgetMs
 	const root = await privateRoot({ project })
 	const lock = await takeEngineLock({ project, mode, budgetMs })
@@ -51,6 +54,21 @@ export async function openPool(params: {
 		lock.release()
 		throw thrown
 	}
+}
+
+/**
+ * `ASSERTION_FAILED` when the loaded sqlite-wasm is older than 3.54.1: it ignores `preserveOnInitFailure`
+ * and removes the project's whole pool - every file - when an install fails. Checked before the lock or any
+ * file is touched. The JS glue's version is read: the pool is its code, the wasm is served on its own.
+ */
+function refuseUnsafeSqlite(params: { sqlite3: Sqlite3Static; project: string }): void {
+	const { sqlite3, project } = params
+	const { libVersion, libVersionNumber } = sqlite3.version
+	if (libVersionNumber >= SAFE_POOL_SQLITE_VERSION) return
+	throw createDialecteError('ASSERTION_FAILED', {
+		detail: `Project "${project}" is not opened: sqlite-wasm ${libVersion} removes a project's files when their install fails; ${versionLabel({ number: SAFE_POOL_SQLITE_VERSION })} or later is needed (install the version @dialecte/core depends on)`,
+		meta: { project, sqliteVersion: libVersion },
+	})
 }
 
 /**
@@ -316,6 +334,12 @@ async function existingDirectory(params: {
 		}
 	}
 	return directory
+}
+
+/** A SQLite version number (`3054001`) as SQLite writes it (`3.54.1`). */
+function versionLabel(params: { number: number }): string {
+	const { number } = params
+	return `${Math.floor(number / 1_000_000)}.${Math.floor(number / 1_000) % 1_000}.${number % 1_000}`
 }
 
 function releaseNothing(): void {}

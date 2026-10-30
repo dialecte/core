@@ -11,6 +11,7 @@ import {
 	SLOW_DESTROY_MS,
 	SLOW_DDL_PATTERN,
 	SLOW_STATEMENT_STEP_MS,
+	UNSAFE_POOL_SQLITE,
 	YIELDING_SLICE_MS,
 } from './runtime.fixtures.constants'
 
@@ -33,7 +34,8 @@ import type { AnyRawRecord } from '@/types'
 /**
  * The contract dialecte's engine worker on a platform a case shapes (`?scenario=`): no private file
  * system, a quota nearly used up, room for a pool but not for a large import, a worker deaf to
- * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load;
+ * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load, one
+ * whose SQLite reports a version too old to keep a pool on a failed install;
  * or, `holder`, no engine at all - a worker holding one file of a project's pool, as an engine that
  * ended may still do.
  */
@@ -127,6 +129,7 @@ function serveEngine(): void {
 		slowStatements({ silent: scenario === 'slow-statements-silent' })
 	}
 	if (scenario === 'liveness') slowDdlWhenOrdered()
+	if (scenario === 'sqlite-3-53') reportUnsafeSqlite()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -183,6 +186,15 @@ function failPoolInstall(params: PoolInstallFailure): void {
 			}
 			return createSyncAccessHandle.call(this)
 		},
+	})
+}
+
+/** The realm's SQLite reports itself as 3.53.4 (`UNSAFE_POOL_SQLITE`), as an install of an older sqlite-wasm would. */
+function reportUnsafeSqlite(): void {
+	// chained on the realm's one load before the engine's open awaits it: reported before any pool opens
+	void loadSqlite().then(function reportVersion(sqlite3) {
+		sqlite3.version.libVersion = UNSAFE_POOL_SQLITE.libVersion
+		sqlite3.version.libVersionNumber = UNSAFE_POOL_SQLITE.libVersionNumber
 	})
 }
 

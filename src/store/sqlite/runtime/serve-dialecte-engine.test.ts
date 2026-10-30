@@ -23,6 +23,7 @@ import {
 	LOCK_QUEUE_TIMEOUT_MS,
 	LOCK_RACE_BUDGET_MS,
 	RUNTIME_FIXTURE_CHANNEL,
+	UNSAFE_POOL_SQLITE,
 } from './runtime.fixtures.constants'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -360,6 +361,54 @@ describe('an engine worker opening its project', () => {
 		await control.request({ message: openMessage({ project }), expect: 'opened' })
 		const engine = await clientOf({ control, clientId: 'reader' })
 		expect(await engine.getDocuments()).toEqual([makeDocument()])
+	})
+
+	describe('an sqlite-wasm older than 3.54.1 (it removes the whole pool when an install fails)', () => {
+		it('a project with a document → ASSERTION_FAILED naming the version, its files untouched and the lock let go: a later engine finds the document', async () => {
+			const project = uniqueProject()
+			await closedPoolWithDocument({ project })
+			const written = await poolFileDigests({ project })
+			expect(Object.keys(written)).toHaveLength(POOL_CAPACITY)
+			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'sqlite-3-53' }) })
+			const thrown = await control
+				.request({ message: openMessage({ project }), expect: 'opened' })
+				.catch((error: unknown) => error)
+			expect(toDialecteError(thrown)).toMatchObject({
+				key: 'ASSERTION_FAILED',
+				meta: { project, sqliteVersion: UNSAFE_POOL_SQLITE.libVersion },
+			})
+			expect(await poolFileDigests({ project })).toEqual(written)
+			const next = engineWorker({ project })
+			await next.control.request({ message: openMessage({ project }), expect: 'opened' })
+			const engine = await clientOf({ control: next.control, clientId: 'reader' })
+			expect(await engine.getDocuments()).toEqual([makeDocument()])
+		})
+
+		it('its engine lock held elsewhere → ASSERTION_FAILED, not PROJECT_OPEN_ELSEWHERE: refused before the lock is asked', async () => {
+			const project = uniqueProject()
+			const release = await holdEngineLock({ project })
+			cleanups.push(release)
+			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'sqlite-3-53' }) })
+			expect(
+				await rejectionKey({
+					action: control.request({
+						message: openMessage({ project, lock: 'if-available' }),
+						expect: 'opened',
+					}),
+				}),
+			).toBe('ASSERTION_FAILED')
+		})
+
+		it('a new project → ASSERTION_FAILED, nothing created', async () => {
+			const project = uniqueProject()
+			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'sqlite-3-53' }) })
+			expect(
+				await rejectionKey({
+					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+				}),
+			).toBe('ASSERTION_FAILED')
+			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		})
 	})
 
 	it('an import whose file would fit at twice its size but not at eight times (2 MiB free, a file of ~400 KB) → STORE_QUOTA_EXCEEDED, nothing registered', async () => {

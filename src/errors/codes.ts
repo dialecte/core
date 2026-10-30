@@ -15,7 +15,7 @@ export const ERROR_CATALOG = {
 		code: 'D0002',
 		message: 'Assertion failed',
 		explanation: {
-			when: 'An `invariant` without its own key failed, or core met a state it never expects (a catalogue built wrong, an inconsistent export).',
+			when: 'An `invariant` without its own key failed, or core met a state it never expects (a catalogue built wrong, an inconsistent export, an engine running an sqlite-wasm older than 3.54.1, which removes a project on a failed install).',
 			fix: 'Read `detail`: it names the condition. Give `invariant` a key of its own when the failure is one a caller should handle.',
 			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
 		},

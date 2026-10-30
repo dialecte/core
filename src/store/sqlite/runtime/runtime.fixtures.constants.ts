@@ -38,6 +38,9 @@ export const ENGINE_WORKER_CASE_TIMEOUT_MS = 60_000
  */
 export const LOCK_QUEUE_TIMEOUT_MS = 15_000
 
+/** The SQLite the `sqlite-3-53` fixture reports: 3.53.4, whose sqlite-wasm removes a pool when its install fails. */
+export const UNSAFE_POOL_SQLITE = { libVersion: '3.53.4', libVersionNumber: 3_053_004 } as const
+
 /**
  * How long the engines of a lock race wait for the project's lock and files: past the page's hold, and with the two
  * queue waits below the case's timeout - a reader still shut out at the end is refused by name
