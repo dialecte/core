@@ -21,7 +21,8 @@ import type { AnyDialecteConfig } from '@/types'
  * Spin up a Project of the declared dialecte - every config, the default key, its extensions and
  * its own hooks instance; core's own test dialecte when none is given - with the source (and
  * optionally the target) imported under the default config. Returns project + pre-opened
- * documents. Caller owns lifecycle via project.destroy().
+ * documents. Opened inside a running test, the project is destroyed when the test ends (after its other
+ * `onTestFinished` hooks); opened outside one (`beforeAll`), the caller destroys it.
  */
 export async function createTestProject<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,

@@ -63,7 +63,9 @@ export default defineConfig({
 			// the test entry: it binds the console while its module loads, and must bind the forwarders the XML
 			// seam puts on it first, an order an external import, hoisted above the bundled code, would not keep.
 			// It stays a dependency all the same: the emitted type declarations import its types.
-			external: ['vitest', /^@sqlite\.org\/sqlite-wasm/, 'comlink'],
+			// each a pattern over the package and its sub-paths: an exact id would leave a sub-path import of the
+			// package bundled - for vitest, a private copy of the runner whose current test is never the consumer's
+			external: [/^vitest(\/|$)/, /^@sqlite\.org\/sqlite-wasm(\/|$)/, /^comlink(\/|$)/],
 			output: {
 				entryFileNames: '[name].js',
 			},

@@ -107,6 +107,11 @@
 		"vitest": "^4.1.10"
 	},
 	"dialecte": {
+		"tdd": {
+			"production": [
+				"src/test"
+			]
+		},
 		"gate": {
 			"fast": [
 				{
