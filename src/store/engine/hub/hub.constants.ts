@@ -15,3 +15,6 @@ export const ENGINE_OPEN_MIN_BUDGET_MS = 1_000
  * load) plus one whole engine attempt, with room to retry an engine that answers busy early.
  */
 export const HUB_OPEN_BUDGET_MS = 30_000
+
+/** The prefix of a realm's Web Lock, held for the realm's life: the hub's grant of it means the realm is gone. */
+export const REALM_LOCK_PREFIX = 'dialecte:realm:'

@@ -62,6 +62,20 @@ export type HubEvent =
 			generation: number
 			failure: EngineOpenFailure
 	  }
+	| {
+			/** A realm asks to destroy the project: granted once no other realm is its client. */
+			type: 'destroy'
+			now: number
+			realmId: string
+			project: string
+	  }
+	| {
+			/** The realm granted the destroy has done it (or given up): the project may open again. */
+			type: 'destroyed'
+			now: number
+			realmId: string
+			project: string
+	  }
 	| { /** The deadline the router last answered as `wakeAt` came. */ type: 'tick'; now: number }
 
 // ── Router output ────────────────────────────────────────────────────────────
@@ -96,6 +110,9 @@ export type HubCommand =
 	| { type: 'client-gone'; project: string; generation: number; realmId: string }
 	/** Have the host end that engine (close it, terminate its worker) and forget its control port. */
 	| { type: 'release-engine'; project: string; generation: number; hostRealmId: string }
+	/** The realm may destroy the project now: no engine runs it, opens wait until `destroyed`. */
+	| { type: 'destroy-granted'; realmId: string; project: string }
+	| { type: 'refuse-destroy'; realmId: string; project: string; refusal: HubRefusal }
 
 export type HubOutput = {
 	commands: HubCommand[]
@@ -144,9 +161,19 @@ export type HubProject = {
 	triedHosts: string[]
 }
 
+/** A project a realm is destroying: the opens made meanwhile wait, in their order, until it is done. */
+export type HubHold = {
+	project: string
+	/** The realm destroying it. */
+	realmId: string
+	opens: Map<string, Extract<HubEvent, { type: 'open' }>>
+}
+
 export type HubState = {
 	realms: Map<string, HubRealm>
 	projects: Map<string, HubProject>
+	/** Project -> the destroy running on it; such a project has no entry in `projects`. */
+	holds: Map<string, HubHold>
 	/** One counter for the hub: a generation never repeats, not even for a project opened again. */
 	nextGeneration: number
 	nextOrder: number
