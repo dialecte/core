@@ -18,20 +18,24 @@ project uses, `--json` for a script); read it there instead of guessing or writi
 
 ## Station to tier
 
-| Station                                   | Tier                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------- |
-| 0 Orchestrate                             | strong                                                                          |
-| 1a Test (test station)                    | standard                                                                        |
-| 1b Test review                            | strong: the tests against the spec, before any code                             |
-| 1c Implement                              | standard for a mechanical or fully specified lot; strong for a design-heavy one |
-| 2 Fast gate                               | no agent (`dialecte gate --fast`, `dialecte rules`)                             |
-| 3 Review                                  | strong: one reviewer runs pass 1 (correctness) and pass 2 (fit)                 |
-| 4 Fix                                     | standard for wording or naming findings; otherwise the implementer's tier       |
-| 5 Full gate                               | no agent (`dialecte gate --full`)                                               |
-| 6 Hand over                               | no agent (`dialecte handover`)                                                  |
-| 7 Retro                                   | strong                                                                          |
-| Skill-eval runs / their graders           | standard (the tier most readers of a skill run on) / fast, with a schema        |
-| Reading a standard: readers / adjudicator | standard / strong (`dialecte-contributing`, "Reading the standard")             |
+"Usual" is what the station's agent or command took on the runs measured so far; "deadline" (about 2-3x
+usual) is when the orchestrator looks at a background run (Rules, below). A command timed on earlier runs
+gets 3x that duration instead.
+
+| Station                                   | Tier                                                                            | Usual                        | Deadline                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------- |
+| 0 Orchestrate                             | strong                                                                          | -                            | -                                                 |
+| 1a Test (test station)                    | standard                                                                        | 10 min                       | 20 min                                            |
+| 1b Test review                            | strong: the tests against the spec, before any code                             | 5 min                        | 15 min                                            |
+| 1c Implement                              | standard for a mechanical or fully specified lot; strong for a design-heavy one | 30 min / 45 min              | 60 min / 90 min                                   |
+| 2 Fast gate                               | no agent (`dialecte gate --fast`, `dialecte rules`)                             | 5 min                        | 10 min                                            |
+| 3 Review                                  | strong: one reviewer runs pass 1 (correctness) and pass 2 (fit)                 | 10 min                       | 20 min                                            |
+| 4 Fix                                     | standard for wording or naming findings; otherwise the implementer's tier       | 15 min                       | 30 min                                            |
+| 5 Full gate                               | no agent (`dialecte gate --full`)                                               | -                            | 3x a duration measured on earlier runs            |
+| 6 Hand over                               | no agent (`dialecte handover`; `handover run --rehearse` runs the commit hook)  | 20 min, rehearsal with hooks | 45 min, or 3x a duration measured on earlier runs |
+| 7 Retro                                   | strong                                                                          | 15 min                       | 30 min                                            |
+| Skill-eval runs / their graders           | standard (the tier most readers of a skill run on) / fast, with a schema        | 1 min / 1 min                | 5 min / 5 min                                     |
+| Reading a standard: readers / adjudicator | standard / strong (`dialecte-contributing`, "Reading the standard")             | -                            | 30 min / 30 min                                   |
 
 ## Rules
 
@@ -42,3 +46,7 @@ project uses, `--json` for a script); read it there instead of guessing or writi
 - **Effort is a second knob**: low for fast-tier jobs, the default elsewhere, high only for the review and
   adjudication.
 - **The brief names the tier** (`Tier:` in [briefs.md](briefs.md)); the orchestrator spawns accordingly.
+- **Every background run has a deadline**: the station's deadline above, or three times a duration measured
+  on earlier runs of the same command (a hook, a gate, a bench). The deadline is when you look, never a
+  reason to kill: a run is stopped on what you see (no new output and no CPU time gained by its process tree),
+  never on the clock. See "Deadlines" in the skill.

@@ -122,7 +122,10 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
    its red is refused there; snapshots are never written by the run: write a snapshot test's snapshot
    before the red). `npx dialecte tdd status` shows where each case stands. With sub-agents, the test, the
    test review and the code are three agents (`dialecte-lot`, Station 1). Tests share a loaded machine: a
-   test owns its temporary folder, and a time bound carries slack and never counts a worker's start
+   test owns its temporary folder, and a time bound carries slack and never counts a worker's start; a test
+   that reads the disk, spawns a process or measures time carries an explicit bound, named
+   (`SOURCE_SCAN_TIMEOUT_MS` in core's `src/test/test-timing.constants.ts`) and several times what the test
+   takes on a quiet machine; the test review and the review check that every such test has one
    ([references/traps.md](references/traps.md), Tests).
 3. **Implement under the code rules**: [references/code-rules.md](references/code-rules.md).
    Read it before writing the first line; most review comments come from it. `npx dialecte rules`

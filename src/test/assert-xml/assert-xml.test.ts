@@ -1,7 +1,7 @@
 import { DIALECTE_TEST_NAMESPACES } from '../constant'
 import { createXmlAssertions } from './assert-xml'
 
-import { describe, it, expect } from 'vitest'
+import { describe, it } from 'vitest'
 
 const DEFAULT_NS_URI = DIALECTE_TEST_NAMESPACES.default.uri
 const EXT_NS_URI = DIALECTE_TEST_NAMESPACES.ext.uri

@@ -35,6 +35,13 @@ ran what you think it ran.
   call under test only (`performance.now()` before and after it). A test's or a file's duration counts a
   worker's or a browser's start and the machine's load, so a tight bound fails for reasons the code
   does not have.
+- A test that reads the disk (a scan of every source file), spawns a process or measures time carries an
+  explicit bound with wide slack, never the runner's default timeout: its cost grows with the repository and
+  slows down many times over when another suite or a commit hook loads the machine. Name the bound in a
+  constants file with why it is that wide (core: `SOURCE_SCAN_TIMEOUT_MS`, 30 s, in
+  `src/test/test-timing.constants.ts`). The test review and the review check that every such test has a bound
+  that is explicit, named and several times what the test takes on a quiet machine: a scan with vitest's
+  default 5 s passed every rehearsal and refused a real merge commit on a loaded machine.
 
 ## Tooling
 

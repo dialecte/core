@@ -182,8 +182,9 @@ Each flag the gate prints: why it happened.
 **Pass 2 - fit**: does it do what the brief said, no more; did it hand-roll something the API, a hook or
 a helper already provides (name the existing method); the code rules (named functions, object
 parameters, `*.types.ts` / `*.constants.ts`, no nested `await`, full names, no `any`); docs, CHANGELOG
-and skills updated in the same lot; generated files untouched. Three findings that matter beat ten that
-do not.
+and skills updated in the same lot; generated files untouched; a hand-written commit or merge script in the
+hand-over is a finding (hand-overs go through `dialecte handover`, which writes the folder and its card), not a
+script to review line by line. Three findings that matter beat ten that do not.
 
 Report:
 
@@ -208,7 +209,8 @@ The `dialecte-contributing` landing rules apply. Write only the lots file and ru
 <lots.json>`: it writes the hand-over folder and prints its card. Never a hand-written script, nor a file per
 commit. When the repository has a commit hook (`core.hooksPath`), rehearse first with `npx dialecte handover
 run <folder> --rehearse`: a scratch clone holding your tree, the hooks folder and `node_modules`, so the hook
-runs as it will for the user.
+runs as it will for the user. Rehearse a heavy hook while another suite loads the machine, or at least note
+the load at rehearsal time (`uptime`) after the card: a quiet rehearsal hides a time bound that fails under load.
 
 The hand-over message to the user **is the card** `handover` printed - repository, worktree, branch, HEAD,
 gates, the lots with their files and messages, and the command with its absolute `cd` - pasted as printed,
@@ -258,7 +260,30 @@ that is rewritten every retro never settles.
   holding ignored files, an unmerged branch are kept, with why). `--yes` asks for a confirmation on a
   terminal and refuses without one: hand the printed commands, or the `--yes` command, to the user, each
   with its absolute `cd`. Never remove a worktree, a branch or a hand-over folder by hand.
-- Never predict a sub-agent's result; wait for its report.
+- Never predict a sub-agent's result; wait for its report - up to its deadline (below), not forever.
+
+### Deadlines
+
+A completion notice comes only when a run ends: a run that hangs (a command waiting on its stdin, an agent
+stuck in a loop) sends none, and waiting on the notice alone waits forever. So every agent and command the
+orchestrator launches in the background gets a **deadline** when it is launched:
+
+- **How long**: the station's deadline ([references/model-tiers.md](references/model-tiers.md)), or three
+  times a duration measured on earlier runs of the same command (a commit hook, a gate, a bench: a hook that
+  took 6 minutes gets 18). Write it in the run log.
+- **Armed at launch**: in Claude Code, arm the check in the same turn as the launch - a scheduled check or
+  a wake-up at the deadline, or a monitor on the run's log - so you are woken even if no notice comes. A host
+  without one polls at the deadline.
+- **At the deadline, look at the run itself**: its process tree (`pgrep -P <pid>`, `ps -o pid,stat,time,command`:
+  is its CPU time growing?), the agent's last activity or the log's last line and its time, and `dialecte runs`
+  once the cli has it (the live runs of the machine, each with its state).
+- **Kill on what you see, never on the clock.** No new output and no CPU time gained by the tree since the
+  last look: it is stuck - tell the user what you saw (the tree, the last line, since when) and stop or
+  restart it. Still gaining CPU time or writing output: set one more deadline. Past that second deadline it
+  is **over budget** (for a measured command 2 x 3 = 6x its duration, the point where the cli's coming budgets
+  fail a run): report it to the user and go on watching; kill it only on silence.
+  Under `dialecte handover run`, `gate` and `tdd`, the runner's own stall watchdog does the kill; your
+  deadline is the backstop that notices a runner that did not.
 
 ## Never
 
@@ -269,6 +294,8 @@ that is rewritten every retro never settles.
 - `git stash` (one stash is shared by every worktree and session) and any git command that writes the index
   (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`). To compare with the base, read it with
   `git show <base>:<file>` or run it in a throwaway worktree; your own tree stays as it is.
+- Wait on a background run with no deadline, or on its completion notice alone.
+- Hand over a hand-written commit or merge script.
 - Implement two lots in one station "because they are small".
 - Reach for `any`, `@ts-ignore` or a skipped test to get green.
 - Let an output live only in the chat.

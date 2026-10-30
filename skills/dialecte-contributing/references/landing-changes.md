@@ -48,7 +48,9 @@ workspace root, outside every repo); the hand-over files are written next to it 
   committed.
 - **Rehearse** when the repository has a commit hook: `npx dialecte handover run <folder> --rehearse`
   commits the lots in a scratch clone holding the working tree, the hooks folder and a copy of
-  `node_modules`, then removes it (`--keep` keeps it).
+  `node_modules`, then removes it (`--keep` keeps it). A heavy hook (a whole unit suite, a build) is
+  rehearsed while another suite loads the machine, as it will be when the user commits; when that is not
+  possible, the hand-over notes the machine's load at rehearsal time (`uptime`).
 - Edited a file after the snapshot (a review fix)? `npx dialecte handover --rehash <lots.json>`.
 - `npx dialecte handover list` shows every hand-over folder with its state (pending, partly committed,
   committed, stale); after a merge, `npx dialecte worktree prune` lists the committed ones with the merged

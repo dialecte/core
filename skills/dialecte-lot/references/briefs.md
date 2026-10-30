@@ -20,6 +20,9 @@ You may change: the test files of the step, and stubs - new exports with their r
   `new Error('not implemented: <name>')`. Never a behaviour of the production code.
 Each test calls the code under test inside an `expect(...)` a matcher completes, so a stub's error is a
   red on the behaviour. Remove every `.only` and `only: true` before `tdd red` (it refuses a file holding one).
+A test that reads the disk, spawns a process or measures time carries an explicit bound with wide slack,
+  a named constant (core: `SOURCE_SCAN_TIMEOUT_MS` in `src/test/test-timing.constants.ts`), never the
+  runner's default timeout.
 Done when `npx dialecte tdd red` records a red for every case of the step; a refused case (passes, missing
   export, type or syntax error, timeout, stub at import or before the assertion) is fixed in the test.
 Report: the `tdd red` output, unfiltered, and the list of stubs.
@@ -39,7 +42,9 @@ Read: the test code of the step - test files, and the helpers, fixtures and snap
 For each test: the behaviour of the brief it pins; a plausible wrong implementation and whether it fails the
   test (a weak matcher, an `expect(...)` without a matcher, an assertion on a stub's message, an
   expectation copied from a guess, a helper or snapshot that holds the expected value); a behaviour of the
-  step without a test; a case of the base the change deletes.
+  step without a test; a case of the base the change deletes; a test that reads the disk, spawns a process or
+  measures time without an explicit bound with wide slack (a named constant, several times what it takes on
+  a quiet machine): it passes alone and times out when another suite or a commit hook loads the machine.
 Verdict: approve | back to the test station with the findings. Max ~50 lines, file:line for each finding.
 ```
 
@@ -82,6 +87,8 @@ Diff: `git -C <worktree> diff <base>` and untracked files (`git status --porcela
   `git show <base>:<file>`.
 Rules: dialecte-contributing (code rules, Definition of Done), dialecte (reuse ladder).
 Run (read-only): the tests of the lot, `skills check`, the type-check - report the real counts.
+Check: every time bound of a test reading the disk, spawning a process or measuring time holds under load;
+  a hand-written commit or merge script in the hand-over is a finding (it goes through `dialecte handover`).
 Answer: would you approve? Use the review report shape: pass 1 correctness, pass 2 fit, verdict.
 Max ~80 lines, most severe first, file:line for each finding.
 ```
@@ -93,5 +100,7 @@ Fix mode for lot <id> (round <n>). Findings: <the list, verbatim>.
 Tier: <standard for wording or naming findings | the implementer's tier otherwise> (resume the implementer
   when it is on that tier: its context is warm)
 For each: agree (fix, test if behaviour changed) / disagree (one line why) / needs the user.
+Never commit, stage, push, `git stash` (one stash is shared by every worktree and session) or any git command
+  that writes the index; read the base with `git show <base>:<file>`.
 Then the fast gate, and the report per finding.
 ```
