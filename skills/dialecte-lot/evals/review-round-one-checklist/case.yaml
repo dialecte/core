@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: review-round-one-checklist
+expected_outcome: |
+  The round-1 reviewer brief is a full, blind review with the fixed checklist answered angle by angle even when empty:
+  correctness, test soundness (each test fails for the right reason), the consumer's view (run the build and inspect
+  dist/ and the emitted .d.ts), the code rules, and docs/CHANGELOG against the code; findings carry a severity and become
+  rows of the lot's findings ledger.

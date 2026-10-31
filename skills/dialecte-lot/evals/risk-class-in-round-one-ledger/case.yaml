@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: risk-class-in-round-one-ledger
+expected_outcome: |
+  Before round 1 the orchestrator declares the lot's risk class in the findings ledger. A lot that changes only the test
+  API (the `@dialecte/core/test` entry) is "test API or internal code": two rounds, the last one acting on blocking and
+  should-fix findings; a third round goes to the user. The round-1 reviewer brief carries the same round count.

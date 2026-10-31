@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: review-round-two-delta-brief
+expected_outcome: |
+  The orchestrator keeps a findings ledger for the lot next to its hand-over records (outside the repository), one row per
+  finding with id, round raised, severity, file:line and state, and briefs a fresh round-2 reviewer with that ledger: verify
+  each fix (its new guard run against the old code must fail there), review only the fix diff and its blast radius, raise
+  nothing already fixed or accepted again, report blocking and should-fix findings (nits optional), and name in one line
+  what round 1 did not look at.
