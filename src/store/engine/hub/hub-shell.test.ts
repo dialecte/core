@@ -313,7 +313,7 @@ describe('the hub serving realms on their control ports', () => {
 		await shell.next('client-gone')
 		shell.send({ type: 'client-adopted', adoptionId: adopt.adoptionId })
 		await pause({ ms: 50 })
-		expect(tab.received).toEqual([])
+		expect(tab.received.map((message) => message.type)).toEqual(['left'])
 	})
 
 	it('engine reports from a realm that does not host the engine → ignored', async () => {

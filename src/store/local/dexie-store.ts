@@ -232,17 +232,20 @@ export class DexieStore implements Store {
 
 	/**
 	 * Refuse every operation started from now on until opened again; the connection itself closes once
-	 * the operations running complete. The database stays.
+	 * the operations running complete, and the close is settled once its hold on the open lock is let
+	 * go (a destroy of another tab is not refused for it). The database stays.
 	 */
-	close(): void {
+	async close(): Promise<void> {
 		this.closed = true
 		this.closings += 1
 		if (this.operations.count === 0) {
+			const holdEnded = this.openHoldEnded
 			this.letOpenHoldGo()
 			this.db.close()
+			await holdEnded
 			return
 		}
-		this.holdUntilIdle()
+		await this.holdUntilIdle()
 	}
 
 	/**
@@ -250,7 +253,7 @@ export class DexieStore implements Store {
 	 * another tab is refused until then, as a SQLite store of another tab counts - and a destroy of the
 	 * name in this realm lets them complete first.
 	 */
-	private holdUntilIdle(): void {
+	private async holdUntilIdle(): Promise<void> {
 		const hold = this.openHold
 		const holdEnded = this.openHoldEnded
 		// an open() after this close() takes a hold of its own
@@ -260,6 +263,7 @@ export class DexieStore implements Store {
 			return holdEnded
 		})
 		CLOSING_LOCAL_CONNECTIONS.markClosing({ name: this.name, until })
+		await until
 	}
 
 	/**

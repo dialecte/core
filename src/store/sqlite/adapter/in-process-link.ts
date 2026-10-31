@@ -36,7 +36,7 @@ export function createInProcessConnector(params: InProcessConnectorParams): Engi
 			const clients = CLIENTS.get(key)
 			const open = (clients?.size ?? 0) - (own !== undefined && clients?.has(own.link) ? 1 : 0)
 			if (open > 0) throwOpenElsewhere({ storeName: params.name, connections: open })
-			own?.letGo()
+			void own?.letGo()
 			closeFile({ key })
 		},
 	}
@@ -68,7 +68,7 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Engine
 			creationId = engine.creationId
 			return engine.clientView({ clientId })
 		},
-		close: function releaseEngine() {
+		close: async function releaseEngine() {
 			released = true
 			if (!clients.delete(link) || clients.size > 0) return
 			CLIENTS.delete(key)

@@ -116,6 +116,8 @@ export type WorkerLinkState = {
 	creationId: string | undefined
 	/** Its project destroyed while it was away (`PROJECT_DESTROYED_WHILE_AWAY`): every later call refused with it. */
 	refusal: unknown
+	/** Its release under way or done, once closed: a later close settles with it. */
+	releasing: Promise<void> | undefined
 }
 
 /** The control messages of one engine worker, each answered by its request id. */

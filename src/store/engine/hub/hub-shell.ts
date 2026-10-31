@@ -1,6 +1,6 @@
 import { toThrownData } from '../wire/error-envelope'
 import { createHubRouter } from './hub-router'
-import { REALM_LOCK_PREFIX } from './hub.constants'
+import { REALM_LOCK_PREFIX, HUB_LOCK_PREFIX } from './hub.constants'
 
 import { createDialecteError } from '@/errors'
 
@@ -15,6 +15,9 @@ import type { HubCommand, HubEvent, HubRefusal } from './hub.types'
  * one timer for the router's next deadline, and never relays a call: a client's port to its engine is
  * one end of a channel whose other end the host hands its engine. A client gets its port only once the
  * host says the engine adopted the other end; an adoption that fails ends that engine.
+ *
+ * The hub holds a Web Lock of its own for its life, named in each welcome (a realm granted it knows the hub is
+ * gone): a hub served in a page holds it as long as the page lives.
  */
 export function serveHub(): HubShell {
 	const router = createHubRouter()
@@ -25,7 +28,10 @@ export function serveHub(): HubShell {
 		nextAdoptionId: 0,
 		bindings: new Map(),
 		timer: undefined,
+		hubLock: `${HUB_LOCK_PREFIX}${crypto.randomUUID()}`,
 	}
+	// asked before any realm can be welcomed, so before any realm asks for it to watch it
+	holdForLife({ name: state.hubLock })
 
 	function feed(params: ShellFeed): void {
 		const output = router.handle(params.event)
@@ -258,6 +264,12 @@ function perform(params: {
 					generation: command.generation,
 				},
 			})
+		case 'left':
+			return postTo({
+				state,
+				realmId: command.realmId,
+				message: { type: 'left', project: command.project, dialecteId: command.dialecteId },
+			})
 		case 'destroy-granted':
 			return postTo({
 				state,
@@ -296,7 +308,7 @@ function welcomeRealm(params: {
 		const binding = state.bindings.get(hello.bindingId)
 		if (binding) binding.realmId = realmId
 	}
-	post({ port: hello.port, message: { type: 'welcome', realmId } })
+	post({ port: hello.port, message: { type: 'welcome', realmId, hubLock: state.hubLock } })
 }
 
 /**
@@ -565,4 +577,11 @@ function post(params: {
 	transfer?: Transferable[]
 }): void {
 	params.port.postMessage(params.message, params.transfer ?? [])
+}
+
+/** A Web Lock held for as long as this hub lives: let go with it. */
+function holdForLife(params: { name: string }): void {
+	void navigator.locks.request(params.name, function holdForever() {
+		return new Promise<never>(function neverSettle() {})
+	})
 }

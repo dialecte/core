@@ -59,7 +59,8 @@ export type RealmToHubMessage =
 
 /** What the hub sends a realm. */
 export type HubToRealmMessage =
-	| { type: 'welcome'; realmId: string }
+	/** Welcomed: `hubLock` names the lock the hub holds for its life - granted to a realm, the hub is gone. */
+	| { type: 'welcome'; realmId: string; hubLock: string }
 	/** The hello refused: the realm is not connected. */
 	| { type: 'hello-refused'; error: ThrownData }
 	| {
@@ -74,6 +75,8 @@ export type HubToRealmMessage =
 	| { type: 'engine-lost'; project: string; dialecteId: string; generation: number }
 	| { type: 'open-refused'; project: string; dialecteId: string; error: ThrownData }
 	| { type: 'destroy-granted'; project: string; dialecteId: string }
+	/** The realm's leave of the project handled: it counts no more for it. */
+	| { type: 'left'; project: string; dialecteId: string }
 	| { type: 'destroy-refused'; project: string; dialecteId: string; error: ThrownData }
 	/**
 	 * Said to a child realm before its port closes, when the hub drops it with the page that bound it (that

@@ -74,9 +74,12 @@ export interface Store {
 	/**
 	 * Close this connection: every operation started through it from now on is refused with
 	 * `STORE_CLOSED` until `open()` again (`destroy()` excepted); an operation already running
-	 * completes. The state of the name stays for the next store of that name and its other connections
+	 * completes. Settled once the connection counts no more - its running operations ended, and a
+	 * destroy of the name asked after it, from this page or another tab, is not refused for it. The
+	 * state of the name stays for the next store of that name and its other connections. Never await it
+	 * inside an operation of the store (a hook, a transaction callback): it waits for that operation.
 	 */
-	close(): void
+	close(): Promise<void>
 
 	/**
 	 * Delete the state of the name entirely (the database, not just its content), once the operations

@@ -48,6 +48,8 @@ export type HubShellState = {
 	/** Binding id -> the child realm bound under it. */
 	bindings: Map<string, ChildBinding>
 	timer: ReturnType<typeof setTimeout> | undefined
+	/** The lock this hub holds for its life, told each realm it welcomes. */
+	hubLock: string
 }
 
 /** The port a hello came on, while the router decides on it (welcomed, or refused on that port). */

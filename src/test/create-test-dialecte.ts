@@ -101,8 +101,13 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 	}
 }
 
-/** Close every store `createTestContext` opened by name, so the projects they read can be destroyed. */
-export function closeTestContexts(): void {
-	for (const store of OPENED_CONTEXT_STORES) store.close()
+/** Close every store `createTestContext` opened by name, so the projects they read can be destroyed: settled once they count no more. */
+export async function closeTestContexts(): Promise<void> {
+	const stores = [...OPENED_CONTEXT_STORES]
 	OPENED_CONTEXT_STORES.clear()
+	await Promise.all(stores.map(closeStore))
+}
+
+function closeStore(store: Store): Promise<void> {
+	return store.close()
 }

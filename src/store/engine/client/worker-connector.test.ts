@@ -434,6 +434,28 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			}).destroy()
 		})
 
+		it('an engine that never answers a client’s adoption, ended by the realm → the connection’s close settles once its lock is free: a destroy right after goes ahead', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				...FIXTURE_DIALECTE,
+				name,
+				engineUrl: fixtureUrl({ scenario: 'silent-adopt' }),
+				liveness: { heartbeatTimeoutMs: SILENT_ENGINE_WAIT_MS },
+			})
+			const link = await connector.connect()
+			expect(await errorOfRejection(link.engine())).toMatchObject({
+				key: 'PROJECT_ENGINE_UNAVAILABLE',
+			})
+			await link.close()
+			// no wait: the close is settled on the ended engine's lock
+			expect(await isEngineLockFree({ project: name })).toBe(true)
+			await createSqliteWorkerConnector({
+				...FIXTURE_DIALECTE,
+				name,
+				engineUrl: TEST_ENGINE_URL,
+			}).destroy()
+		})
+
 		it('an engine address of another dialecte → PROJECT_DIALECTE_MISMATCH, nothing of the project made; one that does not check what it is asked → refused all the same, from its answer, its worker ended', async () => {
 			const name = projectName()
 			const otherAddress = await errorOfRejection(
@@ -587,6 +609,20 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			expect(again).toBe('PROJECT_DESTROYED_WHILE_AWAY')
 			await away.close()
 			await fresh.close()
+			await connector.destroy()
+		})
+
+		it('the last connection of the realm closed → settled once its engine let the project’s lock go: free at once after it', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				...FIXTURE_DIALECTE,
+				name,
+				engineUrl: TEST_ENGINE_URL,
+			})
+			const link = await connector.connect()
+			await link.engine()
+			await link.close()
+			expect(await isEngineLockFree({ project: name })).toBe(true)
 			await connector.destroy()
 		})
 

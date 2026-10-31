@@ -392,10 +392,13 @@ export class Document<
 	 * the project. A custom store is reopened in place. To finish with the
 	 * project, use `project.close`.
 	 *
+	 * Settled once the store counts no more (its running operations ended): never await it inside a hook or a
+	 * transaction callback of this document - it waits for that work.
+	 *
 	 * @intent close the project's database connection from a document
 	 */
-	close(): void {
-		this.store.close()
+	close(): Promise<void> {
+		return this.store.close()
 	}
 
 	/**

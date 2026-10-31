@@ -311,7 +311,7 @@ export class Project<
 			// what this open opened is closed again; its store is kept only for destroy()
 			channel?.close()
 			this.refusedStore = store
-			closeRefusedStore({ store })
+			await closeRefusedStore({ store })
 			throw thrown
 		}
 		this._channel = channel
@@ -335,7 +335,7 @@ export class Project<
 			this._store = undefined
 			this.state.documents.clear()
 			this.refusedStore = store
-			closeRefusedStore({ store })
+			await closeRefusedStore({ store })
 			throw thrown
 		}
 
@@ -452,12 +452,13 @@ export class Project<
 			// Wait for any in-flight foreign-message work to settle on the live store
 			// before closing it, so no read/reconcile outlives it.
 			await Promise.allSettled(this.pendingBroadcastWork)
+			this._channel?.close()
+			this._channel = undefined
+			// settled once the store counts no more (its hub, or another tab, told)
+			await this._store?.close()
 		} finally {
 			clearTimeout(report)
 		}
-		this._channel?.close()
-		this._channel = undefined
-		this._store?.close()
 		this.state.documents.clear()
 		// the Documents of this open are told nothing more
 		this.stateSubscribers.clear()
@@ -476,7 +477,7 @@ export class Project<
 				? '0 import(s)'
 				: `${imports.length} import(s) (${imports.join(', ')}: an import hook that never settles keeps it waiting)`
 		console.warn(
-			`Project "${this._name}" has waited ${CLOSE_WAIT_REPORT_MS} ms to close for ${importsTold}, ${this.writes.count} write(s) and ${this.pendingBroadcastWork.size} other-tab update(s) in flight; it goes on waiting. If it never ends, a hook or a transaction callback is awaiting this Project's open, close or destroy.`,
+			`Project "${this._name}" has waited ${CLOSE_WAIT_REPORT_MS} ms to close for ${importsTold}, ${this.writes.count} write(s) and ${this.pendingBroadcastWork.size} other-tab update(s) in flight, then its store's close; it goes on waiting. If it never ends, a hook or a transaction callback is awaiting this Project's open, close or destroy.`,
 		)
 	}
 
@@ -1065,9 +1066,9 @@ function refuseBatchPath(params: { options: ImportFilesOptions | undefined }): v
 }
 
 /** A refused open's store closed again: its own failure to close is not the open's answer, which is the refusal. */
-function closeRefusedStore(params: { store: Store | undefined }): void {
+async function closeRefusedStore(params: { store: Store | undefined }): Promise<void> {
 	try {
-		params.store?.close()
+		await params.store?.close()
 	} catch {
 		// the refusal is what the caller is told; the store is destroyed or opened again from here
 	}

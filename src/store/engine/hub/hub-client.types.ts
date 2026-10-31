@@ -71,12 +71,16 @@ export type HubProjectParams = {
 export type HubProjectLink = {
 	/** The project's engine client now: waits for the hub's answer, rejects with its refusal. */
 	engine: () => Promise<EngineClient>
-	/** This connection done with the project; the realm leaves it with its last connection. */
-	release: () => void
+	/**
+	 * This connection done with the project; the realm leaves it with its last connection, settled once the hub
+	 * acknowledged the leave - from then on no destroy is refused for this realm (at once when another connection of
+	 * the realm still uses it, or the hub was never asked).
+	 */
+	release: () => Promise<void>
 }
 
 /** The destroying connection's own link, and how to let it go (its store forgetting it). */
-export type OwnHubLink = { link: HubProjectLink; letGo: () => void }
+export type OwnHubLink = { link: HubProjectLink; letGo: () => Promise<void> }
 
 /** A port bound to this realm for a child realm, and how to say the child is gone. */
 export type HubPortHandle = {
@@ -149,7 +153,13 @@ export type HubConnectionParams = {
 	lifecycle: HubLifecycleTargets | undefined
 	/**
 	 * Joined through a port its parent made (`adoptHubPort`), not on its own: dropped with its parent, it
-	 * waits for the next port its page hands it. A realm that connected itself, top-level or not, is not.
+	 * waits for the next port its page hands it. A realm that connected itself, top-level or not, is not. A bound
+	 * realm watches no hub lock (a child of another origin shares no locks with the hub): a port its page hands it
+	 * while it is still welcomed settles the leaves it waits for (the hub forgets it with its page); it joins on that
+	 * port once the hub drops it.
 	 */
 	bound?: boolean
 }
+
+/** A join's budget, from its start: `expired` rejects once it has passed; `clear` stops it. */
+export type JoinBudget = { expired: Promise<never>; clear: () => void }

@@ -118,12 +118,6 @@ export const CONTRACT_ENGINE_CHANNEL = 'dialecte::contract-engine'
 /** Between two looks at an ended engine's lock. */
 export const ENGINE_END_POLL_MS = 50
 
-/** How many times the hub leg asks a destroy that another realm's leave, still on its way, may refuse. */
-export const HUB_DESTROY_ASKS = 20
-
-/** Between two such asks. */
-export const HUB_DESTROY_ASK_INTERVAL_MS = 100
-
 /** Why a leg that imports in the page has no engine a case can end mid-import. */
 export const IN_PAGE_IMPORT_REASON =
 	'this store imports in the page itself: no engine to end mid-import, short of the page'

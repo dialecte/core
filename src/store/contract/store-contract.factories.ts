@@ -9,15 +9,12 @@ import {
 	CONTRACT_OTHER_DIALECTE_ID,
 	ENGINE_END_BUDGET_MS,
 	ENGINE_END_POLL_MS,
-	HUB_DESTROY_ASK_INTERVAL_MS,
-	HUB_DESTROY_ASKS,
 	IN_PAGE_IMPORT_REASON,
 	IN_PROCESS_ENGINE_REASON,
 } from './store-contract.constants'
 import { makeDocument } from './store-contract.fixtures'
 import { createContractRuntime } from './store-contract.import-session'
 
-import { toDialecteError } from '@/errors'
 import { ENGINE_OPEN_BUDGET_MS } from '@/store/engine/client/client.constants'
 import { createHubConnector } from '@/store/engine/client/hub-connector'
 import { destroyFromFreshWorker } from '@/store/engine/client/worker-connector'
@@ -328,25 +325,6 @@ class HubContractStore extends EngineStore {
 			}),
 		})
 		this.realm = realm
-	}
-
-	/**
-	 * Through the hub a destroy is refused while another realm uses the project; a connection of another
-	 * realm closed just before may still be on its way (its leave and this destroy cross on two ports): asked
-	 * again then, each ask awaited, a few times at most.
-	 */
-	override async destroy(): Promise<void> {
-		for (let ask = 1; ; ask++) {
-			try {
-				return await super.destroy()
-			} catch (thrown) {
-				if (toDialecteError(thrown)?.key !== 'PROJECT_OPEN_ELSEWHERE' || ask === HUB_DESTROY_ASKS)
-					throw thrown
-				await new Promise(function waitForTheLeave(resolve) {
-					setTimeout(resolve, HUB_DESTROY_ASK_INTERVAL_MS)
-				})
-			}
-		}
 	}
 }
 

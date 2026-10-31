@@ -168,6 +168,8 @@ export type HubCommand =
 			dialecteId: string
 			refusal: HubRefusal
 	  }
+	/** The realm's leave handled: it counts no more for the project (a destroy asked after it is not refused for it). */
+	| { type: 'left'; realmId: string; project: string; dialecteId: string }
 
 export type HubOutput = {
 	commands: HubCommand[]

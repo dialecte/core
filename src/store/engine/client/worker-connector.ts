@@ -70,6 +70,7 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		adoption: undefined,
 		creationId: undefined,
 		refusal: undefined,
+		releasing: undefined,
 	}
 	const key = keyOf(params)
 	OPEN_LINKS.markOpen({ name: key, connection: state })
@@ -102,14 +103,26 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 			return client.api
 		},
 		close: function releaseLink() {
-			if (state.released) return
-			state.released = true
-			OPEN_LINKS.markClosed({ name: key, connection: state })
-			const engine = ENGINES.get(key)
-			releaseClient({ engine, state, storeName: params.name })
-			if (!engine?.links.delete(state) || engine.links.size > 0) return
-			closeEngine({ name: params.name, dialecteId: params.dialecteId, engine, openBudgetMs })
+			// closed already: settled with that first close
+			state.releasing ??= releaseConnection()
+			return state.releasing
 		},
+	}
+	/** The connection released: counted no more, its engine closed when it was the last one. */
+	async function releaseConnection(): Promise<void> {
+		state.released = true
+		OPEN_LINKS.markClosed({ name: key, connection: state })
+		const engine = ENGINES.get(key)
+		releaseClient({ engine, state, storeName: params.name })
+		if (!engine?.links.delete(state)) {
+			// not counted on a running engine: the realm ended the one it had (an adoption never answered, its project
+			// destroyed while it was away) - settled once that engine let the project's lock go
+			await ENDING.get(key)
+			return
+		}
+		if (engine.links.size > 0) return
+		// the last connection: settled once its engine let the project's lock go (another tab may destroy it)
+		await closeEngine({ name: params.name, dialecteId: params.dialecteId, engine, openBudgetMs })
 	}
 	LINK_STATES.set(link, state)
 	return link
@@ -436,7 +449,7 @@ async function destroyProject(params: {
 	const key = keyOf(connector)
 	refuseWhileOpen({ name, key, own: own === undefined ? undefined : LINK_STATES.get(own.link) })
 	// its engine closed with it when it was the last connection: waited for below, as any still ending
-	own?.letGo()
+	void own?.letGo()
 	const ending = ENDING.get(key)
 	let destroyEnded: () => void = settleNothing
 	holdNextEngine({
@@ -562,9 +575,9 @@ function closeEngine(params: {
 	dialecteId: string
 	engine: RealmEngine
 	openBudgetMs: number
-}): void {
+}): Promise<void> {
 	const { name, dialecteId, engine, openBudgetMs } = params
-	void endEngine({
+	const ending = endEngine({
 		name,
 		dialecteId,
 		engine,
@@ -574,7 +587,9 @@ function closeEngine(params: {
 			work: engine.control.request({ message: { type: 'close' }, expect: 'closed' }),
 			budgetMs: ENGINE_CLOSE_BUDGET_MS,
 		}),
-	}).ended.catch(ignoreGoneEngine)
+	})
+	ending.ended.catch(ignoreGoneEngine)
+	return ending.released
 }
 
 /**

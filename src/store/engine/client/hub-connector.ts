@@ -38,7 +38,7 @@ export function createHubConnector(params: HubConnectorParams): EngineConnector 
 			try {
 				await link.engine()
 			} catch (thrown) {
-				link.release()
+				void link.release()
 				throw thrown
 			}
 			const engineLink: EngineLink = {

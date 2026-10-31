@@ -398,7 +398,7 @@ function gatedConnector(params: { destroy: GatedDestroy }): GatedConnector {
 							throw createDialecteError('STORE_CLOSED', { detail: 'the link was released' })
 						return {} as EngineApi
 					},
-					close: function closeLink() {
+					close: async function closeLink() {
 						if (closed) return
 						closed = true
 						openLinks -= 1
@@ -504,3 +504,44 @@ describe('EngineStore, a destroy gone ahead, then failed', () => {
 		store.close()
 	})
 })
+
+describe('EngineStore, closed twice', () => {
+	it('the second close → settled with the first one’s release of the link, never before it', async () => {
+		let letGo: () => void = settleNothing
+		const linkReleased = new Promise<void>(function waitForRelease(resolve) {
+			letGo = resolve
+		})
+		const connector: EngineConnector = {
+			connect: async function connectHeld() {
+				return {
+					engine: async function noEngine() {
+						return {} as EngineApi
+					},
+					close: function releaseHeld() {
+						return linkReleased
+					},
+				}
+			},
+			destroy: async function destroyNothing() {},
+		}
+		const store = new EngineStore({ name: `closed-twice-${crypto.randomUUID()}`, connector })
+		await store.open()
+		const settled: string[] = []
+		void store.close().then(function firstSettled() {
+			settled.push('first')
+		})
+		void store.close().then(function secondSettled() {
+			settled.push('second')
+		})
+		await new Promise(function afterTimers(resolve) {
+			setTimeout(resolve, 0)
+		})
+		expect(settled).toEqual([])
+		letGo()
+		await vi.waitFor(function bothSettled() {
+			expect(settled).toEqual(['first', 'second'])
+		})
+	})
+})
+
+function settleNothing(): void {}

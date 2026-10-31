@@ -309,7 +309,7 @@ const exporting: StoreContractCases = {
 			const { file } = await store.exportFile({
 				documentId,
 				options: { indent: false, batchSize: 1 },
-				onProgress: () => store.close(),
+				onProgress: () => void store.close(),
 			})
 			expect(await file.text()).toBe(before)
 		},

@@ -312,6 +312,13 @@ function leaveProject(params: {
 	step.state.holds.get(projectKeyOf(leave))?.opens.delete(leave.realmId)
 	const project = step.state.projects.get(projectKeyOf(leave))
 	if (project) removeClient({ step, project, realmId: leave.realmId })
+	// told, whatever the realm left: its close waits for it, and a destroy asked after it finds it gone
+	step.commands.push({
+		type: 'left',
+		realmId: leave.realmId,
+		project: leave.project,
+		dialecteId: leave.dialecteId,
+	})
 }
 
 /**
@@ -409,7 +416,7 @@ function destroyRefusal(params: {
 		origin: 'hub',
 		key: 'PROJECT_OPEN_ELSEWHERE',
 		detail: `"${project}" is open in ${others.length} other view(s)`,
-		meta: { project, views: others.length },
+		meta: { project, connections: others.length },
 	}
 }
 

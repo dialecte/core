@@ -21,6 +21,9 @@ export const ENGINE_OPEN_MIN_BUDGET_MS = 1_000
  */
 export const HUB_OPEN_BUDGET_MS = ENGINE_OPEN_WINDOW_MS
 
+/** The prefix of the hub's own Web Lock, held for the hub's life: a realm granted it knows the hub is gone. */
+export const HUB_LOCK_PREFIX = 'dialecte:hub:'
+
 /** The prefix of a realm's Web Lock, held for the realm's life: the hub's grant of it means the realm is gone. */
 export const REALM_LOCK_PREFIX = 'dialecte:realm:'
 

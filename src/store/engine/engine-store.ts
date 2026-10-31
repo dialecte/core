@@ -43,6 +43,8 @@ export class EngineStore implements Store {
 	private destroying: Promise<void> | undefined
 	/** How many times `close()` was called: an `open()` refuses when one came after it was called. */
 	private closings = 0
+	/** The last release of the link: what a `close()` waits for. */
+	private linkReleased: Promise<void> = Promise.resolve()
 	/** The operations running: `close()` releases the link, `open()` and `destroy()` go on, once none is left. */
 	private readonly operations = createRunningOperations()
 
@@ -71,16 +73,18 @@ export class EngineStore implements Store {
 
 	/**
 	 * Refuse every operation started from now on until opened again; the link goes once the running ones
-	 * end - a destroy of the name in the realm waits for them, as for its own.
+	 * end - a destroy of the name in the realm waits for them, as for its own - and the close is settled once
+	 * the link is released: its engine's lock let go, or the hub told it left.
 	 */
-	close(): void {
+	async close(): Promise<void> {
 		this.closed = true
 		this.closings += 1
-		if (this.operations.count === 0) {
-			this.releaseLink()
-			return
-		}
-		CLOSING_ENGINE_STORES.markClosing({ name: this.name, until: this.operations.whenIdle() })
+		if (this.operations.count === 0) return this.releaseLink()
+		const idle = this.operations.whenIdle()
+		CLOSING_ENGINE_STORES.markClosing({ name: this.name, until: idle })
+		await idle
+		// released by the last operation as it ended
+		await this.linkReleased
 	}
 
 	/**
@@ -107,7 +111,7 @@ export class EngineStore implements Store {
 		// stays as it was - no other destroy finds it let go meanwhile
 		const own = this.link && { link: this.link, letGo: this.releaseLink.bind(this) }
 		await this.connector.destroy({ own })
-		this.releaseLink()
+		void this.releaseLink()
 	}
 
 	// --- Cross-realm reconciliation ---
@@ -379,7 +383,7 @@ export class EngineStore implements Store {
 			return await run()
 		} finally {
 			// released before `end` resolves a waiting open(), which then connects again
-			if (this.operations.count === 1 && this.closed) this.releaseLink()
+			if (this.operations.count === 1 && this.closed) void this.releaseLink()
 			this.operations.end()
 		}
 	}
@@ -401,11 +405,13 @@ export class EngineStore implements Store {
 		}
 	}
 
-	/** Called with no operation running, so no connection is under way. */
-	private releaseLink(): void {
-		this.link?.close()
+	/** Called with no operation running, so no connection is under way; settled once the link counts no more. */
+	private releaseLink(): Promise<void> {
+		// a link released already: a later close waits for that release still
+		if (this.link) this.linkReleased = this.link.close()
 		this.link = undefined
 		this.connecting = undefined
+		return this.linkReleased
 	}
 }
 

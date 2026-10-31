@@ -5,17 +5,18 @@ export type EngineLink = {
 	/** The engine serving the project now: a later call may answer another one, started since. */
 	engine: () => Promise<EngineApi>
 	/**
-	 * Release the connection; the engine closes once no connection is left. Idempotent; the released
+	 * Release the connection; the engine closes once no connection is left. Settled once the connection counts
+	 * no more for a destroy anywhere (its engine's lock let go, the hub told). Idempotent; the released
 	 * connection reaches no engine after (`STORE_CLOSED`).
 	 */
-	close: () => void
+	close: () => Promise<void>
 }
 
 /** What a connector's destroy is handed: the destroying store's own connection, when it has one. */
 export type EngineDestroyParams = { own?: OwnEngineLink }
 
 /** The destroying store's own connection: `letGo` releases it, the store forgetting it, once the destroy goes ahead. */
-export type OwnEngineLink = { link: EngineLink; letGo: () => void }
+export type OwnEngineLink = { link: EngineLink; letGo: () => Promise<void> }
 
 /** How a store reaches its project's engine, and how the project is deleted. */
 export type EngineConnector = {

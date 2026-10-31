@@ -757,6 +757,7 @@ describe('createHubRouter', () => {
 							generation: 1,
 							realmId: 'shell',
 						},
+						{ type: 'left', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
 					],
 					wakeAt: 1_000 + ENGINE_IDLE_CLOSE_MS,
 				},
@@ -2004,10 +2005,16 @@ describe('createHubRouter', () => {
 				engineOpened({ generation: 1 }),
 			],
 			steps: [
-				{ event: leave({ realmId: 'other-tab' }), commands: [], wakeAt: undefined },
+				{
+					event: leave({ realmId: 'other-tab' }),
+					commands: [{ type: 'left', realmId: 'other-tab', project: PROJECT, dialecteId: 'scl' }],
+					wakeAt: undefined,
+				},
 				{
 					event: leave({ realmId: 'other-tab', project: 'unopened' }),
-					commands: [],
+					commands: [
+						{ type: 'left', realmId: 'other-tab', project: 'unopened', dialecteId: 'scl' },
+					],
 					wakeAt: undefined,
 				},
 			],
@@ -2207,7 +2214,7 @@ describe('createHubRouter', () => {
 									origin: 'hub',
 									key: 'PROJECT_OPEN_ELSEWHERE',
 									detail: `"${PROJECT}" is open in 1 other view(s)`,
-									meta: { project: PROJECT, views: 1 },
+									meta: { project: PROJECT, connections: 1 },
 								},
 							},
 						],
@@ -2383,7 +2390,11 @@ describe('createHubRouter', () => {
 					open({ realmId: 'other-tab' }),
 				],
 				steps: [
-					{ event: leave({ realmId: 'other-tab' }), commands: [], wakeAt: undefined },
+					{
+						event: leave({ realmId: 'other-tab' }),
+						commands: [{ type: 'left', realmId: 'other-tab', project: PROJECT, dialecteId: 'scl' }],
+						wakeAt: undefined,
+					},
 					{ event: destroyed({ realmId: 'shell' }), commands: [] },
 				],
 			},

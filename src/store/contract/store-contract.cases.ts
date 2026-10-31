@@ -58,7 +58,7 @@ const lifecycle: StoreContractCases = {
 	'open and close do not throw, open twice is fine': {
 		act: async ({ store }) => {
 			await expect(store.open()).resolves.toBeUndefined()
-			expect(() => store.close()).not.toThrow()
+			await expect(store.close()).resolves.toBeUndefined()
 			await expect(store.open()).resolves.toBeUndefined()
 		},
 	},
@@ -2604,6 +2604,54 @@ function otherThan(params: { documents: DocumentRecord[]; id: string }): Documen
 }
 
 const oneStateAfterDestroy: StoreContractCases = {
+	'another connection’s close settled → a destroy asked right after is granted: the closed one counts no more':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				const other = await connect()
+				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+				await other.close()
+				await store.destroy()
+				const fresh = await connect()
+				expect(await fresh.getDocuments()).toEqual([])
+			},
+		},
+	'a destroy refused while another connection is open → PROJECT_OPEN_ELSEWHERE naming the project, and how many connections where the store counts them':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				const other = await connect()
+				const refused = await store.destroy().then(
+					function unexpectedlyDestroyed() {
+						return undefined
+					},
+					function refusedWith(thrown: unknown) {
+						return toDialecteError(thrown)
+					},
+				)
+				expect(refused?.key).toBe('PROJECT_OPEN_ELSEWHERE')
+				// every store names the project; a store that counts the connections says one (IndexedDB cannot count another tab's)
+				expect(refused?.meta).toMatchObject({ project: store.name })
+				expect(Object.keys(refused?.meta ?? {}).filter((key) => key !== 'project')).toEqual(
+					refused?.meta?.connections === undefined ? [] : ['connections'],
+				)
+				if (refused?.meta?.connections !== undefined) expect(refused.meta.connections).toBe(1)
+				await other.close()
+			},
+		},
+	'a store closed, then opened again (the same instance) → it reads what it wrote, its other connections unchanged':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				const other = await connect()
+				await store.close()
+				await store.open()
+				expect(await documentIdsOf({ store })).toEqual(['doc-1'])
+				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+			},
+		},
 	'a view away while another view destroys its project → back, its calls refused PROJECT_DESTROYED_WHILE_AWAY: never an empty project in its place':
 		{
 			needs: ['away'],
@@ -2696,7 +2744,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 				await other.close()
 				const third = await connect()
 				await expectRejectsWith({ action: third.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
-				store.close()
+				await store.close()
 				await third.destroy()
 				const fresh = await connect()
 				expect(await fresh.getDocuments()).toEqual([])
@@ -2744,7 +2792,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 				await store.registerDocument(makeDocument())
 				const other = await connect()
 				const destroying = refusalKeyOf({ destroying: store.destroy() })
-				store.close()
+				void store.close()
 				expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
 				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
 			},
@@ -2781,7 +2829,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 				const other = await connect()
 				await expectRejectsWith({ action: other.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
 				expect(await documentIdsOf({ store: store })).toEqual(['doc-1'])
-				store.close()
+				await store.close()
 				await other.destroy()
 				const fresh = await connect()
 				expect(await fresh.getDocuments()).toEqual([])
@@ -2803,7 +2851,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 				// orders a read before a write started next
 				expect(otherThan({ documents: await reading, id: 'doc-2' })).toEqual([])
 				await writing
-				store.close()
+				void store.close()
 				const fresh = await connect()
 				expect(await documentIdsOf({ store: fresh })).toEqual(['doc-2'])
 			},
@@ -2862,7 +2910,7 @@ const oneStateAfterDestroy: StoreContractCases = {
 				})
 				try {
 					await untilHeld({ hold, importing })
-					store.close()
+					void store.close()
 					let destroyed = false
 					const destroying = other.destroy().then(function markDestroyed() {
 						destroyed = true
@@ -3241,7 +3289,7 @@ const closedStore: StoreContractCases = {
 				act: async ({ store }: StoreContractContext) => {
 					await seedClosedStore(store)
 					const running = run(store)
-					store.close()
+					void store.close()
 					await running
 					await expectRejectsWith({
 						action: store.getDocuments(),
@@ -3262,7 +3310,7 @@ const closedStore: StoreContractCases = {
 				act: async ({ store }: StoreContractContext) => {
 					await seedClosedStore(store)
 					const running = run(store)
-					store.close()
+					void store.close()
 					const opening = store.open()
 					await running
 					await opening
@@ -3320,7 +3368,7 @@ const closedStore: StoreContractCases = {
 			})
 			try {
 				await untilHeld({ hold, importing })
-				store.close()
+				void store.close()
 				await expectRejectsWith({ action: store.getDocuments(), key: 'STORE_CLOSED' })
 				hold.release()
 				const result = await importing
@@ -3340,7 +3388,7 @@ const closedStore: StoreContractCases = {
 				needs: ['history', 'blobs'],
 				act: async ({ store }: StoreContractContext) => {
 					await seedClosedStore(store)
-					store.close()
+					void store.close()
 					await expectRejectsWith({
 						action: operation(store),
 						key: 'STORE_CLOSED',
@@ -3359,9 +3407,9 @@ const closedStore: StoreContractCases = {
 		needs: ['history', 'blobs'],
 		act: async ({ store }) => {
 			await seedClosedStore(store)
-			store.close()
+			void store.close()
 			const opening = store.open()
-			store.close()
+			void store.close()
 			await expectRejectsWith({ action: opening, key: 'STORE_CLOSED' })
 			await expectRejectsWith({ action: store.getDocuments(), key: 'STORE_CLOSED' })
 			await store.open()
@@ -3372,8 +3420,8 @@ const closedStore: StoreContractCases = {
 		needs: ['history', 'blobs'],
 		act: async ({ store, reopen }) => {
 			await seedClosedStore(store)
-			store.close()
-			expect(() => store.close()).not.toThrow()
+			void store.close()
+			await expect(store.close()).resolves.toBeUndefined()
 			await store.destroy()
 			const reopened = await reopen()
 			expect(await reopened.getDocuments()).toEqual([])
@@ -3384,7 +3432,7 @@ const closedStore: StoreContractCases = {
 		act: async ({ store, connect }) => {
 			await seedClosedStore(store)
 			const other = await connect()
-			store.close()
+			void store.close()
 			await other.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r2' })] })
 			expect((await other.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
 				'r1',

@@ -141,18 +141,16 @@ export class InMemoryStore implements Store {
 
 	/**
 	 * Refuse every operation started from now on until opened again; one running completes (only an
-	 * import spans more than a call). The state of the name stays.
+	 * import spans more than a call), and the close is settled once it has. The state of the name stays.
 	 */
-	close(): void {
+	async close(): Promise<void> {
 		this.closed = true
 		this.closings += 1
 		OPEN_IN_MEMORY_CONNECTIONS.markClosed({ name: this.name, connection: this })
-		if (this.operations.count > 0) {
-			CLOSING_IN_MEMORY_CONNECTIONS.markClosing({
-				name: this.name,
-				until: this.operations.whenIdle(),
-			})
-		}
+		if (this.operations.count === 0) return
+		const idle = this.operations.whenIdle()
+		CLOSING_IN_MEMORY_CONNECTIONS.markClosing({ name: this.name, until: idle })
+		await idle
 	}
 
 	/**
