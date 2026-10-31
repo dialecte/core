@@ -1,5 +1,5 @@
 import type { createXmlSchemaAssertions } from './assert-valid-xml'
-import type { createXmlAssertions } from './assert-xml'
+import type { XmlAssertions } from './assert-xml'
 import type {
 	DeclaredTestRunnerParams,
 	TestProjectOptions,
@@ -10,7 +10,6 @@ import type { createTestRecordFactory } from './test-record'
 import type { ExtensionModules } from '@/document'
 import type { AnyDialecteConfig } from '@/types'
 
-export type XmlAssertions = ReturnType<typeof createXmlAssertions>
 export type XmlSchemaAssertions = ReturnType<typeof createXmlSchemaAssertions>
 
 /**

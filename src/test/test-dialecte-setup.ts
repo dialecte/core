@@ -3,7 +3,7 @@ import { TEST_CONFIG_KEY } from './constant'
 import { TEST_DIALECTE } from './test-dialecte'
 import { resolveTestStorage } from './test-storage'
 
-import { onTestFinished } from 'vitest'
+import { onTestFinished, TestRunner } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
 import { createDialecteProject } from '@/dialecte/create-dialecte-project'
@@ -148,8 +148,13 @@ async function importTestDocument<
 }
 
 /**
- * Destroy the project when the running test ends, so a test that forgets it leaves no store behind.
- * Outside a running test vitest refuses the hook (it throws): the caller then owns the teardown.
+ * Destroy the project when the running test ends, so a test that forgets it leaves no store behind, and
+ * after every other `onTestFinished` hook of the test, whenever that one was registered: a wrapper's
+ * hook still finds the project open. vitest 4.1 runs a test's `onFinished` hooks as a stack (the last
+ * registered first, whatever `sequence.hooks` says), so the destroy, registered through
+ * `onTestFinished` (its timeout wrapper), is moved to the bottom of that stack. Outside a running test
+ * vitest refuses the hook (it throws): the caller then owns the teardown - vitest has no way to tie a
+ * teardown to the suite running a `beforeAll`.
  */
 function destroyWhenTestEnds(params: { project: { destroy: () => Promise<void> } }): void {
 	const { project } = params
@@ -157,5 +162,11 @@ function destroyWhenTestEnds(params: { project: { destroy: () => Promise<void> }
 		onTestFinished(() => project.destroy())
 	} catch {
 		// not inside a running test
+		return
 	}
+	// `onFinished` is the runner's own list behind `onTestFinished` (vitest 4.1), not in its public type
+	const test = TestRunner.getCurrentTest() as { onFinished?: unknown[] } | undefined
+	const hooks = test?.onFinished
+	const destroy = hooks?.pop()
+	if (hooks && destroy) hooks.unshift(destroy)
 }

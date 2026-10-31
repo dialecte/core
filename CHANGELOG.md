@@ -127,6 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `@dialecte/core/test` exports every type its functions' signatures name: `XmlAssertions` (what `createXmlAssertions` returns), `XmlQueriesParams` and `XmlQueriesWithNamespacesParams`, so a dialecte re-exporting the query assertions types them without reaching into core's sources.
+- A test project `createTestProject` opens inside a running test is destroyed after every other `onTestFinished` hook of that test, whatever their order of registration: a wrapper's teardown registered before the project was opened still finds it open. A project opened outside a running test (a `beforeAll`) stays the caller's to destroy: vitest offers no way to tie its teardown to that suite.
+- core's `package.json` declares its shipped test entry as production for `dialecte tdd` (`"dialecte": { "tdd": { "production": ["src/test"] } }`): an edit there is code, not test code.
 - A Document whose state subscriber throws as a transaction starts or ends takes the next transaction; it refused every later one `CONCURRENT_TRANSACTION`.
 - `project.destroy()` removes the project a refused `open` was for (its store closed again and never opened); it did nothing, or - on a Project that had opened another project before, or when an `open` was called while the destroy waited for the imports in flight - destroyed that other project.
 - `formatXml`, `formatEmbeddedXml` and `dialecte-xmlfmt` drop XML whitespace only (space, tab, carriage return, line feed) between elements: a no-break space, a byte order mark or U+2028 next to a child is text, kept with the element's content as written. They were dropped as whitespace, changing the text.

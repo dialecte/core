@@ -39,3 +39,9 @@ export type XpathStepReading = {
 	/** The attributes the predicates name (`@aA`, `@ext:aAA_3`), as written. */
 	predicateAttributes: string[]
 }
+
+/** The query assertions a dialecte offers: what `createXmlAssertions` makes (named, so a consumer can type with it). */
+export type XmlAssertions = {
+	assertExpectedElementQueries(params: XmlQueriesParams): void
+	assertUnexpectedElementQueries(params: XmlQueriesParams): void
+}

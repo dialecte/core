@@ -280,11 +280,16 @@ The assertions read XML the same way in node and in a browser: they parse and qu
 ### Signature
 
 ```ts
-function createXmlAssertions(params: { namespaces: Record<string, Namespace> }): {
-	assertExpectedElementQueries(params: { xml: string; queries: string[] }): void
-	assertUnexpectedElementQueries(params: { xml: string; queries: string[] }): void
+function createXmlAssertions(params: { namespaces: Record<string, Namespace> }): XmlAssertions
+
+type XmlAssertions = {
+	assertExpectedElementQueries(params: XmlQueriesParams): void
+	assertUnexpectedElementQueries(params: XmlQueriesParams): void
 }
+type XmlQueriesParams = { xml: string; queries: string[] }
 ```
+
+`XmlAssertions`, `XmlQueriesParams` and `XmlQueriesWithNamespacesParams` (the module-level assertions' parameter, with the `namespaces` to read the prefixes with) are exported from `@dialecte/core/test`: a dialecte that re-exports the assertions types them with these names. Every type named in the signature of a function of `@dialecte/core/test` is exported from it.
 
 XML text that is not well-formed is refused with `queried XML: malformed XML - <line>:<column> <libxml2's reason>`. As in XPath 1.0: namespace declarations are not attributes (`@*` and `count(@*)` leave them out), the XML declaration and the whitespace around the root are no nodes of the document, and a query naming a prefix the namespaces do not bind is refused, whatever the document.
 
@@ -769,7 +774,7 @@ The browser-only files, the node-only ones and the node benches are listed in `v
 ### Teardown
 
 - `runTestCases` destroys the project of each case.
-- `createTestProject` called inside a running test (its body or a `beforeEach`) destroys its project when that test ends; called outside one (`beforeAll`, module scope), the project is the caller's to destroy. A project several tests share is therefore opened in `beforeAll` or at module scope: one opened in a test is gone in the next. So is one a vitest fixture opens (`test.extend`), even with `scope: 'file'` or `'worker'`: the fixture is set up inside the first test that uses it, and its project is destroyed when that test ends. Destroying it yourself as well is harmless. Under `test.concurrent` the end of another test may come first: destroy such projects yourself.
+- `createTestProject` called inside a running test (its body or a `beforeEach`) destroys its project when that test ends, after every other `onTestFinished` hook of the test, whenever that hook was registered: a wrapper's own teardown still finds the project open. Called outside one (`beforeAll`, module scope), the project is the caller's to destroy (`afterAll(() => project.destroy())`, or a cleanup the `beforeAll` returns: `beforeAll(async () => { project = ...; return () => project.destroy() })`): vitest gives no way to tie a teardown to the suite running a `beforeAll`. A project several tests share is therefore opened in `beforeAll` or at module scope: one opened in a test is gone in the next. So is one a vitest fixture opens (`test.extend`), even with `scope: 'file'` or `'worker'`: the fixture is set up inside the first test that uses it, and its project is destroyed when that test ends. Destroying it yourself as well is harmless. Under `test.concurrent` the end of another test may come first: destroy such projects yourself.
 - A `Project` or a store a test builds itself is the test's to destroy - once every other one of its name is closed, or the destroy is refused. Under a fixed name (`open('test')`) a project never destroyed leaves its documents to the next one of that name - in memory for the rest of the test worker, on IndexedDB for the rest of the browser run, across test files: use a new name per test (`crypto.randomUUID()`), or destroy it.
 - `createTestContext` given a project's name (no `store`) opens a connection of its own to it: `closeTestContexts()` closes every such one, before the project is destroyed.
 

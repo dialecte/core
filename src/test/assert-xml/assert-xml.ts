@@ -10,6 +10,7 @@ import { splitXpathIntoSteps } from './xpath-parser'
 import type { XmlDocument, XmlNamespaces, XmlNode } from '../xml'
 import type {
 	QueryTrace,
+	XmlAssertions,
 	XmlQueriesParams,
 	XmlQueriesWithNamespacesParams,
 	XmlQueryChecks,
@@ -20,7 +21,9 @@ import type { Namespace } from '@/types'
  * The query assertions of a dialecte: XPath prefixes are its config's namespace keys, mapped to their URIs
  * once here. Made once per dialecte (e.g. in scl's test entry) and offered beside `createTestProject`.
  */
-export function createXmlAssertions(params: { namespaces: Record<string, Namespace> }) {
+export function createXmlAssertions(params: {
+	namespaces: Record<string, Namespace>
+}): XmlAssertions {
 	const namespaces = toXmlNamespaces(params.namespaces)
 	return {
 		assertExpectedElementQueries(params: XmlQueriesParams) {

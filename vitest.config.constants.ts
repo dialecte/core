@@ -105,6 +105,14 @@ export const NODE_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'reads the sources of the test entry from disk',
 	},
 	{
+		path: 'src/test/test-entry-bundle.test.ts',
+		why: 'builds the test entry with vite and reads the output',
+	},
+	{
+		path: 'src/test/test-entry-types.test.ts',
+		why: 'compiles the test entry with the TypeScript API and reads its sources from disk',
+	},
+	{
 		path: 'src/test/dependencies.test.ts',
 		why: 'reads package.json and the sources from disk: no retired XML module',
 	},
