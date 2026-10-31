@@ -31,6 +31,7 @@ export function createProjectFactory<
 		return createDialecteProject<GenericConfig, GenericModules, CustomModules>({
 			...createParams,
 			dialecte,
+			engineUrl,
 		})
 	}
 

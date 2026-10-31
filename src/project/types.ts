@@ -102,8 +102,14 @@ export type ProjectChannelMessage =
 
 // ── Storage ──────────────────────────────────────────────────────────────────
 
+/**
+ * Where a project's data lives: `local` (IndexedDB, the default), `sqlite` (SQLite on the origin's private file
+ * system, one engine per project shared by every view of the app; a project made by a dialecte's project factory),
+ * `inMemory` (this page only), or a `custom` store.
+ */
 export type StorageParam =
 	| { type: 'local' }
+	| { type: 'sqlite' }
 	| { type: 'custom'; store: Store }
 	| { type: 'inMemory'; writable?: boolean }
 
@@ -133,6 +139,10 @@ export type ProjectParams<
 	 * store holds - two dialectes' projects of one name are two projects. Without it, the name alone.
 	 */
 	dialecteId?: string
+	/** The version of the dialecte (its factory gives it): the SQLite engine a view reaches runs that version. */
+	dialecteVersion?: string
+	/** The address of the dialecte's engine worker (its factory gives it): what `sqlite` starts the engine from. */
+	engineUrl?: string
 }
 
 // ── resolveConfig ────────────────────────────────────────────────────────────────

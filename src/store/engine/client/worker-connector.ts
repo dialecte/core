@@ -478,6 +478,14 @@ async function destroyProject(params: {
 	}
 }
 
+/**
+ * Whether this realm runs the project's engine itself (a connection of it open in direct mode): a new connection
+ * of the realm joins that engine, whatever the hub says by then.
+ */
+export function runsDirectly(params: { name: string; dialecteId: string }): boolean {
+	return OPEN_LINKS.others({ name: keyOf(params) }) > 0
+}
+
 /** Refused `PROJECT_OPEN_ELSEWHERE` while a connection of this realm but `own` has the project open. */
 function refuseWhileOpen(params: { name: string; key: string; own?: WorkerLinkState }): void {
 	const open = OPEN_LINKS.others({ name: params.key, connection: params.own })

@@ -71,6 +71,9 @@ export class Project<
 	 * project a store holds. `undefined` for a Project made with no dialecte.
 	 */
 	readonly dialecteId: string | undefined
+	/** The dialecte's version and its engine worker's address, from its factory: what `sqlite` storage runs. */
+	private readonly dialecteVersion: string | undefined
+	private readonly engineUrl: string | undefined
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private mergedExtensions?: MergedExtensions<GenericModules>
@@ -255,9 +258,13 @@ export class Project<
 		hooks?: DialecteHooks<GenericConfig>
 		dev?: { perf?: boolean }
 		dialecteId?: ProjectParams<GenericConfig>['dialecteId']
+		dialecteVersion?: ProjectParams<GenericConfig>['dialecteVersion']
+		engineUrl?: ProjectParams<GenericConfig>['engineUrl']
 	}) {
 		const configKeys = Object.keys(params.configs)
 		this.dialecteId = params.dialecteId
+		this.dialecteVersion = params.dialecteVersion
+		this.engineUrl = params.engineUrl
 
 		this.storage = params.storage
 		this.configs = params.configs
@@ -362,6 +369,8 @@ export class Project<
 				// (the import pipeline is registry-driven).
 				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
 				perf: this.perfEnabled,
+				dialecteVersion: this.dialecteVersion,
+				engineUrl: this.engineUrl,
 			},
 			perf: this.perf,
 		})

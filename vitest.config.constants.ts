@@ -75,6 +75,10 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: "the page's `resume` event (a frozen tab coming back)",
 	},
 	{
+		path: 'src/store/sqlite/adapter/sqlite-connector.test.ts',
+		why: 'a project on `sqlite` storage: its engine worker, the origin’s hub and private file system',
+	},
+	{
 		path: 'src/store/sqlite/load-sqlite.test.ts',
 		why: 'fetches the SQLite wasm file the page serves',
 	},

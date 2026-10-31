@@ -13,10 +13,9 @@ const CORE_DIST = path.join(WORK, 'core')
 const DIALECTE = path.join(WORK, 'dialecte')
 const APP = path.join(WORK, 'app')
 
-/** What a dialecte package and a consumer reach of core: its main side, its engine, its wasm URL module. */
+/** What a dialecte package and a consumer reach of core: its main side and its engine. */
 const CORE_ALIASES = {
 	'@dialecte/core/engine': path.join(CORE_DIST, 'engine.js'),
-	'@dialecte/core/wasm': path.join(CORE_DIST, 'wasm.js'),
 	'@dialecte/core': path.join(CORE_DIST, 'index.js'),
 }
 
@@ -40,7 +39,6 @@ const DIALECTE_FILES: Record<string, string> = {
 	'index.ts': [
 		"import engineA from './engine-a.worker.ts?worker&url'",
 		"import engineB from './engine-b.worker.ts?worker&url'",
-		"export { SQLITE_WASM_URL } from '@dialecte/core/wasm'",
 		'export const ENGINE_URLS = [engineA, engineB]',
 	].join('\n'),
 }
@@ -115,8 +113,20 @@ const LIBXML2_MARKERS = ['libxml2', 'xmlReadString', 'XmlParseError']
 const SQLITE_MODULE_IMPORT =
 	/(?:from|import)\s*\(?\s*["']@sqlite\.org\/sqlite-wasm(?:\/[^"'?]*)?["']/
 
-/** The entry's chunk and every chunk it imports, statically or dynamically, in core's build. */
-async function chunksReachedFrom(params: { entry: string }): Promise<Map<string, string>> {
+/** A static import of a chunk (`from "./x.js"`, `import "./x.js"`), from the importer's folder. */
+const STATIC_CHUNK_IMPORT = /(?:from|import)\s*["'](\.{1,2}\/[^"']+\.js)["']/g
+/** A static or a dynamic (`import("../x.js")`) import of a chunk. */
+const ANY_CHUNK_IMPORT = /(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+\.js)["']/g
+
+/**
+ * The entry's chunk and every chunk it imports in core's build: statically only (what loads with the entry), or
+ * through `import()` too (what the entry may load later).
+ */
+async function chunksReachedFrom(params: {
+	entry: string
+	staticOnly?: boolean
+}): Promise<Map<string, string>> {
+	const imports = params.staticOnly ? STATIC_CHUNK_IMPORT : ANY_CHUNK_IMPORT
 	const reached = new Map<string, string>()
 	const pending = [params.entry]
 	while (pending.length > 0) {
@@ -124,12 +134,29 @@ async function chunksReachedFrom(params: { entry: string }): Promise<Map<string,
 		if (reached.has(file)) continue
 		const text = await textOf({ file: path.join(CORE_DIST, file) })
 		reached.set(file, text)
-		// static (`from "./x.js"`, `import "./x.js"`) and dynamic (`import("../x.js")`) imports, from the importer's folder
-		for (const match of text.matchAll(/(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+\.js)["']/g)) {
+		for (const match of text.matchAll(imports)) {
 			pending.push(path.posix.normalize(path.posix.join(path.posix.dirname(file), match[1]!)))
 		}
 	}
 	return reached
+}
+
+/** What core's main side writes for the one wasm file: a URL a consumer's bundler resolves. */
+const WASM_URL_EXPRESSION = 'new URL("sqlite3.wasm", import.meta.url)'
+
+/** Text only the SQLite connector holds (its refusal where no engine can run): where its code went in a build. */
+const SQLITE_CONNECTOR_MARKER = 'cannot be stored with SQLite here'
+
+/** The chunks of core's build holding `fragment`. */
+function chunksHolding(params: { chunks: Map<string, string>; fragment: string }): string[] {
+	const { chunks, fragment } = params
+	return [...chunks]
+		.filter(function holdsFragment([, text]) {
+			return text.includes(fragment)
+		})
+		.map(function fileOf([file]) {
+			return file
+		})
 }
 
 beforeAll(async () => {
@@ -146,22 +173,6 @@ beforeAll(async () => {
 		root: CORE_ROOT,
 		logLevel: 'silent',
 		build: { outDir: CORE_DIST },
-	})
-	// core's main side holding the wasm URL, built with the main build's settings as an entry of its own
-	await build({
-		configFile: false,
-		root: CORE_ROOT,
-		base: './',
-		logLevel: 'silent',
-		build: {
-			outDir: CORE_DIST,
-			emptyOutDir: false,
-			lib: {
-				entry: { wasm: path.join(CORE_ROOT, 'src/store/sqlite/sqlite-wasm-url.ts') },
-				formats: ['es'],
-			},
-			rollupOptions: { output: { entryFileNames: '[name].js' } },
-		},
 	})
 	await mkdir(DIALECTE, { recursive: true })
 	for (const [name, source] of Object.entries(DIALECTE_FILES)) {
@@ -184,9 +195,9 @@ beforeAll(async () => {
 	await writeFile(
 		path.join(APP, 'main.js'),
 		[
-			`import { SQLITE_WASM_URL, ENGINE_URLS } from '${path.join(DIALECTE, 'dist', 'index.js')}'`,
-			"import { connectHub } from '@dialecte/core'",
-			'console.log(SQLITE_WASM_URL, ENGINE_URLS, connectHub)',
+			`import { ENGINE_URLS } from '${path.join(DIALECTE, 'dist', 'index.js')}'`,
+			"import { connectHub, createProjectFactory } from '@dialecte/core'",
+			'console.log(ENGINE_URLS, connectHub, createProjectFactory)',
 		].join('\n'),
 	)
 	await writeFile(path.join(APP, 'index.html'), '<script type="module" src="./main.js"></script>')
@@ -231,11 +242,16 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		expect(LIBXML2_MARKERS.some((marker) => testEntry.includes(marker))).toBe(true)
 	})
 
-	it('core’s main side (a synthetic entry of the wasm URL module, until the local store moves to SQLite) → the one wasm beside it, referenced by a URL a consumer’s bundler resolves', async () => {
+	it('core’s main side → the one wasm beside it, its URL only in a chunk the main entry loads through import(): a page on another storage never fetches it', async () => {
 		expect(await filesUnder({ directory: CORE_DIST })).toContain('sqlite3.wasm')
-		expect(await textOf({ file: path.join(CORE_DIST, 'wasm.js') })).toContain(
-			'new URL("sqlite3.wasm", import.meta.url)',
-		)
+		const loadedWithEntry = await chunksReachedFrom({ entry: 'index.js', staticOnly: true })
+		// the main entry loads chunks of its own: a reading that found none would prove nothing
+		expect(loadedWithEntry.size).toBeGreaterThan(1)
+		const reachable = await chunksReachedFrom({ entry: 'index.js' })
+		for (const fragment of [WASM_URL_EXPRESSION, SQLITE_CONNECTOR_MARKER]) {
+			expect(chunksHolding({ chunks: loadedWithEntry, fragment }), fragment).toEqual([])
+			expect(chunksHolding({ chunks: reachable, fragment }), fragment).toHaveLength(1)
+		}
 	})
 
 	it('a dialecte with two engine workers → neither worker chunk holds a wasm or a URL to one', async () => {
@@ -266,9 +282,16 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 			),
 		)
 		expect(holding.some(Boolean)).toBe(true)
+		// the page's entry script (the one index.html loads) holds no URL to it: it is reached through import()
+		const page = await textOf({ file: path.join(APP, 'dist', 'index.html') })
+		const entry = /src="\.?\/?(assets\/[^"]+\.js)"/.exec(page)?.[1]
+		expect(entry).toBeDefined()
+		expect(await textOf({ file: path.join(APP, 'dist', entry!) })).not.toContain(
+			path.basename(wasm!),
+		)
 	})
 
-	it('a consumer’s dev server → the wasm URL of core’s main side answers the wasm', async () => {
+	it('a consumer’s dev server → the wasm URL of core’s main side (its lazily loaded chunk) answers the wasm', async () => {
 		const server = await createServer({
 			configFile: false,
 			root: APP,
@@ -278,7 +301,9 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		})
 		await server.listen()
 		try {
-			const transformed = await server.transformRequest(`/@fs${path.join(CORE_DIST, 'wasm.js')}`)
+			const reachable = await chunksReachedFrom({ entry: 'index.js' })
+			const [wasmChunk] = chunksHolding({ chunks: reachable, fragment: WASM_URL_EXPRESSION })
+			const transformed = await server.transformRequest(`/@fs${path.join(CORE_DIST, wasmChunk!)}`)
 			const wasmPath = /new URL\(["']([^"']*sqlite3[^"']*\.wasm)["']/.exec(
 				transformed?.code ?? '',
 			)?.[1]

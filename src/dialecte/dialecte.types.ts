@@ -88,4 +88,6 @@ export type CreateDialecteProjectParams<
 	CustomModules extends ExtensionModules = Record<never, never>,
 > = CreateProjectParams<CustomModules> & {
 	dialecte: DialecteDeclaration<GenericConfig, GenericModules, string>
+	/** The address of the dialecte's engine worker, from its project factory: `sqlite` storage needs it. */
+	engineUrl?: string
 }

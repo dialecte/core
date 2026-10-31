@@ -30,7 +30,7 @@ Keep the instance before opening it: when `open` is refused, that Project is the
 | ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                                                                                           |
 | `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                                                                                 |
-| `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }`                                                   |
+| `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'sqlite' }` (a dialecte's factory only), `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }` |
 | `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions`                                                                |
 | `hooks`            | `DialecteHooks`                                          | All lifecycle hooks (IO + record) applied to every Document — see [Hooks](/api/hooks)                                                    |
 | `dialecteId`       | `string`                                                 | The project's dialecte (a dialecte's project factory gives it): with the name, which project a store holds; read as `project.dialecteId` |
@@ -424,6 +424,21 @@ A project file remembers the id it was created with. A view of a SQLite project 
 A project's name and its dialecte's id name what holds it on every store (a SQLite project's files sit in a directory of the origin's private files named after both): a name or an id that is empty, `.` or `..` is refused `PROJECT_NAME_INVALID` before any store of it is built, nothing opened or written.
 
 `destroy()` is refused with `PROJECT_OPEN_ELSEWHERE` (`meta.project`, and `meta.connections` where the store counts them), nothing removed, while another project or store of the project has it open - in this page, or in another tab: close that one (await its `close()`), then call `destroy()` again. The refused one closed the project all the same, as `close()` does. One closed counts open no more, and a destroy lets the operations it still runs complete first (a store of another tab counts until they end); one destroyed counts open no more either, until it is used again. Two connections destroying at once are both refused - but two tabs destroying a local store at once may both go ahead. A connection made while another connection's destroy runs either counts - the destroy refused, its data kept - or waits for the destroy and reads the project empty; it never fails, and never reads the old data after a destroy that resolved.
+
+## SQLite Storage
+
+`{ type: 'sqlite' }` keeps a project in SQLite on the origin's private file system. One engine serves the project to every tab, window and iframe of the app: it runs in a worker started by one view - elected by the origin's hub when the page has one (`connectHub`), else the page itself - and every other view reaches it through a port. `local` stays IndexedDB and the default.
+
+```ts
+import { createSclProject } from '@dialecte/scl'
+
+const project = await createSclProject({ storage: { type: 'sqlite' } }).open('my-project')
+```
+
+- Open it from a dialecte's project factory: the factory knows the dialecte's version and its engine worker. A `Project` made by no factory is refused `PROJECT_ENGINE_NOT_DECLARED` at `open`.
+- A project opened on `sqlite` offers its dialecte's engine to the page's hub as it opens; a page that never calls `connectHub` still works. A project the page runs itself (no hub: no SharedWorker, or a hub that never welcomed the page) is joined there by the page's later projects of the name.
+- Where the browser gives no worker or no private file system (Node, a private Firefox window), `open` is refused `STORE_UNAVAILABLE`.
+- The SQLite side of the page and its wasm file are loaded at the first project opened on `sqlite`: a page on another storage never fetches them. A bundler still emits them, as for any code loaded through `import()`. A page that cannot load them is refused `STORE_CONNECTION_FAILED`.
 
 ## In-Memory Storage
 

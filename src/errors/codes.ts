@@ -586,6 +586,15 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
+	PROJECT_ENGINE_NOT_DECLARED: {
+		code: 'D7015',
+		message: 'This project has no engine to open it on SQLite',
+		explanation: {
+			when: "A project was opened on `storage: { type: 'sqlite' }` but made by no dialecte's project factory: its engine (the dialecte's id, its version and its engine worker's URL) is known to no one, so nothing can start it. Nothing was opened.",
+			fix: "Make the project with the dialecte's project factory (`createProjectFactory({ dialecte, engineUrl })`, as a dialecte package exports it), or open it on another storage.",
+			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
+		},
+	},
 	DOCUMENT_PATH_INVALID: {
 		code: 'D7030',
 		message: "A document's path is not valid",

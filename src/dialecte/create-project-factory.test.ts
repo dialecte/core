@@ -4,6 +4,7 @@ import { createCountingDialecte, ENGINE_URL } from './create-project-factory.fix
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { Project } from '@/project'
 import { XMLNS_DEFAULT_NAMESPACE } from '@/test/constant'
 
 const SOURCE_XML = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="1"/><A aA="2"/></Root>`
@@ -96,5 +97,45 @@ describe('createProjectFactory', () => {
 		await first.importFile(new File([SOURCE_XML], 'source.xml'))
 		await second.importFile(new File([SOURCE_XML], 'source.xml'))
 		expect(instancesSeen).toEqual([2, 1, 2])
+	})
+
+	describe('a project on sqlite storage, where the page can run no engine (node)', () => {
+		type TestCase = { open: () => Promise<unknown>; refusedWith: string }
+		const testCases: Record<string, TestCase> = {
+			'made by the factory → STORE_UNAVAILABLE at open, nothing started': {
+				open: function openFromFactory() {
+					const factory = createProjectFactory({
+						dialecte: createCountingDialecte(),
+						engineUrl: ENGINE_URL,
+					})
+					return factory({ storage: { type: 'sqlite' } }).open(`sqlite-${crypto.randomUUID()}`)
+				},
+				refusedWith: 'STORE_UNAVAILABLE',
+			},
+			'made by no factory → PROJECT_ENGINE_NOT_DECLARED at open': {
+				open: function openBare() {
+					const dialecte = createCountingDialecte()
+					return new Project({
+						configs: dialecte.configs,
+						storage: { type: 'sqlite' },
+						dialecteId: dialecte.id,
+					}).open(`sqlite-${crypto.randomUUID()}`)
+				},
+				refusedWith: 'PROJECT_ENGINE_NOT_DECLARED',
+			},
+		}
+		for (const [description, { open, refusedWith }] of Object.entries(testCases)) {
+			it(description, async () => {
+				const key = await open().then(
+					function opened() {
+						return 'opened'
+					},
+					function refused(thrown: unknown) {
+						return toDialecteError(thrown)?.key
+					},
+				)
+				expect(key).toBe(refusedWith)
+			})
+		}
 	})
 })
