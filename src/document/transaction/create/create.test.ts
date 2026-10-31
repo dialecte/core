@@ -298,3 +298,103 @@ describe('stageAddChild', () => {
 
 	runTestCases.withExport({ testCases, act })
 })
+
+describe('stageAddChild — an empty attribute value', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase & {
+		parentRef: Ref<TestDialecteConfig, 'BB_1'>
+		childPayload: AddChildParams<TestDialecteConfig, 'BB_1', 'BBB_1'>
+		name: string
+		/** the attribute as stored on the new child (`defaults: 'none'`) */
+		expectedStored: { value: string }
+		/** `getAttribute` with its default view, on the new child */
+		expectedRead: string
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'empty on an attribute with a default → stored empty, read empty (not the default), exported empty':
+			{
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<B aB="b">
+							<BB_1 ${customId}="bb1" aBB_1="bb" />
+						</B>
+					</Root>
+				`,
+				parentRef: { tagName: 'BB_1', id: 'bb1' },
+				childPayload: {
+					tagName: 'BBB_1',
+					id: '0-0-0-0-1',
+					attributes: { aBBB_1: 'x', bBBB_1: '' },
+				},
+				name: 'bBBB_1',
+				expectedStored: { value: '' },
+				expectedRead: '',
+				expectedQueries: ['//default:BB_1/default:BBB_1[@aBBB_1="x"][@bBBB_1=""]'],
+			},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		const { name } = testCase
+		const childRef = { tagName: 'BBB_1', id: '0-0-0-0-1' } as const
+		await source.transaction(async (tx) => {
+			await tx.addChild(testCase.parentRef, testCase.childPayload)
+		})
+		const stored = await source.query.getAttribute(childRef, {
+			name: name as 'bBBB_1',
+			defaults: 'none',
+			fullObject: true,
+		})
+		expect(stored).toMatchObject(testCase.expectedStored)
+		const read = await source.query.getAttribute(childRef, { name: name as 'bBBB_1' })
+		expect(read).toBe(testCase.expectedRead)
+		return {}
+	}
+
+	runTestCases.withExport({ testCases, act })
+})
+
+describe('stageAddChild — an empty value on a fixed attribute', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase & {
+		parentRef: Ref<TestDialecteConfig, 'C'>
+		childPayload: AddChildParams<TestDialecteConfig, 'C', 'CC_1'>
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'empty on an attribute fixed to a non-empty value → FIXED_VALUE_VIOLATION, nothing created': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C ${customId}="c1" />
+				</Root>
+			`,
+			parentRef: { tagName: 'C', id: 'c1' },
+			// what untyped code could pass: the types only admit the fixed value
+			childPayload: {
+				tagName: 'CC_1',
+				attributes: { aCC_1: '' } as unknown as { aCC_1: 'fixed_val' },
+			},
+			unexpectedQueries: ['//default:CC_1'],
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		const written = source.transaction(async (tx) => {
+			await tx.addChild(testCase.parentRef, testCase.childPayload)
+		})
+		await expect(written).rejects.toMatchObject({ cause: { key: 'FIXED_VALUE_VIOLATION' } })
+		return {}
+	}
+
+	runTestCases.withExport({ testCases, act })
+})

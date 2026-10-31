@@ -68,11 +68,12 @@ export function standardizeRecord<
 	const standardAttributeNames = definition?.attributes.sequence ?? []
 
 	// Keep provided attributes only — the store stays faithful to the source, with one
-	// normalization: an empty ('') or undefined value on a schema-managed attribute is
-	// dropped. An empty carries no authored information — a `required` / `fixed` value is
-	// re-materialized on export and a schema `default` (including '') is re-applied on
-	// read/validation — so storing '' would be redundant and misread as a real value.
-	// Schema-sequence attributes that are present with a value, plus any qualified
+	// normalization: an undefined or null value on a schema-managed attribute is dropped,
+	// and so is an empty ('') one unless the attribute's definition declares a `default` or
+	// a `fixed` value. Where nothing is declared an empty carries no authored information;
+	// where a default or fixed value is declared the empty overrides it, so it is kept and
+	// read and exported as written.
+	// Schema-sequence attributes kept by that rule, plus any qualified
 	// attribute (foreign-namespace or xmlns/xmlns:*), are retained; unqualified
 	// non-schema attributes are dropped, unless the element's attribute wildcard allows
 	// attributes in no namespace (`##any`, `##local`). Missing required/fixed/default attributes are
@@ -87,11 +88,12 @@ export function standardizeRecord<
 		const isQualifiedExtra = 'namespace' in attribute && attribute.namespace != null
 		if (!isSchemaAttribute && !isQualifiedExtra && !allowsUnqualified) return false
 
-		const isEmptyValue =
-			attribute.value === undefined || attribute.value === null || attribute.value === ''
-		if (isSchemaAttribute && isEmptyValue) return false
+		if (!isSchemaAttribute) return true
+		if (attribute.value === undefined || attribute.value === null) return false
+		if (attribute.value !== '') return true
 
-		return true
+		const details = definition?.attributes.details[attribute.name]
+		return details?.default !== undefined || details?.fixed !== undefined
 	})
 
 	// Two-rule convention: a default-namespace attribute is stored bare (no

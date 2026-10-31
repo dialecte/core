@@ -121,6 +121,132 @@ describe('stageUpdate', () => {
 	runTestCases.withExport({ testCases, act })
 })
 
+describe('stageUpdate — an empty attribute value', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase & {
+		targetRef: Ref<TestDialecteConfig, 'BBB_1'> | Ref<TestDialecteConfig, 'AA_1'>
+		updateParams:
+			| UpdateParams<TestDialecteConfig, 'BBB_1'>
+			| UpdateParams<TestDialecteConfig, 'AA_1'>
+		name: string
+		/** the attribute as stored after the update (`defaults: 'none'`), undefined when not stored */
+		expectedStored: { value: string } | undefined
+		/** `getAttribute` with its default view, after the update */
+		expectedRead: string
+	}
+
+	const bbb1 = /* xml */ `
+		<Root ${ns}>
+			<B aB="b">
+				<BB_1 aBB_1="bb">
+					<BBB_1 ${customId}="bbb1" aBBB_1="x" bBBB_1="true" />
+				</BB_1>
+			</B>
+		</Root>
+	`
+
+	const testCases: TestCases<TestCase> = {
+		'empty on an attribute with a default → stored empty, read empty (not the default)': {
+			sourceXml: bbb1,
+			targetRef: { tagName: 'BBB_1', id: 'bbb1' },
+			updateParams: { attributes: { bBBB_1: '' } },
+			name: 'bBBB_1',
+			expectedStored: { value: '' },
+			expectedRead: '',
+			expectedQueries: ['//default:BBB_1[@aBBB_1="x"][@bBBB_1=""]'],
+		},
+		'undefined on an attribute with a default → removed, the default read again': {
+			sourceXml: bbb1,
+			targetRef: { tagName: 'BBB_1', id: 'bbb1' },
+			updateParams: { attributes: { bBBB_1: undefined } },
+			name: 'bBBB_1',
+			expectedStored: undefined,
+			expectedRead: 'false',
+			expectedQueries: ['//default:BBB_1[@aBBB_1="x"]'],
+			unexpectedQueries: ['//default:BBB_1[@bBBB_1]'],
+		},
+		'empty on an attribute with no default → removed': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A aA="a">
+						<AA_1 ${customId}="aa1" aAA_1="x" bAA_1="old" />
+					</A>
+				</Root>
+			`,
+			targetRef: { tagName: 'AA_1', id: 'aa1' },
+			updateParams: { attributes: { bAA_1: '' } },
+			name: 'bAA_1',
+			expectedStored: undefined,
+			expectedRead: '',
+			expectedQueries: ['//default:AA_1[@aAA_1="x"]'],
+			unexpectedQueries: ['//default:AA_1[@bAA_1]'],
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		const { targetRef, name } = testCase
+		await source.transaction(async (tx) => {
+			await tx.update(targetRef, testCase.updateParams)
+		})
+		const stored = await source.query.getAttribute(targetRef, {
+			name: name as 'bBBB_1',
+			defaults: 'none',
+			fullObject: true,
+		})
+		if (testCase.expectedStored === undefined) expect(stored).toBeUndefined()
+		else expect(stored).toMatchObject(testCase.expectedStored)
+		const read = await source.query.getAttribute(targetRef, { name: name as 'bBBB_1' })
+		expect(read).toBe(testCase.expectedRead)
+		return {}
+	}
+
+	runTestCases.withExport({ testCases, act })
+})
+
+describe('stageUpdate — an empty value on a fixed attribute', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase & {
+		targetRef: Ref<TestDialecteConfig, 'CC_1'>
+		updateParams: UpdateParams<TestDialecteConfig, 'CC_1'>
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'empty on an attribute fixed to a non-empty value → FIXED_VALUE_VIOLATION, the value kept': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C ${customId}="c1">
+						<CC_1 ${customId}="cc1" aCC_1="fixed_val" />
+					</C>
+				</Root>
+			`,
+			targetRef: { tagName: 'CC_1', id: 'cc1' },
+			// what untyped code could pass: the types only admit the fixed value
+			updateParams: { attributes: { aCC_1: '' } as unknown as { aCC_1: 'fixed_val' } },
+			expectedQueries: ['//default:CC_1[@aCC_1="fixed_val"]'],
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		const written = source.transaction(async (tx) => {
+			await tx.update(testCase.targetRef, testCase.updateParams)
+		})
+		await expect(written).rejects.toMatchObject({ cause: { key: 'FIXED_VALUE_VIOLATION' } })
+		return {}
+	}
+
+	runTestCases.withExport({ testCases, act })
+})
+
 describe('stageUpdate — fixed attribute guard', () => {
 	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 	const customId = CUSTOM_RECORD_ID_ATTRIBUTE

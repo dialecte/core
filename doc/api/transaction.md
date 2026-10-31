@@ -96,14 +96,14 @@ await doc.transaction(async (tx) => {
 
 #### UpdateParams
 
-| Field        | Type                             | Description                                               |
-| ------------ | -------------------------------- | --------------------------------------------------------- |
-| `attributes` | `Partial<AttributesValueObject>` | Attributes to update; `undefined` / `null` / `''` removes |
-| `value`      | `string`                         | New text content                                          |
+| Field        | Type                             | Description                                                                                                        |
+| ------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `attributes` | `Partial<AttributesValueObject>` | Attributes to update; `undefined` / `null` removes, `''` too unless the attribute has a `default` or `fixed` value |
+| `value`      | `string`                         | New text content                                                                                                   |
 
 Returns `Promise<RawRecord<Config, Element>>`.
 
-Setting a schema attribute to `undefined`, `null`, or an empty string `''` removes it from the record — it will no longer appear in the XML output. An empty carries no information over the schema (a `required` / `fixed` value is re-materialized on export and a `default` — including `''` — is re-applied on read), so it is normalized away rather than stored. This applies to every write path (`addChild` / `ensureChild` / `update`) and to import.
+Setting a schema attribute to `undefined` or `null` removes it from the record — it will no longer appear in the XML output. An empty string `''` removes it too when the attribute's definition declares neither a `default` nor a `fixed` value: there an empty carries no information over the schema (a `required` value is re-materialized on export). On an attribute with a `default` or `fixed` value an empty overrides it, so it is kept: stored as `''`, read as `''` (not the default) and exported as `a=""`. This applies to every write path (`addChild` / `ensureChild` / `deepClone` / `update`) and to import. An empty on an attribute fixed to another value is refused with `FIXED_VALUE_VIOLATION` on every write path; import keeps it as written, so a `deepClone` of such a record is refused too.
 
 An update that touches `xsi:type` is checked like a create (`XSI_TYPE_REQUIRED`, `XSI_TYPE_NOT_ADMITTED`), and one naming another type while attributes or children the new type does not admit remain is refused with `XSI_TYPE_CHANGE_LEAVES_CONTENT` - clear the attributes in the same update, delete the children first. An update that leaves `xsi:type` alone is never refused for it. See [`xsi:type` values](/guide/development/utils#xsi-type-values).
 

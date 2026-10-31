@@ -55,10 +55,6 @@ describe('standardizeRecord', () => {
 				input: { tagName: 'AA_1', attributes: { aAA_1: 'required' } },
 				expectedAttributes: [{ name: 'aAA_1', value: 'required' }],
 			},
-			'drops a schema attribute provided with an empty value': {
-				input: { tagName: 'BB_1', attributes: { aBB_1: 'req', bBB_1: '' } },
-				expectedAttributes: [{ name: 'aBB_1', value: 'req' }],
-			},
 			'drops a required schema attribute provided with an empty value (re-materialized on export)':
 				{
 					input: { tagName: 'AA_1', attributes: { aAA_1: '' } as { aAA_1: string } },
@@ -98,6 +94,63 @@ describe('standardizeRecord', () => {
 		}
 
 		runTestCases.generic(testCases, act)
+
+		describe('an empty value, decided by the definition', () => {
+			const emptyValueCases: Record<string, TestCase> = {
+				'drops an empty value on a schema attribute with no default': {
+					input: { tagName: 'AA_1', attributes: { aAA_1: 'req', bAA_1: '' } },
+					expectedAttributes: [{ name: 'aAA_1', value: 'req' }],
+				},
+				'keeps an empty value on an attribute with a default': {
+					input: { tagName: 'BBB_1', attributes: { aBBB_1: 'req', bBBB_1: '' } },
+					expectedAttributes: [
+						{ name: 'aBBB_1', value: 'req' },
+						{ name: 'bBBB_1', value: '' },
+					],
+				},
+				'keeps an empty value on an attribute with an empty default': {
+					input: { tagName: 'BB_1', attributes: { aBB_1: 'req', bBB_1: '' } },
+					expectedAttributes: [
+						{ name: 'aBB_1', value: 'req' },
+						{ name: 'bBB_1', value: '' },
+					],
+				},
+				'keeps an empty value on a fixed attribute': {
+					// what a parsed file can hold: the types only admit the fixed value
+					input: {
+						tagName: 'CC_1',
+						attributes: { aCC_1: '' } as unknown as { aCC_1: 'fixed_val' },
+					},
+					expectedAttributes: [{ name: 'aCC_1', value: '' }],
+				},
+				'drops an undefined value on an attribute with a default': {
+					input: { tagName: 'BBB_1', attributes: { aBBB_1: 'req', bBBB_1: undefined } },
+					expectedAttributes: [{ name: 'aBBB_1', value: 'req' }],
+				},
+				'drops a null value on an attribute with a default': {
+					input: {
+						tagName: 'BBB_1',
+						// what untyped code could pass: null means no value, as undefined does
+						attributes: { aBBB_1: 'req', bBBB_1: null } as unknown as { aBBB_1: string },
+					},
+					expectedAttributes: [{ name: 'aBBB_1', value: 'req' }],
+				},
+				'decides an empty value on a variant attribute by the variant definition': {
+					input: {
+						tagName: 'DD_1',
+						parent: { id: 'd', tagName: 'D' },
+						attributes: { 'xsi:type': 'tDD_1B', aDD_1: 's', bDD_1: '', eDD_1: '' },
+					} as Parameters<typeof standardizeRecord>[0]['record'],
+					expectedAttributes: [
+						{ name: 'xsi:type', value: 'tDD_1B' },
+						{ name: 'aDD_1', value: 's' },
+						{ name: 'eDD_1', value: '' },
+					],
+				},
+			}
+
+			runTestCases.generic(emptyValueCases, act)
+		})
 
 		it('preserves namespace from schema for standard attributes', () => {
 			const result = standardizeRecord({
