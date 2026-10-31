@@ -75,6 +75,7 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 		params.store === undefined
 			? resolveStore({
 					name: params.databaseName,
+					dialecteId: params.dialecteId,
 					storage: resolveTestStorage({ storage: params.storage }),
 					runtime: {
 						configs: { [TEST_CONFIG_KEY]: dialecteConfig },

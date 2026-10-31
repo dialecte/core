@@ -77,14 +77,19 @@ export type LegacyTestRunnerParams<GenericConfig extends AnyDialecteConfig> =
 		storage?: StorageParam
 	}
 
-/** `createTestContext`: the store to read, or the name of the local store to open. */
+/** `createTestContext`: the store to read, or the project to open by its name and dialecte. */
 export type TestContextParams<GenericConfig extends AnyDialecteConfig> = {
 	dialecteConfig: GenericConfig
 	documentId: string
 } & (
-	| { store: Store; databaseName?: undefined; storage?: undefined }
+	| { store: Store; databaseName?: undefined; dialecteId?: undefined; storage?: undefined }
 	| {
 			databaseName: string
+			/**
+			 * The dialecte of the project named, as the project says it (`project.dialecteId`): with the name, which
+			 * project the in-memory store holds. `undefined` for a project made with no dialecte.
+			 */
+			dialecteId: string | undefined
 			/** The store of the project named; the local store when absent. */
 			storage?: StorageParam
 			store?: undefined

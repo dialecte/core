@@ -1,39 +1,51 @@
 import { createClosingConnections } from '../closing-connections'
+import { projectKeyOf } from '../engine/project-key'
 import { createOpenConnections } from '../open-connections'
 
 import type { InMemoryState } from './types'
 
 /**
- * The state of every in-memory store name of this realm: each instance of a name reads and writes the
- * same one, as every connection to an IndexedDB database of a name does. One per copy of core loaded
- * in the realm; nothing crosses realms. A name's state lives until a store of that name is destroyed.
+ * The state of every in-memory project of this realm, by its key (`inMemoryStateKeyOf`): each instance of a
+ * project reads and writes the same one. One per copy of core loaded in the realm; nothing crosses realms. A
+ * project's state lives until a store of it is destroyed.
  */
 const STATES = new Map<string, InMemoryState>()
 
-/** The instances of each name opened and not closed since: a destroy is refused while another one is. */
+/** The instances of each project (its key) opened and not closed since: a destroy is refused while another one is. */
 export const OPEN_IN_MEMORY_CONNECTIONS = createOpenConnections()
 
-/** The instances of each name closed while operations of theirs run: a destroy lets those complete first. */
+/** The instances of each project (its key) closed while operations of theirs run: a destroy lets those complete first. */
 export const CLOSING_IN_MEMORY_CONNECTIONS = createClosingConnections()
 
-/** The state of the name, or none when nothing was written under it since it was last destroyed. */
-export function findInMemoryState(params: { name: string }): InMemoryState | undefined {
-	return STATES.get(params.name)
+/**
+ * Where a project's in-memory state is kept: its dialecte and its name (`projectKeyOf`), or its name alone,
+ * URI-encoded, when no dialecte is told - never a `/` in it, so it never reads as another dialecte's project.
+ */
+export function inMemoryStateKeyOf(params: { project: string; dialecteId?: string }): string {
+	const { project, dialecteId } = params
+	return dialecteId === undefined
+		? encodeURIComponent(project)
+		: projectKeyOf({ dialecteId, project })
 }
 
-/** The state of the name, started empty when there is none. */
-export function ensureInMemoryState(params: { name: string }): InMemoryState {
-	const { name } = params
-	const held = STATES.get(name)
+/** The state of the project (its key), or none when nothing was written under it since it was last destroyed. */
+export function findInMemoryState(params: { key: string }): InMemoryState | undefined {
+	return STATES.get(params.key)
+}
+
+/** The state of the project (its key), started empty when there is none. */
+export function ensureInMemoryState(params: { key: string }): InMemoryState {
+	const { key } = params
+	const held = STATES.get(key)
 	if (held) return held
 	const state = createInMemoryState()
-	STATES.set(name, state)
+	STATES.set(key, state)
 	return state
 }
 
-/** Forget the state of the name: every instance of it reads empty until something is written again. */
-export function dropInMemoryState(params: { name: string }): void {
-	STATES.delete(params.name)
+/** Forget the state of the project (its key): every instance of it reads empty until something is written again. */
+export function dropInMemoryState(params: { key: string }): void {
+	STATES.delete(params.key)
 }
 
 export function createInMemoryState(): InMemoryState {

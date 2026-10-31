@@ -1,4 +1,4 @@
-import { findInMemoryState } from './in-memory-state'
+import { findInMemoryState, inMemoryStateKeyOf } from './in-memory-state'
 import { InMemoryStore } from './in-memory-store'
 
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -149,7 +149,7 @@ describe('InMemoryStore - the state of its name', () => {
 
 		await store.destroy()
 
-		expect(findInMemoryState({ name })).toBeUndefined()
+		expect(findInMemoryState({ key: inMemoryStateKeyOf({ project: name }) })).toBeUndefined()
 	})
 
 	it('a placeholder of a name holding data → reads empty, its destroy leaves the data; open, it keeps no destroy of the name from going on', async () => {
@@ -180,7 +180,7 @@ describe('InMemoryStore - the state of its name', () => {
 		await second.registerDocument(makeDocument())
 		await second.destroy()
 
-		expect(findInMemoryState({ name })).toBeUndefined()
+		expect(findInMemoryState({ key: inMemoryStateKeyOf({ project: name }) })).toBeUndefined()
 	})
 })
 
@@ -202,6 +202,25 @@ describe('InMemoryStore built without a dialecte', () => {
 			})
 		} finally {
 			await store.destroy()
+		}
+	})
+})
+
+describe('InMemoryStore - a store with no dialecte and a dialecte’s project', () => {
+	it('a plain store named like a dialecte’s project key (`scl/foo`) → another state than scl’s project `foo`', async () => {
+		const suffix = crypto.randomUUID()
+		const plain = new InMemoryStore(`scl/foo-${suffix}`)
+		const ofScl = new InMemoryStore(`foo-${suffix}`, { dialecteId: 'scl' })
+		await plain.open()
+		await ofScl.open()
+		try {
+			await plain.registerDocument(makeDocument('plain'))
+			expect(await ofScl.getDocuments()).toEqual([])
+		} finally {
+			await plain.close()
+			await ofScl.close()
+			await plain.destroy()
+			await ofScl.destroy()
 		}
 	})
 })

@@ -190,6 +190,7 @@ describe('getRecord', () => {
 			try {
 				const context = await createTestContext({
 					databaseName: project.name,
+					dialecteId: project.dialecteId,
 					dialecteConfig: TEST_DIALECTE_CONFIG,
 					documentId: source.documentId,
 				})
@@ -217,6 +218,7 @@ describe('getRecord', () => {
 			try {
 				const context = await createTestContext({
 					databaseName: project.name,
+					dialecteId: project.dialecteId,
 					dialecteConfig: TEST_DIALECTE_CONFIG,
 					documentId: source.documentId,
 				})
@@ -242,6 +244,7 @@ describe('getRecord', () => {
 			try {
 				const context = await createTestContext({
 					databaseName: project.name,
+					dialecteId: project.dialecteId,
 					dialecteConfig: TEST_DIALECTE_CONFIG,
 					documentId: source.documentId,
 				})
@@ -275,6 +278,7 @@ describe('getRecord', () => {
 				const context = {
 					...(await createTestContext({
 						databaseName: project.name,
+						dialecteId: project.dialecteId,
 						dialecteConfig: TEST_DIALECTE_CONFIG,
 						documentId: source.documentId,
 					})),

@@ -66,6 +66,11 @@ export class Project<
 	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
 	private readonly pendingBroadcastWork = new Set<Promise<void>>()
 	private readonly storage: ProjectParams<GenericConfig>['storage']
+	/**
+	 * The dialecte the project belongs to (its declaration's `id`), when its factory said: with the name, which
+	 * project a store holds. `undefined` for a Project made with no dialecte.
+	 */
+	readonly dialecteId: string | undefined
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private mergedExtensions?: MergedExtensions<GenericModules>
@@ -249,8 +254,10 @@ export class Project<
 		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 		hooks?: DialecteHooks<GenericConfig>
 		dev?: { perf?: boolean }
+		dialecteId?: ProjectParams<GenericConfig>['dialecteId']
 	}) {
 		const configKeys = Object.keys(params.configs)
+		this.dialecteId = params.dialecteId
 
 		this.storage = params.storage
 		this.configs = params.configs
@@ -346,6 +353,7 @@ export class Project<
 	private resolveProjectStore(params: { name: string }): Store {
 		return resolveStore({
 			name: params.name,
+			dialecteId: this.dialecteId,
 			storage: this.storage,
 			runtime: {
 				configs: this.configs,

@@ -37,11 +37,16 @@ function uniqueName(prefix: string): string {
 	return `${prefix}-${crypto.randomUUID()}`
 }
 
-/** An open in-memory store of that name: a new instance, the name's state. */
-async function openInMemoryStore(name: string): Promise<InMemoryStore> {
+/** An open in-memory store of that name, of the test dialecte unless another is named: a new instance, the project's state. */
+async function openInMemoryStore(params: {
+	name: string
+	dialecteId?: string
+}): Promise<InMemoryStore> {
+	const { name, dialecteId = TEST_DIALECTE.id } = params
 	const store = new InMemoryStore(name, {
 		writable: true,
 		runtime: createContractRuntime(),
+		dialecteId,
 	})
 	await store.open()
 	return store
@@ -55,29 +60,27 @@ const inMemoryStoreFactory: StoreContractFactory = {
 		return store
 	},
 	create: async function createInMemoryStore() {
-		return openInMemoryStore(uniqueName('store-contract-memory'))
+		return openInMemoryStore({ name: uniqueName('store-contract-memory') })
 	},
 	reopen: async function reopenInMemoryStore(store) {
 		await store.close()
-		return openInMemoryStore(store.name)
+		return openInMemoryStore({ name: store.name })
 	},
 	connect: async function connectInMemoryStore(store) {
-		return openInMemoryStore(store.name)
+		return openInMemoryStore({ name: store.name })
+	},
+	connectAsOtherDialecte: async function connectInMemoryAsOther({ store }) {
+		return openInMemoryStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
 	},
 	storageUnfillable: 'an in-memory store has no storage limit',
-	differs: {
-		'engine-end': IN_PAGE_IMPORT_REASON,
-		'dialecte-key':
-			'the in-memory state is the realm’s by project name: a Project tells its store no dialecte, and the test helpers read an in-memory project by its name',
-		away: AWAY_UNREACHABLE_REASON,
-	},
+	differs: { 'engine-end': IN_PAGE_IMPORT_REASON, away: AWAY_UNREACHABLE_REASON },
 }
 
 const dexieStoreFactory: StoreContractFactory = {
 	differs: {
 		'engine-end': IN_PAGE_IMPORT_REASON,
 		'dialecte-key':
-			'an IndexedDB database is named by the project name alone: naming it by dialecte too would leave every project stored so far behind, and the local store moves to SQLite',
+			'an IndexedDB database is named by the project name alone: naming it by dialecte too would leave every project stored so far behind; the local store moves to SQLite (keyed by dialecte and name) in 0.9.0',
 		away: 'a frozen tab keeps its connection’s hold on the database: another tab’s destroy is refused until that tab is gone, so no view of it is ever away',
 	},
 	name: 'DexieStore',
