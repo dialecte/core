@@ -42,7 +42,8 @@ export type RealmHost = {
 		clientId: string
 		port: MessagePort
 	}) => void
-	clientGone: (params: { project: string; generation: number; clientId: string }) => void
+	/** Settles once the engine has released the client (its port answers no more), or is gone. */
+	clientGone: (params: { project: string; generation: number; clientId: string }) => Promise<void>
 	release: (params: { project: string; generation: number }) => void
 	/** Every engine ended at once (the page goes away or freezes): their workers terminated. */
 	endAll: () => void

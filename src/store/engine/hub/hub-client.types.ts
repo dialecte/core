@@ -1,5 +1,6 @@
 import type { EngineClient } from '../client/client.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
+import type { HubSpawner } from './hub.types'
 import type { HubEngineSpawner } from './realm-host.types'
 
 export type ConnectHubParams = {
@@ -23,6 +24,8 @@ export type HubRealm = Pick<HubConnection, 'realmId' | 'createHubPort' | 'onRejo
 export type HubConnection = {
 	/** This realm instance's id (a new one after the page came back from a freeze or the cache). */
 	realmId: () => string
+	/** The engines this realm registered with the hub at its first join (dialecte id and version), for its life. */
+	spawners: readonly HubSpawner[]
 	/** The realm's link to a project's engine: one per project, shared by the realm's connections to it. */
 	openProject: (params: HubProjectParams) => HubProjectLink
 	/**

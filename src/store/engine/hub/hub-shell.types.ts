@@ -5,6 +5,11 @@ export type HubShell = {
 	connect: (params: { port: MessagePort }) => void
 }
 
+export type ServeHubParams = {
+	/** How long a port connected to the hub (not a child's binding) may stay without a hello. */
+	helloBudgetMs?: number
+}
+
 /** The scope of the hub's SharedWorker, as far as the hub reads it. */
 export type SharedWorkerScope = {
 	onconnect: ((event: MessageEvent) => void) | null

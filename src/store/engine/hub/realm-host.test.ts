@@ -301,8 +301,8 @@ describe('a realm hosting engines for the hub', () => {
 		await reports.next('engine-opened')
 		const port = await adoptClient({ reports, project, clientId: 'tab' })
 		const client = createEngineClient({ port })
-		reports.host.clientGone({ project, generation: 1, clientId: 'tab' })
-		await pause({ ms: 200 })
+		// the engine has released the client before its port is asked anything
+		await reports.host.clientGone({ project, generation: 1, clientId: 'tab' })
 		const answer = await Promise.race([
 			client.api.getDocuments().then(
 				function answered() {

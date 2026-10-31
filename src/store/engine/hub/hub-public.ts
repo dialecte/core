@@ -7,8 +7,12 @@ import type { ConnectHubParams, HubConnection, HubRealm } from './hub-client.typ
  * another one of the same protocol - gets the same connection. Answers `undefined` where the browser
  * has no SharedWorker, or the hub never welcomed the page (its script failed to load or was blocked, or
  * it stayed silent): a later call tries again. A hub of another protocol refuses the page:
- * `STORE_PROTOCOL_MISMATCH`. The page registers the engines it can start whose worker is of its own
- * origin.
+ * `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub,
+ * any other error thrown making it is thrown. The page registers the engines it can start whose worker is of
+ * its own origin, at its first call and for the connection's life (a document that joined through
+ * `adoptHubPort` registered none): a later call naming an engine the connection does not run (another dialecte,
+ * or another version) is refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept; the first call's workers,
+ * settings and perf stay.
  */
 export async function connectHub(params: ConnectHubParams = {}): Promise<HubRealm | undefined> {
 	const connection = await openHubConnection(params)

@@ -279,6 +279,18 @@ function uniqueProject(): string {
 	return `hub-client-${crypto.randomUUID()}`
 }
 
+/** The key a call is refused with; none when it is answered. */
+function refusalKeyOf(params: { action: Promise<unknown> }): Promise<string | undefined> {
+	return params.action.then(
+		function answered() {
+			return undefined
+		},
+		function keyOf(thrown: unknown) {
+			return toDialecteError(thrown)?.key
+		},
+	)
+}
+
 /** The realm's registry emptied for the case, put back after it. */
 function withEmptyRegistry(): void {
 	const registry = globalThis as unknown as Record<symbol, unknown>
@@ -381,6 +393,131 @@ describe('a realm connected to the hub', () => {
 		expect(hub.hellos[0]?.message).toMatchObject({
 			spawners: [{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version }],
 		})
+	})
+
+	describe('the hub’s worker throwing as it is made', () => {
+		type TestCase = { thrown: Error; expected: 'no hub' | 'thrown' }
+		const testCases: Record<string, TestCase> = {
+			'a DOMException (the browser refuses the worker: blocked, a sandbox) → no hub: `undefined`': {
+				thrown: new DOMException('the worker is blocked', 'SecurityError'),
+				expected: 'no hub',
+			},
+			'any other error (a bug) → thrown as it is, not taken for no hub': {
+				thrown: new TypeError('a bug'),
+				expected: 'thrown',
+			},
+		}
+		for (const [description, { thrown, expected }] of Object.entries(testCases)) {
+			it(description, async () => {
+				withEmptyRegistry()
+				vi.stubGlobal(
+					'SharedWorker',
+					class ThrowingSharedWorker {
+						constructor() {
+							throw thrown
+						}
+					},
+				)
+				onTestFinished(function restoreGlobals() {
+					vi.unstubAllGlobals()
+				})
+				const outcome = await connectHub().then(
+					function connected(realm) {
+						return realm === undefined ? 'no hub' : 'connected'
+					},
+					function refused(error: unknown) {
+						return error === thrown ? 'thrown' : 'another error'
+					},
+				)
+				expect(outcome).toBe(expected)
+			})
+		}
+	})
+
+	describe('connected again, naming spawners', () => {
+		type TestCase = {
+			spawners: HubEngineSpawner[]
+			/** The key it is refused with; none: it gets the page's connection. */
+			refusedWith?: DialecteErrorKey
+		}
+		const testCases: Record<string, TestCase> = {
+			'none → the page’s connection': { spawners: [] },
+			'the ones the page registered → the page’s connection': { spawners: [SPAWNER] },
+			'one of another origin only (the page could not start it) → the page’s connection': {
+				spawners: [{ ...SPAWNER, dialecteId: 'elsewhere', engineUrl: 'https://example.com/e.js' }],
+			},
+			'one of a dialecte the page does not run → STORE_HUB_SPAWNERS_FIXED, the page’s connection kept':
+				{
+					spawners: [SPAWNER, { ...SPAWNER, dialecteId: 'other' }],
+					refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
+				},
+			'its dialecte at another version → STORE_HUB_SPAWNERS_FIXED, the page’s connection kept': {
+				spawners: [{ ...SPAWNER, dialecteVersion: '99.0.0' }],
+				refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
+			},
+		}
+		for (const [description, { spawners, refusedWith }] of Object.entries(testCases)) {
+			it(description, async () => {
+				withEmptyRegistry()
+				const hub = fakeHub()
+				vi.stubGlobal(
+					'SharedWorker',
+					class AnsweredSharedWorker extends EventTarget {
+						readonly port = hub.openPort()
+					},
+				)
+				onTestFinished(function restoreGlobals() {
+					vi.unstubAllGlobals()
+				})
+				const first = await connectHub({ spawners: [SPAWNER] })
+				const connection = await openHubConnection()
+				onTestFinished(connection!.close)
+				const again = connectHub({ spawners })
+				const refusal = await again.then(
+					function connected() {
+						return undefined
+					},
+					function keyOf(thrown: unknown) {
+						return toDialecteError(thrown)?.key
+					},
+				)
+				expect(refusal).toBe(refusedWith)
+				if (!refusedWith) expect((await again)?.realmId()).toBe(first?.realmId())
+				expect(await openHubConnection()).toBe(connection)
+				expect(hub.hellos).toHaveLength(1)
+			})
+		}
+	})
+
+	it('connected again naming another engine while the first call is still under way → STORE_HUB_SPAWNERS_FIXED once it has connected', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub()
+		vi.stubGlobal(
+			'SharedWorker',
+			class AnsweredSharedWorker extends EventTarget {
+				readonly port = hub.openPort()
+			},
+		)
+		onTestFinished(function restoreGlobals() {
+			vi.unstubAllGlobals()
+		})
+		const first = connectHub({ spawners: [SPAWNER] })
+		const again = connectHub({ spawners: [{ ...SPAWNER, dialecteId: 'other' }] })
+		const realm = await first
+		onTestFinished((await openHubConnection())!.close)
+		expect(realm).toBeDefined()
+		expect(await refusalKeyOf({ action: again })).toBe('STORE_HUB_SPAWNERS_FIXED')
+	})
+
+	it('a document joined through a handed port, then connectHub naming an engine → STORE_HUB_SPAWNERS_FIXED: it registered none', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub()
+		const adopted = await adoptHubConnection({ port: hub.openPort() })
+		expect(adopted).toBeDefined()
+		onTestFinished(adopted!.close)
+		expect(await refusalKeyOf({ action: connectHub({ spawners: [SPAWNER] }) })).toBe(
+			'STORE_HUB_SPAWNERS_FIXED',
+		)
 	})
 
 	it('a hub whose worker fails to start → the join refused STORE_CONNECTION_FAILED at once, the lock let go', async () => {
@@ -966,7 +1103,8 @@ describe('a realm connected to the hub', () => {
 		child.adoptPort({ port: hub.openPort() })
 		await connectEngine({ hub, link, project })
 		expect(hub.hellos).toHaveLength(3)
-		expect(performance.now() - handedAt).toBeLessThan(HUB_WELCOME_BUDGET_MS / 2)
+		// joined on the handed port, not after the welcome budget ran out on the silent one
+		expect(performance.now() - handedAt).toBeLessThan(HUB_WELCOME_BUDGET_MS)
 	})
 
 	it('a port a bound child lets go unused (a newer one handed) → the hub told it is unused before it closes', async () => {

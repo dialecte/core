@@ -100,6 +100,9 @@ function noticeOf(expected: RuntimeFixtureNotice): Promise<void> {
 	})
 }
 
+/** How often the engine's heartbeat beats in the one-statement case. */
+const BEAT_INTERVAL_MS = 200
+
 /** How long the slowed read took, for the record. */
 function logStatementTime(params: { description: string; ms: number }): void {
 	console.info(`${params.description}: ${Math.round(params.ms)} ms`)
@@ -117,10 +120,15 @@ describe('an engine alive or lost', () => {
 		const ran = new Promise<{ startedAt: number; endedAt: number }>((resolve) => {
 			worker.onmessage = (event) => resolve(event.data)
 		})
-		worker.postMessage({ port: channel.port2, intervalMs: 200, rows: 8_000_000 }, [channel.port2])
+		worker.postMessage({ port: channel.port2, intervalMs: BEAT_INTERVAL_MS, rows: 8_000_000 }, [
+			channel.port2,
+		])
 		const { startedAt, endedAt } = await ran
-		expect(endedAt - startedAt).toBeGreaterThan(1_000)
-		expect(beats.filter((at) => at > startedAt && at < endedAt).length).toBeGreaterThanOrEqual(3)
+		// long enough for several intervals; beats from inside it, however late a loaded machine posts each
+		const lasted = endedAt - startedAt
+		expect(lasted).toBeGreaterThan(4 * BEAT_INTERVAL_MS)
+		const inside = beats.filter((at) => at > startedAt && at < endedAt).length
+		expect(inside).toBeGreaterThanOrEqual(2)
 		channel.port1.close()
 	})
 

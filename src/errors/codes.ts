@@ -184,6 +184,15 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
+	STORE_HUB_SPAWNERS_FIXED: {
+		code: 'D1019',
+		message: "The page's hub connection does not run these engines",
+		explanation: {
+			when: "`connectHub({ spawners })` named an engine the page's connection does not run: the page's first `connectHub` (from any copy of the library, or a `connectHub()` naming none) registered the engines it starts, and they stay for the connection's life; a document that joined through `adoptHubPort` registered none. `meta.spawners` names the dialectes (id and version) asked but not run.",
+			fix: 'Call `connectHub` once, early, with every engine the app can start (each dialecte it opens, at the version it ships), before any project opens; a later call names those or fewer, or none.',
+			docs: `${CORE_DOCS_URL}/api/dialecte`,
+		},
+	},
 
 	// D2xxx — Element lookup
 	ELEMENT_NOT_FOUND: {

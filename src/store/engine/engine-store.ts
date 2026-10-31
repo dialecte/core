@@ -349,7 +349,9 @@ export class EngineStore implements Store {
 	/**
 	 * One operation of the port: refused once the store is closed; counted while it runs, so a
 	 * `close()` meanwhile lets it complete and releases the link after it. `readRetried`: refused
-	 * because its engine ended with its host, it is made once more, on the link's next engine.
+	 * because its engine ended with its host, it is made once more, on the link's next engine. Never
+	 * on `realm-dropped` (or `no-heartbeat`): a dropped view reaches no engine until its page binds it
+	 * again, every call refused alike meanwhile, and a silent engine may still be running.
 	 */
 	private async operation<GenericResult>(params: {
 		readRetried: boolean

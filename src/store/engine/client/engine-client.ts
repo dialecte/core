@@ -61,8 +61,6 @@ export function createEngineClient(params: {
 		}
 		inFlight.clear()
 		listeners.clear()
-		// a gone engine took its queued writes with it: the next one answers for them
-		if (reason === 'host-gone') unanswered.clear()
 	}
 
 	/** Told to the engine and forgotten: its answer, if it ever comes, changes nothing here. */

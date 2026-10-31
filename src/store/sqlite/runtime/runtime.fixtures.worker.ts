@@ -138,6 +138,7 @@ function serveEngine(): void {
 	if (scenario === 'database-fails') failDatabaseOpen()
 	if (scenario === 'close-throws') failCloseWhenOrdered()
 	if (scenario === 'stranded-window') strandWindowsWhenOrdered()
+	if (scenario === 'mute-clients') muteClientsWhenOrdered()
 	if (scenario === 'other-wire') answerAnotherWire()
 	if (scenario === 'unchecked-open') openWhateverAsked()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
@@ -314,6 +315,28 @@ function strandWindowsWhenOrdered(): void {
 			return exec.apply(this, args)
 		} as typeof prototype.exec
 	})
+}
+
+/**
+ * Once the case orders `mute-clients`, the engine answers no client any more: every message on a port of the worker
+ * is dropped (answers and beats alike) - a call it gets from then on waits until its host goes.
+ */
+function muteClientsWhenOrdered(): void {
+	let muted = false
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.addEventListener('message', function armMute(event: MessageEvent<RuntimeFixtureOrder>) {
+		if (event.data.type !== 'mute-clients') return
+		muted = true
+		acknowledge({ channel, order: event.data })
+	})
+	const post = MessagePort.prototype.postMessage as (...given: unknown[]) => void
+	MessagePort.prototype.postMessage = function postUnlessMuted(
+		this: MessagePort,
+		...args: unknown[]
+	) {
+		if (muted) return
+		post.apply(this, args)
+	} as typeof MessagePort.prototype.postMessage
 }
 
 /** Every `opened` answered with a wire version no client speaks: an engine of another library version. */

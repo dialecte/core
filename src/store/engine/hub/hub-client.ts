@@ -18,7 +18,7 @@ import {
 } from './hub.constants'
 import { createRealmHost } from './realm-host'
 
-import { createDialecteError, toDialecteError } from '@/errors'
+import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 
 import type { EngineLostReason } from '../client/client.types'
 import type {
@@ -48,16 +48,57 @@ import type { HubEngineSpawner, RealmHost } from './realm-host.types'
  * another one of the same protocol - gets the first connection. Answers `undefined` where the browser
  * has no SharedWorker, or the hub never welcomed the realm (its script failed to load or was blocked,
  * or it stayed silent past the welcome budget): the caller then runs the engine itself, and a later
- * call tries again. The realm registers the engines it can start whose worker is of its own origin.
+ * call tries again. The realm registers the engines it can start whose worker is of its own origin, at
+ * its first join and for the connection's life: a later call naming one the connection does not run is
+ * refused `STORE_HUB_SPAWNERS_FIXED` (the connection kept); naming those or fewer, or none, gets it.
  */
 export function openHubConnection(
 	params: ConnectHubParams = {},
 ): Promise<HubConnection | undefined> {
-	return keptAttempt({
-		attempt: function connect() {
-			return openHub(params)
-		},
+	const kept = (globalThis as HubRegistry)[HUB_REGISTRY_KEY]
+	if (!kept) {
+		return keptAttempt({
+			attempt: function connect() {
+				return openHub(params)
+			},
+		})
+	}
+	const asked = sameOriginSpawners({ spawners: params.spawners ?? [] }).map(toHubSpawner)
+	// none to check: the kept attempt itself, as every copy of the library gets it
+	if (asked.length === 0) return kept
+	return kept.then(function refuseOthersRun(connection) {
+		if (connection) refuseSpawnersNotRun({ connection, asked })
+		return connection
 	})
+}
+
+/** `STORE_HUB_SPAWNERS_FIXED` when `asked` names an engine the connection does not run. */
+function refuseSpawnersNotRun(params: { connection: HubConnection; asked: HubSpawner[] }): void {
+	const { connection, asked } = params
+	const notRun = asked.filter(function runByNone(spawner) {
+		return !connection.spawners.some(function runs(registered) {
+			return (
+				registered.dialecteId === spawner.dialecteId &&
+				registered.dialecteVersion === spawner.dialecteVersion
+			)
+		})
+	})
+	if (notRun.length === 0) return
+	throwDialecteError('STORE_HUB_SPAWNERS_FIXED', {
+		detail: `This page's hub connection runs ${describeSpawners({ spawners: connection.spawners })}, not ${describeSpawners({ spawners: notRun })}: connectHub registers its engines once`,
+		meta: { spawners: notRun },
+	})
+}
+
+/** Spawners as their dialecte and version, `none` for none. */
+function describeSpawners(params: { spawners: readonly HubSpawner[] }): string {
+	const { spawners } = params
+	if (spawners.length === 0) return 'no engine'
+	return spawners
+		.map(function nameOf(spawner) {
+			return `${spawner.dialecteId}@${spawner.dialecteVersion}`
+		})
+		.join(', ')
 }
 
 /**
@@ -127,12 +168,13 @@ function keptAttempt(params: {
 
 async function openHub(params: ConnectHubParams = {}): Promise<HubConnection | undefined> {
 	if (typeof SharedWorker === 'undefined') return undefined
-	// a hub that cannot start (blocked, or the worker throws as it is made): no hub
+	// a hub the browser refuses to make (blocked, a sandbox: a DOMException): no hub; anything else is a bug, thrown
 	let first: HubPortOpening
 	try {
 		first = hubPort()
-	} catch {
-		return undefined
+	} catch (thrown) {
+		if (thrown instanceof DOMException) return undefined
+		throw thrown
 	}
 	let given = false
 	try {
@@ -315,7 +357,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			case 'adopt-client':
 				return host.adopt(message)
 			case 'client-gone':
-				return host.clientGone(message)
+				// nothing waits on the release here: the hub forgot the client already
+				void host.clientGone(message)
+				return
 			case 'release-engine':
 				return host.release(message)
 			default:
@@ -686,6 +730,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		realmId: function currentRealmId() {
 			return realmId
 		},
+		spawners: spawners.map(toHubSpawner),
 		ended,
 		close: function closeConnection() {
 			if (phase === 'refused') return

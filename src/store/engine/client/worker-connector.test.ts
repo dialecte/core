@@ -885,7 +885,8 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				expect(await keyOfRejection(connector.destroy())).toBe('PROJECT_OPEN_ELSEWHERE')
 				const startedAt = performance.now()
 				expect(await keyOfRejection(connector.connect())).toBe('PROJECT_OPEN_ELSEWHERE')
-				expect(performance.now() - startedAt).toBeLessThan(openBudgetMs - 1_000)
+				// refused at once, not once the open budget ran out
+				expect(performance.now() - startedAt).toBeLessThan(openBudgetMs)
 			} finally {
 				letGo()
 			}

@@ -148,9 +148,9 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				report,
 			})
 		},
-		clientGone: function tellClientGone({ project, generation, clientId }) {
+		clientGone: async function tellClientGone({ project, generation, clientId }) {
 			const engine = engines.get(engineKey({ project, generation }))
-			engine?.control
+			await engine?.control
 				.request({ message: { type: 'client-gone', clientId }, expect: 'released' })
 				.catch(ignoreGoneEngine)
 		},

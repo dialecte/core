@@ -486,6 +486,42 @@ describe('the hub serving realms on their control ports', () => {
 		expect(child.received).toEqual([])
 	})
 
+	it('a port that says no hello within the hello budget → let go: a hello after it is answered by nobody', async () => {
+		const hub = serveHub({ helloBudgetMs: 50 })
+		const channel = new MessageChannel()
+		hub.connect({ port: channel.port2 })
+		const late = realmOn({ realmId: uniqueRealm('late'), port: channel.port1 })
+		await pause({ ms: 150 })
+		late.send({
+			type: 'hello',
+			protocol: HUB_PROTOCOL_VERSION,
+			realmId: late.realmId,
+			topLevel: true,
+			spawners: [],
+		})
+		await pause({ ms: 300 })
+		expect(late.received).toEqual([])
+	})
+
+	it('a child’s bound port that says no hello within the hello budget → kept: its child is welcomed when it comes', async () => {
+		const hub = serveHub({ helloBudgetMs: 50 })
+		const shell = await joinRealm({ hub, name: 'shell' })
+		const channel = new MessageChannel()
+		shell.send({ type: 'bind-child', bindingId: 'frame-late', port: channel.port2 }, [
+			channel.port2,
+		])
+		const child = realmOn({ realmId: uniqueRealm('late-child'), port: channel.port1 })
+		await pause({ ms: 150 })
+		child.send({
+			type: 'hello',
+			protocol: HUB_PROTOCOL_VERSION,
+			realmId: child.realmId,
+			topLevel: false,
+			spawners: [],
+		})
+		expect(await child.next('welcome')).toMatchObject({ type: 'welcome', realmId: child.realmId })
+	})
+
 	it('the watch of a realm’s lock failing → told on the console, no unhandled rejection', async () => {
 		const failure = new Error('the lock manager failed')
 		const request = navigator.locks.request.bind(navigator.locks)

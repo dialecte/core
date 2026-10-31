@@ -1,4 +1,5 @@
 import { toThrownData } from '../wire/error-envelope'
+import { HUB_HELLO_BUDGET_MS } from './hub-client.constants'
 import { createHubRouter } from './hub-router'
 import { REALM_LOCK_PREFIX, HUB_LOCK_PREFIX } from './hub.constants'
 
@@ -6,7 +7,13 @@ import { createDialecteError } from '@/errors'
 
 import type { ThrownData } from '../wire/wire.types'
 import type { HubToRealmMessage, RealmToHubMessage } from './hub-protocol.types'
-import type { HelloContext, HubShell, HubShellState, ShellFeed } from './hub-shell.types'
+import type {
+	HelloContext,
+	HubShell,
+	HubShellState,
+	ServeHubParams,
+	ShellFeed,
+} from './hub-shell.types'
 import type { HubCommand, HubEvent, HubRefusal } from './hub.types'
 
 /**
@@ -19,7 +26,8 @@ import type { HubCommand, HubEvent, HubRefusal } from './hub.types'
  * The hub holds a Web Lock of its own for its life, named in each welcome (a realm granted it knows the hub is
  * gone): a hub served in a page holds it as long as the page lives.
  */
-export function serveHub(): HubShell {
+export function serveHub(params: ServeHubParams = {}): HubShell {
+	const { helloBudgetMs = HUB_HELLO_BUDGET_MS } = params
 	const router = createHubRouter()
 	const state: HubShellState = {
 		realms: new Map(),
@@ -48,11 +56,20 @@ export function serveHub(): HubShell {
 	}): void {
 		const { port, parentRealmId, bindingId } = params
 		let realmId: string | undefined
+		// a port of its own that says nothing: let go once its realm has given up joining (a child's waits for its document)
+		const silence =
+			bindingId === undefined
+				? setTimeout(function letSilentPortGo() {
+						port.onmessage = null
+						port.close()
+					}, helloBudgetMs)
+				: undefined
 		port.onmessage = function hearRealm(event: MessageEvent<RealmToHubMessage | undefined>) {
 			const message = event.data
 			if (typeof message?.type !== 'string') return
 			if (message.type === 'hello') {
 				if (realmId !== undefined) return
+				clearTimeout(silence)
 				realmId = message.realmId
 				feed({
 					event: {
@@ -70,6 +87,7 @@ export function serveHub(): HubShell {
 			}
 			// a child letting its bound port go before any hello: that binding forgotten
 			if (message.type === 'port-unused' && realmId === undefined) {
+				clearTimeout(silence)
 				if (bindingId !== undefined) state.bindings.delete(bindingId)
 				port.close()
 				return
@@ -180,6 +198,8 @@ function perform(params: {
 				message: { type: 'hello-refused', error: refusalData(command.refusal) },
 			})
 			hello.port.close()
+			// a child refused: its binding goes with its port
+			if (hello.bindingId !== undefined) state.bindings.delete(hello.bindingId)
 			return
 		case 'drop-realm':
 			return dropRealm({ state, realmId: command.realmId })
