@@ -78,7 +78,9 @@ A dialecte package's runner has the same shape with its own types (`<Name>Test.T
   bound extension method. Use public interfaces; no mocks of internal collaborators.
 - **No test names its store: the runner chooses it.** A node vitest project whose setup file calls
   `useTestStorage({ type: 'inMemory' })` (core 0.8+) runs your tests in Node on the in-memory store;
-  without one, the runner's default store. A test file never calls `useTestStorage` and passes no
+  without one, the runner's default store. A second project whose setup imports
+  `@dialecte/core/sqlite` and calls `useTestStorage({ type: 'sqlite' })` (core 0.8+) runs the same
+  suites on the SQLite engine in the test's own process, no test changed. A test file never calls `useTestStorage` and passes no
   `storage`; only a test about one store itself (an IndexedDB-only behaviour) names it. The
   interface is the truth: a result that differs per store is a store bug, never a reason to pin one
   store.
