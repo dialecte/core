@@ -10,6 +10,12 @@ import { Document } from '@/document'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
+import {
+	ignoreReadFailure,
+	isEngineLost,
+	lostWriteError,
+	outcomeAfterLoss,
+} from '@/store/lost-write'
 import { createRunningOperations } from '@/store/running-operations'
 import { invariant } from '@/utils'
 
@@ -32,7 +38,7 @@ import type {
 } from './types'
 import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
 import type { Perf } from '@/perf'
-import type { Store, StoreNotice } from '@/store'
+import type { ImportFileResult, Store, StoreNotice } from '@/store'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
@@ -244,13 +250,25 @@ export class Project<
 			this.channel.postMessage(message)
 			return
 		}
+		this.postToldChanges({ own: message })
+	}
+
+	/**
+	 * Post the changes of this Project's own the store told, each once: `own` (the call's change, its state already
+	 * updated) posted as the call made it when told; every other folded into the state, then posted. Without `own`, as
+	 * after a write refused with its engine lost: only what the store told is posted, nothing guessed.
+	 */
+	private postToldChanges(params: { own?: ProjectChannelMessage }): void {
+		const { own } = params
 		const told = this.ownChangesTold.splice(0)
-		const index = told.findIndex(function sameChange(change) {
-			return sameSubject({ first: change, second: message })
-		})
+		const index = own
+			? told.findIndex(function sameChange(change) {
+					return sameSubject({ first: change, second: own })
+				})
+			: -1
 		for (const [position, change] of told.entries()) {
-			if (position === index) {
-				this.channel.postMessage(message)
+			if (own && position === index) {
+				this.channel.postMessage(own)
 				continue
 			}
 			this.channel.postMessage(change)
@@ -670,7 +688,7 @@ export class Project<
 	 */
 	async removeDocument(documentId: string): Promise<void> {
 		return this.counted(async () => {
-			await this.store.removeDocument(documentId)
+			await this.writeOrReadAgain({ write: () => this.store.removeDocument(documentId) })
 			this.state.documents.delete(documentId)
 			this.broadcast({ type: 'document-removed', documentId, timestamp: Date.now() })
 		})
@@ -697,7 +715,7 @@ export class Project<
 	 * Import Files into the project: one entry per file, in the order given. The files are imported
 	 * one after the other - memory is bounded by one file's batches, the registry sees one import -
 	 * and a file that fails is its own `failed` entry, the next file still attempted: nothing of a
-	 * failed file lands. The call itself rejects only for what is about the call: an unknown
+	 * failed file lands (but an import whose engine was lost after it landed: see `importFile`). The call itself rejects only for what is about the call: an unknown
 	 * `configKey`, a project not open, a `path` (`DOCUMENT_PATH_INVALID`: a path names one file,
 	 * `importFile` takes it).
 	 *
@@ -738,7 +756,8 @@ export class Project<
 	 * The document is in the project state and broadcast once the store answers it `ready`; whatever
 	 * fails before that, or an abort through `options.signal`, leaves nothing and is thrown
 	 * (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign
-	 * error). `options.onProgress` is told after each stored batch, never awaited. One file is in
+	 * error). One refusal leaves its document: an import whose engine was lost after it landed is
+	 * refused `STORE_ENGINE_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told after each stored batch, never awaited. One file is in
 	 * flight per project: a call made while another import runs waits for it.
 	 *
 	 * @intent import an XML file, load a file into the project, parse XML into records
@@ -758,7 +777,15 @@ export class Project<
 	}): Promise<ImportedDocument> {
 		const { file, options = {}, store } = params
 		const { onProgress, signal, ...fileOptions } = options
-		const result = await store.importFile({ file, options: fileOptions, onProgress, signal })
+		// the import's id: asked after a lost engine, never imported again
+		const writeId = crypto.randomUUID()
+		let result: ImportFileResult
+		try {
+			result = await store.importFile({ file, options: fileOptions, writeId, onProgress, signal })
+		} catch (thrown) {
+			if (!isEngineLost({ thrown })) throw thrown
+			throw await this.lostImportError({ store, thrown, writeId })
+		}
 		if (result.perf) this.perf.merge({ report: result.perf, prefix: 'store' })
 		this.state.documents.set(result.record.id, buildDocumentState(result.record))
 		this.broadcast({
@@ -772,6 +799,66 @@ export class Project<
 			recordCount: result.recordCount,
 			diagnostics: result.diagnostics,
 		}
+	}
+
+	/**
+	 * A write of the project with no id to ask its outcome by (an undo, a redo, a removal): refused `STORE_ENGINE_LOST`
+	 * it may have landed, so the project's documents (and the document's history) are read again before the refusal is
+	 * thrown - never made again. The change the store told before its engine went is posted to the listeners.
+	 */
+	private async writeOrReadAgain(params: {
+		write: () => Promise<void>
+		documentId?: string
+	}): Promise<void> {
+		const { write, documentId } = params
+		try {
+			await write()
+		} catch (thrown) {
+			if (!isEngineLost({ thrown })) throw thrown
+			await this.refreshState().catch(ignoreReadFailure)
+			if (documentId !== undefined) {
+				await this.refreshHistoryStatus(documentId).catch(ignoreReadFailure)
+				this.signalStateChange(documentId, true)
+			}
+			if (this.announcing) this.postToldChanges({})
+			throw thrown
+		}
+	}
+
+	/**
+	 * An import refused `STORE_ENGINE_LOST`: its outcome asked once by its id; landed, its document read into the
+	 * project's state (its diagnostics went with the lost answer, so it is no entry) and posted to the listeners - the
+	 * refusal says which outcome, and the document it made (none when the documents could not be read again).
+	 */
+	private async lostImportError(params: {
+		store: GenericStore
+		thrown: unknown
+		writeId: string
+	}): Promise<Error> {
+		const { store, thrown, writeId } = params
+		const outcome = await outcomeAfterLoss({ store, writeId })
+		if (outcome !== 'applied') {
+			// a `running` or `unknown` import may have landed: what the store told of it is posted
+			if (this.announcing) this.postToldChanges({})
+			return lostWriteError({ thrown, writeId, outcome })
+		}
+		await this.refreshState().catch(ignoreReadFailure)
+		const landed = Array.from(this.state.documents.values()).find(function madeByImport(entry) {
+			return entry.record.writeId === writeId
+		})
+		if (landed) {
+			this.broadcast({
+				type: 'document-imported',
+				documentId: landed.record.id,
+				timestamp: Date.now(),
+			})
+		} else if (this.announcing) this.postToldChanges({})
+		return lostWriteError({
+			thrown,
+			writeId,
+			outcome,
+			meta: landed && { documentId: landed.record.id },
+		})
 	}
 
 	/**
@@ -920,7 +1007,7 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
-			await this.store.undo(documentId)
+			await this.writeOrReadAgain({ documentId, write: () => this.store.undo(documentId) })
 			// Update local state deterministically (the channel echo would do this
 			// too, but asynchronously) before announcing.
 			const timestamp = Date.now()
@@ -945,7 +1032,7 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
-			await this.store.redo(documentId)
+			await this.writeOrReadAgain({ documentId, write: () => this.store.redo(documentId) })
 			const timestamp = Date.now()
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)

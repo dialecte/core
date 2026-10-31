@@ -180,7 +180,7 @@ export const ERROR_CATALOG = {
 		message: 'The project engine stopped answering',
 		explanation: {
 			when: "A call to a project engine served from a worker lost that engine: it ended with what hosted it or gave no answer within its budget (`meta.reason` `'host-gone'`), it sent nothing for too long while the call waited (`'no-heartbeat'`, it may still finish), or the hub dropped this view with the page that bound it - frozen, gone, or unbinding it (`'realm-dropped'`: every call, `getWriteOutcome` too, is refused so until the view is bound again).",
-			fix: "Ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again, then open the project again. For `'realm-dropped'`, opening again is refused too: the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`); then ask `getWriteOutcome`.",
+			fix: "A Document's commit and a Project's import ask the outcome themselves, once: a commit that landed resolves; otherwise the refusal says `meta.outcome` - `not-applied` (make it again if wanted), `running` (a silent engine may still apply it: tell the user, read again later), `unknown` (it could not be asked), or `applied` for an import (its document is in the project; its diagnostics were lost). Elsewhere ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again; never retry a write blindly. For `'realm-dropped'`, every call is refused until the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`).",
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
