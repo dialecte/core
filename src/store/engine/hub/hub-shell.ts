@@ -104,6 +104,8 @@ export function serveHub(params: ServeHubParams = {}): HubShell {
 		switch (message.type) {
 			case 'open':
 				return feed({ event: { ...message, now, realmId } })
+			case 'spawners':
+				return feed({ event: { type: 'spawners', now, realmId, spawners: message.spawners } })
 			case 'leave':
 			case 'destroy':
 			case 'destroyed':

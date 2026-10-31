@@ -22,6 +22,16 @@ describe('createProjectFactory', () => {
 		expect(factory.engineUrl).toBe(ENGINE_URL)
 	})
 
+	it('carries the spawner a page registers with the hub: the dialecte, its version and its engine address, nothing else', () => {
+		const dialecte = createCountingDialecte()
+		const factory = createProjectFactory({ dialecte, engineUrl: ENGINE_URL })
+		expect(factory.spawner).toStrictEqual({
+			dialecteId: dialecte.id,
+			dialecteVersion: dialecte.version,
+			engineUrl: ENGINE_URL,
+		})
+	})
+
 	it('a project opens with every config and the declared default key', async () => {
 		const factory = createProjectFactory({
 			dialecte: createCountingDialecte(),

@@ -1,19 +1,21 @@
-import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
+import { loadSqliteEngineSettings } from './sqlite-engine-settings'
 
 import type { SqliteHubSpawnerParams } from './sqlite-hub-spawner.types'
-import type { HubEngineSpawner } from '@/store/engine/hub/realm-host.types'
+import type { RealmEngineSpawner } from '@/store/engine/hub/realm-host.types'
 
 /**
  * A dialecte's SQLite engine as a page offers to start it for the hub: its engine worker
- * (`serveDialecteEngine`), opened on the consumer's one SQLite wasm file.
+ * (`serveDialecteEngine`), opened on the consumer's one SQLite wasm file, loaded when the page first starts one.
  */
-export function sqliteHubSpawner(params: SqliteHubSpawnerParams): HubEngineSpawner {
+export function sqliteHubSpawner(params: SqliteHubSpawnerParams): RealmEngineSpawner {
 	const { dialecteId, dialecteVersion, engineUrl, perf, options, progressBeatOps } = params
 	return {
 		dialecteId,
 		dialecteVersion,
 		engineUrl,
 		perf,
-		settings: { wasmUrl: SQLITE_WASM_URL, options, progressBeatOps },
+		settings: function loadSettings() {
+			return loadSqliteEngineSettings({ options, progressBeatOps })
+		},
 	}
 }

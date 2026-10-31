@@ -8,20 +8,20 @@ import {
 	RUNTIME_FIXTURE_CHANNEL,
 	SILENT_ENGINE_WAIT_MS,
 } from '../../sqlite/runtime/runtime.fixtures.constants'
-import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
 import { ENGINE_CLOSE_BUDGET_MS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
 import { engineLockNameOf } from '../project-key'
 import { fromThrownData } from '../wire/error-envelope'
+import { loadSettings, recordingEngineUrl } from './hub.fixtures'
 import { createRealmHost } from './realm-host'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { toDialecteError } from '@/errors'
+import { createDialecteError, toDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test'
 
 import type { RealmToHubMessage } from './hub-protocol.types'
-import type { HubEngineSpawner, RealmHost } from './realm-host.types'
+import type { RealmEngineSpawner, RealmHost } from './realm-host.types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
@@ -42,17 +42,17 @@ type Reports = {
 	) => Promise<Extract<RealmToHubMessage, { type: GenericType }>>
 }
 
-function spawnerOf(params: { engineUrl?: string } = {}): HubEngineSpawner {
+function spawnerOf(params: { engineUrl?: string } = {}): RealmEngineSpawner {
 	return {
 		dialecteId: TEST_DIALECTE.id,
 		dialecteVersion: TEST_DIALECTE.version,
 		engineUrl: params.engineUrl ?? TEST_ENGINE_URL,
-		settings: { wasmUrl: SQLITE_WASM_URL },
+		settings: loadSettings,
 	}
 }
 
 /** A realm host whose reports to the hub are kept and waited for. */
-function hostWith(params: { spawners: HubEngineSpawner[]; adoptBudgetMs?: number }): Reports {
+function hostWith(params: { spawners: RealmEngineSpawner[]; adoptBudgetMs?: number }): Reports {
 	const received: RealmToHubMessage[] = []
 	const waiters: { type: string; resolve: (message: RealmToHubMessage) => void }[] = []
 	const host = createRealmHost({
@@ -85,6 +85,18 @@ function hostWith(params: { spawners: HubEngineSpawner[]; adoptBudgetMs?: number
 				waiters.push({ type, resolve: resolve as (message: RealmToHubMessage) => void })
 			})
 		},
+	}
+}
+
+/** What the recording worker was asked to open with, read from the host's report. */
+async function openedWith(params: { reports: Reports }): Promise<unknown> {
+	const failed = await params.reports.next('engine-open-failed')
+	return fromThrownData({ data: failed.error })
+}
+
+function settingsOf(params: { marker: string }): () => Promise<unknown> {
+	return function loadMarked() {
+		return Promise.resolve({ marker: params.marker })
 	}
 }
 
@@ -159,6 +171,68 @@ describe('a realm hosting engines for the hub', () => {
 		const documents = await client.api.getDocuments()
 		expect(documents).toEqual([])
 		client.close({ storeName: project })
+	})
+
+	it('a spawner added after the host was made → its dialecte spawned, opened with its own settings', async () => {
+		const reports = hostWith({ spawners: [] })
+		reports.host.add({
+			spawners: [
+				{
+					...spawnerOf({ engineUrl: recordingEngineUrl() }),
+					settings: settingsOf({ marker: 'added' }),
+				},
+			],
+		})
+		spawnFor({ reports, project: uniqueProject() })
+		expect(await openedWith({ reports })).toEqual({
+			dialecteId: TEST_DIALECTE.id,
+			perf: false,
+			settings: { marker: 'added' },
+		})
+	})
+
+	it('a spawner added for a dialecte it hosts already, measured → the next engine measured; the first one’s settings kept', async () => {
+		const engineUrl = recordingEngineUrl()
+		const first: RealmEngineSpawner = {
+			...spawnerOf({ engineUrl }),
+			settings: settingsOf({ marker: 'first' }),
+		}
+		const reports = hostWith({ spawners: [first] })
+		reports.host.add({
+			spawners: [
+				{ ...spawnerOf({ engineUrl }), settings: settingsOf({ marker: 'second' }), perf: true },
+			],
+		})
+		spawnFor({ reports, project: uniqueProject() })
+		expect(await openedWith({ reports })).toEqual({
+			dialecteId: TEST_DIALECTE.id,
+			perf: true,
+			settings: { marker: 'first' },
+		})
+		// the host measures its own copy: the spawner the page gave is left as it was
+		expect(first.perf).toBeUndefined()
+	})
+
+	it('a spawner whose settings fail to load → `engine-open-failed` STORE_CONNECTION_FAILED at once, nothing opened: the project’s lock free', async () => {
+		const project = uniqueProject()
+		const reports = hostWith({
+			spawners: [
+				{
+					...spawnerOf(),
+					settings: function failToLoad() {
+						return Promise.reject(
+							createDialecteError('STORE_CONNECTION_FAILED', { detail: 'offline' }),
+						)
+					},
+				},
+			],
+		})
+		const askedAt = performance.now()
+		spawnFor({ reports, project })
+		const failed = await reports.next('engine-open-failed')
+		expect(failed.key).toBe('STORE_CONNECTION_FAILED')
+		expect(performance.now() - askedAt).toBeLessThan(OPEN_BUDGET_MS)
+		await lockFreeWithin({ project, withinMs: 2_000 })
 	})
 
 	it('asked for a dialecte it has no spawner for → `engine-open-failed` with no key, the error PROJECT_ENGINE_UNAVAILABLE', async () => {

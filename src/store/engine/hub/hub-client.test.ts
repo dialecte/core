@@ -1,7 +1,7 @@
 import { makeDocument, outcomeOf } from '../../contract/store-contract.fixtures'
+import { connectHub } from '../../hub-public'
 import { isEngineLockFree, TEST_ENGINE_URL } from '../../sqlite/runtime/runtime.fixtures'
 import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../../sqlite/runtime/runtime.fixtures.constants'
-import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
 	adoptHubConnection,
@@ -14,10 +14,9 @@ import {
 	HUB_REJOIN_FIRST_DELAY_MS,
 	HUB_WELCOME_BUDGET_MS,
 } from './hub-client.constants'
-import { connectHub } from './hub-public'
 import { serveHub } from './hub-shell'
 import { HUB_LOCK_PREFIX, HUB_PROTOCOL_VERSION, REALM_LOCK_PREFIX } from './hub.constants'
-import { fakePage } from './hub.fixtures'
+import { fakePage, loadSettings, recordingEngineUrl } from './hub.fixtures'
 
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
@@ -34,16 +33,17 @@ import type {
 import type { HubToRealmMessage, RealmToHubMessage } from './hub-protocol.types'
 import type { HubShell } from './hub-shell.types'
 import type { FakePage } from './hub.fixtures.types'
-import type { HubEngineSpawner } from './realm-host.types'
+import type { HubSpawner } from './hub.types'
+import type { RealmEngineSpawner } from './realm-host.types'
 import type { DialecteErrorKey } from '@/errors'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
-const SPAWNER: HubEngineSpawner = {
+const SPAWNER: RealmEngineSpawner = {
 	dialecteId: TEST_DIALECTE.id,
 	dialecteVersion: TEST_DIALECTE.version,
 	engineUrl: TEST_ENGINE_URL,
-	settings: { wasmUrl: SQLITE_WASM_URL },
+	settings: loadSettings,
 }
 
 /** What a case leaves: links released, so every engine closes. */
@@ -56,7 +56,7 @@ afterEach(function releaseLinks() {
 /** A realm of this page connected to `hub` on a port of its own (a new one for each realm instance). */
 function joinHub(params: {
 	hub: HubShell
-	spawners?: HubEngineSpawner[]
+	spawners?: RealmEngineSpawner[]
 	lifecycle?: HubLifecycleTargets
 }): Promise<HubConnection> {
 	const { hub, spawners = [SPAWNER], lifecycle } = params
@@ -122,6 +122,8 @@ type FakeHub = {
 	replyOn: (params: { portIndex: number; message: HubToRealmMessage }) => void
 	/** The hub gone: the lock it named in its welcomes let go. */
 	end: () => void
+	/** Welcome now the hello it left unanswered at that rank (from 0). */
+	welcomeLate: (params: { helloIndex: number }) => void
 }
 
 /**
@@ -217,6 +219,10 @@ function fakeHub(
 		end: function endFakeHub() {
 			endHub()
 		},
+		welcomeLate: function welcomeHeldHello({ helloIndex }) {
+			const realmId = hellos[helloIndex]!.realmId
+			ports[helloIndex]?.postMessage({ type: 'welcome', realmId, hubLock })
+		},
 	}
 }
 
@@ -245,6 +251,11 @@ function openLink(params: { connection: HubConnection; project: string }): HubPr
 	})
 	links.push(link)
 	return link
+}
+
+/** The link asks the hub for its engine (its `open` said), no answer awaited: refused when the case releases it. */
+function askEngine(params: { link: HubProjectLink }): void {
+	params.link.engine().catch(function releasedUnanswered() {})
 }
 
 async function documentsThrough(params: { link: HubProjectLink }): Promise<unknown[]> {
@@ -436,27 +447,44 @@ describe('a realm connected to the hub', () => {
 
 	describe('connected again, naming spawners', () => {
 		type TestCase = {
-			spawners: HubEngineSpawner[]
+			spawners: RealmEngineSpawner[]
 			/** The key it is refused with; none: it gets the page's connection. */
 			refusedWith?: DialecteErrorKey
+			/** The engines the hub is told the page adds; none: nothing said. */
+			added?: HubSpawner[]
 		}
+		const OTHER: RealmEngineSpawner = { ...SPAWNER, dialecteId: 'other' }
 		const testCases: Record<string, TestCase> = {
-			'none → the page’s connection': { spawners: [] },
-			'the ones the page registered → the page’s connection': { spawners: [SPAWNER] },
-			'one of another origin only (the page could not start it) → the page’s connection': {
-				spawners: [{ ...SPAWNER, dialecteId: 'elsewhere', engineUrl: 'https://example.com/e.js' }],
-			},
-			'one of a dialecte the page does not run → STORE_HUB_SPAWNERS_FIXED, the page’s connection kept':
+			'none → the page’s connection, nothing said': { spawners: [] },
+			'the ones the page registered → the page’s connection, nothing said': { spawners: [SPAWNER] },
+			'one of another origin only (the page could not start it) → the page’s connection, nothing said':
 				{
-					spawners: [SPAWNER, { ...SPAWNER, dialecteId: 'other' }],
+					spawners: [
+						{ ...SPAWNER, dialecteId: 'elsewhere', engineUrl: 'https://example.com/e.js' },
+					],
+				},
+			'one of a dialecte the page does not run → the page’s connection, the hub told the page adds it':
+				{
+					spawners: [SPAWNER, OTHER],
+					added: [{ dialecteId: 'other', dialecteVersion: TEST_DIALECTE.version }],
+				},
+			'its dialecte at another version → STORE_HUB_SPAWNERS_FIXED, nothing said, the page’s connection kept':
+				{
+					spawners: [{ ...SPAWNER, dialecteVersion: '99.0.0' }],
 					refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
 				},
-			'its dialecte at another version → STORE_HUB_SPAWNERS_FIXED, the page’s connection kept': {
-				spawners: [{ ...SPAWNER, dialecteVersion: '99.0.0' }],
-				refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
-			},
+			'two versions of a dialecte the page does not run → STORE_HUB_SPAWNERS_FIXED, nothing added':
+				{
+					spawners: [OTHER, { ...OTHER, dialecteVersion: '99.0.0' }],
+					refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
+				},
+			'a new dialecte beside its dialecte at another version → STORE_HUB_SPAWNERS_FIXED, nothing added':
+				{
+					spawners: [OTHER, { ...SPAWNER, dialecteVersion: '99.0.0' }],
+					refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
+				},
 		}
-		for (const [description, { spawners, refusedWith }] of Object.entries(testCases)) {
+		for (const [description, { spawners, refusedWith, added }] of Object.entries(testCases)) {
 			it(description, async () => {
 				withEmptyRegistry()
 				const hub = fakeHub()
@@ -473,23 +501,25 @@ describe('a realm connected to the hub', () => {
 				const connection = await openHubConnection()
 				onTestFinished(connection!.close)
 				const again = connectHub({ spawners })
-				const refusal = await again.then(
-					function connected() {
-						return undefined
-					},
-					function keyOf(thrown: unknown) {
-						return toDialecteError(thrown)?.key
-					},
-				)
-				expect(refusal).toBe(refusedWith)
+				expect(await refusalKeyOf({ action: again })).toBe(refusedWith)
 				if (!refusedWith) expect((await again)?.realmId()).toBe(first?.realmId())
 				expect(await openHubConnection()).toBe(connection)
 				expect(hub.hellos).toHaveLength(1)
+				// what was said before an open reached the hub before it: the open is the barrier
+				askEngine({
+					link: openLink({ connection: connection!, project: `barrier-${crypto.randomUUID()}` }),
+				})
+				await hub.next('open')
+				expect(
+					hub.received.filter(function isSpawners(message) {
+						return message.type === 'spawners'
+					}),
+				).toEqual(added ? [{ type: 'spawners', spawners: added }] : [])
 			})
 		}
 	})
 
-	it('connected again naming another engine while the first call is still under way → STORE_HUB_SPAWNERS_FIXED once it has connected', async () => {
+	it('connected again naming another engine while the first call is still under way → added once it has connected', async () => {
 		withEmptyRegistry()
 		const hub = fakeHub()
 		vi.stubGlobal(
@@ -506,18 +536,105 @@ describe('a realm connected to the hub', () => {
 		const realm = await first
 		onTestFinished((await openHubConnection())!.close)
 		expect(realm).toBeDefined()
-		expect(await refusalKeyOf({ action: again })).toBe('STORE_HUB_SPAWNERS_FIXED')
+		expect((await again)?.realmId()).toBe(realm?.realmId())
+		expect(await hub.next('spawners')).toEqual({
+			type: 'spawners',
+			spawners: [{ dialecteId: 'other', dialecteVersion: TEST_DIALECTE.version }],
+		})
 	})
 
-	it('a document joined through a handed port, then connectHub naming an engine → STORE_HUB_SPAWNERS_FIXED: it registered none', async () => {
+	it('a document joined through a handed port, then connectHub naming an engine → its connection, nothing registered: a bound child hosts none', async () => {
 		withEmptyRegistry()
 		const hub = fakeHub()
 		const adopted = await adoptHubConnection({ port: hub.openPort() })
 		expect(adopted).toBeDefined()
 		onTestFinished(adopted!.close)
-		expect(await refusalKeyOf({ action: connectHub({ spawners: [SPAWNER] }) })).toBe(
-			'STORE_HUB_SPAWNERS_FIXED',
+		const realm = await connectHub({ spawners: [SPAWNER] })
+		expect(realm?.realmId()).toBe(adopted!.realmId())
+		askEngine({
+			link: openLink({ connection: adopted!, project: `barrier-${crypto.randomUUID()}` }),
+		})
+		await hub.next('open')
+		expect(hub.received.map(typeOfMessage)).not.toContain('spawners')
+	})
+
+	it('an engine the page runs added again, measured → the next engine it starts measured, its first settings kept', async () => {
+		const hub = fakeHub()
+		const engineUrl = recordingEngineUrl()
+		const connection = await startHubConnection({
+			openPort: function fakeHubPort() {
+				return { port: hub.openPort() }
+			},
+			topLevel: true,
+			spawners: [{ ...SPAWNER, engineUrl }],
+			holdsLock: true,
+			lifecycle: undefined,
+		})
+		onTestFinished(connection.close)
+		connection.addSpawners({ spawners: [{ ...SPAWNER, engineUrl, perf: true }] })
+		hub.reply({
+			type: 'spawn-engine',
+			project: uniqueProject(),
+			dialecteId: TEST_DIALECTE.id,
+			generation: 1,
+			openBudgetMs: 10_000,
+		})
+		const failed = await hub.next('engine-open-failed')
+		expect(fromThrownData({ data: failed.error })).toMatchObject({ perf: true })
+	})
+
+	it('an engine added while the page joins again, its hello said and not welcomed yet → told once welcomed, before the open it asks', async () => {
+		const hub = fakeHub({ silences: isSecondHello })
+		const page = fakePage()
+		const connection = await joinFakeHub({ hub, page })
+		onTestFinished(connection.close)
+		page.freeze()
+		page.resume()
+		await vi.waitFor(function helloSaid() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		connection.addSpawners({ spawners: [{ ...SPAWNER, dialecteId: 'other' }] })
+		askEngine({ link: openLink({ connection, project: uniqueProject() }) })
+		hub.welcomeLate({ helloIndex: 1 })
+		await hub.next('open')
+		expect(hub.received.map(typeOfMessage)).toEqual(['spawners'])
+	})
+
+	it('connectHub naming two versions of one dialecte → STORE_HUB_SPAWNERS_FIXED, no connection made', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub()
+		vi.stubGlobal(
+			'SharedWorker',
+			class AnsweredSharedWorker extends EventTarget {
+				readonly port = hub.openPort()
+			},
 		)
+		onTestFinished(function restoreGlobals() {
+			vi.unstubAllGlobals()
+		})
+		const asked = connectHub({ spawners: [SPAWNER, { ...SPAWNER, dialecteVersion: '99.0.0' }] })
+		expect(await refusalKeyOf({ action: asked })).toBe('STORE_HUB_SPAWNERS_FIXED')
+		expect(hub.ports()).toBe(0)
+	})
+
+	it('an engine added, then the page frozen and back → its hello names every engine it runs', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub()
+		const page = fakePage()
+		const connection = await joinFakeHub({ hub, page })
+		connection.addSpawners({ spawners: [{ ...SPAWNER, dialecteId: 'other' }] })
+		page.freeze()
+		page.resume()
+		await vi.waitFor(function welcomedBack() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		expect(hub.hellos[1]?.message).toMatchObject({
+			spawners: [
+				{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version },
+				{ dialecteId: 'other', dialecteVersion: TEST_DIALECTE.version },
+			],
+		})
+		connection.close()
 	})
 
 	it('a hub whose worker fails to start → the join refused STORE_CONNECTION_FAILED at once, the lock let go', async () => {
@@ -2217,6 +2334,10 @@ function refusalData(params: { key: DialecteErrorKey }): ThrownData {
 	return toThrownData({
 		thrown: createDialecteError(params.key, { detail: 'refused by the case' }),
 	})
+}
+
+function isSecondHello(helloIndex: number): boolean {
+	return helloIndex === 1
 }
 
 function typeOfMessage(message: RealmToHubMessage): string {

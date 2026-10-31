@@ -60,7 +60,7 @@ The factory makes a `Project` with every config of the declaration, its default 
 | `extensions` | `ExtensionModules`   | The consumer's own modules, merged over the dialecte's. |
 | `dev`        | `{ perf?: boolean }` | Project dev options (see [Project](/api/project)).      |
 
-The factory carries what it was made with: `createSclProject.dialecte` and `createSclProject.engineUrl`. `engineUrl` is the address of the dialecte's engine worker, the URL the dialecte's module exports from a `?worker&url` import of its worker entry (`./<version>/worker` in the package); the store that runs the engine spawns `new Worker(engineUrl, { type: 'module' })` on it and ships in the same release. The worker entry and its assets are described with the engine.
+The factory carries what it was made with: `createSclProject.dialecte` and `createSclProject.engineUrl`, and `createSclProject.spawner`, the dialecte's engine as a page offers it to the hub (`connectHub`, below). `engineUrl` is the address of the dialecte's engine worker, the URL the dialecte's module exports from a `?worker&url` import of its worker entry (`./<version>/worker` in the package); the store that runs the engine spawns `new Worker(engineUrl, { type: 'module' })` on it and ships in the same release. The worker entry and its assets are described with the engine.
 
 ### createTestHelpers
 
@@ -96,13 +96,13 @@ The builders it is made of take the declaration too: `createTestRunner({ dialect
 
 ## Views sharing a project: the origin's hub
 
-The origin's hub is a SharedWorker through which every tab, window and iframe of an app will share one engine per project, once the engine is a storage option of `Project` - no store reaches it yet. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already (an app cannot build a `spawners` entry yet - the SQLite engine's spawner, its settings and its wasm URL, are not public: `connectHub({ spawners })` below shows the shape it will take):
+The origin's hub is a SharedWorker through which every tab, window and iframe of an app will share one engine per project, once the engine is a storage option of `Project` - no store reaches it yet. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already, offering each dialecte's engine through its project factory's `spawner` (the dialecte's id, its version and its engine worker's URL):
 
 ```ts
 import { adoptHubPort, connectHub } from '@dialecte/core'
 
-// a page: joins the hub once, offering the engines it can start (their worker of its own origin)
-const realm = await connectHub({ spawners })
+// a page: joins the hub, offering the engines it can start (their worker of its own origin)
+const realm = await connectHub({ spawners: [scl.spawner, nsd.spawner] })
 
 // an iframe that cannot reach the hub's script (another origin, a sandbox): its page makes it a port and hands it
 // over - the message is the app's own
@@ -120,7 +120,7 @@ window.addEventListener('message', async function joinThroughPage(event) {
 })
 ```
 
-- `connectHub({ spawners? })` answers the page's connection, the same one for every call and every copy of the library of the same protocol in the page; `undefined` where the browser has no SharedWorker or the hub never welcomed the page (its script failed to load, was blocked or stayed silent) - a later call tries again. A spawner whose engine worker is of another origin is left out: the page cannot start it. The first call registers the page's engines for the connection's life (a document that joined through `adoptHubPort` registered none): a later call naming an engine the connection does not run (another dialecte, or another version) is refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept; one naming those or fewer, or none, gets the connection, the first call's workers, settings and perf kept. Call it once, early, with every engine the app starts. The browser refusing to make the hub's worker (a `DOMException`) is no hub; any other error thrown making it is thrown.
+- `connectHub({ spawners? })` answers the page's connection, the same one for every call and every copy of the library of the same protocol in the page; `undefined` where the browser has no SharedWorker or the hub never welcomed the page (its script failed to load, was blocked or stayed silent) - a later call tries again. A spawner whose engine worker is of another origin is left out: the page cannot start it. A later call adds the engines the page does not run yet; one naming a dialecte the page runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, nothing of it added, the connection kept - a page runs one version of each dialecte's engine. A document that joined through `adoptHubPort` hosts no engine: the spawners it names are not registered. An engine's files (the SQLite wasm) are fetched when the page first starts one. Call it early in the page that hosts the app (the shell), with every dialecte it opens: a view of another origin is a client of the engines the shell starts. The browser refusing to make the hub's worker (a `DOMException`) is no hub; any other error thrown making it is thrown.
 - `createHubPort()` makes a port bound to the page for a child view; `unbind()` on its handle tells the hub the child is gone (its iframe removed).
 - `adoptHubPort({ port })`, in the child, joins the hub through that port. A port nobody answers fails it `STORE_CONNECTION_FAILED` once the welcome budget has passed.
 - **Page lifecycle.** A page that freezes or enters the back/forward cache lets the engines it hosts go (another view hosts them) and joins again under a new realm id when it comes back; a page going away ends them. The children it bound are dropped with it: their calls are refused `STORE_ENGINE_LOST` (`meta.reason: 'realm-dropped'`) until the page binds them again. `realm.onRejoined(listener)` is called each time the page is welcomed back (never on its first welcome; it answers its unsubscribe): make each child a new port there, and the child calls `adoptHubPort` with it - the same connection joins again, its projects kept.
@@ -135,7 +135,7 @@ What a view's calls through the hub will answer, and what joining it answers alr
 | `PROJECT_DIALECTE_VERSION_MISMATCH` | The project's engine runs another version of the dialecte than this view.                                                                                                                                                                   |
 | `PROJECT_DESTROYED_WHILE_AWAY`      | A view came back to its project (a page back from a freeze, its engine started again) after another tab destroyed it: nothing is opened in its place.                                                                                       |
 | `STORE_PROTOCOL_MISMATCH`           | Another version of the library holds the hub, or the engine speaks another wire: every view of an app must run the same build.                                                                                                              |
-| `STORE_HUB_SPAWNERS_FIXED`          | `connectHub({ spawners })` named an engine the page's connection does not run: its first call registered them.                                                                                                                              |
+| `STORE_HUB_SPAWNERS_FIXED`          | `connectHub({ spawners })` named a dialecte the page's connection runs at another version: one version of each dialecte's engine per page.                                                                                                  |
 | `STORE_REALM_ID_TAKEN`              | A view joined with an id another connected view already uses.                                                                                                                                                                               |
 | `STORE_REALM_UNKNOWN`               | A view spoke to the hub without having joined it, or after it left (a child whose page went before it said hello).                                                                                                                          |
 | `STORE_ENGINE_LOST`                 | The engine was lost while the call waited: `host-gone`, `no-heartbeat`, or `realm-dropped` for a child dropped with its page - see the error.                                                                                               |

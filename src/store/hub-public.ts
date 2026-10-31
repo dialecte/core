@@ -1,6 +1,8 @@
-import { adoptHubConnection, openHubConnection } from './hub-client'
+import { adoptHubConnection, openHubConnection } from './engine/hub/hub-client'
+import { loadSqliteEngineSettings } from './sqlite/adapter/sqlite-engine-settings'
 
-import type { ConnectHubParams, HubConnection, HubRealm } from './hub-client.types'
+import type { ConnectHubParams, HubConnection, HubRealm } from './engine/hub/hub-client.types'
+import type { HubEngineSpawner, RealmEngineSpawner } from './engine/hub/realm-host.types'
 
 /**
  * Connect this page to the origin's hub, once: a second call - from this copy of the library or
@@ -9,14 +11,25 @@ import type { ConnectHubParams, HubConnection, HubRealm } from './hub-client.typ
  * it stayed silent): a later call tries again. A hub of another protocol refuses the page:
  * `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub,
  * any other error thrown making it is thrown. The page registers the engines it can start whose worker is of
- * its own origin, at its first call and for the connection's life (a document that joined through
- * `adoptHubPort` registered none): a later call naming an engine the connection does not run (another dialecte,
- * or another version) is refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept; the first call's workers,
- * settings and perf stay.
+ * its own origin (each dialecte's `factory.spawner`); a later call adds those it does not run yet, and one naming a dialecte the page runs at another version is
+ * refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept. A document that joined through `adoptHubPort` hosts no
+ * engine: the spawners it names are not registered. An engine's files (the SQLite wasm) are fetched when the page
+ * first starts one.
  */
 export async function connectHub(params: ConnectHubParams = {}): Promise<HubRealm | undefined> {
-	const connection = await openHubConnection(params)
+	const spawners = params.spawners?.map(withDefaultSettings)
+	const connection = await openHubConnection({ spawners })
 	return connection && toHubRealm({ connection })
+}
+
+/** A dialecte's spawner as the page runs it: the SQLite engine opened on the consumer's wasm, loaded at spawn. */
+function withDefaultSettings(spawner: HubEngineSpawner): RealmEngineSpawner {
+	const { dialecteId, dialecteVersion, engineUrl } = spawner
+	return { dialecteId, dialecteVersion, engineUrl, settings: loadDefaultSettings }
+}
+
+function loadDefaultSettings(): Promise<unknown> {
+	return loadSqliteEngineSettings()
 }
 
 /**

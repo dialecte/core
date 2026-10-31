@@ -186,10 +186,10 @@ export const ERROR_CATALOG = {
 	},
 	STORE_HUB_SPAWNERS_FIXED: {
 		code: 'D1019',
-		message: "The page's hub connection does not run these engines",
+		message: "The page's hub connection runs another version of this dialecte's engine",
 		explanation: {
-			when: "`connectHub({ spawners })` named an engine the page's connection does not run: the page's first `connectHub` (from any copy of the library, or a `connectHub()` naming none) registered the engines it starts, and they stay for the connection's life; a document that joined through `adoptHubPort` registered none. `meta.spawners` names the dialectes (id and version) asked but not run.",
-			fix: 'Call `connectHub` once, early, with every engine the app can start (each dialecte it opens, at the version it ships), before any project opens; a later call names those or fewer, or none.',
+			when: "`connectHub({ spawners })` named a dialecte whose engine the page's connection already runs at another version: a page runs one version of each dialecte's engine (two would split a project's views between two engines). A later call adds the engines of dialectes the page does not run yet. `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added.",
+			fix: "Ship one version of each dialecte in the app: register each dialecte's `factory.spawner` from the copy the app opens its projects with.",
 			docs: `${CORE_DOCS_URL}/api/dialecte`,
 		},
 	},

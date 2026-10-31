@@ -7,12 +7,14 @@ import type {
 } from './dialecte.types'
 import type { ExtensionModules } from '@/document'
 import type { Project } from '@/project'
+import type { HubEngineSpawner } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
 
 /**
  * The project factory of a dialecte: every config, the default key, the dialecte's extensions
- * merged under the consumer's, and a fresh hooks instance per Project. It carries the declaration
- * and `engineUrl`, the address of the dialecte's engine worker, for the store that spawns it.
+ * merged under the consumer's, and a fresh hooks instance per Project. It carries the declaration,
+ * `engineUrl`, the address of the dialecte's engine worker, for the store that spawns it, and `spawner`,
+ * the engine as a page registers it with the hub (`connectHub({ spawners })`).
  */
 export function createProjectFactory<
 	GenericConfig extends AnyDialecteConfig,
@@ -32,5 +34,10 @@ export function createProjectFactory<
 		})
 	}
 
-	return Object.assign(createProject, { dialecte, engineUrl })
+	const spawner: HubEngineSpawner = {
+		dialecteId: dialecte.id,
+		dialecteVersion: dialecte.version,
+		engineUrl,
+	}
+	return Object.assign(createProject, { dialecte, engineUrl, spawner })
 }

@@ -76,6 +76,12 @@ function engineOpened(params: {
 	return { type: 'engine-opened', now, project, dialecteId: 'scl', generation, creationId }
 }
 
+/** A realm adds engines it can start, after its hello. */
+function addSpawners(params: { realmId: string; spawners: HubSpawner[]; now?: number }): HubEvent {
+	const { realmId, spawners, now = 0 } = params
+	return { type: 'spawners', now, realmId, spawners }
+}
+
 function realmGone(params: { realmId: string; now?: number }): HubEvent {
 	const { realmId, now = 0 } = params
 	return { type: 'realm-gone', now, realmId }
@@ -819,6 +825,108 @@ describe('createHubRouter', () => {
 					},
 				],
 			},
+		'a realm that said hello with no spawner adds scl, then opens → it hosts the engine': {
+			history: [hello({ realmId: 'shell', spawners: [] })],
+			steps: [
+				{ event: addSpawners({ realmId: 'shell', spawners: [SCL] }), commands: [] },
+				{ event: open({ realmId: 'shell' }), commands: [SPAWN_SHELL_1] },
+			],
+		},
+		'a realm without the spawner opens → refused; it adds scl, opens again → it hosts the engine': {
+			history: [hello({ realmId: 'shell', spawners: [] })],
+			steps: [
+				{
+					event: open({ realmId: 'shell' }),
+					commands: [
+						{
+							type: 'refuse-open',
+							realmId: 'shell',
+							project: PROJECT,
+							dialecteId: 'scl',
+							refusal: {
+								origin: 'hub',
+								key: 'PROJECT_ENGINE_UNAVAILABLE',
+								detail: 'no connected view can start an engine of "scl"',
+								meta: { project: PROJECT, dialecteId: 'scl' },
+							},
+						},
+					],
+				},
+				{ event: addSpawners({ realmId: 'shell', spawners: [SCL] }), commands: [] },
+				{ event: open({ realmId: 'shell' }), commands: [SPAWN_SHELL_1] },
+			],
+		},
+		'a realm adds nsd beside scl → both hosted: the nsd project of the name spawned in it': {
+			history: [hello({ realmId: 'shell' }), addSpawners({ realmId: 'shell', spawners: [NSD] })],
+			steps: [
+				{
+					event: open({ realmId: 'shell', dialecteId: 'nsd' }),
+					commands: [{ ...SPAWN_SHELL_1, dialecteId: 'nsd' }],
+				},
+			],
+		},
+		'a realm adds scl at another version than the one it runs → its first version kept: an open of the first version hosted there':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					addSpawners({
+						realmId: 'shell',
+						spawners: [{ dialecteId: 'scl', dialecteVersion: '2.0.0' }],
+					}),
+				],
+				steps: [{ event: open({ realmId: 'shell' }), commands: [SPAWN_SHELL_1] }],
+			},
+		'a child realm adds a spawner → ignored: a child never hosts, its open refused': {
+			history: [
+				hello({ realmId: 'shell', spawners: [] }),
+				hello({ realmId: 'widget', topLevel: false, parentRealmId: 'shell' }),
+				addSpawners({ realmId: 'widget', spawners: [SCL] }),
+			],
+			steps: [
+				{
+					event: open({ realmId: 'widget' }),
+					commands: [
+						{
+							type: 'refuse-open',
+							realmId: 'widget',
+							project: PROJECT,
+							dialecteId: 'scl',
+							refusal: {
+								origin: 'hub',
+								key: 'PROJECT_ENGINE_UNAVAILABLE',
+								detail: 'no connected view can start an engine of "scl"',
+								meta: { project: PROJECT, dialecteId: 'scl' },
+							},
+						},
+					],
+				},
+			],
+		},
+		'a realm the hub does not know adds spawners → nothing: no realm made': {
+			history: [
+				addSpawners({ realmId: 'ghost', spawners: [SCL] }),
+				hello({ realmId: 'tab', spawners: [] }),
+			],
+			steps: [
+				{
+					event: open({ realmId: 'tab' }),
+					commands: [
+						{
+							type: 'refuse-open',
+							realmId: 'tab',
+							project: PROJECT,
+							dialecteId: 'scl',
+							refusal: {
+								origin: 'hub',
+								key: 'PROJECT_ENGINE_UNAVAILABLE',
+								detail: 'no connected view can start an engine of "scl"',
+								meta: { project: PROJECT, dialecteId: 'scl' },
+							},
+						},
+					],
+				},
+			],
+		},
 		'a child realm with a spawner opens a project its parent cannot host → refused, a child never hosts':
 			{
 				history: [

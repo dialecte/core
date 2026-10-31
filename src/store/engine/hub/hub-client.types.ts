@@ -1,11 +1,18 @@
 import type { EngineClient } from '../client/client.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
-import type { HubSpawner } from './hub.types'
-import type { HubEngineSpawner } from './realm-host.types'
+import type { HubEngineSpawner, RealmEngineSpawner } from './realm-host.types'
 
 export type ConnectHubParams = {
-	/** The engines this realm can start for the hub (a spawner whose worker is of another origin is left out). */
+	/**
+	 * The engines this page can start for the hub: each dialecte's `factory.spawner` (a spawner whose worker is of
+	 * another origin is left out). A later call adds the engines the page does not run yet.
+	 */
 	spawners?: HubEngineSpawner[]
+}
+
+/** How the realm connects: the engines it can start, with what each opens with. */
+export type HubConnectionOptions = {
+	spawners?: RealmEngineSpawner[]
 }
 
 /** The realm's global object as the hub connection is kept on it, under the protocol's key. */
@@ -24,8 +31,12 @@ export type HubRealm = Pick<HubConnection, 'realmId' | 'createHubPort' | 'onRejo
 export type HubConnection = {
 	/** This realm instance's id (a new one after the page came back from a freeze or the cache). */
 	realmId: () => string
-	/** The engines this realm registered with the hub at its first join (dialecte id and version), for its life. */
-	spawners: readonly HubSpawner[]
+	/**
+	 * Engines the realm can start from now on, beside those it runs: the hub told at once when welcomed (else in the
+	 * next hello). A dialecte it runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, nothing added; one it
+	 * runs already, or any for a child bound through `adoptHubPort` (it hosts none), adds nothing.
+	 */
+	addSpawners: (params: { spawners: RealmEngineSpawner[] }) => void
 	/** The realm's link to a project's engine: one per project, shared by the realm's connections to it. */
 	openProject: (params: HubProjectParams) => HubProjectLink
 	/**
@@ -149,7 +160,7 @@ export type HubConnectionParams = {
 	/** How long the realm waits for the hub's welcome (the default when absent). */
 	welcomeBudgetMs?: number
 	topLevel: boolean
-	spawners: HubEngineSpawner[]
+	spawners: RealmEngineSpawner[]
 	/** Whether the realm holds a lock of its own (a child realm's liveness is its parent's). */
 	holdsLock: boolean
 	/** The page's lifecycle to watch (freeze, the back/forward cache, the page going away); none for a child realm. */

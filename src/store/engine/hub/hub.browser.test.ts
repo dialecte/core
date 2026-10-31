@@ -55,10 +55,14 @@ async function realmFrame(params: BootRealmParams): Promise<RealmFrame> {
 	return { frame, realm }
 }
 
-/** The document a realm iframe loads: the fixture's module booting the realm. */
+/**
+ * The document a realm iframe loads: the fixture's module booting the realm. Vitest serves its modules with every
+ * `import()` wrapped by its runner, which an iframe has not: the frame gets the pass-through vitest gives a worker
+ * (`__vitest_browser_runner__.wrapDynamicImport`, vitest's own name as of vitest 4.1.12: a later version may rename it).
+ */
 function bootDocument(params: { params: BootRealmParams }): string {
 	const boot = JSON.stringify(params.params)
-	return `<script type="module">import { bootRealm } from '${REALM_FIXTURE_URL}'; window.realmReady = bootRealm(${boot})</script>`
+	return `<script>globalThis.__vitest_browser_runner__ = { wrapDynamicImport: (load) => load() }</script><script type="module">import { bootRealm } from '${REALM_FIXTURE_URL}'; window.realmReady = bootRealm(${boot})</script>`
 }
 
 /** The realm the iframe's module booted, once it has joined the hub. */

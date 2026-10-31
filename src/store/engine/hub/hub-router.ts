@@ -50,6 +50,8 @@ function routeEvent(params: { step: HubStep; event: HubEvent }): void {
 	switch (event.type) {
 		case 'hello':
 			return registerRealm({ step, hello: event })
+		case 'spawners':
+			return addSpawners({ step, added: event })
 		case 'open':
 			return openProject({ step, open: event })
 		case 'leave':
@@ -131,6 +133,24 @@ function registerRealm(params: {
 	// a child realm has no lock of its own: it lives as long as its parent
 	if (hello.parentRealmId === undefined) {
 		step.commands.push({ type: 'watch-realm-lock', realmId: hello.realmId })
+	}
+}
+
+/**
+ * A realm's engines added after its hello: a dialecte it runs already keeps its first version (one engine version
+ * per dialecte per realm); a child realm, or one the hub does not know, adds none.
+ */
+function addSpawners(params: {
+	step: HubStep
+	added: Extract<HubEvent, { type: 'spawners' }>
+}): void {
+	const { step, added } = params
+	const realm = step.state.realms.get(added.realmId)
+	if (!realm || realm.parentRealmId !== undefined) return
+	for (const spawner of added.spawners) {
+		if (!realm.spawners.has(spawner.dialecteId)) {
+			realm.spawners.set(spawner.dialecteId, spawner.dialecteVersion)
+		}
 	}
 }
 

@@ -1,5 +1,6 @@
 import type { ExtensionModules } from '@/document'
 import type { Project, StorageParam } from '@/project'
+import type { HubEngineSpawner } from '@/store'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 /** What a dialecte gives `defineDialecte`: everything core derives a Project, a test runner and an engine from. */
@@ -76,6 +77,8 @@ export type ProjectFactory<
 	): Project<GenericConfig, GenericModules & CustomModules>
 	readonly dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>
 	readonly engineUrl: string
+	/** The dialecte's engine as a page registers it with the hub: `connectHub({ spawners: [factory.spawner] })`. */
+	readonly spawner: HubEngineSpawner
 }
 
 /** What every Project of a dialecte is made from: the declaration and what one consumer chooses. */
