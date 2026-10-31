@@ -161,7 +161,7 @@ failure          -> error=DialecteError, loading=false, forceClear() -> progress
 
 ### Cross-tab sync
 
-`lastUpdate`, `canUndo`, and `canRedo` live on the shared `DocumentEntry` (one object per `documentId`, common to every `Document` and to `project.state.documents`). Every mutation source — a local commit, an other-tab commit, an `undo`/`redo` — converges through a single project channel handler that folds each message back into that entry. The channel is scoped to the project name; open `doc.channelName` to react to updates.
+`lastUpdate`, `canUndo`, and `canRedo` live on the shared `DocumentEntry` (one object per `documentId`, common to every `Document` and to `project.state.documents`). Every mutation source — a local commit, another view's commit, an `undo`/`redo` — converges through the Project, which folds each change back into that entry (from its store when the store announces its changes, from the project name's channel otherwise). Open `doc.channelName` to react to updates.
 
 ```ts
 watch(

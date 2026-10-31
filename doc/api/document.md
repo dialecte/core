@@ -146,7 +146,7 @@ type DocumentEntry = DocumentState & {
 
 ### Cross-tab sync
 
-A `Document` does not own a channel. When a transaction commits, it announces `{ type: 'commit', documentId, timestamp }` through the owning Project (via an injected `broadcast`), which posts it on the project's `BroadcastChannel`. The Project folds every such message — this tab's own commits and other tabs' commits alike — back into the shared `DocumentEntry`, keeping `lastUpdate` and `canUndo`/`canRedo` current. Open `doc.channelName` yourself to react to updates (e.g. refetch a view).
+A `Document` does not own a channel. When a transaction commits, it announces `{ type: 'commit', documentId, timestamp }` through the owning Project (via an injected `broadcast`), which posts it on the project's channel (on a store that announces its changes, once the store told it). The Project folds the commits other views make - other tabs, iframes, other projects of it - into the shared `DocumentEntry`, keeping `lastUpdate` and `canUndo`/`canRedo` current. Open `doc.channelName` yourself to react to updates (e.g. refetch a view); see [Project channel & events](/api/project#project-channel-events).
 
 ## subscribe
 
@@ -165,7 +165,7 @@ unsubscribe()
 ```
 
 - **`terminal`** is `true` only for the last frame of an operation (a transaction's end, `undo`/`redo`, a folded commit). Mid-operation frames (progress steps, `loading = true`) pass `false`. A UI layer coalesces non-terminal frames (e.g. one repaint per animation frame) and flushes terminal ones immediately, so the final 100%/cleared state is never dropped.
-- This is distinct from `doc.channelName` / the `BroadcastChannel`: the channel is the **cross-realm transport** (other tabs/iframes), whereas `subscribe` is the **in-realm reactive signal**. Cross-realm commits reach `subscribe` too, because the Project calls the same registry after folding a channel message in. Progress never goes through the channel.
+- This is distinct from `doc.channelName` / the `BroadcastChannel`: the channel tells the project's changes to whoever listens, whereas `subscribe` is the **in-realm reactive signal**. Commits of other views reach `subscribe` too, because the Project calls the same registry after folding them in. Progress never goes through the channel.
 - The registry lives on the owning `Project` (keyed by `documentId`), so every `Document` opened for the same file shares one subscriber set, and `Project.undo`/`redo` reach it.
 
 ## close / destroy

@@ -32,7 +32,7 @@ import type {
 } from './types'
 import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
 import type { Perf } from '@/perf'
-import type { Store } from '@/store'
+import type { Store, StoreNotice } from '@/store'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
@@ -63,6 +63,21 @@ export class Project<
 	private _channel?: BroadcastChannel
 	/** Set once close()/destroy() begins, to stop new channel-triggered store work. */
 	private closing = false
+	/**
+	 * Whether the open store announces its changes itself (`Store.subscribe`): the Project then hears them from it,
+	 * reposts the other connections' on a channel of its own, and posts its own only when the store told one.
+	 */
+	private announcing = false
+	/** The store's notices let go: called as the open project closes. */
+	private stopStoreNotices: () => void = stopNothing
+	/**
+	 * The changes the store told as this Project's own, waiting for the call that made them to post them (none waiting:
+	 * a call changed nothing). Each post takes them all: the call's own posted as the call tells it, the others as the
+	 * store told them, folded too (a change no call of the Project's own waits for is folded then).
+	 */
+	private ownChangesTold: ProjectChannelMessage[] = []
+	/** The name of the open project's channel (`projectChannelName`), set as it opens. */
+	private _channelName?: string
 	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
 	private readonly pendingBroadcastWork = new Set<Promise<void>>()
 	private readonly storage: ProjectParams<GenericConfig>['storage']
@@ -202,7 +217,11 @@ export class Project<
 	 * ProjectChannelMessage, same-tab and cross-tab.
 	 */
 	get channelName(): string {
-		return projectChannelName({ name: this.name })
+		invariant(this._channelName !== undefined, {
+			key: 'PROJECT_NOT_OPENED',
+			detail: 'Call project.open(name) before accessing project properties.',
+		})
+		return this._channelName
 	}
 
 	/**
@@ -215,9 +234,56 @@ export class Project<
 		return new BroadcastChannel(this.channelName)
 	}
 
-	/** Post a message on the project channel. */
+	/**
+	 * Post a change of this Project's on the project channel. On a store that announces, only what the store told: the
+	 * call's own change when the store told it (none: the call changed nothing, nothing posted), and every other change
+	 * of the Project's own told meanwhile (a call running beside it, a second step of the same call), each once.
+	 */
 	private broadcast(message: ProjectChannelMessage): void {
-		this.channel.postMessage(message)
+		if (!this.announcing) {
+			this.channel.postMessage(message)
+			return
+		}
+		const told = this.ownChangesTold.splice(0)
+		const index = told.findIndex(function sameChange(change) {
+			return sameSubject({ first: change, second: message })
+		})
+		for (const [position, change] of told.entries()) {
+			if (position === index) {
+				this.channel.postMessage(message)
+				continue
+			}
+			this.channel.postMessage(change)
+			this.onChannelMessage(change)
+		}
+	}
+
+	/**
+	 * A notice of the open store: another connection's change folded into this Project's state and reposted to its
+	 * listeners; its own counted, posted once the call that made it has updated the state; a resync reads it all again.
+	 */
+	private onStoreNotice(notice: StoreNotice): void {
+		// a change of this Project's own is counted while it closes too: a call it waits for still tells it
+		if (notice.type === 'change' && notice.own) {
+			this.ownChangesTold.push(notice.message)
+			return
+		}
+		if (this.closing) return
+		if (notice.type === 'resync') {
+			this.trackBroadcastWork(this.resync())
+			return
+		}
+		this._channel?.postMessage(notice.message)
+		this.onChannelMessage(notice.message)
+	}
+
+	/** Changes may have been missed: the registry, each document's history read again, every document's view woken. */
+	private async resync(): Promise<void> {
+		if (this.closing) return
+		await this.refreshState()
+		const documentIds = Array.from(this.state.documents.keys())
+		await Promise.all(documentIds.map((documentId) => this.refreshHistoryStatus(documentId)))
+		for (const documentId of documentIds) this.signalStateChange(documentId, true)
 	}
 
 	readonly state: ProjectState = {
@@ -315,14 +381,28 @@ export class Project<
 		let channel: BroadcastChannel | undefined
 		try {
 			store = this.resolveProjectStore({ name })
-			channel = new BroadcastChannel(this.channelName)
-			channel.addEventListener('message', (event: MessageEvent<ProjectChannelMessage>) => {
-				this.onChannelMessage(event.data)
+			// a store that announces is heard from before it opens: no change falls between its first read and the subscription
+			this.announcing = typeof store.subscribe === 'function'
+			this.ownChangesTold = []
+			this._channelName = projectChannelName({
+				name,
+				instance: this.announcing ? crypto.randomUUID() : undefined,
 			})
+			if (store.subscribe) {
+				this.stopStoreNotices = store.subscribe((notice) => this.onStoreNotice(notice))
+			}
+			channel = new BroadcastChannel(this._channelName)
+			// the channel is the transport only where the store announces nothing: others' changes come from it
+			if (!this.announcing) {
+				channel.addEventListener('message', (event: MessageEvent<ProjectChannelMessage>) => {
+					this.onChannelMessage(event.data)
+				})
+			}
 			// The store removes, as it opens, any import left unfinished.
 			await store.open()
 		} catch (thrown) {
 			// what this open opened is closed again; its store is kept only for destroy()
+			this.stopListeningToStore()
 			channel?.close()
 			this.refusedStore = store
 			await closeRefusedStore({ store })
@@ -344,6 +424,7 @@ export class Project<
 		} catch (thrown) {
 			// what this open made is closed again, as for a store that refused to open
 			this.closing = true
+			this.stopListeningToStore()
 			channel!.close()
 			this._channel = undefined
 			this._store = undefined
@@ -385,6 +466,9 @@ export class Project<
 	private onChannelMessage(message: ProjectChannelMessage | undefined): void {
 		if (this.closing) return
 		switch (message?.type) {
+			case 'document-updated':
+				this.trackBroadcastWork(this.refreshDocumentRecord(message.documentId))
+				break
 			case 'init-empty-document':
 			case 'document-removed':
 			case 'document-imported':
@@ -410,6 +494,12 @@ export class Project<
 		}
 	}
 
+	/** The open store's notices let go. */
+	private stopListeningToStore(): void {
+		this.stopStoreNotices()
+		this.stopStoreNotices = stopNothing
+	}
+
 	/**
 	 * Track channel-triggered fire-and-forget work so `close`/`destroy` can wait for
 	 * it to settle before tearing down the store. A foreign message delivered as the
@@ -424,6 +514,17 @@ export class Project<
 				this.pendingBroadcastWork.delete(tracked)
 			})
 		this.pendingBroadcastWork.add(tracked)
+	}
+
+	/** A document's registry entry read again (another view renamed or moved it): its view woken. */
+	private async refreshDocumentRecord(documentId: string): Promise<void> {
+		if (this.closing) return
+		const entry = this.state.documents.get(documentId)
+		if (!entry) return
+		const record = await this.store.getDocument(documentId)
+		if (!record || this.closing) return
+		entry.record = record
+		this.signalStateChange(documentId, true)
 	}
 
 	/** Recompute canUndo/canRedo for a document from the store's history. */
@@ -469,6 +570,7 @@ export class Project<
 			// Wait for any in-flight foreign-message work to settle on the live store
 			// before closing it, so no read/reconcile outlives it.
 			await Promise.allSettled(this.pendingBroadcastWork)
+			this.stopListeningToStore()
 			this._channel?.close()
 			this._channel = undefined
 			// settled once the store counts no more (its hub, or another tab, told)
@@ -1096,3 +1198,29 @@ function unsubscribeNothing(): void {}
 
 /** The end of a write never counted: a Document of an open that closed. */
 function endNothing(): void {}
+
+/** Whether two changes are of one thing: their type, and the document and the blob they name. */
+function sameSubject(params: {
+	first: ProjectChannelMessage
+	second: ProjectChannelMessage
+}): boolean {
+	const { first, second } = params
+	return (
+		first.type === second.type &&
+		subjectIdOf({ message: first, field: 'documentId' }) ===
+			subjectIdOf({ message: second, field: 'documentId' }) &&
+		subjectIdOf({ message: first, field: 'blobId' }) ===
+			subjectIdOf({ message: second, field: 'blobId' })
+	)
+}
+
+function subjectIdOf(params: {
+	message: ProjectChannelMessage
+	field: 'documentId' | 'blobId'
+}): string | undefined {
+	const { message, field } = params
+	return field in message ? (message as unknown as Record<string, string>)[field] : undefined
+}
+
+/** The unsubscribe of a store that announces nothing, or of no store. */
+function stopNothing(): void {}

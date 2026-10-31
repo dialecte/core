@@ -342,10 +342,10 @@ Each call updates the document's shared `DocumentEntry` deterministically — `l
 
 ## Project channel & events
 
-Every mutation a Project or one of its Documents performs is announced on a `BroadcastChannel`. The channel is the project's public event contract.
+Every change of the project - made by this Project, one of its Documents, or another project of it in this page, another tab or an iframe - is announced on a `BroadcastChannel`. The channel is the project's public event contract: a listener hears each change once.
 
 ```ts
-project.channelName // `dialecte::project::${name}`
+project.channelName // `dialecte::project::${name}`, or one of this Project's own (see below)
 
 const channel = project.createChannel() // fresh BroadcastChannel on channelName; caller owns it
 channel.addEventListener('message', (e) => {
@@ -355,7 +355,12 @@ channel.addEventListener('message', (e) => {
 channel.close()
 ```
 
-Internally the Project keeps two instances: a posting channel and a separate listening channel. The spec withholds a message only from the exact instance that posted it, so the listening instance also receives this tab's own posts (echo) — one handler folds every mutation source, local and cross-tab, into project state.
+How the changes reach the Project depends on its store:
+
+- **A store that announces its changes** (`sqlite`, `inMemory`; a custom store with `subscribe`): the store tells the Project every change, made by any connection of the project (each tab, iframe and Project of it). The Project folds the others' changes into its state, wakes its Documents, and reposts them on a channel of its own, `channelName` = `dialecte::project::<name>::<instance>`; it posts its own changes there once its state holds them. A call that changed nothing (an undo with nothing to undo, an unknown document removed) is told to no one. Two dialectes' projects of one name never hear each other. When the store reaches another engine of the project (its host gone), the Project reads its documents and history again and wakes every Document (`doc.subscribe`); nothing is posted on the channel for it. A change may be told in its steps: a new document as `init-empty-document`, then `commit` for its first records.
+- **A store that does not** (`local`, a custom store without `subscribe`): every Project of the name posts its own changes and listens on the name's channel, `dialecte::project::<name>`: a call is announced as made, a no-op included, and a write made through a store alone is told to no one.
+
+Build no channel name by hand: open the channel through `project.createChannel()` or `doc.channelName`.
 
 **ProjectChannelMessage**
 
@@ -367,6 +372,8 @@ type ProjectChannelMessage =
 	| { type: 'init-empty-document'; documentId: string; timestamp: number }
 	| { type: 'document-removed'; documentId: string; timestamp: number }
 	| { type: 'document-imported'; documentId: string; timestamp: number }
+	// a document's registry entry changed (its name, its path, its metadata): read it again
+	| { type: 'document-updated'; documentId: string; timestamp: number }
 	| { type: 'blob-added'; blobId: string; documentId: string; timestamp: number }
 	| { type: 'blob-attached'; blobId: string; ref: BlobAttachment; timestamp: number }
 	| {
