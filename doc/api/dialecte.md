@@ -60,7 +60,7 @@ The factory makes a `Project` with every config of the declaration, its default 
 | `extensions` | `ExtensionModules`   | The consumer's own modules, merged over the dialecte's. |
 | `dev`        | `{ perf?: boolean }` | Project dev options (see [Project](/api/project)).      |
 
-The factory carries what it was made with: `createSclProject.dialecte` and `createSclProject.engineUrl`, and `createSclProject.spawner`, the dialecte's engine as a page offers it to the hub (`connectHub`, below). `engineUrl` is the address of the dialecte's engine worker, the URL the dialecte's module exports from a `?worker&url` import of its worker entry (`./<version>/worker` in the package); the store that runs the engine spawns `new Worker(engineUrl, { type: 'module' })` on it and ships in the same release. The worker entry and its assets are described with the engine.
+The factory carries what it was made with: `createSclProject.dialecte` and `createSclProject.engineUrl`, and `createSclProject.spawner`, the dialecte's engine as a page offers it to the hub (`connectHub`, below). `createSclProject.destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (see [SQLite storage](/api/project#sqlite-storage)). `engineUrl` is the address of the dialecte's engine worker, the URL the dialecte's module exports from a `?worker&url` import of its worker entry (`./<version>/worker` in the package); the store that runs the engine spawns `new Worker(engineUrl, { type: 'module' })` on it and ships in the same release. The worker entry and its assets are described with the engine.
 
 ### createTestHelpers
 

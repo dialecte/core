@@ -79,6 +79,10 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'a project on `sqlite` storage: its engine worker, the origin’s hub and private file system',
 	},
 	{
+		path: 'src/store/sqlite/list-projects.opfs.test.ts',
+		why: 'projects listed from the origin’s private file system, destroyed by name',
+	},
+	{
 		path: 'src/store/sqlite/load-sqlite.test.ts',
 		why: 'fetches the SQLite wasm file the page serves',
 	},

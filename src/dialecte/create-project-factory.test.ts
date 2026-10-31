@@ -112,6 +112,16 @@ describe('createProjectFactory', () => {
 				},
 				refusedWith: 'STORE_UNAVAILABLE',
 			},
+			'destroyed by name through the factory → STORE_UNAVAILABLE, nothing started': {
+				open: function destroyByName() {
+					const factory = createProjectFactory({
+						dialecte: createCountingDialecte(),
+						engineUrl: ENGINE_URL,
+					})
+					return factory.destroyProject({ name: `sqlite-${crypto.randomUUID()}` })
+				},
+				refusedWith: 'STORE_UNAVAILABLE',
+			},
 			'made by no factory → PROJECT_ENGINE_NOT_DECLARED at open': {
 				open: function openBare() {
 					const dialecte = createCountingDialecte()

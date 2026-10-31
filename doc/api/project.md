@@ -447,6 +447,25 @@ const project = await createSclProject({ storage: { type: 'sqlite' } }).open('my
 - Where the browser gives no worker or no private file system (Node, a private Firefox window), `open` is refused `STORE_UNAVAILABLE`.
 - The SQLite side of the page and its wasm file are loaded at the first project opened on `sqlite`: a page on another storage never fetches them. A bundler still emits them, as for any code loaded through `import()`. A page that cannot load them is refused `STORE_CONNECTION_FAILED`.
 
+**Listing and deleting projects.** `listProjects({ dialecteId? })` lists the projects on SQLite storage of the origin - every dialecte's, or one's - read from the private file system alone (no engine started, no wasm loaded; a project open in a view is read too), sorted by dialecte and name:
+
+```ts
+import { listProjects } from '@dialecte/core'
+
+const projects = await listProjects({ dialecteId: createSclProject.dialecte.id })
+// [{ name, dialecteId, state, bytes, lastModified }]
+```
+
+| `state`    | What it means                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `current`  | Stored by this version: open it.                                                                                                |
+| `outdated` | Stored by another version of the library (`open` refuses it `PROJECT_LAYOUT_OUTDATED`): delete it, then import its files again. |
+| `lost`     | Its files hold data but its database is gone (`open` refuses it `PROJECT_DATABASE_LOST`): delete it.                            |
+| `new`      | Made, never written.                                                                                                            |
+| `unknown`  | Its files could not be read now (its engine writing): list again.                                                               |
+
+`createSclProject.destroyProject({ name })` deletes the dialecte's project of that name without opening it - an `outdated` or `lost` one too. It is refused `PROJECT_OPEN_ELSEWHERE` while a view has it open, `PROJECT_ENGINE_BUSY` while an engine still holds its files, `PROJECT_DESTROY_FAILED` when its files could not all be removed, `PROJECT_NAME_INVALID` for a name no project can have. Where the browser gives no private file system both are refused `STORE_UNAVAILABLE`. A project open in a view is listed all the same (its files read beside its engine: checked in Chromium).
+
 ## In-Memory Storage
 
 Use `{ type: 'inMemory' }` for tests, demos, or UI placeholder documents that need a valid `Document` instance without IndexedDB.

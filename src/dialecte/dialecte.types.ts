@@ -79,6 +79,11 @@ export type ProjectFactory<
 	readonly engineUrl: string
 	/** The dialecte's engine as a page registers it with the hub: `connectHub({ spawners: [factory.spawner] })`. */
 	readonly spawner: HubEngineSpawner
+	/**
+	 * Delete the dialecte's project of that name on SQLite storage without opening it (an `outdated` or `lost` one of
+	 * `listProjects` too); refused `PROJECT_OPEN_ELSEWHERE` while a view has it open.
+	 */
+	readonly destroyProject: (params: { name: string }) => Promise<void>
 }
 
 /** What every Project of a dialecte is made from: the declaration and what one consumer chooses. */
