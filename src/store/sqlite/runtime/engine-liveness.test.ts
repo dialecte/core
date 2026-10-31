@@ -253,6 +253,19 @@ describe('an engine alive or lost', () => {
 			)
 		})
 
+		it('a second connection while the engine runs 3 s of statements told busy (timeout 1 s) → its adoption waits, then it reads: the engine never taken for lost', async () => {
+			const name = uniqueProject()
+			const store = await openStore({ heartbeatTimeoutMs: 1_000, name })
+			await store.registerDocument(makeDocument())
+			await orderFixtures({ type: 'slow-ddl' })
+			const slowed = noticeOf({ type: 'reached', marker: 'slow-ddl' })
+			const removing = store.removeDocument('doc-1')
+			await slowed
+			const second = await openStore({ heartbeatTimeoutMs: 1_000, name })
+			expect(await outcomeOf(second.getDocuments())).toBe('resolved')
+			expect(await outcomeOf(removing)).toBe('resolved')
+		})
+
 		it('a document removed, its tables dropped in 3 s each (timeout 1 s) → told busy, the removal resolves', async () => {
 			const store = await openStore({ heartbeatTimeoutMs: 1_000 })
 			await store.registerDocument(makeDocument())

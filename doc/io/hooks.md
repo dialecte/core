@@ -142,6 +142,8 @@ function createImportSession(): ImportSession {
 
 Fires **once** after all records are stored. Return batched creates, updates, and deletes — applied atomically by core in order: creates → updates → deletes — and the diagnostics of the file. The writes are applied whether or not there are diagnostics, and the diagnostics come back to the caller of the import with the document (`parseXmlFile`, `runImport` and every store's `importFile` return `diagnostics: Diagnostic[]`, `[]` when there is nothing to say). A hook that throws fails the import and removes the document: a structured error as thrown, anything else as `IMPORT_FAILED` with the thrown value as its `cause`.
 
+The hook must settle. Nothing aborts a hook that never resolves: its import stays in flight, the project engine stays busy with it, and `project.close()` and `destroy()` wait for it for good - after 10 seconds the console names the files the close still waits for. A hook waiting on something outside the import (a network call, a user's answer) bounds that wait itself and throws when it gives up.
+
 ```ts
 afterImport?: () => Promise<AfterImportResult>
 ```

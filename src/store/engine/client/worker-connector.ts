@@ -2,9 +2,16 @@ import { createOpenConnections } from '../../open-connections'
 import { throwOpenElsewhere } from '../../store-errors'
 import { ENGINE_LOCK_PREFIX } from '../engine.constants'
 import { refuseAnotherWire } from './check-engine-wire'
-import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS, UNANSWERED } from './client.constants'
+import {
+	ENGINE_CLOSE_BUDGET_MS,
+	ENGINE_HEARTBEAT_TIMEOUT_MS,
+	ENGINE_OPEN_BUDGET_MS,
+	ENGINE_OPEN_WINDOW_MS,
+	ENGINE_LOST_DETAILS,
+	UNANSWERED,
+} from './client.constants'
 import { createEngineClient } from './engine-client'
-import { createEngineControl } from './engine-control'
+import { answeredOrSilent, createEngineControl } from './engine-control'
 
 import { createDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
@@ -75,9 +82,11 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 				state.adoption = {
 					generation: engine.generation,
 					client: adoptClient({
+						name: params.name,
 						engine,
 						state,
 						heartbeatTimeoutMs: params.liveness?.heartbeatTimeoutMs,
+						openBudgetMs,
 					}),
 				}
 			}
@@ -128,7 +137,10 @@ async function runningEngine(params: {
 	return engine
 }
 
-/** A worker for the project; opened, it is watched through the engine lock. */
+/**
+ * A worker for the project; opened, it is watched through the engine lock. One silent past the open window
+ * is ended, the open refused `PROJECT_ENGINE_UNAVAILABLE`.
+ */
 function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
 	const {
 		name,
@@ -138,6 +150,11 @@ function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
 		liveness = {},
 		settings,
 	} = params
+	// never shorter than the engine's own budget and the time to answer
+	const openWindowMs = Math.max(
+		params.openWindowMs ?? ENGINE_OPEN_WINDOW_MS,
+		openBudgetMs + ENGINE_CLOSE_BUDGET_MS,
+	)
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const control = createEngineControl({ worker })
 	generations.next += 1
@@ -150,20 +167,36 @@ function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
 		ended: false,
 		watch: undefined,
 	}
-	engine.opened = control
-		.request({
-			message: {
-				type: 'open',
-				project: name,
-				lock: 'if-available',
-				budgetMs: openBudgetMs,
-				perf,
-				heartbeatIntervalMs: liveness.heartbeatIntervalMs,
-				settings,
-			},
-			expect: 'opened',
-		})
-		.then(function checkWire(answer) {
+	const opening = control.request({
+		message: {
+			type: 'open',
+			project: name,
+			lock: 'if-available',
+			budgetMs: openBudgetMs,
+			perf,
+			heartbeatIntervalMs: liveness.heartbeatIntervalMs,
+			settings,
+		},
+		expect: 'opened',
+	})
+	engine.opened = withinBudget({ work: opening, budgetMs: openWindowMs })
+		.then(function checkAnswer(answer) {
+			if (answer === UNANSWERED) {
+				// ended already (its last connection closed meanwhile): ending its own way
+				if (!engine.ended) {
+					endEngine({
+						name,
+						engine,
+						worker,
+						ending: Promise.resolve(UNANSWERED),
+						lockBudgetMs: openBudgetMs,
+					})
+				}
+				throw createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+					detail: `The engine of project "${name}" gave no answer to its open within ${openWindowMs} ms: it was ended`,
+					meta: { project: name, openWindowMs },
+				})
+			}
 			refuseAnotherWire({ found: answer.wireProtocol })
 		})
 		.then(
@@ -173,9 +206,12 @@ function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
 				if (!engine.ended) watchEngineLock({ name, engine })
 			},
 			function endFailedEngine(thrown: unknown) {
-				engine.ended = true
-				control.end({ error: thrown })
-				worker.terminate()
+				// one the realm ended already (silent, or its last connection closed) is ending its own way
+				if (!engine.ended) {
+					engine.ended = true
+					control.end({ error: thrown })
+					worker.terminate()
+				}
 				throw thrown
 			},
 		)
@@ -207,11 +243,7 @@ function endLostEngine(params: { name: string; engine: RealmEngine }): void {
 	if (engine.ended) return
 	engine.ended = true
 	if (ENGINES.get(name) === engine) ENGINES.delete(name)
-	const lost = createDialecteError('STORE_ENGINE_LOST', {
-		detail: 'The project engine ended with the view that hosted it',
-		meta: { reason: 'host-gone' },
-	})
-	engine.control.end({ error: lost })
+	engine.control.end({ error: lostEngine() })
 	// the next engine of the name starts once the page has let the lock go
 	if (engine.watch) holdNextEngine({ name, until: engine.watch.settled })
 	loseClientsOf({ engine })
@@ -229,19 +261,56 @@ function loseClientsOf(params: { engine: RealmEngine }): void {
 	}
 }
 
-/** A client of its own for the connection: a new port, handed to the engine. */
+/**
+ * A client of its own for the connection: a new port, handed to the engine. An engine silent for the
+ * heartbeat timeout while not busy is lost: ended (the calls in flight of its other clients, and their
+ * adoptions, refused `STORE_ENGINE_LOST` `host-gone`, the next call starting another engine) and the
+ * adoption refused `PROJECT_ENGINE_UNAVAILABLE`. A busy one - dialecte code running long - is waited for.
+ */
 async function adoptClient(params: {
+	name: string
 	engine: RealmEngine
 	state: WorkerLinkState
 	heartbeatTimeoutMs: number | undefined
+	openBudgetMs: number
 }): Promise<EngineClient> {
-	const { engine, state, heartbeatTimeoutMs } = params
+	const {
+		name,
+		engine,
+		state,
+		heartbeatTimeoutMs = ENGINE_HEARTBEAT_TIMEOUT_MS,
+		openBudgetMs,
+	} = params
 	const channel = new MessageChannel()
-	await engine.control.request({
+	const adopting = engine.control.request({
 		message: { type: 'adopt-client', clientId: state.clientId, port: channel.port2 },
 		expect: 'adopted',
 		transfer: [channel.port2],
 	})
+	const answer = await answeredOrSilent({
+		control: engine.control,
+		work: adopting,
+		budgetMs: heartbeatTimeoutMs,
+	})
+	if (answer === UNANSWERED) {
+		channel.port1.close()
+		if (!engine.ended) {
+			loseClientsOf({ engine })
+			// the other connections' adoptions under way: lost with the engine, not closed
+			engine.control.end({ error: lostEngine() })
+			endEngine({
+				name,
+				engine,
+				worker: engine.worker,
+				ending: Promise.resolve(UNANSWERED),
+				lockBudgetMs: openBudgetMs,
+			})
+		}
+		throw createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+			detail: `The engine of project "${name}" gave no answer to a new connection within ${heartbeatTimeoutMs} ms: it was ended`,
+			meta: { project: name, heartbeatTimeoutMs },
+		})
+	}
 	return createEngineClient({ port: channel.port1, heartbeatTimeoutMs })
 }
 
@@ -491,6 +560,14 @@ function holdNextEngine(params: { name: string; until: Promise<void> }): void {
 	})
 }
 
+/** What a call answers once its engine is gone (`host-gone`): the next call starts another engine. */
+function lostEngine(): Error {
+	return createDialecteError('STORE_ENGINE_LOST', {
+		detail: ENGINE_LOST_DETAILS['host-gone'],
+		meta: { reason: 'host-gone' },
+	})
+}
+
 /** What a request to an engine the realm ended answers: the store is closed. */
 function endedByRealm(params: { name: string }): Error {
 	return createDialecteError('STORE_CLOSED', {
@@ -500,10 +577,13 @@ function endedByRealm(params: { name: string }): Error {
 }
 
 /** `work`, or `UNANSWERED` once `budgetMs` has passed (the timer cleared when the work ends first). */
-function withinBudget(params: { work: Promise<unknown>; budgetMs: number }): Promise<unknown> {
+function withinBudget<GenericAnswer>(params: {
+	work: Promise<GenericAnswer>
+	budgetMs: number
+}): Promise<GenericAnswer | typeof UNANSWERED> {
 	const { work, budgetMs } = params
 	let timer: ReturnType<typeof setTimeout> | undefined
-	const budget = new Promise(function waitBudget(resolve) {
+	const budget = new Promise<typeof UNANSWERED>(function waitBudget(resolve) {
 		timer = setTimeout(resolve, budgetMs, UNANSWERED)
 	})
 	return Promise.race([work, budget]).finally(function clearBudget() {

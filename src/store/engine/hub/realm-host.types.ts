@@ -50,4 +50,9 @@ export type RealmHostParams = {
 	spawners: HubEngineSpawner[]
 	/** Say something to the hub on the realm's control port. */
 	report: (message: RealmToHubMessage) => void
+	/**
+	 * How long an engine may take to adopt a client (`ENGINE_HEARTBEAT_TIMEOUT_MS` when absent): one silent that
+	 * long is lost, the adoption reported failed.
+	 */
+	adoptBudgetMs?: number
 }

@@ -188,7 +188,7 @@ async function openEngine(params: {
 		// closed earlier in this worker: its pool paused, checked again and taken back under the lock (no install);
 		// one budget for the wait for the lock and the probe together
 		const deadline = performance.now() + budgetMs
-		const lockHeld = await takeEngineLock({ project, mode: lock, budgetMs })
+		const lockHeld = await takeEngineLock({ project, mode: lock, deadline })
 		state.releaseLock = lockHeld.release
 		try {
 			await probePausedPool({ project, deadline })
@@ -206,7 +206,10 @@ async function openEngine(params: {
 	let db: Database | undefined
 	try {
 		// made before the database opens: a dialecte failing to make its hooks leaves no file open
-		const heartbeat = createHeartbeat({ intervalMs: heartbeatIntervalMs })
+		const heartbeat = createHeartbeat({
+			intervalMs: heartbeatIntervalMs,
+			tellControl: tellRealm,
+		})
 		// the dialecte's hooks made once per engine (no hook state shared with a page), their long phases told
 		const made = dialecte.createRuntime({ perf })
 		const runtime = { ...made, hooks: withOpaquePhases({ hooks: made.hooks, heartbeat }) }
@@ -241,6 +244,11 @@ async function openEngine(params: {
 	}
 }
 
+/** A sign of the engine's life told the realm that runs it, beside the control answers. */
+function tellRealm(message: { type: string }): void {
+	self.postMessage(message)
+}
+
 /** The engine open in this worker, with the channel it announces on; none open is a caller's mistake. */
 function openedEngine(params: { state: EngineRuntimeState }): {
 	engine: NonNullable<EngineRuntimeState['engine']>
@@ -271,7 +279,8 @@ async function destroyProject(params: {
 	try {
 		await endEngineAndClients({ state })
 		if (!state.releaseLock) {
-			const held = await takeEngineLock({ project, mode: lock, budgetMs })
+			// what closing the engine spent is not given again
+			const held = await takeEngineLock({ project, mode: lock, deadline })
 			state.releaseLock = held.release
 		}
 		removing = true

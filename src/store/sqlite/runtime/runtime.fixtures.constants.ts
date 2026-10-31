@@ -75,3 +75,9 @@ export const ONE_BUDGET_SLACK_MS = 1_000
  * the close budget.
  */
 export const DEAF_DESTROY_BUDGET_MS = 1_500
+
+/**
+ * How long a case waits on a worker that never answers its open (the realm's open window) or a client's
+ * adoption (its heartbeat timeout) before the realm gives it up.
+ */
+export const SILENT_ENGINE_WAIT_MS = 1_000

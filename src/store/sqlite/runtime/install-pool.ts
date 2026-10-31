@@ -46,7 +46,7 @@ export async function openPool(params: {
 	refuseUnsafeSqlite({ sqlite3, project })
 	const deadline = performance.now() + budgetMs
 	const root = await privateRoot({ project })
-	const lock = await takeEngineLock({ project, mode, budgetMs })
+	const lock = await takeEngineLock({ project, mode, deadline })
 	try {
 		const files = await poolFilesOf({ root, project })
 		const heads = files.length === 0 ? [] : await probePoolFiles({ project, files, deadline })
@@ -132,30 +132,37 @@ export function poolDirectoryOf(params: { project: string }): string {
 
 /**
  * The project's engine lock, held until released: free at once or refused `PROJECT_OPEN_ELSEWHERE`
- * (`if-available`), or waited for within the budget, else `PROJECT_ENGINE_BUSY` (`wait`).
+ * (`if-available`), or waited for until `deadline` - what the work before the lock spent is not given again;
+ * a deadline passed takes only a lock free at once - else `PROJECT_ENGINE_BUSY` (`wait`).
  */
 export function takeEngineLock(params: {
 	project: string
 	mode: EngineLockMode
-	budgetMs: number
+	/** `performance.now()` time the wait ends (`wait` only). */
+	deadline: number
 }): Promise<HeldEngineLock> {
-	const { project, mode, budgetMs } = params
+	const { project, mode, deadline } = params
+	const budgetMs = Math.max(0, Math.round(deadline - performance.now()))
 	const name = `${ENGINE_LOCK_PREFIX}${project}`
 	return new Promise(function requestLock(resolve, reject) {
 		let release: () => void = releaseNothing
 		const held = new Promise<void>(function holdUntilReleased(done) {
 			release = done
 		})
-		const options: LockOptions =
-			mode === 'if-available' ? { ifAvailable: true } : { signal: AbortSignal.timeout(budgetMs) }
+		const ifFree = mode === 'if-available' || budgetMs === 0
+		const options: LockOptions = ifFree
+			? { ifAvailable: true }
+			: { signal: AbortSignal.timeout(budgetMs) }
 		navigator.locks
 			.request(name, options, async function holdLock(granted) {
 				if (!granted) {
 					reject(
-						createDialecteError('PROJECT_OPEN_ELSEWHERE', {
-							detail: `Project "${project}" is open in another tab or window`,
-							meta: { project },
-						}),
+						mode === 'if-available'
+							? createDialecteError('PROJECT_OPEN_ELSEWHERE', {
+									detail: `Project "${project}" is open in another tab or window`,
+									meta: { project },
+								})
+							: engineBusy({ project, budgetMs }),
 					)
 					return
 				}
@@ -163,14 +170,18 @@ export function takeEngineLock(params: {
 				await held
 			})
 			.catch(function refuseNotGranted(thrown: unknown) {
-				reject(
-					createDialecteError('PROJECT_ENGINE_BUSY', {
-						detail: `Project "${project}" was still held by another engine after ${budgetMs} ms`,
-						meta: { project, budgetMs },
-						cause: thrown instanceof Error ? thrown : undefined,
-					}),
-				)
+				reject(engineBusy({ project, budgetMs, cause: thrown }))
 			})
+	})
+}
+
+/** The lock still held by another engine once the wait's budget is spent. */
+function engineBusy(params: { project: string; budgetMs: number; cause?: unknown }): Error {
+	const { project, budgetMs, cause } = params
+	return createDialecteError('PROJECT_ENGINE_BUSY', {
+		detail: `Project "${project}" was still held by another engine after ${budgetMs} ms`,
+		meta: { project, budgetMs },
+		cause: cause instanceof Error ? cause : undefined,
 	})
 }
 

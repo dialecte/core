@@ -401,7 +401,7 @@ Once `close()` or `destroy()` is called the project is closed: `import`, `import
 
 An `open` whose store refuses, or whose documents cannot be read, leaves the Project closed. `queryFirst` and `queryAll` answer `PROJECT_NOT_OPENED` when the project closes, or another opens, while they run - never a partial answer.
 
-Never await `open`, `close` or `destroy` inside a hook or a transaction callback: the close waits for that work, which waits for the close - after 10 seconds the console says what the close still waits for.
+Never await `open`, `close` or `destroy` inside a hook or a transaction callback: the close waits for that work, which waits for the close - after 10 seconds the console says what the close still waits for, naming the files of the imports in flight. A close also waits for an import whose dialecte hook never settles: nothing aborts it, so an import hook must settle ([IO hooks](/io/hooks#afterimport)).
 
 An `open` its store refused is reset as follows. When it answers `PROJECT_DATABASE_LOST` (the project's data cannot be read back), offer the user a reset - never do it on your own: `destroy()` on that same Project removes the project the refused store holds, without opening it, and `open` then makes it again, empty.
 

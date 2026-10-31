@@ -6,6 +6,7 @@ import {
 import {
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
+	SILENT_ENGINE_WAIT_MS,
 } from '../../sqlite/runtime/runtime.fixtures.constants'
 import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
 import { ENGINE_CLOSE_BUDGET_MS } from '../client/client.constants'
@@ -51,11 +52,12 @@ function spawnerOf(params: { engineUrl?: string } = {}): HubEngineSpawner {
 }
 
 /** A realm host whose reports to the hub are kept and waited for. */
-function hostWith(params: { spawners: HubEngineSpawner[] }): Reports {
+function hostWith(params: { spawners: HubEngineSpawner[]; adoptBudgetMs?: number }): Reports {
 	const received: RealmToHubMessage[] = []
 	const waiters: { type: string; resolve: (message: RealmToHubMessage) => void }[] = []
 	const host = createRealmHost({
 		spawners: params.spawners,
+		adoptBudgetMs: params.adoptBudgetMs,
 		report: function keepReport(message) {
 			const waiter = waiters.find(function waitsFor(candidate) {
 				return candidate.type === message.type
@@ -226,6 +228,35 @@ describe('a realm hosting engines for the hub', () => {
 		})
 		const failed = await reports.next('client-adopt-failed')
 		expect(failed).toEqual({ type: 'client-adopt-failed', adoptionId: 7 })
+		channel.port1.close()
+	})
+
+	it('a client its engine never adopts → `client-adopt-failed` once the adopt budget has passed, and nothing else', async () => {
+		const reports = hostWith({
+			spawners: [spawnerOf({ engineUrl: fixtureUrl({ scenario: 'silent-adopt' }) })],
+			adoptBudgetMs: SILENT_ENGINE_WAIT_MS,
+		})
+		const project = uniqueProject()
+		spawnFor({ reports, project })
+		await reports.next('engine-opened')
+		const channel = new MessageChannel()
+		let adopted = false
+		void reports.next('client-adopted').then(function markAdopted() {
+			adopted = true
+		})
+		const askedAt = performance.now()
+		reports.host.adopt({
+			project,
+			generation: 1,
+			adoptionId: 3,
+			clientId: 'tab',
+			port: channel.port2,
+		})
+		const failed = await reports.next('client-adopt-failed')
+		expect(failed).toEqual({ type: 'client-adopt-failed', adoptionId: 3 })
+		expect(performance.now() - askedAt).toBeGreaterThanOrEqual(SILENT_ENGINE_WAIT_MS)
+		await pause({ ms: 100 })
+		expect(adopted).toBe(false)
 		channel.port1.close()
 	})
 

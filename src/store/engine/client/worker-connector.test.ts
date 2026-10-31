@@ -20,6 +20,7 @@ import {
 	CROSS_REALM_CLOCK_SLACK_MS,
 	DEAF_DESTROY_BUDGET_MS,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	SILENT_ENGINE_WAIT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DESTROY_MS,
 } from '../../sqlite/runtime/runtime.fixtures.constants'
@@ -359,6 +360,52 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				// told by the worker's error, not by the open budget running out
 				expect(performance.now() - startedAt).toBeLessThan(ENGINE_OPEN_BUDGET_MS)
 			}
+		})
+
+		it('a worker that loads and never answers its open → PROJECT_ENGINE_UNAVAILABLE once the open window has passed: the next connection starts another', async () => {
+			const name = projectName()
+			const startedAt = performance.now()
+			// the window is never shorter than the engine's own budget and the time to answer
+			const openWindowMs = SILENT_ENGINE_WAIT_MS + ENGINE_CLOSE_BUDGET_MS
+			const refused = await errorOfRejection(
+				createSqliteWorkerConnector({
+					name,
+					engineUrl: fixtureUrl({ scenario: 'silent-open' }),
+					openBudgetMs: SILENT_ENGINE_WAIT_MS,
+					openWindowMs: SILENT_ENGINE_WAIT_MS,
+				}).connect(),
+			)
+			expect(refused).toMatchObject({
+				key: 'PROJECT_ENGINE_UNAVAILABLE',
+				meta: { project: name, openWindowMs },
+			})
+			expect(performance.now() - startedAt).toBeGreaterThanOrEqual(openWindowMs)
+			const store = await openWorkerStore({ name })
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([])
+		})
+
+		it('an engine that never answers a client’s adoption, not busy → PROJECT_ENGINE_UNAVAILABLE, the engine ended: its lock free', async () => {
+			const name = projectName()
+			const connector = createSqliteWorkerConnector({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'silent-adopt' }),
+				liveness: { heartbeatTimeoutMs: SILENT_ENGINE_WAIT_MS },
+			})
+			const link = await connector.connect()
+			const refused = await errorOfRejection(link.engine())
+			expect(refused).toMatchObject({ key: 'PROJECT_ENGINE_UNAVAILABLE', meta: { project: name } })
+			// a worker ended holding the lock may let it go seconds later on a loaded machine
+			await expect
+				.poll(
+					function lockFree() {
+						return isEngineLockFree({ project: name })
+					},
+					{ timeout: ENGINE_CLOSE_BUDGET_MS + 3_000, interval: 100 },
+				)
+				.toBe(true)
+			link.close()
+			await createSqliteWorkerConnector({ name, engineUrl: TEST_ENGINE_URL }).destroy()
 		})
 
 		it('an engine speaking another wire → STORE_PROTOCOL_MISMATCH naming both, its worker ended: the project free', async () => {

@@ -1,3 +1,4 @@
+import type { ENGINE_SIGNAL } from './engine.constants'
 import type { ThrownData } from './wire/wire.types'
 import type {
 	ExportControl,
@@ -33,7 +34,11 @@ export type EngineLockMode = 'wait' | 'if-available'
 export type EngineOpenParams<GenericSettings = unknown> = {
 	project: string
 	lock: EngineLockMode
-	/** How long the open may take in all: the lock and the engine's own setup. */
+	/**
+	 * How long the engine may take to take its project: the lock, then its own checks of the files (SQLite
+	 * probes its pool), from one deadline. The rest of the open (the database, the start's cleanup) is bounded
+	 * by the realm's open window (`ENGINE_OPEN_WINDOW_MS`).
+	 */
 	budgetMs: number
 	/** Measure the import's and the export's stages (`dev.perf`). */
 	perf: boolean
@@ -77,6 +82,11 @@ export type EngineControlAnswer =
 	| { type: 'closed'; requestId: number }
 	| { type: 'destroyed'; requestId: number }
 	| { type: 'failed'; requestId: number; thrown: ThrownData }
+
+/** A sign of the engine's life its worker posts to the realm running it, beside the control answers. */
+export type EngineLifeSignal = {
+	type: (typeof ENGINE_SIGNAL)['heartbeat'] | (typeof ENGINE_SIGNAL)['busy']
+}
 
 /** `Omit` applied to each member of a union. */
 export type DistributiveOmit<

@@ -46,7 +46,16 @@ export type WorkerConnectorParams<GenericSettings> = {
 	 * deaf to close or to destroy before the next engine of the name starts, or the destroy runs.
 	 */
 	openBudgetMs?: number
-	/** How the engine and its clients tell a busy engine from a lost one (the defaults when absent). */
+	/**
+	 * How long the realm waits for its engine's answer to an open (`ENGINE_OPEN_WINDOW_MS` when absent; never
+	 * less than `openBudgetMs` and the close budget): past it the worker is ended and the open refused
+	 * `PROJECT_ENGINE_UNAVAILABLE`.
+	 */
+	openWindowMs?: number
+	/**
+	 * How the engine and its clients tell a busy engine from a lost one (the defaults when absent): an engine
+	 * silent for `heartbeatTimeoutMs` while a call waits, or while it adopts a new connection, is lost.
+	 */
 	liveness?: {
 		heartbeatTimeoutMs?: number
 		heartbeatIntervalMs?: number
@@ -108,7 +117,12 @@ export type EngineControl = {
 	opened: () => void
 	/** The worker ended or lost: every request waiting, and every one made later, refused with `error`. */
 	end: (params: { error: unknown }) => void
+	/** Watch the engine's silence on this channel (`answeredOrSilent`), until stopped. */
+	watchSilence: (params: { budgetMs: number }) => SilenceWatch
 }
+
+/** An engine's silence watched: `silent` settles once it has said nothing for the budget while not busy. */
+export type SilenceWatch = { silent: Promise<void>; stop: () => void }
 
 /** How a client watches its engine's silence while calls wait. */
 export type HeartbeatWatch = {

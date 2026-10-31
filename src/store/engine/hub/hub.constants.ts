@@ -1,3 +1,5 @@
+import { ENGINE_OPEN_WINDOW_MS } from '../client/client.constants'
+
 import type { DialecteErrorKey } from '@/errors'
 
 /** The wire protocol a realm and the hub speak; a realm speaking another one is refused. */
@@ -13,10 +15,11 @@ export const ENGINE_IDLE_CLOSE_MS = 5_000
 export const ENGINE_OPEN_MIN_BUDGET_MS = 1_000
 
 /**
- * The longest a client waits for the hub's answer to an open: a slow worker start (seconds under
- * load) plus one whole engine attempt, with room to retry an engine that answers busy early.
+ * The longest a client waits for the hub's answer to an open, as long as a realm waits for an engine it
+ * runs itself: a slow worker start plus one whole engine attempt, with room to retry an engine that
+ * answers busy early.
  */
-export const HUB_OPEN_BUDGET_MS = 30_000
+export const HUB_OPEN_BUDGET_MS = ENGINE_OPEN_WINDOW_MS
 
 /** The prefix of a realm's Web Lock, held for the realm's life: the hub's grant of it means the realm is gone. */
 export const REALM_LOCK_PREFIX = 'dialecte:realm:'

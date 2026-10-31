@@ -24,6 +24,8 @@ export type RuntimeFixtureScenario =
 	| 'sqlite-3-53'
 	| 'hooks-fail'
 	| 'database-fails'
+	| 'silent-open'
+	| 'silent-adopt'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =
@@ -39,8 +41,11 @@ export type RuntimeFixtureOrder =
 /** What the fixture's engine workers say on the fixture channel: an order taken, a phase reached. */
 export type RuntimeFixtureNotice =
 	| { type: 'ack'; of: RuntimeFixtureOrder['type'] }
-	/** The import reached a pause its file marks: `pause` (the parse), `after-pause` or `after-yield-pause`. */
-	| { type: 'reached'; marker: 'pause' | 'after-pause' | 'after-yield-pause' }
+	/**
+	 * The import reached a pause its file marks: `pause` (the parse), `after-pause` or `after-yield-pause`; or
+	 * a slowed statement began (`slow-ddl`), the engine told busy.
+	 */
+	| { type: 'reached'; marker: 'pause' | 'after-pause' | 'after-yield-pause' | 'slow-ddl' }
 	/** A `destroy` of `project` reached the worker (the destroy scenarios): one per worker asked. */
 	| { type: 'destroy-asked'; project: string }
 

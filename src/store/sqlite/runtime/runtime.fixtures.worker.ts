@@ -37,7 +37,7 @@ import type { AnyRawRecord } from '@/types'
  * system, a quota nearly used up, room for a pool but not for a large import, a worker deaf to
  * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load, one
  * whose SQLite reports a version too old to keep a pool on a failed install, one whose dialecte fails to make
- * its hooks, one whose pool refuses every database;
+ * its hooks, one whose pool refuses every database, one that never answers its open or a client's adoption;
  * or, `holder`, no engine at all - a worker holding one file of a project's pool, as an engine that
  * ended may still do.
  */
@@ -123,6 +123,8 @@ function fillDiskWhenOrdered(): void {
  */
 function serveEngine(): void {
 	if (scenario === 'ignore-close') ignoreClose()
+	if (scenario === 'silent-open') swallowControl({ type: 'open' })
+	if (scenario === 'silent-adopt') swallowControl({ type: 'adopt-client' })
 	if (scenario === 'destroy-told') shapeDestroy({ shape: 'at-once' })
 	if (scenario === 'ignore-destroy') shapeDestroy({ shape: 'deaf' })
 	if (scenario === 'slow-destroy') shapeDestroy({ shape: 'late' })
@@ -249,8 +251,10 @@ function slowDdlWhenOrdered(): void {
 		prototype.exec = function slowedExec(this: typeof prototype, ...args: unknown[]) {
 			const first = args[0]
 			const sql = typeof first === 'string' ? first : (first as { sql?: unknown } | undefined)?.sql
-			if (slow && typeof sql === 'string' && SLOW_DDL_PATTERN.test(sql))
+			if (slow && typeof sql === 'string' && SLOW_DDL_PATTERN.test(sql)) {
+				tellFixtureChannel({ type: 'reached', marker: 'slow-ddl' })
 				busyWait({ ms: SLOW_DDL_MS })
+			}
 			return (exec as (...given: unknown[]) => unknown).apply(this, args)
 		} as typeof exec
 	})
@@ -383,8 +387,13 @@ function markerOf(params: {
 
 /** A worker that never answers `close`: its realm must end it anyway. */
 function ignoreClose(): void {
-	self.addEventListener('message', function swallowClose(event: MessageEvent<{ type?: string }>) {
-		if (event.data?.type === 'close') event.stopImmediatePropagation()
+	swallowControl({ type: 'close' })
+}
+
+/** Every control message of that type swallowed: a worker that loaded and never answers it (a stalled start, a deaf engine). */
+function swallowControl(params: { type: string }): void {
+	self.addEventListener('message', function swallow(event: MessageEvent<{ type?: string }>) {
+		if (event.data?.type === params.type) event.stopImmediatePropagation()
 	})
 }
 

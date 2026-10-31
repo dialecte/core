@@ -3,11 +3,11 @@ import { fromThrownData } from '../wire/error-envelope'
 import { toWireArgs } from '../wire/wire-values'
 import { ENGINE_WIRE_MEMBERS } from '../wire/wire.constants'
 import { ENGINE_HEARTBEAT_TIMEOUT_MS, ENGINE_LOST_DETAILS } from './client.constants'
+import { watchHeartbeat } from './heartbeat-watch'
 
 import * as Comlink from 'comlink'
 
 import { createDialecteError } from '@/errors'
-import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { EngineApi } from '../engine.types'
 import type { ProgressSignal } from '../host/host.types'
@@ -16,7 +16,6 @@ import type {
 	CallInFlight,
 	EngineClient,
 	EngineLostReason,
-	HeartbeatWatch,
 	ProgressListeners,
 } from './client.types'
 import type { WriteOutcome } from '@/store/store.types'
@@ -41,7 +40,7 @@ export function createEngineClient(params: {
 	/** Writes refused lost whose engine may still apply them: their answer has not come. */
 	const unanswered = new Set<string>()
 	const watch = watchHeartbeat({
-		port,
+		source: port,
 		timeoutMs: heartbeatTimeoutMs,
 		waiting: function countWaiting() {
 			return inFlight.size
@@ -210,80 +209,4 @@ function refuseLost(params: {
 			meta: { reason, ...(entry.writeId !== undefined && { writeId: entry.writeId }) },
 		}),
 	)
-}
-
-/**
- * The engine's silence while calls wait: any message on the port (an answer, a beat) is a sign of
- * life; `busy` holds the clock from the engine's busy signal to its next heartbeat; none for
- * `timeoutMs` while a call waits loses the engine - once the messages queued meanwhile have gone
- * through (a message turn: the page may have stalled, or been frozen with its worker); the
- * document's `resume` and the page's `pageshow` restart the clock.
- */
-function watchHeartbeat(params: {
-	port: MessagePort
-	timeoutMs: number
-	waiting: () => number
-	lose: () => void
-}): HeartbeatWatch {
-	const { port, timeoutMs, waiting, lose } = params
-	let heardAt = performance.now()
-	let busy = false
-	let timer: ReturnType<typeof setTimeout> | undefined
-
-	function hear(event: MessageEvent<{ type?: string } | undefined>): void {
-		heardAt = performance.now()
-		// only the engine's signals move `busy`: an answer to a call (this client's own, during the opaque phase) does not end it
-		const type = event.data?.type
-		if (type === ENGINE_SIGNAL.busy) busy = true
-		if (type === ENGINE_SIGNAL.heartbeat) busy = false
-		armIn({ delayMs: timeoutMs })
-	}
-
-	function restart(): void {
-		heardAt = performance.now()
-		armIn({ delayMs: timeoutMs })
-	}
-
-	/** One judge at a time: an armed timer stays until it fires. */
-	function armIn(params: { delayMs: number }): void {
-		if (timer !== undefined) return
-		timer = setTimeout(judge, params.delayMs)
-	}
-
-	function judge(): void {
-		timer = undefined
-		if (waiting() === 0) return
-		const silentFor = performance.now() - heardAt
-		if (busy || silentFor < timeoutMs) {
-			armIn({ delayMs: busy ? timeoutMs : timeoutMs - silentFor })
-			return
-		}
-		// before a loss, the messages queued meanwhile go through first (a page stalled, or frozen with its worker)
-		void yieldToQueue().then(judgeAfterTurn)
-	}
-
-	function judgeAfterTurn(): void {
-		if (waiting() === 0 || timer !== undefined) return
-		if (busy || performance.now() - heardAt < timeoutMs) {
-			armIn({ delayMs: 0 })
-			return
-		}
-		lose()
-	}
-
-	// `resume` is fired at the document and does not bubble; `pageshow` at the window
-	const lifecycle = globalThis.document
-	port.addEventListener('message', hear)
-	lifecycle?.addEventListener('resume', restart)
-	globalThis.addEventListener?.('pageshow', restart)
-	return {
-		restart,
-		stop: function stopWatching() {
-			if (timer !== undefined) clearTimeout(timer)
-			timer = undefined
-			port.removeEventListener('message', hear)
-			lifecycle?.removeEventListener('resume', restart)
-			globalThis.removeEventListener?.('pageshow', restart)
-		},
-	}
 }

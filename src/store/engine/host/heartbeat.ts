@@ -5,12 +5,16 @@ import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 /**
  * The engine's sign of life, posted on every client port it serves (a call may still sit in the
- * worker's queue behind the work, unknown to the engine): a beat at most every `intervalMs` while it
- * works, a `busy` before dialecte code that may run long with nothing to tell. Posted from the work
- * itself, never from a timer: a busy engine is never taken for a lost one.
+ * worker's queue behind the work, unknown to the engine) and to `tellControl`, the realm that runs it
+ * (which waits on it for a new client's adoption): a beat at most every `intervalMs` while it works, a
+ * `busy` before dialecte code that may run long with nothing to tell. Posted from the work itself, never
+ * from a timer: a busy engine is never taken for a lost one.
  */
-export function createHeartbeat(params: { intervalMs: number }): Heartbeat {
-	const { intervalMs } = params
+export function createHeartbeat(params: {
+	intervalMs: number
+	tellControl?: (message: { type: string }) => void
+}): Heartbeat {
+	const { intervalMs, tellControl } = params
 	const ports = new Set<MessagePort>()
 	let lastPostedAt = Number.NEGATIVE_INFINITY
 	/** Opaque phases under way: while one runs, a beat says `busy` again (another call's work never clears it). */
@@ -18,6 +22,7 @@ export function createHeartbeat(params: { intervalMs: number }): Heartbeat {
 
 	function post(message: { type: string }): void {
 		lastPostedAt = performance.now()
+		tellControl?.(message)
 		for (const port of ports) {
 			try {
 				port.postMessage(message)
