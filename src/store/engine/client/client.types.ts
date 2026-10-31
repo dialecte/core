@@ -34,6 +34,12 @@ export type CallInFlight = {
 export type WorkerConnectorParams<GenericSettings> = {
 	/** The project's name. */
 	name: string
+	/**
+	 * The dialecte of the project and the version the realm runs: with the name, what the project is - two
+	 * dialectes' projects of one name never meet; an engine of another one is refused.
+	 */
+	dialecteId: string
+	dialecteVersion: string
 	/** The address of the dialecte's engine worker (its `?worker&url` export). */
 	engineUrl: string
 	/** Measure the import's and the export's stages in the engine (`dev.perf`). */
@@ -84,6 +90,8 @@ export type RealmEngine = {
 	ended: boolean
 	/** The page's request of the engine lock, granted once the worker no longer holds it (it is gone). */
 	watch: { controller: AbortController; settled: Promise<void> } | undefined
+	/** The id its project's file was created with, once it opened. */
+	creationId: string | undefined
 }
 
 /**
@@ -101,6 +109,13 @@ export type WorkerLinkState = {
 	released: boolean
 	/** The client the engine of that generation adopted for the connection (being adopted while pending). */
 	adoption: { generation: number; client: Promise<EngineClient> } | undefined
+	/**
+	 * The creation id of the project the connection first reached: an engine started later for it (the one
+	 * before ended) must open that project, else the connection is refused `PROJECT_DESTROYED_WHILE_AWAY`.
+	 */
+	creationId: string | undefined
+	/** Its project destroyed while it was away (`PROJECT_DESTROYED_WHILE_AWAY`): every later call refused with it. */
+	refusal: unknown
 }
 
 /** The control messages of one engine worker, each answered by its request id. */

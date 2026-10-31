@@ -63,6 +63,11 @@ export type OpenSqliteEngineParams = {
 	db: Database
 	/** The dialecte the project belongs to, kept in a new file. */
 	dialecteId: string
+	/**
+	 * The creation id the opener knows of the project (a view coming back): a new file, or one of another id,
+	 * is refused `PROJECT_DESTROYED_WHILE_AWAY`, nothing written - the project was destroyed meanwhile.
+	 */
+	expectedCreationId?: string
 	/** The project's name, said in the engine's refusals. */
 	name: string
 	/** What the engine imports with: without it, an import is refused (`IMPORT_FAILED`). */
@@ -137,6 +142,8 @@ export type SqliteEngine = Omit<EngineApi, 'importFile' | 'exportFile'> & {
 	) => Promise<ExportFileResult>
 	/** Abort every export the client owns: its connection is gone. */
 	abortExportsOf: (params: { clientId: string }) => void
+	/** The id the project's file was created with: another one after the project was destroyed and made again. */
+	creationId: string
 	/** The engine as that client reaches it: its imports owned by it, nothing more than the port. */
 	clientView: (params: { clientId: string }) => EngineApi
 	/**
@@ -348,3 +355,6 @@ export type StoreFailureKey = Extract<
 	| 'STORE_BULK_UPDATE_FAILED'
 	| 'STORE_DELETE_FAILED'
 >
+
+/** A row of a project file's `_meta` table. */
+export type MetaRow = { key: string; value: string }

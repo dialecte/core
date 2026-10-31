@@ -1,3 +1,4 @@
+import { refuseUnnamableProject } from '../../project-name'
 import { ENGINE_OPEN_BUDGET_MS } from './client.constants'
 import { destroyFromFreshWorker } from './worker-connector'
 
@@ -16,6 +17,7 @@ const HUB_LINKS = new WeakMap<EngineLink, HubProjectLink>()
  * engine the hub just released.
  */
 export function createHubConnector(params: HubConnectorParams): EngineConnector {
+	refuseUnnamableProject({ project: params.name, dialecteId: params.dialecteId })
 	const {
 		name,
 		connection,
@@ -54,10 +56,12 @@ export function createHubConnector(params: HubConnectorParams): EngineConnector 
 			const hubLink = own && HUB_LINKS.get(own.link)
 			return connection.destroyProject({
 				project: name,
+				dialecteId,
 				own: own && hubLink && { link: hubLink, letGo: own.letGo },
 				destroy: function destroyFiles() {
 					return destroyFromFreshWorker({
 						name,
+						dialecteId,
 						engineUrl,
 						budgetMs: destroyBudgetMs,
 						lock: 'wait',

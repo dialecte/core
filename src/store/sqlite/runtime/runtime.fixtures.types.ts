@@ -26,6 +26,8 @@ export type RuntimeFixtureScenario =
 	| 'database-fails'
 	| 'silent-open'
 	| 'silent-adopt'
+	| 'other-dialecte'
+	| 'unchecked-open'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =

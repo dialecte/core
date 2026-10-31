@@ -29,6 +29,13 @@ export type StoreContractFactory = {
 	 */
 	connect?: (store: Store) => Promise<Store>
 	/**
+	 * A second connection in the given one's own realm (a second Project of the page); absent where `connect`
+	 * opens one there already.
+	 */
+	connectInRealm?: (store: Store) => Promise<Store>
+	/** An open store of the leg under that name, with nothing else of a case (`createOther`, its name chosen). */
+	createNamed: (params: { name: string }) => Promise<Store>
+	/**
 	 * The parts of the port this leg does not serve yet, each with the reason its waiting cases show:
 	 * a case needing one runs as expected to fail on this leg (never in a weaker form), so it turns red
 	 * once the leg serves the part and the entry is left behind.
@@ -50,6 +57,17 @@ export type StoreContractFactory = {
 	afterCase?: () => Promise<void>
 	/** The store's engine ended at once, as one that dies (its work in flight lost); the store opens again later. */
 	endEngine?: (params: { store: Store }) => Promise<void>
+	/**
+	 * An open store of the given one's name under another dialecte (`CONTRACT_OTHER_DIALECTE_ID`): another
+	 * project. A leg with none says why in `differs` (`dialecte-key`).
+	 */
+	connectAsOtherDialecte?: (params: { store: Store }) => Promise<Store>
+	/**
+	 * The store's view away (a page frozen, its engine gone) while another view destroys its project - and,
+	 * `remake`, makes it again under its name with a document `remade` - then back. A leg with none says why in
+	 * `differs` (`away`).
+	 */
+	destroyWhileAway?: (params: { store: Store; remake: boolean }) => Promise<void>
 }
 
 /** A part of the port a leg may not serve yet. */
@@ -93,10 +111,18 @@ export type StoreContractContext = {
 	reopen: () => Promise<Store>
 	/** A second open connection to the same state; closed after the case. */
 	connect: () => Promise<Store>
+	/** A second open connection in the store's own realm (a second Project of the page); closed after the case. */
+	connectInRealm: () => Promise<Store>
+	/** An open store of the leg under that name; destroyed after the case. */
+	createNamed: (params: { name: string }) => Promise<Store>
 	/** A fresh, open store of another name; destroyed after the case. */
 	createOther: () => Promise<Store>
 	/** The store's engine ended at once, as one that dies; on a leg with no engine, refused. */
 	endEngine: () => Promise<void>
+	/** An open store of the store's name under another dialecte (`dialecte-key`); destroyed after the case. */
+	connectAsOtherDialecte: () => Promise<Store>
+	/** The store's view away while another view destroys its project, made again when `remake`, then back (`away`). */
+	destroyWhileAway: (params: { remake: boolean }) => Promise<void>
 	/** The store's storage made full (`full-storage`): a write needing more room than it has is refused. */
 	fillStorage: () => Promise<void>
 }

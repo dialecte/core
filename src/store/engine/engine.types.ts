@@ -33,6 +33,17 @@ export type EngineLockMode = 'wait' | 'if-available'
  */
 export type EngineOpenParams<GenericSettings = unknown> = {
 	project: string
+	/**
+	 * The dialecte and its version the realm expects the engine to run: an engine of another one refuses the
+	 * open (`PROJECT_DIALECTE_MISMATCH`, `PROJECT_DIALECTE_VERSION_MISMATCH`) before it takes any lock or file.
+	 */
+	dialecteId: string
+	dialecteVersion: string
+	/**
+	 * The creation id of the project the realm's view had open, when it comes back to it (a resume, an engine
+	 * started again): none there, or another, is refused `PROJECT_DESTROYED_WHILE_AWAY`, nothing written.
+	 */
+	expectedCreationId?: string
 	lock: EngineLockMode
 	/**
 	 * How long the engine may take to take its project: the lock, then its own checks of the files (SQLite
@@ -57,6 +68,8 @@ export type EngineControlRequest<GenericSettings = unknown> =
 			type: 'destroy'
 			requestId: number
 			project: string
+			/** The dialecte whose project it is: an engine of another one refuses (`PROJECT_DIALECTE_MISMATCH`), nothing removed. */
+			dialecteId: string
 			/**
 			 * Direct mode takes the lock only if free (a holder is another realm's engine); through the hub
 			 * the destroy waits for it (the engine the hub just released may hold it a moment).
@@ -72,6 +85,8 @@ export type EngineControlAnswer =
 			requestId: number
 			dialecteId: string
 			dialecteVersion: string
+			/** The id the project's file was created with (another one once the project is destroyed and made again). */
+			creationId: string
 			/** The wire the engine speaks (`ENGINE_WIRE_PROTOCOL` of its copy of the library). */
 			wireProtocol: number
 			/** Whether the engine took its files back in this worker (closed then opened again) rather than set them up. */

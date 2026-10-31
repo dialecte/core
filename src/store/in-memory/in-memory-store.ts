@@ -4,6 +4,7 @@ import { compareById } from '../compare-by-id'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
+import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -112,6 +113,7 @@ export class InMemoryStore implements Store {
 	private destroying: Promise<void> | undefined
 
 	constructor(name: string, options?: InMemoryStoreOptions) {
+		refuseUnnamableProject({ project: name })
 		this.name = name
 		this.writable = options?.writable ?? true
 		this.runtime = options?.runtime

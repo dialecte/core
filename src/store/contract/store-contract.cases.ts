@@ -71,6 +71,14 @@ const lifecycle: StoreContractCases = {
 			expect(await reopened.getDocuments()).toEqual([])
 		},
 	},
+	'a project named with nothing, `.` or `..` → refused PROJECT_NAME_INVALID before any store of it is built':
+		{
+			act: async ({ createNamed }) => {
+				for (const name of ['', '.', '..']) {
+					await expectRejectsWith({ action: createNamed({ name }), key: 'PROJECT_NAME_INVALID' })
+				}
+			},
+		},
 }
 
 // ── Document registry ────────────────────────────────────────────────────────
@@ -2596,6 +2604,72 @@ function otherThan(params: { documents: DocumentRecord[]; id: string }): Documen
 }
 
 const oneStateAfterDestroy: StoreContractCases = {
+	'a view away while another view destroys its project → back, its calls refused PROJECT_DESTROYED_WHILE_AWAY: never an empty project in its place':
+		{
+			needs: ['away'],
+			// that nothing of the project is made again (no file, no lock taken) is pinned by the engine runtime's own case
+			act: async ({ store, destroyWhileAway }) => {
+				await store.registerDocument(makeDocument())
+				await destroyWhileAway({ remake: false })
+				await expectRejectsWith({
+					action: store.getDocuments(),
+					key: 'PROJECT_DESTROYED_WHILE_AWAY',
+				})
+				await expectRejectsWith({
+					action: store.registerDocument(makeDocument({ id: 'late' })),
+					key: 'PROJECT_DESTROYED_WHILE_AWAY',
+				})
+			},
+		},
+	'a view away while another view destroys its project and makes it again → back, its calls refused PROJECT_DESTROYED_WHILE_AWAY; a new view reads the project made again':
+		{
+			needs: ['away'],
+			act: async ({ store, destroyWhileAway, connect }) => {
+				await store.registerDocument(makeDocument())
+				await destroyWhileAway({ remake: true })
+				await expectRejectsWith({
+					action: store.getDocuments(),
+					key: 'PROJECT_DESTROYED_WHILE_AWAY',
+				})
+				const fresh = await connect()
+				expect(await documentIdsOf({ store: fresh })).toEqual(['remade'])
+			},
+		},
+	'a view away while another view destroys its project and makes it again → back, refused; a new view of its own realm, the refused one still open, reads the project made again':
+		{
+			needs: ['away'],
+			act: async ({ store, destroyWhileAway, connectInRealm }) => {
+				await store.registerDocument(makeDocument())
+				await destroyWhileAway({ remake: true })
+				await expectRejectsWith({
+					action: store.getDocuments(),
+					key: 'PROJECT_DESTROYED_WHILE_AWAY',
+				})
+				const fresh = await connectInRealm()
+				expect(await documentIdsOf({ store: fresh })).toEqual(['remade'])
+				await expectRejectsWith({
+					action: store.getDocuments(),
+					key: 'PROJECT_DESTROYED_WHILE_AWAY',
+				})
+			},
+		},
+	'a store of the name under another dialecte → another project: it holds none of this one’s documents, and its destroy leaves this one as it is':
+		{
+			needs: ['dialecte-key'],
+			act: async ({ store, connectAsOtherDialecte }) => {
+				await store.registerDocument(makeDocument())
+				const other = await connectAsOtherDialecte()
+				expect(await other.getDocuments()).toEqual([])
+				await other.registerDocument(makeDocument({ id: 'theirs' }))
+				expect(await documentIdsOf({ store })).toEqual(['doc-1'])
+				// this one open counts not against the other's destroy: they are two projects
+				await other.destroy()
+				expect(await documentIdsOf({ store })).toEqual(['doc-1'])
+				const otherAgain = await connectAsOtherDialecte()
+				expect(await otherAgain.getDocuments()).toEqual([])
+				await otherAgain.close()
+			},
+		},
 	'destroy while another connection has the project open → refused PROJECT_OPEN_ELSEWHERE, nothing removed, both read on; the other closed → destroyed: the name opens empty':
 		{
 			needs: ['second-connection'],

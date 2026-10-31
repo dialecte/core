@@ -31,6 +31,7 @@ export type HubConnection = {
 	 */
 	destroyProject: (params: {
 		project: string
+		dialecteId: string
 		destroy: () => Promise<void>
 		own?: OwnHubLink
 	}) => Promise<void>
@@ -99,6 +100,11 @@ export type ProjectEntry = HubProjectParams & {
 	waiters: EngineWaiter[]
 	/** A refusal that holds for the rest of the link. */
 	refusal: unknown
+	/**
+	 * The id the project's file was created with, from the first engine the link reached: every later engine
+	 * (the realm back from a freeze, a host gone) must run that project, else the link is refused.
+	 */
+	creationId: string | undefined
 }
 
 /**

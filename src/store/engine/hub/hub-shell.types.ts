@@ -23,7 +23,10 @@ export type PendingAdoption = {
 	hostRealmId: string
 	clientRealmId: string
 	project: string
+	dialecteId: string
 	generation: number
+	/** The id the engine's project was created with, told the client with its port. */
+	creationId: string
 	port: MessagePort
 }
 

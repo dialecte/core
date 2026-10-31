@@ -5,6 +5,7 @@ import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
 import { createOpenConnections } from '../open-connections'
+import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -195,6 +196,7 @@ export class DexieStore implements Store {
 	private openHoldEnded: Promise<unknown> = Promise.resolve()
 
 	constructor(projectName: string, options?: DexieStoreOptions) {
+		refuseUnnamableProject({ project: projectName })
 		this.name = projectName
 		this.dexieRecordSchema = buildDexieSchema(options?.recordSchema ?? DEFAULT_RECORD_SCHEMA)
 		this.perf = options?.perf ?? NOOP_PERF

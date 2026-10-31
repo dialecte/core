@@ -1,6 +1,8 @@
 import { throwOpenElsewhere } from '../../store-errors'
 import { ENGINE_LOST_DETAILS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
+import { refuseOtherCreation } from '../creation-refusal'
+import { projectKeyOf } from '../project-key'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
 	HUB_REGISTRY_KEY,
@@ -218,9 +220,20 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		welcomeBudgetMs = HUB_WELCOME_BUDGET_MS,
 		bound = false,
 	} = params
+	/** The realm's link to each project, by its key (`projectKeyOf`: dialecte and name). */
 	const entries = new Map<string, ProjectEntry>()
+
+	/**
+	 * A project its links were refused on as destroyed while the realm was away: forgotten by the realm, so a fresh
+	 * link (one that never had the project) asks the hub anew; the refused links keep their entry and its refusal.
+	 */
+	function forgetEntry(entry: ProjectEntry): void {
+		const key = projectKeyOf(entry)
+		if (entries.get(key) === entry) entries.delete(key)
+	}
 	/** The links of this realm counted among their project's users: from their open until released. */
 	const countedLinks = new WeakSet<HubProjectLink>()
+	/** The destroys asked of the hub and not answered yet, by project key. */
 	const destroys = new Map<string, PendingDestroy>()
 	const queued: QueuedMessage[] = []
 	const lifecycleWatch = new AbortController()
@@ -267,19 +280,25 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		const message = event.data
 		switch (message?.type) {
 			case 'engine-ready':
-				return engineReady({ entry: entries.get(message.project), message })
+				return engineReady({
+					entry: entries.get(projectKeyOf(message)),
+					message,
+					send,
+					forget: forgetEntry,
+				})
 			case 'engine-lost':
-				return engineLost({ entry: entries.get(message.project) })
+				return engineLost({ entry: entries.get(projectKeyOf(message)) })
 			case 'open-refused':
 				return openRefused({
-					entry: entries.get(message.project),
+					entry: entries.get(projectKeyOf(message)),
 					error: fromThrownData({ data: message.error }),
+					forget: forgetEntry,
 				})
 			case 'destroy-granted':
-				destroys.get(message.project)?.granted()
+				destroys.get(projectKeyOf(message))?.granted()
 				return
 			case 'destroy-refused':
-				destroys.get(message.project)?.refused(fromThrownData({ data: message.error }))
+				destroys.get(projectKeyOf(message))?.refused(fromThrownData({ data: message.error }))
 				return
 			case 'dropped':
 				return stayDropped({})
@@ -378,6 +397,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			project: entry.project,
 			dialecteId: entry.dialecteId,
 			dialecteVersion: entry.dialecteVersion,
+			// coming back to the project it had: the hub starts no engine that would make it again empty
+			...(entry.creationId !== undefined && { expectedCreationId: entry.creationId }),
 		})
 	}
 
@@ -547,9 +568,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		}
 	}
 
-	/** The users of the project in this realm but `own`, while that one is counted. */
-	function otherUsers(params: { project: string; own: HubProjectLink | undefined }): number {
-		const users = entries.get(params.project)?.users ?? 0
+	/** The users of the project (its key) in this realm but `own`, while that one is counted. */
+	function otherUsers(params: { key: string; own: HubProjectLink | undefined }): number {
+		const users = entries.get(params.key)?.users ?? 0
 		return users - (params.own !== undefined && countedLinks.has(params.own) ? 1 : 0)
 	}
 
@@ -592,8 +613,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			})
 		},
 		openProject: function openProjectLink(projectParams) {
-			const existing = entries.get(projectParams.project)
-			// another copy of the library in the realm on another dialecte: refused as another realm would be
+			const key = projectKeyOf(projectParams)
+			const existing = entries.get(key)
+			// another copy of the library in the realm on another version of the dialecte: refused as another realm would be
 			// (a connection ended for good answers why it ended first, as for any link)
 			const mismatch =
 				refusal === undefined &&
@@ -601,7 +623,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				dialecteMismatch({ entry: existing, asked: projectParams })
 			if (mismatch) return refusedLink({ error: mismatch, project: projectParams.project })
 			const entry = existing ?? newEntry(projectParams)
-			entries.set(entry.project, entry)
+			entries.set(key, entry)
 			entry.users += 1
 			let released = false
 			const link: HubProjectLink = {
@@ -623,46 +645,50 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 					countedLinks.delete(link)
 					entry.users -= 1
 					if (entry.users > 0) return
-					entries.delete(entry.project)
+					// an entry forgotten meanwhile (refused as away) may have been replaced by a fresh one
+					if (entries.get(key) === entry) entries.delete(key)
 					entry.current?.client.close({ storeName: entry.project })
 					entry.current = undefined
 					for (const waiter of entry.waiters.splice(0)) {
 						rejectWaiter({ waiter, error: releasedLinkError({ project: entry.project }) })
 					}
-					if (entry.asked) send({ type: 'leave', project: entry.project })
+					if (entry.asked) {
+						send({ type: 'leave', project: entry.project, dialecteId: entry.dialecteId })
+					}
 				},
 			}
 			countedLinks.add(link)
 			return link
 		},
-		destroyProject: async function destroyThroughHub({ project, destroy, own }) {
+		destroyProject: async function destroyThroughHub({ project, dialecteId, destroy, own }) {
+			const key = projectKeyOf({ project, dialecteId })
 			const refused = cannotWait()
 			if (refused !== undefined) throw refused
 			// another connection of this realm on the project (the hub sees one realm): refused here; its own
 			// stays until the destroy goes ahead, the realm a client the hub does not count against it
-			const open = otherUsers({ project, own: own?.link })
+			const open = otherUsers({ key, own: own?.link })
 			if (open > 0) throwOpenElsewhere({ storeName: project, connections: open })
-			if (destroys.has(project)) {
+			if (destroys.has(key)) {
 				throw createDialecteError('PROJECT_OPEN_ELSEWHERE', {
 					detail: `"${project}" is being destroyed from this view already`,
 					meta: { project },
 				})
 			}
 			await new Promise<void>(function waitForGrant(granted, refused) {
-				destroys.set(project, { granted, refused })
-				sendWhenJoined({ type: 'destroy', project })
+				destroys.set(key, { granted, refused })
+				sendWhenJoined({ type: 'destroy', project, dialecteId })
 			}).finally(function forgetDestroy() {
-				destroys.delete(project)
+				destroys.delete(key)
 			})
 			try {
 				// a connection of this realm made while the grant was awaited keeps the project
-				const openSince = otherUsers({ project, own: own?.link })
+				const openSince = otherUsers({ key, own: own?.link })
 				if (openSince > 0) throwOpenElsewhere({ storeName: project, connections: openSince })
 				own?.letGo()
 				await destroy()
 			} finally {
 				// to the instance granted it: one suspended since is forgotten by the hub, its hold lifted
-				send({ type: 'destroyed', project })
+				send({ type: 'destroyed', project, dialecteId })
 			}
 		},
 		onRejoined: function listenForRejoin(listener) {
@@ -698,22 +724,15 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	}
 }
 
-/** Why a link of the realm cannot join the project's link already there: another dialecte, or another version. */
+/**
+ * Why a link of the realm cannot join the project's link already there: another version of its dialecte (a
+ * client and its engine run the same code). Another dialecte's project of the name is another project.
+ */
 function dialecteMismatch(params: {
 	entry: ProjectEntry
 	asked: HubProjectParams
 }): Error | undefined {
 	const { entry, asked } = params
-	if (asked.dialecteId !== entry.dialecteId) {
-		return createDialecteError('PROJECT_DIALECTE_MISMATCH', {
-			detail: `"${entry.project}" is open in this view as ${entry.dialecteId}, asked as ${asked.dialecteId}`,
-			meta: {
-				project: entry.project,
-				projectDialecteId: entry.dialecteId,
-				realmDialecteId: asked.dialecteId,
-			},
-		})
-	}
 	if (asked.dialecteVersion !== entry.dialecteVersion) {
 		return createDialecteError('PROJECT_DIALECTE_VERSION_MISMATCH', {
 			detail: `"${entry.project}" is open in this view with ${entry.dialecteId} ${entry.dialecteVersion}, asked with ${asked.dialecteVersion}`,
@@ -744,20 +763,50 @@ function refusedLink(params: { error: Error; project: string }): HubProjectLink 
 }
 
 function newEntry(params: HubProjectParams): ProjectEntry {
-	return { ...params, users: 0, asked: false, current: undefined, waiters: [], refusal: undefined }
+	return {
+		...params,
+		users: 0,
+		asked: false,
+		current: undefined,
+		waiters: [],
+		refusal: undefined,
+		creationId: undefined,
+	}
 }
 
-/** The engine's port: a client on it, handed to every call waiting. */
+/**
+ * The engine's port: a client on it, handed to every call waiting - unless the engine runs another project
+ * than the one the link had (destroyed while the realm was away, made again since): the link refused for good
+ * `PROJECT_DESTROYED_WHILE_AWAY`, the port closed, the project left.
+ */
 function engineReady(params: {
 	entry: ProjectEntry | undefined
 	message: Extract<HubToRealmMessage, { type: 'engine-ready' }>
+	forget: (entry: ProjectEntry) => void
+	send: (message: RealmToHubMessage) => void
 }): void {
-	const { entry, message } = params
+	const { entry, message, send } = params
 	if (!entry) {
 		message.port.close()
 		return
 	}
 	dropClient({ entry, reason: 'host-gone' })
+	try {
+		refuseOtherCreation({
+			project: entry.project,
+			expectedCreationId: entry.creationId,
+			creationId: message.creationId,
+		})
+	} catch (refusal) {
+		message.port.close()
+		entry.refusal = refusal
+		entry.asked = false
+		send({ type: 'leave', project: entry.project, dialecteId: entry.dialecteId })
+		for (const waiter of entry.waiters.splice(0)) rejectWaiter({ waiter, error: refusal })
+		params.forget(entry)
+		return
+	}
+	entry.creationId = message.creationId
 	const client = createEngineClient({
 		port: message.port,
 		heartbeatTimeoutMs: entry.heartbeatTimeoutMs,
@@ -772,7 +821,11 @@ function engineLost(params: { entry: ProjectEntry | undefined }): void {
 }
 
 /** The hub refused the project: the calls waiting refused; a lasting refusal kept for the link. */
-function openRefused(params: { entry: ProjectEntry | undefined; error: unknown }): void {
+function openRefused(params: {
+	entry: ProjectEntry | undefined
+	error: unknown
+	forget: (entry: ProjectEntry) => void
+}): void {
 	const { entry, error } = params
 	if (!entry) return
 	entry.asked = false
@@ -784,6 +837,8 @@ function openRefused(params: { entry: ProjectEntry | undefined; error: unknown }
 	)
 		entry.refusal = error
 	for (const waiter of entry.waiters.splice(0)) rejectWaiter({ waiter, error })
+	// destroyed while the realm was away: the links that had the project are refused, not a fresh one
+	if (key === 'PROJECT_DESTROYED_WHILE_AWAY') params.forget(entry)
 }
 
 function rejectWaiter(params: { waiter: EngineWaiter; error: unknown }): void {

@@ -33,21 +33,34 @@ export async function openMemoryFile(params: {
 	}
 }
 
-/** An engine started on that connection, importing with `runtime` when given. */
+/** An engine started on that connection (for the test dialecte unless another is named), importing with `runtime` when given. */
 export async function startEngine(params: {
 	db: Database
+	dialecteId?: string
+	/** The creation id the opener knows of the project (`OpenSqliteEngineParams.expectedCreationId`). */
+	expectedCreationId?: string
 	options?: Partial<SqliteEngineOptions>
 	runtime?: StoreRuntime
 	onWork?: () => void
 	ensureImportSpace?: OpenSqliteEngineParams['ensureImportSpace']
 	explainIoFailure?: OpenSqliteEngineParams['explainIoFailure']
 }): Promise<SqliteEngine> {
-	const { db, options, runtime, onWork, ensureImportSpace, explainIoFailure } = params
+	const {
+		db,
+		dialecteId = ENGINE_TEST_DIALECTE_ID,
+		expectedCreationId,
+		options,
+		runtime,
+		onWork,
+		ensureImportSpace,
+		explainIoFailure,
+	} = params
 	const sqlite3 = await loadSqlite()
 	return openSqliteEngine({
 		sqlite3,
 		db,
-		dialecteId: ENGINE_TEST_DIALECTE_ID,
+		dialecteId,
+		expectedCreationId,
 		name: 'engine-test',
 		runtime,
 		options,

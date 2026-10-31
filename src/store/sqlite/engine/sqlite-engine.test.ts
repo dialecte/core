@@ -47,7 +47,7 @@ describe('openSqliteEngine', () => {
 			expectedCacheMiB: number
 		}
 		const testCases: Record<string, TestCase> = {
-			'no options, a 2 GiB device → this library’s layout in the header and the meta table, the dialecte id kept, incremental auto-vacuum, a 128 MiB cache':
+			'no options, a 2 GiB device → this library’s layout in the header and the meta table, the dialecte id kept with a creation id of its own, the dialecte’s mark in the header, incremental auto-vacuum, a 128 MiB cache':
 				{ deviceMemoryGiB: 2, expectedCacheMiB: 128 },
 			'no options, the device memory not reported → the cache of a 4 GiB device: 256 MiB': {
 				deviceMemoryGiB: undefined,
@@ -73,13 +73,18 @@ describe('openSqliteEngine', () => {
 				})
 				const file = await openFile()
 				const db = file.connect()
-				await startEngine({ db, options: testCase.options })
+				const engine = await startEngine({ db, options: testCase.options })
 				expect(db.selectValue('PRAGMA user_version')).toBe(LAYOUT_VERSION)
+				// FNV-1a of `core/test` as a signed 32-bit integer, worked out apart from the code
+				expect(ENGINE_TEST_DIALECTE_ID).toBe('core/test')
+				expect(db.selectValue('PRAGMA application_id')).toBe(703785303)
 				expect(db.selectValue('PRAGMA auto_vacuum')).toBe(2)
 				expect(metaOf({ db })).toEqual({
+					creationId: engine.creationId,
 					dialecteId: ENGINE_TEST_DIALECTE_ID,
 					layoutVersion: String(LAYOUT_VERSION),
 				})
+				expect(engine.creationId).toMatch(/^[0-9a-f-]{36}$/)
 				// a negative cache_size is a size in KiB
 				expect(db.selectValue('PRAGMA cache_size')).toBe(-testCase.expectedCacheMiB * 1024)
 			})
@@ -123,6 +128,16 @@ describe('openSqliteEngine', () => {
 						),
 					expectedLayoutVersion: 2,
 				},
+			'layout 3 (no creation id) in the header → refused PROJECT_LAYOUT_OUTDATED, the file unchanged, the connection closed':
+				{
+					prepare: (db) =>
+						db.exec(
+							'CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); ' +
+								"INSERT INTO _meta VALUES ('dialecteId', 'core/test'), ('layoutVersion', '3'); " +
+								'PRAGMA user_version=3',
+						),
+					expectedLayoutVersion: 3,
+				},
 			'no layout in the header but tables → refused PROJECT_LAYOUT_OUTDATED, the file unchanged, the connection closed':
 				{
 					prepare: (db) => db.exec('CREATE TABLE other (x)'),
@@ -151,7 +166,7 @@ describe('openSqliteEngine', () => {
 			})
 		}
 
-		it('a file at this layout → the engine starts on it, the file as it was', async () => {
+		it('a file at this layout → the engine starts on it, the file as it was, its creation id the same', async () => {
 			const sqlite3 = await loadSqlite()
 			const file = await openFile()
 			const first = await startEngine({ db: file.connect() })
@@ -160,6 +175,57 @@ describe('openSqliteEngine', () => {
 			const second = await startEngine({ db: file.connect() })
 			second.close()
 			expect(sqlite3.capi.sqlite3_js_db_export(file.keeper)).toEqual(before)
+			expect(second.creationId).toBe(first.creationId)
+		})
+
+		it('an open expecting the creation id the file holds → the engine starts on it', async () => {
+			const file = await openFile()
+			const first = await startEngine({ db: file.connect() })
+			first.close()
+			const second = await startEngine({
+				db: file.connect(),
+				expectedCreationId: first.creationId,
+			})
+			expect(second.creationId).toBe(first.creationId)
+			second.close()
+		})
+
+		it('an open expecting another creation id than the file’s, or a new file → refused PROJECT_DESTROYED_WHILE_AWAY, the file unchanged, the connection closed', async () => {
+			const sqlite3 = await loadSqlite()
+			for (const made of [true, false]) {
+				const file = await openFile()
+				if (made) (await startEngine({ db: file.connect() })).close()
+				const before = sqlite3.capi.sqlite3_js_db_export(file.keeper)
+				const db = file.connect()
+				await expectRejectsWith({
+					action: startEngine({ db, expectedCreationId: 'the-one-this-view-had' }),
+					key: 'PROJECT_DESTROYED_WHILE_AWAY',
+					meta: { project: 'engine-test' },
+				})
+				expect(sqlite3.capi.sqlite3_js_db_export(file.keeper), String(made)).toEqual(before)
+				expect(db.isOpen()).toBe(false)
+			}
+		})
+
+		it('a file another dialecte stored → refused PROJECT_DIALECTE_MISMATCH naming both, the file unchanged, the connection closed', async () => {
+			const sqlite3 = await loadSqlite()
+			const file = await openFile()
+			const stored = await startEngine({ db: file.connect(), dialecteId: 'other/dialecte' })
+			await stored.registerDocument(makeDocument({ id: 'theirs' }))
+			stored.close()
+			const before = sqlite3.capi.sqlite3_js_db_export(file.keeper)
+			const db = file.connect()
+			await expectRejectsWith({
+				action: startEngine({ db }),
+				key: 'PROJECT_DIALECTE_MISMATCH',
+				meta: {
+					project: 'engine-test',
+					projectDialecteId: 'other/dialecte',
+					realmDialecteId: ENGINE_TEST_DIALECTE_ID,
+				},
+			})
+			expect(sqlite3.capi.sqlite3_js_db_export(file.keeper)).toEqual(before)
+			expect(db.isOpen()).toBe(false)
 		})
 
 		it('a document at a path → the file itself refuses a second row at that path, any number without one', async () => {

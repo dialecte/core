@@ -418,6 +418,10 @@ try {
 }
 ```
 
+A project file remembers the id it was created with. A view of a SQLite project that comes back to it - its page back from a freeze or the back/forward cache, its engine started again after a crash - while another tab destroyed it meanwhile is refused `PROJECT_DESTROYED_WHILE_AWAY` on every call: nothing is made empty in its place, and a project made again since under the name is not read. Tell the user, close the project in that view, and open it again by its name for what is there now.
+
+A project's name and its dialecte's id name what holds it on every store (a SQLite project's files sit in a directory of the origin's private files named after both): a name or an id that is empty, `.` or `..` is refused `PROJECT_NAME_INVALID` before any store of it is built, nothing opened or written.
+
 `destroy()` is refused with `PROJECT_OPEN_ELSEWHERE` (`meta.project`, and `meta.connections` where the store counts them), nothing removed, while another project or store of the name has it open - in this page, or in another tab: close that one, then call `destroy()` again. The refused one closed the project all the same, as `close()` does. One closed counts open no more, and a destroy lets the operations it still runs complete first (a store of another tab counts until they end); one destroyed counts open no more either, until it is used again. Two connections destroying at once are both refused - but two tabs destroying a local store at once may both go ahead. A connection made while another connection's destroy runs either counts - the destroy refused, its data kept - or waits for the destroy and reads the project empty; it never fails, and never reads the old data after a destroy that resolved.
 
 ## In-Memory Storage

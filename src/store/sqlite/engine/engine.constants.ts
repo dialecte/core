@@ -2,7 +2,7 @@ import type { EngineMembers } from '../../engine/engine.types'
 import type { SqliteEngineOptions } from './engine.types'
 
 /** The layout of the project file this engine reads and writes, kept in the file's header (`user_version`). */
-export const LAYOUT_VERSION = 3
+export const LAYOUT_VERSION = 4
 
 export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	/**
@@ -30,11 +30,18 @@ export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 /** The device's memory when the realm does not report it (Firefox, node): a 4 GiB device. */
 export const DEFAULT_DEVICE_MEMORY_GIB = 4
 
-/** The keys of the `_meta` table: what the file says of itself. */
+/**
+ * The keys of the `_meta` table: what the file says of itself - its dialecte, its layout, and the id it was
+ * created with (a project destroyed and made again under its name has another).
+ */
 export const META_KEY = {
 	dialecteId: 'dialecteId',
 	layoutVersion: 'layoutVersion',
+	creationId: 'creationId',
 } as const
+
+/** FNV-1a, 32-bit: the offset basis and the prime the dialecte's `application_id` is digested with. */
+export const APPLICATION_ID_DIGEST = { offsetBasis: 0x811c9dc5, prime: 0x01000193 } as const
 
 /** A document's registry row: each column with its SQL type, in binding order (after its `seq`). */
 export const DOCUMENT_COLUMNS = {

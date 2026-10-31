@@ -1,10 +1,10 @@
 import { createEngineClient } from '../../engine/client/engine-client'
 import { createEngineControl } from '../../engine/client/engine-control'
-import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
+import { engineLockNameOf } from '../../engine/project-key'
 import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
 import { poolDirectoryOf } from './install-pool'
 import { OPAQUE_DIRECTORY, POOL_FILE_HEADER } from './runtime.constants'
-import { RUNTIME_FIXTURE_CHANNEL } from './runtime.fixtures.constants'
+import { FIXTURE_DIALECTE, RUNTIME_FIXTURE_CHANNEL } from './runtime.fixtures.constants'
 
 import type { EngineControl } from '../../engine/client/client.types'
 import type { EngineApi, EngineLockMode } from '../../engine/engine.types'
@@ -20,9 +20,12 @@ export const TEST_ENGINE_URL = new URL('../../../test/test-dialecte.worker.ts', 
 	.href
 
 /** Whether the project's engine lock is free now (taken and let go at once when it is). */
-export function isEngineLockFree(params: { project: string }): Promise<boolean> {
+export function isEngineLockFree(params: {
+	project: string
+	dialecteId?: string
+}): Promise<boolean> {
 	return navigator.locks.request(
-		`${ENGINE_LOCK_PREFIX}${params.project}`,
+		engineLockNameOf(fixtureAddress(params)),
 		{ ifAvailable: true },
 		function grantedOrNot(lock) {
 			return lock !== null
@@ -74,23 +77,35 @@ export function startEngineWorker(params: { url?: string } = {}): {
 	}
 }
 
-/** The open message of a project. */
+/** The open message of a project of core's test dialecte (unless another is asked). */
 export function openMessage(params: {
 	project: string
+	dialecteId?: string
+	dialecteVersion?: string
 	lock?: EngineLockMode
 	budgetMs?: number
 }): {
 	type: 'open'
 	project: string
+	dialecteId: string
+	dialecteVersion: string
 	lock: EngineLockMode
 	budgetMs: number
 	perf: boolean
 	settings: SqliteEngineSettings
 } {
-	const { project, lock = 'if-available', budgetMs = 10_000 } = params
+	const {
+		project,
+		dialecteId = FIXTURE_DIALECTE.dialecteId,
+		dialecteVersion = FIXTURE_DIALECTE.dialecteVersion,
+		lock = 'if-available',
+		budgetMs = 10_000,
+	} = params
 	return {
 		type: 'open',
 		project,
+		dialecteId,
+		dialecteVersion,
 		settings: { wasmUrl: SQLITE_WASM_URL },
 		lock,
 		budgetMs,
@@ -116,9 +131,10 @@ export async function clientOf(params: {
 /** What the private file system holds of the project's pool: its directory, and how many pool files. */
 export async function poolState(params: {
 	project: string
+	dialecteId?: string
 }): Promise<{ exists: boolean; files: number }> {
 	let directory = await navigator.storage.getDirectory()
-	for (const name of [...poolDirectoryOf(params).split('/'), OPAQUE_DIRECTORY]) {
+	for (const name of [...poolDirectoryOf(fixtureAddress(params)).split('/'), OPAQUE_DIRECTORY]) {
 		try {
 			directory = await directory.getDirectoryHandle(name)
 		} catch {
@@ -138,7 +154,7 @@ export async function poolFileDigests(params: {
 	project: string
 }): Promise<Record<string, string>> {
 	let directory = await navigator.storage.getDirectory()
-	for (const name of [...poolDirectoryOf(params).split('/'), OPAQUE_DIRECTORY]) {
+	for (const name of [...poolDirectoryOf(fixtureAddress(params)).split('/'), OPAQUE_DIRECTORY]) {
 		try {
 			directory = await directory.getDirectoryHandle(name)
 		} catch (thrown) {
@@ -168,7 +184,7 @@ export async function damageDatabaseHeader(params: {
 }): Promise<void> {
 	const { damage } = params
 	let directory = await navigator.storage.getDirectory()
-	for (const name of [...poolDirectoryOf(params).split('/'), OPAQUE_DIRECTORY]) {
+	for (const name of [...poolDirectoryOf(fixtureAddress(params)).split('/'), OPAQUE_DIRECTORY]) {
 		directory = await directory.getDirectoryHandle(name)
 	}
 	let database: { handle: FileSystemFileHandle; size: number } | undefined
@@ -198,7 +214,7 @@ export async function damageDatabaseHeader(params: {
  */
 export async function makeBlankPool(params: { project: string; sizes: number[] }): Promise<void> {
 	let directory = await navigator.storage.getDirectory()
-	for (const name of [...poolDirectoryOf(params).split('/'), OPAQUE_DIRECTORY]) {
+	for (const name of [...poolDirectoryOf(fixtureAddress(params)).split('/'), OPAQUE_DIRECTORY]) {
 		directory = await directory.getDirectoryHandle(name, { create: true })
 	}
 	for (const [index, size] of params.sizes.entries()) {
@@ -213,7 +229,7 @@ export async function makeBlankPool(params: { project: string; sizes: number[] }
 export async function engineLockQueue(params: {
 	project: string
 }): Promise<{ held: number; pending: number }> {
-	const name = `${ENGINE_LOCK_PREFIX}${params.project}`
+	const name = engineLockNameOf(fixtureAddress(params))
 	const { held = [], pending = [] } = await navigator.locks.query()
 	return {
 		held: held.filter(isEngineLock).length,
@@ -226,11 +242,14 @@ export async function engineLockQueue(params: {
 }
 
 /** The project's engine lock held by the page until the returned release (a no-op once released). */
-export async function holdEngineLock(params: { project: string }): Promise<() => void> {
+export async function holdEngineLock(params: {
+	project: string
+	dialecteId?: string
+}): Promise<() => void> {
 	let release: () => void = releaseNothing
 	await new Promise<void>(function waitUntilGranted(granted) {
 		void navigator.locks.request(
-			`${ENGINE_LOCK_PREFIX}${params.project}`,
+			engineLockNameOf(fixtureAddress(params)),
 			async function holdUntilReleased() {
 				granted()
 				await new Promise<void>(function waitForRelease(done) {
@@ -272,14 +291,28 @@ export async function holdPoolFile(params: {
 }
 
 /** A project's pool directory removed from the page, whatever it holds: a case cleans up after itself. */
-export async function removePoolDirectory(params: { project: string }): Promise<void> {
+export async function removePoolDirectory(params: {
+	project: string
+	dialecteId?: string
+}): Promise<void> {
 	const root = await navigator.storage.getDirectory()
 	try {
-		const parent = await root.getDirectoryHandle(poolDirectoryOf(params).split('/')[0]!)
-		await parent.removeEntry(encodeURIComponent(params.project), { recursive: true })
+		const path = poolDirectoryOf(fixtureAddress(params)).split('/')
+		const entry = path.pop()!
+		let parent = root
+		for (const name of path) parent = await parent.getDirectoryHandle(name)
+		await parent.removeEntry(entry, { recursive: true })
 	} catch {
 		// nothing there
 	}
+}
+
+/** A fixture's project as its engine finds it: core's test dialecte unless another is named. */
+function fixtureAddress(params: { project: string; dialecteId?: string }): {
+	dialecteId: string
+	project: string
+} {
+	return { dialecteId: params.dialecteId ?? FIXTURE_DIALECTE.dialecteId, project: params.project }
 }
 
 /** A byte as two hexadecimal digits. */

@@ -133,9 +133,14 @@ export const STORE_CONTRACT_FEATURES = ['history', 'blobs', 'import', 'export'] 
 
 /**
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
- * engine of its own has none to end).
+ * engine of its own has none to end); a project of the name under another dialecte (`dialecte-key`: a
+ * store named by the project's name alone has no other dialecte's); a view away while its project is
+ * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away).
  */
-export const STORE_CONTRACT_DIFFERENCES = ['engine-end'] as const
+export const STORE_CONTRACT_DIFFERENCES = ['engine-end', 'dialecte-key', 'away'] as const
+
+/** The dialecte a case's store of another dialecte runs (the runtime fixture's `other-dialecte` engine serves it). */
+export const CONTRACT_OTHER_DIALECTE_ID = 'core/test-other'
 
 /** How long a case waits for a promise before it calls it pending. */
 export const OUTCOME_WAIT_MS = 200
@@ -146,3 +151,7 @@ export const IN_PROCESS_ENGINE_REASON =
 
 /** How long a contract engine told to end may take to let its lock go. */
 export const ENGINE_END_BUDGET_MS = 5_000
+
+/** Why a leg's view is never away while its project is destroyed: every connection counts until closed. */
+export const AWAY_UNREACHABLE_REASON =
+	'its connections run in the page and each counts until closed: a destroy is refused while any is open, so none is ever away'

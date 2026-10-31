@@ -83,7 +83,15 @@ export function serveHub(): HubShell {
 			case 'leave':
 			case 'destroy':
 			case 'destroyed':
-				return feed({ event: { type: message.type, now, realmId, project: message.project } })
+				return feed({
+					event: {
+						type: message.type,
+						now,
+						realmId,
+						project: message.project,
+						dialecteId: message.dialecteId,
+					},
+				})
 			case 'bind-child':
 				state.bindings.set(message.bindingId, {
 					port: message.port,
@@ -98,13 +106,25 @@ export function serveHub(): HubShell {
 			case 'unbind-child':
 				return unbindChild({ state, bindingId: message.bindingId, feed })
 			case 'engine-opened':
+				if (!hostsEngine({ state, realmId, engine: message })) return
+				return feed({
+					event: {
+						type: 'engine-opened',
+						now,
+						project: message.project,
+						dialecteId: message.dialecteId,
+						generation: message.generation,
+						creationId: message.creationId,
+					},
+				})
 			case 'engine-ended':
 				if (!hostsEngine({ state, realmId, engine: message })) return
 				return feed({
 					event: {
-						type: message.type,
+						type: 'engine-ended',
 						now,
 						project: message.project,
+						dialecteId: message.dialecteId,
 						generation: message.generation,
 					},
 				})
@@ -115,6 +135,7 @@ export function serveHub(): HubShell {
 						type: 'engine-open-failed',
 						now,
 						project: message.project,
+						dialecteId: message.dialecteId,
 						generation: message.generation,
 						failure: { key: message.key, error: message.error },
 					},
@@ -169,37 +190,48 @@ function perform(params: {
 					dialecteId: command.dialecteId,
 					generation: command.generation,
 					openBudgetMs: command.openBudgetMs,
+					...(command.expectedCreationId !== undefined && {
+						expectedCreationId: command.expectedCreationId,
+					}),
 				},
 			})
 		case 'connect-client':
 			return askAdoption({
 				state,
 				project: command.project,
+				dialecteId: command.dialecteId,
 				generation: command.generation,
+				creationId: command.creationId,
 				clientRealmId: command.realmId,
 				feed,
 			})
 		case 'engine-lost':
-			forgetAdoptions({ state, realmId: command.realmId, project: command.project })
+			forgetAdoptions({ state, realmId: command.realmId, engine: command })
 			return postTo({
 				state,
 				realmId: command.realmId,
-				message: { type: 'engine-lost', project: command.project, generation: command.generation },
+				message: {
+					type: 'engine-lost',
+					project: command.project,
+					dialecteId: command.dialecteId,
+					generation: command.generation,
+				},
 			})
 		case 'refuse-open':
-			forgetAdoptions({ state, realmId: command.realmId, project: command.project })
+			forgetAdoptions({ state, realmId: command.realmId, engine: command })
 			return postTo({
 				state,
 				realmId: command.realmId,
 				message: {
 					type: 'open-refused',
 					project: command.project,
+					dialecteId: command.dialecteId,
 					error: refusalData(command.refusal),
 				},
 			})
 		case 'client-gone': {
 			// an adoption still under way delivers nothing to a client that has left
-			forgetAdoptions({ state, realmId: command.realmId, project: command.project })
+			forgetAdoptions({ state, realmId: command.realmId, engine: command })
 			const hostRealmId = state.hosts.get(engineKey(command))
 			if (hostRealmId === undefined) return
 			return postTo({
@@ -208,6 +240,7 @@ function perform(params: {
 				message: {
 					type: 'client-gone',
 					project: command.project,
+					dialecteId: command.dialecteId,
 					generation: command.generation,
 					clientId: command.realmId,
 				},
@@ -221,6 +254,7 @@ function perform(params: {
 				message: {
 					type: 'release-engine',
 					project: command.project,
+					dialecteId: command.dialecteId,
 					generation: command.generation,
 				},
 			})
@@ -228,7 +262,11 @@ function perform(params: {
 			return postTo({
 				state,
 				realmId: command.realmId,
-				message: { type: 'destroy-granted', project: command.project },
+				message: {
+					type: 'destroy-granted',
+					project: command.project,
+					dialecteId: command.dialecteId,
+				},
 			})
 		case 'refuse-destroy':
 			return postTo({
@@ -237,6 +275,7 @@ function perform(params: {
 				message: {
 					type: 'destroy-refused',
 					project: command.project,
+					dialecteId: command.dialecteId,
 					error: refusalData(command.refusal),
 				},
 			})
@@ -354,17 +393,21 @@ function unbindChild(params: {
 function askAdoption(params: {
 	state: HubShellState
 	project: string
+	dialecteId: string
 	generation: number
+	creationId: string
 	clientRealmId: string
 	feed: (params: ShellFeed) => void
 }): void {
-	const { state, project, generation, clientRealmId, feed } = params
+	const { state, project, dialecteId, generation, creationId, clientRealmId, feed } = params
 	const hostRealmId = state.hosts.get(engineKey({ project, generation }))
 	const host = hostRealmId === undefined ? undefined : state.realms.get(hostRealmId)
 	if (hostRealmId === undefined || !host) {
 		// no realm to adopt it: that engine taken as ended, once the router's step is over
 		queueMicrotask(function endHostlessEngine() {
-			feed({ event: { type: 'engine-ended', now: performance.now(), project, generation } })
+			feed({
+				event: { type: 'engine-ended', now: performance.now(), project, dialecteId, generation },
+			})
 		})
 		return
 	}
@@ -375,7 +418,9 @@ function askAdoption(params: {
 		hostRealmId,
 		clientRealmId,
 		project,
+		dialecteId,
 		generation,
+		creationId,
 		port: channel.port1,
 	})
 	post({
@@ -383,6 +428,7 @@ function askAdoption(params: {
 		message: {
 			type: 'adopt-client',
 			project,
+			dialecteId,
 			generation,
 			adoptionId,
 			clientId: clientRealmId,
@@ -411,7 +457,9 @@ function deliverPort(params: { state: HubShellState; realmId: string; adoptionId
 		message: {
 			type: 'engine-ready',
 			project: adoption.project,
+			dialecteId: adoption.dialecteId,
 			generation: adoption.generation,
+			creationId: adoption.creationId,
 			port: adoption.port,
 		},
 		transfer: [adoption.port],
@@ -435,6 +483,7 @@ function failAdoption(params: {
 			type: 'engine-ended',
 			now: performance.now(),
 			project: adoption.project,
+			dialecteId: adoption.dialecteId,
 			generation: adoption.generation,
 		},
 	})
@@ -449,11 +498,20 @@ function hostsEngine(params: {
 	return params.state.hosts.get(engineKey(params.engine)) === params.realmId
 }
 
-/** The ports waiting for the client's adoption on that project dropped: its engine is gone, or it is refused. */
-function forgetAdoptions(params: { state: HubShellState; realmId: string; project: string }): void {
-	const { state, realmId, project } = params
+/**
+ * The ports waiting for the client's adoption on that project (its dialecte and name) dropped: its engine is
+ * gone, or it is refused.
+ */
+function forgetAdoptions(params: {
+	state: HubShellState
+	realmId: string
+	engine: { project: string; dialecteId: string }
+}): void {
+	const { state, realmId, engine } = params
 	for (const [adoptionId, adoption] of state.adoptions) {
-		if (adoption.clientRealmId !== realmId || adoption.project !== project) continue
+		const sameProject =
+			adoption.project === engine.project && adoption.dialecteId === engine.dialecteId
+		if (adoption.clientRealmId !== realmId || !sameProject) continue
 		adoption.port.close()
 		state.adoptions.delete(adoptionId)
 	}
@@ -487,6 +545,7 @@ function refusalData(refusal: HubRefusal): ThrownData {
 	})
 }
 
+/** An engine of the hub's: its generation is the hub's own counter, never used twice, whatever the project. */
 function engineKey(params: { project: string; generation: number }): string {
 	return `${params.project}#${params.generation}`
 }

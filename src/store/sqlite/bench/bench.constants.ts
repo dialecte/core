@@ -242,6 +242,12 @@ export const DEAD_IMPORT_ROWS = { 'dead-50': 486_333, 'dead-450': 3_780_000 } as
 /** The dialecte the engine bench's files say they belong to. */
 export const ENGINE_BENCH_DIALECTE_ID = 'bench/engine'
 
+/** The dialecte the port bench's engine serves, as the bench's page names it to that engine. */
+export const PORT_BENCH_DIALECTE = {
+	dialecteId: ENGINE_BENCH_DIALECTE_ID,
+	dialecteVersion: '0.0.0',
+} as const
+
 /** How often another view commits while the engine bench's history cell imports (the budget: each lands within 2 s outside an index build). */
 export const COMMIT_EVERY_MS = 250
 

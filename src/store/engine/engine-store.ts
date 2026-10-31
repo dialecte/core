@@ -1,5 +1,6 @@
 import { createClosingConnections } from '../closing-connections'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
+import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
 import { throwStoreClosed } from '../store-errors'
 import { ENGINE_WIRE_MEMBERS } from './wire/wire.constants'
@@ -46,6 +47,7 @@ export class EngineStore implements Store {
 	private readonly operations = createRunningOperations()
 
 	constructor(params: EngineStoreParams) {
+		refuseUnnamableProject({ project: params.name })
 		this.name = params.name
 		this.connector = params.connector
 	}

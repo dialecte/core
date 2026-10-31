@@ -97,7 +97,8 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  * passes as it is.
  */
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
-	const { sqlite3, db, dialecteId, name, runtime, ensureImportSpace, onWork } = params
+	const { sqlite3, db, dialecteId, expectedCreationId, name, runtime, ensureImportSpace, onWork } =
+		params
 	if (!isLosslessTextInstalled({ sqlite3 })) {
 		throwDialecteError('ASSERTION_FAILED', {
 			detail: `The engine of "${name}" runs on a SQLite whose text codec is not installed: load SQLite with loadSqlite`,
@@ -113,12 +114,20 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const steadyCacheMiB = engineOptions.steadyCacheMiB ?? deviceMiB
 	/** An import runs with the device's cache, never below the steady one. */
 	const importCacheMiB = Math.max(deviceMiB, steadyCacheMiB)
+	let creationId = ''
 	try {
 		asStoreFailure({
 			key: 'STORE_CONNECTION_FAILED',
 			detail: 'The project file could not be opened',
 			work: function startOnFile() {
-				prepareFile({ sqlite3, db, dialecteId, steadyCacheMiB })
+				creationId = prepareFile({
+					sqlite3,
+					db,
+					project: name,
+					dialecteId,
+					expectedCreationId,
+					steadyCacheMiB,
+				}).creationId
 				// at the start no client waits on the engine yet (the open has its own budget): nobody to tell
 				inWriteTransaction({
 					sqlite3,
@@ -819,6 +828,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 
 	return {
 		...served,
+		creationId,
 		importFile: importAsOwner,
 		abortImport,
 		exportFile,

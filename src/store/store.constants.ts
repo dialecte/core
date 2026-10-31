@@ -7,6 +7,9 @@
 
 import type { RecordSchema } from './store.types'
 
+/** The names a project or its dialecte's id never takes: nothing, or one a directory cannot be named after. */
+export const UNNAMABLE_PARTS: readonly string[] = ['', '.', '..']
+
 // --- Export ---
 
 /** Records an export reads per call and writes per batch, unless asked otherwise. */

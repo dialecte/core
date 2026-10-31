@@ -16,6 +16,7 @@ export type HubEngineSpawner = {
 /** One engine a realm hosts for the hub. */
 export type HostedEngine = {
 	project: string
+	dialecteId: string
 	generation: number
 	worker: Worker
 	control: EngineControl
@@ -32,6 +33,7 @@ export type RealmHost = {
 		dialecteId: string
 		generation: number
 		openBudgetMs: number
+		expectedCreationId?: string
 	}) => void
 	adopt: (params: {
 		project: string

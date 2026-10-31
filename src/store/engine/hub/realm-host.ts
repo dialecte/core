@@ -1,7 +1,8 @@
 import { refuseAnotherWire } from '../client/check-engine-wire'
 import { ENGINE_CLOSE_BUDGET_MS, ENGINE_HEARTBEAT_TIMEOUT_MS } from '../client/client.constants'
 import { answeredOrSilent, createEngineControl } from '../client/engine-control'
-import { ENGINE_LOCK_PREFIX } from '../engine.constants'
+import { refuseAnotherDialecte } from '../dialecte-refusal'
+import { engineLockNameOf } from '../project-key'
 import { toThrownData } from '../wire/error-envelope'
 
 import { createDialecteError, toDialecteError } from '@/errors'
@@ -33,7 +34,13 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 	}
 
 	return {
-		spawn: function spawnEngine({ project, dialecteId, generation, openBudgetMs }) {
+		spawn: function spawnEngine({
+			project,
+			dialecteId,
+			generation,
+			openBudgetMs,
+			expectedCreationId,
+		}) {
 			const spawner = spawners.get(dialecteId)
 			let worker: Worker
 			try {
@@ -48,6 +55,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				report({
 					type: 'engine-open-failed',
 					project,
+					dialecteId,
 					generation,
 					key: undefined,
 					error: toThrownData({ thrown }),
@@ -57,6 +65,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 			const control = createEngineControl({ worker })
 			const engine: HostedEngine = {
 				project,
+				dialecteId,
 				generation,
 				worker,
 				control,
@@ -69,6 +78,9 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 					message: {
 						type: 'open',
 						project,
+						dialecteId,
+						dialecteVersion: spawner.dialecteVersion,
+						...(expectedCreationId !== undefined && { expectedCreationId }),
 						lock: 'wait',
 						budgetMs: openBudgetMs,
 						perf: spawner.perf ?? false,
@@ -78,14 +90,27 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				})
 				.then(function checkWire(answer) {
 					refuseAnotherWire({ found: answer.wireProtocol })
+					// an engine of another copy of the library may not check what it was asked: its answer is
+					refuseAnotherDialecte({
+						project,
+						engine: answer,
+						asked: { dialecteId, dialecteVersion: spawner.dialecteVersion },
+					})
+					return answer.creationId
 				})
 				.then(
-					function engineOpened() {
+					function engineOpened(creationId: string) {
 						// released meanwhile: the hub forgot this generation
 						if (engine.ended) return
 						control.opened()
 						watchEngineLock({ engine, onGone: reportEnded })
-						report({ type: 'engine-opened', project, generation })
+						report({
+							type: 'engine-opened',
+							project,
+							dialecteId,
+							generation,
+							creationId,
+						})
 					},
 					function engineFailed(thrown: unknown) {
 						if (engine.ended) return
@@ -95,6 +120,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 						report({
 							type: 'engine-open-failed',
 							project,
+							dialecteId,
 							generation,
 							key: toDialecteError(thrown)?.key,
 							error: toThrownData({ thrown }),
@@ -153,7 +179,12 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 		endEngine({ engine })
 		engine.control.end({ error: releasedError({ project: engine.project }) })
 		engine.worker.terminate()
-		report({ type: 'engine-ended', project: engine.project, generation: engine.generation })
+		report({
+			type: 'engine-ended',
+			project: engine.project,
+			dialecteId: engine.dialecteId,
+			generation: engine.generation,
+		})
 	}
 }
 
@@ -193,7 +224,7 @@ function watchEngineLock(params: {
 	engine.watch = controller
 	navigator.locks
 		.request(
-			`${ENGINE_LOCK_PREFIX}${engine.project}`,
+			engineLockNameOf({ dialecteId: engine.dialecteId, project: engine.project }),
 			{ signal: controller.signal },
 			function engineGone() {
 				onGone({ engine })
@@ -225,6 +256,7 @@ function releasedError(params: { project: string }): Error {
 	})
 }
 
+/** An engine of the hub's: its generation is the hub's own counter, never used twice, whatever the project. */
 function engineKey(params: { project: string; generation: number }): string {
 	return `${params.project}#${params.generation}`
 }

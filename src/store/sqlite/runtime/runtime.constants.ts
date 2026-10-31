@@ -1,5 +1,5 @@
-/** The OPFS directory holding every project's pool, one directory each. */
-export const POOL_ROOT_DIRECTORY = 'dialecte'
+/** The OPFS directory holding every project's pool: a directory per dialecte, one per project in it. */
+export const POOL_ROOT_DIRECTORY = 'dialecte-projects'
 
 /** The name the pool's VFS is registered under in its worker (one project per engine worker). */
 export const POOL_VFS_NAME = 'dialecte-pool'

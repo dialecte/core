@@ -5,8 +5,11 @@ import {
 import { contractFile } from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
 import { isEngineLockFree } from '../../sqlite/runtime/runtime.fixtures'
-import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../../sqlite/runtime/runtime.fixtures.constants'
-import { ENGINE_LOCK_PREFIX } from '../engine.constants'
+import {
+	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	FIXTURE_DIALECTE,
+} from '../../sqlite/runtime/runtime.fixtures.constants'
+import { engineLockNameOf } from '../project-key'
 import { ENGINE_IDLE_CLOSE_MS } from './hub.constants'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -149,7 +152,10 @@ function clientGoneSeen(params: { clientId: string }): Promise<void> {
 async function engineLockHolder(params: { project: string }): Promise<string | undefined> {
 	const { held = [] } = await navigator.locks.query()
 	return held.find(function isEngineLock(lock) {
-		return lock.name === `${ENGINE_LOCK_PREFIX}${params.project}`
+		return (
+			lock.name ===
+			engineLockNameOf({ dialecteId: FIXTURE_DIALECTE.dialecteId, project: params.project })
+		)
 	})?.clientId
 }
 

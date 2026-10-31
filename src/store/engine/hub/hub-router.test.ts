@@ -14,6 +14,8 @@ import { runTestCases } from '@/test'
 import type { HubCommand, HubEvent, HubOutput, HubRouter, HubSpawner } from './hub.types'
 import type { BaseTestCase } from '@/test'
 
+/** The id the engines of the cases say their project was created with. */
+const CREATION_ID = 'creation-1'
 const PROJECT = 'substation'
 const SCL: HubSpawner = { dialecteId: 'scl', dialecteVersion: '1.0.0' }
 const NSD: HubSpawner = { dialecteId: 'nsd', dialecteVersion: '1.0.0' }
@@ -43,6 +45,7 @@ function open(params: {
 	dialecteId?: string
 	dialecteVersion?: string
 	now?: number
+	expectedCreationId?: string
 }): HubEvent {
 	const {
 		realmId,
@@ -50,13 +53,27 @@ function open(params: {
 		dialecteId = SCL.dialecteId,
 		dialecteVersion = SCL.dialecteVersion,
 		now = 0,
+		expectedCreationId,
 	} = params
-	return { type: 'open', now, realmId, project, dialecteId, dialecteVersion }
+	return {
+		type: 'open',
+		now,
+		realmId,
+		project,
+		dialecteId,
+		dialecteVersion,
+		...(expectedCreationId !== undefined && { expectedCreationId }),
+	}
 }
 
-function engineOpened(params: { generation: number; project?: string; now?: number }): HubEvent {
-	const { generation, project = PROJECT, now = 0 } = params
-	return { type: 'engine-opened', now, project, generation }
+function engineOpened(params: {
+	generation: number
+	project?: string
+	now?: number
+	creationId?: string
+}): HubEvent {
+	const { generation, project = PROJECT, now = 0, creationId = CREATION_ID } = params
+	return { type: 'engine-opened', now, project, dialecteId: 'scl', generation, creationId }
 }
 
 function realmGone(params: { realmId: string; now?: number }): HubEvent {
@@ -197,7 +214,7 @@ function settleAndCheck(params: { router: HubRouter; ledger: Ledger }): void {
 			handleAndCheck({
 				router,
 				ledger,
-				event: { type: 'leave', now: ledger.now, realmId, project },
+				event: { type: 'leave', now: ledger.now, realmId, project, dialecteId: 'scl' },
 			})
 		}
 	}
@@ -213,7 +230,7 @@ function tick(params: { now: number }): HubEvent {
 
 function leave(params: { realmId: string; project?: string; now?: number }): HubEvent {
 	const { realmId, project = PROJECT, now = 0 } = params
-	return { type: 'leave', now, realmId, project }
+	return { type: 'leave', now, realmId, project, dialecteId: 'scl' }
 }
 
 function engineOpenFailed(params: {
@@ -223,22 +240,29 @@ function engineOpenFailed(params: {
 	now?: number
 }): HubEvent {
 	const { generation, key, error, now = 0 } = params
-	return { type: 'engine-open-failed', now, project: PROJECT, generation, failure: { key, error } }
+	return {
+		type: 'engine-open-failed',
+		now,
+		project: PROJECT,
+		dialecteId: 'scl',
+		generation,
+		failure: { key, error },
+	}
 }
 
 function engineEnded(params: { generation: number; now?: number }): HubEvent {
 	const { generation, now = 0 } = params
-	return { type: 'engine-ended', now, project: PROJECT, generation }
+	return { type: 'engine-ended', now, project: PROJECT, dialecteId: 'scl', generation }
 }
 
-function destroy(params: { realmId: string; now?: number }): HubEvent {
-	const { realmId, now = 0 } = params
-	return { type: 'destroy', now, realmId, project: PROJECT }
+function destroy(params: { realmId: string; now?: number; dialecteId?: string }): HubEvent {
+	const { realmId, now = 0, dialecteId = 'scl' } = params
+	return { type: 'destroy', now, realmId, project: PROJECT, dialecteId }
 }
 
 function destroyed(params: { realmId: string; now?: number }): HubEvent {
 	const { realmId, now = 0 } = params
-	return { type: 'destroyed', now, realmId, project: PROJECT }
+	return { type: 'destroyed', now, realmId, project: PROJECT, dialecteId: 'scl' }
 }
 
 /** The engine the shell is asked to spawn for the project, by generation. */
@@ -254,6 +278,7 @@ const SPAWN_SHELL_2: HubCommand = { ...SPAWN_SHELL_1, generation: 2 }
 
 /** An engine's error as the hub receives it: the router forwards it untouched. */
 const BUSY_ERROR = { key: 'PROJECT_ENGINE_BUSY', detail: 'the engine lock is held' }
+const DESTROYED_ERROR = { key: 'PROJECT_DESTROYED_WHILE_AWAY', detail: 'destroyed meanwhile' }
 const QUOTA_ERROR = { key: 'STORE_QUOTA_EXCEEDED', detail: 'no room for a new project' }
 
 describe('createHubRouter', () => {
@@ -279,6 +304,283 @@ describe('createHubRouter', () => {
 							dialecteId: 'scl',
 							generation: 1,
 							openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+						},
+					],
+				},
+			],
+		},
+		'a realm destroys the nsd project of a name while another realm uses the scl one → granted: two projects, the scl engine kept':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [SCL, NSD] }),
+					hello({ realmId: 'other-tab' }),
+					open({ realmId: 'other-tab' }),
+					engineOpened({ generation: 1 }),
+				],
+				steps: [
+					{
+						event: destroy({ realmId: 'shell', dialecteId: 'nsd' }),
+						commands: [
+							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT, dialecteId: 'nsd' },
+						],
+					},
+				],
+			},
+		'a realm coming back to the project it had opens it, no engine running → the engine started expects that project':
+			{
+				history: [hello({ realmId: 'shell' })],
+				steps: [
+					{
+						event: open({ realmId: 'shell', expectedCreationId: CREATION_ID }),
+						commands: [
+							{
+								type: 'spawn-engine',
+								realmId: 'shell',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
+							},
+						],
+					},
+				],
+			},
+		'the host dies while its engine opens, one client coming back to the project, one opening it anew → the next engine expects nothing: it may make the project':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					hello({ realmId: 'third-tab' }),
+					open({ realmId: 'shell' }),
+					open({ realmId: 'other-tab', expectedCreationId: CREATION_ID }),
+					open({ realmId: 'third-tab' }),
+				],
+				steps: [
+					{
+						event: realmGone({ realmId: 'shell', now: 1_000 }),
+						commands: [
+							{ type: 'drop-realm', realmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'spawn-engine',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+							},
+						],
+					},
+				],
+			},
+		'the host dies while its engine opens, every client left coming back but to two creations → the next engine expects the first one’s: never a new project nobody asked for':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					hello({ realmId: 'third-tab' }),
+					open({ realmId: 'shell' }),
+					open({ realmId: 'other-tab', expectedCreationId: CREATION_ID }),
+					open({ realmId: 'third-tab', expectedCreationId: 'another-creation' }),
+				],
+				steps: [
+					{
+						event: realmGone({ realmId: 'shell', now: 1_000 }),
+						commands: [
+							{ type: 'drop-realm', realmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'spawn-engine',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
+							},
+						],
+					},
+				],
+			},
+		'a client connected to the engine, then its host dies → the next engine expects the project the client has, though it opened it anew':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					open({ realmId: 'shell' }),
+					engineOpened({ generation: 1 }),
+					open({ realmId: 'other-tab' }),
+				],
+				steps: [
+					{
+						event: realmGone({ realmId: 'shell', now: 1_000 }),
+						commands: [
+							{ type: 'drop-realm', realmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
+							{
+								type: 'spawn-engine',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
+							},
+						],
+					},
+				],
+			},
+		'the engine started for a realm coming back refuses with under a second of the window left → that realm refused as the engine said, the one that opened anew refused the window’s answer':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					open({ realmId: 'shell', expectedCreationId: CREATION_ID }),
+					open({ realmId: 'other-tab' }),
+				],
+				steps: [
+					{
+						event: engineOpenFailed({
+							generation: 1,
+							key: 'PROJECT_DESTROYED_WHILE_AWAY',
+							error: DESTROYED_ERROR,
+							now: HUB_OPEN_BUDGET_MS - 500,
+						}),
+						commands: [
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'refuse-open',
+								realmId: 'shell',
+								project: PROJECT,
+								dialecteId: 'scl',
+								refusal: { origin: 'engine', error: DESTROYED_ERROR },
+							},
+							{
+								type: 'refuse-open',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								refusal: {
+									origin: 'hub',
+									key: 'PROJECT_ENGINE_UNAVAILABLE',
+									detail: `no engine for "${PROJECT}" opened within ${HUB_OPEN_BUDGET_MS} ms`,
+									meta: { project: PROJECT, dialecteId: 'scl', openBudgetMs: HUB_OPEN_BUDGET_MS },
+								},
+							},
+						],
+						wakeAt: undefined,
+					},
+				],
+			},
+		'the engine started for a realm coming back refuses: its project destroyed meanwhile → that realm refused as the engine said; a realm that opened the project anew meanwhile gets an engine expecting nothing':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					open({ realmId: 'shell', expectedCreationId: CREATION_ID }),
+					open({ realmId: 'other-tab' }),
+				],
+				steps: [
+					{
+						event: engineOpenFailed({
+							generation: 1,
+							key: 'PROJECT_DESTROYED_WHILE_AWAY',
+							error: DESTROYED_ERROR,
+						}),
+						commands: [
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'refuse-open',
+								realmId: 'shell',
+								project: PROJECT,
+								dialecteId: 'scl',
+								refusal: { origin: 'engine', error: DESTROYED_ERROR },
+							},
+							{
+								type: 'spawn-engine',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+							},
+						],
+					},
+				],
+			},
+		'the host dies under clients that all come back to one project → the next engine expects it': {
+			history: [
+				hello({ realmId: 'shell' }),
+				hello({ realmId: 'other-tab' }),
+				open({ realmId: 'shell' }),
+				engineOpened({ generation: 1 }),
+				open({ realmId: 'other-tab', expectedCreationId: CREATION_ID }),
+			],
+			steps: [
+				{
+					event: realmGone({ realmId: 'shell', now: 1_000 }),
+					commands: [
+						{ type: 'drop-realm', realmId: 'shell' },
+						{
+							type: 'release-engine',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							hostRealmId: 'shell',
+						},
+						{
+							type: 'engine-lost',
+							realmId: 'other-tab',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+						},
+						{
+							type: 'spawn-engine',
+							realmId: 'other-tab',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 2,
+							openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+							expectedCreationId: CREATION_ID,
 						},
 					],
 				},
@@ -333,12 +635,28 @@ describe('createHubRouter', () => {
 			steps: [
 				{
 					event: engineOpened({ generation: 1 }),
-					commands: [{ type: 'connect-client', project: PROJECT, generation: 1, realmId: 'shell' }],
+					commands: [
+						{
+							type: 'connect-client',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							realmId: 'shell',
+							creationId: CREATION_ID,
+						},
+					],
 				},
 				{
 					event: open({ realmId: 'other-tab' }),
 					commands: [
-						{ type: 'connect-client', project: PROJECT, generation: 1, realmId: 'other-tab' },
+						{
+							type: 'connect-client',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							realmId: 'other-tab',
+							creationId: CREATION_ID,
+						},
 					],
 				},
 			],
@@ -357,8 +675,20 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'shell', now: 1_000 }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'shell' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
-							{ type: 'engine-lost', realmId: 'other-tab', project: PROJECT, generation: 1 },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-tab',
@@ -366,13 +696,21 @@ describe('createHubRouter', () => {
 								dialecteId: 'scl',
 								generation: 2,
 								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
 							},
 						],
 					},
 					{
 						event: engineOpened({ generation: 2, now: 1_100 }),
 						commands: [
-							{ type: 'connect-client', project: PROJECT, generation: 2, realmId: 'other-tab' },
+							{
+								type: 'connect-client',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								realmId: 'other-tab',
+								creationId: CREATION_ID,
+							},
 						],
 					},
 				],
@@ -391,7 +729,13 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'other-tab' }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'other-tab' },
-							{ type: 'client-gone', project: PROJECT, generation: 1, realmId: 'other-tab' },
+							{
+								type: 'client-gone',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								realmId: 'other-tab',
+							},
 						],
 					},
 				],
@@ -405,13 +749,27 @@ describe('createHubRouter', () => {
 			steps: [
 				{
 					event: leave({ realmId: 'shell', now: 1_000 }),
-					commands: [{ type: 'client-gone', project: PROJECT, generation: 1, realmId: 'shell' }],
+					commands: [
+						{
+							type: 'client-gone',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							realmId: 'shell',
+						},
+					],
 					wakeAt: 1_000 + ENGINE_IDLE_CLOSE_MS,
 				},
 				{
 					event: tick({ now: 1_000 + ENGINE_IDLE_CLOSE_MS }),
 					commands: [
-						{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+						{
+							type: 'release-engine',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							hostRealmId: 'shell',
+						},
 					],
 					wakeAt: undefined,
 				},
@@ -429,7 +787,14 @@ describe('createHubRouter', () => {
 				{
 					event: open({ realmId: 'other-tab', now: 2_000 }),
 					commands: [
-						{ type: 'connect-client', project: PROJECT, generation: 1, realmId: 'other-tab' },
+						{
+							type: 'connect-client',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							realmId: 'other-tab',
+							creationId: CREATION_ID,
+						},
 					],
 					wakeAt: undefined,
 				},
@@ -467,6 +832,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-open',
 								realmId: 'widget',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -497,8 +863,20 @@ describe('createHubRouter', () => {
 							{ type: 'drop-realm', realmId: 'shell' },
 							{ type: 'drop-realm', realmId: 'widget' },
 							{ type: 'drop-realm', realmId: 'nested' },
-							{ type: 'client-gone', project: PROJECT, generation: 1, realmId: 'widget' },
-							{ type: 'client-gone', project: PROJECT, generation: 1, realmId: 'nested' },
+							{
+								type: 'client-gone',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								realmId: 'widget',
+							},
+							{
+								type: 'client-gone',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								realmId: 'nested',
+							},
 						],
 					},
 				],
@@ -517,7 +895,13 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'widget' }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'widget' },
-							{ type: 'client-gone', project: PROJECT, generation: 1, realmId: 'widget' },
+							{
+								type: 'client-gone',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								realmId: 'widget',
+							},
 						],
 					},
 				],
@@ -533,6 +917,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-open',
 								realmId: 'shell',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -584,6 +969,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-open',
 								realmId: 'extension',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_DIALECTE_VERSION_MISMATCH',
@@ -614,6 +1000,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-open',
 								realmId: 'extension',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_DIALECTE_VERSION_MISMATCH',
@@ -650,8 +1037,20 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'old-tab' }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'old-tab' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'old-tab' },
-							{ type: 'engine-lost', realmId: 'iframe', project: PROJECT, generation: 1 },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'old-tab',
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'iframe',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-old-tab',
@@ -659,6 +1058,7 @@ describe('createHubRouter', () => {
 								dialecteId: 'scl',
 								generation: 2,
 								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
 							},
 						],
 					},
@@ -690,11 +1090,18 @@ describe('createHubRouter', () => {
 					{
 						event: tick({ now: 1_000 + HUB_OPEN_BUDGET_MS }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'shell',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -726,7 +1133,13 @@ describe('createHubRouter', () => {
 							now: 10_000,
 						}),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-tab',
@@ -745,7 +1158,13 @@ describe('createHubRouter', () => {
 							now: 25_000,
 						}),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 2, hostRealmId: 'other-tab' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								hostRealmId: 'other-tab',
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-tab',
@@ -765,17 +1184,25 @@ describe('createHubRouter', () => {
 							now: HUB_OPEN_BUDGET_MS - ENGINE_OPEN_MIN_BUDGET_MS + 1,
 						}),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 3, hostRealmId: 'other-tab' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 3,
+								hostRealmId: 'other-tab',
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'shell',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: { origin: 'engine', error: BUSY_ERROR },
 							},
 							{
 								type: 'refuse-open',
 								realmId: 'iframe',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: { origin: 'engine', error: BUSY_ERROR },
 							},
 						],
@@ -802,7 +1229,13 @@ describe('createHubRouter', () => {
 							now: 10_000,
 						}),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'shell',
@@ -832,17 +1265,25 @@ describe('createHubRouter', () => {
 							now: 500,
 						}),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'shell',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: { origin: 'engine', error: QUOTA_ERROR },
 							},
 							{
 								type: 'refuse-open',
 								realmId: 'other-tab',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: { origin: 'engine', error: QUOTA_ERROR },
 							},
 						],
@@ -864,8 +1305,20 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'shell', now: 1_000 }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'shell' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
-							{ type: 'engine-lost', realmId: 'other-tab', project: PROJECT, generation: 1 },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-tab',
@@ -873,6 +1326,7 @@ describe('createHubRouter', () => {
 								dialecteId: 'scl',
 								generation: 2,
 								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
 							},
 						],
 					},
@@ -887,8 +1341,22 @@ describe('createHubRouter', () => {
 					{
 						event: engineOpened({ generation: 2, now: 2_100 }),
 						commands: [
-							{ type: 'connect-client', project: PROJECT, generation: 2, realmId: 'other-tab' },
-							{ type: 'connect-client', project: PROJECT, generation: 2, realmId: 'shell-resumed' },
+							{
+								type: 'connect-client',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								realmId: 'other-tab',
+								creationId: CREATION_ID,
+							},
+							{
+								type: 'connect-client',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								realmId: 'shell-resumed',
+								creationId: CREATION_ID,
+							},
 						],
 					},
 				],
@@ -930,31 +1398,29 @@ describe('createHubRouter', () => {
 					},
 				],
 			},
-		'a realm opens a project held under another dialecte → refused, dialecte mismatch': {
-			history: [
-				hello({ realmId: 'shell', spawners: [SCL, NSD] }),
-				open({ realmId: 'shell' }),
-				engineOpened({ generation: 1 }),
-			],
-			steps: [
-				{
-					event: open({ realmId: 'shell', dialecteId: 'nsd' }),
-					commands: [
-						{
-							type: 'refuse-open',
-							realmId: 'shell',
-							project: PROJECT,
-							refusal: {
-								origin: 'hub',
-								key: 'PROJECT_DIALECTE_MISMATCH',
-								detail: `"${PROJECT}" is open as scl, the view asks for nsd`,
-								meta: { project: PROJECT, projectDialecteId: 'scl', realmDialecteId: 'nsd' },
+		'a realm opens a project of a name another dialecte holds → another project: an engine of its own, the first one kept':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [SCL, NSD] }),
+					open({ realmId: 'shell' }),
+					engineOpened({ generation: 1 }),
+				],
+				steps: [
+					{
+						event: open({ realmId: 'shell', dialecteId: 'nsd' }),
+						commands: [
+							{
+								type: 'spawn-engine',
+								realmId: 'shell',
+								project: PROJECT,
+								dialecteId: 'nsd',
+								generation: 2,
+								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
 							},
-						},
-					],
-				},
-			],
-		},
+						],
+					},
+				],
+			},
 		'a realm the hub does not know opens a project → refused, realm unknown': {
 			history: [hello({ realmId: 'shell' }), realmGone({ realmId: 'shell' })],
 			steps: [
@@ -965,6 +1431,7 @@ describe('createHubRouter', () => {
 							type: 'refuse-open',
 							realmId: 'shell',
 							project: PROJECT,
+							dialecteId: 'scl',
 							refusal: {
 								origin: 'hub',
 								key: 'STORE_REALM_UNKNOWN',
@@ -1008,7 +1475,13 @@ describe('createHubRouter', () => {
 					event: realmGone({ realmId: 'shell' }),
 					commands: [
 						{ type: 'drop-realm', realmId: 'shell' },
-						{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+						{
+							type: 'release-engine',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							hostRealmId: 'shell',
+						},
 					],
 					wakeAt: undefined,
 				},
@@ -1028,8 +1501,20 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'shell', now: 1_000 }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'shell' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
-							{ type: 'engine-lost', realmId: 'other-tab', project: PROJECT, generation: 1 },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-tab',
@@ -1037,6 +1522,7 @@ describe('createHubRouter', () => {
 								dialecteId: 'scl',
 								generation: 2,
 								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
 							},
 						],
 						wakeAt: 1_000 + HUB_OPEN_BUDGET_MS,
@@ -1044,11 +1530,18 @@ describe('createHubRouter', () => {
 					{
 						event: tick({ now: 1_000 + HUB_OPEN_BUDGET_MS }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 2, hostRealmId: 'other-tab' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								hostRealmId: 'other-tab',
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'other-tab',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -1075,12 +1568,25 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'shell' }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'shell' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
-							{ type: 'engine-lost', realmId: 'other-tab', project: PROJECT, generation: 1 },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'other-tab',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -1106,14 +1612,26 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'widget', now: 1_000 }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'widget' },
-							{ type: 'client-gone', project: PROJECT, generation: 1, realmId: 'widget' },
+							{
+								type: 'client-gone',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								realmId: 'widget',
+							},
 						],
 						wakeAt: 1_000 + ENGINE_IDLE_CLOSE_MS,
 					},
 					{
 						event: tick({ now: 1_000 + ENGINE_IDLE_CLOSE_MS }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 						],
 						wakeAt: undefined,
 					},
@@ -1132,7 +1650,13 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'shell', now: 25_000 }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'shell' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-tab',
@@ -1163,7 +1687,14 @@ describe('createHubRouter', () => {
 					{
 						event: engineOpened({ generation: 1 }),
 						commands: [
-							{ type: 'connect-client', project: PROJECT, generation: 1, realmId: 'shell' },
+							{
+								type: 'connect-client',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								realmId: 'shell',
+								creationId: CREATION_ID,
+							},
 						],
 					},
 				],
@@ -1184,11 +1715,18 @@ describe('createHubRouter', () => {
 					{
 						event: tick({ now: 2_000 + HUB_OPEN_BUDGET_MS }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'shell',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -1210,7 +1748,16 @@ describe('createHubRouter', () => {
 			steps: [
 				{
 					event: open({ realmId: 'shell' }),
-					commands: [{ type: 'connect-client', project: PROJECT, generation: 1, realmId: 'shell' }],
+					commands: [
+						{
+							type: 'connect-client',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							realmId: 'shell',
+							creationId: CREATION_ID,
+						},
+					],
 					wakeAt: undefined,
 				},
 			],
@@ -1228,9 +1775,27 @@ describe('createHubRouter', () => {
 					{
 						event: engineEnded({ generation: 1, now: 1_000 }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
-							{ type: 'engine-lost', realmId: 'shell', project: PROJECT, generation: 1 },
-							{ type: 'engine-lost', realmId: 'other-tab', project: PROJECT, generation: 1 },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'shell',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
+							{
+								type: 'engine-lost',
+								realmId: 'other-tab',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'shell',
@@ -1238,6 +1803,7 @@ describe('createHubRouter', () => {
 								dialecteId: 'scl',
 								generation: 2,
 								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
 							},
 						],
 						wakeAt: 1_000 + HUB_OPEN_BUDGET_MS,
@@ -1254,11 +1820,18 @@ describe('createHubRouter', () => {
 				{
 					event: engineEnded({ generation: 1, now: 300 }),
 					commands: [
-						{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+						{
+							type: 'release-engine',
+							project: PROJECT,
+							dialecteId: 'scl',
+							generation: 1,
+							hostRealmId: 'shell',
+						},
 						{
 							type: 'refuse-open',
 							realmId: 'shell',
 							project: PROJECT,
+							dialecteId: 'scl',
 							refusal: {
 								origin: 'hub',
 								key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -1284,11 +1857,18 @@ describe('createHubRouter', () => {
 						event: realmGone({ realmId: 'shell', now: HUB_OPEN_BUDGET_MS }),
 						commands: [
 							{ type: 'drop-realm', realmId: 'shell' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'other-tab',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -1318,7 +1898,13 @@ describe('createHubRouter', () => {
 							now: 2_000,
 						}),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 						],
 						wakeAt: undefined,
 					},
@@ -1354,7 +1940,13 @@ describe('createHubRouter', () => {
 							now: 60_000,
 						}),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 4, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 4,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'other-tab',
@@ -1362,6 +1954,7 @@ describe('createHubRouter', () => {
 								dialecteId: 'scl',
 								generation: 5,
 								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
+								expectedCreationId: CREATION_ID,
 							},
 						],
 					},
@@ -1383,7 +1976,13 @@ describe('createHubRouter', () => {
 					{
 						event: open({ realmId: 'new-tab', dialecteVersion: '1.1.0', now: 2_000 }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'old-tab' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'old-tab',
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'new-tab',
@@ -1440,7 +2039,13 @@ describe('createHubRouter', () => {
 					{
 						event: open({ realmId: 'new-tab', dialecteVersion: '1.1.0', now: 2_000 }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'old-tab' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'old-tab',
+							},
 							{
 								type: 'spawn-engine',
 								realmId: 'new-tab',
@@ -1471,6 +2076,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-open',
 								realmId: 'extension',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_DIALECTE_VERSION_MISMATCH',
@@ -1488,7 +2094,7 @@ describe('createHubRouter', () => {
 					},
 				],
 			},
-		'the engine is in its grace with no client, a realm opens the project under another dialecte → refused, the engine kept':
+		'the engine is in its grace with no client, a realm opens a project of its name under another dialecte → an engine of its own, the first one kept in its grace':
 			{
 				history: [
 					hello({ realmId: 'shell', spawners: [SCL, NSD] }),
@@ -1501,15 +2107,12 @@ describe('createHubRouter', () => {
 						event: open({ realmId: 'shell', dialecteId: 'nsd', now: 2_000 }),
 						commands: [
 							{
-								type: 'refuse-open',
+								type: 'spawn-engine',
 								realmId: 'shell',
 								project: PROJECT,
-								refusal: {
-									origin: 'hub',
-									key: 'PROJECT_DIALECTE_MISMATCH',
-									detail: `"${PROJECT}" is open as scl, the view asks for nsd`,
-									meta: { project: PROJECT, projectDialecteId: 'scl', realmDialecteId: 'nsd' },
-								},
+								dialecteId: 'nsd',
+								generation: 2,
+								openBudgetMs: ENGINE_OPEN_BUDGET_MS,
 							},
 						],
 						wakeAt: 1_000 + ENGINE_IDLE_CLOSE_MS,
@@ -1557,11 +2160,18 @@ describe('createHubRouter', () => {
 						}),
 						commands: [
 							{ type: 'drop-realm', realmId: 'shell' },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
 							{
 								type: 'refuse-open',
 								realmId: 'other-tab',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -1592,6 +2202,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-destroy',
 								realmId: 'shell',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_OPEN_ELSEWHERE',
@@ -1616,8 +2227,14 @@ describe('createHubRouter', () => {
 					{
 						event: destroy({ realmId: 'shell' }),
 						commands: [
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
-							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT },
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
 						],
 						wakeAt: undefined,
 					},
@@ -1640,16 +2257,35 @@ describe('createHubRouter', () => {
 					{
 						event: destroy({ realmId: 'shell' }),
 						commands: [
-							{ type: 'engine-lost', realmId: 'shell', project: PROJECT, generation: 1 },
-							{ type: 'release-engine', project: PROJECT, generation: 1, hostRealmId: 'shell' },
-							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT },
+							{
+								type: 'engine-lost',
+								realmId: 'shell',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
 						],
 					},
 					{ event: destroyed({ realmId: 'shell' }), commands: [SPAWN_SHELL_2] },
 					{
 						event: engineOpened({ generation: 2 }),
 						commands: [
-							{ type: 'connect-client', project: PROJECT, generation: 2, realmId: 'shell' },
+							{
+								type: 'connect-client',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 2,
+								realmId: 'shell',
+								creationId: CREATION_ID,
+							},
 						],
 					},
 				],
@@ -1660,7 +2296,9 @@ describe('createHubRouter', () => {
 				steps: [
 					{
 						event: destroy({ realmId: 'shell' }),
-						commands: [{ type: 'destroy-granted', realmId: 'shell', project: PROJECT }],
+						commands: [
+							{ type: 'destroy-granted', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
+						],
 					},
 					{
 						event: destroy({ realmId: 'other-tab' }),
@@ -1669,6 +2307,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-destroy',
 								realmId: 'other-tab',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_OPEN_ELSEWHERE',
@@ -1717,6 +2356,7 @@ describe('createHubRouter', () => {
 								type: 'refuse-open',
 								realmId: 'other-tab',
 								project: PROJECT,
+								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
@@ -1757,6 +2397,7 @@ describe('createHubRouter', () => {
 							type: 'refuse-destroy',
 							realmId: 'ghost',
 							project: PROJECT,
+							dialecteId: 'scl',
 							refusal: {
 								origin: 'hub',
 								key: 'STORE_REALM_UNKNOWN',

@@ -516,10 +516,10 @@ export const ERROR_CATALOG = {
 	},
 	PROJECT_DIALECTE_MISMATCH: {
 		code: 'D7008',
-		message: 'The project is open with another dialecte',
+		message: "The project's engine or file is of another dialecte",
 		explanation: {
-			when: 'The project is already open with another dialecte than the one this view declares.',
-			fix: 'Open the project with the dialecte it was created with.',
+			when: "A project file stored by another dialecte was opened (nothing of it written); or an engine was asked for a project of another dialecte than its own - the dialecte's `engineUrl` (its project factory's, or a hub spawner's) pointing at another dialecte's worker. Two dialectes' projects of one name are two projects: opening one never meets the other. `meta`: `project`, `projectDialecteId` (the engine's or the file's), `realmDialecteId` (the one asked).",
+			fix: "Open the project with the dialecte it was created with; point the dialecte's `engineUrl` at its own worker.",
 			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
 		},
 	},
@@ -556,6 +556,24 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The project's files hold data but none of them is its database any more: the database file's header was damaged (by the disk, another program, or site data changed outside the app). Nothing is opened or changed: no empty database is made in its place. `meta.project` names the project.",
 			fix: "The project's data cannot be read back. Offer the user a reset, never automatically: `destroy()` on the same Project instance whose `open` was refused (keep it: `const project = new Project(params)`, then `await project.open(name)`) removes what the refused store holds, without opening it; `open(name)` then makes it again, empty, and its documents can be imported again.",
+			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+		},
+	},
+	PROJECT_DESTROYED_WHILE_AWAY: {
+		code: 'D7013',
+		message: 'The project was deleted while this view was away',
+		explanation: {
+			when: "A view's connection to a project came back - the page back from a freeze or the back/forward cache, its engine started again - and the project it had open was destroyed meanwhile by another tab (and maybe made again under its name): nothing is opened in its place and nothing of it is read. `meta.project` names the project.",
+			fix: 'Tell the user the project was deleted elsewhere; close it in this view (`project.close()`), then open it again by its name for what is there now, or choose another.',
+			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+		},
+	},
+	PROJECT_NAME_INVALID: {
+		code: 'D7014',
+		message: "The project's name cannot name its files",
+		explanation: {
+			when: "A project's name or its dialecte's id is empty, `.` or `..`: every store refuses it before it is built (a SQLite project's files sit in a directory named after both, which no directory can be); nothing was opened or written. `meta.project` and `meta.dialecteId` say which.",
+			fix: 'Give the project a name of its own (and the dialecte an id) other than an empty one, `.` or `..`.',
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},

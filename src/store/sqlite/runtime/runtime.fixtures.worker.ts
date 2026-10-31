@@ -7,6 +7,7 @@ import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
 import {
 	INSTALL_REFUSAL,
 	OPEN_FAILURE,
+	OTHER_FIXTURE_DIALECTE,
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DDL_MS,
 	SLOW_DESTROY_MS,
@@ -137,6 +138,7 @@ function serveEngine(): void {
 	if (scenario === 'database-fails') failDatabaseOpen()
 	if (scenario === 'close-throws') failCloseWhenOrdered()
 	if (scenario === 'other-wire') answerAnotherWire()
+	if (scenario === 'unchecked-open') openWhateverAsked()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -294,6 +296,20 @@ function answerAnotherWire(): void {
 	} as typeof self.postMessage
 }
 
+/**
+ * Every open taken as one of this engine's own dialecte, whatever the realm asked - as an engine of a copy of
+ * the library that does not check what it is asked: its answer names its own dialecte.
+ */
+function openWhateverAsked(): void {
+	self.addEventListener(
+		'message',
+		function askAsOwn(event: MessageEvent<{ type?: string; dialecteId?: string }>) {
+			if (event.data?.type !== 'open') return
+			event.data.dialecteId = RUNTIME_FIXTURE_DIALECTE.id
+		},
+	)
+}
+
 /** Answer `run-statement` with a database of its own: the heartbeat on the port given, one long statement, its times. */
 function serveProgressBeat(): void {
 	self.addEventListener(
@@ -328,7 +344,8 @@ function busyWait(params: { ms: number }): void {
  * `after-yield-pause:<ms>` holds it that long in slices with a message turn between them.
  */
 const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
-	id: CONTRACT_DIALECTE.id,
+	// another dialecte's engine on a project of a name the test dialecte has too
+	id: scenario === 'other-dialecte' ? OTHER_FIXTURE_DIALECTE.dialecteId : CONTRACT_DIALECTE.id,
 	version: CONTRACT_DIALECTE.version,
 	configs: CONTRACT_DIALECTE.configs,
 	defaultConfigKey: CONTRACT_DIALECTE.defaultConfigKey,
@@ -444,7 +461,10 @@ function serveHolder(): void {
 			if (event.data.type === 'hold') {
 				let directory = await navigator.storage.getDirectory()
 				for (const name of [
-					...poolDirectoryOf({ project: event.data.project }).split('/'),
+					...poolDirectoryOf({
+						dialecteId: RUNTIME_FIXTURE_DIALECTE.id,
+						project: event.data.project,
+					}).split('/'),
 					OPAQUE_DIRECTORY,
 				]) {
 					directory = await directory.getDirectoryHandle(name)

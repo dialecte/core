@@ -15,6 +15,8 @@ import type { HubToRealmMessage, RealmToHubMessage } from './hub-protocol.types'
 import type { HubShell } from './hub-shell.types'
 import type { HubSpawner } from './hub.types'
 
+/** The id the hosted engines say their project was created with. */
+const CREATION_ID = 'creation-1'
 const SCL: HubSpawner = { dialecteId: 'scl', dialecteVersion: '1.0.0' }
 
 /** What a case leaves: realm locks let go, ports closed. */
@@ -155,7 +157,13 @@ async function holdLock(params: { name: string }): Promise<() => void> {
 async function hostEngine(params: { host: FakeRealm; project: string }): Promise<number> {
 	const { host, project } = params
 	const spawn = await host.next('spawn-engine')
-	host.send({ type: 'engine-opened', project, generation: spawn.generation })
+	host.send({
+		type: 'engine-opened',
+		project,
+		dialecteId: 'scl',
+		generation: spawn.generation,
+		creationId: CREATION_ID,
+	})
 	return spawn.generation
 }
 
@@ -273,6 +281,25 @@ describe('the hub serving realms on their control ports', () => {
 		expect(ready.generation).toBe(1)
 	})
 
+	it('a realm refused another dialecte’s project of a name while its adoption on this one is under way → its port comes all the same', async () => {
+		const hub = serveHub()
+		const shell = await joinRealm({ hub, name: 'shell' })
+		const tab = await joinRealm({ hub, name: 'tab' })
+		shell.send({ type: 'open', project: 'p', dialecteId: 'scl', dialecteVersion: '1.0.0' })
+		await hostEngine({ host: shell, project: 'p' })
+		await adoptNext({ host: shell })
+		await shell.next('engine-ready')
+		tab.send({ type: 'open', project: 'p', dialecteId: 'scl', dialecteVersion: '1.0.0' })
+		const adopt = await shell.next('adopt-client')
+		// no realm runs an nsd engine: refused, and only its own adoptions forgotten
+		tab.send({ type: 'open', project: 'p', dialecteId: 'nsd', dialecteVersion: '1.0.0' })
+		const refused = await tab.next('open-refused')
+		expect(refused).toMatchObject({ project: 'p', dialecteId: 'nsd' })
+		shell.send({ type: 'client-adopted', adoptionId: adopt.adoptionId })
+		const ready = await tab.next('engine-ready')
+		expect(ready).toMatchObject({ project: 'p', dialecteId: 'scl', creationId: CREATION_ID })
+	})
+
 	it('a realm leaves while the host adopts its client → no port for it once the engine has adopted', async () => {
 		const hub = serveHub()
 		const shell = await joinRealm({ hub, name: 'shell' })
@@ -282,7 +309,7 @@ describe('the hub serving realms on their control ports', () => {
 		await adoptNext({ host: shell })
 		tab.send({ type: 'open', project: 'p', dialecteId: 'scl', dialecteVersion: '1.0.0' })
 		const adopt = await shell.next('adopt-client')
-		tab.send({ type: 'leave', project: 'p' })
+		tab.send({ type: 'leave', project: 'p', dialecteId: 'scl' })
 		await shell.next('client-gone')
 		shell.send({ type: 'client-adopted', adoptionId: adopt.adoptionId })
 		await pause({ ms: 50 })
@@ -300,7 +327,7 @@ describe('the hub serving realms on their control ports', () => {
 		tab.send({ type: 'open', project: 'p', dialecteId: 'scl', dialecteVersion: '1.0.0' })
 		const adopt = await shell.next('adopt-client')
 		tab.send({ type: 'client-adopted', adoptionId: adopt.adoptionId })
-		tab.send({ type: 'engine-ended', project: 'p', generation: 1 })
+		tab.send({ type: 'engine-ended', project: 'p', dialecteId: 'scl', generation: 1 })
 		await pause({ ms: 50 })
 		expect(shell.received).toEqual([])
 		expect(tab.received).toEqual([])
@@ -317,7 +344,12 @@ describe('the hub serving realms on their control ports', () => {
 		const adopt = await shell.next('adopt-client')
 		shell.send({ type: 'client-adopt-failed', adoptionId: adopt.adoptionId })
 		const release = await shell.next('release-engine')
-		expect(release).toEqual({ type: 'release-engine', project: 'p', generation: 1 })
+		expect(release).toEqual({
+			type: 'release-engine',
+			project: 'p',
+			dialecteId: 'scl',
+			generation: 1,
+		})
 		const spawn = await shell.next('spawn-engine')
 		expect(spawn.generation).toBe(2)
 	})
@@ -334,7 +366,7 @@ describe('the hub serving realms on their control ports', () => {
 		await tab.next('engine-ready')
 		shell.die()
 		const lost = await tab.next('engine-lost')
-		expect(lost).toEqual({ type: 'engine-lost', project: 'p', generation: 1 })
+		expect(lost).toEqual({ type: 'engine-lost', project: 'p', dialecteId: 'scl', generation: 1 })
 		const spawn = await tab.next('spawn-engine')
 		expect(spawn.generation).toBe(2)
 	})
@@ -364,6 +396,7 @@ describe('the hub serving realms on their control ports', () => {
 		expect(gone).toEqual({
 			type: 'client-gone',
 			project: 'p',
+			dialecteId: 'scl',
 			generation: 1,
 			clientId: welcome.realmId,
 		})
@@ -487,7 +520,7 @@ describe('the hub serving realms on their control ports', () => {
 		void shell.next('release-engine').then(function keepRelease() {
 			released = true
 		})
-		shell.send({ type: 'leave', project: 'p' })
+		shell.send({ type: 'leave', project: 'p', dialecteId: 'scl' })
 		await flushMessages()
 		await vi.advanceTimersByTimeAsync(ENGINE_IDLE_CLOSE_MS - 1)
 		await flushMessages()
@@ -528,15 +561,15 @@ describe('the hub serving realms on their control ports', () => {
 		tab.send({ type: 'open', project: 'p', dialecteId: 'scl', dialecteVersion: '1.0.0' })
 		await hostEngine({ host: tab, project: 'p' })
 		await adoptNext({ host: tab })
-		shell.send({ type: 'destroy', project: 'p' })
+		shell.send({ type: 'destroy', project: 'p', dialecteId: 'scl' })
 		const refused = await shell.next('destroy-refused')
 		expect(keyOf(refused.error)).toBe('PROJECT_OPEN_ELSEWHERE')
-		tab.send({ type: 'leave', project: 'p' })
+		tab.send({ type: 'leave', project: 'p', dialecteId: 'scl' })
 		await tab.next('client-gone')
-		shell.send({ type: 'destroy', project: 'p' })
+		shell.send({ type: 'destroy', project: 'p', dialecteId: 'scl' })
 		const granted = await shell.next('destroy-granted')
 		expect(granted.project).toBe('p')
 		await tab.next('release-engine')
-		shell.send({ type: 'destroyed', project: 'p' })
+		shell.send({ type: 'destroyed', project: 'p', dialecteId: 'scl' })
 	})
 })

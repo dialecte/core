@@ -1,3 +1,7 @@
+import { CONTRACT_OTHER_DIALECTE_ID } from '../../contract/store-contract.constants'
+
+import { TEST_DIALECTE } from '@/test/test-dialecte'
+
 /** The channel a runtime test orders its fixture engine workers on. */
 export const RUNTIME_FIXTURE_CHANNEL = 'dialecte::runtime-fixture'
 
@@ -81,3 +85,15 @@ export const DEAF_DESTROY_BUDGET_MS = 1_500
  * adoption (its heartbeat timeout) before the realm gives it up.
  */
 export const SILENT_ENGINE_WAIT_MS = 1_000
+
+/** The dialecte every fixture engine serves (core's test dialecte), as a realm names it to its engine. */
+export const FIXTURE_DIALECTE = {
+	dialecteId: TEST_DIALECTE.id,
+	dialecteVersion: TEST_DIALECTE.version,
+} as const
+
+/** The dialecte the `other-dialecte` fixture engine serves: another id (the contract's, whose legs run it), the same version. */
+export const OTHER_FIXTURE_DIALECTE = {
+	dialecteId: CONTRACT_OTHER_DIALECTE_ID,
+	dialecteVersion: TEST_DIALECTE.version,
+} as const

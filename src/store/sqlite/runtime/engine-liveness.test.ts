@@ -7,6 +7,7 @@ import {
 import { EngineStore } from '../../engine/engine-store'
 import { fixtureUrl, removePoolDirectory, uniqueProject } from './runtime.fixtures'
 import {
+	FIXTURE_DIALECTE,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 } from './runtime.fixtures.constants'
@@ -44,6 +45,7 @@ async function openStore(params: {
 		progressBeatOps,
 	} = params
 	const connector = createSqliteWorkerConnector({
+		...FIXTURE_DIALECTE,
 		name,
 		engineUrl: fixtureUrl({ scenario }),
 		liveness: { heartbeatTimeoutMs, heartbeatIntervalMs: 100 },

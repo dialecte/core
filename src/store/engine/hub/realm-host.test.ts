@@ -11,7 +11,7 @@ import {
 import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
 import { ENGINE_CLOSE_BUDGET_MS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
-import { ENGINE_LOCK_PREFIX } from '../engine.constants'
+import { engineLockNameOf } from '../project-key'
 import { fromThrownData } from '../wire/error-envelope'
 import { createRealmHost } from './realm-host'
 
@@ -147,7 +147,13 @@ describe('a realm hosting engines for the hub', () => {
 		const project = uniqueProject()
 		spawnFor({ reports, project })
 		const opened = await reports.next('engine-opened')
-		expect(opened).toEqual({ type: 'engine-opened', project, generation: 1 })
+		expect(opened).toEqual({
+			type: 'engine-opened',
+			project,
+			dialecteId: TEST_DIALECTE.id,
+			generation: 1,
+			creationId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+		})
 		const port = await adoptClient({ reports, project, clientId: 'tab' })
 		const client = createEngineClient({ port })
 		const documents = await client.api.getDocuments()
@@ -161,6 +167,22 @@ describe('a realm hosting engines for the hub', () => {
 		const failed = await reports.next('engine-open-failed')
 		expect(failed.key).toBeUndefined()
 		expect(keyOf({ error: failed.error })).toBe('PROJECT_ENGINE_UNAVAILABLE')
+	})
+
+	it('a spawner whose address serves another dialecte, or an engine that does not check what it is asked → `engine-open-failed` PROJECT_DIALECTE_MISMATCH, the lock free', async () => {
+		for (const engineUrl of [
+			fixtureUrl({ scenario: 'other-dialecte' }),
+			fixtureUrl({ scenario: 'unchecked-open' }),
+		]) {
+			const reports = hostWith({
+				spawners: [{ ...spawnerOf({ engineUrl }), dialecteId: 'core/elsewhere' }],
+			})
+			const project = uniqueProject()
+			spawnFor({ reports, project, dialecteId: 'core/elsewhere' })
+			const failed = await reports.next('engine-open-failed')
+			expect(failed.key, engineUrl).toBe('PROJECT_DIALECTE_MISMATCH')
+			await lockFreeWithin({ project, withinMs: ENGINE_CLOSE_BUDGET_MS + 3_000 })
+		}
 	})
 
 	it('an engine of another wire → `engine-open-failed` STORE_PROTOCOL_MISMATCH, its worker ended: the project’s lock free', async () => {
@@ -179,12 +201,15 @@ describe('a realm hosting engines for the hub', () => {
 		const project = uniqueProject()
 		let releaseHeld: () => void = function releaseNothing() {}
 		await new Promise<void>(function holdLock(held) {
-			void navigator.locks.request(`${ENGINE_LOCK_PREFIX}${project}`, function holdUntilReleased() {
-				held()
-				return new Promise<void>(function waitForRelease(release) {
-					releaseHeld = release
-				})
-			})
+			void navigator.locks.request(
+				engineLockNameOf({ dialecteId: TEST_DIALECTE.id, project: project }),
+				function holdUntilReleased() {
+					held()
+					return new Promise<void>(function waitForRelease(release) {
+						releaseHeld = release
+					})
+				},
+			)
 		})
 		let opened = false
 		void reports.next('engine-opened').then(function markOpened() {
@@ -194,10 +219,14 @@ describe('a realm hosting engines for the hub', () => {
 		await pause({ ms: 500 })
 		expect(opened).toBe(false)
 		releaseHeld()
+		// the open takes the lock let go: within the engine's own budget, however loaded the machine
 		await expect
-			.poll(function isOpened() {
-				return opened
-			})
+			.poll(
+				function isOpened() {
+					return opened
+				},
+				{ timeout: OPEN_BUDGET_MS, interval: 50 },
+			)
 			.toBe(true)
 	})
 
@@ -213,7 +242,12 @@ describe('a realm hosting engines for the hub', () => {
 		orders.postMessage({ type: 'end' })
 		orders.close()
 		const ended = await reports.next('engine-ended')
-		expect(ended).toEqual({ type: 'engine-ended', project, generation: 1 })
+		expect(ended).toEqual({
+			type: 'engine-ended',
+			project,
+			dialecteId: TEST_DIALECTE.id,
+			generation: 1,
+		})
 	})
 
 	it('a client to adopt for an engine it no longer hosts → `client-adopt-failed`, the port closed', async () => {
@@ -287,29 +321,20 @@ describe('a realm hosting engines for the hub', () => {
 	})
 
 	it('released → the engine closed, its lock let go; one deaf to close → ended once the close budget has passed', async () => {
-		const reports = hostWith({
-			spawners: [
-				spawnerOf(),
-				{
-					...spawnerOf({ engineUrl: fixtureUrl({ scenario: 'ignore-close' }) }),
-					dialecteId: 'deaf',
-				},
-			],
+		const reports = hostWith({ spawners: [spawnerOf()] })
+		// the deaf engine runs the same dialecte: a host of its own starts it
+		const deafReports = hostWith({
+			spawners: [spawnerOf({ engineUrl: fixtureUrl({ scenario: 'ignore-close' }) })],
 		})
 		const project = uniqueProject()
 		const deafProject = uniqueProject()
 		spawnFor({ reports, project })
 		await reports.next('engine-opened')
-		reports.host.spawn({
-			project: deafProject,
-			dialecteId: 'deaf',
-			generation: 1,
-			openBudgetMs: OPEN_BUDGET_MS,
-		})
-		await reports.next('engine-opened')
+		spawnFor({ reports: deafReports, project: deafProject })
+		await deafReports.next('engine-opened')
 		const releasedAt = performance.now()
 		reports.host.release({ project, generation: 1 })
-		reports.host.release({ project: deafProject, generation: 1 })
+		deafReports.host.release({ project: deafProject, generation: 1 })
 		await lockFreeWithin({ project, withinMs: ENGINE_CLOSE_BUDGET_MS })
 		const deafLockFreeAtOnce = await isEngineLockFree({ project: deafProject })
 		expect(deafLockFreeAtOnce).toBe(false)
