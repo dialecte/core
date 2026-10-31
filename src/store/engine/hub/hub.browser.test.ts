@@ -225,6 +225,50 @@ describe('the hub across realms of the page', () => {
 		)
 	})
 
+	it('a change in one realm → told to a realm only listening, and to a child bound through a port, as another’s', async () => {
+		const project = uniqueProject()
+		const host = await realmFrame({ canStartEngines: true })
+		const listening = await realmFrame({ canStartEngines: false })
+		const child = await boundChildFrame({ parent: listening.realm })
+		await listening.realm.listen({ project })
+		await child.realm.listen({ project })
+		await host.realm.registerDocument({ project, id: 'doc-1' })
+		const told = ['init-empty-document doc-1 other']
+		await vi.waitFor(
+			function toldToBoth() {
+				expect(listening.realm.heard({ project })).toEqual(told)
+				expect(child.realm.heard({ project })).toEqual(told)
+			},
+			{ timeout: 10_000, interval: 100 },
+		)
+	})
+
+	it('the host iframe removed, a realm only listening → it reaches the next engine, told to read again; the next change told to it', async () => {
+		const project = uniqueProject()
+		const host = await realmFrame({ canStartEngines: true })
+		const listening = await realmFrame({ canStartEngines: true })
+		const writer = await realmFrame({ canStartEngines: false })
+		await host.realm.registerDocument({ project, id: 'doc-1' })
+		await listening.realm.listen({ project })
+		host.frame.remove()
+		await vi.waitFor(
+			function toldToReadAgain() {
+				expect(listening.realm.heard({ project })).toEqual(['resync'])
+			},
+			{ timeout: 10_000, interval: 100 },
+		)
+		await writer.realm.registerDocument({ project, id: 'doc-2' })
+		await vi.waitFor(
+			function toldTheChange() {
+				expect(listening.realm.heard({ project })).toEqual([
+					'resync',
+					'init-empty-document doc-2 other',
+				])
+			},
+			{ timeout: 10_000, interval: 100 },
+		)
+	})
+
 	it('a realm iframe reloaded → it joins again under a new realm id', async () => {
 		const { frame, realm } = await realmFrame({ canStartEngines: true })
 		const before = realm.realmId()

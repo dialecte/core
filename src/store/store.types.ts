@@ -1,6 +1,6 @@
 import type { Diagnostic } from '@/diagnostics'
 import type { PerfSnapshot } from '@/perf'
-import type { DocumentRecord, DocumentUpdates } from '@/project/types'
+import type { DocumentRecord, DocumentUpdates, ProjectChannelMessage } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, ChunkOptions, RecordPatch } from '@/types'
 
 /**
@@ -91,6 +91,19 @@ export interface Store {
 	 * next operation.
 	 */
 	destroy(): Promise<void>
+
+	// --- Change announcement ---
+
+	/**
+	 * Tell `listener` every change of the project, made by this connection or another one, in this page or
+	 * another tab: a store several connections share announces their changes itself (a project on it posts what the
+	 * store tells, nothing else). A call that changed nothing announces nothing. The change a call of this connection
+	 * made is told before that call settles - a store that implements this must keep that order. `resync`: changes
+	 * may have been missed (the connection reached another engine): read the project again. A closed store is told
+	 * nothing until opened again. Answers the unsubscribe. A store without it (IndexedDB, a custom one) leaves the
+	 * announcing to the project's BroadcastChannel.
+	 */
+	subscribe?(listener: (notice: StoreNotice) => void): () => void
 
 	// --- Cross-realm reconciliation ---
 
@@ -456,3 +469,12 @@ export type ExportSource = Pick<
 > & {
 	getExportVersion(params: { documentId: string }): Promise<number | undefined>
 }
+
+/** A change of the project, told to a connection: the project event, and whether this connection made it. */
+export type StoreChange = { type: 'change'; message: ProjectChannelMessage; own: boolean }
+
+/** Changes may have been missed (the connection reached another engine): read the project again. */
+export type StoreResync = { type: 'resync' }
+
+/** What a store that announces tells its connections. */
+export type StoreNotice = StoreChange | StoreResync

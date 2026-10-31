@@ -10,12 +10,13 @@ import * as Comlink from 'comlink'
 import { createDialecteError } from '@/errors'
 
 import type { EngineApi } from '../engine.types'
-import type { ProgressSignal } from '../host/host.types'
+import type { EngineEventSignal, ProgressSignal } from '../host/host.types'
 import type { EngineWire, WireMemberSpec } from '../wire/wire.types'
 import type {
 	CallInFlight,
 	EngineClient,
 	EngineLostReason,
+	EventListeners,
 	ProgressListeners,
 } from './client.types'
 import type { WriteOutcome } from '@/store/store.types'
@@ -37,6 +38,7 @@ export function createEngineClient(params: {
 	const remote = Comlink.wrap<EngineWire>(port)
 	const inFlight = new Set<CallInFlight>()
 	const listeners = createProgressListeners({ port })
+	const events = createEventListeners({ port })
 	/** Writes refused lost whose engine may still apply them: their answer has not come. */
 	const unanswered = new Set<string>()
 	const watch = watchHeartbeat({
@@ -74,8 +76,12 @@ export function createEngineClient(params: {
 			})
 	}
 
-	function call(callParams: { member: keyof EngineApi; args: unknown[] }): Promise<unknown> {
-		const { member, args } = callParams
+	function call(callParams: {
+		member: keyof EngineApi
+		args: unknown[]
+		connectionId: string | undefined
+	}): Promise<unknown> {
+		const { member, args, connectionId } = callParams
 		const spec: WireMemberSpec = ENGINE_WIRE_MEMBERS[member]
 		const listener = spec.listener === undefined ? undefined : args[spec.listener]
 		const given = spec.listener === undefined ? args : args.slice(0, spec.listener)
@@ -95,38 +101,56 @@ export function createEngineClient(params: {
 			// a call starting while none waited: the engine's silence counts from now
 			if (inFlight.size === 0) watch.restart()
 			inFlight.add(entry)
-			remote.call({ member, args: wire.args, standIns: wire.standIns, progressId }).then(
-				function answered(answer) {
-					// every tick of the call came before its answer, on this port: the listener is done
-					listeners.remove({ progressId })
-					inFlight.delete(entry)
-					if (writeId !== undefined) unanswered.delete(writeId)
-					if (entry.lost) return
-					if (answer.ok) resolve(answer.value)
-					else reject(fromThrownData({ data: answer.thrown }))
-				},
-				function notSent(thrown: unknown) {
-					listeners.remove({ progressId })
-					inFlight.delete(entry)
-					if (!entry.lost) reject(thrown)
-				},
-			)
+			remote
+				.call({
+					member,
+					args: wire.args,
+					standIns: wire.standIns,
+					progressId,
+					...(connectionId !== undefined && { connectionId }),
+				})
+				.then(
+					function answered(answer) {
+						// every tick of the call came before its answer, on this port: the listener is done
+						listeners.remove({ progressId })
+						inFlight.delete(entry)
+						if (writeId !== undefined) unanswered.delete(writeId)
+						if (entry.lost) return
+						if (answer.ok) resolve(answer.value)
+						else reject(fromThrownData({ data: answer.thrown }))
+					},
+					function notSent(thrown: unknown) {
+						listeners.remove({ progressId })
+						inFlight.delete(entry)
+						if (!entry.lost) reject(thrown)
+					},
+				)
 		})
 	}
 
-	const api = Object.fromEntries(
-		(Object.keys(ENGINE_WIRE_MEMBERS) as (keyof EngineApi)[]).map(function memberOf(member) {
-			return [
-				member,
-				function callMember(...args: unknown[]) {
-					return call({ member, args })
-				},
-			]
-		}),
-	) as unknown as EngineApi
+	/** The engine's members as a plain object, each call made for `connectionId` (the port's own client when none). */
+	function apiFor(params: { connectionId: string | undefined }): EngineApi {
+		const { connectionId } = params
+		return Object.fromEntries(
+			(Object.keys(ENGINE_WIRE_MEMBERS) as (keyof EngineApi)[]).map(function memberOf(member) {
+				return [
+					member,
+					function callMember(...args: unknown[]) {
+						return call({ member, args, connectionId })
+					},
+				]
+			}),
+		) as unknown as EngineApi
+	}
 
 	return {
-		api,
+		api: apiFor({ connectionId: undefined }),
+		connection: function connectionApi({ connectionId }) {
+			return apiFor({ connectionId })
+		},
+		onEvent: function listenForEvents(listener) {
+			return events.add({ listener })
+		},
 		lose,
 		/**
 		 * The port released (the engine side forgets it when told the client is gone): a call still
@@ -135,6 +159,7 @@ export function createEngineClient(params: {
 		close: function closeClient({ storeName }) {
 			watch.stop()
 			listeners.stop()
+			events.stop()
 			for (const entry of inFlight) {
 				entry.lost = true
 				entry.reject(
@@ -191,6 +216,42 @@ function createProgressListeners(params: { port: MessagePort }): ProgressListene
 }
 
 function ignoreListenerFailure(): void {}
+
+/**
+ * The listeners of the changes the engine announces on the port, each told every one in the port's order (a change a
+ * call made before its answer); a listener that throws stops no other.
+ */
+function createEventListeners(params: { port: MessagePort }): EventListeners {
+	const { port } = params
+	const listeners = new Set<(signal: EngineEventSignal) => void>()
+	function hear(event: MessageEvent<EngineEventSignal | undefined>): void {
+		const signal = event.data
+		if (signal?.type !== ENGINE_SIGNAL.event) return
+		for (const listener of Array.from(listeners)) {
+			try {
+				listener(signal)
+			} catch {
+				// a listener's own failure: the others are told all the same
+			}
+		}
+	}
+	port.addEventListener('message', hear)
+	// a port delivers nothing until started, and Comlink starts it only at a first call: a client that only listens
+	// (a store reaching its next engine with no call of its own) hears every change all the same
+	port.start()
+	return {
+		add: function addListener({ listener }) {
+			listeners.add(listener)
+			return function removeListener() {
+				listeners.delete(listener)
+			}
+		},
+		stop: function stopHearing() {
+			listeners.clear()
+			port.removeEventListener('message', hear)
+		},
+	}
+}
 
 /** A call in flight refused: its engine is lost; a write's id kept to say it may still be running. */
 function refuseLost(params: {

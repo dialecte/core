@@ -8,6 +8,7 @@ import { adoptHubConnection, openHubConnection } from './hub-client'
 import { toDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test'
 
+import type { StoreNotice } from '../../store.types'
 import type { HubConnection } from './hub-client.types'
 import type { BootRealmParams, BrowserRealm, HubPortMessage } from './hub.browser.fixtures.types'
 
@@ -39,6 +40,8 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 	if (!joined) throw new Error('the realm found no hub')
 	const connection: HubConnection = joined
 	const stores = new Map<string, Promise<EngineStore>>()
+	/** What each project's store told since the case listened to it. */
+	const heard = new Map<string, string[]>()
 
 	function storeOf(params: { project: string }): Promise<EngineStore> {
 		const { project } = params
@@ -135,6 +138,17 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 				child.postMessage(message, '*', [handle.port])
 			})
 		},
+		listen: async function listenTo({ project }) {
+			const store = await storeOf({ project })
+			const told: string[] = []
+			heard.set(project, told)
+			store.subscribe(function keep(notice) {
+				told.push(describeNotice({ notice }))
+			})
+		},
+		heard: function heardOf({ project }) {
+			return [...(heard.get(project) ?? [])]
+		},
 		closeStore: function closeStoreOf({ project }) {
 			void stores.get(project)?.then(function closeIt(store) {
 				store.close()
@@ -195,3 +209,11 @@ function handedPorts(): Promise<MessagePort> {
 }
 
 function ignoreProgress(): void {}
+
+/** A notice as a case reads it: `resync`, or `<type> <document> own|other`. */
+function describeNotice(params: { notice: StoreNotice }): string {
+	const { notice } = params
+	if (notice.type === 'resync') return 'resync'
+	const documentId = 'documentId' in notice.message ? notice.message.documentId : '-'
+	return `${notice.message.type} ${documentId} ${notice.own ? 'own' : 'other'}`
+}

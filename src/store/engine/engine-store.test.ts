@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
+import type { StoreNotice } from '../store.types'
 import type { EngineLostReason } from './client/client.types'
 import type {
 	CallLog,
@@ -26,7 +27,7 @@ import type {
 	MemberActs,
 	StoreState,
 } from './engine-store.fixtures.types'
-import type { EngineConnector } from './engine-store.types'
+import type { EngineConnector, LinkNotice } from './engine-store.types'
 import type { EngineApi } from './engine.types'
 import type { WireMemberSpec } from './wire/wire.types'
 
@@ -123,6 +124,8 @@ function losingConnector(params: {
 			const link = await inner.connect()
 			return {
 				close: link.close,
+				connectionId: link.connectionId,
+				onNotice: link.onNotice,
 				engine: async function losingEngine() {
 					const engine = await link.engine()
 					engines += 1
@@ -393,6 +396,8 @@ function gatedConnector(params: { destroy: GatedDestroy }): GatedConnector {
 				openLinks += 1
 				let closed = false
 				return {
+					connectionId: 'held',
+					onNotice: listenToNothing,
 					engine: async function noEngine() {
 						if (closed)
 							throw createDialecteError('STORE_CLOSED', { detail: 'the link was released' })
@@ -442,6 +447,125 @@ function gatedConnector(params: { destroy: GatedDestroy }): GatedConnector {
 		},
 	}
 }
+
+describe('EngineStore, the changes it tells', () => {
+	/** A link whose engine refuses every commit lost (its writeId on the refusal) and whose notices the case sends. */
+	function lostCommitConnector(): {
+		connector: EngineConnector
+		tell: (notice: LinkNotice) => void
+	} {
+		let told: (notice: LinkNotice) => void = function nobody() {}
+		const connector: EngineConnector = {
+			connect: async function connectLosing() {
+				return {
+					connectionId: 'own-connection',
+					onNotice: function listen(listener) {
+						told = listener
+						return function stopListening() {}
+					},
+					engine: async function losingEngine() {
+						return {
+							commit: async function lose(params: { writeId: string }) {
+								throw createDialecteError('STORE_ENGINE_LOST', {
+									detail: 'lost while it waited',
+									meta: { reason: 'no-heartbeat', writeId: params.writeId },
+								})
+							},
+						} as unknown as EngineApi
+					},
+					close: async function release() {},
+				}
+			},
+			destroy: async function destroyNothing() {},
+		}
+		return {
+			connector,
+			tell: function tellStore(notice) {
+				told(notice)
+			},
+		}
+	}
+
+	function commitEvent(params: { writeId: string; connectionId: string }): LinkNotice {
+		return {
+			type: 'event',
+			signal: {
+				type: 'event',
+				message: { type: 'commit', documentId: 'doc-1', timestamp: 1 },
+				...params,
+			},
+		}
+	}
+
+	it('its own commit refused lost, then told landed → told as another connection’s (its caller saw it fail); its other own changes as its own', async () => {
+		const { connector, tell } = lostCommitConnector()
+		const store = new EngineStore({ name: `told-${crypto.randomUUID()}`, connector })
+		const notices: StoreNotice[] = []
+		store.subscribe(function keep(notice) {
+			notices.push(notice)
+		})
+		await store.open()
+		await expectRejectsWith({
+			action: store.commit({
+				documentId: 'doc-1',
+				writeId: 'w-lost',
+				creates: [],
+				updates: [],
+				deletes: [],
+				onProgress: function ignoreProgress() {},
+			}),
+			key: 'STORE_ENGINE_LOST',
+		})
+		tell(commitEvent({ writeId: 'w-lost', connectionId: 'own-connection' }))
+		// told as another's once: the same id again is its own
+		tell(commitEvent({ writeId: 'w-lost', connectionId: 'own-connection' }))
+		tell(commitEvent({ writeId: 'w-kept', connectionId: 'own-connection' }))
+		tell(commitEvent({ writeId: 'w-other', connectionId: 'other-connection' }))
+		tell({ type: 'resync' })
+		expect(
+			notices.map(function shape(notice) {
+				return notice.type === 'resync' ? 'resync' : notice.own
+			}),
+		).toEqual([false, true, true, false, 'resync'])
+		await store.close()
+	})
+
+	it('its last listener gone → it listens to its link no more (a link listened to follows its next engine); a new one → again', async () => {
+		let listening = 0
+		const connector: EngineConnector = {
+			connect: async function connectCounted() {
+				return {
+					connectionId: 'counted',
+					onNotice: function listen() {
+						listening += 1
+						return function stopListening() {
+							listening -= 1
+						}
+					},
+					engine: async function noEngine() {
+						return {} as EngineApi
+					},
+					close: async function release() {},
+				}
+			},
+			destroy: async function destroyNothing() {},
+		}
+		const store = new EngineStore({ name: `listened-${crypto.randomUUID()}`, connector })
+		await store.open()
+		expect(listening).toBe(0)
+		const first = store.subscribe(function first() {})
+		const second = store.subscribe(function second() {})
+		expect(listening).toBe(1)
+		first()
+		expect(listening).toBe(1)
+		second()
+		expect(listening).toBe(0)
+		store.subscribe(function third() {})
+		expect(listening).toBe(1)
+		await store.close()
+		expect(listening).toBe(0)
+	})
+})
 
 describe('EngineStore, a destroy refused', () => {
 	it('its link kept as it was: never released, never made again; the store closed → none left open', async () => {
@@ -514,6 +638,8 @@ describe('EngineStore, closed twice', () => {
 		const connector: EngineConnector = {
 			connect: async function connectHeld() {
 				return {
+					connectionId: 'held',
+					onNotice: listenToNothing,
 					engine: async function noEngine() {
 						return {} as EngineApi
 					},
@@ -545,3 +671,8 @@ describe('EngineStore, closed twice', () => {
 })
 
 function settleNothing(): void {}
+
+/** A link that announces nothing: its unsubscribe does nothing either. */
+function listenToNothing(): () => void {
+	return function stopNothing() {}
+}

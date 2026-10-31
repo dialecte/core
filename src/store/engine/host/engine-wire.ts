@@ -17,8 +17,9 @@ import type { Heartbeat, ProgressSignal, ServedClient, StoreEvents } from './hos
  * Serve one client's port: one member, `call`, every call of the engine through it - a member outside
  * the wire table refused, the values the client sent as stand-ins rebuilt, each progress tick posted on
  * the same port without waiting (a dead port never holds the engine; one port, so every tick reaches
- * the caller before the answer), a success announced on the project's channel, the answer an envelope:
- * what the engine answered, or what it threw as data.
+ * the caller before the answer), a success announced to every client before the answer (tagged with the
+ * connection the call names, else this port's client), the answer an envelope: what the engine answered,
+ * or what it threw as data.
  */
 export function serveClient(params: {
 	port: MessagePort
@@ -90,14 +91,15 @@ async function answerCall(params: {
 		const name = member as keyof EngineApi
 		const run = view[name] as (...given: unknown[]) => Promise<unknown>
 		const value = await run(...args)
-		announceQuietly({ events, member: name, args, value, clientId })
+		const connectionId = request.connectionId ?? clientId
+		announceQuietly({ events, member: name, args, value, connectionId })
 		return { ok: true, value }
 	} catch (thrown) {
 		return { ok: false, thrown: toThrownData({ thrown }) }
 	}
 }
 
-/** A success told on the project's channel; a channel closed meanwhile (the engine closing) tells nothing. */
+/** A success told to the engine's clients; an announcer that fails (the engine closing) tells nothing. */
 function announceQuietly(
 	params: Parameters<StoreEvents['announce']>[0] & { events: StoreEvents },
 ): void {
@@ -105,7 +107,7 @@ function announceQuietly(
 	try {
 		events.announce(announced)
 	} catch {
-		// the channel closed with the engine: no realm needs the news of a call it no longer serves
+		// the engine closing: no client needs the news of a call it no longer serves
 	}
 }
 

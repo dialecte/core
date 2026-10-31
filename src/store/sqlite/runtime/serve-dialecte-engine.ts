@@ -235,7 +235,7 @@ async function openEngine(params: {
 		const made = dialecte.createRuntime({ perf })
 		const runtime = { ...made, hooks: withOpaquePhases({ hooks: made.hooks, heartbeat }) }
 		state.heartbeat = heartbeat
-		state.events = createStoreEvents({ project })
+		state.events = createStoreEvents({ ports: clientPortsOf({ state }) })
 		db = new state.pool!.OpfsSAHPoolDb(POOL_FILE)
 		installProgressBeat({ sqlite3, db, heartbeat, ops: progressBeatOps })
 		state.engine = openSqliteEngine({
@@ -348,4 +348,14 @@ function isControlRequest(request: unknown): request is EngineControlRequest<Sql
 		typeof (request as { type?: unknown }).type === 'string' &&
 		typeof (request as { requestId?: unknown }).requestId === 'number'
 	)
+}
+
+/** The ports of the clients the engine serves now: each change is told on every one. */
+function clientPortsOf(params: { state: EngineRuntimeState }): () => Iterable<MessagePort> {
+	const { state } = params
+	return function servedPorts() {
+		return [...state.clients.values()].map(function portOf(served) {
+			return served.port
+		})
+	}
 }

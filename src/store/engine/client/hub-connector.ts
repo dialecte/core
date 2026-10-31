@@ -3,7 +3,9 @@ import { ENGINE_OPEN_BUDGET_MS } from './client.constants'
 import { destroyFromFreshWorker } from './worker-connector'
 
 import type { EngineConnector, EngineLink } from '../engine-store.types'
+import type { EngineApi } from '../engine.types'
 import type { HubProjectLink } from '../hub/hub-client.types'
+import type { EngineClient } from './client.types'
 import type { HubConnectorParams } from './hub-connector.types'
 
 /** The hub link behind each link a store holds: its own destroy counts the realm's others without it. */
@@ -41,11 +43,19 @@ export function createHubConnector(params: HubConnectorParams): EngineConnector 
 				void link.release()
 				throw thrown
 			}
+			// the realm's one port to the engine serves each of its connections: each call names this one
+			const connectionId = crypto.randomUUID()
+			/** This connection's view of each engine client the realm holds (a new one after a failover). */
+			const views = new WeakMap<EngineClient, EngineApi>()
 			const engineLink: EngineLink = {
 				engine: async function currentEngine() {
 					const client = await link.engine()
-					return client.api
+					const view = views.get(client) ?? client.connection({ connectionId })
+					views.set(client, view)
+					return view
 				},
+				connectionId,
+				onNotice: link.onNotice,
 				close: link.release,
 			}
 			HUB_LINKS.set(engineLink, link)

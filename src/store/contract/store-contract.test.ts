@@ -1,5 +1,6 @@
 import { POOL_ROOT_DIRECTORY } from '../sqlite/runtime/runtime.constants'
 import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../sqlite/runtime/runtime.fixtures.constants'
+import { STORE_ANNOUNCE_CONTRACT } from './store-contract.announce.cases'
 import { STORE_CONTRACT } from './store-contract.cases'
 import { STORE_CONTRACT_DIFFERENCES, STORE_CONTRACT_FEATURES } from './store-contract.constants'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
@@ -169,6 +170,7 @@ function runStoreContract(factory: StoreContractFactory): void {
 
 		for (const [group, cases] of Object.entries({
 			...STORE_CONTRACT,
+			...STORE_ANNOUNCE_CONTRACT,
 			...STORE_EXPORT_CONTRACT,
 			...STORE_PATH_CONTRACT,
 			...STORE_TEXT_CONTRACT,

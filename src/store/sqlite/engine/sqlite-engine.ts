@@ -62,7 +62,12 @@ import { invariant } from '@/utils'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
-import type { EngineBlobMembers, EngineMembers } from '../../engine/engine.types'
+import type {
+	EngineBlobMembers,
+	EngineChangeMember,
+	EngineChangeMembers,
+	EngineMembers,
+} from '../../engine/engine.types'
 import type {
 	EncodedRows,
 	ExportReads,
@@ -172,7 +177,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	/** Set by `close()`: every call refused from then on, an import resumed after it aborted first. */
 	const state = { closed: false, broken: false }
 
-	const blobMembers: EngineBlobMembers = {
+	const blobMembers: Omit<EngineBlobMembers, EngineChangeMember> &
+		Pick<EngineChangeMembers, 'attachBlob' | 'detachBlob' | 'removeBlob'> = {
 		/**
 		 * Refused, nothing written, in the order every store answers in: an owner document not
 		 * registered, then an entry that is not JSON. The bytes are read first, before any statement.
@@ -230,13 +236,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					attached.recordRef === ref.recordRef &&
 					attached.attribute === ref.attribute,
 			)
-			if (held) return
+			if (held) return false
 			writeInTransaction({
 				detail: `Blob "${blobId}" could not be attached`,
 				work: function writeAttached() {
 					writeBlobEntry({ db, entry: { ...entry, attachedTo: [...entry.attachedTo, ref] } })
 				},
 			})
+			return true
 		},
 		/** An unknown blob is refused; every reference to that record of that document is dropped. */
 		detachBlob: async function detachBlob(blobId, ref) {
@@ -246,12 +253,15 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				(attached) =>
 					!(attached.documentId === ref.documentId && attached.recordRef === ref.recordRef),
 			)
+			// a record it is not attached to: nothing to write, nothing to tell
+			if (attachedTo.length === entry.attachedTo.length) return false
 			writeInTransaction({
 				detail: `Blob "${blobId}" could not be detached`,
 				work: function writeDetached() {
 					writeBlobEntry({ db, entry: { ...entry, attachedTo } })
 				},
 			})
+			return true
 		},
 		/** An unknown blob is ignored. */
 		removeBlob: async function removeBlob(blobId) {
@@ -262,13 +272,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					return readBlobEntry({ db, blobId })
 				},
 			})
-			if (!entry) return
+			if (!entry) return false
 			writeInTransaction({
 				detail: `Blob "${blobId}" could not be removed`,
 				work: function deleteEntryAndBytes() {
 					deleteBlob({ db, blobId })
 				},
 			})
+			return true
 		},
 	}
 
@@ -313,16 +324,16 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		},
 		updateDocument: async function updateDocument(documentId, updates) {
 			refuseClosed({ state, name })
-			asStoreFailure({
+			return asStoreFailure({
 				key: 'STORE_COMMIT_FAILED',
 				detail: `Document "${documentId}" could not be updated`,
 				work: function updateInTransaction() {
 					settleImport({ importing })
-					inWriteTransaction({
+					return inWriteTransaction({
 						sqlite3,
 						db,
 						work: function updateRow() {
-							updateDocumentRow({ db, documentId, updates })
+							return updateDocumentRow({ db, documentId, updates })
 						},
 					})
 				},
@@ -335,7 +346,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		 */
 		removeDocument: async function removeDocument(documentId) {
 			refuseClosed({ state, name })
-			await removeDocumentFromFile({ documentId })
+			return removeDocumentFromFile({ documentId })
 		},
 		get: async function get(id, documentId) {
 			refuseClosed({ state, name })
@@ -429,6 +440,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				importing,
 			})
 			noteWrite({ documentId, gained: creates.length - deleted })
+			return creates.length > 0 || updates.length > 0 || deleted > 0
 		},
 		/**
 		 * Refused whole, nothing written and no history entry kept, in the order every store answers in;
@@ -450,11 +462,11 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		},
 		undo: async function undo(documentId) {
 			refuseClosed({ state, name })
-			stepDocumentHistory({ documentId, direction: 'back' })
+			return stepDocumentHistory({ documentId, direction: 'back' })
 		},
 		redo: async function redo(documentId) {
 			refuseClosed({ state, name })
-			stepDocumentHistory({ documentId, direction: 'forward' })
+			return stepDocumentHistory({ documentId, direction: 'forward' })
 		},
 		getHistoryStatus: async function getHistoryStatus(documentId) {
 			refuseClosed({ state, name })
@@ -507,9 +519,11 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	 * of the reclaim is reported as a failed removal of a document that is gone; removing it again is
 	 * harmless (an unknown id is ignored, the free pages reclaimed then).
 	 */
-	async function removeDocumentFromFile(params: { documentId: string }): Promise<void> {
+	/** Whether the document was there to remove. */
+	async function removeDocumentFromFile(params: { documentId: string }): Promise<boolean> {
 		const { documentId } = params
 		const detail = `Document "${documentId}" could not be removed`
+		let removed = false
 		try {
 			asStoreFailure({
 				key: 'STORE_DELETE_FAILED',
@@ -522,7 +536,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 								sqlite3,
 								db,
 								work: function deleteRowAndTable() {
-									deleteDocument({ db, documentId })
+									removed = deleteDocument({ db, documentId })
 								},
 							})
 						},
@@ -542,6 +556,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		} catch (thrown) {
 			throw toStoreFailure({ key: 'STORE_DELETE_FAILED', detail, thrown })
 		}
+		return removed
 	}
 
 	/**
@@ -642,7 +657,11 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	}
 
 	/** An undo or a redo; nothing to do at either end of the history, nor for a document not registered. */
-	function stepDocumentHistory(params: { documentId: string; direction: HistoryDirection }): void {
+	/** A step of the document's history; whether there was one to take. */
+	function stepDocumentHistory(params: {
+		documentId: string
+		direction: HistoryDirection
+	}): boolean {
 		const { documentId, direction } = params
 		const gained = stepHistory({
 			sqlite3,
@@ -653,8 +672,9 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				settleImport({ importing })
 			},
 		})
-		if (gained === undefined) return
+		if (gained === undefined) return false
 		noteWrite({ documentId, gained })
+		return true
 	}
 
 	/**
@@ -722,8 +742,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					signal,
 					file,
 					counts,
-					removeDocument: function removeFailedImport({ documentId }) {
-						return removeDocumentFromFile({ documentId })
+					removeDocument: async function removeFailedImport({ documentId }) {
+						await removeDocumentFromFile({ documentId })
 					},
 					window,
 					windowMs: engineOptions.importWindowMs,

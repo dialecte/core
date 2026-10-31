@@ -19,8 +19,8 @@ import { answeredOrSilent, createEngineControl } from './engine-control'
 import { createDialecteError, toDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
 
-import type { EngineConnector, EngineLink, OwnEngineLink } from '../engine-store.types'
-import type { EngineLockMode } from '../engine.types'
+import type { EngineConnector, EngineLink, LinkNotice, OwnEngineLink } from '../engine-store.types'
+import type { EngineApi, EngineLockMode } from '../engine.types'
 import type {
 	EngineClient,
 	EngineControl,
@@ -67,6 +67,9 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 	const state: WorkerLinkState = {
 		clientId: crypto.randomUUID(),
 		released: false,
+		listeners: new Set(),
+		follow: followNothing,
+		mayFollow: true,
 		adoption: undefined,
 		creationId: undefined,
 		refusal: undefined,
@@ -80,27 +83,49 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		OPEN_LINKS.markClosed({ name: key, connection: state })
 		throw thrown
 	})
-	const link: EngineLink = {
-		engine: async function currentEngine() {
-			if (state.released) throwStoreClosed({ storeName: params.name })
-			const engine = await runningEngine({ connector: params, link: state })
-			if (state.adoption?.generation !== engine.generation) {
-				// the client of an engine gone since is let go: its port, its watch, its page listeners
-				releaseSupersededClient({ adoption: state.adoption, storeName: params.name })
-				state.adoption = {
-					generation: engine.generation,
-					client: adoptClient({
-						name: params.name,
-						dialecteId: params.dialecteId,
-						engine,
-						state,
-						heartbeatTimeoutMs: params.liveness?.heartbeatTimeoutMs,
-						openBudgetMs,
-					}),
-				}
+	/** The engine the connection reaches now, adopted when it is another one than the one it had. */
+	async function reach(): Promise<EngineApi> {
+		if (state.released) throwStoreClosed({ storeName: params.name })
+		const engine = await runningEngine({ connector: params, link: state })
+		if (state.adoption?.generation !== engine.generation) {
+			// the client of an engine gone since is let go: its port, its watch, its page listeners
+			releaseSupersededClient({ adoption: state.adoption, storeName: params.name })
+			// another engine than the one the connection had: what changed between the two was told to no one here
+			const another = state.adoption !== undefined
+			state.adoption = {
+				generation: engine.generation,
+				client: adoptClient({
+					name: params.name,
+					dialecteId: params.dialecteId,
+					engine,
+					state,
+					heartbeatTimeoutMs: params.liveness?.heartbeatTimeoutMs,
+					openBudgetMs,
+				}).then(function listenToEngine(client) {
+					client.onEvent(function tellListeners(signal) {
+						tellLink({ state, notice: { type: 'event', signal } })
+					})
+					if (another) tellLink({ state, notice: { type: 'resync' } })
+					return client
+				}),
 			}
-			const client = await state.adoption.client
-			return client.api
+		}
+		const client = await state.adoption.client
+		return client.api
+	}
+	const link: EngineLink = {
+		engine: function currentEngine() {
+			// a call of the connection's own: once it ended, a lost engine may be followed again
+			state.mayFollow = true
+			return reach()
+		},
+		connectionId: state.clientId,
+		onNotice: function listen(listener) {
+			if (state.released) return followNothing
+			state.listeners.add(listener)
+			return function stopListening() {
+				state.listeners.delete(listener)
+			}
 		},
 		close: function releaseLink() {
 			// closed already: settled with that first close
@@ -108,9 +133,18 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 			return state.releasing
 		},
 	}
+	state.follow = function followNextEngine() {
+		// once per call of its own: an engine that ends at every start is not started again and again for a listener
+		if (state.released || state.listeners.size === 0 || !state.mayFollow) return
+		state.mayFollow = false
+		reach().catch(function notReached() {
+			// no engine now (refused, closed meanwhile): the next call says why
+		})
+	}
 	/** The connection released: counted no more, its engine closed when it was the last one. */
 	async function releaseConnection(): Promise<void> {
 		state.released = true
+		state.listeners.clear()
 		OPEN_LINKS.markClosed({ name: key, connection: state })
 		const engine = ENGINES.get(key)
 		releaseClient({ engine, state, storeName: params.name })
@@ -342,9 +376,24 @@ function loseClientsOf(params: { engine: RealmEngine }): void {
 		if (link.adoption?.generation !== engine.generation) continue
 		link.adoption.client.then(function loseClient(client) {
 			client.lose({ reason: 'host-gone' })
+			// a connection that listens reaches the next engine at once: no call of its own may come to do it
+			queueMicrotask(link.follow)
 		}, ignoreFailedAdoption)
 	}
 }
+
+/** The connection's store told `notice`; a listener that throws stops no other. */
+function tellLink(params: { state: WorkerLinkState; notice: LinkNotice }): void {
+	for (const listener of Array.from(params.state.listeners)) {
+		try {
+			listener(params.notice)
+		} catch {
+			// a listener's own failure: the others are told all the same
+		}
+	}
+}
+
+function followNothing(): void {}
 
 /**
  * A client of its own for the connection: a new port, handed to the engine. An engine silent for the

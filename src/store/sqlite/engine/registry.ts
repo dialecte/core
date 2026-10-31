@@ -1,3 +1,4 @@
+import { sameJsonValue } from '../../same-json-value'
 import { deleteBlobsOf } from './blobs'
 import {
 	DOCUMENT_COLUMN_LIST,
@@ -109,30 +110,43 @@ export function updateDocumentRow(params: {
 	db: Database
 	documentId: string
 	updates: DocumentUpdates
-}): void {
+}): boolean {
 	const { db, documentId } = params
 	const updates = toJsonCopy({ value: params.updates })
 	const held = readDocument({ db, documentId })
-	if (!held) return
+	if (!held) return false
 	const updated = applyDocumentUpdates({ document: held, updates })
 	if (updated.path !== held.path) {
 		assertDocumentPlace({ document: updated, documents: readPlacedDocuments({ db }) })
 	}
+	if (!differs({ held, updated })) return false
 	db.exec({
 		sql: `UPDATE ${TABLE_DOCUMENTS} SET name = ?, metadata = ?, path = ? WHERE id = ?`,
 		bind: [updated.name, metadataColumn({ document: updated }), updated.path ?? null, documentId],
 	})
+	return true
+}
+
+/** Whether an update changes what the registry keeps of a document: its name, its metadata or its path. */
+function differs(params: { held: DocumentRecord; updated: DocumentRecord }): boolean {
+	const { held, updated } = params
+	return (
+		held.name !== updated.name ||
+		held.path !== updated.path ||
+		!sameJsonValue({ first: held.metadata, second: updated.metadata })
+	)
 }
 
 /**
  * A document gone, in the caller's transaction: its record table, its history (its history-rows table
- * and its entries), the blobs it owns, its registry row. An unknown one is ignored.
+ * and its entries), the blobs it owns, its registry row. An unknown one is ignored; whether it was there.
  */
-export function deleteDocument(params: { db: Database; documentId: string }): void {
+export function deleteDocument(params: { db: Database; documentId: string }): boolean {
 	const { db, documentId } = params
 	const seq = findSeq({ db, documentId })
-	if (seq === undefined) return
+	if (seq === undefined) return false
 	purgeDocument({ db, documentId, seq })
+	return true
 }
 
 /** The record table of a registered document; none for a document that is not registered. */

@@ -97,3 +97,6 @@ export const OTHER_FIXTURE_DIALECTE = {
 	dialecteId: CONTRACT_OTHER_DIALECTE_ID,
 	dialecteVersion: TEST_DIALECTE.version,
 } as const
+
+/** How long a change may take to reach another connection on a loaded machine (a port message, a worker's turn). */
+export const CHANGE_TOLD_WITHIN_MS = 5_000

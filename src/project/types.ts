@@ -90,6 +90,8 @@ export type ProjectChannelMessage =
 	| { type: 'init-empty-document'; documentId: string; timestamp: number }
 	| { type: 'document-removed'; documentId: string; timestamp: number }
 	| { type: 'document-imported'; documentId: string; timestamp: number }
+	/** A document's registry entry changed: its name, its path or its metadata. */
+	| { type: 'document-updated'; documentId: string; timestamp: number }
 	| { type: 'blob-added'; blobId: string; documentId: string; timestamp: number }
 	| { type: 'blob-attached'; blobId: string; ref: BlobAttachment; timestamp: number }
 	| {

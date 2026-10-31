@@ -16,6 +16,9 @@ export type {
 	ImportPhase,
 	ImportProgress,
 	ImportTarget,
+	StoreChange,
+	StoreNotice,
+	StoreResync,
 	WriteOutcome,
 } from './store.types'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'

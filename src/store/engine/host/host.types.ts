@@ -10,28 +10,42 @@ export type EngineDialecte = {
 	createRuntime: (params: { perf: boolean }) => StoreRuntime
 }
 
-/** A store event as the engine posts it: a project event, tagged with the client whose call made it. */
-export type StoreEvent = ProjectChannelMessage & { clientId: string }
+/**
+ * A change of the project as the engine posts it on every client's port: the project event, the connection whose
+ * call made it, and that call's write id (a commit's, an import's) - a write its caller saw lost is its own no more.
+ */
+export type EngineEventSignal = {
+	type: 'event'
+	message: ProjectChannelMessage
+	connectionId: string
+	writeId?: string
+}
 
-/** How each member's success is told on the project's channel (its timestamp added when posted). */
+/**
+ * How each member's success is told (its timestamp added when posted): nothing for a member left out, nor when its
+ * answer says it changed nothing (`false`).
+ */
 export type StoreEventOf = Partial<
 	Record<
 		keyof EngineApi,
 		(params: {
 			args: unknown[]
 			value: unknown
-		}) => DistributiveOmit<ProjectChannelMessage, 'timestamp'>
+		}) => DistributiveOmit<ProjectChannelMessage, 'timestamp'> | undefined
 	>
 >
 
-/** The project's channel the engine announces on. */
+/** A member's success as the engine tells it: the call, and the connection it was made for. */
+export type AnnouncedCall = {
+	member: keyof EngineApi
+	args: unknown[]
+	value: unknown
+	connectionId: string
+}
+
+/** How the engine tells its clients each change. */
 export type StoreEvents = {
-	announce: (params: {
-		member: keyof EngineApi
-		args: unknown[]
-		value: unknown
-		clientId: string
-	}) => void
+	announce: (params: AnnouncedCall) => void
 	close: () => void
 }
 

@@ -199,7 +199,7 @@ Backend behaviour:
 `Project.getDocumentStatus` builds on these to report a document's [`live` / `ready`](/api/project#getdocumentstatus) status regardless of cross-realm signal ordering.
 
 ::: warning Custom stores
-`reconcile` and `isDocumentReadable` are **required** members of the `Store` interface. A `{ type: 'custom' }` store must implement both — return a resolved no-op / liveness check when the backend has no cross-realm concern. It also implements `importFile`, `getWriteOutcome` and `exportFile`: see [Import inside the store](#import-inside-the-store) and [Export inside the store](#export-inside-the-store).
+`reconcile` and `isDocumentReadable` are **required** members of the `Store` interface. A `{ type: 'custom' }` store must implement both — return a resolved no-op / liveness check when the backend has no cross-realm concern. It also implements `importFile`, `getWriteOutcome` and `exportFile`: see [Import inside the store](#import-inside-the-store) and [Export inside the store](#export-inside-the-store). A store several connections share may implement the optional `subscribe(listener)`: it tells each connection every change of the project (its own marked `own`, told before the call that made it settles; nothing for a call that changed nothing; `resync` when changes may have been missed); a Project on it then posts only what the store tells.
 :::
 
 ## Further reading

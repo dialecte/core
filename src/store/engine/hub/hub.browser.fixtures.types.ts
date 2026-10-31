@@ -42,6 +42,10 @@ export type BrowserRealm = {
 	lifecycle: (params: { type: PageLifecycleType; persisted?: boolean }) => void
 	/** Each time this realm is welcomed back, a new port made for `child` and posted to it. */
 	rebindOnRejoin: (params: { child: Window }) => void
+	/** The project's store of this realm listened to from now on (`subscribe`), opened on first use. */
+	listen: (params: { project: string }) => Promise<void>
+	/** What the project's store told since `listen`: `resync`, or the change's type, document and whose it was. */
+	heard: (params: { project: string }) => string[]
 	closeStore: (params: { project: string }) => void
 	/** The project destroyed through this realm's store, its store closed first (no other realm may hold it). */
 	destroyProject: (params: { project: string }) => Promise<void>

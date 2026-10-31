@@ -15,10 +15,18 @@ import type {
 	ImportFileParams,
 	ImportFileResult,
 	Store,
+	StoreChange,
+	StoreNotice,
 	WriteOutcome,
 } from '../store.types'
-import type { EngineConnector, EngineLink, EngineStoreParams } from './engine-store.types'
+import type {
+	EngineConnector,
+	EngineLink,
+	EngineStoreParams,
+	LinkNotice,
+} from './engine-store.types'
 import type { EngineApi } from './engine.types'
+import type { EngineEventSignal } from './host/host.types'
 import type { WireMemberSpec } from './wire/wire.types'
 import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
@@ -47,6 +55,17 @@ export class EngineStore implements Store {
 	private linkReleased: Promise<void> = Promise.resolve()
 	/** The operations running: `close()` releases the link, `open()` and `destroy()` go on, once none is left. */
 	private readonly operations = createRunningOperations()
+	/** What `subscribe` was given: told every change of the project, through each link this store makes. */
+	private readonly listeners = new Set<(notice: StoreNotice) => void>()
+	/** The current link's notices let go: called when the link is released, or nobody listens any more. */
+	private stopNotices: () => void = stopNothing
+	/** The link whose notices this store hears now. */
+	private listenedLink: EngineLink | undefined
+	/**
+	 * The writes of this store refused `STORE_ENGINE_LOST`, by id: one that lands later is announced as another
+	 * connection's, so whoever listens folds it in.
+	 */
+	private readonly lostWrites = new Set<string>()
 
 	constructor(params: EngineStoreParams) {
 		refuseUnnamableProject({ project: params.name })
@@ -114,6 +133,38 @@ export class EngineStore implements Store {
 		void this.releaseLink()
 	}
 
+	// --- Change announcement ---
+
+	/**
+	 * Every change of the project, this store's own and its other connections', told once each (its own before the
+	 * call that made it settles); a write of its own that was refused `STORE_ENGINE_LOST` and landed later is told
+	 * as another's. `resync` once the store reached another engine. Kept across `close()` and `open()`.
+	 */
+	subscribe(listener: (notice: StoreNotice) => void): () => void {
+		this.listeners.add(listener)
+		if (this.link) this.listenToLink({ link: this.link })
+		return () => {
+			this.listeners.delete(listener)
+			// a link listened to follows its project's next engine at once: only while someone listens
+			if (this.listeners.size === 0) this.stopListeningToLink()
+		}
+	}
+
+	/** The link's notices told to this store's listeners, once (a link listened to follows its next engine). */
+	private listenToLink(params: { link: EngineLink }): void {
+		const { link } = params
+		if (this.listeners.size === 0 || this.listenedLink === link) return
+		this.stopListeningToLink()
+		this.listenedLink = link
+		this.stopNotices = link.onNotice((notice) => this.tellListeners({ notice, link }))
+	}
+
+	private stopListeningToLink(): void {
+		this.stopNotices()
+		this.stopNotices = stopNothing
+		this.listenedLink = undefined
+	}
+
 	// --- Cross-realm reconciliation ---
 
 	/** Nothing to bring in sync: the engine answers every connection from one state. */
@@ -142,11 +193,11 @@ export class EngineStore implements Store {
 	}
 
 	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
-		return this.call('updateDocument', documentId, updates)
+		await this.call('updateDocument', documentId, updates)
 	}
 
 	async removeDocument(documentId: string): Promise<void> {
-		return this.call('removeDocument', documentId)
+		await this.call('removeDocument', documentId)
 	}
 
 	// --- Record access ---
@@ -244,7 +295,7 @@ export class EngineStore implements Store {
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
-		return this.call('bulkWrite', documentId, ops)
+		await this.call('bulkWrite', documentId, ops)
 	}
 
 	/** The commit runs in the engine; its progress listener stays here, its ticks heard before the answer. */
@@ -270,11 +321,11 @@ export class EngineStore implements Store {
 	// --- History ---
 
 	async undo(documentId: string): Promise<void> {
-		return this.call('undo', documentId)
+		await this.call('undo', documentId)
 	}
 
 	async redo(documentId: string): Promise<void> {
-		return this.call('redo', documentId)
+		await this.call('redo', documentId)
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
@@ -313,15 +364,15 @@ export class EngineStore implements Store {
 	}
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
-		return this.call('attachBlob', blobId, ref)
+		await this.call('attachBlob', blobId, ref)
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
-		return this.call('detachBlob', blobId, ref)
+		await this.call('detachBlob', blobId, ref)
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
-		return this.call('removeBlob', blobId)
+		await this.call('removeBlob', blobId)
 	}
 
 	// --- Private ---
@@ -371,11 +422,35 @@ export class EngineStore implements Store {
 			try {
 				return await run(engine)
 			} catch (thrown) {
+				this.noteLostWrite({ thrown })
 				if (!readRetried || !isHostGone({ thrown })) throw thrown
 				const nextEngine = await this.currentEngine()
 				return run(nextEngine)
 			}
 		})
+	}
+
+	/**
+	 * A change the engine announced, as this store tells it: its own when its link made it - but for a write of its own
+	 * refused lost, told once as another's (its caller saw it fail), its id forgotten then.
+	 */
+	private changeOf(params: { signal: EngineEventSignal; link: EngineLink }): StoreChange {
+		const { signal, link } = params
+		const { writeId } = signal
+		const lost = writeId !== undefined && this.lostWrites.delete(writeId)
+		return {
+			type: 'change',
+			message: signal.message,
+			own: signal.connectionId === link.connectionId && !lost,
+		}
+	}
+
+	/** A write refused `STORE_ENGINE_LOST` (its id on the refusal): its change, if it lands, is told as another's. */
+	private noteLostWrite(params: { thrown: unknown }): void {
+		const error = toDialecteError(params.thrown)
+		const writeId = error?.meta?.writeId
+		if (error?.key === 'STORE_ENGINE_LOST' && typeof writeId === 'string')
+			this.lostWrites.add(writeId)
 	}
 
 	/** Counted while it runs; the last one to end on a closed store releases the link. */
@@ -400,15 +475,32 @@ export class EngineStore implements Store {
 	/** A failed connection is forgotten: the next operation tries again. */
 	private async connectOnce(): Promise<EngineLink> {
 		try {
-			return await this.connector.connect()
+			const link = await this.connector.connect()
+			this.listenToLink({ link })
+			return link
 		} catch (thrown) {
 			this.connecting = undefined
 			throw thrown
 		}
 	}
 
+	/** A link's notice told to every listener; one that throws stops no other. */
+	private tellListeners(params: { notice: LinkNotice; link: EngineLink }): void {
+		const { notice, link } = params
+		const told: StoreNotice =
+			notice.type === 'resync' ? notice : this.changeOf({ signal: notice.signal, link })
+		for (const listener of Array.from(this.listeners)) {
+			try {
+				listener(told)
+			} catch {
+				// a listener's own failure: the others are told all the same
+			}
+		}
+	}
+
 	/** Called with no operation running, so no connection is under way; settled once the link counts no more. */
 	private releaseLink(): Promise<void> {
+		this.stopListeningToLink()
 		// a link released already: a later close waits for that release still
 		if (this.link) this.linkReleased = this.link.close()
 		this.link = undefined
@@ -444,6 +536,7 @@ function isHostGone(params: { thrown: unknown }): boolean {
 	return error?.key === 'STORE_ENGINE_LOST' && error.meta?.reason === 'host-gone'
 }
 
+/** Nothing to stop: no link listened to, no forwarding of an abort. */
 function stopNothing(): void {}
 
 function ignoreAbortFailure(): void {}

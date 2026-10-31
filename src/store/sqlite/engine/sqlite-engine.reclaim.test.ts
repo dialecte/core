@@ -266,7 +266,7 @@ describe('the free pages given back in steps', () => {
 		})
 		await engine.registerDocument(makeDocument())
 		await engine.bulkWrite('doc-1', { creates: bulkyRecords({ count: 60_000 }) })
-		let removing: Promise<void> | undefined
+		let removing: Promise<boolean> | undefined
 		const { record, recordCount } = await engine.importFile(
 			{
 				// ~2.5 MB: the file is read in many chunks, the import waiting between them in its window

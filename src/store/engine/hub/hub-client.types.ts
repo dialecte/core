@@ -1,4 +1,5 @@
 import type { EngineClient } from '../client/client.types'
+import type { LinkNotice } from '../engine-store.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
 import type { HubEngineSpawner, RealmEngineSpawner } from './realm-host.types'
 
@@ -86,6 +87,11 @@ export type HubProjectLink = {
 	/** The project's engine client now: waits for the hub's answer, rejects with its refusal. */
 	engine: () => Promise<EngineClient>
 	/**
+	 * `listener` told every change the project's engine announces to the realm, and `resync` once the realm reached
+	 * another engine of it; until released. Answers the unsubscribe.
+	 */
+	onNotice: (listener: (notice: LinkNotice) => void) => () => void
+	/**
 	 * This connection done with the project; the realm leaves it with its last connection, settled once the hub
 	 * acknowledged the leave - from then on no destroy is refused for this realm (at once when another connection of
 	 * the realm still uses it, or the hub was never asked).
@@ -112,6 +118,10 @@ export type EngineWaiter = {
 /** The realm's link to one project: the connections using it, the engine client now, the calls waiting. */
 export type ProjectEntry = HubProjectParams & {
 	users: number
+	/** What the realm's links of the project listen with: each change of its engine, and each resync. */
+	listeners: Set<(notice: LinkNotice) => void>
+	/** An engine was reached once already: the next one is announced with a resync. */
+	reached: boolean
 	/** The hub was asked for the project and has not refused it since. */
 	asked: boolean
 	current: { generation: number; client: EngineClient } | undefined

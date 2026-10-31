@@ -21,6 +21,7 @@ import { createRealmHost } from './realm-host'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 
 import type { EngineLostReason } from '../client/client.types'
+import type { LinkNotice } from '../engine-store.types'
 import type {
 	EngineWaiter,
 	HubConnection,
@@ -795,10 +796,14 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			let released = false
 			/** The release under way or done: a second release settles with it. */
 			let releasing: Promise<void> | undefined
+			/** What this link listens with: let go with it. */
+			const ownListeners = new Set<(notice: LinkNotice) => void>()
 			/** The link counted no more in the realm; the project left with its last link, once the hub said so. */
 			async function releaseOnce(): Promise<void> {
 				released = true
 				countedLinks.delete(link)
+				for (const listener of ownListeners) entry.listeners.delete(listener)
+				ownListeners.clear()
 				entry.users -= 1
 				if (entry.users > 0) return
 				// an entry forgotten meanwhile (refused as away) may have been replaced by a fresh one
@@ -827,6 +832,15 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				release: function releaseLink() {
 					releasing ??= releaseOnce()
 					return releasing
+				},
+				onNotice: function listen(listener) {
+					if (released) return stopNothing
+					ownListeners.add(listener)
+					entry.listeners.add(listener)
+					return function stopListening() {
+						ownListeners.delete(listener)
+						entry.listeners.delete(listener)
+					}
 				},
 			}
 			countedLinks.add(link)
@@ -934,13 +948,21 @@ function refusedLink(params: { error: Error; project: string }): HubProjectLink 
 		release: async function releaseRefused() {
 			released = true
 		},
+		onNotice: function listenToNothing() {
+			return stopNothing
+		},
 	}
 }
+
+/** The unsubscribe of a listener never added: a refused or released link hears nothing. */
+function stopNothing(): void {}
 
 function newEntry(params: HubProjectParams): ProjectEntry {
 	return {
 		...params,
 		users: 0,
+		listeners: new Set(),
+		reached: false,
 		asked: false,
 		current: undefined,
 		waiters: [],
@@ -987,7 +1009,24 @@ function engineReady(params: {
 		heartbeatTimeoutMs: entry.heartbeatTimeoutMs,
 	})
 	entry.current = { generation: message.generation, client }
+	client.onEvent(function tellLinks(signal) {
+		tellEntry({ entry, notice: { type: 'event', signal } })
+	})
+	// another engine than the one the realm had: what changed between the two was told to no one here
+	if (entry.reached) tellEntry({ entry, notice: { type: 'resync' } })
+	entry.reached = true
 	for (const waiter of entry.waiters.splice(0)) waiter.resolve(client)
+}
+
+/** Every link of the project in the realm told `notice`; one that throws stops no other. */
+function tellEntry(params: { entry: ProjectEntry; notice: LinkNotice }): void {
+	for (const listener of Array.from(params.entry.listeners)) {
+		try {
+			listener(params.notice)
+		} catch {
+			// a listener's own failure: the others are told all the same
+		}
+	}
 }
 
 /** The engine's host is gone: the calls in flight refused `host-gone`, the next ones wait for the hub. */

@@ -2,7 +2,9 @@ import { createClosingConnections } from '../closing-connections'
 import { projectKeyOf } from '../engine/project-key'
 import { createOpenConnections } from '../open-connections'
 
-import type { InMemoryState } from './types'
+import type { StoreNotice } from '../store.types'
+import type { InMemoryChange, InMemoryListener, InMemoryState } from './types'
+import type { ProjectChannelMessage } from '@/project/types'
 
 /**
  * The state of every in-memory project of this realm, by its key (`inMemoryStateKeyOf`): each instance of a
@@ -16,6 +18,43 @@ export const OPEN_IN_MEMORY_CONNECTIONS = createOpenConnections()
 
 /** The instances of each project (its key) closed while operations of theirs run: a destroy lets those complete first. */
 export const CLOSING_IN_MEMORY_CONNECTIONS = createClosingConnections()
+
+/** The instances of each project (its key) listening to its changes: each change told to every one. */
+const LISTENERS = new Map<string, Set<InMemoryListener>>()
+
+/** `listener` of the project (its key) told its changes, as `connection`; answers the unsubscribe. */
+export function listenToInMemoryProject(params: {
+	key: string
+	connection: object
+	listener: (notice: StoreNotice) => void
+}): () => void {
+	const { key, connection, listener } = params
+	const listening = LISTENERS.get(key) ?? new Set<InMemoryListener>()
+	LISTENERS.set(key, listening)
+	const entry: InMemoryListener = { connection, listener }
+	listening.add(entry)
+	return function stopListening() {
+		listening.delete(entry)
+		if (listening.size === 0 && LISTENERS.get(key) === listening) LISTENERS.delete(key)
+	}
+}
+
+/** A change of the project (its key) told to every instance listening, `own` to the one that made it. */
+export function announceInMemoryChange(params: {
+	key: string
+	connection: object
+	change: InMemoryChange
+}): void {
+	const { key, connection, change } = params
+	const message = { ...change, timestamp: Date.now() } as ProjectChannelMessage
+	for (const entry of Array.from(LISTENERS.get(key) ?? [])) {
+		try {
+			entry.listener({ type: 'change', message, own: entry.connection === connection })
+		} catch {
+			// a listener's own failure: the others are told all the same
+		}
+	}
+}
 
 /**
  * Where a project's in-memory state is kept: its dialecte and its name (`projectKeyOf`), or its name alone,

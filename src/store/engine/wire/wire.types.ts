@@ -103,6 +103,11 @@ export type WireRequest = {
 	 * port under it (one port: every tick reaches the caller before the answer). None, no tick.
 	 */
 	progressId?: number
+	/**
+	 * The connection the call is made for, when the client's port serves several (a page's port to a project through
+	 * the hub): the change it makes is told tagged with it. None: the port's own client.
+	 */
+	connectionId?: string
 }
 
 /** What the engine answers a call: its value, or what it threw as data. */
