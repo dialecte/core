@@ -107,7 +107,7 @@ const result = await runImport(
 )
 ```
 
-`perf` (optional, `storePerf` above) is the `Perf` the import's stages are timed on, for a store whose target times stages of its own on it too (the SQLite project store's `import::encode`, `import::commit`, `import::index`); without it the import makes one from `runtime.perf`, and the result carries the snapshot when `runtime.perf` is on.
+`perf` (optional, `storePerf` above) is the `Perf` the import's stages are timed on, for a store whose target times stages of its own on it too (the SQLite engine's `import::encode`, `import::commit`, `import::index`); without it the import makes one from `runtime.perf`, and the result carries the snapshot when `runtime.perf` is on.
 
 `store` is an `ImportTarget`: the reads and writes the import needs (`registerDocument`, `getDocument`, `removeDocument`, `bulkWrite` for the file's records), `writeSession(documentId, ops)` for the session's writes once every record of the file is stored (checked as `bulkWrite` checks them: a create of an id the file gave is refused `STORE_DUPLICATE_ID` as one the document holds - a store keeping no list of the ids its import made looks them up there) and `markReady(documentId)`, the one way a document becomes ready - once every record and write of its session is stored; refused `DOCUMENT_NOT_REGISTERED` when the document is no longer there `importing` (removed meanwhile, or another one registered since under its id). `updateDocument` takes no `status`, so a `Store` is not a target: a store passes its own, as `InMemoryStore` and the local store do, unguarded so its own import is not refused by a `close()` while it runs (an operation already running completes).
 
@@ -175,6 +175,8 @@ Every store keeps a document's path as one fact with its name (`DocumentRecord.p
 - `pathHolderOf({ path, documents, documentId? })` - the id of the document whose place clashes with `path`, `documentId` excepted.
 
 ## The SQLite project store's page cache
+
+No `storage` option of `Project` reaches the SQLite project store in this release: what this page says of it holds for its engine as the library tests it, and for the store once it can be chosen.
 
 The SQLite project store sizes its page cache on the device's memory, as the browser reports it (`navigator.deviceMemory`, in a page and in a worker; a device that does not report it, Firefox for one, is sized as a 4 GiB one): 64 MiB per GiB, held between 64 and 512 MiB. The cache outside imports and the cache of an import follow the same rule. A worker's wasm memory never shrinks, so after a large import (826 MiB measured at 500 MB) the memory is already taken; above 512 MiB nothing is gained, and the SQLite build caps its memory at 2 GiB. Deleting a tenth of a 500 MB document takes about 10 s on a device given 64 MiB (1 GiB reported or less) and about 4.5 s at 512 MiB (8 GiB and more).
 

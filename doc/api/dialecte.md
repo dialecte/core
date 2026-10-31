@@ -96,7 +96,7 @@ The builders it is made of take the declaration too: `createTestRunner({ dialect
 
 ## Views sharing a project: the origin's hub
 
-The origin's hub is a SharedWorker through which every tab, window and iframe of an app will share one engine per project, once the engine is a storage option of `Project` - no store reaches it yet. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already:
+The origin's hub is a SharedWorker through which every tab, window and iframe of an app will share one engine per project, once the engine is a storage option of `Project` - no store reaches it yet. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already (an app cannot build a `spawners` entry yet - the SQLite engine's spawner, its settings and its wasm URL, are not public: `connectHub({ spawners })` below shows the shape it will take):
 
 ```ts
 import { adoptHubPort, connectHub } from '@dialecte/core'

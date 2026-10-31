@@ -20,8 +20,8 @@ export const DEFAULT_ENGINE_OPTIONS: SqliteEngineOptions = {
 	 */
 	importWindowMs: 1000,
 	/**
-	 * Free pages are given back 256 at a time (1 MiB of 4 KiB pages), and the calls waiting run after
-	 * every 50 ms of it: giving back a dead 450 MB import held the engine 6.6 s in one statement.
+	 * Free pages are given back 256 at a time (2 MiB of the file's 8 KiB pages), and the calls waiting run
+	 * after every 50 ms of it: a start that gave back a dead 450 MB import in one go held the engine 6.6 s.
 	 */
 	reclaimSliceMs: 50,
 	reclaimPagesPerStatement: 256,

@@ -26,8 +26,8 @@ export const ERROR_CATALOG = {
 		code: 'D1001',
 		message: 'Failed to open database',
 		explanation: {
-			when: "The project's database could not be opened (the SQLite file or its worker did not start).",
-			fix: 'Check the browser supports the store (OPFS, workers) and that no other tab holds the project; reload, or open the project with another storage.',
+			when: "The project's database could not be opened (the SQLite file or its worker did not start), or the origin's hub could not be joined: its SharedWorker failed to start or was blocked, or a child's port went unanswered past the welcome budget (its page unbound it).",
+			fix: 'Check the browser supports the store (OPFS, workers, SharedWorker for the hub) and that no other tab holds the project; reload, or open the project with another storage. A child view refused so is bound again by its page (`createHubPort`, then `adoptHubPort`).',
 			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
 		},
 	},
@@ -170,7 +170,7 @@ export const ERROR_CATALOG = {
 		code: 'D1017',
 		message: 'Not enough storage left for the project',
 		explanation: {
-			when: "The origin has too little storage left: for a new project's files, for an import (eight times the file's size and at least 1 MiB, less the project's free pages), or the file system refused a write for want of space; nothing of the call applied.",
+			when: "The origin has too little storage left: for a new project's files, for an import (eight times the file's size and at least 1 MiB, less the project's free pages), or the file system refused a write for want of space; nothing of the call applied. The SQLite project store answers it; the local (IndexedDB) store answers the failing write's own error (`STORE_COMMIT_FAILED`, `STORE_BULK_ADD_FAILED`, `STORE_BULK_UPDATE_FAILED`; an import `IMPORT_FAILED`) until it moves to SQLite; the in-memory store has no limit.",
 			fix: 'Free storage for the origin (delete projects no longer needed) or import a smaller file, then try again; `meta.needed` and `meta.available` give the sizes when known.',
 			docs: `${CORE_DOCS_URL}/api/project#import`,
 		},
@@ -509,8 +509,8 @@ export const ERROR_CATALOG = {
 		code: 'D7006',
 		message: 'No view can start the project engine',
 		explanation: {
-			when: "No open view of the app can start the project's engine worker.",
-			fix: "Keep one tab of the app open and reload; check the dialecte's `engineUrl` points at its worker.",
+			when: "The project's engine could not be started or reached: its worker failed to load or never answered its open within the open budget; through the origin's hub, no open view offers an engine for the project's dialecte, or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it.",
+			fix: "Keep one tab of the app open and reload; check the dialecte's `engineUrl` points at its worker and that it loads (the console names a script that fails); a destroy refused so is asked again once the project is closed elsewhere.",
 			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
 		},
 	},
