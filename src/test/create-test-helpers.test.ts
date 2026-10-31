@@ -1,6 +1,7 @@
 import { TEST_DIALECTE_CONFIG } from './config'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from './constant'
 import { createTestHelpers } from './create-test-helpers'
+import { testStoreFor } from './test-storage'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -116,6 +117,22 @@ describe('createTestHelpers', () => {
 			expect(storedDocuments.map((document) => document.id)).toEqual([source.documentId])
 		})
 	}
+
+	it('createTestProject on the helpers’ sqlite storage → the project in the SQLite engine of this process: a store of it there reads its document', async () => {
+		const bound = createTestHelpers({ dialecte, storage: { type: 'sqlite' } })
+		const { project, source } = await bound.createTestProject({ sourceXml: VALID_XML })
+		projects.push(project)
+		const reader = await testStoreFor({
+			storage: { type: 'sqlite' },
+			name: project.name,
+			dialecte,
+		})
+		if (reader.type !== 'custom') throw new Error('not a store')
+		await reader.store.open()
+		const storedDocuments = await reader.store.getDocuments()
+		await reader.store.close()
+		expect(storedDocuments.map((document) => document.id)).toEqual([source.documentId])
+	})
 
 	const refusedFixtures: Record<string, { check: () => unknown; expected: RegExp }> = {
 		'createTestProject, the source': {

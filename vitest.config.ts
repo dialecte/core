@@ -7,6 +7,7 @@ import {
 	BENCH_TEST_PATTERN,
 	BROWSER_GROUP_ORDER,
 	BROWSER_ONLY_TEST_FILES,
+	DOCUMENT_SUITES_PATTERN,
 	NODE_BENCH_TEST_FILES,
 	NODE_ONLY_TEST_FILES,
 	NODE_STORE_CONTRACT_TEST_FILES,
@@ -160,6 +161,21 @@ export default mergeConfig(
 							...nodeStoreContractPaths,
 						],
 						setupFiles: ['src/test/in-memory-storage.setup.ts'],
+						root,
+					},
+				},
+				{
+					// the Document and Query suites again, in node on the SQLite engine (run in process): the test
+					// helpers' default set by the setup file, as a dialecte's runner chooses it
+					resolve: viteConfig.resolve,
+					plugins: [],
+					test: {
+						name: 'node-sqlite',
+						environment: 'node',
+						isolate: false,
+						include: [DOCUMENT_SUITES_PATTERN],
+						exclude: [...configDefaults.exclude, BENCH_TEST_PATTERN, ...browserOnlyPaths],
+						setupFiles: ['src/test/sqlite-storage.setup.ts'],
 						root,
 					},
 				},

@@ -100,6 +100,68 @@ describe('createTestContext', () => {
 		expect(records).toHaveLength(2)
 	})
 
+	it('a context on sqlite by its project’s name and dialecte → that project’s records, read through the engine', async () => {
+		const { project, source } = await createTestProject({
+			sourceXml: SIMPLE_XML,
+			storage: { type: 'sqlite' },
+		})
+		projects.push(project)
+		const context = await createTestContext({
+			databaseName: project.name,
+			dialecteId: project.dialecteId,
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+			documentId: source.documentId,
+			storage: { type: 'sqlite' },
+		})
+		const records = await context.store.getByTagNameInDocument('A', context.documentId)
+		expect(records).toHaveLength(2)
+	})
+
+	it('a context on sqlite opened by its project’s name → that project’s destroy refused until closeTestContexts()', async () => {
+		const { project, source } = await createTestProject({
+			sourceXml: SIMPLE_XML,
+			storage: { type: 'sqlite' },
+		})
+		projects.push(project)
+		await createTestContext({
+			databaseName: project.name,
+			dialecteId: project.dialecteId,
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+			documentId: source.documentId,
+			storage: { type: 'sqlite' },
+		})
+		const refused = await project.destroy().then(
+			function destroyed() {
+				return 'destroyed'
+			},
+			function refusedWith(thrown: unknown) {
+				return toDialecteError(thrown)?.key
+			},
+		)
+		expect(refused).toBe('PROJECT_OPEN_ELSEWHERE')
+		await closeTestContexts()
+		await project.destroy()
+	})
+
+	it('a context on sqlite by a name with no dialecte → ASSERTION_FAILED: the engine holds a dialecte’s project', async () => {
+		const opening = createTestContext({
+			databaseName: `no-dialecte-${crypto.randomUUID()}`,
+			dialecteId: undefined,
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+			documentId: 'any',
+			storage: { type: 'sqlite' },
+		})
+		const key = await opening.then(
+			function opened() {
+				return 'opened'
+			},
+			function refused(thrown: unknown) {
+				return toDialecteError(thrown)?.key
+			},
+		)
+		expect(key).toBe('ASSERTION_FAILED')
+	})
+
 	it('a context opened by its project’s name → that project’s destroy refused until closeTestContexts()', async () => {
 		const { project, source } = await createTestProject({ sourceXml: SIMPLE_XML })
 		projects.push(project)

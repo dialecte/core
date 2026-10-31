@@ -155,6 +155,9 @@ export const NODE_STORE_CONTRACT_TEST_FILES: readonly string[] = [
 	'src/test/create-test-helpers.indexeddb.test.ts',
 ]
 
+/** The Document and Query suites: run again on the SQLite engine (`node-sqlite`), store is a switch. */
+export const DOCUMENT_SUITES_PATTERN = 'src/document/**/*.test.ts'
+
 /** Every unit test file; benches run in their own project. */
 export const UNIT_TEST_PATTERN = 'src/**/*.test.{js,ts,jsx,tsx}'
 

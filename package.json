@@ -52,7 +52,7 @@
 		"doc:preview": "vitepress preview",
 		"//====== TEST ======//": "",
 		"test": "npm run test:node && npm run test:browser",
-		"test:node": "vitest run --project node --project node-indexeddb",
+		"test:node": "vitest run --project node --project node-indexeddb --project node-sqlite",
 		"test:browser": "vitest run --project browser",
 		"test:browser:all": "vitest run --project browser-all",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",

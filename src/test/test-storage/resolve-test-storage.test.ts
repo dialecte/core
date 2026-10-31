@@ -17,6 +17,7 @@ type TestCase = BaseTestCase & {
 const IN_MEMORY: StorageParam = { type: 'inMemory' }
 const READ_ONLY_IN_MEMORY: StorageParam = { type: 'inMemory', writable: false }
 const LOCAL: StorageParam = { type: 'local' }
+const SQLITE: StorageParam = { type: 'sqlite' }
 
 const testCases: Record<string, TestCase> = {
 	'no default, no call storage → the local store, the project default': {
@@ -38,6 +39,16 @@ const testCases: Record<string, TestCase> = {
 		processStorage: IN_MEMORY,
 		callStorage: READ_ONLY_IN_MEMORY,
 		expected: READ_ONLY_IN_MEMORY,
+	},
+	'a sqlite default, no call storage → sqlite (the engine in this process)': {
+		processStorage: SQLITE,
+		callStorage: undefined,
+		expected: SQLITE,
+	},
+	'a sqlite default, a local call storage → the local store': {
+		processStorage: SQLITE,
+		callStorage: LOCAL,
+		expected: LOCAL,
 	},
 	'no default, an in-memory call storage → the call one': {
 		processStorage: undefined,
