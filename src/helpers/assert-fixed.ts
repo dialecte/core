@@ -7,7 +7,7 @@ import type { ResolvableRecord } from '@/utils'
 /**
  * Reject a write whose authored value differs from an attribute's schema `fixed`
  * value (XSD `fixed`), as declared under the record's parent. Runs on the WRITE path
- * only (`addChild`/`ensureChild`/`update`) — never on import, so an existing document
+ * only (`addChild`/`ensureChild`/`deepClone`/`update`) — never on import, so an existing document
  * that already violates a fixed value can still be loaded. Attributes are matched by
  * their canonical stored name (`prefix:local`), so pass the array produced by
  * `toFullAttributeArray`.

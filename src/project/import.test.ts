@@ -5,14 +5,27 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 
 import { createDiagnostic, isKnownDiagnostic } from '@/diagnostics'
 import { createDialecteError, defineErrors } from '@/errors'
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { InMemoryStore } from '@/store/in-memory/in-memory-store'
-import { runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
+import {
+	runTestCases,
+	TEST_DIALECTE_CONFIG,
+	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
+} from '@/test'
 
 import type { StoreRuntime } from './io/store-runtime.types'
 import type { ImportDocumentOptions, ImportedDocument, ImportEntry, StorageParam } from './types'
 import type { Diagnostic, DiagnosticCatalogue } from '@/diagnostics'
+import type { Ref } from '@/document'
 import type { DialecteError } from '@/errors'
-import type { BaseTestCase } from '@/test'
+import type {
+	ActParams,
+	ActResult,
+	BaseTestCase,
+	BaseXmlTestCase,
+	TestDialecteConfig,
+} from '@/test'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 // Through the public Project API on an in-memory store: what `import` and `importFile` return,
@@ -709,4 +722,97 @@ describe('Project - a document given a path', () => {
 			await project.close()
 		}
 	})
+})
+
+describe('import → read → export - an empty attribute value', () => {
+	const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
+	const customId = CUSTOM_RECORD_ID_ATTRIBUTE
+
+	type TestCase = BaseXmlTestCase & {
+		ref:
+			| Ref<TestDialecteConfig, 'BBB_1'>
+			| Ref<TestDialecteConfig, 'AA_1'>
+			| Ref<TestDialecteConfig, 'CC_1'>
+		name: string
+		/** the attribute as stored (`defaults: 'none'`), undefined when not stored */
+		expectedStored: { value: string } | undefined
+		/** `getAttribute` with its default view */
+		expectedRead: string
+		/** `getAttributes` with its default view */
+		expectedAttributes: Record<string, string>
+	}
+
+	const testCases: Record<string, TestCase> = {
+		'empty on an attribute with a default → stored empty, read empty (not the default), exported empty':
+			{
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<B aB="b">
+							<BB_1 aBB_1="bb">
+								<BBB_1 ${customId}="bbb1" aBBB_1="x" bBBB_1="" />
+							</BB_1>
+						</B>
+					</Root>
+				`,
+				ref: { tagName: 'BBB_1', id: 'bbb1' },
+				name: 'bBBB_1',
+				expectedStored: { value: '' },
+				expectedRead: '',
+				expectedAttributes: { aBBB_1: 'x', bBBB_1: '' },
+				expectedQueries: ['//default:BBB_1[@aBBB_1="x"][@bBBB_1=""]'],
+			},
+		'empty on a fixed attribute → stored empty, read empty (not the fixed value), exported empty': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<C aC="c">
+						<CC_1 ${customId}="cc1" aCC_1="" />
+					</C>
+				</Root>
+			`,
+			ref: { tagName: 'CC_1', id: 'cc1' },
+			name: 'aCC_1',
+			expectedStored: { value: '' },
+			expectedRead: '',
+			expectedAttributes: { aCC_1: '' },
+			expectedQueries: ['//default:CC_1[@aCC_1=""]'],
+			unexpectedQueries: ['//default:CC_1[@aCC_1="fixed_val"]'],
+		},
+		'empty on an attribute with no default → dropped on import, absent on export': {
+			sourceXml: /* xml */ `
+				<Root ${ns}>
+					<A aA="a">
+						<AA_1 ${customId}="aa1" aAA_1="x" bAA_1="" />
+					</A>
+				</Root>
+			`,
+			ref: { tagName: 'AA_1', id: 'aa1' },
+			name: 'bAA_1',
+			expectedStored: undefined,
+			expectedRead: '',
+			expectedAttributes: { aAA_1: 'x' },
+			expectedQueries: ['//default:AA_1[@aAA_1="x"]'],
+			unexpectedQueries: ['//default:AA_1[@bAA_1]'],
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+		const { ref, name } = testCase
+		const stored = await source.query.getAttribute(ref, {
+			name: name as 'bBBB_1',
+			defaults: 'none',
+			fullObject: true,
+		})
+		if (testCase.expectedStored === undefined) expect(stored).toBeUndefined()
+		else expect(stored).toMatchObject(testCase.expectedStored)
+		const read = await source.query.getAttribute(ref, { name: name as 'bBBB_1' })
+		expect(read).toBe(testCase.expectedRead)
+		const attributes = await source.query.getAttributes(ref)
+		expect(attributes).toEqual(testCase.expectedAttributes)
+		return {}
+	}
+
+	runTestCases.withExport({ testCases, act })
 })

@@ -52,7 +52,7 @@ const { file, filename } = await project.export({ documentId })
 
 ## Schema-value materialization
 
-The store is **faithful**: `standardizeRecord` canonicalizes attribute names, ordering, and namespaces on import, but it never fills in schema `required` / `fixed` / `default` **values**. An attribute the author omitted stays absent in storage, so `import` → `export` round-trips without injecting attributes that were never written. An attribute supplied with an empty (`''`) or `undefined` value is dropped at this boundary — an empty carries no information over the schema, so it is normalized away rather than stored.
+The store is **faithful**: `standardizeRecord` canonicalizes attribute names, ordering, and namespaces on import, but it never fills in schema `required` / `fixed` / `default` **values**. An attribute the author omitted stays absent in storage, so `import` → `export` round-trips without injecting attributes that were never written. An attribute supplied with an `undefined` or `null` value is dropped at this boundary, and so is an empty (`''`) one when its definition declares neither a `default` nor a `fixed` value — there the empty carries no information over the schema. On an attribute with a `default` or `fixed` value an empty overrides it: it is stored as `''`, read as `''` and exported as `a=""`.
 
 Schema values are resolved only at the edges, from one source of truth ([`resolveSchemaAttributeValue`](/guide/development/utils#resolveschemaattributevalue)):
 

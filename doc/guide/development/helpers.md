@@ -217,7 +217,8 @@ Builds a complete, **canonical** `RawRecord` from a partial input — the single
 
 - standardizes only elements in a **declared namespace** (default or a registered one). An element whose local name matches a schema element but lives in a namespace the config does not declare is treated as foreign and returned **verbatim** — namespace and attributes untouched (see [Element namespaces](#element-namespaces));
 - assigns `crypto.randomUUID()` when no `id` is given, and normalizes attributes to array form with **canonical names** (see [Attribute namespaces](#attribute-namespaces));
-- fills schema attributes in **definition-`sequence` order**, resolving each value as `provided ?? fixed ?? default` (required attributes fall back to `''`);
+- orders schema attributes in **definition-`sequence` order** and never fills in a missing one (schema values are surfaced on read and materialized on export, see [Schema-value materialization](/io/#schema-value-materialization));
+- drops a schema attribute given an `undefined` or `null` value, and one given an empty `''` value when its definition declares neither a `default` nor a `fixed` value; an empty on an attribute with a `default` or `fixed` value overrides it and is kept;
 - drops an unnamespaced attribute the element neither declares nor admits through its attribute wildcard (one admitting no namespace keeps it); keeps namespaced ones, **deterministically ordered** after the schema attributes (`orderAttributesBySequence`);
 - sets the element's namespace, resolved **per parent→child context** (see [Element namespaces](#element-namespaces));
 - runs the `afterStandardizedRecord` hook (if provided), then re-applies canonical ordering so hook additions stay ordered.
