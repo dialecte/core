@@ -3,6 +3,7 @@ import { Project } from './project'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
 import { CHANGE_TOLD_WITHIN_MS } from '@/store/sqlite/runtime/runtime.fixtures.constants'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 import { testStoreFor } from '@/test/test-storage'
@@ -37,6 +38,7 @@ const STORAGES: Record<string, StorageOf> = {
 		return { type: 'local' }
 	},
 	'on SQLite (the engine in this realm)': function sqliteInProcess({ name, dialecteId, hooks }) {
+		withSqliteStorage()
 		return testStoreFor({
 			storage: { type: 'sqlite' },
 			name,

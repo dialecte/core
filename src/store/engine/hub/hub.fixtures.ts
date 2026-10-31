@@ -1,4 +1,4 @@
-import { loadSqliteEngineSettings } from '../../sqlite/adapter/sqlite-engine-settings'
+import { sqliteEngineSettings } from '../../sqlite/adapter/sqlite-engine-settings'
 
 import { onTestFinished } from 'vitest'
 
@@ -45,7 +45,7 @@ export function recordingEngineUrl(): string {
 	return url
 }
 
-/** What the cases' engines open with: the consumer's wasm, as a page loads it. */
-export function loadSettings(): Promise<unknown> {
-	return loadSqliteEngineSettings()
+/** What the cases' engines open with: the consumer's wasm, as a page gives it. */
+export async function loadSettings(): Promise<unknown> {
+	return sqliteEngineSettings()
 }

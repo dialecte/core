@@ -1,3 +1,5 @@
+// SQLite storage, as an app opts into it
+import '@/sqlite'
 import { ENGINE_IDLE_CLOSE_MS } from '../engine/hub/hub.constants'
 import { projectKeyOf } from '../engine/project-key'
 import { listProjects } from './list-projects'

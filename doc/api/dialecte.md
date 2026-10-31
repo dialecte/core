@@ -99,7 +99,7 @@ The builders it is made of take the declaration too: `createTestRunner({ dialect
 The origin's hub is a SharedWorker through which every tab, window and iframe of an app shares one engine per project on `sqlite` storage. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already, offering each dialecte's engine through its project factory's `spawner` (the dialecte's id, its version and its engine worker's URL):
 
 ```ts
-import { adoptHubPort, connectHub } from '@dialecte/core'
+import { adoptHubPort, connectHub } from '@dialecte/core/sqlite'
 
 // a page: joins the hub, offering the engines it can start (their worker of its own origin)
 const realm = await connectHub({ spawners: [scl.spawner, nsd.spawner] })

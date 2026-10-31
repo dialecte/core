@@ -1,5 +1,5 @@
 import { adoptHubConnection, openHubConnection } from './engine/hub/hub-client'
-import { loadSqliteEngineSettings } from './sqlite/adapter/sqlite-engine-settings'
+import { sqliteEngineSettings } from './sqlite/adapter/sqlite-engine-settings'
 
 import type { ConnectHubParams, HubConnection, HubRealm } from './engine/hub/hub-client.types'
 import type { HubEngineSpawner, RealmEngineSpawner } from './engine/hub/realm-host.types'
@@ -22,14 +22,14 @@ export async function connectHub(params: ConnectHubParams = {}): Promise<HubReal
 	return connection && toHubRealm({ connection })
 }
 
-/** A dialecte's spawner as the page runs it: the SQLite engine opened on the consumer's wasm, loaded at spawn. */
+/** A dialecte's spawner as the page runs it: the SQLite engine opened on the consumer's wasm. */
 function withDefaultSettings(spawner: HubEngineSpawner): RealmEngineSpawner {
 	const { dialecteId, dialecteVersion, engineUrl } = spawner
 	return { dialecteId, dialecteVersion, engineUrl, settings: loadDefaultSettings }
 }
 
-function loadDefaultSettings(): Promise<unknown> {
-	return loadSqliteEngineSettings()
+async function loadDefaultSettings(): Promise<unknown> {
+	return sqliteEngineSettings()
 }
 
 /**

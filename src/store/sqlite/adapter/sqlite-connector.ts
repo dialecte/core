@@ -7,7 +7,7 @@ import { createSqliteWorkerConnector } from './sqlite-worker-connector'
 import { throwDialecteError } from '@/errors'
 
 import type { EngineConnector } from '../../engine/engine-store.types'
-import type { SqliteConnectorParams } from '../sqlite-option.types'
+import type { SqliteConnectorParams } from '../../sqlite-storage.types'
 
 /**
  * A project on `sqlite` storage: its engine reached through the origin's hub when the page has one (the store's own

@@ -8,6 +8,7 @@ import { defineDialecte } from '@/dialecte'
 import { toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
 import { findInMemoryState, inMemoryStateKeyOf } from '@/store/in-memory/in-memory-state'
+import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
 
 import type { TestProjectResult } from './create-test-dialecte.types'
 import type { AnyRawRecord } from '@/types'
@@ -101,6 +102,7 @@ describe('createTestContext', () => {
 	})
 
 	it('a context on sqlite by its project’s name and dialecte → that project’s records, read through the engine', async () => {
+		withSqliteStorage()
 		const { project, source } = await createTestProject({
 			sourceXml: SIMPLE_XML,
 			storage: { type: 'sqlite' },
@@ -118,6 +120,7 @@ describe('createTestContext', () => {
 	})
 
 	it('a context on sqlite opened by its project’s name → that project’s destroy refused until closeTestContexts()', async () => {
+		withSqliteStorage()
 		const { project, source } = await createTestProject({
 			sourceXml: SIMPLE_XML,
 			storage: { type: 'sqlite' },
@@ -144,6 +147,7 @@ describe('createTestContext', () => {
 	})
 
 	it('a context on sqlite by a name with no dialecte → ASSERTION_FAILED: the engine holds a dialecte’s project', async () => {
+		withSqliteStorage()
 		const opening = createTestContext({
 			databaseName: `no-dialecte-${crypto.randomUUID()}`,
 			dialecteId: undefined,

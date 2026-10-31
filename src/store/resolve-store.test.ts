@@ -1,7 +1,9 @@
 import { EngineStore } from './engine/engine-store'
 import { resolveStore, sqliteConnectorParamsOf } from './resolve-store'
+import { registerSqliteStorage } from './sqlite-storage'
+import { withoutSqliteStorage, withSqliteStorage } from './sqlite-storage.fixtures'
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, onTestFinished, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { DexieStore, InMemoryStore } from '@/store'
@@ -70,6 +72,7 @@ describe('resolveStore', () => {
 
 	for (const [description, testCase] of Object.entries(testCases)) {
 		it(description, () => {
+			withSqliteStorage()
 			testCase.expected(
 				resolveStore({
 					name: 'resolve-store',
@@ -117,6 +120,7 @@ describe('resolveStore', () => {
 		}
 		for (const [description, { runtime, dialecteId }] of Object.entries(refusals)) {
 			it(description, () => {
+				withSqliteStorage()
 				let thrown: unknown
 				try {
 					resolveStore({ name: 'resolve-store', storage: { type: 'sqlite' }, runtime, dialecteId })
@@ -126,23 +130,62 @@ describe('resolveStore', () => {
 				expect(toDialecteError(thrown)?.key).toBe('PROJECT_ENGINE_NOT_DECLARED')
 			})
 		}
+	})
 
-		it('opened where there is no worker and no private file system (node) → STORE_UNAVAILABLE, nothing started', async () => {
+	describe('the sqlite storage kind, registered by importing @dialecte/core/sqlite', () => {
+		type RegistrationCase = {
+			dialecteId: string | undefined
+			runtime: typeof SQLITE_RUNTIME | typeof RUNTIME
+		}
+		const notImported: Record<string, RegistrationCase> = {
+			'the app never imported @dialecte/core/sqlite → PROJECT_SQLITE_NOT_IMPORTED, the import to add named':
+				{
+					dialecteId: 'core/test',
+					runtime: SQLITE_RUNTIME,
+				},
+			'never imported, a project made by no dialecte → PROJECT_SQLITE_NOT_IMPORTED first: no SQLite is known':
+				{
+					dialecteId: undefined,
+					runtime: RUNTIME,
+				},
+		}
+		for (const [description, { dialecteId, runtime }] of Object.entries(notImported)) {
+			it(description, () => {
+				withoutSqliteStorage()
+				let thrown: unknown
+				try {
+					resolveStore({ name: 'resolve-store', storage: { type: 'sqlite' }, runtime, dialecteId })
+				} catch (error) {
+					thrown = error
+				}
+				const error = toDialecteError(thrown)
+				expect(error?.key).toBe('PROJECT_SQLITE_NOT_IMPORTED')
+				expect(error?.detail).toContain("import '@dialecte/core/sqlite'")
+			})
+		}
+
+		it('registered → the store its storeOf builds, given what the project connects with', () => {
+			const built = { open: vi.fn() } as unknown as Store
+			const storeOf = vi.fn(function builtStore() {
+				return built
+			})
+			onTestFinished(registerSqliteStorage({ storage: { storeOf } }))
 			const store = resolveStore({
-				name: `resolve-store-${crypto.randomUUID()}`,
+				name: 'resolve-store',
 				storage: { type: 'sqlite' },
 				runtime: SQLITE_RUNTIME,
 				dialecteId: 'core/test',
 			})
-			const outcome = await store.open().then(
-				function opened() {
-					return 'opened'
+			expect(store).toBe(built)
+			expect(storeOf).toHaveBeenCalledWith({
+				connector: {
+					name: 'resolve-store',
+					dialecteId: 'core/test',
+					dialecteVersion: SQLITE_RUNTIME.dialecteVersion,
+					engineUrl: SQLITE_RUNTIME.engineUrl,
+					perf: undefined,
 				},
-				function refused(error: unknown) {
-					return toDialecteError(error)?.key
-				},
-			)
-			expect(outcome).toBe('STORE_UNAVAILABLE')
+			})
 		})
 	})
 

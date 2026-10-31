@@ -1,12 +1,10 @@
 import { LAYOUT_VERSION } from './engine/engine.constants'
-import { listProjects, listProjectsIn } from './list-projects'
+import { listProjectsIn } from './list-projects'
 import { blank, head } from './runtime/pool-header.fixtures'
 import { DATA, HEADER_BYTES, MAIN_DB } from './runtime/pool-header.fixtures.constants'
 import { POOL_FILE } from './runtime/runtime.constants'
 
 import { describe, expect, it } from 'vitest'
-
-import { toDialecteError } from '@/errors'
 
 import type { ProjectListing } from './list-projects.types'
 import type { PoolFileHead } from './runtime/runtime.types'
@@ -328,19 +326,5 @@ describe('listProjectsIn', () => {
 			}),
 		})
 		expect(listed).toMatchObject({ bytes: DATA + HEADER_BYTES, lastModified: 5_000 })
-	})
-})
-
-describe('listProjects', () => {
-	it('where the browser gives no private file system (node) → STORE_UNAVAILABLE', async () => {
-		const key = await listProjects().then(
-			function listed() {
-				return 'listed'
-			},
-			function refused(thrown: unknown) {
-				return toDialecteError(thrown)?.key
-			},
-		)
-		expect(key).toBe('STORE_UNAVAILABLE')
 	})
 })

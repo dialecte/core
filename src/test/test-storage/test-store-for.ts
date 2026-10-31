@@ -1,4 +1,5 @@
 import { EngineStore } from '@/store/engine/engine-store'
+import { registeredSqliteStorage } from '@/store/sqlite-storage'
 
 import type { TestStoreDialecte } from './test-storage.types'
 import type { StorageParam } from '@/project'
@@ -7,8 +8,9 @@ import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 /**
  * The storage a test project opens on, from its kind: `sqlite` is the SQLite engine run in this realm (in process,
  * on a file in memory: the test helpers know the dialecte, not its engine worker), the same engine a project on
- * `sqlite` storage reaches in a worker; every other kind as it is. The engine and sqlite-wasm are loaded only for a
- * test on `sqlite`.
+ * `sqlite` storage reaches in a worker; every other kind as it is. The kind exists once `@dialecte/core/sqlite` is
+ * imported (the runner's setup file), as for an app: otherwise refused `PROJECT_SQLITE_NOT_IMPORTED`. The engine and
+ * sqlite-wasm are loaded only for a test on `sqlite`.
  */
 export async function testStoreFor<GenericConfig extends AnyDialecteConfig>(params: {
 	storage: StorageParam
@@ -20,6 +22,7 @@ export async function testStoreFor<GenericConfig extends AnyDialecteConfig>(para
 }): Promise<StorageParam> {
 	const { storage, name, dialecte, perf } = params
 	if (storage.type !== 'sqlite') return storage
+	registeredSqliteStorage({ project: name })
 	const { createInProcessConnector } = await import('@/store/sqlite/adapter/in-process-link')
 	// erased to the config-agnostic shape the engine imports with, at this one boundary
 	const runtime = {

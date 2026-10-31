@@ -53,6 +53,8 @@ export default defineConfig({
 				test: fileURLToPath(new URL('./src/test/index.ts', import.meta.url)),
 				utils: fileURLToPath(new URL('./src/utils/index.ts', import.meta.url)),
 				helpers: fileURLToPath(new URL('./src/helpers/index.ts', import.meta.url)),
+				// SQLite storage, opt-in: its connector, the wasm's URL and the hub reached from here only
+				sqlite: fileURLToPath(new URL('./src/sqlite.ts', import.meta.url)),
 			},
 			name: 'ForgeKitCore',
 			formats: ['es'],

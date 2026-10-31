@@ -26,14 +26,14 @@ Keep the instance before opening it: when `open` is refused, that Project is the
 
 **Constructor - `ProjectParams`**
 
-| Param              | Type                                                     | Description                                                                                                                              |
-| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                                                                                           |
-| `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                                                                                 |
-| `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'sqlite' }` (a dialecte's factory only), `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }` |
-| `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions`                                                                |
-| `hooks`            | `DialecteHooks`                                          | All lifecycle hooks (IO + record) applied to every Document — see [Hooks](/api/hooks)                                                    |
-| `dialecteId`       | `string`                                                 | The project's dialecte (a dialecte's project factory gives it): with the name, which project a store holds; read as `project.dialecteId` |
+| Param              | Type                                                     | Description                                                                                                                                                                      |
+| ------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                                                                                                                                   |
+| `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                                                                                                                         |
+| `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'sqlite' }` (a dialecte's factory only, after `import '@dialecte/core/sqlite'`), `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }` |
+| `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions`                                                                                                        |
+| `hooks`            | `DialecteHooks`                                          | All lifecycle hooks (IO + record) applied to every Document — see [Hooks](/api/hooks)                                                                                            |
+| `dialecteId`       | `string`                                                 | The project's dialecte (a dialecte's project factory gives it): with the name, which project a store holds; read as `project.dialecteId`                                         |
 
 **`project.open(name: string): Promise<this>`**
 
@@ -436,7 +436,10 @@ A project's name and its dialecte's id name what holds it on every store (a SQLi
 
 `{ type: 'sqlite' }` keeps a project in SQLite on the origin's private file system. One engine serves the project to every tab, window and iframe of the app: it runs in a worker started by one view - elected by the origin's hub when the page has one (`connectHub`), else the page itself - and every other view reaches it through a port. `local` stays IndexedDB and the default.
 
+SQLite storage is opt-in: the app imports `@dialecte/core/sqlite` once, in its entry, before it opens a project on it. The import registers the `sqlite` storage kind and gives what only SQLite storage uses: the hub (`connectHub`, `adoptHubPort`) and `listProjects`. An app that never imports it never emits nor downloads the SQLite engine's side, its wasm file or the hub's worker; a project opened (or destroyed by name) on `sqlite` there is refused `PROJECT_SQLITE_NOT_IMPORTED`, the import to add named.
+
 ```ts
+import '@dialecte/core/sqlite'
 import { createSclProject } from '@dialecte/scl'
 
 const project = await createSclProject({ storage: { type: 'sqlite' } }).open('my-project')
@@ -445,14 +448,14 @@ const project = await createSclProject({ storage: { type: 'sqlite' } }).open('my
 - Open it from a dialecte's project factory: the factory knows the dialecte's version and its engine worker. A `Project` made by no factory is refused `PROJECT_ENGINE_NOT_DECLARED` at `open`.
 - A project opened on `sqlite` offers its dialecte's engine to the page's hub as it opens; a page that never calls `connectHub` still works. A project the page runs itself (no hub: no SharedWorker, or a hub that never welcomed the page) is joined there by the page's later projects of the name.
 - Where the browser gives no worker or no private file system (Node, a private Firefox window), `open` is refused `STORE_UNAVAILABLE`.
-- The SQLite side of the page and its wasm file are loaded at the first project opened on `sqlite`: a page on another storage never fetches them. A bundler still emits them, as for any code loaded through `import()`. A page that cannot load them is refused `STORE_CONNECTION_FAILED`.
+- The wasm file is fetched by the engine when it first opens a project, never by the page.
 
 **When the engine is lost.** A call whose engine is lost - its host gone (`meta.reason` `host-gone`), silent too long (`no-heartbeat`), or the view dropped by the hub with the page that bound it (`realm-dropped`: every call, the outcome's ask too, is refused until the page binds the view again) - is refused `STORE_ENGINE_LOST`; a write is never made again on its own. A Document's commit and a Project's import ask what became of them, once, by their id: a commit that landed resolves as committed; otherwise the refusal carries `meta.outcome` - `not-applied` (make it again if the user wants), `running` (a silent engine may still apply it: its change reaches the project when it lands), `unknown` (the outcome could not be asked), or, for an import, `applied` with `meta.documentId` (the document is in the project and broadcast; its diagnostics went with the lost answer, so `import()` gives it as a `failed` entry; no `documentId` when the documents could not be read again either: `getDocuments()` later). The outcome is asked once: asking again later (`running`, `unknown`) is the caller's, by `getWriteOutcome({ writeId })` with `meta.writeId`. A commit that may have landed (`running`, `unknown`) reads its document's history again; a prepared commit refused `not-applied` can be committed again, one whose outcome is not known cannot. An undo, a redo or a removal refused so reads the project's documents and history again before the refusal is thrown. Whatever the store told of the lost write before its engine went is broadcast.
 
 **Listing and deleting projects.** `listProjects({ dialecteId? })` lists the projects on SQLite storage of the origin - every dialecte's, or one's - read from the private file system alone (no engine started, no wasm loaded; a project open in a view is read too), sorted by dialecte and name:
 
 ```ts
-import { listProjects } from '@dialecte/core'
+import { listProjects } from '@dialecte/core/sqlite'
 
 const projects = await listProjects({ dialecteId: createSclProject.dialecte.id })
 // [{ name, dialecteId, state, bytes, lastModified }]

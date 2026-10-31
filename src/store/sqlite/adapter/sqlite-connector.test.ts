@@ -1,3 +1,5 @@
+// SQLite storage, as an app opts into it
+import '@/sqlite'
 import { runsDirectly } from '../../engine/client/worker-connector'
 import { HUB_REGISTRY_KEY } from '../../engine/hub/hub-client.constants'
 import { TEST_ENGINE_URL } from '../runtime/runtime.fixtures'

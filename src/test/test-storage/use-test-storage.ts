@@ -9,7 +9,8 @@ import type { StorageParam } from '@/project'
  * runner's setup file calls it (`useTestStorage({ type: 'inMemory' })` for a node test project); a test
  * file never does. A call's own `storage` (on the helper or on one call) still wins; `undefined` gives
  * the project's own default back (the local store). In the test helpers `{ type: 'sqlite' }` is the SQLite
- * engine run in the test's own process (its file in memory), in node as in a browser.
+ * engine run in the test's own process (its file in memory), in node as in a browser, once the setup file
+ * imports `@dialecte/core/sqlite` (as an app opts into SQLite storage).
  */
 export function useTestStorage(storage: StorageParam | undefined): void {
 	const holder = globalThis as TestStorageHolder

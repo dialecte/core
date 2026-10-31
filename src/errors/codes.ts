@@ -595,6 +595,15 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
 		},
 	},
+	PROJECT_SQLITE_NOT_IMPORTED: {
+		code: 'D7016',
+		message: "SQLite storage needs `import '@dialecte/core/sqlite'`",
+		explanation: {
+			when: "A project was opened (or destroyed by name) on `storage: { type: 'sqlite' }`, or a test asked for the `sqlite` test store, but the app never imported `@dialecte/core/sqlite`: the SQLite storage kind lives behind that entry, so an app that never imports it neither emits nor downloads the SQLite engine, its wasm or the hub. Nothing was opened.",
+			fix: "Add `import '@dialecte/core/sqlite'` once to the app's entry (for tests, to the test runner's setup file), before the first project is opened on SQLite; or open the project on another storage. Imported already? The import registers the kind for every copy of @dialecte/core of the same SQLite storage version in the realm: a copy of another one (a dialecte bringing its own core) does not see it - align the core versions.",
+			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
+		},
+	},
 	DOCUMENT_PATH_INVALID: {
 		code: 'D7030',
 		message: "A document's path is not valid",

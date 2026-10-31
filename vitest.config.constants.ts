@@ -106,11 +106,15 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	},
 ]
 
-/** The test files that read the package from disk or start node itself: never in a browser. */
+/** The test files that read the package from disk, start node itself or assert what Node lacks: never in a browser. */
 export const NODE_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	{
 		path: 'src/store/sqlite/packaging/engine-packaging.test.ts',
 		why: 'builds the engine and reads the build output from disk',
+	},
+	{
+		path: 'src/store/sqlite/sqlite-unavailable.test.ts',
+		why: 'asserts what SQLite storage answers where no worker and no private file system exist; a browser has both',
 	},
 	{
 		path: 'src/test/test-entry-environment.test.ts',

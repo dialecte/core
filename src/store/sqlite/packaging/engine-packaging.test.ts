@@ -9,15 +9,24 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 const CORE_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 /** Everything a run builds, removed after it. */
 const WORK = path.join(CORE_ROOT, '.tmp', `packaging-${process.pid}`)
-const CORE_DIST = path.join(WORK, 'core')
+/**
+ * core as a consumer installs it: its package.json beside its build in a `node_modules` above every app of the run,
+ * so they resolve `@dialecte/core` through its `exports` and its `sideEffects` as a bundler does (its own
+ * dependencies found further up, in core's install).
+ */
+const CORE_PACKAGE = path.join(WORK, 'node_modules', '@dialecte', 'core')
+const CORE_DIST = path.join(CORE_PACKAGE, 'dist')
 const DIALECTE = path.join(WORK, 'dialecte')
+/** A consumer on SQLite storage: it imports `@dialecte/core/sqlite` and a dialecte's engines. */
 const APP = path.join(WORK, 'app')
+/** A consumer that never imports `@dialecte/core/sqlite`. */
+const MAIN_ONLY_APP = path.join(WORK, 'app-main-only')
 
-/** What a dialecte package and a consumer reach of core: its main side and its engine. */
-const CORE_ALIASES = {
-	'@dialecte/core/engine': path.join(CORE_DIST, 'engine.js'),
-	'@dialecte/core': path.join(CORE_DIST, 'index.js'),
-}
+/** A sub-path of core's package.json `exports`: the file a bundler loads, and its types. */
+type PackageExport = { default: string; types: string }
+
+/** core's package.json, as the run installs it. */
+const PACKAGE_JSON = path.join(CORE_ROOT, 'package.json')
 
 /** A dialecte package, as nsd ships one: two engine workers (two dialectes) exported by URL, core kept external. */
 const DIALECTE_FILES: Record<string, string> = {
@@ -65,6 +74,11 @@ function isHubChunk(file: string): boolean {
 /** A worker a consumer's build emits for the hub (named after core's chunk). */
 function isHubWorker(file: string): boolean {
 	return file.includes('hub.worker')
+}
+
+/** A wasm file in a build. */
+function isWasmFile(file: string): boolean {
+	return file.endsWith('.wasm')
 }
 
 /** A dialecte's engine worker in a consumer's build (the hub is a worker too). */
@@ -161,6 +175,13 @@ function chunksHolding(params: { chunks: Map<string, string>; fragment: string }
 
 beforeAll(async () => {
 	await rm(WORK, { recursive: true, force: true })
+	// a package of its own: the run is inside core's folder, whose package.json would otherwise resolve
+	// `@dialecte/core` to core's own dist (a package's self-reference wins over node_modules)
+	await mkdir(WORK, { recursive: true })
+	await writeFile(
+		path.join(WORK, 'package.json'),
+		JSON.stringify({ name: 'packaging-run', private: true, type: 'module' }),
+	)
 	// core's two library builds, as `npm run build` makes them, into one folder
 	await build({
 		configFile: path.join(CORE_ROOT, 'vite.config.ts'),
@@ -174,6 +195,7 @@ beforeAll(async () => {
 		logLevel: 'silent',
 		build: { outDir: CORE_DIST },
 	})
+	await writeFile(path.join(CORE_PACKAGE, 'package.json'), await readFile(PACKAGE_JSON, 'utf8'))
 	await mkdir(DIALECTE, { recursive: true })
 	for (const [name, source] of Object.entries(DIALECTE_FILES)) {
 		await writeFile(path.join(DIALECTE, name), source)
@@ -183,7 +205,6 @@ beforeAll(async () => {
 		root: DIALECTE,
 		base: './',
 		logLevel: 'silent',
-		resolve: { alias: CORE_ALIASES },
 		worker: { format: 'es' },
 		build: {
 			outDir: path.join(DIALECTE, 'dist'),
@@ -196,8 +217,10 @@ beforeAll(async () => {
 		path.join(APP, 'main.js'),
 		[
 			`import { ENGINE_URLS } from '${path.join(DIALECTE, 'dist', 'index.js')}'`,
-			"import { connectHub, createProjectFactory } from '@dialecte/core'",
-			'console.log(ENGINE_URLS, connectHub, createProjectFactory)',
+			// the import the docs give: nothing named, the entry kept for what it registers
+			"import '@dialecte/core/sqlite'",
+			"import { createProjectFactory } from '@dialecte/core'",
+			'console.log(ENGINE_URLS, createProjectFactory)',
 		].join('\n'),
 	)
 	await writeFile(path.join(APP, 'index.html'), '<script type="module" src="./main.js"></script>')
@@ -205,8 +228,25 @@ beforeAll(async () => {
 		configFile: false,
 		root: APP,
 		logLevel: 'silent',
-		resolve: { alias: CORE_ALIASES },
 		build: { outDir: path.join(APP, 'dist') },
+	})
+	await mkdir(MAIN_ONLY_APP, { recursive: true })
+	await writeFile(
+		path.join(MAIN_ONLY_APP, 'main.js'),
+		[
+			"import { createProjectFactory, Project } from '@dialecte/core'",
+			'console.log(createProjectFactory, Project)',
+		].join('\n'),
+	)
+	await writeFile(
+		path.join(MAIN_ONLY_APP, 'index.html'),
+		'<script type="module" src="./main.js"></script>',
+	)
+	await build({
+		configFile: false,
+		root: MAIN_ONLY_APP,
+		logLevel: 'silent',
+		build: { outDir: path.join(MAIN_ONLY_APP, 'dist') },
 	})
 }, 120_000)
 
@@ -215,6 +255,19 @@ afterAll(async () => {
 })
 
 describe('the engine as a dialecte and a consumer bundle it', () => {
+	it('core’s package.json exports → each sub-path’s file and types in the installed package', async () => {
+		const { exports } = JSON.parse(await textOf({ file: PACKAGE_JSON })) as {
+			exports: Record<string, PackageExport | string>
+		}
+		const installed = await filesUnder({ directory: CORE_PACKAGE })
+		for (const subPath of ['.', './engine', './sqlite']) {
+			const entry = exports[subPath] as PackageExport
+			for (const field of ['default', 'types'] as const) {
+				expect(installed, `${subPath} ${field}`).toContain(path.normalize(entry[field]))
+			}
+		}
+	})
+
 	it('core’s two builds → the engine entry beside the main ones, no asset of sqlite-wasm in it', async () => {
 		const files = await filesUnder({ directory: CORE_DIST })
 		expect(files).toEqual(expect.arrayContaining(['index.js', 'engine.js', 'engine.d.ts']))
@@ -223,12 +276,18 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		for (const forbidden of NO_ASSET_OF_SQLITE) expect(engine, forbidden).not.toContain(forbidden)
 	})
 
-	it('core’s main entry → no chunk it reaches imports sqlite-wasm or holds it: an engine in the page is not on the main side', async () => {
-		const mainChunks = await chunksReachedFrom({ entry: 'index.js' })
-		const reachingSqlite = [...mainChunks]
-			.filter(([, text]) => SQLITE_MODULE_IMPORT.test(text) || text.includes('sqlite3ApiBootstrap'))
-			.map(([file]) => file)
-		expect(reachingSqlite).toEqual([])
+	it('core’s main and SQLite entries → no chunk they reach imports sqlite-wasm or holds it: an engine in the page is not on the main side', async () => {
+		for (const entry of ['index.js', 'sqlite.js']) {
+			const chunks = await chunksReachedFrom({ entry })
+			const reachingSqlite = [...chunks]
+				.filter(function importsSqliteWasm([, text]) {
+					return SQLITE_MODULE_IMPORT.test(text) || text.includes('sqlite3ApiBootstrap')
+				})
+				.map(function fileOf([file]) {
+					return file
+				})
+			expect(reachingSqlite, entry).toEqual([])
+		}
 	})
 
 	it('core’s main entry → no chunk it reaches holds libxml2, which only the test entry bundles', async () => {
@@ -242,15 +301,34 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		expect(LIBXML2_MARKERS.some((marker) => testEntry.includes(marker))).toBe(true)
 	})
 
-	it('core’s main side → the one wasm beside it, its URL only in a chunk the main entry loads through import(): a page on another storage never fetches it', async () => {
+	it('core’s main entry → neither the SQLite connector nor the wasm’s URL in any chunk it reaches, through import() or not', async () => {
 		expect(await filesUnder({ directory: CORE_DIST })).toContain('sqlite3.wasm')
 		const loadedWithEntry = await chunksReachedFrom({ entry: 'index.js', staticOnly: true })
 		// the main entry loads chunks of its own: a reading that found none would prove nothing
 		expect(loadedWithEntry.size).toBeGreaterThan(1)
 		const reachable = await chunksReachedFrom({ entry: 'index.js' })
-		for (const fragment of [WASM_URL_EXPRESSION, SQLITE_CONNECTOR_MARKER]) {
-			expect(chunksHolding({ chunks: loadedWithEntry, fragment }), fragment).toEqual([])
-			expect(chunksHolding({ chunks: reachable, fragment }), fragment).toHaveLength(1)
+		for (const fragment of [WASM_URL_EXPRESSION, SQLITE_CONNECTOR_MARKER, 'new SharedWorker(']) {
+			expect(chunksHolding({ chunks: reachable, fragment }), fragment).toEqual([])
+		}
+	})
+
+	it('core’s SQLite entry → the connector and the wasm’s URL loaded with it, each in one chunk', async () => {
+		const loadedWithEntry = await chunksReachedFrom({ entry: 'sqlite.js', staticOnly: true })
+		for (const fragment of [SQLITE_CONNECTOR_MARKER, WASM_URL_EXPRESSION]) {
+			expect(chunksHolding({ chunks: loadedWithEntry, fragment }), fragment).toHaveLength(1)
+		}
+	})
+
+	it('a consumer importing only core’s main entry → no wasm, no hub worker, no SQLite code emitted', async () => {
+		const directory = path.join(MAIN_ONLY_APP, 'dist')
+		const files = await filesUnder({ directory })
+		// the app's own script: a build that emitted nothing would prove nothing
+		expect(files.filter(isAppMainScript).length).toBeGreaterThan(0)
+		expect(files.filter(isWasmFile)).toEqual([])
+		expect(files.filter(isHubWorker)).toEqual([])
+		for (const fragment of ['sqlite3', SQLITE_CONNECTOR_MARKER, 'new SharedWorker(']) {
+			const holding = await fileHolding({ directory, files, fragment })
+			expect(holding, fragment).toBeUndefined()
 		}
 	})
 
@@ -267,7 +345,7 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		}
 	})
 
-	it('a consumer’s app build → exactly one wasm file, content-hashed, for every engine', async () => {
+	it('a consumer’s app build, importing @dialecte/core/sqlite for what it registers → exactly one wasm file, content-hashed, for every engine', async () => {
 		const files = await filesUnder({ directory: path.join(APP, 'dist') })
 		expect(files.filter((file) => file.endsWith('.wasm'))).toEqual([
 			expect.stringMatching(/^assets\/sqlite3-[\w-]+\.wasm$/),
@@ -282,26 +360,18 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 			),
 		)
 		expect(holding.some(Boolean)).toBe(true)
-		// the page's entry script (the one index.html loads) holds no URL to it: it is reached through import()
-		const page = await textOf({ file: path.join(APP, 'dist', 'index.html') })
-		const entry = /src="\.?\/?(assets\/[^"]+\.js)"/.exec(page)?.[1]
-		expect(entry).toBeDefined()
-		expect(await textOf({ file: path.join(APP, 'dist', entry!) })).not.toContain(
-			path.basename(wasm!),
-		)
 	})
 
-	it('a consumer’s dev server → the wasm URL of core’s main side (its lazily loaded chunk) answers the wasm', async () => {
+	it('a consumer’s dev server → the wasm URL of core’s SQLite entry answers the wasm', async () => {
 		const server = await createServer({
 			configFile: false,
 			root: APP,
 			logLevel: 'silent',
-			resolve: { alias: CORE_ALIASES },
 			server: { port: 0, fs: { allow: [WORK, CORE_ROOT] } },
 		})
 		await server.listen()
 		try {
-			const reachable = await chunksReachedFrom({ entry: 'index.js' })
+			const reachable = await chunksReachedFrom({ entry: 'sqlite.js' })
 			const [wasmChunk] = chunksHolding({ chunks: reachable, fragment: WASM_URL_EXPRESSION })
 			const transformed = await server.transformRequest(`/@fs${path.join(CORE_DIST, wasmChunk!)}`)
 			const wasmPath = /new URL\(["']([^"']*sqlite3[^"']*\.wasm)["']/.exec(
@@ -318,7 +388,7 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		}
 	})
 
-	it('core’s main build → the hub a worker chunk of its own, holding all it runs, reached from the main side as a SharedWorker', async () => {
+	it('core’s main build → the hub a worker chunk of its own, holding all it runs, reached from the SQLite entry as a SharedWorker', async () => {
 		const files = await filesUnder({ directory: CORE_DIST })
 		const hubChunks = files.filter(isHubChunk)
 		expect(hubChunks).toHaveLength(1)
@@ -333,9 +403,13 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		expect(referring).toBeDefined()
 		const main = await textOf({ file: path.join(CORE_DIST, referring!) })
 		expect(main).toContain('new SharedWorker(')
+		expect(
+			(await chunksReachedFrom({ entry: 'sqlite.js', staticOnly: true })).has(referring!),
+		).toBe(true)
+		expect((await chunksReachedFrom({ entry: 'index.js' })).has(referring!)).toBe(false)
 	})
 
-	it('a consumer’s app build → the hub’s worker emitted once, reached from its main side', async () => {
+	it('a consumer’s app build, importing @dialecte/core/sqlite for what it registers → the hub’s worker emitted once, reached from its main side', async () => {
 		const files = await filesUnder({ directory: path.join(APP, 'dist') })
 		const hubChunks = files.filter(isHubWorker)
 		expect(hubChunks).toHaveLength(1)
@@ -347,12 +421,11 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		expect(referring).toBeDefined()
 	})
 
-	it('a consumer’s dev server → the hub’s URL in core’s main side answers its worker', async () => {
+	it('a consumer’s dev server → the hub’s URL in core’s SQLite entry answers its worker', async () => {
 		const server = await createServer({
 			configFile: false,
 			root: APP,
 			logLevel: 'silent',
-			resolve: { alias: CORE_ALIASES },
 			// core's main side imports comlink: no dependency run, which the close would wait for
 			optimizeDeps: { noDiscovery: true },
 			server: { port: 0, fs: { allow: [WORK, CORE_ROOT] } },

@@ -37,10 +37,6 @@ export {
 	DOCUMENT_UPDATE_FIELDS,
 } from './document-path.constants'
 export { removeUnfinishedImports } from './unfinished-imports'
-export { adoptHubPort, connectHub } from './hub-public'
-export { listProjects } from './sqlite/list-projects'
-export type { ProjectListing, ProjectListingState } from './sqlite/list-projects.types'
-export type { ConnectHubParams, HubPortHandle, HubRealm } from './engine/hub/hub-client.types'
 export type { HubEngineSpawner } from './engine/hub/realm-host.types'
 export * from './local'
 export * from './in-memory'

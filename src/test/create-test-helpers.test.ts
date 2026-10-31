@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineDialecte } from '@/dialecte'
 import { toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
+import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
 
 import type { TestDialecteConfig } from './config'
 import type { BaseXmlTestCase } from './run-test-cases.type'
@@ -119,6 +120,7 @@ describe('createTestHelpers', () => {
 	}
 
 	it('createTestProject on the helpers’ sqlite storage → the project in the SQLite engine of this process: a store of it there reads its document', async () => {
+		withSqliteStorage()
 		const bound = createTestHelpers({ dialecte, storage: { type: 'sqlite' } })
 		const { project, source } = await bound.createTestProject({ sourceXml: VALID_XML })
 		projects.push(project)

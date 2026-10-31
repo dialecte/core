@@ -1,12 +1,11 @@
-import { EngineStore } from './engine/engine-store'
 import { refuseUnnamableProject } from './project-name'
-import { createLazySqliteConnector } from './sqlite/sqlite-option'
+import { registeredSqliteStorage } from './sqlite-storage'
 
 import { throwDialecteError } from '@/errors'
 import { DexieStore, InMemoryStore } from '@/store'
 
 import type { StorageParam } from '../project/types'
-import type { SqliteConnectorParams } from './sqlite/sqlite-option.types'
+import type { SqliteConnectorParams } from './sqlite-storage.types'
 import type { Perf } from '@/perf'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { Store } from '@/store'
@@ -14,8 +13,9 @@ import type { Store } from '@/store'
 /**
  * Resolve the Store instance from open params.
  * 'local' creates a DexieStore; 'inMemory' creates an InMemoryStore - both import and export with `runtime`;
- * 'sqlite' an EngineStore on the dialecte's SQLite engine, which imports and exports with its own (its code loaded
- * at its first connection; a project made by no dialecte's factory is refused `PROJECT_ENGINE_NOT_DECLARED`);
+ * 'sqlite' the store of the kind `@dialecte/core/sqlite` registers - an EngineStore on the dialecte's SQLite engine,
+ * which imports and exports with its own (`PROJECT_SQLITE_NOT_IMPORTED` when the app never imported that entry; a
+ * project made by no dialecte's factory is refused `PROJECT_ENGINE_NOT_DECLARED`);
  * 'custom' passes through the user-provided store, which imports and exports with its own.
  */
 export function resolveStore(params: {
@@ -40,12 +40,8 @@ export function resolveStore(params: {
 		return new InMemoryStore(name, { writable: storage.writable ?? true, runtime, dialecteId })
 	}
 	if (storage.type === 'sqlite') {
-		return new EngineStore({
-			name,
-			connector: createLazySqliteConnector({
-				connector: sqliteConnectorParamsOf({ name, runtime, dialecteId }),
-			}),
-		})
+		const sqlite = registeredSqliteStorage({ project: name })
+		return sqlite.storeOf({ connector: sqliteConnectorParamsOf({ name, runtime, dialecteId }) })
 	}
 	return storage.store
 }

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { Project } from '@/project'
+import { withoutSqliteStorage, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
 import { XMLNS_DEFAULT_NAMESPACE } from '@/test/constant'
 
 const SOURCE_XML = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="1"/><A aA="2"/></Root>`
@@ -99,29 +100,9 @@ describe('createProjectFactory', () => {
 		expect(instancesSeen).toEqual([2, 1, 2])
 	})
 
-	describe('a project on sqlite storage, where the page can run no engine (node)', () => {
-		type TestCase = { open: () => Promise<unknown>; refusedWith: string }
+	describe('a project on sqlite storage refused before any engine', () => {
+		type TestCase = { open: () => Promise<unknown>; refusedWith: string; imported?: false }
 		const testCases: Record<string, TestCase> = {
-			'made by the factory → STORE_UNAVAILABLE at open, nothing started': {
-				open: function openFromFactory() {
-					const factory = createProjectFactory({
-						dialecte: createCountingDialecte(),
-						engineUrl: ENGINE_URL,
-					})
-					return factory({ storage: { type: 'sqlite' } }).open(`sqlite-${crypto.randomUUID()}`)
-				},
-				refusedWith: 'STORE_UNAVAILABLE',
-			},
-			'destroyed by name through the factory → STORE_UNAVAILABLE, nothing started': {
-				open: function destroyByName() {
-					const factory = createProjectFactory({
-						dialecte: createCountingDialecte(),
-						engineUrl: ENGINE_URL,
-					})
-					return factory.destroyProject({ name: `sqlite-${crypto.randomUUID()}` })
-				},
-				refusedWith: 'STORE_UNAVAILABLE',
-			},
 			'made by no factory → PROJECT_ENGINE_NOT_DECLARED at open': {
 				open: function openBare() {
 					const dialecte = createCountingDialecte()
@@ -133,9 +114,34 @@ describe('createProjectFactory', () => {
 				},
 				refusedWith: 'PROJECT_ENGINE_NOT_DECLARED',
 			},
+			'made by the factory, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED at open':
+				{
+					open: function openFromFactory() {
+						const factory = createProjectFactory({
+							dialecte: createCountingDialecte(),
+							engineUrl: ENGINE_URL,
+						})
+						return factory({ storage: { type: 'sqlite' } }).open(`sqlite-${crypto.randomUUID()}`)
+					},
+					refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',
+					imported: false,
+				},
+			'destroyed by name, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED': {
+				open: function destroyByName() {
+					const factory = createProjectFactory({
+						dialecte: createCountingDialecte(),
+						engineUrl: ENGINE_URL,
+					})
+					return factory.destroyProject({ name: `sqlite-${crypto.randomUUID()}` })
+				},
+				refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',
+				imported: false,
+			},
 		}
-		for (const [description, { open, refusedWith }] of Object.entries(testCases)) {
+		for (const [description, { open, refusedWith, imported }] of Object.entries(testCases)) {
 			it(description, async () => {
+				if (imported === false) withoutSqliteStorage()
+				else withSqliteStorage()
 				const key = await open().then(
 					function opened() {
 						return 'opened'
