@@ -17,7 +17,6 @@ import { inWriteTransaction } from './transaction'
 
 import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered } from '@/store/store-errors'
-import { invariant } from '@/utils'
 import { tellListener } from '@/utils/tell-listener'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
@@ -26,6 +25,7 @@ import type {
 	ImportTargetParams,
 	ImportTargetState,
 	RecordIndex,
+	RegistryRowState,
 } from './engine.types'
 import type { ImportControl, ImportProgress, ImportTarget } from '@/store/store.types'
 import type { AnyRawRecord, RecordPatch } from '@/types'
@@ -65,7 +65,12 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 					})
 				},
 			})
-			state.registered = { ...documentTable, documentId: document.id }
+			state.registered = {
+				...documentTable,
+				documentId: document.id,
+				writeId: document.writeId,
+				createdAt: document.createdAt,
+			}
 			params.onRegistered()
 			counts.set(document.id, 0)
 		},
@@ -78,42 +83,59 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 				},
 			})
 		},
-		/** The records of the file, then the session's writes: creates, updates, deletes, in that order. */
+		/** Records of the file: creates, updates, deletes, in that order. */
 		bulkWrite: async function writeImported(documentId, ops) {
-			const { creates = [], updates = [], deletes = [] } = ops
-			if (creates.length > 0) await writeCreates({ params, state, documentId, creates })
-			if (updates.length === 0 && deletes.length === 0) return
-			if (!state.built.has('id')) await buildIndex({ params, state, documentId, index: 'id' })
-			await writeChanges({ params, state, documentId, updates, deletes })
+			await writeOps({ params, state, documentId, ops })
 		},
 		/**
-		 * The import's one update: the document ready, once its table has every index. A document
-		 * removed meanwhile is refused `DOCUMENT_NOT_REGISTERED`, never marked.
+		 * The session's writes, the id index built first: a create reusing an id the import made is refused there as
+		 * one the document holds, as every store refuses it.
 		 */
-		updateDocument: async function markReady(documentId, updates) {
-			invariant(updates.status === 'ready' && Object.keys(updates).length === 1, {
-				detail: `An import only marks its document ready, not ${JSON.stringify(updates)}`,
-			})
+		writeSession: async function writeSession(documentId, ops) {
+			if (!state.built.has('id')) await buildIndex({ params, state, documentId, index: 'id' })
+			await writeOps({ params, state, documentId, ops })
+		},
+		/**
+		 * The document ready, once its table has every index. A document removed meanwhile is refused
+		 * `DOCUMENT_NOT_REGISTERED`, never marked.
+		 */
+		markReady: async function markReady(documentId) {
 			for (const index of Object.keys(RECORD_INDEXES) as RecordIndex[]) {
 				if (!state.built.has(index)) await buildIndex({ params, state, documentId, index })
 			}
 			markOwnReady({ params, state, documentId })
 		},
 		/**
-		 * What a failed or aborted import leaves goes: its own row only (by its number), never a
-		 * document registered since under the same id.
+		 * What a failed or aborted import leaves goes: its own row only, never a document registered
+		 * since under the same id (which may have taken its number again).
 		 */
 		removeDocument: async function removeImported(documentId) {
 			const { registered } = state
 			// nothing to remove on a closed engine: no import outlives it, the next start sweeps
 			if (registered?.documentId !== documentId || !db.isOpen()) return
 			endQuietly({ window: params.window })
-			// a document of that id registered since by another connection is not this import's
 			const row = readRegistryRow({ db, documentId })
-			if (row?.seq !== registered.seq || row.status !== 'importing') return
+			if (!isOwnRow({ row, registered, documentId })) return
 			await removeDocument({ documentId })
 		},
 	}
+}
+
+/** Creates, updates, deletes, in that order; the id index built before the first update or delete. */
+async function writeOps(params: {
+	params: ImportTargetParams
+	state: ImportTargetState
+	documentId: string
+	ops: Parameters<ImportTarget['bulkWrite']>[1]
+}): Promise<void> {
+	const { state, documentId, ops } = params
+	const { creates = [], updates = [], deletes = [] } = ops
+	if (creates.length > 0) await writeCreates({ params: params.params, state, documentId, creates })
+	if (updates.length === 0 && deletes.length === 0) return
+	if (!state.built.has('id')) {
+		await buildIndex({ params: params.params, state, documentId, index: 'id' })
+	}
+	await writeChanges({ params: params.params, state, documentId, updates, deletes })
 }
 
 /** The table of the document this import registered, while its row is still this import's own. */
@@ -127,21 +149,36 @@ function ownTable(params: {
 	throwIfAborted({ signal, file })
 	const { registered } = state
 	const row = readRegistryRow({ db, documentId })
-	if (
-		registered?.documentId !== documentId ||
-		row?.seq !== registered.seq ||
-		row.status !== 'importing'
-	) {
+	if (!registered || !isOwnRow({ row, registered, documentId })) {
 		throwDocumentNotRegistered({ documentId, what: 'records' })
 	}
 	return registered.table
 }
 
 /**
+ * Whether the row is still the one this import registered, `importing`: its number, its write and its creation
+ * time - a document removed meanwhile frees its number, which the next registration may take.
+ */
+function isOwnRow(params: {
+	row: RegistryRowState | undefined
+	registered: ImportTargetState['registered']
+	documentId: string
+}): boolean {
+	const { row, registered, documentId } = params
+	if (!row || !registered || registered.documentId !== documentId) return false
+	return (
+		row.status === 'importing' &&
+		row.seq === registered.seq &&
+		row.writeId === registered.writeId &&
+		row.createdAt === registered.createdAt
+	)
+}
+
+/**
  * Records into the import's windows: the whole set checked first, in every store's order - a value
- * that is not JSON, then an id taken (looked up once the id index exists; before it, the ids a file
- * gives itself against the ones stored; a create of the session repeating one is caught by the index
- * build) - then stored a bind at a time, the window's time checked after each (the session's creates
+ * that is not JSON, then an id taken (looked up once the id index exists, as it does for the session's
+ * writes; before it, the ids a file gives itself against the ones stored; the ids the import makes are
+ * new) - then stored a bind at a time, the window's time checked after each (the session's creates
  * may be many).
  */
 async function writeCreates(params: {

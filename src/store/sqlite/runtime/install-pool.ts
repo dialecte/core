@@ -1,4 +1,6 @@
-import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
+import { refuseOtherCreation } from '../../engine/creation-refusal'
+import { engineLockNameOf, projectKeyOf } from '../../engine/project-key'
+import { refuseUnnamableProject } from '../../project-name'
 import { classifyPool } from './pool-header'
 import {
 	NEW_POOL_FREE_BYTES,
@@ -38,25 +40,30 @@ import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  */
 export async function openPool(params: {
 	sqlite3: Sqlite3Static
+	dialecteId: string
 	project: string
 	lock: EngineLockMode
 	budgetMs: number
+	/** The creation id a view coming back knows: a pool holding no database then means the project was destroyed. */
+	expectedCreationId?: string
 }): Promise<{ pool: SAHPoolUtil; lock: HeldEngineLock }> {
-	const { sqlite3, project, lock: mode, budgetMs } = params
+	const { sqlite3, dialecteId, project, lock: mode, budgetMs, expectedCreationId } = params
 	refuseUnsafeSqlite({ sqlite3, project })
 	const deadline = performance.now() + budgetMs
 	const root = await privateRoot({ project })
-	const lock = await takeEngineLock({ project, mode, budgetMs })
+	const lock = await takeEngineLock({ dialecteId, project, mode, deadline })
 	try {
-		const files = await poolFilesOf({ root, project })
+		const files = await poolFilesOf({ root, dialecteId, project })
 		const heads = files.length === 0 ? [] : await probePoolFiles({ project, files, deadline })
-		// a pool that never held pages (none, or blank files an install that ended left) is made as a new one
+		// a pool that never held pages (none, or blank files an install that ended left) is made as a new one -
+		// unless a view coming back expects its project there: destroyed meanwhile, nothing made in its place
 		if (refuseLostDatabase({ project, heads }) === 'blank') {
+			refuseOtherCreation({ project, expectedCreationId, creationId: undefined })
 			await refuseShortSpace({ project, bytes: NEW_POOL_FREE_BYTES })
 		}
 		const options: PoolInstallOptions = {
 			name: POOL_VFS_NAME,
-			directory: poolDirectoryOf({ project }),
+			directory: poolDirectoryOf({ dialecteId, project }),
 			initialCapacity: POOL_CAPACITY,
 			preserveOnInitFailure: true,
 			forceReinitIfPreviouslyFailed: true,
@@ -90,15 +97,20 @@ function refuseUnsafeSqlite(params: { sqlite3: Sqlite3Static; project: string })
  * any more - sqlite-wasm reads the headers again as it unpauses and would drop a damaged one.
  */
 export async function probePausedPool(params: {
+	dialecteId: string
 	project: string
 	/** The open's own deadline, set before it waited for the lock: one budget covers both. */
 	deadline: number
+	/** The creation id a view coming back knows: a pool holding no database then means the project was destroyed. */
+	expectedCreationId?: string
 }): Promise<void> {
-	const { project, deadline } = params
+	const { dialecteId, project, deadline, expectedCreationId } = params
 	const root = await privateRoot({ project })
-	const files = await poolFilesOf({ root, project })
+	const files = await poolFilesOf({ root, dialecteId, project })
 	const heads = await probePoolFiles({ project, files, deadline })
-	refuseLostDatabase({ project, heads })
+	if (refuseLostDatabase({ project, heads }) === 'blank') {
+		refuseOtherCreation({ project, expectedCreationId, creationId: undefined })
+	}
 }
 
 /**
@@ -107,17 +119,18 @@ export async function probePausedPool(params: {
  * gone, `PROJECT_DESTROY_FAILED` if not (a file another worker holds stays).
  */
 export async function destroyPool(params: {
+	dialecteId: string
 	project: string
 	pool: SAHPoolUtil | undefined
 	/** Until when a file still held (a worker that just ended lets its handles go a little later) is waited for. */
 	deadline: number
 }): Promise<void> {
-	const { project, pool, deadline } = params
+	const { dialecteId, project, pool, deadline } = params
 	const root = await privateRoot({ project })
 	if (pool) await pool.removeVfs()
 	// what the pool's own removal left (a file held a moment), or the whole directory when no pool is open
-	await removeDirectoryWithin({ root, project, deadline })
-	if (await hasPoolDirectory({ root, project })) {
+	await removeDirectoryWithin({ root, dialecteId, project, deadline })
+	if (await hasPoolDirectory({ root, dialecteId, project })) {
 		throw createDialecteError('PROJECT_DESTROY_FAILED', {
 			detail: `The files of project "${project}" are still there: another tab or worker may hold one`,
 			meta: { project },
@@ -125,37 +138,50 @@ export async function destroyPool(params: {
 	}
 }
 
-/** The project's pool directory under the origin's private file system. */
-export function poolDirectoryOf(params: { project: string }): string {
-	return `${POOL_ROOT_DIRECTORY}/${encodeURIComponent(params.project)}`
+/**
+ * The project's pool directory under the origin's private file system: one directory per dialecte, one per
+ * project in it (`projectKeyOf`). A name or a dialecte id no directory can be named after - empty, `.`, `..` -
+ * is refused `PROJECT_NAME_INVALID`, before any file is touched (every store refuses it as it is built: a guard).
+ */
+export function poolDirectoryOf(params: { dialecteId: string; project: string }): string {
+	refuseUnnamableProject(params)
+	return `${POOL_ROOT_DIRECTORY}/${projectKeyOf(params)}`
 }
 
 /**
  * The project's engine lock, held until released: free at once or refused `PROJECT_OPEN_ELSEWHERE`
- * (`if-available`), or waited for within the budget, else `PROJECT_ENGINE_BUSY` (`wait`).
+ * (`if-available`), or waited for until `deadline` - what the work before the lock spent is not given again;
+ * a deadline passed takes only a lock free at once - else `PROJECT_ENGINE_BUSY` (`wait`).
  */
 export function takeEngineLock(params: {
+	dialecteId: string
 	project: string
 	mode: EngineLockMode
-	budgetMs: number
+	/** `performance.now()` time the wait ends (`wait` only). */
+	deadline: number
 }): Promise<HeldEngineLock> {
-	const { project, mode, budgetMs } = params
-	const name = `${ENGINE_LOCK_PREFIX}${project}`
+	const { dialecteId, project, mode, deadline } = params
+	const budgetMs = Math.max(0, Math.round(deadline - performance.now()))
+	const name = engineLockNameOf({ dialecteId, project })
 	return new Promise(function requestLock(resolve, reject) {
 		let release: () => void = releaseNothing
 		const held = new Promise<void>(function holdUntilReleased(done) {
 			release = done
 		})
-		const options: LockOptions =
-			mode === 'if-available' ? { ifAvailable: true } : { signal: AbortSignal.timeout(budgetMs) }
+		const ifFree = mode === 'if-available' || budgetMs === 0
+		const options: LockOptions = ifFree
+			? { ifAvailable: true }
+			: { signal: AbortSignal.timeout(budgetMs) }
 		navigator.locks
 			.request(name, options, async function holdLock(granted) {
 				if (!granted) {
 					reject(
-						createDialecteError('PROJECT_OPEN_ELSEWHERE', {
-							detail: `Project "${project}" is open in another tab or window`,
-							meta: { project },
-						}),
+						mode === 'if-available'
+							? createDialecteError('PROJECT_OPEN_ELSEWHERE', {
+									detail: `Project "${project}" is open in another tab or window`,
+									meta: { project },
+								})
+							: engineBusy({ project, budgetMs }),
 					)
 					return
 				}
@@ -163,14 +189,18 @@ export function takeEngineLock(params: {
 				await held
 			})
 			.catch(function refuseNotGranted(thrown: unknown) {
-				reject(
-					createDialecteError('PROJECT_ENGINE_BUSY', {
-						detail: `Project "${project}" was still held by another engine after ${budgetMs} ms`,
-						meta: { project, budgetMs },
-						cause: thrown instanceof Error ? thrown : undefined,
-					}),
-				)
+				reject(engineBusy({ project, budgetMs, cause: thrown }))
 			})
+	})
+}
+
+/** The lock still held by another engine once the wait's budget is spent. */
+function engineBusy(params: { project: string; budgetMs: number; cause?: unknown }): Error {
+	const { project, budgetMs, cause } = params
+	return createDialecteError('PROJECT_ENGINE_BUSY', {
+		detail: `Project "${project}" was still held by another engine after ${budgetMs} ms`,
+		meta: { project, budgetMs },
+		cause: cause instanceof Error ? cause : undefined,
 	})
 }
 
@@ -204,6 +234,7 @@ async function privateRoot(params: { project: string }): Promise<FileSystemDirec
 /** The files of the project's pool, none when it has no pool yet (nothing created). */
 async function poolFilesOf(params: {
 	root: FileSystemDirectoryHandle
+	dialecteId: string
 	project: string
 }): Promise<FileSystemFileHandle[]> {
 	const directory = await existingDirectory({
@@ -295,11 +326,15 @@ function isBusy(params: { thrown: unknown }): boolean {
 
 /**
  * `STORE_QUOTA_EXCEEDED` when the origin has fewer than `bytes` left (a new pool's files, an import's
- * rows): refused before anything is written. A browser that tells no quota is trusted.
+ * rows): refused before anything is written. A browser that tells no quota, or refuses to estimate it, is
+ * trusted.
  */
 export async function refuseShortSpace(params: { project: string; bytes: number }): Promise<void> {
 	const { project, bytes } = params
-	const { quota, usage = 0 } = await navigator.storage.estimate()
+	const estimate = await navigator.storage.estimate().catch(function noEstimate() {
+		return undefined
+	})
+	const { quota, usage = 0 } = estimate ?? {}
 	if (quota === undefined) return
 	const available = quota - usage
 	if (available >= bytes) return
@@ -342,14 +377,17 @@ export async function explainOutOfSpace(params: {
  */
 async function removeDirectoryWithin(params: {
 	root: FileSystemDirectoryHandle
+	dialecteId: string
 	project: string
 	deadline: number
 }): Promise<void> {
-	const { root, project, deadline } = params
+	const { root, dialecteId, project, deadline } = params
+	const path = poolDirectoryOf({ dialecteId, project }).split('/')
+	const entry = path.pop()!
 	for (let attempt = 0; ; attempt += 1) {
-		const parent = await existingDirectory({ root, path: [POOL_ROOT_DIRECTORY] })
+		const parent = await existingDirectory({ root, path })
 		try {
-			await parent?.removeEntry(encodeURIComponent(project), { recursive: true })
+			await parent?.removeEntry(entry, { recursive: true })
 			return
 		} catch (thrown) {
 			if (!isBusy({ thrown })) return
@@ -364,6 +402,7 @@ async function removeDirectoryWithin(params: {
 
 async function hasPoolDirectory(params: {
 	root: FileSystemDirectoryHandle
+	dialecteId: string
 	project: string
 }): Promise<boolean> {
 	const directory = await existingDirectory({

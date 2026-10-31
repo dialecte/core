@@ -1,4 +1,5 @@
 import {
+	APPLICATION_ID_DIGEST,
 	BLOB_COLUMNS,
 	BLOB_DATA_COLUMNS,
 	CHANGELOG_COLUMNS,
@@ -12,9 +13,10 @@ import {
 import { inWriteTransaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
+import { refuseOtherCreation } from '@/store/engine/creation-refusal'
 import { TABLE_BLOBS, TABLE_CHANGELOG, TABLE_DOCUMENTS, TABLE_META } from '@/store/store.constants'
 
-import type { RecordIndex } from './engine.types'
+import type { MetaRow, RecordIndex } from './engine.types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**
@@ -32,13 +34,16 @@ function applyConnectionPragmas(params: { db: Database; steadyCacheMiB: number }
 
 /**
  * A new file: incremental auto-vacuum (it only takes on a file without tables), then the meta
- * table, the document registry, the history entries, the blob registry and the blobs' bytes, and the
- * layout version in the header, in one transaction.
+ * table (its dialecte, its layout, a new creation id), the document registry, the history entries, the
+ * blob registry and the blobs' bytes, and in the header the layout version and the dialecte's
+ * `application_id`, in one transaction. Answers the creation id.
  */
-function createFile(params: { sqlite3: Sqlite3Static; db: Database; dialecteId: string }): void {
+function createFile(params: { sqlite3: Sqlite3Static; db: Database; dialecteId: string }): string {
 	const { sqlite3, db, dialecteId } = params
+	const creationId = crypto.randomUUID()
 	db.exec('PRAGMA auto_vacuum=INCREMENTAL')
 	inWriteTransaction({ sqlite3, db, work: writeLayout })
+	return creationId
 
 	function writeLayout(): void {
 		db.exec(
@@ -53,38 +58,102 @@ function createFile(params: { sqlite3: Sqlite3Static; db: Database; dialecteId: 
 				`CREATE TABLE ${TABLE_BLOB_DATA} (${columnDefinitions({ columns: BLOB_DATA_COLUMNS })});`,
 		)
 		db.exec({
-			sql: `INSERT INTO ${TABLE_META} (key, value) VALUES (?, ?), (?, ?)`,
-			bind: [META_KEY.dialecteId, dialecteId, META_KEY.layoutVersion, String(LAYOUT_VERSION)],
+			sql: `INSERT INTO ${TABLE_META} (key, value) VALUES (?, ?), (?, ?), (?, ?)`,
+			bind: [
+				META_KEY.dialecteId,
+				dialecteId,
+				META_KEY.layoutVersion,
+				String(LAYOUT_VERSION),
+				META_KEY.creationId,
+				creationId,
+			],
 		})
+		db.exec(`PRAGMA application_id=${dialecteApplicationId({ dialecteId })}`)
 		db.exec(`PRAGMA user_version=${LAYOUT_VERSION}`)
 	}
 }
 
 /**
- * Lay out a new file, or check the layout of one: the layout version is read from the header, which
- * every layout keeps, before anything else of the file. A file at another layout - or holding tables
- * with none - is refused with `PROJECT_LAYOUT_OUTDATED`, nothing of it written.
+ * The dialecte's mark in a project file's header (`PRAGMA application_id`, a signed 32-bit integer): the
+ * FNV-1a digest of its id, read with the layout version without opening the file. A hint only - two ids may
+ * share a digest; the file's directory and its `_meta` table say the dialecte.
+ */
+export function dialecteApplicationId(params: { dialecteId: string }): number {
+	const { offsetBasis, prime } = APPLICATION_ID_DIGEST
+	let digest: number = offsetBasis
+	for (const byte of new TextEncoder().encode(params.dialecteId)) {
+		digest = Math.imul(digest ^ byte, prime)
+	}
+	// SQLite keeps it signed
+	return digest | 0
+}
+
+/**
+ * Lay out a new file, or check one: the layout version is read from the header, which every layout keeps,
+ * before anything else of the file. A file at another layout - or holding tables with none - is refused with
+ * `PROJECT_LAYOUT_OUTDATED`, one of another dialecte with `PROJECT_DIALECTE_MISMATCH`: nothing of it written.
+ * Answers the file's creation id.
  */
 export function prepareFile(params: {
 	sqlite3: Sqlite3Static
 	db: Database
+	/** The project's name, said in a refusal. */
+	project: string
 	dialecteId: string
+	/** The creation id the opener knows (a view coming back): a new file or one of another id is refused. */
+	expectedCreationId?: string
 	steadyCacheMiB: number
-}): void {
-	const { sqlite3, db, dialecteId, steadyCacheMiB } = params
+}): { creationId: string } {
+	const { sqlite3, db, project, dialecteId, expectedCreationId, steadyCacheMiB } = params
 	// read before any pragma: a refused file is never written, nor locked by this connection
 	const layoutVersion = Number(db.selectValue('PRAGMA user_version'))
 	const tables = Number(db.selectValue('SELECT count(*) FROM sqlite_schema'))
-	if (layoutVersion === LAYOUT_VERSION || (layoutVersion === 0 && tables === 0)) {
+	if (layoutVersion === 0 && tables === 0) {
+		// a view coming back to a project finds none: destroyed meanwhile, never made again empty here
+		refuseOtherCreation({ project, expectedCreationId, creationId: undefined })
 		applyConnectionPragmas({ db, steadyCacheMiB })
-		if (layoutVersion === 0) createFile({ sqlite3, db, dialecteId })
-		return
+		return { creationId: createFile({ sqlite3, db, dialecteId }) }
+	}
+	if (layoutVersion === LAYOUT_VERSION) {
+		const meta = readMeta({ db })
+		refuseOtherDialecte({ project, dialecteId, fileDialecteId: meta.dialecteId })
+		refuseOtherCreation({ project, expectedCreationId, creationId: meta.creationId })
+		applyConnectionPragmas({ db, steadyCacheMiB })
+		return { creationId: meta.creationId }
 	}
 	throwDialecteError('PROJECT_LAYOUT_OUTDATED', {
 		detail:
 			`The project file is at layout ${layoutVersion}, this library reads layout ${LAYOUT_VERSION}: ` +
 			'delete the project and import its files again',
 		meta: { layoutVersion, expectedLayoutVersion: LAYOUT_VERSION },
+	})
+}
+
+/** What a file of this layout says of itself in its `_meta` table. */
+function readMeta(params: { db: Database }): { dialecteId: string; creationId: string } {
+	const rows = params.db.selectObjects(`SELECT key, value FROM ${TABLE_META}`) as MetaRow[]
+	const meta = new Map(rows.map(metaEntry))
+	return {
+		dialecteId: meta.get(META_KEY.dialecteId) ?? '',
+		creationId: meta.get(META_KEY.creationId) ?? '',
+	}
+}
+
+function metaEntry(row: MetaRow): [string, string] {
+	return [row.key, row.value]
+}
+
+/** A file another dialecte stored, refused before anything of it is written. */
+function refuseOtherDialecte(params: {
+	project: string
+	dialecteId: string
+	fileDialecteId: string
+}): void {
+	const { project, dialecteId, fileDialecteId } = params
+	if (fileDialecteId === dialecteId) return
+	throwDialecteError('PROJECT_DIALECTE_MISMATCH', {
+		detail: `The file of "${project}" was stored by ${fileDialecteId || 'no dialecte'}, this engine runs ${dialecteId}: nothing of it was written`,
+		meta: { project, projectDialecteId: fileDialecteId, realmDialecteId: dialecteId },
 	})
 }
 

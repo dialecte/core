@@ -97,11 +97,22 @@ import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
  * passes as it is.
  */
 export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
-	const { sqlite3, db, dialecteId, name, runtime, ensureImportSpace, onWork } = params
-	if (!isLosslessTextInstalled({ sqlite3 })) {
-		throwDialecteError('ASSERTION_FAILED', {
-			detail: `The engine of "${name}" runs on a SQLite whose text codec is not installed: load SQLite with loadSqlite`,
-		})
+	const {
+		sqlite3,
+		db,
+		dialecteId,
+		expectedCreationId,
+		name,
+		runtime,
+		ensureImportSpace,
+		onWork,
+		onBroken,
+	} = params
+	try {
+		refuseUninstalledText({ sqlite3, name })
+	} catch (thrown) {
+		db.close()
+		throw thrown
 	}
 	const onLongStatement = params.onLongStatement ?? runStatement
 	const { explainIoFailure } = params
@@ -113,12 +124,20 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const steadyCacheMiB = engineOptions.steadyCacheMiB ?? deviceMiB
 	/** An import runs with the device's cache, never below the steady one. */
 	const importCacheMiB = Math.max(deviceMiB, steadyCacheMiB)
+	let creationId = ''
 	try {
 		asStoreFailure({
 			key: 'STORE_CONNECTION_FAILED',
 			detail: 'The project file could not be opened',
 			work: function startOnFile() {
-				prepareFile({ sqlite3, db, dialecteId, steadyCacheMiB })
+				creationId = prepareFile({
+					sqlite3,
+					db,
+					project: name,
+					dialecteId,
+					expectedCreationId,
+					steadyCacheMiB,
+				}).creationId
 				// at the start no client waits on the engine yet (the open has its own budget): nobody to tell
 				inWriteTransaction({
 					sqlite3,
@@ -149,9 +168,9 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const removals = { count: 0 }
 	const queue = createImportQueue()
 	/** The window of the import that runs: every other write settles it first. */
-	const importing: RunningImport = { window: undefined }
+	const importing: RunningImport = { window: undefined, ended: undefined }
 	/** Set by `close()`: every call refused from then on, an import resumed after it aborted first. */
-	const state = { closed: false }
+	const state = { closed: false, broken: false }
 
 	const blobMembers: EngineBlobMembers = {
 		/**
@@ -383,7 +402,13 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					// an import with no row yet runs or will (waiting its turn, or checking its space); then its row says
 					if (queue.awaitsRow({ writeId })) return 'running'
 					const documents = readDocumentsByWriteId({ db, writeId })
-					return writeOutcomeOf({ documents, writeId, committed: hasCommitOf({ db, writeId }) })
+					// the engine runs every import of its file: a row importing whose import is not in its queue is a leftover
+					return writeOutcomeOf({
+						documents,
+						writeId,
+						committed: hasCommitOf({ db, writeId }),
+						isRunning: queue.runs,
+					})
 				},
 			})
 		},
@@ -512,15 +537,20 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
 		}
 		try {
-			await reclaimFreePagesInSteps()
+			// the removal asked for: its pages given back now, settling an import that runs as any write does
+			await reclaimFreePagesInSteps({ background: false })
 		} catch (thrown) {
 			throw toStoreFailure({ key: 'STORE_DELETE_FAILED', detail, thrown })
 		}
 	}
 
-	/** The file's free pages given back in steps; stopped once the engine is closed. */
-	function reclaimFreePagesInSteps(): Promise<void> {
+	/**
+	 * The file's free pages given back in steps; stopped once the engine is closed. In the background (the
+	 * start's), no step while an import runs: its window is never settled for one.
+	 */
+	function reclaimFreePagesInSteps(params: { background: boolean }): Promise<void> {
 		return reclaimInSteps({
+			giveWayTo: params.background ? runningImportEnd : undefined,
 			db,
 			settle: function settleBeforeStep() {
 				settleImport({ importing })
@@ -704,7 +734,9 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					},
 					customIds: options?.useCustomRecordsIds ?? false,
 				})
+				const ended = Promise.withResolvers<void>()
 				importing.window = window
+				importing.ended = ended.promise
 				try {
 					const result = await runImport(
 						{ store: target, runtime: importRuntime, file, options, writeId, perf },
@@ -721,9 +753,49 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					throw await outOfSpaceOr({ thrown: failure })
 				} finally {
 					importing.window = undefined
+					importing.ended = undefined
+					ended.resolve()
+					breakIfStranded()
 				}
 			},
 		})
+	}
+
+	/** The end of the import that runs; none between two imports. */
+	function runningImportEnd(): Promise<void> | undefined {
+		return importing.ended
+	}
+
+	/**
+	 * A connection an import left inside a transaction takes no write again: every later one would fail to begin, and
+	 * the next import's end would commit the stranded rows. The engine closes and says so (`onBroken`): its host
+	 * starts the next engine on the file.
+	 */
+	function breakIfStranded(): void {
+		if (!db.isOpen() || sqlite3.capi.sqlite3_get_autocommit(db) !== 0) return
+		state.broken = true
+		try {
+			closeEngine()
+		} catch {
+			// the connection closed all the same (the close's own finally): the import's failure is the one told
+		} finally {
+			onBroken?.()
+		}
+	}
+
+	function closeEngine(): void {
+		state.closed = true
+		try {
+			queue.abortAll()
+			// every statement finalized before the connection closes: one left open keeps the file held
+			for (const { controller, reads } of exports.values()) {
+				controller.abort()
+				finalizeReads({ reads })
+			}
+		} finally {
+			// whatever failed before: the connection closed, its handles let go before the engine's lock is
+			db.close()
+		}
 	}
 
 	async function abortImport(params: { writeId: string }): Promise<void> {
@@ -815,10 +887,11 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	}
 
 	// what the unfinished imports left is given back while the engine serves: a large one held a start for seconds
-	reclaimFreePagesInSteps().catch(leaveForNextReclaim)
+	reclaimFreePagesInSteps({ background: true }).catch(leaveForNextReclaim)
 
 	return {
 		...served,
+		creationId,
 		importFile: importAsOwner,
 		abortImport,
 		exportFile,
@@ -844,16 +917,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				abortExport,
 			}
 		},
-		close: function closeEngine() {
-			state.closed = true
-			queue.abortAll()
-			// every statement finalized before the connection closes: one left open keeps the file held
-			for (const { controller, reads } of exports.values()) {
-				controller.abort()
-				finalizeReads({ reads })
-			}
-			db.close()
-		},
+		close: closeEngine,
 	}
 }
 
@@ -880,6 +944,15 @@ function settleImport(params: { importing: RunningImport }): void {
 	params.importing.window?.settle()
 }
 
+/** A SQLite whose text codec `loadSqlite` did not install: refused, its text would not read back as written. */
+function refuseUninstalledText(params: { sqlite3: Sqlite3Static; name: string }): void {
+	const { sqlite3, name } = params
+	if (isLosslessTextInstalled({ sqlite3 })) return
+	throwDialecteError('ASSERTION_FAILED', {
+		detail: `The engine of "${name}" runs on a SQLite whose text codec is not installed: load SQLite with loadSqlite`,
+	})
+}
+
 /** The statement an export reads through, finalized; none held after. */
 function finalizeReads(params: { reads: ExportReads }): void {
 	const { reads } = params
@@ -887,9 +960,19 @@ function finalizeReads(params: { reads: ExportReads }): void {
 	reads.current = undefined
 }
 
-/** A call on a closed engine: `STORE_CLOSED`, never a failure of the closed database. */
-function refuseClosed(params: { state: { closed: boolean }; name: string }): void {
-	if (params.state.closed) throwStoreClosed({ storeName: params.name })
+/**
+ * A call on a closed engine: `STORE_CLOSED`, never a failure of the closed database; on a broken one, its host
+ * gone (`STORE_ENGINE_LOST`, `host-gone`): the caller's store never closed, a read is made again on the next engine.
+ */
+function refuseClosed(params: { state: { closed: boolean; broken: boolean }; name: string }): void {
+	const { state, name } = params
+	if (state.broken) {
+		throwDialecteError('STORE_ENGINE_LOST', {
+			detail: `The project engine of "${name}" broke (an import left its connection inside a transaction): the next call starts the next one`,
+			meta: { reason: 'host-gone' },
+		})
+	}
+	if (state.closed) throwStoreClosed({ storeName: name })
 }
 
 /** A bulk write in one transaction; answers how many records it deleted. */

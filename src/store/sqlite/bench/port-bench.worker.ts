@@ -3,14 +3,14 @@
  * a dialecte's worker entry serves its engine (the page reaches it through the store's port).
  */
 import { benchConfig, createWriteBackSession } from './bench-import-session'
-import { AFTER_IMPORT_RATIOS, ENGINE_BENCH_DIALECTE_ID, FIXTURE_ROOTS } from './bench.constants'
+import { AFTER_IMPORT_RATIOS, FIXTURE_ROOTS, PORT_BENCH_DIALECTE } from './bench.constants'
 
 import { defineDialecte } from '@/dialecte'
 import { serveDialecteEngine } from '@/engine'
 
-const PORT_BENCH_DIALECTE = defineDialecte({
-	id: ENGINE_BENCH_DIALECTE_ID,
-	version: '0.0.0',
+const PORT_BENCH_ENGINE_DIALECTE = defineDialecte({
+	id: PORT_BENCH_DIALECTE.dialecteId,
+	version: PORT_BENCH_DIALECTE.dialecteVersion,
 	configs: { default: benchConfig(FIXTURE_ROOTS.composed) },
 	defaultConfigKey: 'default',
 	createHooks: function createBenchHooks() {
@@ -26,4 +26,4 @@ const PORT_BENCH_DIALECTE = defineDialecte({
 	},
 })
 
-serveDialecteEngine({ dialecte: PORT_BENCH_DIALECTE })
+serveDialecteEngine({ dialecte: PORT_BENCH_ENGINE_DIALECTE })

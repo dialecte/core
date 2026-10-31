@@ -5,6 +5,11 @@ export type HubShell = {
 	connect: (params: { port: MessagePort }) => void
 }
 
+export type ServeHubParams = {
+	/** How long a port connected to the hub (not a child's binding) may stay without a hello. */
+	helloBudgetMs?: number
+}
+
 /** The scope of the hub's SharedWorker, as far as the hub reads it. */
 export type SharedWorkerScope = {
 	onconnect: ((event: MessageEvent) => void) | null
@@ -23,7 +28,10 @@ export type PendingAdoption = {
 	hostRealmId: string
 	clientRealmId: string
 	project: string
+	dialecteId: string
 	generation: number
+	/** The id the engine's project was created with, told the client with its port. */
+	creationId: string
 	port: MessagePort
 }
 
@@ -45,6 +53,8 @@ export type HubShellState = {
 	/** Binding id -> the child realm bound under it. */
 	bindings: Map<string, ChildBinding>
 	timer: ReturnType<typeof setTimeout> | undefined
+	/** The lock this hub holds for its life, told each realm it welcomes. */
+	hubLock: string
 }
 
 /** The port a hello came on, while the router decides on it (welcomed, or refused on that port). */

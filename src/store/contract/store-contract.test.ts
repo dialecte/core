@@ -61,6 +61,14 @@ function differenceOf(params: {
 		if (need === 'engine-end' && !factory.endEngine) {
 			throw new Error(`${factory.name} neither ends its engine nor says why it cannot`)
 		}
+		if (need === 'dialecte-key' && !factory.connectAsOtherDialecte) {
+			throw new Error(
+				`${factory.name} neither opens another dialecte's project nor says why it cannot`,
+			)
+		}
+		if (need === 'away' && !factory.destroyWhileAway) {
+			throw new Error(`${factory.name} neither sends a view away nor says why it cannot`)
+		}
 	}
 	return undefined
 }
@@ -101,6 +109,18 @@ function runStoreContract(factory: StoreContractFactory): void {
 					opened.push(other)
 					return other
 				},
+				connectInRealm: async function connectStoreInRealm() {
+					const connectInRealm = factory.connectInRealm ?? factory.connect
+					if (!connectInRealm) throw new Error(`${factory.name} has no second connection`)
+					const other = await connectInRealm(current.store)
+					opened.push(other)
+					return other
+				},
+				createNamed: async function createNamedStore({ name }) {
+					const store = await factory.createNamed({ name })
+					others.push(store)
+					return store
+				},
 				createOther: async function createOtherStore() {
 					const other = await factory.create()
 					others.push(other)
@@ -109,6 +129,18 @@ function runStoreContract(factory: StoreContractFactory): void {
 				endEngine: async function endEngine() {
 					if (!factory.endEngine) throw new Error(`${factory.name} has no engine to end`)
 					await factory.endEngine({ store: current.store })
+				},
+				destroyWhileAway: async function destroyWhileAway({ remake }) {
+					if (!factory.destroyWhileAway) throw new Error(`${factory.name} sends no view away`)
+					await factory.destroyWhileAway({ store: current.store, remake })
+				},
+				connectAsOtherDialecte: async function connectAsOtherDialecte() {
+					if (!factory.connectAsOtherDialecte) {
+						throw new Error(`${factory.name} opens no other dialecte's project`)
+					}
+					const other = await factory.connectAsOtherDialecte({ store: current.store })
+					others.push(other)
+					return other
 				},
 				fillStorage: async function fillStorage() {
 					if (!factory.fillStorage) throw new Error(`${factory.name} cannot fill its storage`)
@@ -186,9 +218,13 @@ describe('the store contract over every leg', () => {
 		const root = await navigator.storage.getDirectory()
 		const left: string[] = []
 		try {
+			// a directory per dialecte, one per project in it
 			const pools = await root.getDirectoryHandle(POOL_ROOT_DIRECTORY)
-			for await (const name of pools.keys()) {
-				if (decodeURIComponent(name).startsWith('store-contract-')) left.push(name)
+			for await (const dialecte of pools.values()) {
+				if (dialecte.kind !== 'directory') continue
+				for await (const name of (dialecte as FileSystemDirectoryHandle).keys()) {
+					if (decodeURIComponent(name).startsWith('store-contract-')) left.push(name)
+				}
 			}
 		} catch {
 			// no pool directory at all

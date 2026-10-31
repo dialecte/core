@@ -4,9 +4,12 @@ import {
 } from '../../contract/store-contract.constants'
 import { contractFile } from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
-import { isEngineLockFree } from '../../sqlite/runtime/runtime.fixtures'
-import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../../sqlite/runtime/runtime.fixtures.constants'
-import { ENGINE_LOCK_PREFIX } from '../engine.constants'
+import { fixtureUrl, isEngineLockFree, orderFixture } from '../../sqlite/runtime/runtime.fixtures'
+import {
+	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	FIXTURE_DIALECTE,
+} from '../../sqlite/runtime/runtime.fixtures.constants'
+import { engineLockNameOf } from '../project-key'
 import { ENGINE_IDLE_CLOSE_MS } from './hub.constants'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -149,7 +152,10 @@ function clientGoneSeen(params: { clientId: string }): Promise<void> {
 async function engineLockHolder(params: { project: string }): Promise<string | undefined> {
 	const { held = [] } = await navigator.locks.query()
 	return held.find(function isEngineLock(lock) {
-		return lock.name === `${ENGINE_LOCK_PREFIX}${params.project}`
+		return (
+			lock.name ===
+			engineLockNameOf({ dialecteId: FIXTURE_DIALECTE.dialecteId, project: params.project })
+		)
 	})?.clientId
 }
 
@@ -437,13 +443,18 @@ describe('the hub across realms of the page', () => {
 		await host.realm.destroyProject({ project })
 	})
 
-	it('a read in flight when its host realm ends → answered by the next engine, on the same files', async () => {
+	it('a read the host’s engine holds when its realm ends → answered by the next engine, on the same files', async () => {
 		const project = uniqueProject()
-		const host = await realmFrame({ canStartEngines: true })
+		// the host's engine answers until the case mutes it; the reader's is a plain one
+		const host = await realmFrame({
+			canStartEngines: true,
+			engineUrl: fixtureUrl({ scenario: 'mute-clients' }),
+		})
 		const reader = await realmFrame({ canStartEngines: true })
 		await host.realm.registerDocument({ project, id: 'doc-1' })
 		expect(await reader.realm.documentIds({ project })).toEqual(['doc-1'])
-		// asked in the same turn as the removal: the hub hears of the host gone while the read waits
+		await orderFixture({ order: { type: 'mute-clients' } })
+		// never answered by the host's engine: only the next one, the read made again, answers it
 		const reading = reader.realm.documentIds({ project })
 		host.frame.remove()
 		expect(await reading).toEqual(['doc-1'])

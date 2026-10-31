@@ -22,6 +22,8 @@ import {
 	uniqueProject,
 } from './runtime.fixtures'
 import {
+	FIXTURE_DIALECTE,
+	OTHER_FIXTURE_DIALECTE,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	INSTALL_REFUSAL,
 	LOCK_QUEUE_TIMEOUT_MS,
@@ -157,6 +159,19 @@ describe('an engine worker opening its project', () => {
 		expect(await engine.getDocuments()).toEqual([makeDocument()])
 	})
 
+	it.each(['', '.', '..'])(
+		'a project named %j → refused PROJECT_NAME_INVALID before any file is touched, the engine lock let go',
+		async (project) => {
+			const started = startEngineWorker({})
+			cleanups.push(started.end)
+			const refused = await rejectionKey({
+				action: started.control.request({ message: openMessage({ project }), expect: 'opened' }),
+			})
+			expect(refused).toBe('PROJECT_NAME_INVALID')
+			expect(await isEngineLockFree({ project })).toBe(true)
+		},
+	)
+
 	it('a new project where too little space is left → STORE_QUOTA_EXCEEDED, nothing created', async () => {
 		const project = uniqueProject()
 		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'small-quota' }) })
@@ -192,15 +207,23 @@ describe('an engine worker opening its project', () => {
 	})
 
 	describe('the origin out of storage while it writes (the file system refuses the writes)', () => {
-		/** An engine on the `disk-full` fixture, a document registered, then the disk filled (after some writes). */
+		/**
+		 * An engine on the `disk-full` fixture, a document registered (and what `prepare` writes), then the disk filled
+		 * (after some writes).
+		 */
 		async function engineOnFullDisk(
-			params: { afterWrites?: number; failing?: boolean } = {},
+			params: {
+				afterWrites?: number
+				failing?: boolean
+				prepare?: (engine: Awaited<ReturnType<typeof clientOf>>) => Promise<void>
+			} = {},
 		): Promise<Awaited<ReturnType<typeof clientOf>>> {
 			const project = uniqueProject()
 			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'disk-full' }) })
 			await control.request({ message: openMessage({ project }), expect: 'opened' })
 			const engine = await clientOf({ control, clientId: 'c-1' })
 			await engine.registerDocument(makeDocument())
+			await params.prepare?.(engine)
 			await orderDisk(
 				params.failing
 					? { type: 'write-fails' }
@@ -230,6 +253,86 @@ describe('an engine worker opening its project', () => {
 			).toBe('STORE_QUOTA_EXCEEDED')
 			expect(await engine.count('doc-1')).toBe(0)
 		})
+
+		type RefusedWrite = {
+			/** Written before the disk fills. */
+			prepare?: (engine: Awaited<ReturnType<typeof engineOnFullDisk>>) => Promise<void>
+			write: (engine: Awaited<ReturnType<typeof engineOnFullDisk>>) => Promise<unknown>
+			/** What is read afterwards: nothing of the write there. */
+			readAfter: (engine: Awaited<ReturnType<typeof engineOnFullDisk>>) => Promise<unknown>
+			expectedAfter: unknown
+		}
+		const refusedWrites: Record<string, RefusedWrite> = {
+			'a bulk write → STORE_QUOTA_EXCEEDED, nothing of it applied': {
+				write: (engine) =>
+					engine.bulkWrite('doc-1', {
+						creates: Array.from({ length: 2_000 }, (_, index) => makeRecord({ id: `r${index}` })),
+					}),
+				readAfter: (engine) => engine.count('doc-1'),
+				expectedAfter: 0,
+			},
+			'a document registered → STORE_QUOTA_EXCEEDED, not registered': {
+				write: (engine) =>
+					engine.registerDocument(
+						makeDocument({ id: 'doc-2', metadata: { note: 'x'.repeat(100_000) } }),
+					),
+				readAfter: (engine) => engine.getDocument('doc-2'),
+				expectedAfter: undefined,
+			},
+			'an undo → STORE_QUOTA_EXCEEDED, the history and the record as they were': {
+				prepare: (engine) => editTwice({ engine }),
+				write: (engine) => engine.undo('doc-1'),
+				readAfter: (engine) => historyAndValue({ engine }),
+				expectedAfter: { history: { canUndo: true, canRedo: false }, value: 'second' },
+			},
+			'a redo → STORE_QUOTA_EXCEEDED, the history and the record as they were': {
+				prepare: async (engine) => {
+					await editTwice({ engine })
+					await engine.undo('doc-1')
+				},
+				write: (engine) => engine.redo('doc-1'),
+				readAfter: (engine) => historyAndValue({ engine }),
+				expectedAfter: { history: { canUndo: true, canRedo: true }, value: 'first' },
+			},
+		}
+
+		/** `r1` created with `first`, then set to `second`: two commits to step through. */
+		async function editTwice(params: {
+			engine: Awaited<ReturnType<typeof engineOnFullDisk>>
+		}): Promise<void> {
+			const { engine } = params
+			const commitOf = (writeId: string, value: string, created: boolean) =>
+				engine.commit({
+					documentId: 'doc-1',
+					writeId,
+					creates: created ? [makeRecord({ id: 'r1', value })] : [],
+					updates: created ? [] : [makeRecord({ id: 'r1', value })],
+					deletes: [],
+				})
+			await commitOf('w-first', 'first', true)
+			await commitOf('w-second', 'second', false)
+		}
+
+		/** The document's history and the value of `r1`. */
+		async function historyAndValue(params: {
+			engine: Awaited<ReturnType<typeof engineOnFullDisk>>
+		}): Promise<{ history: unknown; value: string | undefined }> {
+			const { engine } = params
+			return {
+				history: await engine.getHistoryStatus('doc-1'),
+				value: (await engine.get('r1', 'doc-1'))?.value,
+			}
+		}
+
+		for (const [description, { prepare, write, readAfter, expectedAfter }] of Object.entries(
+			refusedWrites,
+		)) {
+			it(description, async () => {
+				const engine = await engineOnFullDisk({ prepare })
+				expect(await rejectionKey({ action: write(engine) })).toBe('STORE_QUOTA_EXCEEDED')
+				expect(await readAfter(engine)).toEqual(expectedAfter)
+			})
+		}
 
 		it('a commit refused by the file system for another reason while room is left → its own key, STORE_COMMIT_FAILED', async () => {
 			const engine = await engineOnFullDisk({ failing: true })
@@ -442,7 +545,13 @@ describe('an engine worker opening its project', () => {
 			expect(await poolFileDigests({ project })).toEqual(damaged)
 			// the pool the worker keeps paused removed there
 			await control.request({
-				message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+				message: {
+					type: 'destroy',
+					project,
+					dialecteId: FIXTURE_DIALECTE.dialecteId,
+					lock: 'if-available',
+					budgetMs: 5_000,
+				},
 				expect: 'destroyed',
 			})
 			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
@@ -458,7 +567,11 @@ describe('an engine worker opening its project', () => {
 			cleanups.push(() => removePoolDirectory({ project: name }))
 			const store = new EngineStore({
 				name,
-				connector: createSqliteWorkerConnector({ name, engineUrl: TEST_ENGINE_URL }),
+				connector: createSqliteWorkerConnector({
+					...FIXTURE_DIALECTE,
+					name,
+					engineUrl: TEST_ENGINE_URL,
+				}),
 			})
 			const project = new Project({
 				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
@@ -509,7 +622,13 @@ describe('an engine worker opening its project', () => {
 			expect(await open()).toBe('PROJECT_DATABASE_LOST')
 			expect(await open()).toBe('PROJECT_DATABASE_LOST')
 			await control.request({
-				message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+				message: {
+					type: 'destroy',
+					project,
+					dialecteId: FIXTURE_DIALECTE.dialecteId,
+					lock: 'if-available',
+					budgetMs: 5_000,
+				},
 				expect: 'destroyed',
 			})
 			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
@@ -637,6 +756,36 @@ describe('an engine worker opening its project', () => {
 	})
 })
 
+describe('an engine worker whose import leaves its connection inside a transaction', () => {
+	it('the import refused, the engine let go with its lock (its worker ending); the next engine finds the document there, no trace of the import', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'stranded-window' }) })
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const engine = await clientOf({ control, clientId: 'c-1' })
+		await engine.registerDocument(makeDocument())
+		await orderFixture({ order: { type: 'strand-windows' } })
+		const refused = await rejectionKey({
+			action: engine.importFile({
+				file: contractFile({ body: '<B aB="B0"/><B aB="B1"/>' }),
+				writeId: 'w-stranded',
+			}),
+		})
+		// every commit of the worker refused: the import fails at its window's commit
+		expect(refused).toBe('STORE_COMMIT_FAILED')
+		await vi.waitFor(
+			async function lockLetGo() {
+				expect(await isEngineLockFree({ project })).toBe(true)
+			},
+			{ timeout: 10_000 },
+		)
+		const next = engineWorker({ project })
+		await next.control.request({ message: openMessage({ project }), expect: 'opened' })
+		const reader = await clientOf({ control: next.control, clientId: 'c-2' })
+		expect(await reader.getDocuments()).toEqual([makeDocument()])
+		expect(await reader.getWriteOutcome({ writeId: 'w-stranded' })).toBe('not-applied')
+	})
+})
+
 describe('an engine worker whose database close throws', () => {
 	/** An engine open on the project in the close-throws fixture, a document written, the next close ordered to throw. */
 	async function engineWhoseCloseThrows(params: { project: string }): Promise<{
@@ -657,7 +806,13 @@ describe('an engine worker whose database close throws', () => {
 		const project = uniqueProject()
 		const { control } = await engineWhoseCloseThrows({ project })
 		const destroying = control.request({
-			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+			message: {
+				type: 'destroy',
+				project,
+				dialecteId: FIXTURE_DIALECTE.dialecteId,
+				lock: 'if-available',
+				budgetMs: 5_000,
+			},
 			expect: 'destroyed',
 		})
 		const refused = await rejectionKey({ action: destroying })
@@ -670,7 +825,13 @@ describe('an engine worker whose database close throws', () => {
 		const project = uniqueProject()
 		const { control } = await engineWhoseCloseThrows({ project })
 		const destroying = control.request({
-			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+			message: {
+				type: 'destroy',
+				project,
+				dialecteId: FIXTURE_DIALECTE.dialecteId,
+				lock: 'if-available',
+				budgetMs: 5_000,
+			},
 			expect: 'destroyed',
 		})
 		await rejectionKey({ action: destroying })
@@ -693,6 +854,156 @@ describe('an engine worker whose database close throws', () => {
 	})
 })
 
+describe('a view coming back to its project (the creation id it knows)', () => {
+	it('the project there with that id → opened; destroyed meanwhile → refused PROJECT_DESTROYED_WHILE_AWAY, nothing made; made again since → refused, its files as they were', async () => {
+		const project = uniqueProject()
+		const first = engineWorker({ project })
+		const opened = await first.control.request({
+			message: openMessage({ project }),
+			expect: 'opened',
+		})
+		await first.control.request({ message: { type: 'close' }, expect: 'closed' })
+		first.end()
+		const again = engineWorker({ project })
+		const reopened = await again.control.request({
+			message: { ...openMessage({ project }), expectedCreationId: opened.creationId },
+			expect: 'opened',
+		})
+		expect(reopened.creationId).toBe(opened.creationId)
+		await again.control.request({
+			message: {
+				type: 'destroy',
+				project,
+				dialecteId: FIXTURE_DIALECTE.dialecteId,
+				lock: 'wait',
+				budgetMs: 5_000,
+			},
+			expect: 'destroyed',
+		})
+		const away = engineWorker({ project })
+		expect(
+			await rejectionKey({
+				action: away.control.request({
+					message: { ...openMessage({ project }), expectedCreationId: opened.creationId },
+					expect: 'opened',
+				}),
+			}),
+		).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		// another tab makes the project again under its name
+		await closedPoolWithDocument({ project })
+		const madeAgain = await poolFileDigests({ project })
+		const back = engineWorker({ project })
+		expect(
+			await rejectionKey({
+				action: back.control.request({
+					message: { ...openMessage({ project }), expectedCreationId: opened.creationId },
+					expect: 'opened',
+				}),
+			}),
+		).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		expect(await poolFileDigests({ project })).toEqual(madeAgain)
+		expect(await isEngineLockFree({ project })).toBe(true)
+	})
+})
+
+describe('two dialectes, one project name', () => {
+	/** The engine of the other dialecte on `project`, its pool removed after the case. */
+	function otherEngineWorker(params: { project: string }): ReturnType<typeof startEngineWorker> {
+		const started = startEngineWorker({ url: fixtureUrl({ scenario: 'other-dialecte' }) })
+		cleanups.push(started.end, () =>
+			removePoolDirectory({
+				project: params.project,
+				dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId,
+			}),
+		)
+		return started
+	}
+
+	it('each dialecte’s engine opens its own project at once: two directories, two locks, documents apart', async () => {
+		const project = uniqueProject()
+		const ours = engineWorker({ project })
+		const theirs = otherEngineWorker({ project })
+		await ours.control.request({ message: openMessage({ project }), expect: 'opened' })
+		await theirs.control.request({
+			message: openMessage({ project, ...OTHER_FIXTURE_DIALECTE }),
+			expect: 'opened',
+		})
+		const ourEngine = await clientOf({ control: ours.control, clientId: 'ours' })
+		const theirEngine = await clientOf({ control: theirs.control, clientId: 'theirs' })
+		await ourEngine.registerDocument(makeDocument({ id: 'ours' }))
+		const theirDocuments = await theirEngine.getDocuments()
+		expect(theirDocuments).toEqual([])
+		expect(await poolState({ project })).toMatchObject({ exists: true })
+		expect(
+			await poolState({ project, dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId }),
+		).toMatchObject({ exists: true })
+	})
+
+	it('an open asking another dialecte than the engine’s → PROJECT_DIALECTE_MISMATCH naming both, no lock taken, nothing created', async () => {
+		const project = uniqueProject()
+		const { control } = otherEngineWorker({ project })
+		const refused = await control
+			.request({ message: openMessage({ project }), expect: 'opened' })
+			.catch(function refusedWith(thrown: unknown) {
+				return toDialecteError(thrown)
+			})
+		expect(refused).toMatchObject({
+			key: 'PROJECT_DIALECTE_MISMATCH',
+			meta: {
+				project,
+				projectDialecteId: OTHER_FIXTURE_DIALECTE.dialecteId,
+				realmDialecteId: FIXTURE_DIALECTE.dialecteId,
+			},
+		})
+		expect(await isEngineLockFree({ project, dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId })).toBe(
+			true,
+		)
+		expect(await isEngineLockFree({ project })).toBe(true)
+		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		expect(await poolState({ project, dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId })).toEqual({
+			exists: false,
+			files: 0,
+		})
+	})
+
+	it('an open asking another version of the engine’s dialecte → PROJECT_DIALECTE_VERSION_MISMATCH, nothing created', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project })
+		const refused = await control
+			.request({ message: openMessage({ project, dialecteVersion: '9.9.9' }), expect: 'opened' })
+			.catch(function refusedWith(thrown: unknown) {
+				return toDialecteError(thrown)
+			})
+		expect(refused).toMatchObject({
+			key: 'PROJECT_DIALECTE_VERSION_MISMATCH',
+			meta: { engineVersion: FIXTURE_DIALECTE.dialecteVersion, realmVersion: '9.9.9' },
+		})
+		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+	})
+
+	it('a destroy asking another dialecte → PROJECT_DIALECTE_MISMATCH, the project of that name kept', async () => {
+		const project = uniqueProject()
+		await closedPoolWithDocument({ project })
+		const { control } = otherEngineWorker({ project })
+		expect(
+			await rejectionKey({
+				action: control.request({
+					message: {
+						type: 'destroy',
+						project,
+						dialecteId: FIXTURE_DIALECTE.dialecteId,
+						lock: 'if-available',
+						budgetMs: 5_000,
+					},
+					expect: 'destroyed',
+				}),
+			}),
+		).toBe('PROJECT_DIALECTE_MISMATCH')
+		expect(await poolState({ project })).toMatchObject({ exists: true })
+	})
+})
+
 describe('an engine worker destroying its project', () => {
 	it('through a store → the pool directory gone; a new connection reads empty', async () => {
 		const name = uniqueProject()
@@ -700,7 +1011,11 @@ describe('an engine worker destroying its project', () => {
 		const open = async () => {
 			const store = new EngineStore({
 				name,
-				connector: createSqliteWorkerConnector({ name, engineUrl: TEST_ENGINE_URL }),
+				connector: createSqliteWorkerConnector({
+					...FIXTURE_DIALECTE,
+					name,
+					engineUrl: TEST_ENGINE_URL,
+				}),
 			})
 			await store.open()
 			return store
@@ -719,7 +1034,13 @@ describe('an engine worker destroying its project', () => {
 		await closedPoolWithDocument({ project })
 		const { control } = engineWorker({ project })
 		await control.request({
-			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 1_000 },
+			message: {
+				type: 'destroy',
+				project,
+				dialecteId: FIXTURE_DIALECTE.dialecteId,
+				lock: 'if-available',
+				budgetMs: 1_000,
+			},
 			expect: 'destroyed',
 		})
 		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
@@ -732,7 +1053,13 @@ describe('an engine worker destroying its project', () => {
 		cleanups.push(holder.release)
 		const { control } = engineWorker({ project })
 		const destroying = control.request({
-			message: { type: 'destroy', project, lock: 'if-available', budgetMs: 5_000 },
+			message: {
+				type: 'destroy',
+				project,
+				dialecteId: FIXTURE_DIALECTE.dialecteId,
+				lock: 'if-available',
+				budgetMs: 5_000,
+			},
 			expect: 'destroyed',
 		})
 		setTimeout(function letGo() {
@@ -751,7 +1078,13 @@ describe('an engine worker destroying its project', () => {
 		expect(
 			await rejectionKey({
 				action: control.request({
-					message: { type: 'destroy', project, lock: 'if-available', budgetMs: 1_000 },
+					message: {
+						type: 'destroy',
+						project,
+						dialecteId: FIXTURE_DIALECTE.dialecteId,
+						lock: 'if-available',
+						budgetMs: 1_000,
+					},
 					expect: 'destroyed',
 				}),
 			}),
@@ -764,7 +1097,7 @@ describe('a client of an engine worker', () => {
 	it('released during its own held import → the import aborted in the engine: not applied, nothing of the file', async () => {
 		const name = uniqueProject()
 		const engineUrl = CONTRACT_ENGINE_URL
-		const connector = createSqliteWorkerConnector({ name, engineUrl })
+		const connector = createSqliteWorkerConnector({ ...FIXTURE_DIALECTE, name, engineUrl })
 		cleanups.push(() => connector.destroy())
 		const link = await connector.connect()
 		const engine = await link.engine()

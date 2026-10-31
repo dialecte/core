@@ -3,9 +3,9 @@ import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
 export type InProcessConnectorParams = {
-	/** The project's name: one in-memory file per name in the realm. */
+	/** The project's name: one in-memory file per dialecte and name in the realm. */
 	name: string
-	/** The dialecte kept in a new file. */
+	/** The project's dialecte: kept in a new file, and with the name, which file is the project's. */
 	dialecteId: string
 	/** What the name's engine imports with, when this connection starts it. */
 	runtime?: StoreRuntime

@@ -171,7 +171,7 @@ unsubscribe()
 ## close / destroy
 
 ```ts
-doc.close() // close the store connection
+await doc.close() // close the store connection: settled once it counts no more (its running operations ended)
 await doc.destroy() // delete the database entirely
 ```
 

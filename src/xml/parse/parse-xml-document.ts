@@ -9,10 +9,14 @@ import { checkJsonValues } from '@/store/json-values'
 import { invariant } from '@/utils'
 import { tellListener } from '@/utils/tell-listener'
 
-import type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
+import type {
+	ParseTarget,
+	ParseXmlFileParams,
+	ParseXmlFileResult,
+} from './parse-xml-document.types'
 import type { Diagnostic } from '@/diagnostics'
 import type { Perf } from '@/perf'
-import type { ImportControl, ImportProgress, ImportTarget } from '@/store/store.types'
+import type { ImportControl, ImportProgress } from '@/store/store.types'
 import type { AnyRawRecord, ImportSession, RecordPatch } from '@/types'
 
 export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-document.types'
@@ -25,7 +29,7 @@ export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-documen
  * - Uses SAX streaming to avoid loading full XML into memory
  * - Batches records and flushes to Store.bulkWrite in chunks
  * - ParseSession encapsulates parent-child resolution state (no module globals)
- * - Database-agnostic: only calls Store.bulkWrite(documentId, ops)
+ * - Database-agnostic: only calls its target's bulkWrite (the file's records) and writeSession (the session's)
  * - `control`: progress told after each stored batch (never awaited), an abort honoured before each
  *   batch and before the session's writes (`IMPORT_ABORTED`; the records already stored are the
  *   caller's to remove)
@@ -109,7 +113,7 @@ async function streamFileInChunks(params: {
 	file: File
 	sax: ReturnType<typeof setSaxParser>
 	session: ParseSession
-	store: ImportTarget
+	store: ParseTarget
 	documentId: string
 	chunkSize: number
 	batchSize: number
@@ -180,7 +184,7 @@ async function streamFileInChunks(params: {
 
 async function endImportSession(params: {
 	importSession?: ImportSession
-	store: ImportTarget
+	store: ParseTarget
 	documentId: string
 	file: File
 	perf: Perf
@@ -206,7 +210,7 @@ async function endImportSession(params: {
 		throwIfAborted({ signal, file })
 		perf.start('import::writes.after')
 		try {
-			await store.bulkWrite(documentId, { creates, updates, deletes })
+			await store.writeSession(documentId, { creates, updates, deletes })
 		} finally {
 			perf.stop('import::writes.after')
 		}
@@ -266,7 +270,7 @@ function appendToBuffer(existing: Uint8Array, incoming: Uint8Array<ArrayBufferLi
 async function flushBatch(params: {
 	sax: ReturnType<typeof setSaxParser>
 	session: ParseSession
-	store: ImportTarget
+	store: ParseTarget
 	documentId: string
 	file: File
 	threshold: number

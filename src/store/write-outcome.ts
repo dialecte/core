@@ -4,16 +4,20 @@ import type { DocumentRecord } from '@/project/types'
 /**
  * What became of an import, read from the registry: the document its `writeId` is on is `running`
  * while `importing`, `applied` once `ready`; no document carries it after a failure, an abort or a
- * removal - `not-applied`.
+ * removal - `not-applied`. A store that knows which imports run says so (`isRunning`): a document
+ * `importing` whose import does not run is what a failed import left when its removal failed too -
+ * `not-applied`, removed when a store of the project next opens.
  */
 export function importOutcomeOf(params: {
 	documents: readonly DocumentRecord[]
 	writeId: string
+	isRunning?: (params: { writeId: string }) => boolean
 }): WriteOutcome {
-	const { documents, writeId } = params
+	const { documents, writeId, isRunning } = params
 	const document = documents.find((candidate) => candidate.writeId === writeId)
 	if (!document) return 'not-applied'
-	return document.status === 'importing' ? 'running' : 'applied'
+	if (document.status !== 'importing') return 'applied'
+	return isRunning?.({ writeId }) === false ? 'not-applied' : 'running'
 }
 
 /**
@@ -25,9 +29,10 @@ export function writeOutcomeOf(params: {
 	documents: readonly DocumentRecord[]
 	writeId: string
 	committed: boolean
+	isRunning?: (params: { writeId: string }) => boolean
 }): WriteOutcome {
-	const { documents, writeId, committed } = params
-	const imported = importOutcomeOf({ documents, writeId })
+	const { documents, writeId, committed, isRunning } = params
+	const imported = importOutcomeOf({ documents, writeId, isRunning })
 	if (imported !== 'not-applied') return imported
 	return committed ? 'applied' : 'not-applied'
 }

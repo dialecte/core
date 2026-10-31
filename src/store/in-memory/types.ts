@@ -6,7 +6,7 @@ import type { AnyRawRecord, BlobRecord } from '@/types'
 export type InMemoryStoreOptions = {
 	/**
 	 * When false, the store is a placeholder: mutations throw STORE_NOT_WRITABLE, reads answer empty,
-	 * and it never reads, keeps or removes the state of its name. Default: true
+	 * and it never reads, keeps or removes the state of its project. Default: true
 	 */
 	writable?: boolean
 	/**
@@ -14,9 +14,14 @@ export type InMemoryStoreOptions = {
 	 * and `exportFile` `ASSERTION_FAILED`
 	 */
 	runtime?: StoreRuntime
+	/**
+	 * The dialecte of the project: with the name, which state the store reads and writes - two dialectes' projects
+	 * of one name are two projects, as on every store that keeps them. Without it, the name alone.
+	 */
+	dialecteId?: string
 }
 
-/** What the in-memory stores of one name hold, the same for each instance of that name in a realm. */
+/** What the in-memory stores of one project hold, the same for each instance of that project in a realm. */
 export type InMemoryState = {
 	documents: Map<string, DocumentRecord>
 	/** The records of each document, by record table name. */
@@ -28,13 +33,13 @@ export type InMemoryState = {
 	discardedCommits: Map<string, Set<string>>
 	blobs: Map<string, BlobRecord>
 	blobData: Map<string, Map<string, Blob>>
-	/** The `writeId`s of the imports running on a store of this name: an `open` keeps their documents. */
+	/** The `writeId`s of the imports running on a store of this project: an `open` keeps their documents. */
 	runningImports: Set<string>
 	/** How many writes each document has taken (bulk writes, commits, undos, redos): what an export checks. */
 	versions: Map<string, number>
 }
 
-/** A state as read: what a name with no state reads as, and all a placeholder store reads. */
+/** A state as read: what a project with no state reads as, and all a placeholder store reads. */
 export type ReadonlyInMemoryState = {
 	documents: ReadonlyMap<string, DocumentRecord>
 	records: ReadonlyMap<string, ReadonlyMap<string, AnyRawRecord>>

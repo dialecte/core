@@ -128,6 +128,11 @@ export type ProjectParams<
 	extensions?: { base?: BaseExtensions; custom?: CustomExtensions }
 	/** All lifecycle hooks (IO + record), applied to every Document opened from this Project */
 	hooks?: DialecteHooks<GenericConfig>
+	/**
+	 * The dialecte the project belongs to (a dialecte's project factory gives it): with the name, which project a
+	 * store holds - two dialectes' projects of one name are two projects. Without it, the name alone.
+	 */
+	dialecteId?: string
 }
 
 // ── resolveConfig ────────────────────────────────────────────────────────────────

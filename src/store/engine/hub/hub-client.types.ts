@@ -1,5 +1,6 @@
 import type { EngineClient } from '../client/client.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
+import type { HubSpawner } from './hub.types'
 import type { HubEngineSpawner } from './realm-host.types'
 
 export type ConnectHubParams = {
@@ -23,6 +24,8 @@ export type HubRealm = Pick<HubConnection, 'realmId' | 'createHubPort' | 'onRejo
 export type HubConnection = {
 	/** This realm instance's id (a new one after the page came back from a freeze or the cache). */
 	realmId: () => string
+	/** The engines this realm registered with the hub at its first join (dialecte id and version), for its life. */
+	spawners: readonly HubSpawner[]
 	/** The realm's link to a project's engine: one per project, shared by the realm's connections to it. */
 	openProject: (params: HubProjectParams) => HubProjectLink
 	/**
@@ -31,6 +34,7 @@ export type HubConnection = {
 	 */
 	destroyProject: (params: {
 		project: string
+		dialecteId: string
 		destroy: () => Promise<void>
 		own?: OwnHubLink
 	}) => Promise<void>
@@ -70,12 +74,16 @@ export type HubProjectParams = {
 export type HubProjectLink = {
 	/** The project's engine client now: waits for the hub's answer, rejects with its refusal. */
 	engine: () => Promise<EngineClient>
-	/** This connection done with the project; the realm leaves it with its last connection. */
-	release: () => void
+	/**
+	 * This connection done with the project; the realm leaves it with its last connection, settled once the hub
+	 * acknowledged the leave - from then on no destroy is refused for this realm (at once when another connection of
+	 * the realm still uses it, or the hub was never asked).
+	 */
+	release: () => Promise<void>
 }
 
 /** The destroying connection's own link, and how to let it go (its store forgetting it). */
-export type OwnHubLink = { link: HubProjectLink; letGo: () => void }
+export type OwnHubLink = { link: HubProjectLink; letGo: () => Promise<void> }
 
 /** A port bound to this realm for a child realm, and how to say the child is gone. */
 export type HubPortHandle = {
@@ -99,6 +107,11 @@ export type ProjectEntry = HubProjectParams & {
 	waiters: EngineWaiter[]
 	/** A refusal that holds for the rest of the link. */
 	refusal: unknown
+	/**
+	 * The id the project's file was created with, from the first engine the link reached: every later engine
+	 * (the realm back from a freeze, a host gone) must run that project, else the link is refused.
+	 */
+	creationId: string | undefined
 }
 
 /**
@@ -143,7 +156,13 @@ export type HubConnectionParams = {
 	lifecycle: HubLifecycleTargets | undefined
 	/**
 	 * Joined through a port its parent made (`adoptHubPort`), not on its own: dropped with its parent, it
-	 * waits for the next port its page hands it. A realm that connected itself, top-level or not, is not.
+	 * waits for the next port its page hands it. A realm that connected itself, top-level or not, is not. A bound
+	 * realm watches no hub lock (a child of another origin shares no locks with the hub): a port its page hands it
+	 * while it is still welcomed settles the leaves it waits for (the hub forgets it with its page); it joins on that
+	 * port once the hub drops it.
 	 */
 	bound?: boolean
 }
+
+/** A join's budget, from its start: `expired` rejects once it has passed; `clear` stops it. */
+export type JoinBudget = { expired: Promise<never>; clear: () => void }

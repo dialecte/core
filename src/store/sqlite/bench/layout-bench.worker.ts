@@ -33,8 +33,8 @@ import type {
 	ImportFileResult,
 	OrderComparison,
 } from './bench.types'
-import type { Store } from '@/store/store.types'
 import type { AnyRawRecord } from '@/types'
+import type { ParseTarget } from '@/xml/parse/parse-xml-document.types'
 import type { Database, SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** The DOM lib types `self` as a window; this worker only posts plain messages to its page. */
@@ -94,7 +94,7 @@ async function importFile(params: ImportFileParams): Promise<ImportFileResult> {
 	sink.createDocumentTable({ table })
 	const sessionTimings = { afterImportBuildMs: 0 }
 	const writes = { createsMs: 0, updatesMs: 0, updates: 0 }
-	const store: Pick<Store, 'bulkWrite'> = {
+	const store: ParseTarget = {
 		bulkWrite: async function benchBulkWrite(_documentId, { creates, updates, deletes }) {
 			// the write-back arm replays updates only; a delete here would be a write the sinks do not run
 			if (deletes?.length) throw new Error('the bench sinks take creates and updates only')
@@ -108,6 +108,9 @@ async function importFile(params: ImportFileParams): Promise<ImportFileResult> {
 				writes.updatesMs += performance.now() - writeStartedAt
 				writes.updates += updates.length
 			}
+		},
+		writeSession: async function benchSessionWrite(documentId, ops) {
+			await store.bulkWrite(documentId, ops)
 		},
 	}
 	const session = createWriteBackSession({
@@ -123,7 +126,7 @@ async function importFile(params: ImportFileParams): Promise<ImportFileResult> {
 			file,
 			documentId,
 			configKey: 'default',
-			store: store as Store,
+			store,
 			config: benchConfig(root),
 			hooks: { createImportSession: () => session },
 		})

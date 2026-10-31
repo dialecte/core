@@ -30,12 +30,15 @@ export type HubEvent =
 			project: string
 			dialecteId: string
 			dialecteVersion: string
+			/** The creation id of the project the realm had, coming back to it. */
+			expectedCreationId?: string
 	  }
 	| {
 			/** A realm closes its link to a project. */ type: 'leave'
 			now: number
 			realmId: string
 			project: string
+			dialecteId: string
 	  }
 	| {
 			/**
@@ -46,12 +49,21 @@ export type HubEvent =
 			now: number
 			realmId: string
 	  }
-	| { type: 'engine-opened'; now: number; project: string; generation: number }
+	| {
+			type: 'engine-opened'
+			now: number
+			project: string
+			dialecteId: string
+			generation: number
+			/** The id the project's file was created with. */
+			creationId: string
+	  }
 	| {
 			/** The host saw its engine worker end without being asked (crash, out of memory). */
 			type: 'engine-ended'
 			now: number
 			project: string
+			dialecteId: string
 			generation: number
 	  }
 	| {
@@ -59,6 +71,7 @@ export type HubEvent =
 			type: 'engine-open-failed'
 			now: number
 			project: string
+			dialecteId: string
 			generation: number
 			failure: EngineOpenFailure
 	  }
@@ -68,6 +81,7 @@ export type HubEvent =
 			now: number
 			realmId: string
 			project: string
+			dialecteId: string
 	  }
 	| {
 			/** The realm granted the destroy has done it (or given up): the project may open again. */
@@ -75,6 +89,7 @@ export type HubEvent =
 			now: number
 			realmId: string
 			project: string
+			dialecteId: string
 	  }
 	| { /** The deadline the router last answered as `wakeAt` came. */ type: 'tick'; now: number }
 
@@ -100,19 +115,61 @@ export type HubCommand =
 			dialecteId: string
 			generation: number
 			openBudgetMs: number
+			/** The creation id every client waiting expects (realms coming back to the project), if they agree. */
+			expectedCreationId?: string
 	  }
 	/** One channel: an end to the engine for this client, the other to the realm as its engine port. */
-	| { type: 'connect-client'; project: string; generation: number; realmId: string }
+	| {
+			type: 'connect-client'
+			project: string
+			dialecteId: string
+			generation: number
+			realmId: string
+			/** The id the engine's project was created with: the client checks it is the project it had. */
+			creationId: string
+	  }
 	/** The client's engine is gone: the client waits for the hub's next answer. */
-	| { type: 'engine-lost'; realmId: string; project: string; generation: number }
-	| { type: 'refuse-open'; realmId: string; project: string; refusal: HubRefusal }
+	| {
+			type: 'engine-lost'
+			realmId: string
+			project: string
+			dialecteId: string
+			generation: number
+	  }
+	| {
+			type: 'refuse-open'
+			realmId: string
+			project: string
+			dialecteId: string
+			refusal: HubRefusal
+	  }
 	/** Tell the engine one of its clients is gone: it aborts what that client started. */
-	| { type: 'client-gone'; project: string; generation: number; realmId: string }
+	| {
+			type: 'client-gone'
+			project: string
+			dialecteId: string
+			generation: number
+			realmId: string
+	  }
 	/** Have the host end that engine (close it, terminate its worker) and forget its control port. */
-	| { type: 'release-engine'; project: string; generation: number; hostRealmId: string }
+	| {
+			type: 'release-engine'
+			project: string
+			dialecteId: string
+			generation: number
+			hostRealmId: string
+	  }
 	/** The realm may destroy the project now: no engine runs it, opens wait until `destroyed`. */
-	| { type: 'destroy-granted'; realmId: string; project: string }
-	| { type: 'refuse-destroy'; realmId: string; project: string; refusal: HubRefusal }
+	| { type: 'destroy-granted'; realmId: string; project: string; dialecteId: string }
+	| {
+			type: 'refuse-destroy'
+			realmId: string
+			project: string
+			dialecteId: string
+			refusal: HubRefusal
+	  }
+	/** The realm's leave handled: it counts no more for the project (a destroy asked after it is not refused for it). */
+	| { type: 'left'; realmId: string; project: string; dialecteId: string }
 
 export type HubOutput = {
 	commands: HubCommand[]
@@ -144,6 +201,10 @@ export type HubEngine = {
 	/** The version of the dialecte the engine runs: its host's. */
 	dialecteVersion: string
 	status: 'opening' | 'ready'
+	/** The id the project's file was created with, once the engine opened. */
+	creationId: string | undefined
+	/** The creation id it was told to expect (its clients coming back to the project), if any. */
+	expectedCreationId: string | undefined
 }
 
 /** A project exists while it has an engine, opening or ready. */
@@ -152,6 +213,8 @@ export type HubProject = {
 	dialecteId: string
 	/** Realm id -> the dialecte version the realm runs. Every client holds a port while the engine is ready. */
 	clients: Map<string, string>
+	/** Realm id -> the creation id a client coming back to the project expects (none for a client opening it anew). */
+	expectations: Map<string, string>
 	engine: HubEngine
 	/** While the engine opens for waiting clients: when they are answered at the latest. */
 	openDeadline: number | undefined
@@ -164,6 +227,7 @@ export type HubProject = {
 /** A project a realm is destroying: the opens made meanwhile wait, in their order, until it is done. */
 export type HubHold = {
 	project: string
+	dialecteId: string
 	/** The realm destroying it. */
 	realmId: string
 	opens: Map<string, Extract<HubEvent, { type: 'open' }>>
@@ -171,8 +235,9 @@ export type HubHold = {
 
 export type HubState = {
 	realms: Map<string, HubRealm>
+	/** Project key (`projectKeyOf`: dialecte and name) -> the project and its engine. */
 	projects: Map<string, HubProject>
-	/** Project -> the destroy running on it; such a project has no entry in `projects`. */
+	/** Project key (`projectKeyOf`) -> the destroy running on it; such a project has no entry in `projects`. */
 	holds: Map<string, HubHold>
 	/** One counter for the hub: a generation never repeats, not even for a project opened again. */
 	nextGeneration: number

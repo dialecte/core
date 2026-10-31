@@ -8,9 +8,12 @@
  *   npx tsx src/store/engine/hub/failover/hub-failover.script.ts <results folder> [chromium|firefox]
  *
  * Firefox runs on the local stock build (Playwright's does not start on this macOS): `FAILOVER_FIREFOX` names its
- * executable. Every run is written to `<results folder>/<browser>-<time>.json`.
+ * executable. Every run is written to `<results folder>/<browser>-<time>.json`, with the commit and the tree it
+ * built (and how many files differed from that commit): give a results folder outside the checkout.
  */
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { loadavg } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -25,6 +28,7 @@ import type {
 	FailoverBrowserName,
 	FailoverReport,
 	FailoverRun,
+	FailoverSource,
 	LaunchedBrowser,
 } from './hub-failover.fixtures.types'
 import type { Frame, Page } from 'playwright'
@@ -38,6 +42,10 @@ const CHILD_PORT = 5192
 const MAIN_ORIGIN = `http://localhost:${MAIN_PORT}`
 const CHILD_ORIGIN = `http://localhost:${CHILD_PORT}`
 const RUNS = 3
+/** The engine's worker as the built page names it: the one dedicated worker the hosting tab runs. */
+const ENGINE_WORKER_URL = /test-dialecte\.worker/
+/** How long a tab's workers are looked for: a browser may tell of a new worker a little after the page's answer. */
+const WORKER_SEEN_MS = 2_000
 /** How long a read may wait for the next engine before its run is kept as failed. */
 const READ_BUDGET_MS = 30_000
 /**
@@ -134,13 +142,23 @@ async function failoverRun(params: {
 		const before = await documentIdsOf({ page: reader, project })
 		if (before.join() !== 'doc-1')
 			throw new Error(`the reader read ${before.join()} before the failover`)
+		// the engine's worker is a dedicated worker of the tab that hosts it
+		if (
+			(await engineWorkersOf({ page: host, expected: 1 })) !== 1 ||
+			engineWorkersIn({ page: reader }) !== 0
+		) {
+			throw new Error('the first tab does not host the engine alone before the failover')
+		}
 		const endedAt = performance.now()
 		await host.close()
 		const after = await withinBudget({ work: documentIdsOf({ page: reader, project }) })
 		const readAnsweredMs = Math.round(performance.now() - endedAt)
 		if (after.join() !== 'doc-1')
 			throw new Error(`the reader read ${after.join()} after the failover`)
-		return { run, readAnsweredMs, load: loadavg() }
+		if ((await engineWorkersOf({ page: reader, expected: 1 })) !== 1) {
+			throw new Error('the reader does not host the engine after the failover')
+		}
+		return { run, readAnsweredMs, hostChanged: true, load: loadavg() }
 	} catch (thrown) {
 		// kept with its load, as every run is: the next runs go on
 		return { run, failed: String(thrown), load: loadavg() }
@@ -240,11 +258,60 @@ function withinBudget<GenericResult>(params: {
 	})
 }
 
+/** How many of the tab's dedicated workers are the engine's, once `expected` are seen or the wait is over. */
+async function engineWorkersOf(params: { page: Page; expected: number }): Promise<number> {
+	const deadline = performance.now() + WORKER_SEEN_MS
+	for (;;) {
+		const seen = engineWorkersIn({ page: params.page })
+		if (seen === params.expected || performance.now() >= deadline) return seen
+		await new Promise(function waitAWhile(resolve) {
+			setTimeout(resolve, 50)
+		})
+	}
+}
+
+/** How many of the tab's dedicated workers are the engine's, now. */
+function engineWorkersIn(params: { page: Page }): number {
+	return params.page.workers().filter(function isEngine(worker) {
+		return ENGINE_WORKER_URL.test(worker.url())
+	}).length
+}
+
+/** What `git` prints in core's checkout, trimmed. */
+function gitOutput(params: { args: string[]; env?: NodeJS.ProcessEnv }): string {
+	return execFileSync('git', params.args, {
+		cwd: CORE_ROOT,
+		encoding: 'utf8',
+		env: { ...process.env, ...params.env },
+	}).trim()
+}
+
+/** The commit of core's checkout, the tree its working files make (through an index of their own), and how many differ. */
+async function sourceOf(): Promise<FailoverSource> {
+	const status = gitOutput({ args: ['status', '--porcelain'] })
+	const scratch = await mkdtemp(path.join(tmpdir(), 'hub-failover-index-'))
+	try {
+		const env = { GIT_INDEX_FILE: path.join(scratch, 'index') }
+		gitOutput({ args: ['read-tree', 'HEAD'], env })
+		gitOutput({ args: ['add', '-A'], env })
+		return {
+			commit: gitOutput({ args: ['rev-parse', 'HEAD'] }),
+			tree: gitOutput({ args: ['write-tree'], env }),
+			uncommittedFiles: status === '' ? 0 : status.split('\n').length,
+		}
+	} finally {
+		await rm(scratch, { recursive: true, force: true })
+	}
+}
+
 function isBrowserName(name: string): name is FailoverBrowserName {
 	return name === 'chromium' || name === 'firefox'
 }
 
-async function measure(params: { name: FailoverBrowserName }): Promise<FailoverReport> {
+async function measure(params: {
+	name: FailoverBrowserName
+	source: FailoverSource
+}): Promise<FailoverReport> {
 	const launched = await launch(params)
 	try {
 		const runs: FailoverRun[] = []
@@ -258,6 +325,7 @@ async function measure(params: { name: FailoverBrowserName }): Promise<FailoverR
 		return {
 			browser: params.name,
 			at: new Date().toISOString(),
+			source: params.source,
 			runs,
 			crossOriginChild: crossOrigin,
 		}
@@ -272,6 +340,8 @@ async function main(): Promise<void> {
 		throw new Error('usage: hub-failover.script.ts <results folder> [chromium|firefox]')
 	}
 	const browsers: FailoverBrowserName[] = only ? [only] : ['chromium', 'firefox']
+	// what is built, named before the build
+	const source = await sourceOf()
 	await buildPage()
 	const servers: PreviewServer[] = []
 	try {
@@ -281,7 +351,7 @@ async function main(): Promise<void> {
 		for (const name of browsers) {
 			let report: FailoverReport | FailedBrowser
 			try {
-				report = await measure({ name })
+				report = await measure({ name, source })
 			} catch (thrown) {
 				report = { browser: name, failed: String(thrown) }
 			}

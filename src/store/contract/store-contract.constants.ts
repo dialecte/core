@@ -12,6 +12,9 @@ export const CONTRACT_SESSION_FUNCTION_VALUE = 'function'
 /** A record of the session's tag whose `bB` holds this value gets a diagnostic whose `meta.note` holds a lone surrogate. */
 export const CONTRACT_SESSION_LONE_SURROGATE_VALUE = 'lone-surrogate'
 
+/** A record of the session's tag whose `bB` holds this value is created again by the session, under its own id. */
+export const CONTRACT_SESSION_REUSE_VALUE = 'reuse'
+
 /** A record of the session's tag whose `bB` holds this value makes the session wait for the case's release. */
 export const CONTRACT_SESSION_HOLD_VALUE = 'hold'
 
@@ -118,12 +121,6 @@ export const CONTRACT_ENGINE_CHANNEL = 'dialecte::contract-engine'
 /** Between two looks at an ended engine's lock. */
 export const ENGINE_END_POLL_MS = 50
 
-/** How many times the hub leg asks a destroy that another realm's leave, still on its way, may refuse. */
-export const HUB_DESTROY_ASKS = 20
-
-/** Between two such asks. */
-export const HUB_DESTROY_ASK_INTERVAL_MS = 100
-
 /** Why a leg that imports in the page has no engine a case can end mid-import. */
 export const IN_PAGE_IMPORT_REASON =
 	'this store imports in the page itself: no engine to end mid-import, short of the page'
@@ -133,9 +130,19 @@ export const STORE_CONTRACT_FEATURES = ['history', 'blobs', 'import', 'export'] 
 
 /**
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
- * engine of its own has none to end).
+ * engine of its own has none to end); a project of the name under another dialecte (`dialecte-key`: a
+ * store named by the project's name alone has no other dialecte's); a view away while its project is
+ * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away).
  */
-export const STORE_CONTRACT_DIFFERENCES = ['engine-end'] as const
+export const STORE_CONTRACT_DIFFERENCES = [
+	'engine-end',
+	'dialecte-key',
+	'away',
+	'import-liveness',
+] as const
+
+/** The dialecte a case's store of another dialecte runs (the runtime fixture's `other-dialecte` engine serves it). */
+export const CONTRACT_OTHER_DIALECTE_ID = 'core/test-other'
 
 /** How long a case waits for a promise before it calls it pending. */
 export const OUTCOME_WAIT_MS = 200
@@ -146,3 +153,7 @@ export const IN_PROCESS_ENGINE_REASON =
 
 /** How long a contract engine told to end may take to let its lock go. */
 export const ENGINE_END_BUDGET_MS = 5_000
+
+/** Why a leg's view is never away while its project is destroyed: every connection counts until closed. */
+export const AWAY_UNREACHABLE_REASON =
+	'its connections run in the page and each counts until closed: a destroy is refused while any is open, so none is ever away'

@@ -1,3 +1,4 @@
+import type { ENGINE_SIGNAL } from './engine.constants'
 import type { ThrownData } from './wire/wire.types'
 import type {
 	ExportControl,
@@ -32,8 +33,23 @@ export type EngineLockMode = 'wait' | 'if-available'
  */
 export type EngineOpenParams<GenericSettings = unknown> = {
 	project: string
+	/**
+	 * The dialecte and its version the realm expects the engine to run: an engine of another one refuses the
+	 * open (`PROJECT_DIALECTE_MISMATCH`, `PROJECT_DIALECTE_VERSION_MISMATCH`) before it takes any lock or file.
+	 */
+	dialecteId: string
+	dialecteVersion: string
+	/**
+	 * The creation id of the project the realm's view had open, when it comes back to it (a resume, an engine
+	 * started again): none there, or another, is refused `PROJECT_DESTROYED_WHILE_AWAY`, nothing written.
+	 */
+	expectedCreationId?: string
 	lock: EngineLockMode
-	/** How long the open may take in all: the lock and the engine's own setup. */
+	/**
+	 * How long the engine may take to take its project: the lock, then its own checks of the files (SQLite
+	 * probes its pool), from one deadline. The rest of the open (the database, the start's cleanup) is bounded
+	 * by the realm's open window (`ENGINE_OPEN_WINDOW_MS`).
+	 */
 	budgetMs: number
 	/** Measure the import's and the export's stages (`dev.perf`). */
 	perf: boolean
@@ -52,6 +68,8 @@ export type EngineControlRequest<GenericSettings = unknown> =
 			type: 'destroy'
 			requestId: number
 			project: string
+			/** The dialecte whose project it is: an engine of another one refuses (`PROJECT_DIALECTE_MISMATCH`), nothing removed. */
+			dialecteId: string
 			/**
 			 * Direct mode takes the lock only if free (a holder is another realm's engine); through the hub
 			 * the destroy waits for it (the engine the hub just released may hold it a moment).
@@ -67,6 +85,8 @@ export type EngineControlAnswer =
 			requestId: number
 			dialecteId: string
 			dialecteVersion: string
+			/** The id the project's file was created with (another one once the project is destroyed and made again). */
+			creationId: string
 			/** The wire the engine speaks (`ENGINE_WIRE_PROTOCOL` of its copy of the library). */
 			wireProtocol: number
 			/** Whether the engine took its files back in this worker (closed then opened again) rather than set them up. */
@@ -77,6 +97,11 @@ export type EngineControlAnswer =
 	| { type: 'closed'; requestId: number }
 	| { type: 'destroyed'; requestId: number }
 	| { type: 'failed'; requestId: number; thrown: ThrownData }
+
+/** A sign of the engine's life its worker posts to the realm running it, beside the control answers. */
+export type EngineLifeSignal = {
+	type: (typeof ENGINE_SIGNAL)['heartbeat'] | (typeof ENGINE_SIGNAL)['busy']
+}
 
 /** `Omit` applied to each member of a union. */
 export type DistributiveOmit<

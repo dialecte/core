@@ -7,6 +7,7 @@ import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
 import {
 	INSTALL_REFUSAL,
 	OPEN_FAILURE,
+	OTHER_FIXTURE_DIALECTE,
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DDL_MS,
 	SLOW_DESTROY_MS,
@@ -37,7 +38,7 @@ import type { AnyRawRecord } from '@/types'
  * system, a quota nearly used up, room for a pool but not for a large import, a worker deaf to
  * `close`, one ended or throwing from a timer on the case's order, one whose module fails to load, one
  * whose SQLite reports a version too old to keep a pool on a failed install, one whose dialecte fails to make
- * its hooks, one whose pool refuses every database;
+ * its hooks, one whose pool refuses every database, one that never answers its open or a client's adoption;
  * or, `holder`, no engine at all - a worker holding one file of a project's pool, as an engine that
  * ended may still do.
  */
@@ -123,6 +124,8 @@ function fillDiskWhenOrdered(): void {
  */
 function serveEngine(): void {
 	if (scenario === 'ignore-close') ignoreClose()
+	if (scenario === 'silent-open') swallowControl({ type: 'open' })
+	if (scenario === 'silent-adopt') swallowControl({ type: 'adopt-client' })
 	if (scenario === 'destroy-told') shapeDestroy({ shape: 'at-once' })
 	if (scenario === 'ignore-destroy') shapeDestroy({ shape: 'deaf' })
 	if (scenario === 'slow-destroy') shapeDestroy({ shape: 'late' })
@@ -134,7 +137,10 @@ function serveEngine(): void {
 	if (scenario === 'sqlite-3-53') reportUnsafeSqlite()
 	if (scenario === 'database-fails') failDatabaseOpen()
 	if (scenario === 'close-throws') failCloseWhenOrdered()
+	if (scenario === 'stranded-window') strandWindowsWhenOrdered()
+	if (scenario === 'mute-clients') muteClientsWhenOrdered()
 	if (scenario === 'other-wire') answerAnotherWire()
+	if (scenario === 'unchecked-open') openWhateverAsked()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
 }
 
@@ -249,8 +255,10 @@ function slowDdlWhenOrdered(): void {
 		prototype.exec = function slowedExec(this: typeof prototype, ...args: unknown[]) {
 			const first = args[0]
 			const sql = typeof first === 'string' ? first : (first as { sql?: unknown } | undefined)?.sql
-			if (slow && typeof sql === 'string' && SLOW_DDL_PATTERN.test(sql))
+			if (slow && typeof sql === 'string' && SLOW_DDL_PATTERN.test(sql)) {
+				tellFixtureChannel({ type: 'reached', marker: 'slow-ddl' })
 				busyWait({ ms: SLOW_DDL_MS })
+			}
 			return (exec as (...given: unknown[]) => unknown).apply(this, args)
 		} as typeof exec
 	})
@@ -280,6 +288,57 @@ function failCloseWhenOrdered(): void {
 	})
 }
 
+/**
+ * Once the case orders `strand-windows`, every ROLLBACK and COMMIT of the worker's connections fails (a lost
+ * file handle): an import then ends with its connection inside a transaction, and the engine breaks.
+ */
+function strandWindowsWhenOrdered(): void {
+	let stranding = false
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.addEventListener(
+		'message',
+		function armStranding(event: MessageEvent<RuntimeFixtureOrder>) {
+			if (event.data.type !== 'strand-windows') return
+			stranding = true
+			acknowledge({ channel, order: event.data })
+		},
+	)
+	void loadSqlite().then(function patchExec(sqlite3) {
+		const prototype = sqlite3.oo1.DB.prototype
+		const exec = prototype.exec as (...given: unknown[]) => unknown
+		prototype.exec = function execUnlessStranding(this: typeof prototype, ...args: unknown[]) {
+			const [first] = args
+			const sql = typeof first === 'string' ? first : (first as { sql?: string } | undefined)?.sql
+			if (stranding && (sql === 'ROLLBACK' || sql === 'COMMIT')) {
+				throw new Error(`${sql} refused: the file handle is lost`)
+			}
+			return exec.apply(this, args)
+		} as typeof prototype.exec
+	})
+}
+
+/**
+ * Once the case orders `mute-clients`, the engine answers no client any more: every message on a port of the worker
+ * is dropped (answers and beats alike) - a call it gets from then on waits until its host goes.
+ */
+function muteClientsWhenOrdered(): void {
+	let muted = false
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.addEventListener('message', function armMute(event: MessageEvent<RuntimeFixtureOrder>) {
+		if (event.data.type !== 'mute-clients') return
+		muted = true
+		acknowledge({ channel, order: event.data })
+	})
+	const post = MessagePort.prototype.postMessage as (...given: unknown[]) => void
+	MessagePort.prototype.postMessage = function postUnlessMuted(
+		this: MessagePort,
+		...args: unknown[]
+	) {
+		if (muted) return
+		post.apply(this, args)
+	} as typeof MessagePort.prototype.postMessage
+}
+
 /** Every `opened` answered with a wire version no client speaks: an engine of another library version. */
 function answerAnotherWire(): void {
 	const post = self.postMessage.bind(self)
@@ -288,6 +347,20 @@ function answerAnotherWire(): void {
 		const changed = answer?.type === 'opened' ? { ...answer, wireProtocol: -1 } : message
 		return (post as (...given: unknown[]) => void)(changed, ...rest)
 	} as typeof self.postMessage
+}
+
+/**
+ * Every open taken as one of this engine's own dialecte, whatever the realm asked - as an engine of a copy of
+ * the library that does not check what it is asked: its answer names its own dialecte.
+ */
+function openWhateverAsked(): void {
+	self.addEventListener(
+		'message',
+		function askAsOwn(event: MessageEvent<{ type?: string; dialecteId?: string }>) {
+			if (event.data?.type !== 'open') return
+			event.data.dialecteId = RUNTIME_FIXTURE_DIALECTE.id
+		},
+	)
 }
 
 /** Answer `run-statement` with a database of its own: the heartbeat on the port given, one long statement, its times. */
@@ -324,7 +397,8 @@ function busyWait(params: { ms: number }): void {
  * `after-yield-pause:<ms>` holds it that long in slices with a message turn between them.
  */
 const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
-	id: CONTRACT_DIALECTE.id,
+	// another dialecte's engine on a project of a name the test dialecte has too
+	id: scenario === 'other-dialecte' ? OTHER_FIXTURE_DIALECTE.dialecteId : CONTRACT_DIALECTE.id,
 	version: CONTRACT_DIALECTE.version,
 	configs: CONTRACT_DIALECTE.configs,
 	defaultConfigKey: CONTRACT_DIALECTE.defaultConfigKey,
@@ -383,8 +457,13 @@ function markerOf(params: {
 
 /** A worker that never answers `close`: its realm must end it anyway. */
 function ignoreClose(): void {
-	self.addEventListener('message', function swallowClose(event: MessageEvent<{ type?: string }>) {
-		if (event.data?.type === 'close') event.stopImmediatePropagation()
+	swallowControl({ type: 'close' })
+}
+
+/** Every control message of that type swallowed: a worker that loaded and never answers it (a stalled start, a deaf engine). */
+function swallowControl(params: { type: string }): void {
+	self.addEventListener('message', function swallow(event: MessageEvent<{ type?: string }>) {
+		if (event.data?.type === params.type) event.stopImmediatePropagation()
 	})
 }
 
@@ -435,7 +514,10 @@ function serveHolder(): void {
 			if (event.data.type === 'hold') {
 				let directory = await navigator.storage.getDirectory()
 				for (const name of [
-					...poolDirectoryOf({ project: event.data.project }).split('/'),
+					...poolDirectoryOf({
+						dialecteId: RUNTIME_FIXTURE_DIALECTE.id,
+						project: event.data.project,
+					}).split('/'),
 					OPAQUE_DIRECTORY,
 				]) {
 					directory = await directory.getDirectoryHandle(name)

@@ -41,9 +41,15 @@ class CountingStore extends InMemoryStore {
 		this.hydrationFailure = undefined
 	}
 
-	override close(): void {
+	/** Once set, the next close settles only once it is let go (as a store waiting for its hub). */
+	closeGate: Promise<void> | undefined
+
+	override async close(): Promise<void> {
 		this.closeCalls += 1
-		super.close()
+		const gate = this.closeGate
+		this.closeGate = undefined
+		await super.close()
+		await gate
 	}
 
 	/** Once set, the first `getDocuments` after the store opened (the Project's hydration) says so, then waits. */
@@ -82,6 +88,13 @@ class CountingStore extends InMemoryStore {
 	): Promise<void> {
 		await this.passHold('registerDocument')
 		return super.registerDocument(file)
+	}
+
+	override async importFile(
+		params: Parameters<InMemoryStore['importFile']>[0],
+	): ReturnType<InMemoryStore['importFile']> {
+		await this.passHold('importFile')
+		return super.importFile(params)
 	}
 
 	override async removeDocument(documentId: string): Promise<void> {
@@ -148,6 +161,7 @@ class CountingStore extends InMemoryStore {
 
 /** The store methods a case holds: the writes a close waits for. */
 type HeldMethod =
+	| 'importFile'
 	| 'registerDocument'
 	| 'removeDocument'
 	| 'undo'
@@ -750,6 +764,48 @@ describe('Project - a close waits for the writes running', () => {
 		vi.restoreAllMocks()
 	})
 
+	it('a store whose close takes a while → the project’s close settled only once the store’s has', async () => {
+		const name = uniqueName({ prefix: 'slow-close' })
+		const store = new CountingStore(name, { runtime: RUNTIME })
+		const project = projectOver({ [name]: store })
+		await project.open(name)
+		let letGo: () => void = function stillHeld() {}
+		store.closeGate = new Promise<void>(function holdClose(resolve) {
+			letGo = resolve
+		})
+		let closed = false
+		const closing = project.close().then(function markClosed() {
+			closed = true
+		})
+		await flush()
+		expect(store.closeCalls).toBe(1)
+		expect(closed).toBe(false)
+		letGo()
+		await closing
+		expect(closed).toBe(true)
+	})
+
+	it('a store close held longer than CLOSE_WAIT_REPORT_MS → the close says so once, and keeps waiting', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+		const warn = vi.spyOn(console, 'warn').mockImplementation(function quiet() {})
+		const name = uniqueName({ prefix: 'stuck-store-close' })
+		const store = new CountingStore(name, { runtime: RUNTIME })
+		const project = projectOver({ [name]: store })
+		await project.open(name)
+		let letGo: () => void = function stillHeld() {}
+		store.closeGate = new Promise<void>(function holdClose(resolve) {
+			letGo = resolve
+		})
+		const closing = project.close()
+		await vi.advanceTimersByTimeAsync(CLOSE_WAIT_REPORT_MS * 3)
+		expect(warn).toHaveBeenCalledTimes(1)
+		expect(String(warn.mock.calls[0]![0])).toMatch(/then its store's close/)
+		letGo()
+		await closing
+		vi.useRealTimers()
+		await project.destroy()
+	})
+
 	it('a write held longer than CLOSE_WAIT_REPORT_MS → the close says once what it waits for, and keeps waiting', async () => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 		const warn = vi.spyOn(console, 'warn').mockImplementation(function quiet() {})
@@ -771,6 +827,29 @@ describe('Project - a close waits for the writes running', () => {
 		await making
 		await closing
 		expect(store.closeCalls).toBe(1)
+		vi.useRealTimers()
+		await project.destroy()
+	})
+
+	it('an import held longer than CLOSE_WAIT_REPORT_MS → the close names its file and says an import hook must settle', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+		const warn = vi.spyOn(console, 'warn').mockImplementation(function quiet() {})
+		const name = uniqueName({ prefix: 'stuck-import' })
+		const store = new CountingStore(name, { runtime: RUNTIME })
+		const project = projectOver({ [name]: store })
+		await project.open(name)
+		const { reached, release } = holdOn({ store, method: 'importFile' })
+		const importing = project.importFile(new File(['<Root/>'], 'held.xml'))
+		await reached
+		const closing = project.close()
+		await vi.advanceTimersByTimeAsync(CLOSE_WAIT_REPORT_MS * 3)
+		expect(warn).toHaveBeenCalledTimes(1)
+		expect(String(warn.mock.calls[0]![0])).toMatch(
+			/1 import\(s\) \("held\.xml": an import hook that never settles keeps it waiting\)/,
+		)
+		release()
+		await importing.catch(function importOutcomeIrrelevant() {})
+		await closing
 		vi.useRealTimers()
 		await project.destroy()
 	})

@@ -5,38 +5,48 @@ import { createInProcessConnector, fillInProcessFile } from '../sqlite/adapter/i
 import {
 	CONTRACT_ENGINE_CHANNEL,
 	CONTRACT_ENGINE_URL,
+	AWAY_UNREACHABLE_REASON,
+	CONTRACT_OTHER_DIALECTE_ID,
 	ENGINE_END_BUDGET_MS,
 	ENGINE_END_POLL_MS,
-	HUB_DESTROY_ASK_INTERVAL_MS,
-	HUB_DESTROY_ASKS,
 	IN_PAGE_IMPORT_REASON,
 	IN_PROCESS_ENGINE_REASON,
 } from './store-contract.constants'
+import { makeDocument } from './store-contract.fixtures'
 import { createContractRuntime } from './store-contract.import-session'
 
-import { toDialecteError } from '@/errors'
+import { ENGINE_OPEN_BUDGET_MS } from '@/store/engine/client/client.constants'
 import { createHubConnector } from '@/store/engine/client/hub-connector'
+import { destroyFromFreshWorker } from '@/store/engine/client/worker-connector'
 import { startHubConnection } from '@/store/engine/hub/hub-client'
 import { serveHub } from '@/store/engine/hub/hub-shell'
+import { REALM_LOCK_PREFIX } from '@/store/engine/hub/hub.constants'
+import { fakePage } from '@/store/engine/hub/hub.fixtures'
 import { sqliteHubSpawner } from '@/store/sqlite/adapter/sqlite-hub-spawner'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
-import { isEngineLockFree } from '@/store/sqlite/runtime/runtime.fixtures'
+import { fixtureUrl, isEngineLockFree } from '@/store/sqlite/runtime/runtime.fixtures'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { ContractEngineOrder, StoreContractFactory } from './store-contract.types'
 import type { HubConnection } from '@/store/engine/hub/hub-client.types'
 import type { HubShell } from '@/store/engine/hub/hub-shell.types'
+import type { FakePage } from '@/store/engine/hub/hub.fixtures.types'
 import type { Store } from '@/store/store.types'
 
 function uniqueName(prefix: string): string {
 	return `${prefix}-${crypto.randomUUID()}`
 }
 
-/** An open in-memory store of that name: a new instance, the name's state. */
-async function openInMemoryStore(name: string): Promise<InMemoryStore> {
+/** An open in-memory store of that name, of the test dialecte unless another is named: a new instance, the project's state. */
+async function openInMemoryStore(params: {
+	name: string
+	dialecteId?: string
+}): Promise<InMemoryStore> {
+	const { name, dialecteId = TEST_DIALECTE.id } = params
 	const store = new InMemoryStore(name, {
 		writable: true,
 		runtime: createContractRuntime(),
+		dialecteId,
 	})
 	await store.open()
 	return store
@@ -44,23 +54,43 @@ async function openInMemoryStore(name: string): Promise<InMemoryStore> {
 
 const inMemoryStoreFactory: StoreContractFactory = {
 	name: 'InMemoryStore',
+	createNamed: async function createNamedInMemoryStore({ name }) {
+		const store = new InMemoryStore(name, { writable: true, runtime: createContractRuntime() })
+		await store.open()
+		return store
+	},
 	create: async function createInMemoryStore() {
-		return openInMemoryStore(uniqueName('store-contract-memory'))
+		return openInMemoryStore({ name: uniqueName('store-contract-memory') })
 	},
 	reopen: async function reopenInMemoryStore(store) {
 		await store.close()
-		return openInMemoryStore(store.name)
+		return openInMemoryStore({ name: store.name })
 	},
 	connect: async function connectInMemoryStore(store) {
-		return openInMemoryStore(store.name)
+		return openInMemoryStore({ name: store.name })
+	},
+	connectAsOtherDialecte: async function connectInMemoryAsOther({ store }) {
+		return openInMemoryStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
 	},
 	storageUnfillable: 'an in-memory store has no storage limit',
-	differs: { 'engine-end': IN_PAGE_IMPORT_REASON },
+	differs: { 'engine-end': IN_PAGE_IMPORT_REASON, away: AWAY_UNREACHABLE_REASON },
 }
 
 const dexieStoreFactory: StoreContractFactory = {
-	differs: { 'engine-end': IN_PAGE_IMPORT_REASON },
+	differs: {
+		'engine-end': IN_PAGE_IMPORT_REASON,
+		'dialecte-key':
+			'an IndexedDB database is named by the project name alone: naming it by dialecte too would leave every project stored so far behind; the local store moves to SQLite (keyed by dialecte and name) in 0.9.0',
+		away: 'a frozen tab keeps its connection’s hold on the database: another tab’s destroy is refused until that tab is gone, so no view of it is ever away',
+		'import-liveness':
+			'a local store sees no import another tab runs: a document left importing reads running until a store of the project opens again and removes it; the local store moves to SQLite (one engine sees every import) in 0.9.0',
+	},
 	name: 'DexieStore',
+	createNamed: async function createNamedDexieStore({ name }) {
+		const store = new DexieStore(name, { runtime: createContractRuntime() })
+		await store.open()
+		return store
+	},
 	storageUnfillable:
 		"a test cannot fill IndexedDB; IndexedDB refusing a write for want of space answers the write's own key (STORE_COMMIT_FAILED, STORE_BULK_ADD_FAILED...), not STORE_QUOTA_EXCEEDED, until the local store moves to SQLite",
 	create: async function createDexieStore() {
@@ -83,11 +113,15 @@ const dexieStoreFactory: StoreContractFactory = {
 	},
 }
 
-/** An open SQLite store of that name, its engine run in this realm on an in-memory file of the name. */
-async function openSqliteStore(name: string): Promise<EngineStore> {
+/** An open SQLite store of that name (of the test dialecte unless another is named), its engine run in this realm on an in-memory file of the project. */
+async function openSqliteStore(params: {
+	name: string
+	dialecteId?: string
+}): Promise<EngineStore> {
+	const { name, dialecteId = TEST_DIALECTE.id } = params
 	const connector = createInProcessConnector({
 		name,
-		dialecteId: TEST_DIALECTE.id,
+		dialecteId,
 		runtime: createContractRuntime(),
 	})
 	const store = new EngineStore({ name, connector })
@@ -97,27 +131,43 @@ async function openSqliteStore(name: string): Promise<EngineStore> {
 
 const sqliteInProcessStoreFactory: StoreContractFactory = {
 	name: 'EngineStore in-process',
+	createNamed: async function createNamedSqliteStore({ name }) {
+		return openSqliteStore({ name })
+	},
 	create: async function createSqliteStore() {
-		return openSqliteStore(uniqueName('store-contract-sqlite'))
+		return openSqliteStore({ name: uniqueName('store-contract-sqlite') })
 	},
 	reopen: async function reopenSqliteStore(store) {
 		await store.close()
-		return openSqliteStore(store.name)
+		return openSqliteStore({ name: store.name })
 	},
 	connect: async function connectSqliteStore(store) {
-		return openSqliteStore(store.name)
+		return openSqliteStore({ name: store.name })
 	},
-	differs: { 'engine-end': IN_PROCESS_ENGINE_REASON },
+	connectAsOtherDialecte: async function connectSqliteAsOther({ store }) {
+		return openSqliteStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
+	},
+	differs: { 'engine-end': IN_PROCESS_ENGINE_REASON, away: AWAY_UNREACHABLE_REASON },
 	fillStorage: async function fillSqliteFile({ store }) {
-		await fillInProcessFile({ name: store.name })
+		await fillInProcessFile({ name: store.name, dialecteId: TEST_DIALECTE.id })
 	},
 }
 
-/** An open SQLite store of that name, its engine run in a worker of this realm on the origin's private files. */
-async function openWorkerStore(name: string): Promise<EngineStore> {
+/**
+ * An open SQLite store of that name, its engine run in a worker of this realm on the origin's private files: the
+ * contract's engine, or the engine of another dialecte (`other`).
+ */
+async function openWorkerStore(params: {
+	name: string
+	dialecteId?: string
+}): Promise<EngineStore> {
+	const { name, dialecteId = TEST_DIALECTE.id } = params
+	const other = dialecteId === CONTRACT_OTHER_DIALECTE_ID
 	const connector = createSqliteWorkerConnector({
 		name,
-		engineUrl: CONTRACT_ENGINE_URL,
+		dialecteId,
+		dialecteVersion: TEST_DIALECTE.version,
+		engineUrl: other ? fixtureUrl({ scenario: 'other-dialecte' }) : CONTRACT_ENGINE_URL,
 		perf: true,
 	})
 	const store = new EngineStore({ name, connector })
@@ -126,19 +176,37 @@ async function openWorkerStore(name: string): Promise<EngineStore> {
 }
 
 const sqliteWorkerStoreFactory: StoreContractFactory = {
+	// its engine ended with the view (a crash), another tab destroys the project through a worker of its own
+	destroyWhileAway: async function destroyWhileWorkerAway({ store, remake }) {
+		await endContractEngine({ project: store.name })
+		await destroyFromFreshWorker({
+			name: store.name,
+			dialecteId: TEST_DIALECTE.id,
+			engineUrl: CONTRACT_ENGINE_URL,
+			budgetMs: ENGINE_OPEN_BUDGET_MS,
+			lock: 'if-available',
+		})
+		if (remake) await remakeProject({ open: openWorkerStore, name: store.name })
+	},
 	endEngine: async function endWorkerEngine({ store }) {
 		await endContractEngine({ project: store.name })
 	},
 	name: 'EngineStore worker',
+	createNamed: async function createNamedWorkerStore({ name }) {
+		return openWorkerStore({ name })
+	},
 	create: async function createWorkerStore() {
-		return openWorkerStore(uniqueName('store-contract-worker'))
+		return openWorkerStore({ name: uniqueName('store-contract-worker') })
 	},
 	reopen: async function reopenWorkerStore(store) {
 		await store.close()
-		return openWorkerStore(store.name)
+		return openWorkerStore({ name: store.name })
 	},
 	connect: async function connectWorkerStore(store) {
-		return openWorkerStore(store.name)
+		return openWorkerStore({ name: store.name })
+	},
+	connectAsOtherDialecte: async function connectWorkerAsOther({ store }) {
+		return openWorkerStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
 	},
 	storageUnfillable:
 		"a test cannot fill the private file system from the page: the runtime's disk-full cases cover this leg",
@@ -170,10 +238,17 @@ let contractHub: HubShell | undefined
 /** The realms the hub leg opened for the case running: closed once it is done. */
 const caseRealms: HubConnection[] = []
 
-/** A realm of its own on the contract's hub, starting the contract's engines; closed after the case. */
+/** The page each realm of the hub leg runs on. */
+const REALM_PAGES = new WeakMap<HubConnection, FakePage>()
+
+/**
+ * A realm of its own on the contract's hub, starting the contract's engines and the other dialecte's, on a page
+ * the case can freeze and resume (`REALM_PAGES`); closed after the case.
+ */
 async function joinContractHub(): Promise<HubConnection> {
 	contractHub ??= serveHub()
 	const hub = contractHub
+	const page = fakePage()
 	const realm = await startHubConnection({
 		openPort: function hubPort() {
 			const channel = new MessageChannel()
@@ -188,50 +263,73 @@ async function joinContractHub(): Promise<HubConnection> {
 				engineUrl: CONTRACT_ENGINE_URL,
 				perf: true,
 			}),
+			sqliteHubSpawner({
+				dialecteId: CONTRACT_OTHER_DIALECTE_ID,
+				dialecteVersion: TEST_DIALECTE.version,
+				engineUrl: fixtureUrl({ scenario: 'other-dialecte' }),
+			}),
 		],
 		holdsLock: true,
-		lifecycle: undefined,
+		lifecycle: page,
 	})
+	REALM_PAGES.set(realm, page)
 	caseRealms.push(realm)
 	return realm
+}
+
+/**
+ * The store's page frozen - its realm gone for the hub once the hub has its lock (asked after the hub, granted
+ * after it) - while another tab destroys the project, then resumed.
+ */
+async function destroyWhileRealmAway(params: { store: Store; remake: boolean }): Promise<void> {
+	const { store, remake } = params
+	const realm = realmOf(store)
+	const page = REALM_PAGES.get(realm)
+	if (!page) throw new Error(`${store.name} has no page to freeze`)
+	const realmId = realm.realmId()
+	page.freeze()
+	await navigator.locks.request(`${REALM_LOCK_PREFIX}${realmId}`, function hubSawItGone() {})
+	const other = await openHubStore({ name: store.name, realm: await joinContractHub() })
+	await other.destroy()
+	if (remake) {
+		await other.open()
+		await other.registerDocument(makeDocument({ id: 'remade' }))
+	}
+	await other.close()
+	page.resume()
+}
+
+/** Another view makes the project again under its name, a document `remade` in it, and closes. */
+async function remakeProject(params: {
+	open: (params: { name: string }) => Promise<Store>
+	name: string
+}): Promise<void> {
+	const other = await params.open({ name: params.name })
+	await other.registerDocument(makeDocument({ id: 'remade' }))
+	await other.close()
 }
 
 /** A store through its realm of the hub (a case may go on through another connection after a destroy: the realm stays). */
 class HubContractStore extends EngineStore {
 	readonly realm: HubConnection
 
-	constructor(params: { name: string; realm: HubConnection }) {
-		const { name, realm } = params
+	constructor(params: { name: string; realm: HubConnection; dialecteId?: string }) {
+		const { name, realm, dialecteId = TEST_DIALECTE.id } = params
 		super({
 			name,
 			connector: createHubConnector({
 				name,
 				connection: realm,
-				dialecteId: TEST_DIALECTE.id,
+				dialecteId,
 				dialecteVersion: TEST_DIALECTE.version,
-				engineUrl: CONTRACT_ENGINE_URL,
+				// the engine a destroy runs through: the project's dialecte's
+				engineUrl:
+					dialecteId === CONTRACT_OTHER_DIALECTE_ID
+						? fixtureUrl({ scenario: 'other-dialecte' })
+						: CONTRACT_ENGINE_URL,
 			}),
 		})
 		this.realm = realm
-	}
-
-	/**
-	 * Through the hub a destroy is refused while another realm uses the project; a connection of another
-	 * realm closed just before may still be on its way (its leave and this destroy cross on two ports): asked
-	 * again then, each ask awaited, a few times at most.
-	 */
-	override async destroy(): Promise<void> {
-		for (let ask = 1; ; ask++) {
-			try {
-				return await super.destroy()
-			} catch (thrown) {
-				if (toDialecteError(thrown)?.key !== 'PROJECT_OPEN_ELSEWHERE' || ask === HUB_DESTROY_ASKS)
-					throw thrown
-				await new Promise(function waitForTheLeave(resolve) {
-					setTimeout(resolve, HUB_DESTROY_ASK_INTERVAL_MS)
-				})
-			}
-		}
 	}
 }
 
@@ -239,6 +337,7 @@ class HubContractStore extends EngineStore {
 async function openHubStore(params: {
 	name: string
 	realm: HubConnection
+	dialecteId?: string
 }): Promise<HubContractStore> {
 	const store = new HubContractStore(params)
 	await store.open()
@@ -259,6 +358,10 @@ function realmOf(store: Store): HubConnection {
  */
 const sqliteHubStoreFactory: StoreContractFactory = {
 	name: 'EngineStore hub',
+	createNamed: async function createNamedHubStore({ name }) {
+		const realm = await joinContractHub()
+		return openHubStore({ name, realm })
+	},
 	create: async function createHubStore() {
 		const realm = await joinContractHub()
 		return openHubStore({ name: uniqueName('store-contract-hub'), realm })
@@ -274,6 +377,16 @@ const sqliteHubStoreFactory: StoreContractFactory = {
 		const realm = await joinContractHub()
 		return openHubStore({ name: store.name, realm })
 	},
+	// another dialecte's project of the name, as another tab opens it
+	connectAsOtherDialecte: async function connectHubAsOther({ store }) {
+		const realm = await joinContractHub()
+		return openHubStore({ name: store.name, realm, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
+	},
+	// a second Project of the page: a store of the name on the store's own realm
+	connectInRealm: async function connectHubStoreInRealm(store) {
+		return openHubStore({ name: store.name, realm: realmOf(store) })
+	},
+	destroyWhileAway: destroyWhileRealmAway,
 	endEngine: async function endHubEngine({ store }) {
 		// the page hosting it goes, as a tab closed: its engines with it
 		realmOf(store).close()

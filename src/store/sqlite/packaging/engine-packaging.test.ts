@@ -108,7 +108,14 @@ const NO_ASSET_OF_SQLITE = [
 /** What libxml2-wasm leaves in a chunk that bundles it. */
 const LIBXML2_MARKERS = ['libxml2', 'xmlReadString', 'XmlParseError']
 
-/** The entry's chunk and every chunk it imports, by static import, in core's build. */
+/**
+ * An import of sqlite-wasm's module, static or dynamic (the main build keeps it external: bundled, it would hold
+ * `sqlite3ApiBootstrap` instead); an asset of it imported by URL (`?url`) is resolved by the build.
+ */
+const SQLITE_MODULE_IMPORT =
+	/(?:from|import)\s*\(?\s*["']@sqlite\.org\/sqlite-wasm(?:\/[^"'?]*)?["']/
+
+/** The entry's chunk and every chunk it imports, statically or dynamically, in core's build. */
 async function chunksReachedFrom(params: { entry: string }): Promise<Map<string, string>> {
 	const reached = new Map<string, string>()
 	const pending = [params.entry]
@@ -197,14 +204,20 @@ afterAll(async () => {
 })
 
 describe('the engine as a dialecte and a consumer bundle it', () => {
-	it('core’s two builds → the engine entry beside the main ones, no asset of sqlite-wasm in it; the main side keeps sqlite-wasm out', async () => {
+	it('core’s two builds → the engine entry beside the main ones, no asset of sqlite-wasm in it', async () => {
 		const files = await filesUnder({ directory: CORE_DIST })
 		expect(files).toEqual(expect.arrayContaining(['index.js', 'engine.js', 'engine.d.ts']))
 		expect(files.filter((file) => file.includes('worker1'))).toEqual([])
 		const engine = await textOf({ file: path.join(CORE_DIST, 'engine.js') })
 		for (const forbidden of NO_ASSET_OF_SQLITE) expect(engine, forbidden).not.toContain(forbidden)
-		const main = await textOf({ file: path.join(CORE_DIST, 'index.js') })
-		expect(main).not.toContain('sqlite3ApiBootstrap')
+	})
+
+	it('core’s main entry → no chunk it reaches imports sqlite-wasm or holds it: an engine in the page is not on the main side', async () => {
+		const mainChunks = await chunksReachedFrom({ entry: 'index.js' })
+		const reachingSqlite = [...mainChunks]
+			.filter(([, text]) => SQLITE_MODULE_IMPORT.test(text) || text.includes('sqlite3ApiBootstrap'))
+			.map(([file]) => file)
+		expect(reachingSqlite).toEqual([])
 	})
 
 	it('core’s main entry → no chunk it reaches holds libxml2, which only the test entry bundles', async () => {

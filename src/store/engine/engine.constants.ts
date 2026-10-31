@@ -1,4 +1,4 @@
-/** The prefix of an engine's Web Lock: one engine at a time holds a project's files. */
+/** The prefix of an engine's Web Lock (`engineLockNameOf`): one engine at a time holds a project's files. */
 export const ENGINE_LOCK_PREFIX = 'dialecte:engine:'
 
 /** What the engine posts on a client port outside the calls' answers (no `id`: Comlink passes it by). */

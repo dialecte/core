@@ -5,7 +5,7 @@ import { createTestRunner, runTestCases } from './run-test-cases'
 import { describe, expect } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
-import { findInMemoryState } from '@/store/in-memory/in-memory-state'
+import { findInMemoryState, inMemoryStateKeyOf } from '@/store/in-memory/in-memory-state'
 import { createSeededRandomUuid } from '@/utils'
 
 import type { BaseXmlTestCase, TestCases, ActParams, ActResult } from './run-test-cases.type'
@@ -294,7 +294,11 @@ describe('createTestRunner from a declaration', () => {
 		runInMemory.withoutExport<BaseXmlTestCase>({
 			testCases: { 'the project runs in memory': { sourceXml: /* xml */ `<Root ${ns}/>` } },
 			act: async ({ project }) => {
-				expect(findInMemoryState({ name: project.name })).toBeDefined()
+				expect(
+					findInMemoryState({
+						key: inMemoryStateKeyOf({ dialecteId: dialecte.id, project: project.name }),
+					}),
+				).toBeDefined()
 			},
 		})
 	})

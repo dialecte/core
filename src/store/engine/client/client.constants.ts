@@ -3,6 +3,14 @@ import type { EngineLostReason } from './client.types'
 /** One engine's attempt to open its project (the engine lock, then its own setup: SQLite probes and installs its pool). */
 export const ENGINE_OPEN_BUDGET_MS = 10_000
 
+/**
+ * The longest a realm waits for its engine's answer to an open, the hub's client as a realm running the
+ * engine itself: a slow worker start (seconds under load), the engine's own budget for its lock and its
+ * pool, then its database opened and the imports a dead view left removed. An engine silent past it is
+ * ended, the open refused `PROJECT_ENGINE_UNAVAILABLE`.
+ */
+export const ENGINE_OPEN_WINDOW_MS = 30_000
+
 /** How long a realm waits for its engine to close before it ends the worker anyway. */
 export const ENGINE_CLOSE_BUDGET_MS = 2_000
 

@@ -64,7 +64,9 @@ export function createImportWindow(params: ImportWindowParams): ImportWindow {
 		 * rollback that fails is thrown, but what the window held is committed first so no transaction is
 		 * left open (SQLite refuses to change synchronous inside one, and every later write would fail to
 		 * begin). Those rows are the failed import's own, in its own table, which its removal drops or the
-		 * next engine start sweeps (its row is still `importing`); a connection cannot be reopened in place.
+		 * next engine start sweeps (its row is still `importing`). A commit that fails too leaves the
+		 * transaction open: the engine then breaks (a connection cannot be reopened in place) and its host
+		 * starts the next one.
 		 */
 		end: function end() {
 			if (!params.db.isOpen()) return

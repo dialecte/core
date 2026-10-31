@@ -23,5 +23,6 @@ export function createDialecteProject<
 		extensions: { base: dialecte.extensions, custom: extensions },
 		hooks: dialecte.createHooks(),
 		dev,
+		dialecteId: dialecte.id,
 	})
 }

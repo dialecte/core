@@ -126,7 +126,7 @@ async function importRegistered(
 					meta: { documentId: registered.id },
 				})
 			}
-			await store.updateDocument(registered.id, { status: 'ready' })
+			await store.markReady(registered.id)
 		} finally {
 			perf.stop('import::finalize')
 		}

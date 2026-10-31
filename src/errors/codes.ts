@@ -26,8 +26,8 @@ export const ERROR_CATALOG = {
 		code: 'D1001',
 		message: 'Failed to open database',
 		explanation: {
-			when: "The project's database could not be opened (the SQLite file or its worker did not start).",
-			fix: 'Check the browser supports the store (OPFS, workers) and that no other tab holds the project; reload, or open the project with another storage.',
+			when: "The project's database could not be opened (the SQLite file or its worker did not start), or the origin's hub could not be joined: its SharedWorker failed to start or was blocked, or a child's port went unanswered past the welcome budget (its page unbound it).",
+			fix: 'Check the browser supports the store (OPFS, workers, SharedWorker for the hub) and that no other tab holds the project; reload, or open the project with another storage. A child view refused so is bound again by its page (`createHubPort`, then `adoptHubPort`).',
 			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
 		},
 	},
@@ -170,7 +170,7 @@ export const ERROR_CATALOG = {
 		code: 'D1017',
 		message: 'Not enough storage left for the project',
 		explanation: {
-			when: "The origin has too little storage left: for a new project's files, for an import (eight times the file's size and at least 1 MiB, less the project's free pages), or the file system refused a write for want of space; nothing of the call applied.",
+			when: "The origin has too little storage left: for a new project's files, for an import (eight times the file's size and at least 1 MiB, less the project's free pages), or the file system refused a write for want of space; nothing of the call applied. The SQLite project store answers it; the local (IndexedDB) store answers the failing write's own error (`STORE_COMMIT_FAILED`, `STORE_BULK_ADD_FAILED`, `STORE_BULK_UPDATE_FAILED`; an import `IMPORT_FAILED`) until it moves to SQLite; the in-memory store has no limit.",
 			fix: 'Free storage for the origin (delete projects no longer needed) or import a smaller file, then try again; `meta.needed` and `meta.available` give the sizes when known.',
 			docs: `${CORE_DOCS_URL}/api/project#import`,
 		},
@@ -182,6 +182,15 @@ export const ERROR_CATALOG = {
 			when: "A call to a project engine served from a worker lost that engine: it ended with what hosted it or gave no answer within its budget (`meta.reason` `'host-gone'`), it sent nothing for too long while the call waited (`'no-heartbeat'`, it may still finish), or the hub dropped this view with the page that bound it - frozen, gone, or unbinding it (`'realm-dropped'`: every call, `getWriteOutcome` too, is refused so until the view is bound again).",
 			fix: "Ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again, then open the project again. For `'realm-dropped'`, opening again is refused too: the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`); then ask `getWriteOutcome`.",
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+		},
+	},
+	STORE_HUB_SPAWNERS_FIXED: {
+		code: 'D1019',
+		message: "The page's hub connection does not run these engines",
+		explanation: {
+			when: "`connectHub({ spawners })` named an engine the page's connection does not run: the page's first `connectHub` (from any copy of the library, or a `connectHub()` naming none) registered the engines it starts, and they stay for the connection's life; a document that joined through `adoptHubPort` registered none. `meta.spawners` names the dialectes (id and version) asked but not run.",
+			fix: 'Call `connectHub` once, early, with every engine the app can start (each dialecte it opens, at the version it ships), before any project opens; a later call names those or fewer, or none.',
+			docs: `${CORE_DOCS_URL}/api/dialecte`,
 		},
 	},
 
@@ -500,8 +509,8 @@ export const ERROR_CATALOG = {
 		code: 'D7006',
 		message: 'No view can start the project engine',
 		explanation: {
-			when: "No open view of the app can start the project's engine worker.",
-			fix: "Keep one tab of the app open and reload; check the dialecte's `engineUrl` points at its worker.",
+			when: "The project's engine could not be started or reached: its worker failed to load or never answered its open within the open budget; through the origin's hub, no open view offers an engine for the project's dialecte, or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it.",
+			fix: "Keep one tab of the app open and reload; check the dialecte's `engineUrl` points at its worker and that it loads (the console names a script that fails); a destroy refused so is asked again once the project is closed elsewhere.",
 			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
 		},
 	},
@@ -516,10 +525,10 @@ export const ERROR_CATALOG = {
 	},
 	PROJECT_DIALECTE_MISMATCH: {
 		code: 'D7008',
-		message: 'The project is open with another dialecte',
+		message: "The project's engine or file is of another dialecte",
 		explanation: {
-			when: 'The project is already open with another dialecte than the one this view declares.',
-			fix: 'Open the project with the dialecte it was created with.',
+			when: "A project file stored by another dialecte was opened (nothing of it written); or an engine was asked for a project of another dialecte than its own - the dialecte's `engineUrl` (its project factory's, or a hub spawner's) pointing at another dialecte's worker. Two dialectes' projects of one name are two projects: opening one never meets the other. `meta`: `project`, `projectDialecteId` (the engine's or the file's), `realmDialecteId` (the one asked).",
+			fix: "Open the project with the dialecte it was created with; point the dialecte's `engineUrl` at its own worker.",
 			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
 		},
 	},
@@ -556,6 +565,24 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The project's files hold data but none of them is its database any more: the database file's header was damaged (by the disk, another program, or site data changed outside the app). Nothing is opened or changed: no empty database is made in its place. `meta.project` names the project.",
 			fix: "The project's data cannot be read back. Offer the user a reset, never automatically: `destroy()` on the same Project instance whose `open` was refused (keep it: `const project = new Project(params)`, then `await project.open(name)`) removes what the refused store holds, without opening it; `open(name)` then makes it again, empty, and its documents can be imported again.",
+			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+		},
+	},
+	PROJECT_DESTROYED_WHILE_AWAY: {
+		code: 'D7013',
+		message: 'The project was deleted while this view was away',
+		explanation: {
+			when: "A view's connection to a project came back - the page back from a freeze or the back/forward cache, its engine started again - and the project it had open was destroyed meanwhile by another tab (and maybe made again under its name): nothing is opened in its place and nothing of it is read. `meta.project` names the project.",
+			fix: 'Tell the user the project was deleted elsewhere; close it in this view (`project.close()`), then open it again by its name for what is there now, or choose another.',
+			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+		},
+	},
+	PROJECT_NAME_INVALID: {
+		code: 'D7014',
+		message: "The project's name cannot name its files",
+		explanation: {
+			when: "A project's name or its dialecte's id is empty, `.` or `..`: every store refuses it before it is built (a SQLite project's files sit in a directory named after both, which no directory can be); nothing was opened or written. `meta.project` and `meta.dialecteId` say which.",
+			fix: 'Give the project a name of its own (and the dialecte an id) other than an empty one, `.` or `..`.',
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},

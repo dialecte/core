@@ -6,13 +6,20 @@ import type { ReclaimParams } from './engine.types'
  * Give the file's free pages back (incremental auto-vacuum) in whole statements of
  * `pagesPerStatement` pages, letting the queued calls run after every `sliceMs` of them: a large
  * removal never holds the engine for long. Each statement is a write of its own, made after the
- * running import's window is settled; the reclaim stops once the freelist is empty or the engine is
- * closed (what is left is given back by the next removal or start).
+ * running import's window is settled - or, for a reclaim that gives way (`giveWayTo`), once that import
+ * has ended; the reclaim stops once the freelist is empty or the engine is closed (what is left is given
+ * back by the next removal or start).
  */
 export async function reclaimInSteps(params: ReclaimParams): Promise<void> {
-	const { db, settle, isClosed, pagesPerStatement, sliceMs, onStep } = params
+	const { db, settle, isClosed, pagesPerStatement, sliceMs, onStep, giveWayTo } = params
 	let sliceStartedAt = performance.now()
 	while (!isClosed() && freePagesOf({ db }) > 0) {
+		const running = giveWayTo?.()
+		if (running) {
+			await running
+			sliceStartedAt = performance.now()
+			continue
+		}
 		settle()
 		vacuumWhole({ db, pages: pagesPerStatement })
 		// a step is a few virtual-machine steps a page: too few for SQLite's progress handler to beat

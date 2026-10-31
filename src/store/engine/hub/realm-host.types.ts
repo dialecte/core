@@ -16,6 +16,7 @@ export type HubEngineSpawner = {
 /** One engine a realm hosts for the hub. */
 export type HostedEngine = {
 	project: string
+	dialecteId: string
 	generation: number
 	worker: Worker
 	control: EngineControl
@@ -32,6 +33,7 @@ export type RealmHost = {
 		dialecteId: string
 		generation: number
 		openBudgetMs: number
+		expectedCreationId?: string
 	}) => void
 	adopt: (params: {
 		project: string
@@ -40,7 +42,8 @@ export type RealmHost = {
 		clientId: string
 		port: MessagePort
 	}) => void
-	clientGone: (params: { project: string; generation: number; clientId: string }) => void
+	/** Settles once the engine has released the client (its port answers no more), or is gone. */
+	clientGone: (params: { project: string; generation: number; clientId: string }) => Promise<void>
 	release: (params: { project: string; generation: number }) => void
 	/** Every engine ended at once (the page goes away or freezes): their workers terminated. */
 	endAll: () => void
@@ -50,4 +53,9 @@ export type RealmHostParams = {
 	spawners: HubEngineSpawner[]
 	/** Say something to the hub on the realm's control port. */
 	report: (message: RealmToHubMessage) => void
+	/**
+	 * How long an engine may take to adopt a client (`ENGINE_HEARTBEAT_TIMEOUT_MS` when absent): one silent that
+	 * long is lost, the adoption reported failed.
+	 */
+	adoptBudgetMs?: number
 }

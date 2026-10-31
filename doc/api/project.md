@@ -26,13 +26,14 @@ Keep the instance before opening it: when `open` is refused, that Project is the
 
 **Constructor - `ProjectParams`**
 
-| Param              | Type                                                     | Description                                                                            |
-| ------------------ | -------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                                         |
-| `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                               |
-| `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }` |
-| `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions`              |
-| `hooks`            | `DialecteHooks`                                          | All lifecycle hooks (IO + record) applied to every Document — see [Hooks](/api/hooks)  |
+| Param              | Type                                                     | Description                                                                                                                              |
+| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `configs`          | `Record<string, AnyDialecteConfig>`                      | Config registry keyed by label                                                                                                           |
+| `defaultConfigKey` | `string`                                                 | Used when `configKey` is omitted. Defaults to first key.                                                                                 |
+| `storage`          | `StorageParam`                                           | `{ type: 'local' }`, `{ type: 'inMemory', writable? }`, or `{ type: 'custom', store }`                                                   |
+| `extensions`       | `{ base?: ExtensionModules; custom?: ExtensionModules }` | Base and custom extension modules merged internally via `mergeExtensions`                                                                |
+| `hooks`            | `DialecteHooks`                                          | All lifecycle hooks (IO + record) applied to every Document — see [Hooks](/api/hooks)                                                    |
+| `dialecteId`       | `string`                                                 | The project's dialecte (a dialecte's project factory gives it): with the name, which project a store holds; read as `project.dialecteId` |
 
 **`project.open(name: string): Promise<this>`**
 
@@ -401,7 +402,7 @@ Once `close()` or `destroy()` is called the project is closed: `import`, `import
 
 An `open` whose store refuses, or whose documents cannot be read, leaves the Project closed. `queryFirst` and `queryAll` answer `PROJECT_NOT_OPENED` when the project closes, or another opens, while they run - never a partial answer.
 
-Never await `open`, `close` or `destroy` inside a hook or a transaction callback: the close waits for that work, which waits for the close - after 10 seconds the console says what the close still waits for.
+Never await `open`, `close` or `destroy` inside a hook or a transaction callback: the close waits for that work, which waits for the close - after 10 seconds the console says what the close still waits for, naming the files of the imports in flight. A close also waits for an import whose dialecte hook never settles: nothing aborts it, so an import hook must settle ([IO hooks](/io/hooks#afterimport)).
 
 An `open` its store refused is reset as follows. When it answers `PROJECT_DATABASE_LOST` (the project's data cannot be read back), offer the user a reset - never do it on your own: `destroy()` on that same Project removes the project the refused store holds, without opening it, and `open` then makes it again, empty.
 
@@ -418,13 +419,17 @@ try {
 }
 ```
 
-`destroy()` is refused with `PROJECT_OPEN_ELSEWHERE` (`meta.project`, and `meta.connections` where the store counts them), nothing removed, while another project or store of the name has it open - in this page, or in another tab: close that one, then call `destroy()` again. The refused one closed the project all the same, as `close()` does. One closed counts open no more, and a destroy lets the operations it still runs complete first (a store of another tab counts until they end); one destroyed counts open no more either, until it is used again. Two connections destroying at once are both refused - but two tabs destroying a local store at once may both go ahead. A connection made while another connection's destroy runs either counts - the destroy refused, its data kept - or waits for the destroy and reads the project empty; it never fails, and never reads the old data after a destroy that resolved.
+A project file remembers the id it was created with. A view of a SQLite project that comes back to it - its page back from a freeze or the back/forward cache, its engine started again after a crash - while another tab destroyed it meanwhile is refused `PROJECT_DESTROYED_WHILE_AWAY` on every call: nothing is made empty in its place, and a project made again since under the name is not read. Tell the user, close the project in that view, and open it again by its name for what is there now.
+
+A project's name and its dialecte's id name what holds it on every store (a SQLite project's files sit in a directory of the origin's private files named after both): a name or an id that is empty, `.` or `..` is refused `PROJECT_NAME_INVALID` before any store of it is built, nothing opened or written.
+
+`destroy()` is refused with `PROJECT_OPEN_ELSEWHERE` (`meta.project`, and `meta.connections` where the store counts them), nothing removed, while another project or store of the project has it open - in this page, or in another tab: close that one (await its `close()`), then call `destroy()` again. The refused one closed the project all the same, as `close()` does. One closed counts open no more, and a destroy lets the operations it still runs complete first (a store of another tab counts until they end); one destroyed counts open no more either, until it is used again. Two connections destroying at once are both refused - but two tabs destroying a local store at once may both go ahead. A connection made while another connection's destroy runs either counts - the destroy refused, its data kept - or waits for the destroy and reads the project empty; it never fails, and never reads the old data after a destroy that resolved.
 
 ## In-Memory Storage
 
 Use `{ type: 'inMemory' }` for tests, demos, or UI placeholder documents that need a valid `Document` instance without IndexedDB.
 
-An in-memory project behaves as a local one, held in memory: every project opened under a name in the same page (realm) reads and writes one state, so a project closed and opened again under its name finds its documents. `close()` keeps that state; `destroy()` frees it. A store closed by `close()` refuses every operation started after it with `STORE_CLOSED` until it is opened again, in memory as on IndexedDB; one already running completes. A project that is never destroyed keeps its memory until the page goes.
+An in-memory project behaves as a SQLite one, held in memory: every project of a dialecte opened under a name in the same page (realm) reads and writes one state (two dialectes' projects of one name are two projects), so a project closed and opened again under its name finds its documents. `close()` keeps that state; `destroy()` frees it. A store closed by `close()` refuses every operation started after it with `STORE_CLOSED` until it is opened again, in memory as on IndexedDB; one already running completes. A project that is never destroyed keeps its memory until the page goes.
 
 ```ts
 const project = await new Project({

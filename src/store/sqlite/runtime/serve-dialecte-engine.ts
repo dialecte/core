@@ -1,3 +1,4 @@
+import { refuseAnotherDialecte } from '../../engine/dialecte-refusal'
 import { serveClient } from '../../engine/host/engine-wire'
 import { createHeartbeat, runToldBusy, withOpaquePhases } from '../../engine/host/heartbeat'
 import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
@@ -104,6 +105,7 @@ async function answerControl(params: {
 					requestId,
 					dialecteId: dialecte.id,
 					dialecteVersion: dialecte.version,
+					creationId: openedEngine({ state }).engine.creationId,
 					wireProtocol: ENGINE_WIRE_PROTOCOL,
 					resumed,
 				}
@@ -139,7 +141,7 @@ async function answerControl(params: {
 				break
 			}
 			case 'destroy': {
-				await destroyProject({ state, request })
+				await destroyProject({ dialecte, state, request })
 				answer = { type: 'destroyed', requestId }
 				break
 			}
@@ -168,10 +170,17 @@ async function openEngine(params: {
 		project,
 		lock,
 		budgetMs,
+		expectedCreationId,
 		perf,
 		heartbeatIntervalMs = ENGINE_HEARTBEAT_INTERVAL_MS,
 		settings: { wasmUrl, options, progressBeatOps = PROGRESS_BEAT_OPS },
 	} = request
+	// an engine of another dialecte (a spawner's address pointing at another worker) takes no lock and no file
+	refuseAnotherDialecte({
+		project,
+		engine: { dialecteId: dialecte.id, dialecteVersion: dialecte.version },
+		asked: request,
+	})
 	if (state.engine) {
 		throw createDialecteError('ASSERTION_FAILED', {
 			detail: `The engine of project "${state.project}" is open already`,
@@ -188,17 +197,29 @@ async function openEngine(params: {
 		// closed earlier in this worker: its pool paused, checked again and taken back under the lock (no install);
 		// one budget for the wait for the lock and the probe together
 		const deadline = performance.now() + budgetMs
-		const lockHeld = await takeEngineLock({ project, mode: lock, budgetMs })
+		const lockHeld = await takeEngineLock({
+			dialecteId: dialecte.id,
+			project,
+			mode: lock,
+			deadline,
+		})
 		state.releaseLock = lockHeld.release
 		try {
-			await probePausedPool({ project, deadline })
+			await probePausedPool({ dialecteId: dialecte.id, project, deadline, expectedCreationId })
 			await state.pool.unpauseVfs()
 		} catch (thrown) {
 			releasePool({ state })
 			throw thrown
 		}
 	} else {
-		const opened = await openPool({ sqlite3, project, lock, budgetMs })
+		const opened = await openPool({
+			sqlite3,
+			dialecteId: dialecte.id,
+			project,
+			lock,
+			budgetMs,
+			expectedCreationId,
+		})
 		state.pool = opened.pool
 		state.releaseLock = opened.lock.release
 	}
@@ -206,7 +227,10 @@ async function openEngine(params: {
 	let db: Database | undefined
 	try {
 		// made before the database opens: a dialecte failing to make its hooks leaves no file open
-		const heartbeat = createHeartbeat({ intervalMs: heartbeatIntervalMs })
+		const heartbeat = createHeartbeat({
+			intervalMs: heartbeatIntervalMs,
+			tellControl: tellRealm,
+		})
 		// the dialecte's hooks made once per engine (no hook state shared with a page), their long phases told
 		const made = dialecte.createRuntime({ perf })
 		const runtime = { ...made, hooks: withOpaquePhases({ hooks: made.hooks, heartbeat }) }
@@ -218,6 +242,7 @@ async function openEngine(params: {
 			sqlite3,
 			db,
 			dialecteId: dialecte.id,
+			expectedCreationId,
 			name: project,
 			runtime,
 			options,
@@ -231,6 +256,17 @@ async function openEngine(params: {
 			explainIoFailure: function explainIoFailure({ thrown }) {
 				return explainOutOfSpace({ project, thrown })
 			},
+			// a connection is not reopened in place: the worker ends, its clients find their host gone, and the next
+			// engine starts on the file
+			onBroken: function endBrokenWorker() {
+				void closeEngine({ state })
+					.catch(function endAnyway() {
+						// the engine was closed already: what letting it go fails on changes nothing for the worker's end
+					})
+					.finally(function endWorker() {
+						self.close()
+					})
+			},
 		})
 		return { resumed }
 	} catch (thrown) {
@@ -239,6 +275,11 @@ async function openEngine(params: {
 		releasePool({ state })
 		throw thrown
 	}
+}
+
+/** A sign of the engine's life told the realm that runs it, beside the control answers. */
+function tellRealm(message: { type: string }): void {
+	self.postMessage(message)
 }
 
 /** The engine open in this worker, with the channel it announces on; none open is a caller's mistake. */
@@ -261,21 +302,34 @@ function openedEngine(params: { state: EngineRuntimeState }): {
  * project again.
  */
 async function destroyProject(params: {
+	dialecte: EngineDialecte
 	state: EngineRuntimeState
 	request: Extract<EngineControlRequest<SqliteEngineSettings>, { type: 'destroy' }>
 }): Promise<void> {
-	const { state, request } = params
+	const { dialecte, state, request } = params
 	const { project, lock, budgetMs } = request
+	// another dialecte's project of that name is never this engine's to remove
+	refuseAnotherDialecte({
+		project,
+		engine: { dialecteId: dialecte.id, dialecteVersion: dialecte.version },
+		asked: { dialecteId: request.dialecteId },
+	})
 	const deadline = performance.now() + budgetMs
 	let removing = false
 	try {
 		await endEngineAndClients({ state })
 		if (!state.releaseLock) {
-			const held = await takeEngineLock({ project, mode: lock, budgetMs })
+			// what closing the engine spent is not given again
+			const held = await takeEngineLock({
+				dialecteId: dialecte.id,
+				project,
+				mode: lock,
+				deadline,
+			})
 			state.releaseLock = held.release
 		}
 		removing = true
-		await destroyPool({ project, pool: state.pool, deadline })
+		await destroyPool({ dialecteId: dialecte.id, project, pool: state.pool, deadline })
 	} finally {
 		if (removing) {
 			state.pool = undefined

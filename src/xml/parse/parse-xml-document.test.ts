@@ -12,8 +12,8 @@ import {
 	XMLNS_DEV_NAMESPACE,
 } from '@/test'
 
+import type { ParseTarget } from './parse-xml-document.types'
 import type { Diagnostic } from '@/diagnostics'
-import type { Store } from '@/store/store.types'
 import type { BaseTestCase } from '@/test'
 import type { AfterImportResult, AnyRawRecord, ImportSession } from '@/types'
 
@@ -22,29 +22,23 @@ import type { AfterImportResult, AnyRawRecord, ImportSession } from '@/types'
 const NS = DIALECTE_TEST_NAMESPACES
 const CONFIG = TEST_DIALECTE_CONFIG
 
-function createMockStore(): Store & { bulkWriteCalls: Array<Parameters<Store['bulkWrite']>> } {
-	const bulkWriteCalls: Array<Parameters<Store['bulkWrite']>> = []
+/** A parse target recording its calls: the file's writes in `bulkWriteCalls`, the session's in `sessionWriteCalls`. */
+function createMockStore(): ParseTarget & {
+	bulkWriteCalls: Array<Parameters<ParseTarget['bulkWrite']>>
+	sessionWriteCalls: Array<Parameters<ParseTarget['writeSession']>>
+} {
+	const bulkWriteCalls: Array<Parameters<ParseTarget['bulkWrite']>> = []
+	const sessionWriteCalls: Array<Parameters<ParseTarget['writeSession']>> = []
 	return {
-		name: 'test-store',
 		bulkWriteCalls,
-		open: vi.fn(),
-		close: vi.fn(),
-		destroy: vi.fn(),
-		registerDocument: vi.fn(),
-		getDocument: vi.fn(),
-		getDocuments: vi.fn(),
-		updateDocument: vi.fn(),
-		removeDocument: vi.fn(),
-		get: vi.fn(),
-		getByDocumentId: vi.fn(),
-		getByTagNameInDocument: vi.fn(),
-		bulkWrite: vi.fn(async (...args: Parameters<Store['bulkWrite']>) => {
+		sessionWriteCalls,
+		bulkWrite: vi.fn(async (...args: Parameters<ParseTarget['bulkWrite']>) => {
 			bulkWriteCalls.push(args)
 		}),
-		commit: vi.fn(),
-		undo: vi.fn(),
-		redo: vi.fn(),
-	} as unknown as Store & { bulkWriteCalls: Array<Parameters<Store['bulkWrite']>> }
+		writeSession: vi.fn(async (...args: Parameters<ParseTarget['writeSession']>) => {
+			sessionWriteCalls.push(args)
+		}),
+	}
 }
 
 /** What `action` throws, `undefined` when it returns. */
@@ -446,7 +440,7 @@ describe('parseXmlFile', () => {
 			xml: string
 			chunkSize: number
 			batchSize: number
-			assertBatching: (calls: Array<Parameters<Store['bulkWrite']>>) => void
+			assertBatching: (calls: Array<Parameters<ParseTarget['bulkWrite']>>) => void
 		}
 
 		const testCases: Record<string, TestCase> = {
@@ -495,8 +489,8 @@ describe('parseXmlFile', () => {
 			expectedDiagnostics: Diagnostic[]
 			/** Root(1) + creates - deletes */
 			expectedRecordCount: number
-			/** the session's write, when it has one: a second bulkWrite after the parse's one */
-			expectedWrite?: Parameters<Store['bulkWrite']>[1]
+			/** the session's write, when it has one: through writeSession, after the parse's bulkWrite */
+			expectedWrite?: Parameters<ParseTarget['writeSession']>[1]
 		}
 
 		const unresolved: Diagnostic = {
@@ -600,13 +594,11 @@ describe('parseXmlFile', () => {
 
 			expect(result.diagnostics).toStrictEqual(testCase.expectedDiagnostics)
 			expect(result.recordCount).toBe(testCase.expectedRecordCount)
-			// the parse writes Root in one batch; the session's write, when it has one, is the second
-			if (testCase.expectedWrite) {
-				expect(store.bulkWriteCalls).toHaveLength(2)
-				expect(store.bulkWriteCalls[1]).toEqual(['f1', testCase.expectedWrite])
-			} else {
-				expect(store.bulkWriteCalls).toHaveLength(1)
-			}
+			// the parse writes Root in one batch; the session's write, when it has one, goes as the session's
+			expect(store.bulkWriteCalls).toHaveLength(1)
+			expect(store.sessionWriteCalls).toEqual(
+				testCase.expectedWrite ? [['f1', testCase.expectedWrite]] : [],
+			)
 		})
 
 		it('session reports a diagnostic holding a function next to a create → STORE_VALUE_NOT_JSON naming the diagnostic, the create never written', async () => {
@@ -631,6 +623,7 @@ describe('parseXmlFile', () => {
 			expect(refusal?.key).toBe('STORE_VALUE_NOT_JSON')
 			expect(refusal?.detail).toMatch(/^A diagnostic of the import session: .*field "fix"/)
 			expect(store.bulkWriteCalls).toHaveLength(1)
+			expect(store.sessionWriteCalls).toEqual([])
 		})
 
 		it('afterImport runs once the last record is stored', async () => {
@@ -868,8 +861,9 @@ describe('parseXmlFile', () => {
 			const error = toDialecteError(thrown)
 			expect(error?.key).toBe(testCase.expectedKey)
 			expect(error?.meta).toEqual(testCase.expectedMeta)
-			// the parse's own batch, or none when the parse fails: a session write would be one more
+			// the parse's own batch, or none when the parse fails; never a session write
 			expect(store.bulkWriteCalls).toHaveLength(testCase.expectedWriteCount)
+			expect(store.sessionWriteCalls).toEqual([])
 		})
 	})
 

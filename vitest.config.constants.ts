@@ -43,6 +43,10 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'the SQLite engine served from a worker, its files in OPFS',
 	},
 	{
+		path: 'src/store/sqlite/runtime/install-pool.test.ts',
+		why: "the engine's Web Lock, which only a browser has",
+	},
+	{
 		path: 'src/store/sqlite/runtime/engine-liveness.test.ts',
 		why: 'engine workers and the liveness signals between tabs',
 	},

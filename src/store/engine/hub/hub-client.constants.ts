@@ -11,6 +11,13 @@ export const HUB_REGISTRY_KEY = Symbol.for(`@dialecte/core/hub/v${HUB_PROTOCOL_V
 export const HUB_WELCOME_BUDGET_MS = 10_000
 
 /**
+ * A port connected to the hub that says no hello within this long is let go: past a realm's own join budget
+ * (`HUB_WELCOME_BUDGET_MS`, its lock wait included) its hello no longer comes. A child's bound port is kept: its
+ * document may load later, and its parent unbinds it.
+ */
+export const HUB_HELLO_BUDGET_MS = 2 * HUB_WELCOME_BUDGET_MS
+
+/**
  * A page back from a freeze whose hub cannot be reached tries again after this long, the delay doubling
  * up to `HUB_REJOIN_MAX_DELAY_MS` (a hub restarting on a loaded machine, a deploy that moved its chunk).
  */

@@ -1,6 +1,8 @@
 import { throwOpenElsewhere } from '../../store-errors'
 import { ENGINE_LOST_DETAILS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
+import { refuseOtherCreation } from '../creation-refusal'
+import { projectKeyOf } from '../project-key'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
 	HUB_REGISTRY_KEY,
@@ -16,7 +18,7 @@ import {
 } from './hub.constants'
 import { createRealmHost } from './realm-host'
 
-import { createDialecteError, toDialecteError } from '@/errors'
+import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 
 import type { EngineLostReason } from '../client/client.types'
 import type {
@@ -27,6 +29,7 @@ import type {
 	HubLifecycleTargets,
 	HubPortOpening,
 	HubRegistry,
+	JoinBudget,
 	HubPortHandle,
 	HubProjectLink,
 	HubProjectParams,
@@ -45,16 +48,57 @@ import type { HubEngineSpawner, RealmHost } from './realm-host.types'
  * another one of the same protocol - gets the first connection. Answers `undefined` where the browser
  * has no SharedWorker, or the hub never welcomed the realm (its script failed to load or was blocked,
  * or it stayed silent past the welcome budget): the caller then runs the engine itself, and a later
- * call tries again. The realm registers the engines it can start whose worker is of its own origin.
+ * call tries again. The realm registers the engines it can start whose worker is of its own origin, at
+ * its first join and for the connection's life: a later call naming one the connection does not run is
+ * refused `STORE_HUB_SPAWNERS_FIXED` (the connection kept); naming those or fewer, or none, gets it.
  */
 export function openHubConnection(
 	params: ConnectHubParams = {},
 ): Promise<HubConnection | undefined> {
-	return keptAttempt({
-		attempt: function connect() {
-			return openHub(params)
-		},
+	const kept = (globalThis as HubRegistry)[HUB_REGISTRY_KEY]
+	if (!kept) {
+		return keptAttempt({
+			attempt: function connect() {
+				return openHub(params)
+			},
+		})
+	}
+	const asked = sameOriginSpawners({ spawners: params.spawners ?? [] }).map(toHubSpawner)
+	// none to check: the kept attempt itself, as every copy of the library gets it
+	if (asked.length === 0) return kept
+	return kept.then(function refuseOthersRun(connection) {
+		if (connection) refuseSpawnersNotRun({ connection, asked })
+		return connection
 	})
+}
+
+/** `STORE_HUB_SPAWNERS_FIXED` when `asked` names an engine the connection does not run. */
+function refuseSpawnersNotRun(params: { connection: HubConnection; asked: HubSpawner[] }): void {
+	const { connection, asked } = params
+	const notRun = asked.filter(function runByNone(spawner) {
+		return !connection.spawners.some(function runs(registered) {
+			return (
+				registered.dialecteId === spawner.dialecteId &&
+				registered.dialecteVersion === spawner.dialecteVersion
+			)
+		})
+	})
+	if (notRun.length === 0) return
+	throwDialecteError('STORE_HUB_SPAWNERS_FIXED', {
+		detail: `This page's hub connection runs ${describeSpawners({ spawners: connection.spawners })}, not ${describeSpawners({ spawners: notRun })}: connectHub registers its engines once`,
+		meta: { spawners: notRun },
+	})
+}
+
+/** Spawners as their dialecte and version, `none` for none. */
+function describeSpawners(params: { spawners: readonly HubSpawner[] }): string {
+	const { spawners } = params
+	if (spawners.length === 0) return 'no engine'
+	return spawners
+		.map(function nameOf(spawner) {
+			return `${spawner.dialecteId}@${spawner.dialecteVersion}`
+		})
+		.join(', ')
 }
 
 /**
@@ -124,12 +168,13 @@ function keptAttempt(params: {
 
 async function openHub(params: ConnectHubParams = {}): Promise<HubConnection | undefined> {
 	if (typeof SharedWorker === 'undefined') return undefined
-	// a hub that cannot start (blocked, or the worker throws as it is made): no hub
+	// a hub the browser refuses to make (blocked, a sandbox: a DOMException): no hub; anything else is a bug, thrown
 	let first: HubPortOpening
 	try {
 		first = hubPort()
-	} catch {
-		return undefined
+	} catch (thrown) {
+		if (thrown instanceof DOMException) return undefined
+		throw thrown
 	}
 	let given = false
 	try {
@@ -218,10 +263,23 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		welcomeBudgetMs = HUB_WELCOME_BUDGET_MS,
 		bound = false,
 	} = params
+	/** The realm's link to each project, by its key (`projectKeyOf`: dialecte and name). */
 	const entries = new Map<string, ProjectEntry>()
+
+	/**
+	 * A project its links were refused on as destroyed while the realm was away: forgotten by the realm, so a fresh
+	 * link (one that never had the project) asks the hub anew; the refused links keep their entry and its refusal.
+	 */
+	function forgetEntry(entry: ProjectEntry): void {
+		const key = projectKeyOf(entry)
+		if (entries.get(key) === entry) entries.delete(key)
+	}
 	/** The links of this realm counted among their project's users: from their open until released. */
 	const countedLinks = new WeakSet<HubProjectLink>()
+	/** The destroys asked of the hub and not answered yet, by project key. */
 	const destroys = new Map<string, PendingDestroy>()
+	/** The leaves said and not acknowledged yet, by project key, in the order said: each released link waits on its own. */
+	const leaves = new Map<string, (() => void)[]>()
 	const queued: QueuedMessage[] = []
 	const lifecycleWatch = new AbortController()
 	let realmId = crypto.randomUUID()
@@ -247,6 +305,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	const ended = new Promise<unknown>(function waitForEnd(resolve) {
 		markEnded = resolve
 	})
+	/** The watch of the hub's lock of the realm instance welcomed: withdrawn as the instance ends. */
+	let hubWatch: AbortController | undefined
 	/** Ends the hello in progress when the realm is suspended meanwhile (its port closed, no welcome comes). */
 	let abandonJoin: () => void = releaseNothing
 	const host: RealmHost = createRealmHost({ spawners, report: send })
@@ -267,19 +327,27 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		const message = event.data
 		switch (message?.type) {
 			case 'engine-ready':
-				return engineReady({ entry: entries.get(message.project), message })
+				return engineReady({
+					entry: entries.get(projectKeyOf(message)),
+					message,
+					leave: leaveRefused,
+					forget: forgetEntry,
+				})
 			case 'engine-lost':
-				return engineLost({ entry: entries.get(message.project) })
+				return engineLost({ entry: entries.get(projectKeyOf(message)) })
 			case 'open-refused':
 				return openRefused({
-					entry: entries.get(message.project),
+					entry: entries.get(projectKeyOf(message)),
 					error: fromThrownData({ data: message.error }),
+					forget: forgetEntry,
 				})
 			case 'destroy-granted':
-				destroys.get(message.project)?.granted()
+				destroys.get(projectKeyOf(message))?.granted()
 				return
+			case 'left':
+				return leaveAcknowledged({ key: projectKeyOf(message) })
 			case 'destroy-refused':
-				destroys.get(message.project)?.refused(fromThrownData({ data: message.error }))
+				destroys.get(projectKeyOf(message))?.refused(fromThrownData({ data: message.error }))
 				return
 			case 'dropped':
 				return stayDropped({})
@@ -289,7 +357,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			case 'adopt-client':
 				return host.adopt(message)
 			case 'client-gone':
-				return host.clientGone(message)
+				// nothing waits on the release here: the hub forgot the client already
+				void host.clientGone(message)
+				return
 			case 'release-engine':
 				return host.release(message)
 			default:
@@ -308,7 +378,10 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		const instancePort = port
 		const instanceId = realmId
 		const instanceFailed = opening.failed
+		// one budget for the realm's lock and the welcome: a document that never gets its lock fails the join too
+		const budget = startJoinBudget({ budgetMs: welcomeBudgetMs })
 		let abandoned = false
+		let hubLock: string | undefined
 		const welcomed = new Promise<void>(function waitForWelcome(resolve, reject) {
 			abandonJoin = function abandon() {
 				abandoned = true
@@ -317,34 +390,71 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			instancePort.addEventListener(
 				'message',
 				function hearWelcome(event: MessageEvent<HubToRealmMessage>) {
-					if (event.data?.type === 'welcome') resolve()
+					if (event.data?.type === 'welcome') {
+						hubLock = event.data.hubLock
+						resolve()
+					}
 					if (event.data?.type === 'hello-refused')
 						reject(fromThrownData({ data: event.data.error }))
 				},
 			)
 		})
-		if (holdsLock) {
-			const release = await holdRealmLock({ realmId: instanceId })
-			if (abandoned) {
-				release()
-				return false
+		/** The lock, then the hello and the welcome, within the join's budget. */
+		async function joinWithin(): Promise<boolean> {
+			if (holdsLock) {
+				const release = await holdRealmLock({ realmId: instanceId, expired: budget.expired })
+				if (abandoned) {
+					release()
+					return false
+				}
+				releaseLock = release
 			}
-			releaseLock = release
+			instancePort.addEventListener('message', hear)
+			instancePort.start()
+			const hello: RealmToHubMessage = {
+				type: 'hello',
+				protocol: HUB_PROTOCOL_VERSION,
+				realmId: instanceId,
+				topLevel,
+				spawners: spawners.map(toHubSpawner),
+			}
+			instancePort.postMessage(hello)
+			await welcomedWithin({ welcomed, failed: instanceFailed, expired: budget.expired })
+			if (abandoned) return false
+			abandonJoin = releaseNothing
+			// a realm with a lock of its own watches the hub's: granted, the hub is gone
+			if (holdsLock && hubLock !== undefined) watchHub({ hubLock, instanceId })
+			return true
 		}
-		instancePort.addEventListener('message', hear)
-		instancePort.start()
-		const hello: RealmToHubMessage = {
-			type: 'hello',
-			protocol: HUB_PROTOCOL_VERSION,
-			realmId: instanceId,
-			topLevel,
-			spawners: spawners.map(toHubSpawner),
+		try {
+			return await joinWithin()
+		} catch (error) {
+			// suspended meanwhile: this instance is over, whatever its budget says (its lock let go once granted)
+			if (abandoned) return false
+			throw error
+		} finally {
+			budget.clear()
 		}
-		instancePort.postMessage(hello)
-		await welcomedWithin({ welcomed, failed: instanceFailed, budgetMs: welcomeBudgetMs })
-		if (abandoned) return false
-		abandonJoin = releaseNothing
-		return true
+	}
+
+	/**
+	 * The hub's lock asked for: granted once the hub is gone (its worker crashed or was ended) - this realm
+	 * instance is then over, its calls refused as for a hub out of reach, and it joins the next hub after a delay.
+	 */
+	function watchHub(params: { hubLock: string; instanceId: string }): void {
+		const { hubLock, instanceId } = params
+		const watch = new AbortController()
+		hubWatch = watch
+		navigator.locks
+			.request(hubLock, { signal: watch.signal }, function hubGone() {
+				if (realmId !== instanceId || phase !== 'joined') return
+				stayUnreachable({
+					error: createDialecteError('STORE_CONNECTION_FAILED', {
+						detail: "The origin's hub ended: this view joins the next one",
+					}),
+				})
+			})
+			.catch(ignoreWithdrawnWatch)
 	}
 
 	/** Welcomed: what was said meanwhile goes, then every link with a use asks for its engine. */
@@ -378,6 +488,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			project: entry.project,
 			dialecteId: entry.dialecteId,
 			dialecteVersion: entry.dialecteVersion,
+			// coming back to the project it had: the hub starts no engine that would make it again empty
+			...(entry.creationId !== undefined && { expectedCreationId: entry.creationId }),
 		})
 	}
 
@@ -387,6 +499,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	 */
 	function endInstance(params: { reason: EngineLostReason }): void {
 		abandonJoin()
+		hubWatch?.abort()
+		hubWatch = undefined
+		settleLeaves()
 		host.endAll()
 		for (const entry of entries.values()) {
 			dropClient({ entry, reason: params.reason })
@@ -547,9 +662,43 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		}
 	}
 
-	/** The users of the project in this realm but `own`, while that one is counted. */
-	function otherUsers(params: { project: string; own: HubProjectLink | undefined }): number {
-		const users = entries.get(params.project)?.users ?? 0
+	/** The hub forgot this realm instance with its projects: every leave waiting counts no more. */
+	function settleLeaves(): void {
+		for (const waiting of leaves.values()) for (const resolve of waiting.splice(0)) resolve()
+		leaves.clear()
+	}
+
+	/** The first leave of the project waiting acknowledged: the realm counts no more there. */
+	function leaveAcknowledged(params: { key: string }): void {
+		const waiting = leaves.get(params.key)
+		waiting?.shift()?.()
+		if (waiting?.length === 0) leaves.delete(params.key)
+	}
+
+	/** A link refused for good leaves its project: the acknowledgement settles nothing more. */
+	function leaveRefused(entry: ProjectEntry): void {
+		void leave({ entry, key: projectKeyOf(entry) })
+	}
+
+	/**
+	 * Leave the project, settled once the hub acknowledged it (or forgot this realm instance). A bound child watches no
+	 * lock of the hub's, so a hub gone would never tell it: its leave settles within the welcome budget too (a late
+	 * acknowledgement still settles the leave it answers).
+	 */
+	function leave(params: { entry: ProjectEntry; key: string }): Promise<void> {
+		const { entry, key } = params
+		return new Promise(function waitForLeft(resolve) {
+			const waiting = leaves.get(key) ?? []
+			waiting.push(resolve)
+			leaves.set(key, waiting)
+			send({ type: 'leave', project: entry.project, dialecteId: entry.dialecteId })
+			if (!holdsLock) setTimeout(resolve, welcomeBudgetMs)
+		})
+	}
+
+	/** The users of the project (its key) in this realm but `own`, while that one is counted. */
+	function otherUsers(params: { key: string; own: HubProjectLink | undefined }): number {
+		const users = entries.get(params.key)?.users ?? 0
 		return users - (params.own !== undefined && countedLinks.has(params.own) ? 1 : 0)
 	}
 
@@ -581,9 +730,17 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		realmId: function currentRealmId() {
 			return realmId
 		},
+		spawners: spawners.map(toHubSpawner),
 		ended,
 		close: function closeConnection() {
 			if (phase === 'refused') return
+			// a bound child has no lock whose end tells the hub: it leaves each project it asked for
+			if (phase === 'joined') {
+				for (const entry of entries.values()) {
+					if (entry.asked)
+						send({ type: 'leave', project: entry.project, dialecteId: entry.dialecteId })
+				}
+			}
 			refuse({
 				error: createDialecteError('STORE_CLOSED', {
 					detail: "This view's connection to the hub was closed",
@@ -592,8 +749,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			})
 		},
 		openProject: function openProjectLink(projectParams) {
-			const existing = entries.get(projectParams.project)
-			// another copy of the library in the realm on another dialecte: refused as another realm would be
+			const key = projectKeyOf(projectParams)
+			const existing = entries.get(key)
+			// another copy of the library in the realm on another version of the dialecte: refused as another realm would be
 			// (a connection ended for good answers why it ended first, as for any link)
 			const mismatch =
 				refusal === undefined &&
@@ -601,9 +759,27 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				dialecteMismatch({ entry: existing, asked: projectParams })
 			if (mismatch) return refusedLink({ error: mismatch, project: projectParams.project })
 			const entry = existing ?? newEntry(projectParams)
-			entries.set(entry.project, entry)
+			entries.set(key, entry)
 			entry.users += 1
 			let released = false
+			/** The release under way or done: a second release settles with it. */
+			let releasing: Promise<void> | undefined
+			/** The link counted no more in the realm; the project left with its last link, once the hub said so. */
+			async function releaseOnce(): Promise<void> {
+				released = true
+				countedLinks.delete(link)
+				entry.users -= 1
+				if (entry.users > 0) return
+				// an entry forgotten meanwhile (refused as away) may have been replaced by a fresh one
+				if (entries.get(key) === entry) entries.delete(key)
+				entry.current?.client.close({ storeName: entry.project })
+				entry.current = undefined
+				for (const waiter of entry.waiters.splice(0)) {
+					rejectWaiter({ waiter, error: releasedLinkError({ project: entry.project }) })
+				}
+				// counted by the hub until it handled the leave: a destroy asked after it finds the realm gone
+				if (entry.asked) await leave({ entry, key })
+			}
 			const link: HubProjectLink = {
 				engine: function currentEngine() {
 					// a released link reaches no engine, and asks the hub for none
@@ -618,51 +794,42 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 					})
 				},
 				release: function releaseLink() {
-					if (released) return
-					released = true
-					countedLinks.delete(link)
-					entry.users -= 1
-					if (entry.users > 0) return
-					entries.delete(entry.project)
-					entry.current?.client.close({ storeName: entry.project })
-					entry.current = undefined
-					for (const waiter of entry.waiters.splice(0)) {
-						rejectWaiter({ waiter, error: releasedLinkError({ project: entry.project }) })
-					}
-					if (entry.asked) send({ type: 'leave', project: entry.project })
+					releasing ??= releaseOnce()
+					return releasing
 				},
 			}
 			countedLinks.add(link)
 			return link
 		},
-		destroyProject: async function destroyThroughHub({ project, destroy, own }) {
+		destroyProject: async function destroyThroughHub({ project, dialecteId, destroy, own }) {
+			const key = projectKeyOf({ project, dialecteId })
 			const refused = cannotWait()
 			if (refused !== undefined) throw refused
 			// another connection of this realm on the project (the hub sees one realm): refused here; its own
 			// stays until the destroy goes ahead, the realm a client the hub does not count against it
-			const open = otherUsers({ project, own: own?.link })
+			const open = otherUsers({ key, own: own?.link })
 			if (open > 0) throwOpenElsewhere({ storeName: project, connections: open })
-			if (destroys.has(project)) {
+			if (destroys.has(key)) {
 				throw createDialecteError('PROJECT_OPEN_ELSEWHERE', {
 					detail: `"${project}" is being destroyed from this view already`,
 					meta: { project },
 				})
 			}
 			await new Promise<void>(function waitForGrant(granted, refused) {
-				destroys.set(project, { granted, refused })
-				sendWhenJoined({ type: 'destroy', project })
+				destroys.set(key, { granted, refused })
+				sendWhenJoined({ type: 'destroy', project, dialecteId })
 			}).finally(function forgetDestroy() {
-				destroys.delete(project)
+				destroys.delete(key)
 			})
 			try {
 				// a connection of this realm made while the grant was awaited keeps the project
-				const openSince = otherUsers({ project, own: own?.link })
+				const openSince = otherUsers({ key, own: own?.link })
 				if (openSince > 0) throwOpenElsewhere({ storeName: project, connections: openSince })
-				own?.letGo()
+				void own?.letGo()
 				await destroy()
 			} finally {
 				// to the instance granted it: one suspended since is forgotten by the hub, its hold lifted
-				send({ type: 'destroyed', project })
+				send({ type: 'destroyed', project, dialecteId })
 			}
 		},
 		onRejoined: function listenForRejoin(listener) {
@@ -678,6 +845,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			if (standbyPort) letHandedPortGo({ port: standbyPort })
 			standbyPort = newPort
 			if (phase === 'dropped') joinOnStandby()
+			// welcomed still: its page handed the port as its own instance ended, so the hub forgets this one (or is
+			// gone) - its leaves count no more; it goes on with the old port until the hub drops it
+			else if (phase === 'joined') settleLeaves()
 			// joining on an older handed port (its page frozen again meanwhile, say): that join left for this one
 			else if (phase === 'joining') joinNewerPort()
 			return true
@@ -698,22 +868,15 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	}
 }
 
-/** Why a link of the realm cannot join the project's link already there: another dialecte, or another version. */
+/**
+ * Why a link of the realm cannot join the project's link already there: another version of its dialecte (a
+ * client and its engine run the same code). Another dialecte's project of the name is another project.
+ */
 function dialecteMismatch(params: {
 	entry: ProjectEntry
 	asked: HubProjectParams
 }): Error | undefined {
 	const { entry, asked } = params
-	if (asked.dialecteId !== entry.dialecteId) {
-		return createDialecteError('PROJECT_DIALECTE_MISMATCH', {
-			detail: `"${entry.project}" is open in this view as ${entry.dialecteId}, asked as ${asked.dialecteId}`,
-			meta: {
-				project: entry.project,
-				projectDialecteId: entry.dialecteId,
-				realmDialecteId: asked.dialecteId,
-			},
-		})
-	}
 	if (asked.dialecteVersion !== entry.dialecteVersion) {
 		return createDialecteError('PROJECT_DIALECTE_VERSION_MISMATCH', {
 			detail: `"${entry.project}" is open in this view with ${entry.dialecteId} ${entry.dialecteVersion}, asked with ${asked.dialecteVersion}`,
@@ -737,27 +900,57 @@ function refusedLink(params: { error: Error; project: string }): HubProjectLink 
 			// released, it reaches no engine: closed, as any released link
 			return Promise.reject(released ? releasedLinkError({ project }) : error)
 		},
-		release: function releaseRefused() {
+		release: async function releaseRefused() {
 			released = true
 		},
 	}
 }
 
 function newEntry(params: HubProjectParams): ProjectEntry {
-	return { ...params, users: 0, asked: false, current: undefined, waiters: [], refusal: undefined }
+	return {
+		...params,
+		users: 0,
+		asked: false,
+		current: undefined,
+		waiters: [],
+		refusal: undefined,
+		creationId: undefined,
+	}
 }
 
-/** The engine's port: a client on it, handed to every call waiting. */
+/**
+ * The engine's port: a client on it, handed to every call waiting - unless the engine runs another project
+ * than the one the link had (destroyed while the realm was away, made again since): the link refused for good
+ * `PROJECT_DESTROYED_WHILE_AWAY`, the port closed, the project left.
+ */
 function engineReady(params: {
 	entry: ProjectEntry | undefined
 	message: Extract<HubToRealmMessage, { type: 'engine-ready' }>
+	forget: (entry: ProjectEntry) => void
+	leave: (entry: ProjectEntry) => void
 }): void {
-	const { entry, message } = params
+	const { entry, message, leave } = params
 	if (!entry) {
 		message.port.close()
 		return
 	}
 	dropClient({ entry, reason: 'host-gone' })
+	try {
+		refuseOtherCreation({
+			project: entry.project,
+			expectedCreationId: entry.creationId,
+			creationId: message.creationId,
+		})
+	} catch (refusal) {
+		message.port.close()
+		entry.refusal = refusal
+		entry.asked = false
+		leave(entry)
+		for (const waiter of entry.waiters.splice(0)) rejectWaiter({ waiter, error: refusal })
+		params.forget(entry)
+		return
+	}
+	entry.creationId = message.creationId
 	const client = createEngineClient({
 		port: message.port,
 		heartbeatTimeoutMs: entry.heartbeatTimeoutMs,
@@ -772,7 +965,11 @@ function engineLost(params: { entry: ProjectEntry | undefined }): void {
 }
 
 /** The hub refused the project: the calls waiting refused; a lasting refusal kept for the link. */
-function openRefused(params: { entry: ProjectEntry | undefined; error: unknown }): void {
+function openRefused(params: {
+	entry: ProjectEntry | undefined
+	error: unknown
+	forget: (entry: ProjectEntry) => void
+}): void {
 	const { entry, error } = params
 	if (!entry) return
 	entry.asked = false
@@ -784,6 +981,8 @@ function openRefused(params: { entry: ProjectEntry | undefined; error: unknown }
 	)
 		entry.refusal = error
 	for (const waiter of entry.waiters.splice(0)) rejectWaiter({ waiter, error })
+	// destroyed while the realm was away: the links that had the project are refused, not a fresh one
+	if (key === 'PROJECT_DESTROYED_WHILE_AWAY') params.forget(entry)
 }
 
 function rejectWaiter(params: { waiter: EngineWaiter; error: unknown }): void {
@@ -865,30 +1064,42 @@ function openHubPort(params: { openPort: () => HubPortOpening }): HubPortOpening
 async function welcomedWithin(params: {
 	welcomed: Promise<void>
 	failed: Promise<unknown> | undefined
-	budgetMs: number
+	expired: Promise<never>
 }): Promise<void> {
-	const { welcomed, failed, budgetMs } = params
-	let timer: ReturnType<typeof setTimeout> | undefined
-	const silent = new Promise<never>(function waitBudget(_resolve, reject) {
-		timer = setTimeout(function hubSilent() {
-			reject(
-				createDialecteError('STORE_CONNECTION_FAILED', {
-					detail: `The origin's hub did not welcome this view within ${budgetMs} ms`,
-					meta: { budgetMs },
-				}),
-			)
-		}, budgetMs)
-	})
+	const { welcomed, failed, expired } = params
 	const failure =
 		failed?.then(function hubFailed(error): never {
 			throw error
 		}) ?? new Promise<never>(waitForever)
 	// a failure after the welcome is not this join's: heard by nobody else, it is let go
 	failure.catch(ignoreLateFailure)
-	try {
-		await Promise.race([welcomed, silent, failure])
-	} finally {
-		clearTimeout(timer)
+	await Promise.race([welcomed, expired, failure])
+}
+
+/**
+ * A join's budget, from its start: `expired` rejects `STORE_CONNECTION_FAILED` once it has passed - the realm's
+ * lock and the hub's welcome both within it; `clear` stops it once the join is over.
+ */
+function startJoinBudget(params: { budgetMs: number }): JoinBudget {
+	const { budgetMs } = params
+	let timer: ReturnType<typeof setTimeout> | undefined
+	const expired = new Promise<never>(function waitBudget(_resolve, reject) {
+		timer = setTimeout(function joinTooLong() {
+			reject(
+				createDialecteError('STORE_CONNECTION_FAILED', {
+					detail: `The origin's hub did not welcome this view within ${budgetMs} ms (its lock, then the welcome)`,
+					meta: { budgetMs },
+				}),
+			)
+		}, budgetMs)
+	})
+	// told to whoever waits on it; once the join is over nobody does
+	expired.catch(ignoreLateFailure)
+	return {
+		expired,
+		clear: function clearBudget() {
+			clearTimeout(timer)
+		},
 	}
 }
 
@@ -904,19 +1115,39 @@ function releasedLinkError(params: { project: string }): Error {
 	})
 }
 
-/** Hold the realm's lock until the returned release is called, or the realm dies. */
-function holdRealmLock(params: { realmId: string }): Promise<() => void> {
-	return new Promise(function requestLock(granted) {
-		void navigator.locks.request(
-			`${REALM_LOCK_PREFIX}${params.realmId}`,
-			function holdUntilReleased() {
+/**
+ * Hold the realm's lock until the returned release is called, or the realm dies. Not granted before the join's
+ * budget `expired`, or refused (a document not fully active), the join fails `STORE_CONNECTION_FAILED`; a grant
+ * that comes after is let go at once.
+ */
+function holdRealmLock(params: { realmId: string; expired: Promise<never> }): Promise<() => void> {
+	const { realmId, expired } = params
+	return new Promise(function requestLock(granted, refused) {
+		let givenUp = false
+		expired.catch(function lockNotGranted(error: unknown) {
+			givenUp = true
+			refused(error)
+		})
+		navigator.locks
+			.request(`${REALM_LOCK_PREFIX}${realmId}`, function holdUntilReleased() {
 				return new Promise<void>(function waitForRelease(release) {
-					granted(release)
+					if (givenUp) release()
+					else granted(release)
 				})
-			},
-		)
+			})
+			.catch(function lockRefused(thrown: unknown) {
+				refused(
+					createDialecteError('STORE_CONNECTION_FAILED', {
+						detail: 'This view could not ask for its lock: it cannot join the hub',
+						cause: thrown instanceof Error ? thrown : undefined,
+					}),
+				)
+			})
 	})
 }
+
+/** The hub's watch withdrawn (the instance ended first): nothing to tell. */
+function ignoreWithdrawnWatch(): void {}
 
 function releaseNothing(): void {}
 

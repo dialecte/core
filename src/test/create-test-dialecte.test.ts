@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { defineDialecte } from '@/dialecte'
 import { toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
-import { findInMemoryState } from '@/store/in-memory/in-memory-state'
+import { findInMemoryState, inMemoryStateKeyOf } from '@/store/in-memory/in-memory-state'
 
 import type { TestProjectResult } from './create-test-dialecte.types'
 import type { AnyRawRecord } from '@/types'
@@ -92,6 +92,7 @@ describe('createTestContext', () => {
 
 		const context = await createTestContext({
 			databaseName: project.name,
+			dialecteId: project.dialecteId,
 			dialecteConfig: TEST_DIALECTE_CONFIG,
 			documentId: source.documentId,
 		})
@@ -104,6 +105,7 @@ describe('createTestContext', () => {
 		projects.push(project)
 		await createTestContext({
 			databaseName: project.name,
+			dialecteId: project.dialecteId,
 			dialecteConfig: TEST_DIALECTE_CONFIG,
 			documentId: source.documentId,
 		})
@@ -127,6 +129,7 @@ describe('createTestContext', () => {
 
 		const context = await createTestContext({
 			databaseName: project.name,
+			dialecteId: project.dialecteId,
 			dialecteConfig: TEST_DIALECTE_CONFIG,
 			documentId: source.documentId,
 		})
@@ -143,6 +146,7 @@ describe('createTestContext', () => {
 
 		const context = await createTestContext({
 			databaseName: project.name,
+			dialecteId: project.dialecteId,
 			storage: { type: 'inMemory' },
 			dialecteConfig: TEST_DIALECTE_CONFIG,
 			documentId: source.documentId,
@@ -187,7 +191,9 @@ describe('createTestContext', () => {
 		expect(records).toHaveLength(1)
 		await store.destroy()
 		// the context opened no store of its own on that name: destroying the given one leaves no state behind
-		expect(findInMemoryState({ name: 'context-store' })).toBeUndefined()
+		expect(
+			findInMemoryState({ key: inMemoryStateKeyOf({ project: 'context-store' }) }),
+		).toBeUndefined()
 	})
 })
 
@@ -242,13 +248,19 @@ describe('createTestProject from a declaration', () => {
 		})
 		projects.push(project)
 
-		expect(findInMemoryState({ name: project.name })).toBeDefined()
+		expect(project.dialecteId).toBe(dialecte.id)
+		expect(
+			findInMemoryState({
+				key: inMemoryStateKeyOf({ dialecteId: dialecte.id, project: project.name }),
+			}),
+		).toBeDefined()
 	})
 
 	it("without a dialecte: core's own, its documents under the config key `default` as before", async () => {
 		const { project, source } = await createTestProject({ sourceXml: SIMPLE_XML })
 		projects.push(project)
 
+		expect(project.dialecteId).toBe(TEST_DIALECTE.id)
 		expect(TEST_DIALECTE.defaultConfigKey).toBe('default')
 		const sourceDocument = await project.getDocument(source.documentId)
 		expect(sourceDocument?.configKey).toBe('default')
@@ -284,14 +296,20 @@ describe('createTestProject - a project the test leaves undestroyed', () => {
 		const destroyedByTheTest = await createTestProject({ sourceXml: SIMPLE_XML })
 		left.inMemory = inMemory.project.name
 		await destroyedByTheTest.project.destroy()
-		expect(findInMemoryState({ name: inMemory.project.name })).toBeDefined()
+		expect(
+			findInMemoryState({ key: testProjectKey({ name: inMemory.project.name }) }),
+		).toBeDefined()
 	})
 
 	it('the test before has ended → its projects and the one of its beforeEach are destroyed', async () => {
 		// run alone (`-t`, `.only`) the test before has left nothing to check
 		expect(left.inMemory).toBeDefined()
-		expect(findInMemoryState({ name: left.inMemory ?? '' })).toBeUndefined()
-		expect(findInMemoryState({ name: openedInBeforeEach[0] ?? '' })).toBeUndefined()
+		expect(
+			findInMemoryState({ key: testProjectKey({ name: left.inMemory ?? '' }) }),
+		).toBeUndefined()
+		expect(
+			findInMemoryState({ key: testProjectKey({ name: openedInBeforeEach[0] ?? '' }) }),
+		).toBeUndefined()
 	})
 
 	it('a project opened in beforeAll → still open in the later tests, its records read', async () => {
@@ -302,3 +320,8 @@ describe('createTestProject - a project the test leaves undestroyed', () => {
 		await project.destroy()
 	})
 })
+
+/** Where the in-memory store keeps a project of core's test dialecte (a test project made with no dialecte named). */
+function testProjectKey(params: { name: string }): string {
+	return inMemoryStateKeyOf({ dialecteId: TEST_DIALECTE.id, project: params.name })
+}

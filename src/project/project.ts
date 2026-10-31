@@ -66,6 +66,11 @@ export class Project<
 	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
 	private readonly pendingBroadcastWork = new Set<Promise<void>>()
 	private readonly storage: ProjectParams<GenericConfig>['storage']
+	/**
+	 * The dialecte the project belongs to (its declaration's `id`), when its factory said: with the name, which
+	 * project a store holds. `undefined` for a Project made with no dialecte.
+	 */
+	readonly dialecteId: string | undefined
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private mergedExtensions?: MergedExtensions<GenericModules>
@@ -101,22 +106,26 @@ export class Project<
 	private importChain: Promise<unknown> = Promise.resolve()
 
 	/** Run `work` once every import queued before it has settled: one file in flight per project. */
-	private enqueueImport<GenericResult>(work: () => Promise<GenericResult>): Promise<GenericResult> {
+	private enqueueImport<GenericResult>(params: {
+		fileName: string
+		work: () => Promise<GenericResult>
+	}): Promise<GenericResult> {
+		const { fileName, work } = params
 		const queued = this.importChain.then(work, work)
 		this.importChain = queued
-		this.importsInFlight += 1
-		const settle = this.settleImportInFlight
-		void queued.then(settle, settle)
+		// one entry per import, so two of one file name are both told
+		const inFlight = { fileName }
+		this.importsInFlight.add(inFlight)
+		const importsInFlight = this.importsInFlight
+		function settleImportInFlight(): void {
+			importsInFlight.delete(inFlight)
+		}
+		void queued.then(settleImportInFlight, settleImportInFlight)
 		return queued
 	}
 
 	/** The imports queued and not settled yet, the one running included: what a close says it waits for. */
-	private importsInFlight = 0
-
-	/** One import in flight settled, however it settled (bound: handed to a promise). */
-	private readonly settleImportInFlight = (): void => {
-		this.importsInFlight -= 1
-	}
+	private readonly importsInFlight = new Set<{ fileName: string }>()
 
 	/**
 	 * The Project's `open`, `close` and `destroy`, one at a time in the order called: each runs once the one
@@ -245,8 +254,10 @@ export class Project<
 		extensions?: { base?: ExtensionModules; custom?: ExtensionModules }
 		hooks?: DialecteHooks<GenericConfig>
 		dev?: { perf?: boolean }
+		dialecteId?: ProjectParams<GenericConfig>['dialecteId']
 	}) {
 		const configKeys = Object.keys(params.configs)
+		this.dialecteId = params.dialecteId
 
 		this.storage = params.storage
 		this.configs = params.configs
@@ -307,7 +318,7 @@ export class Project<
 			// what this open opened is closed again; its store is kept only for destroy()
 			channel?.close()
 			this.refusedStore = store
-			closeRefusedStore({ store })
+			await closeRefusedStore({ store })
 			throw thrown
 		}
 		this._channel = channel
@@ -331,7 +342,7 @@ export class Project<
 			this._store = undefined
 			this.state.documents.clear()
 			this.refusedStore = store
-			closeRefusedStore({ store })
+			await closeRefusedStore({ store })
 			throw thrown
 		}
 
@@ -342,6 +353,7 @@ export class Project<
 	private resolveProjectStore(params: { name: string }): Store {
 		return resolveStore({
 			name: params.name,
+			dialecteId: this.dialecteId,
 			storage: this.storage,
 			runtime: {
 				configs: this.configs,
@@ -425,6 +437,8 @@ export class Project<
 	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls.
 	 *
 	 * Never await it inside a hook or a transaction callback: the close waits for that work, which waits for it.
+	 * An import whose dialecte hook never settles keeps it waiting too (nothing aborts a hook): after
+	 * `CLOSE_WAIT_REPORT_MS` the console names the files of the imports it waits for.
 	 *
 	 * @intent close a project, release the database connection when leaving a page
 	 */
@@ -446,21 +460,32 @@ export class Project<
 			// Wait for any in-flight foreign-message work to settle on the live store
 			// before closing it, so no read/reconcile outlives it.
 			await Promise.allSettled(this.pendingBroadcastWork)
+			this._channel?.close()
+			this._channel = undefined
+			// settled once the store counts no more (its hub, or another tab, told)
+			await this._store?.close()
 		} finally {
 			clearTimeout(report)
 		}
-		this._channel?.close()
-		this._channel = undefined
-		this._store?.close()
 		this.state.documents.clear()
 		// the Documents of this open are told nothing more
 		this.stateSubscribers.clear()
 	}
 
-	/** What a close still waits for, told once on the console: a close that never ends is a call awaited inside the work it waits for. */
+	/**
+	 * What a close still waits for, told once on the console - the files of the imports by name: a close that
+	 * never ends is an import whose dialecte hook never settles, or a call awaited inside the work it waits for.
+	 */
 	private reportCloseWait(): void {
+		const imports = [...this.importsInFlight].map(function quoted({ fileName }) {
+			return `"${fileName}"`
+		})
+		const importsTold =
+			imports.length === 0
+				? '0 import(s)'
+				: `${imports.length} import(s) (${imports.join(', ')}: an import hook that never settles keeps it waiting)`
 		console.warn(
-			`Project "${this._name}" has waited ${CLOSE_WAIT_REPORT_MS} ms to close for ${this.importsInFlight} import(s), ${this.writes.count} write(s) and ${this.pendingBroadcastWork.size} other-tab update(s) in flight; it goes on waiting. If it never ends, a hook or a transaction callback is awaiting this Project's open, close or destroy.`,
+			`Project "${this._name}" has waited ${CLOSE_WAIT_REPORT_MS} ms to close for ${importsTold}, ${this.writes.count} write(s) and ${this.pendingBroadcastWork.size} other-tab update(s) in flight, then its store's close; it goes on waiting. If it never ends, a hook or a transaction callback is awaiting this Project's open, close or destroy.`,
 		)
 	}
 
@@ -609,7 +634,10 @@ export class Project<
 	 */
 	async importFile(file: File, options?: ImportDocumentOptions): Promise<ImportedDocument> {
 		const store = this.importStore(options)
-		return this.enqueueImport(() => this.importOne({ file, options, store }))
+		return this.enqueueImport({
+			fileName: file.name,
+			work: () => this.importOne({ file, options, store }),
+		})
 	}
 
 	private async importOne(params: {
@@ -1046,9 +1074,9 @@ function refuseBatchPath(params: { options: ImportFilesOptions | undefined }): v
 }
 
 /** A refused open's store closed again: its own failure to close is not the open's answer, which is the refusal. */
-function closeRefusedStore(params: { store: Store | undefined }): void {
+async function closeRefusedStore(params: { store: Store | undefined }): Promise<void> {
 	try {
-		params.store?.close()
+		await params.store?.close()
 	} catch {
 		// the refusal is what the caller is told; the store is destroyed or opened again from here
 	}

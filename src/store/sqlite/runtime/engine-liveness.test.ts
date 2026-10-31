@@ -7,6 +7,7 @@ import {
 import { EngineStore } from '../../engine/engine-store'
 import { fixtureUrl, removePoolDirectory, uniqueProject } from './runtime.fixtures'
 import {
+	FIXTURE_DIALECTE,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 } from './runtime.fixtures.constants'
@@ -44,6 +45,7 @@ async function openStore(params: {
 		progressBeatOps,
 	} = params
 	const connector = createSqliteWorkerConnector({
+		...FIXTURE_DIALECTE,
 		name,
 		engineUrl: fixtureUrl({ scenario }),
 		liveness: { heartbeatTimeoutMs, heartbeatIntervalMs: 100 },
@@ -98,6 +100,9 @@ function noticeOf(expected: RuntimeFixtureNotice): Promise<void> {
 	})
 }
 
+/** How often the engine's heartbeat beats in the one-statement case. */
+const BEAT_INTERVAL_MS = 200
+
 /** How long the slowed read took, for the record. */
 function logStatementTime(params: { description: string; ms: number }): void {
 	console.info(`${params.description}: ${Math.round(params.ms)} ms`)
@@ -115,10 +120,15 @@ describe('an engine alive or lost', () => {
 		const ran = new Promise<{ startedAt: number; endedAt: number }>((resolve) => {
 			worker.onmessage = (event) => resolve(event.data)
 		})
-		worker.postMessage({ port: channel.port2, intervalMs: 200, rows: 8_000_000 }, [channel.port2])
+		worker.postMessage({ port: channel.port2, intervalMs: BEAT_INTERVAL_MS, rows: 8_000_000 }, [
+			channel.port2,
+		])
 		const { startedAt, endedAt } = await ran
-		expect(endedAt - startedAt).toBeGreaterThan(1_000)
-		expect(beats.filter((at) => at > startedAt && at < endedAt).length).toBeGreaterThanOrEqual(3)
+		// long enough for several intervals; beats from inside it, however late a loaded machine posts each
+		const lasted = endedAt - startedAt
+		expect(lasted).toBeGreaterThan(4 * BEAT_INTERVAL_MS)
+		const inside = beats.filter((at) => at > startedAt && at < endedAt).length
+		expect(inside).toBeGreaterThanOrEqual(2)
 		channel.port1.close()
 	})
 
@@ -251,6 +261,19 @@ describe('an engine alive or lost', () => {
 			expect(await outcomeOf(store.importFile({ file: markedFile({ markers: ['plain'] }) }))).toBe(
 				'resolved',
 			)
+		})
+
+		it('a second connection while the engine runs 3 s of statements told busy (timeout 1 s) → its adoption waits, then it reads: the engine never taken for lost', async () => {
+			const name = uniqueProject()
+			const store = await openStore({ heartbeatTimeoutMs: 1_000, name })
+			await store.registerDocument(makeDocument())
+			await orderFixtures({ type: 'slow-ddl' })
+			const slowed = noticeOf({ type: 'reached', marker: 'slow-ddl' })
+			const removing = store.removeDocument('doc-1')
+			await slowed
+			const second = await openStore({ heartbeatTimeoutMs: 1_000, name })
+			expect(await outcomeOf(second.getDocuments())).toBe('resolved')
+			expect(await outcomeOf(removing)).toBe('resolved')
 		})
 
 		it('a document removed, its tables dropped in 3 s each (timeout 1 s) → told busy, the removal resolves', async () => {

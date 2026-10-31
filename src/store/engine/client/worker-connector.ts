@@ -1,12 +1,22 @@
 import { createOpenConnections } from '../../open-connections'
+import { refuseUnnamableProject } from '../../project-name'
 import { throwOpenElsewhere } from '../../store-errors'
-import { ENGINE_LOCK_PREFIX } from '../engine.constants'
+import { refuseOtherCreation } from '../creation-refusal'
+import { refuseAnotherDialecte } from '../dialecte-refusal'
+import { engineLockNameOf, projectKeyOf } from '../project-key'
 import { refuseAnotherWire } from './check-engine-wire'
-import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS, UNANSWERED } from './client.constants'
+import {
+	ENGINE_CLOSE_BUDGET_MS,
+	ENGINE_HEARTBEAT_TIMEOUT_MS,
+	ENGINE_OPEN_BUDGET_MS,
+	ENGINE_OPEN_WINDOW_MS,
+	ENGINE_LOST_DETAILS,
+	UNANSWERED,
+} from './client.constants'
 import { createEngineClient } from './engine-client'
-import { createEngineControl } from './engine-control'
+import { answeredOrSilent, createEngineControl } from './engine-control'
 
-import { createDialecteError } from '@/errors'
+import { createDialecteError, toDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
 
 import type { EngineConnector, EngineLink, OwnEngineLink } from '../engine-store.types'
@@ -21,13 +31,13 @@ import type {
 	WorkerLinkState,
 } from './client.types'
 
-/** The engine worker this realm runs for each project name (direct mode: one per name). */
+/** The engine worker this realm runs for each project, by its key (`projectKeyOf`: direct mode, one per project). */
 const ENGINES = new Map<string, RealmEngine>()
-/** The engines of a name still closing or being destroyed: the next one of the name waits for them. */
+/** The engines of a project still closing or being destroyed, by its key: the next one of the project waits for them. */
 const ENDING = new Map<string, Promise<void>>()
 /** Numbers every engine the realm starts: a connection adopted by an engine since gone adopts again. */
 const generations = { next: 0 }
-/** The connections of this realm to each name, from their connect until closed: a destroy is refused while one is. */
+/** The connections of this realm to each project, by its key, from their connect until closed: a destroy is refused while one is. */
 const OPEN_LINKS = createOpenConnections()
 /** The connection each link a store holds is counted as: its own destroy counts the others without it. */
 const LINK_STATES = new WeakMap<EngineLink, WorkerLinkState>()
@@ -41,6 +51,7 @@ const LINK_STATES = new WeakMap<EngineLink, WorkerLinkState>()
 export function createWorkerConnector<GenericSettings>(
 	params: WorkerConnectorParams<GenericSettings>,
 ): EngineConnector {
+	refuseUnnamableProject({ project: params.name, dialecteId: params.dialecteId })
 	return {
 		connect: function connectToWorker() {
 			return linkToEngine(params)
@@ -57,12 +68,16 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		clientId: crypto.randomUUID(),
 		released: false,
 		adoption: undefined,
+		creationId: undefined,
+		refusal: undefined,
+		releasing: undefined,
 	}
-	OPEN_LINKS.markOpen({ name: params.name, connection: state })
+	const key = keyOf(params)
+	OPEN_LINKS.markOpen({ name: key, connection: state })
 	await runningEngine({ connector: params, link: state }).catch(function forgetFailedLink(
 		thrown: unknown,
 	) {
-		OPEN_LINKS.markClosed({ name: params.name, connection: state })
+		OPEN_LINKS.markClosed({ name: key, connection: state })
 		throw thrown
 	})
 	const link: EngineLink = {
@@ -75,9 +90,12 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 				state.adoption = {
 					generation: engine.generation,
 					client: adoptClient({
+						name: params.name,
+						dialecteId: params.dialecteId,
 						engine,
 						state,
 						heartbeatTimeoutMs: params.liveness?.heartbeatTimeoutMs,
+						openBudgetMs,
 					}),
 				}
 			}
@@ -85,14 +103,26 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 			return client.api
 		},
 		close: function releaseLink() {
-			if (state.released) return
-			state.released = true
-			OPEN_LINKS.markClosed({ name: params.name, connection: state })
-			const engine = ENGINES.get(params.name)
-			releaseClient({ engine, state, storeName: params.name })
-			if (!engine?.links.delete(state) || engine.links.size > 0) return
-			closeEngine({ name: params.name, engine, openBudgetMs })
+			// closed already: settled with that first close
+			state.releasing ??= releaseConnection()
+			return state.releasing
 		},
+	}
+	/** The connection released: counted no more, its engine closed when it was the last one. */
+	async function releaseConnection(): Promise<void> {
+		state.released = true
+		OPEN_LINKS.markClosed({ name: key, connection: state })
+		const engine = ENGINES.get(key)
+		releaseClient({ engine, state, storeName: params.name })
+		if (!engine?.links.delete(state)) {
+			// not counted on a running engine: the realm ended the one it had (an adoption never answered, its project
+			// destroyed while it was away) - settled once that engine let the project's lock go
+			await ENDING.get(key)
+			return
+		}
+		if (engine.links.size > 0) return
+		// the last connection: settled once its engine let the project's lock go (another tab may destroy it)
+		await closeEngine({ name: params.name, dialecteId: params.dialecteId, engine, openBudgetMs })
 	}
 	LINK_STATES.set(link, state)
 	return link
@@ -109,35 +139,79 @@ async function runningEngine(params: {
 }): Promise<RealmEngine> {
 	const { connector, link } = params
 	const { name } = connector
-	await ENDING.get(name)
+	const key = keyOf(connector)
+	await ENDING.get(key)
 	if (link.released) throwStoreClosed({ storeName: name })
-	let engine = ENGINES.get(name)
+	// its project destroyed while it was away: every later call refused so, no engine started for it
+	if (link.refusal !== undefined) throw link.refusal
+	let engine = ENGINES.get(key)
 	if (!engine) {
-		engine = spawnEngine(connector)
-		ENGINES.set(name, engine)
+		// a connection coming back to its project tells the engine which one it had: none made in its place
+		engine = spawnEngine({ connector, expectedCreationId: link.creationId })
+		ENGINES.set(key, engine)
 	}
 	engine.links.add(link)
 	try {
 		await engine.opened
 	} catch (thrown) {
 		engine.links.delete(link)
-		if (ENGINES.get(name) === engine) ENGINES.delete(name)
+		if (ENGINES.get(key) === engine) ENGINES.delete(key)
+		// an engine another connection started expecting its project refused it: this one expects none
+		const destroyedWhileAway = toDialecteError(thrown)?.key === 'PROJECT_DESTROYED_WHILE_AWAY'
+		if (destroyedWhileAway && link.creationId === undefined) return runningEngine(params)
+		if (destroyedWhileAway) link.refusal = thrown
 		throw thrown
 	}
 	if (link.released) throwStoreClosed({ storeName: name })
+	// the project this connection had was destroyed while it was away, and made again since
+	try {
+		refuseOtherCreation({
+			project: name,
+			expectedCreationId: link.creationId,
+			creationId: engine.creationId,
+		})
+	} catch (refusal) {
+		link.refusal = refusal
+		// its last connection gone with this one: the engine closes, as with a connection closed
+		if (engine.links.delete(link) && engine.links.size === 0 && !engine.ended) {
+			void closeEngine({
+				name,
+				dialecteId: connector.dialecteId,
+				engine,
+				openBudgetMs: connector.openBudgetMs ?? ENGINE_OPEN_BUDGET_MS,
+			})
+		}
+		throw refusal
+	}
+	link.creationId = engine.creationId
 	return engine
 }
 
-/** A worker for the project; opened, it is watched through the engine lock. */
-function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
+/**
+ * A worker for the project; opened, it is watched through the engine lock. One silent past the open window
+ * is ended, the open refused `PROJECT_ENGINE_UNAVAILABLE`.
+ */
+function spawnEngine(params: {
+	connector: WorkerConnectorParams<unknown>
+	/** The creation id the connection starting it knows of the project (coming back to it). */
+	expectedCreationId: string | undefined
+}): RealmEngine {
+	const { connector, expectedCreationId } = params
 	const {
 		name,
+		dialecteId,
+		dialecteVersion,
 		engineUrl,
 		perf = false,
 		openBudgetMs = ENGINE_OPEN_BUDGET_MS,
 		liveness = {},
 		settings,
-	} = params
+	} = connector
+	// never shorter than the engine's own budget and the time to answer
+	const openWindowMs = Math.max(
+		connector.openWindowMs ?? ENGINE_OPEN_WINDOW_MS,
+		openBudgetMs + ENGINE_CLOSE_BUDGET_MS,
+	)
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const control = createEngineControl({ worker })
 	generations.next += 1
@@ -149,33 +223,78 @@ function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
 		links: new Set(),
 		ended: false,
 		watch: undefined,
+		creationId: undefined,
 	}
-	engine.opened = control
-		.request({
-			message: {
-				type: 'open',
-				project: name,
-				lock: 'if-available',
-				budgetMs: openBudgetMs,
-				perf,
-				heartbeatIntervalMs: liveness.heartbeatIntervalMs,
-				settings,
-			},
-			expect: 'opened',
-		})
-		.then(function checkWire(answer) {
-			refuseAnotherWire({ found: answer.wireProtocol })
+	const opening = control.request({
+		message: {
+			type: 'open',
+			project: name,
+			dialecteId,
+			dialecteVersion,
+			expectedCreationId,
+			lock: 'if-available',
+			budgetMs: openBudgetMs,
+			perf,
+			heartbeatIntervalMs: liveness.heartbeatIntervalMs,
+			settings,
+		},
+		expect: 'opened',
+	})
+	engine.opened = withinBudget({ work: opening, budgetMs: openWindowMs })
+		.then(function checkAnswer(answer) {
+			if (answer === UNANSWERED) {
+				// ended already (its last connection closed meanwhile): ending its own way
+				if (!engine.ended) {
+					endEngine({
+						name,
+						dialecteId,
+						engine,
+						worker,
+						ending: Promise.resolve(UNANSWERED),
+						lockBudgetMs: openBudgetMs,
+					})
+				}
+				throw createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+					detail: `The engine of project "${name}" gave no answer to its open within ${openWindowMs} ms: it was ended`,
+					meta: { project: name, openWindowMs },
+				})
+			}
+			engine.creationId = answer.creationId
+			try {
+				refuseAnotherWire({ found: answer.wireProtocol })
+				// an engine of another copy of the library may not check what it was asked: its answer is
+				refuseAnotherDialecte({
+					project: name,
+					engine: answer,
+					asked: { dialecteId, dialecteVersion },
+				})
+			} catch (thrown) {
+				// it opened all the same, its own project's lock held: the next engine waits until it let it go
+				endEngine({
+					name,
+					dialecteId,
+					engine,
+					worker,
+					ending: Promise.resolve(),
+					lockBudgetMs: openBudgetMs,
+					lockDialecteId: answer.dialecteId,
+				})
+				throw thrown
+			}
 		})
 		.then(
 			function engineOpened() {
 				control.opened()
 				// ended meanwhile by the realm (its last connection closed while it opened): nothing to watch
-				if (!engine.ended) watchEngineLock({ name, engine })
+				if (!engine.ended) watchEngineLock({ name, dialecteId, engine })
 			},
 			function endFailedEngine(thrown: unknown) {
-				engine.ended = true
-				control.end({ error: thrown })
-				worker.terminate()
+				// one the realm ended already (silent, or its last connection closed) is ending its own way
+				if (!engine.ended) {
+					engine.ended = true
+					control.end({ error: thrown })
+					worker.terminate()
+				}
 				throw thrown
 			},
 		)
@@ -187,12 +306,13 @@ function spawnEngine(params: WorkerConnectorParams<unknown>): RealmEngine {
  * holds it no more - it ended, or crashed - unless the realm ends the engine itself first (the request
  * is then aborted). Granted, it is let go at once.
  */
-function watchEngineLock(params: { name: string; engine: RealmEngine }): void {
-	const { name, engine } = params
+function watchEngineLock(params: { name: string; dialecteId: string; engine: RealmEngine }): void {
+	const { name, dialecteId, engine } = params
 	const controller = new AbortController()
+	const lockName = engineLockNameOf({ dialecteId, project: name })
 	const settled = navigator.locks
-		.request(`${ENGINE_LOCK_PREFIX}${name}`, { signal: controller.signal }, function engineGone() {
-			endLostEngine({ name, engine })
+		.request(lockName, { signal: controller.signal }, function engineGone() {
+			endLostEngine({ name, dialecteId, engine })
 		})
 		.then(settleNothing, settleNothing)
 	engine.watch = { controller, settled }
@@ -202,18 +322,15 @@ function watchEngineLock(params: { name: string; engine: RealmEngine }): void {
  * The engine gone on its own: every call in flight on it refused `STORE_ENGINE_LOST` (`host-gone`),
  * its worker ended; the next call of a connection starts another engine.
  */
-function endLostEngine(params: { name: string; engine: RealmEngine }): void {
-	const { name, engine } = params
+function endLostEngine(params: { name: string; dialecteId: string; engine: RealmEngine }): void {
+	const { name, dialecteId, engine } = params
 	if (engine.ended) return
 	engine.ended = true
-	if (ENGINES.get(name) === engine) ENGINES.delete(name)
-	const lost = createDialecteError('STORE_ENGINE_LOST', {
-		detail: 'The project engine ended with the view that hosted it',
-		meta: { reason: 'host-gone' },
-	})
-	engine.control.end({ error: lost })
+	const key = keyOf({ name, dialecteId })
+	if (ENGINES.get(key) === engine) ENGINES.delete(key)
+	engine.control.end({ error: lostEngine() })
 	// the next engine of the name starts once the page has let the lock go
-	if (engine.watch) holdNextEngine({ name, until: engine.watch.settled })
+	if (engine.watch) holdNextEngine({ key, until: engine.watch.settled })
 	loseClientsOf({ engine })
 	engine.worker.terminate()
 }
@@ -229,19 +346,59 @@ function loseClientsOf(params: { engine: RealmEngine }): void {
 	}
 }
 
-/** A client of its own for the connection: a new port, handed to the engine. */
+/**
+ * A client of its own for the connection: a new port, handed to the engine. An engine silent for the
+ * heartbeat timeout while not busy is lost: ended (the calls in flight of its other clients, and their
+ * adoptions, refused `STORE_ENGINE_LOST` `host-gone`, the next call starting another engine) and the
+ * adoption refused `PROJECT_ENGINE_UNAVAILABLE`. A busy one - dialecte code running long - is waited for.
+ */
 async function adoptClient(params: {
+	name: string
+	dialecteId: string
 	engine: RealmEngine
 	state: WorkerLinkState
 	heartbeatTimeoutMs: number | undefined
+	openBudgetMs: number
 }): Promise<EngineClient> {
-	const { engine, state, heartbeatTimeoutMs } = params
+	const {
+		name,
+		dialecteId,
+		engine,
+		state,
+		heartbeatTimeoutMs = ENGINE_HEARTBEAT_TIMEOUT_MS,
+		openBudgetMs,
+	} = params
 	const channel = new MessageChannel()
-	await engine.control.request({
+	const adopting = engine.control.request({
 		message: { type: 'adopt-client', clientId: state.clientId, port: channel.port2 },
 		expect: 'adopted',
 		transfer: [channel.port2],
 	})
+	const answer = await answeredOrSilent({
+		control: engine.control,
+		work: adopting,
+		budgetMs: heartbeatTimeoutMs,
+	})
+	if (answer === UNANSWERED) {
+		channel.port1.close()
+		if (!engine.ended) {
+			loseClientsOf({ engine })
+			// the other connections' adoptions under way: lost with the engine, not closed
+			engine.control.end({ error: lostEngine() })
+			endEngine({
+				name,
+				dialecteId,
+				engine,
+				worker: engine.worker,
+				ending: Promise.resolve(UNANSWERED),
+				lockBudgetMs: openBudgetMs,
+			})
+		}
+		throw createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+			detail: `The engine of project "${name}" gave no answer to a new connection within ${heartbeatTimeoutMs} ms: it was ended`,
+			meta: { project: name, heartbeatTimeoutMs },
+		})
+	}
 	return createEngineClient({ port: channel.port1, heartbeatTimeoutMs })
 }
 
@@ -288,14 +445,15 @@ async function destroyProject(params: {
 	own: OwnEngineLink | undefined
 }): Promise<void> {
 	const { connector, own } = params
-	const { name, engineUrl, openBudgetMs = ENGINE_OPEN_BUDGET_MS } = connector
-	refuseWhileOpen({ name, own: own === undefined ? undefined : LINK_STATES.get(own.link) })
+	const { name, dialecteId, engineUrl, openBudgetMs = ENGINE_OPEN_BUDGET_MS } = connector
+	const key = keyOf(connector)
+	refuseWhileOpen({ name, key, own: own === undefined ? undefined : LINK_STATES.get(own.link) })
 	// its engine closed with it when it was the last connection: waited for below, as any still ending
-	own?.letGo()
-	const ending = ENDING.get(name)
+	void own?.letGo()
+	const ending = ENDING.get(key)
 	let destroyEnded: () => void = settleNothing
 	holdNextEngine({
-		name,
+		key,
 		until: new Promise<void>(function untilDestroyEnded(resolve) {
 			destroyEnded = resolve
 		}),
@@ -305,9 +463,10 @@ async function destroyProject(params: {
 	let released: Promise<void> = Promise.resolve()
 	try {
 		await ending
-		assertNoEngine({ name })
+		assertNoEngine({ name, key })
 		const destroying = startFreshWorkerDestroy({
 			name,
+			dialecteId,
 			engineUrl,
 			budgetMs: openBudgetMs,
 			lock: 'if-available',
@@ -320,8 +479,8 @@ async function destroyProject(params: {
 }
 
 /** Refused `PROJECT_OPEN_ELSEWHERE` while a connection of this realm but `own` has the project open. */
-function refuseWhileOpen(params: { name: string; own?: WorkerLinkState }): void {
-	const open = OPEN_LINKS.others({ name: params.name, connection: params.own })
+function refuseWhileOpen(params: { name: string; key: string; own?: WorkerLinkState }): void {
+	const open = OPEN_LINKS.others({ name: params.key, connection: params.own })
 	if (open > 0) throwOpenElsewhere({ storeName: params.name, connections: open })
 }
 
@@ -330,8 +489,8 @@ function refuseWhileOpen(params: { name: string; own?: WorkerLinkState }): void 
  * engine of the name - each one starts for a connection (one made since waits for the destroy), a closed
  * one starts none, and each is closed with its last connection, one still opening too.
  */
-function assertNoEngine(params: { name: string }): void {
-	if (!ENGINES.has(params.name)) return
+function assertNoEngine(params: { name: string; key: string }): void {
+	if (!ENGINES.has(params.key)) return
 	throw createDialecteError('ASSERTION_FAILED', {
 		detail: `Project "${params.name}" has an engine in this realm with no connection open on it`,
 		meta: { project: params.name },
@@ -346,6 +505,7 @@ function assertNoEngine(params: { name: string }): void {
  */
 export async function destroyFromFreshWorker(params: {
 	name: string
+	dialecteId: string
 	engineUrl: string
 	budgetMs: number
 	lock: EngineLockMode
@@ -356,19 +516,27 @@ export async function destroyFromFreshWorker(params: {
 /** The fresh worker's destroy started: its answer, and when the next engine of the name may start after it. */
 function startFreshWorkerDestroy(params: {
 	name: string
+	dialecteId: string
 	engineUrl: string
 	budgetMs: number
 	lock: EngineLockMode
 }): FreshWorkerDestroy {
-	const { name, engineUrl, budgetMs, lock } = params
+	const { name, dialecteId, engineUrl, budgetMs, lock } = params
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const { ended, released } = endEngine({
 		name,
+		dialecteId,
 		engine: undefined,
 		worker,
 		lockBudgetMs: budgetMs,
 		ending: withinBudget({
-			work: askDestroy({ name, control: createEngineControl({ worker }), budgetMs, lock }),
+			work: askDestroy({
+				name,
+				dialecteId,
+				control: createEngineControl({ worker }),
+				budgetMs,
+				lock,
+			}),
 			budgetMs: budgetMs + ENGINE_CLOSE_BUDGET_MS,
 		}),
 	})
@@ -385,13 +553,14 @@ function startFreshWorkerDestroy(params: {
 /** The engine asked to delete the project; settles once it has answered (wrapped in `withinBudget` by its callers). */
 async function askDestroy(params: {
 	name: string
+	dialecteId: string
 	control: EngineControl
 	budgetMs: number
 	lock: EngineLockMode
 }): Promise<void> {
-	const { name, control, budgetMs, lock } = params
+	const { name, dialecteId, control, budgetMs, lock } = params
 	await control.request({
-		message: { type: 'destroy', project: name, lock, budgetMs },
+		message: { type: 'destroy', project: name, dialecteId, lock, budgetMs },
 		expect: 'destroyed',
 	})
 }
@@ -401,10 +570,16 @@ async function askDestroy(params: {
  * counted from now, an engine still opening included (only a raw connection closes one mid-open: a
  * store releases its connection once its open has settled); ended unopened, its lock is waited for.
  */
-function closeEngine(params: { name: string; engine: RealmEngine; openBudgetMs: number }): void {
-	const { name, engine, openBudgetMs } = params
-	void endEngine({
+function closeEngine(params: {
+	name: string
+	dialecteId: string
+	engine: RealmEngine
+	openBudgetMs: number
+}): Promise<void> {
+	const { name, dialecteId, engine, openBudgetMs } = params
+	const ending = endEngine({
 		name,
+		dialecteId,
 		engine,
 		worker: engine.worker,
 		lockBudgetMs: openBudgetMs,
@@ -412,7 +587,9 @@ function closeEngine(params: { name: string; engine: RealmEngine; openBudgetMs: 
 			work: engine.control.request({ message: { type: 'close' }, expect: 'closed' }),
 			budgetMs: ENGINE_CLOSE_BUDGET_MS,
 		}),
-	}).ended.catch(ignoreGoneEngine)
+	})
+	ending.ended.catch(ignoreGoneEngine)
+	return ending.released
 }
 
 /**
@@ -424,15 +601,20 @@ function closeEngine(params: { name: string; engine: RealmEngine; openBudgetMs: 
  */
 function endEngine(params: {
 	name: string
+	dialecteId: string
 	engine: RealmEngine | undefined
 	worker: Worker
 	ending: Promise<unknown>
 	lockBudgetMs: number
+	/** The dialecte whose lock the worker may hold, when it runs another than the one asked (its own answer). */
+	lockDialecteId?: string
 }): EngineEnding {
-	const { name, engine, worker, ending, lockBudgetMs } = params
+	const { name, dialecteId, engine, worker, ending, lockBudgetMs } = params
+	const lockDialecteId = params.lockDialecteId ?? dialecteId
+	const key = keyOf({ name, dialecteId })
 	if (engine) {
 		engine.ended = true
-		if (ENGINES.get(name) === engine) ENGINES.delete(name)
+		if (ENGINES.get(key) === engine) ENGINES.delete(key)
 		engine.watch?.controller.abort()
 	}
 	let deaf = false
@@ -452,10 +634,14 @@ function endEngine(params: {
 		worker.terminate()
 	}
 	const lockFree = ended.then(settleNothing, settleNothing).then(function waitForLock() {
-		return untilLockFree({ name, budgetMs: deaf ? lockBudgetMs : ENGINE_CLOSE_BUDGET_MS })
+		return untilLockFree({
+			name,
+			dialecteId: lockDialecteId,
+			budgetMs: deaf ? lockBudgetMs : ENGINE_CLOSE_BUDGET_MS,
+		})
 	})
 	const released = Promise.all([lockFree, engine?.watch?.settled]).then(settleNothing)
-	holdNextEngine({ name, until: released })
+	holdNextEngine({ key, until: released })
 	return { ended, released }
 }
 
@@ -463,10 +649,14 @@ function endEngine(params: {
  * The page granted the engine's lock (let go at once): its last holder in this realm let it go - true;
  * or the budget passed - false (another realm's engine may hold it: the next open answers that).
  */
-function untilLockFree(params: { name: string; budgetMs: number }): Promise<boolean> {
+function untilLockFree(params: {
+	name: string
+	dialecteId: string
+	budgetMs: number
+}): Promise<boolean> {
 	return navigator.locks
 		.request(
-			`${ENGINE_LOCK_PREFIX}${params.name}`,
+			engineLockNameOf({ dialecteId: params.dialecteId, project: params.name }),
 			{ signal: AbortSignal.timeout(params.budgetMs) },
 			settleNothing,
 		)
@@ -481,13 +671,21 @@ function lockNotGranted(): boolean {
 	return false
 }
 
-/** The next engine of the name waits until `until` has settled (and whatever it waited for before). */
-function holdNextEngine(params: { name: string; until: Promise<void> }): void {
-	const { name, until } = params
-	const settled = Promise.all([ENDING.get(name), until]).then(settleNothing)
-	ENDING.set(name, settled)
+/** The next engine of the project (its key) waits until `until` has settled (and whatever it waited for before). */
+function holdNextEngine(params: { key: string; until: Promise<void> }): void {
+	const { key, until } = params
+	const settled = Promise.all([ENDING.get(key), until]).then(settleNothing)
+	ENDING.set(key, settled)
 	void settled.then(function forgetEnding() {
-		if (ENDING.get(name) === settled) ENDING.delete(name)
+		if (ENDING.get(key) === settled) ENDING.delete(key)
+	})
+}
+
+/** What a call answers once its engine is gone (`host-gone`): the next call starts another engine. */
+function lostEngine(): Error {
+	return createDialecteError('STORE_ENGINE_LOST', {
+		detail: ENGINE_LOST_DETAILS['host-gone'],
+		meta: { reason: 'host-gone' },
 	})
 }
 
@@ -500,15 +698,23 @@ function endedByRealm(params: { name: string }): Error {
 }
 
 /** `work`, or `UNANSWERED` once `budgetMs` has passed (the timer cleared when the work ends first). */
-function withinBudget(params: { work: Promise<unknown>; budgetMs: number }): Promise<unknown> {
+function withinBudget<GenericAnswer>(params: {
+	work: Promise<GenericAnswer>
+	budgetMs: number
+}): Promise<GenericAnswer | typeof UNANSWERED> {
 	const { work, budgetMs } = params
 	let timer: ReturnType<typeof setTimeout> | undefined
-	const budget = new Promise(function waitBudget(resolve) {
+	const budget = new Promise<typeof UNANSWERED>(function waitBudget(resolve) {
 		timer = setTimeout(resolve, budgetMs, UNANSWERED)
 	})
 	return Promise.race([work, budget]).finally(function clearBudget() {
 		clearTimeout(timer)
 	})
+}
+
+/** The project's key in this realm's maps and in its engine's lock (`projectKeyOf`; a connector names its project `name`). */
+function keyOf(params: { name: string; dialecteId: string }): string {
+	return projectKeyOf({ dialecteId: params.dialecteId, project: params.name })
 }
 
 function settleNothing(): void {}

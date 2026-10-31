@@ -4,6 +4,8 @@ import { compareById } from '../compare-by-id'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
+import { isOwnImporting } from '../own-import'
+import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
 import {
 	throwDocumentAlreadyRegistered,
@@ -23,6 +25,7 @@ import {
 	dropInMemoryState,
 	ensureInMemoryState,
 	findInMemoryState,
+	inMemoryStateKeyOf,
 	OPEN_IN_MEMORY_CONNECTIONS,
 } from './in-memory-state'
 import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
@@ -79,9 +82,9 @@ function guardNoDuplicate(params: {
  * - Test fixtures (writable: true)
  * - Demos and playground (writable: true)
  *
- * Every instance of a name reads and writes one state, as every connection to an IndexedDB database
- * of a name does: a store closed and built again under its name finds what was written. `close` keeps
- * it; `destroy` drops it. The state is the realm's (and the loaded copy of core's): nothing crosses
+ * Every instance of a project - its dialecte and name, or its name alone when no `dialecteId` is given -
+ * reads and writes one state, as every connection to a SQLite project does: a store closed and built
+ * again for its project finds what was written. `close` keeps it; `destroy` drops it. The state is the realm's (and the loaded copy of core's): nothing crosses
  * realms.
  *
  * Records are values: the store copies what it is handed and what it hands out, so a caller changing
@@ -89,7 +92,7 @@ function guardNoDuplicate(params: {
  * is immutable and is not copied. List reads answer in id order, as an IndexedDB key range does.
  *
  * When writable is false, the store is a placeholder: any mutation throws STORE_NOT_WRITABLE, reads
- * answer empty, and it never reads, keeps or drops the state of its name.
+ * answer empty, and it never reads, keeps or drops the state of its project.
  *
  * Its imports run in its own realm, the page's: `importFile` runs `runImport` with the import
  * runtime it was built with.
@@ -98,6 +101,8 @@ export class InMemoryStore implements Store {
 	readonly name: string
 	private readonly writable: boolean
 	private readonly runtime?: StoreRuntime
+	/** Which state of the realm this store reads and writes: its dialecte and its name, or its name alone. */
+	private readonly stateKey: string
 
 	/** Guard so the cross-realm no-op warning is emitted at most once per session. */
 	private static reconcileWarned = false
@@ -112,9 +117,11 @@ export class InMemoryStore implements Store {
 	private destroying: Promise<void> | undefined
 
 	constructor(name: string, options?: InMemoryStoreOptions) {
+		refuseUnnamableProject({ project: name, dialecteId: options?.dialecteId })
 		this.name = name
 		this.writable = options?.writable ?? true
 		this.runtime = options?.runtime
+		this.stateKey = inMemoryStateKeyOf({ project: name, dialecteId: options?.dialecteId })
 	}
 
 	// --- Lifecycle ---
@@ -128,8 +135,9 @@ export class InMemoryStore implements Store {
 		// a close() called after this open() wins: the store stays closed
 		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
 		this.closed = false
-		// a placeholder never holds the name's state: it keeps no destroy of the name from going on
-		if (this.writable) OPEN_IN_MEMORY_CONNECTIONS.markOpen({ name: this.name, connection: this })
+		// a placeholder never holds the project's state: it keeps no destroy of the project from going on
+		if (this.writable)
+			OPEN_IN_MEMORY_CONNECTIONS.markOpen({ name: this.stateKey, connection: this })
 		await removeUnfinishedImports({
 			store: this,
 			isRunning: (document) =>
@@ -139,23 +147,21 @@ export class InMemoryStore implements Store {
 
 	/**
 	 * Refuse every operation started from now on until opened again; one running completes (only an
-	 * import spans more than a call). The state of the name stays.
+	 * import spans more than a call), and the close is settled once it has. The project's state stays.
 	 */
-	close(): void {
+	async close(): Promise<void> {
 		this.closed = true
 		this.closings += 1
-		OPEN_IN_MEMORY_CONNECTIONS.markClosed({ name: this.name, connection: this })
-		if (this.operations.count > 0) {
-			CLOSING_IN_MEMORY_CONNECTIONS.markClosing({
-				name: this.name,
-				until: this.operations.whenIdle(),
-			})
-		}
+		OPEN_IN_MEMORY_CONNECTIONS.markClosed({ name: this.stateKey, connection: this })
+		if (this.operations.count === 0) return
+		const idle = this.operations.whenIdle()
+		CLOSING_IN_MEMORY_CONNECTIONS.markClosing({ name: this.stateKey, until: idle })
+		await idle
 	}
 
 	/**
-	 * Drop the state of the name, for every instance of it; refused `PROJECT_OPEN_ELSEWHERE` while another
-	 * instance of the name is open. A placeholder has none to drop.
+	 * Drop the project's state, for every instance of it; refused `PROJECT_OPEN_ELSEWHERE` while another
+	 * instance of the project is open. A placeholder has none to drop.
 	 */
 	async destroy(): Promise<void> {
 		if (!this.writable) return
@@ -174,19 +180,19 @@ export class InMemoryStore implements Store {
 		// an import still running completes before the state goes
 		await this.operations.whenIdle()
 		// another instance closed with operations running counts open no more: they complete first
-		await CLOSING_IN_MEMORY_CONNECTIONS.settled({ name: this.name })
-		const others = OPEN_IN_MEMORY_CONNECTIONS.others({ name: this.name, connection: this })
+		await CLOSING_IN_MEMORY_CONNECTIONS.settled({ name: this.stateKey })
+		const others = OPEN_IN_MEMORY_CONNECTIONS.others({ name: this.stateKey, connection: this })
 		if (others > 0) throwOpenElsewhere({ storeName: this.name, connections: others })
-		dropInMemoryState({ name: this.name })
+		dropInMemoryState({ key: this.stateKey })
 		// destroyed, it holds the name no more until its next operation, as a SQLite store's destroy lets its
 		// connection go
-		OPEN_IN_MEMORY_CONNECTIONS.markClosed({ name: this.name, connection: this })
+		OPEN_IN_MEMORY_CONNECTIONS.markClosed({ name: this.stateKey, connection: this })
 	}
 
 	// --- Cross-realm reconciliation ---
 
 	/**
-	 * No-op: in-memory data is the realm's (one state per name there), not shared across realms/tabs, so
+	 * No-op: in-memory data is the realm's (one state per project there), not shared across realms/tabs, so
 	 * there is nothing to reconcile. Warns once to flag that a cross-realm setup (e.g. iframe
 	 * extensions) will not see documents imported in another realm with this store.
 	 */
@@ -274,7 +280,7 @@ export class InMemoryStore implements Store {
 			storeName: this.name,
 			operation: 'import',
 		})
-		const { runningImports } = ensureInMemoryState({ name: this.name })
+		const { runningImports } = ensureInMemoryState({ key: this.stateKey })
 		runningImports.add(writeId)
 		this.operations.start()
 		try {
@@ -314,12 +320,18 @@ export class InMemoryStore implements Store {
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
 		await this.guardOpen()
 		const { writeId } = params
-		const { documents, changelog, discardedCommits } = this.readState()
+		const { documents, changelog, discardedCommits, runningImports } = this.readState()
 		const committed =
 			[...changelog.values()].some((entries) =>
 				entries.some((entry) => entry.writeId === writeId),
 			) || [...discardedCommits.values()].some((discarded) => discarded.has(writeId))
-		return writeOutcomeOf({ documents: [...documents.values()], writeId, committed })
+		return writeOutcomeOf({
+			documents: [...documents.values()],
+			writeId,
+			committed,
+			// every import of the project in this realm runs on one of its instances: this one sees them all
+			isRunning: (running) => runningImports.has(running.writeId),
+		})
 	}
 
 	// --- Writes ---
@@ -574,7 +586,7 @@ export class InMemoryStore implements Store {
 
 	private async registerDocumentUnguarded(file: DocumentRecord): Promise<void> {
 		this.guardWritable()
-		const state = ensureInMemoryState({ name: this.name })
+		const state = ensureInMemoryState({ key: this.stateKey })
 		if (state.documents.has(file.id)) throwDocumentAlreadyRegistered({ documentId: file.id })
 		const document = toJsonCopy({ value: file })
 		assertDocumentPlace({ document, documents: [...state.documents.values()] })
@@ -601,6 +613,46 @@ export class InMemoryStore implements Store {
 			assertDocumentPlace({ document: updated, documents: [...state.documents.values()] })
 		}
 		state.documents.set(documentId, updated)
+	}
+
+	/** An imported document ready: refused `DOCUMENT_NOT_REGISTERED` once it is no longer the import's own, `importing`. */
+	private async markReadyUnguarded(params: {
+		documentId: string
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, registered } = params
+		this.guardWritable()
+		const state = this.writeState()
+		const held = state?.documents.get(documentId)
+		if (!state || !held || !isOwnImporting({ held, registered })) {
+			throwDocumentNotRegistered({ documentId, what: 'its ready state' })
+		}
+		state.documents.set(documentId, { ...held, status: 'ready' })
+	}
+
+	/** An import's records, into its own document only: refused `DOCUMENT_NOT_REGISTERED` once it is not. */
+	private async bulkWriteOwnImport(params: {
+		documentId: string
+		ops: Parameters<Store['bulkWrite']>[1]
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, ops, registered } = params
+		const held = this.writeState()?.documents.get(documentId)
+		if (!isOwnImporting({ held, registered })) {
+			throwDocumentNotRegistered({ documentId, what: 'records' })
+		}
+		await this.bulkWriteUnguarded(documentId, ops)
+	}
+
+	/** What a failed import leaves goes: its own document only, never one registered since under its id. */
+	private async removeOwnImport(params: {
+		documentId: string
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, registered } = params
+		const held = this.writeState()?.documents.get(documentId)
+		if (!isOwnImporting({ held, registered })) return
+		await this.removeDocumentUnguarded(documentId)
 	}
 
 	private async removeDocumentUnguarded(documentId: string): Promise<void> {
@@ -660,17 +712,17 @@ export class InMemoryStore implements Store {
 	// --- Private ---
 
 	/**
-	 * The state of the name to read, resolved on every operation: empty when it has none, and always
+	 * The project's state to read, resolved on every operation: empty when it has none, and always
 	 * for a placeholder. Read-only: a write goes through `writeState`.
 	 */
 	private readState(): ReadonlyInMemoryState {
 		if (!this.writable) return EMPTY_STATE
-		return findInMemoryState({ name: this.name }) ?? EMPTY_STATE
+		return findInMemoryState({ key: this.stateKey }) ?? EMPTY_STATE
 	}
 
-	/** The state of the name to write, resolved on every operation; none when nothing is held under it. */
+	/** The project's state to write, resolved on every operation; none when nothing is held for it. */
 	private writeState(): InMemoryState | undefined {
-		return findInMemoryState({ name: this.name })
+		return findInMemoryState({ key: this.stateKey })
 	}
 
 	/** The records of a document; a document that is not in the store reads empty. */
@@ -700,7 +752,8 @@ export class InMemoryStore implements Store {
 	private guardOpen(): Promise<void> | undefined {
 		if (this.closed) throwStoreClosed({ storeName: this.name })
 		if (this.destroying) return this.guardOpenAfterOwnDestroy({ destroying: this.destroying })
-		if (this.writable) OPEN_IN_MEMORY_CONNECTIONS.markOpen({ name: this.name, connection: this })
+		if (this.writable)
+			OPEN_IN_MEMORY_CONNECTIONS.markOpen({ name: this.stateKey, connection: this })
 		return undefined
 	}
 
@@ -715,12 +768,19 @@ export class InMemoryStore implements Store {
 	 * after it started does not refuse the calls it makes.
 	 */
 	private ownImportTarget(): ImportTarget {
+		// the document this import registered: the only one it marks ready
+		let registered: DocumentRecord | undefined
 		return {
-			registerDocument: (file) => this.registerDocumentUnguarded(file),
+			registerDocument: (file) => {
+				registered = file
+				return this.registerDocumentUnguarded(file)
+			},
 			getDocument: (documentId) => this.getDocumentUnguarded(documentId),
-			updateDocument: (documentId, updates) => this.updateDocumentUnguarded(documentId, updates),
-			removeDocument: (documentId) => this.removeDocumentUnguarded(documentId),
-			bulkWrite: (documentId, ops) => this.bulkWriteUnguarded(documentId, ops),
+			markReady: (documentId) => this.markReadyUnguarded({ documentId, registered }),
+			removeDocument: (documentId) => this.removeOwnImport({ documentId, registered }),
+			bulkWrite: (documentId, ops) => this.bulkWriteOwnImport({ documentId, ops, registered }),
+			// every id held is looked up at each write: the session's are checked as the file's
+			writeSession: (documentId, ops) => this.bulkWriteOwnImport({ documentId, ops, registered }),
 		}
 	}
 

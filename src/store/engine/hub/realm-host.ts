@@ -1,21 +1,24 @@
 import { refuseAnotherWire } from '../client/check-engine-wire'
-import { ENGINE_CLOSE_BUDGET_MS } from '../client/client.constants'
-import { createEngineControl } from '../client/engine-control'
-import { ENGINE_LOCK_PREFIX } from '../engine.constants'
+import { ENGINE_CLOSE_BUDGET_MS, ENGINE_HEARTBEAT_TIMEOUT_MS } from '../client/client.constants'
+import { answeredOrSilent, createEngineControl } from '../client/engine-control'
+import { refuseAnotherDialecte } from '../dialecte-refusal'
+import { engineLockNameOf } from '../project-key'
 import { toThrownData } from '../wire/error-envelope'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 
+import type { EngineControl } from '../client/client.types'
 import type { HostedEngine, RealmHost, RealmHostParams } from './realm-host.types'
 
 /**
  * The engines this realm hosts for the hub: started from the dialecte's spawner when the hub asks
  * (the project's lock waited for: the engine before it may still let it go), told of their clients,
  * ended when released. What happens to each is told back to the hub: opened, failed to open, ended
- * on its own (its lock let go without the realm ending it), a client adopted or not.
+ * on its own (its lock let go without the realm ending it), a client adopted or not - an engine silent
+ * past the adopt budget did not adopt it (the hub then takes that engine for ended).
  */
 export function createRealmHost(params: RealmHostParams): RealmHost {
-	const { report } = params
+	const { report, adoptBudgetMs = ENGINE_HEARTBEAT_TIMEOUT_MS } = params
 	const spawners = new Map(
 		params.spawners.map(function byDialecte(spawner) {
 			return [spawner.dialecteId, spawner]
@@ -31,7 +34,13 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 	}
 
 	return {
-		spawn: function spawnEngine({ project, dialecteId, generation, openBudgetMs }) {
+		spawn: function spawnEngine({
+			project,
+			dialecteId,
+			generation,
+			openBudgetMs,
+			expectedCreationId,
+		}) {
 			const spawner = spawners.get(dialecteId)
 			let worker: Worker
 			try {
@@ -46,6 +55,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				report({
 					type: 'engine-open-failed',
 					project,
+					dialecteId,
 					generation,
 					key: undefined,
 					error: toThrownData({ thrown }),
@@ -55,6 +65,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 			const control = createEngineControl({ worker })
 			const engine: HostedEngine = {
 				project,
+				dialecteId,
 				generation,
 				worker,
 				control,
@@ -67,6 +78,9 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 					message: {
 						type: 'open',
 						project,
+						dialecteId,
+						dialecteVersion: spawner.dialecteVersion,
+						...(expectedCreationId !== undefined && { expectedCreationId }),
 						lock: 'wait',
 						budgetMs: openBudgetMs,
 						perf: spawner.perf ?? false,
@@ -76,14 +90,27 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				})
 				.then(function checkWire(answer) {
 					refuseAnotherWire({ found: answer.wireProtocol })
+					// an engine of another copy of the library may not check what it was asked: its answer is
+					refuseAnotherDialecte({
+						project,
+						engine: answer,
+						asked: { dialecteId, dialecteVersion: spawner.dialecteVersion },
+					})
+					return answer.creationId
 				})
 				.then(
-					function engineOpened() {
+					function engineOpened(creationId: string) {
 						// released meanwhile: the hub forgot this generation
 						if (engine.ended) return
 						control.opened()
 						watchEngineLock({ engine, onGone: reportEnded })
-						report({ type: 'engine-opened', project, generation })
+						report({
+							type: 'engine-opened',
+							project,
+							dialecteId,
+							generation,
+							creationId,
+						})
 					},
 					function engineFailed(thrown: unknown) {
 						if (engine.ended) return
@@ -93,6 +120,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 						report({
 							type: 'engine-open-failed',
 							project,
+							dialecteId,
 							generation,
 							key: toDialecteError(thrown)?.key,
 							error: toThrownData({ thrown }),
@@ -107,24 +135,22 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				report({ type: 'client-adopt-failed', adoptionId })
 				return
 			}
-			engine.control
-				.request({
-					message: { type: 'adopt-client', clientId, port },
-					expect: 'adopted',
-					transfer: [port],
-				})
-				.then(
-					function adopted() {
-						report({ type: 'client-adopted', adoptionId })
-					},
-					function notAdopted() {
-						report({ type: 'client-adopt-failed', adoptionId })
-					},
-				)
+			const adopting = engine.control.request({
+				message: { type: 'adopt-client', clientId, port },
+				expect: 'adopted',
+				transfer: [port],
+			})
+			reportAdoption({
+				control: engine.control,
+				adopting,
+				adoptionId,
+				budgetMs: adoptBudgetMs,
+				report,
+			})
 		},
-		clientGone: function tellClientGone({ project, generation, clientId }) {
+		clientGone: async function tellClientGone({ project, generation, clientId }) {
 			const engine = engines.get(engineKey({ project, generation }))
-			engine?.control
+			await engine?.control
 				.request({ message: { type: 'client-gone', clientId }, expect: 'released' })
 				.catch(ignoreGoneEngine)
 		},
@@ -153,8 +179,39 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 		endEngine({ engine })
 		engine.control.end({ error: releasedError({ project: engine.project }) })
 		engine.worker.terminate()
-		report({ type: 'engine-ended', project: engine.project, generation: engine.generation })
+		report({
+			type: 'engine-ended',
+			project: engine.project,
+			dialecteId: engine.dialecteId,
+			generation: engine.generation,
+		})
 	}
+}
+
+/**
+ * The engine's answer to an adoption told the hub once: adopted, or not - refused, or silent past the budget
+ * while not busy (a late answer then changes nothing; a busy engine is waited for).
+ */
+function reportAdoption(params: {
+	control: EngineControl
+	adopting: Promise<unknown>
+	adoptionId: number
+	budgetMs: number
+	report: RealmHostParams['report']
+}): void {
+	const { control, adopting, adoptionId, budgetMs, report } = params
+	const answered = adopting.then(adoptionAnswered, adoptionRefused)
+	void answeredOrSilent({ control, work: answered, budgetMs }).then(function tellHub(adopted) {
+		report({ type: adopted === true ? 'client-adopted' : 'client-adopt-failed', adoptionId })
+	})
+}
+
+function adoptionAnswered(): boolean {
+	return true
+}
+
+function adoptionRefused(): boolean {
+	return false
 }
 
 /** The page asks for the engine's lock: granted once the worker holds it no more (it ended, or crashed). */
@@ -167,7 +224,7 @@ function watchEngineLock(params: {
 	engine.watch = controller
 	navigator.locks
 		.request(
-			`${ENGINE_LOCK_PREFIX}${engine.project}`,
+			engineLockNameOf({ dialecteId: engine.dialecteId, project: engine.project }),
 			{ signal: controller.signal },
 			function engineGone() {
 				onGone({ engine })
@@ -199,6 +256,7 @@ function releasedError(params: { project: string }): Error {
 	})
 }
 
+/** An engine of the hub's: its generation is the hub's own counter, never used twice, whatever the project. */
 function engineKey(params: { project: string; generation: number }): string {
 	return `${params.project}#${params.generation}`
 }

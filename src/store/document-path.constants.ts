@@ -14,5 +14,8 @@ export const DOCUMENT_PATH_MAX_BYTES = 1024
  */
 export const DOCUMENT_PATH_INVISIBLE_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u
 
-/** The fields of a document's registry entry an update may change; any other key handed is ignored. */
-export const DOCUMENT_UPDATE_FIELDS = ['name', 'path', 'metadata', 'status'] as const
+/**
+ * The fields of a document's registry entry an update may change; any other key handed is ignored. Not its `status`:
+ * only its import marks a document ready (`ImportTarget.markReady`).
+ */
+export const DOCUMENT_UPDATE_FIELDS = ['name', 'path', 'metadata'] as const

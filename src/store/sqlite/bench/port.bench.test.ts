@@ -1,6 +1,6 @@
 import { createEngineControl } from '../../engine/client/engine-control'
 import { EngineStore } from '../../engine/engine-store'
-import { ENGINE_LOCK_PREFIX } from '../../engine/engine.constants'
+import { engineLockNameOf } from '../../engine/project-key'
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
 import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
 import { commitWaitsOf, epochNow } from './bench-commit-waits'
@@ -11,6 +11,7 @@ import {
 	ENGINE_BENCH_CELL_TIMEOUT_MS,
 	ENGINE_BENCH_QUIET_LOAD,
 	POOL_OPEN_RUNS,
+	PORT_BENCH_DIALECTE,
 	PORT_BENCH_FIXTURES,
 	QUIET_WAIT_MAX_MS,
 } from './bench.constants'
@@ -64,7 +65,12 @@ async function openStore(params: { name: string }): Promise<EngineStore> {
 	const { name } = params
 	const store = new EngineStore({
 		name,
-		connector: createSqliteWorkerConnector({ name, engineUrl: ENGINE_URL, perf: true }),
+		connector: createSqliteWorkerConnector({
+			...PORT_BENCH_DIALECTE,
+			name,
+			engineUrl: ENGINE_URL,
+			perf: true,
+		}),
 	})
 	await store.open()
 	return store
@@ -177,6 +183,7 @@ async function poolOpens(params: { project: string }): Promise<PoolOpenRuns> {
 	const open = {
 		type: 'open',
 		project,
+		...PORT_BENCH_DIALECTE,
 		settings: { wasmUrl: SQLITE_WASM_URL },
 		lock: 'if-available',
 		budgetMs: 30_000,
@@ -227,7 +234,10 @@ async function measurePortCommits(params: { file: File; name: string }): Promise
 		importer.close()
 		committer.close()
 		// the realm's engine closes on its own time: the timed opens start once it let the project go
-		await navigator.locks.request(`${ENGINE_LOCK_PREFIX}${name}`, function projectFree() {})
+		await navigator.locks.request(
+			engineLockNameOf({ dialecteId: PORT_BENCH_DIALECTE.dialecteId, project: name }),
+			function projectFree() {},
+		)
 		return {
 			recordCount: imported.run.recordCount,
 			aloneMs: alone.run.dropToReadyMs,

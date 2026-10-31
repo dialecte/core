@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import { findInMemoryState, inMemoryStateKeyOf } from '@/store/in-memory/in-memory-state'
 import { InMemoryStore } from '@/store/in-memory/in-memory-store'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEV_NAMESPACE } from '@/test'
 
 import type { StoreRuntime } from './store-runtime.types'
 import type { DialecteErrorKey } from '@/errors'
-import type { ImportFileOptions, Store } from '@/store/store.types'
+import type { ImportFileOptions, ImportTarget, Store } from '@/store/store.types'
 import type { AnyDialecteConfig, AnyRawRecord, DialecteHooks } from '@/types'
 
 // Through a real in-memory store, no parse mock: what one import registers, stores and answers.
@@ -36,6 +37,28 @@ async function openStore(): Promise<InMemoryStore> {
 	const store = new InMemoryStore(`run-import-${crypto.randomUUID()}`)
 	await store.open()
 	return store
+}
+
+/**
+ * The store's operations as an import's target, each read off the store when called (a case may replace one); the
+ * document marked ready in the store's state, as the store's own import target does (no store call sets a status).
+ */
+function importTargetOf(store: InMemoryStore): ImportTarget {
+	return {
+		registerDocument: (document) => store.registerDocument(document),
+		getDocument: (documentId) => store.getDocument(documentId),
+		removeDocument: (documentId) => store.removeDocument(documentId),
+		bulkWrite: (documentId, ops) => store.bulkWrite(documentId, ops),
+		writeSession: (documentId, ops) => store.bulkWrite(documentId, ops),
+		markReady: async function markReadyInState(documentId) {
+			const state = findInMemoryState({ key: inMemoryStateKeyOf({ project: store.name }) })
+			const document = state?.documents.get(documentId)
+			if (!state || document?.status !== 'importing') {
+				throw new Error(`no document ${documentId} importing to mark ready`)
+			}
+			state.documents.set(documentId, { ...document, status: 'ready' })
+		},
+	}
 }
 
 /** The structured error an action rejects with. */
@@ -78,7 +101,7 @@ describe('runImport - the document registered', () => {
 		it(description, async () => {
 			const store = await openStore()
 			const result = await runImport({
-				store,
+				store: importTargetOf(store),
 				runtime: runtime(),
 				file: xmlFile({ body: '', name: testCase.fileName }),
 				options: { ...testCase.options, metadata: { source: 'upload' } },
@@ -179,7 +202,7 @@ describe('runImport - refused, nothing left', () => {
 				: testCase.hooks
 			const error = await rejection(
 				runImport({
-					store,
+					store: importTargetOf(store),
 					runtime: runtime(hooks),
 					file: testCase.file,
 					options: testCase.options,
@@ -248,8 +271,9 @@ describe('runImport - the session and the records it is handed', () => {
 				}),
 			}
 
+			const store = await openStore()
 			await runImport({
-				store: await openStore(),
+				store: importTargetOf(store),
 				runtime: runtime(hooks),
 				file: xmlFile({ body: '<A><AA_1/></A><B aB="1"/>' }),
 				writeId: 'w',
@@ -275,7 +299,7 @@ describe('runImport - what it hands back', () => {
 		}
 
 		const result = await runImport({
-			store,
+			store: importTargetOf(store),
 			runtime: runtime(hooks),
 			file: xmlFile({ body: '<A/><A/><B aB="1"/>' }),
 			writeId: 'w',
@@ -289,7 +313,7 @@ describe('runImport - what it hands back', () => {
 	it('custom record ids are taken from the file when asked', async () => {
 		const store = await openStore()
 		const result = await runImport({
-			store,
+			store: importTargetOf(store),
 			runtime: runtime(),
 			file: new File(
 				[

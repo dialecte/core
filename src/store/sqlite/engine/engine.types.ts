@@ -55,6 +55,11 @@ export type ReclaimParams = {
 	sliceMs: number
 	/** Called after each statement: the engine is alive, whoever waits on it. */
 	onStep?: () => void
+	/**
+	 * The end of the work the reclaim gives way to, when some runs (an import): no statement until it has ended.
+	 * Without it, the reclaim goes on in steps whatever runs.
+	 */
+	giveWayTo?: () => Promise<void> | undefined
 }
 
 export type OpenSqliteEngineParams = {
@@ -63,6 +68,11 @@ export type OpenSqliteEngineParams = {
 	db: Database
 	/** The dialecte the project belongs to, kept in a new file. */
 	dialecteId: string
+	/**
+	 * The creation id the opener knows of the project (a view coming back): a new file, or one of another id,
+	 * is refused `PROJECT_DESTROYED_WHILE_AWAY`, nothing written - the project was destroyed meanwhile.
+	 */
+	expectedCreationId?: string
 	/** The project's name, said in the engine's refusals. */
 	name: string
 	/** What the engine imports with: without it, an import is refused (`IMPORT_FAILED`). */
@@ -88,6 +98,12 @@ export type OpenSqliteEngineParams = {
 	 * `STORE_QUOTA_EXCEEDED` refusal to answer instead, or none (the file system knows, not SQLite).
 	 */
 	explainIoFailure?: (params: { thrown: unknown }) => Promise<Error | undefined>
+	/**
+	 * Called once the engine broke: an import left its connection inside a transaction it could neither roll back
+	 * nor commit (a lost handle, no memory). The engine is closed by then, every call refused `STORE_ENGINE_LOST`
+	 * (`host-gone`); its host lets it go and starts the next engine on the file, which removes what the import left.
+	 */
+	onBroken?: () => void
 }
 
 /** Runs a statement that may last long as one step of SQLite, telling who waits on the engine around it. */
@@ -137,6 +153,8 @@ export type SqliteEngine = Omit<EngineApi, 'importFile' | 'exportFile'> & {
 	) => Promise<ExportFileResult>
 	/** Abort every export the client owns: its connection is gone. */
 	abortExportsOf: (params: { clientId: string }) => void
+	/** The id the project's file was created with: another one after the project was destroyed and made again. */
+	creationId: string
 	/** The engine as that client reaches it: its imports owned by it, nothing more than the port. */
 	clientView: (params: { clientId: string }) => EngineApi
 	/**
@@ -177,6 +195,8 @@ export type ImportQueue = {
 	awaitsRow: (params: { writeId: string }) => boolean
 	/** The import of that id registered its document: from now on its registry row says what became of it. */
 	markRegistered: (params: { writeId: string }) => void
+	/** Whether an import of that id runs or waits its turn: one that ended, however, is no longer in the queue. */
+	runs: (params: { writeId: string }) => boolean
 }
 
 /** An index of a record table. */
@@ -261,9 +281,11 @@ export type ImportWindow = {
 	end: () => void
 }
 
-/** The import an engine runs, by its window: none between two imports. */
+/** The import an engine runs, by its window and its end: none between two imports. */
 export type RunningImport = {
 	window: ImportWindow | undefined
+	/** Settled once the import has ended, however it did. */
+	ended: Promise<void> | undefined
 }
 
 /** What an import's target writes with: the engine's connection and state, and the import's own perf, abort and file. */
@@ -298,8 +320,19 @@ export type ImportProgressRelay = {
 }
 
 /** What an import's target knows of its document: the one it registered (with its table) and the indexes built on it. */
+/** A document's registry row as an import checks it is still its own. */
+export type RegistryRowState = {
+	seq: number
+	status: DocumentStatus
+	writeId: string | undefined
+	createdAt: number
+}
+
 export type ImportTargetState = {
-	registered: (DocumentTable & { documentId: string }) | undefined
+	/** The document this import registered: its table, and what tells its row from one registered since under its id. */
+	registered:
+		| (DocumentTable & { documentId: string; writeId: string | undefined; createdAt: number })
+		| undefined
 	built: Set<RecordIndex>
 	/**
 	 * The ids stored so far when the file gives its own ids, until the id index exists: a repeated
@@ -348,3 +381,6 @@ export type StoreFailureKey = Extract<
 	| 'STORE_BULK_UPDATE_FAILED'
 	| 'STORE_DELETE_FAILED'
 >
+
+/** A row of a project file's `_meta` table. */
+export type MetaRow = { key: string; value: string }

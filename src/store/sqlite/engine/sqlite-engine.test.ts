@@ -7,15 +7,17 @@ import {
 import { loadSqlite } from '../load-sqlite'
 import { LAYOUT_VERSION } from './engine.constants'
 import { ENGINE_TEST_DIALECTE_ID, openMemoryFile, startEngine } from './engine.fixtures'
+import { openSqliteEngine } from './sqlite-engine'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { TABLE_DOCUMENTS } from '@/store/store.constants'
 
 import type { SqliteEngine, SqliteEngineOptions } from './engine.types'
 import type { DialecteErrorKey } from '@/errors'
 import type { AnyRawRecord, RecordPatch } from '@/types'
-import type { Database } from '@sqlite.org/sqlite-wasm'
+import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** The databases a case opened, closed after it (an in-memory file goes with its last connection). */
 const opened: Database[] = []
@@ -34,6 +36,25 @@ function metaOf(params: { db: Database }): Record<string, string> {
 }
 
 describe('openSqliteEngine', () => {
+	it('a SQLite whose text codec is not installed → refused ASSERTION_FAILED, the connection closed', async () => {
+		const sqlite3 = await loadSqlite()
+		const db = (await openFile()).connect()
+		// the same module, its install mark not carried: what a SQLite loaded without loadSqlite looks like
+		const uninstalled = { ...sqlite3, wasm: { ...sqlite3.wasm } } as Sqlite3Static
+		await expectRejectsWith({
+			action: Promise.resolve().then(function openUninstalled() {
+				return openSqliteEngine({
+					sqlite3: uninstalled,
+					db,
+					dialecteId: ENGINE_TEST_DIALECTE_ID,
+					name: 'engine-test',
+				})
+			}),
+			key: 'ASSERTION_FAILED',
+		})
+		expect(db.isOpen()).toBe(false)
+	})
+
 	describe('a fresh file', () => {
 		afterEach(() => {
 			// the device memory a case reports, dropped: the browser's own reads again
@@ -47,7 +68,7 @@ describe('openSqliteEngine', () => {
 			expectedCacheMiB: number
 		}
 		const testCases: Record<string, TestCase> = {
-			'no options, a 2 GiB device → this library’s layout in the header and the meta table, the dialecte id kept, incremental auto-vacuum, a 128 MiB cache':
+			'no options, a 2 GiB device → this library’s layout in the header and the meta table, the dialecte id kept with a creation id of its own, the dialecte’s mark in the header, incremental auto-vacuum, a 128 MiB cache':
 				{ deviceMemoryGiB: 2, expectedCacheMiB: 128 },
 			'no options, the device memory not reported → the cache of a 4 GiB device: 256 MiB': {
 				deviceMemoryGiB: undefined,
@@ -73,13 +94,18 @@ describe('openSqliteEngine', () => {
 				})
 				const file = await openFile()
 				const db = file.connect()
-				await startEngine({ db, options: testCase.options })
+				const engine = await startEngine({ db, options: testCase.options })
 				expect(db.selectValue('PRAGMA user_version')).toBe(LAYOUT_VERSION)
+				// FNV-1a of `core/test` as a signed 32-bit integer, worked out apart from the code
+				expect(ENGINE_TEST_DIALECTE_ID).toBe('core/test')
+				expect(db.selectValue('PRAGMA application_id')).toBe(703785303)
 				expect(db.selectValue('PRAGMA auto_vacuum')).toBe(2)
 				expect(metaOf({ db })).toEqual({
+					creationId: engine.creationId,
 					dialecteId: ENGINE_TEST_DIALECTE_ID,
 					layoutVersion: String(LAYOUT_VERSION),
 				})
+				expect(engine.creationId).toMatch(/^[0-9a-f-]{36}$/)
 				// a negative cache_size is a size in KiB
 				expect(db.selectValue('PRAGMA cache_size')).toBe(-testCase.expectedCacheMiB * 1024)
 			})
@@ -123,6 +149,16 @@ describe('openSqliteEngine', () => {
 						),
 					expectedLayoutVersion: 2,
 				},
+			'layout 3 (no creation id) in the header → refused PROJECT_LAYOUT_OUTDATED, the file unchanged, the connection closed':
+				{
+					prepare: (db) =>
+						db.exec(
+							'CREATE TABLE _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); ' +
+								"INSERT INTO _meta VALUES ('dialecteId', 'core/test'), ('layoutVersion', '3'); " +
+								'PRAGMA user_version=3',
+						),
+					expectedLayoutVersion: 3,
+				},
 			'no layout in the header but tables → refused PROJECT_LAYOUT_OUTDATED, the file unchanged, the connection closed':
 				{
 					prepare: (db) => db.exec('CREATE TABLE other (x)'),
@@ -151,7 +187,7 @@ describe('openSqliteEngine', () => {
 			})
 		}
 
-		it('a file at this layout → the engine starts on it, the file as it was', async () => {
+		it('a file at this layout → the engine starts on it, the file as it was, its creation id the same', async () => {
 			const sqlite3 = await loadSqlite()
 			const file = await openFile()
 			const first = await startEngine({ db: file.connect() })
@@ -160,6 +196,57 @@ describe('openSqliteEngine', () => {
 			const second = await startEngine({ db: file.connect() })
 			second.close()
 			expect(sqlite3.capi.sqlite3_js_db_export(file.keeper)).toEqual(before)
+			expect(second.creationId).toBe(first.creationId)
+		})
+
+		it('an open expecting the creation id the file holds → the engine starts on it', async () => {
+			const file = await openFile()
+			const first = await startEngine({ db: file.connect() })
+			first.close()
+			const second = await startEngine({
+				db: file.connect(),
+				expectedCreationId: first.creationId,
+			})
+			expect(second.creationId).toBe(first.creationId)
+			second.close()
+		})
+
+		it('an open expecting another creation id than the file’s, or a new file → refused PROJECT_DESTROYED_WHILE_AWAY, the file unchanged, the connection closed', async () => {
+			const sqlite3 = await loadSqlite()
+			for (const made of [true, false]) {
+				const file = await openFile()
+				if (made) (await startEngine({ db: file.connect() })).close()
+				const before = sqlite3.capi.sqlite3_js_db_export(file.keeper)
+				const db = file.connect()
+				await expectRejectsWith({
+					action: startEngine({ db, expectedCreationId: 'the-one-this-view-had' }),
+					key: 'PROJECT_DESTROYED_WHILE_AWAY',
+					meta: { project: 'engine-test' },
+				})
+				expect(sqlite3.capi.sqlite3_js_db_export(file.keeper), String(made)).toEqual(before)
+				expect(db.isOpen()).toBe(false)
+			}
+		})
+
+		it('a file another dialecte stored → refused PROJECT_DIALECTE_MISMATCH naming both, the file unchanged, the connection closed', async () => {
+			const sqlite3 = await loadSqlite()
+			const file = await openFile()
+			const stored = await startEngine({ db: file.connect(), dialecteId: 'other/dialecte' })
+			await stored.registerDocument(makeDocument({ id: 'theirs' }))
+			stored.close()
+			const before = sqlite3.capi.sqlite3_js_db_export(file.keeper)
+			const db = file.connect()
+			await expectRejectsWith({
+				action: startEngine({ db }),
+				key: 'PROJECT_DIALECTE_MISMATCH',
+				meta: {
+					project: 'engine-test',
+					projectDialecteId: 'other/dialecte',
+					realmDialecteId: ENGINE_TEST_DIALECTE_ID,
+				},
+			})
+			expect(sqlite3.capi.sqlite3_js_db_export(file.keeper)).toEqual(before)
+			expect(db.isOpen()).toBe(false)
 		})
 
 		it('a document at a path → the file itself refuses a second row at that path, any number without one', async () => {
@@ -295,11 +382,8 @@ describe('openSqliteEngine', () => {
 		}
 
 		/** `doc-1` with a commit, an undone commit discarded by another, a blob of its own; `kept` with a commit and a blob. */
-		async function seedHoldings(params: {
-			engine: SqliteEngine
-			status?: 'importing'
-		}): Promise<void> {
-			const { engine, status } = params
+		async function seedHoldings(params: { engine: SqliteEngine }): Promise<void> {
+			const { engine } = params
 			const commitOf = (documentId: string, id: string) =>
 				engine.commit({
 					documentId,
@@ -317,7 +401,6 @@ describe('openSqliteEngine', () => {
 			await engine.undo('doc-1')
 			await commitOf('doc-1', 'r3')
 			await engine.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['x'.repeat(5000)]))
-			if (status) await engine.updateDocument('doc-1', { status })
 		}
 
 		const GONE = { entries: 0, keptEntries: 1, historyTables: 1, blobs: 0, bytes: 1, freePages: 0 }
@@ -334,8 +417,12 @@ describe('openSqliteEngine', () => {
 
 		it('a file holding a document left importing with history and a blob → the engine start takes them all with it', async () => {
 			const file = await openFile()
-			const first = await startEngine({ db: file.connect() })
-			await seedHoldings({ engine: first, status: 'importing' })
+			const firstDb = file.connect()
+			const first = await startEngine({ db: firstDb })
+			await seedHoldings({ engine: first })
+			// a state no store call makes (only its import marks a document ready, a commit on one importing is
+			// refused): written in the file, as a crash or an older version may have left it
+			firstDb.exec(`UPDATE ${TABLE_DOCUMENTS} SET status = 'importing' WHERE id = 'doc-1'`)
 			first.close()
 			const db = file.connect()
 			await startEngine({ db })

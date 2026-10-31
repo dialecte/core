@@ -16,8 +16,10 @@ export function resolveStore(params: {
 	/** The dialecte the store imports and exports with; its default config gives the local store's record schema */
 	runtime: StoreRuntime
 	perf?: Perf
+	/** The project's dialecte: with the name, which project the in-memory store holds. */
+	dialecteId?: string
 }): Store {
-	const { name, storage, runtime, perf } = params
+	const { name, storage, runtime, perf, dialecteId } = params
 	if (storage.type === 'local') {
 		const config = runtime.configs[runtime.defaultConfigKey]
 		return new DexieStore(name, {
@@ -27,7 +29,7 @@ export function resolveStore(params: {
 		})
 	}
 	if (storage.type === 'inMemory') {
-		return new InMemoryStore(name, { writable: storage.writable ?? true, runtime })
+		return new InMemoryStore(name, { writable: storage.writable ?? true, runtime, dialecteId })
 	}
 	return storage.store
 }
