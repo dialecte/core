@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: fix-brief-blast-radius
+expected_outcome: |
+  The fix-mode brief makes the fixer report, for every fix, its blast radius: what the fix widens, excludes or replaces,
+  and which findings-ledger rows it touches (its own and any other one it may reopen), so the next round's reviewer
+  starts from those lines.

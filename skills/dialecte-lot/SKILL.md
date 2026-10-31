@@ -40,8 +40,11 @@ them (escalate one tier after a failed round, never down-tier a correctness revi
 and how to learn which model a tier is (`npx @dialecte/cli models`) are in
 [references/model-tiers.md](references/model-tiers.md).
 
-Stations 3-4 loop on the same lot. **Cap: three review rounds** (round 1 full, rounds 2-3 delta: Station 3).
-A fourth round means the plan or the brief is wrong - stop and bring the disagreement to the user.
+Stations 3-4 loop on the same lot. **The cap is set by the lot's risk class**, declared in the findings ledger
+before round 1 (round 1 full, the later rounds delta: Station 3). A round beyond the cap is the user's call, never
+the orchestrator's: a finding the last round acts on is fixed, then the fix and the open rows go to the user, who
+decides whether one more round checks it. Findings that keep coming past the cap mean the plan or the brief is
+wrong.
 
 ## Station 1 - test, test review, implement (per brief step)
 
@@ -191,15 +194,30 @@ script to review line by line. Three findings that matter beat ten that do not.
 Each round is a **fresh agent** (unanchored by the previous verdict) and each finding carries a severity:
 **blocking**, **should fix** or **nit**.
 
+**Risk class.** How many rounds a lot gets, and what the last one still acts on, follow what a wrong change would
+break:
+
+| Risk class                    | The lot changes                                                                                                              | Rounds | Last round acts on    |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------- |
+| shipped runtime or public API | code a consumer runs or imports from a package's public exports other than its test entry, its command line, or their docs   | 3      | blocking + should fix |
+| test API or internal code     | a test entry other packages' suites import (`@dialecte/core/test`), skill text and its evals, or modules no consumer reaches | 2      | blocking + should fix |
+| guards and tooling            | a guard (a source-scan test, a code rule), scripts, configs, the repository's own tooling                                    | 2      | blocking only         |
+
+A lot that touches several classes takes the first row of the table it touches; a doubt between two rows takes the
+upper one. The orchestrator declares the class, with the files that set it, at the top of the findings ledger
+before round 1, and every reviewer brief names the round as `round <n> of <rounds>`. A finding keeps its severity
+whatever the round: a fix found wrong, or a row a later fix reopened, carries the severity of the row it breaks,
+and the last round acts on it even below its floor (a broken fix is never logged and left in the lot).
+
 **Before round 1** the orchestrator creates the lot's hand-over folder, `_commit-plan/<topic>-<yyyy-mm-dd>/`
-(outside every repository; `lots.json` lands there at Station 6), with an empty `findings-ledger.md`. **When it
-spawns round n** it snapshots the tree that round reviews into `round-<n>/` in the same folder: a copy of every
-file `git status --porcelain -z --untracked-files=all` lists at the worktree root as changed or untracked, at
-its path relative to the repository root, and beside it `round-<n>.deleted`, NUL-separated, naming each deleted
-file and the old path of each rename (beside the copy, never in it: it is no file of the lot). A copy, not a patch: nothing to apply, binary files included. The lot stays
-uncommitted until the hand-over, so HEAD is the base for the whole loop: these snapshots are the only refs the
-later rounds have. These mechanics move into the planned `dialecte record snapshot` (and a review-delta command);
-the text here is the manual fallback.
+(outside every repository; `lots.json` lands there at Station 6), with a `findings-ledger.md` holding only the risk
+class. **When it spawns round n** it snapshots the tree that round reviews into `round-<n>/` in the same folder: a
+copy of every file `git status --porcelain -z --untracked-files=all` lists at the worktree root as changed or
+untracked, at its path relative to the repository root, and beside it `round-<n>.deleted`, NUL-separated, naming
+each deleted file and the old path of each rename (beside the copy, never in it: it is no file of the lot). A copy,
+not a patch: nothing to apply, binary files included. The lot stays uncommitted until the hand-over, so HEAD is the
+base for the whole loop: these snapshots are the only refs the later rounds have. These mechanics move into the
+planned `dialecte record snapshot` (and `dialecte review delta`); the text here is the manual fallback.
 
 - **Round 1 - full review**, blind to the implementer's conclusions, every severity. The checklist, each angle
   answered even when empty: correctness; test soundness (each test fails for the right reason); **the
@@ -207,11 +225,13 @@ the text here is the manual fallback.
   `.d.ts`, the docs (a fix that worked from sources was a no-op for every consumer once the bundler copied the
   dependency into `dist`; only the reviewer who built the package saw it); the code rules; docs and
   CHANGELOG against the code.
-- **Rounds 2-3 - delta review**, given the findings ledger. Round 2 reports blocking and should fix, nits
-  optional: the orchestrator fixes a round-2 nit in the lot or logs it as a follow-up, and records which in the
-  findings ledger. Round 3 reports blocking and should fix only; a nit there is logged as a follow-up, not fixed
-  in the lot. The floor rises so the rounds converge. The review has three parts:
-  - (a) **Each fix verified on the old code.** The orchestrator makes a throwaway worktree on its own branch
+- **Later rounds - delta review**, given the findings ledger. A round before the last reports blocking and should
+  fix, nits optional: the orchestrator fixes such a nit in the lot or logs it as a follow-up, and records which in
+  the findings ledger. The last round reports what its class acts on; anything below is logged as a follow-up, not
+  fixed in the lot. A finding the last round acts on is fixed; the round that would verify the fix goes to the user
+  (above). The floor rises so the rounds converge. The review has three parts:
+  - (a) **Each fix verified on the old code.** The planned `dialecte review delta` will make the throwaway
+    worktree and run the guard there; until it exists, the orchestrator makes one by hand on its own branch
     (never the lot's), copies the snapshot over it, removes its deleted files - the one place a `git rm` is
     allowed, never in the lot's worktree - and passes the path (`worktree prune` lists it after the lot):
 
@@ -222,11 +242,15 @@ the text here is the manual fallback.
     ```
 
     The reviewer copies the fix's new test file in and runs it: it must fail there and pass in the lot's
-    worktree. Without a throwaway worktree the reviewer reads the snapshot and says the guard was reasoned, not
-    run.
+    worktree. Without a throwaway worktree the reviewer reads the snapshot and says the guard was **reasoned,
+    not run**; the ledger keeps that word (`fixed <n> (reasoned)`), never a plain `fixed <n>` for a guard
+    nobody ran.
 
-  - (b) **Only the fix diff and its blast radius**, per file of either snapshot or of the lot now, read-only.
-    `--no-index` exits 1 on differences and on a missing side alike, so pick the form by where the file is:
+  - (b) **Only the fix diff and its blast radius**, starting from the fixer's blast-radius line of each fix
+    (Station 4, copied into the ledger): does the fix widen, exclude or replace more than its finding needed, and
+    does it reopen a row it did not name (a fixed exclusion that is now too wide, an earlier fix it replaced)?
+    Then the diff, per file of either snapshot or of the lot now, read-only. `--no-index` exits 1 on
+    differences and on a missing side alike, so pick the form by where the file is:
 
     ```
     # in round-<n-1>/ and in the worktree
@@ -241,12 +265,15 @@ the text here is the manual fallback.
 
   - (c) **One line naming what round 1 did not look at.**
 
-**The findings ledger** (`findings-ledger.md` in the hand-over folder) is the lot's memory across rounds. Only
-the orchestrator writes it - by hand until the cli does (planned: `dialecte record review`, which will append to
-the hand-over folder); reviewers propose rows. One row per finding: id, round raised, severity, file:line,
-state - `open`, `fix to verify` (the fixer says fixed), `fixed <n>` (n = the round that verified the fix),
-`accepted <reason>`, `logged <follow-up>`. Every reviewer reads it; a finding fixed or accepted is not raised
-again unless the fix is wrong. Outside every repository, it is never committed nor caught by the hygiene.
+**The findings ledger** (`findings-ledger.md` in the hand-over folder) is the lot's memory across rounds. Only the
+orchestrator writes it - by hand until the cli does (planned: `dialecte record review`, which will append to the
+hand-over folder); reviewers propose rows. It opens with the risk class (`Risk class: <class> - <rounds> rounds,
+last round acts on <floor>, a further round only with the user - set by <files>`). One row per finding: id, round
+raised, severity, file:line, state - `open`, `fix to verify - <blast radius>` (the fixer says fixed; its
+blast-radius line comes with it), `fixed <n>` (n = the round that verified the fix; `fixed <n> (reasoned)` when the
+guard was not run), `reopened <n> by <id>` (a later fix broke it again), `accepted <reason>`, `logged <follow-up>`.
+Every reviewer reads it; a finding fixed or accepted is not raised again unless the fix is wrong. Outside every
+repository, it is never committed nor caught by the hygiene.
 Once the lots are committed, `worktree prune` lists the folder (it holds `lots.json` and `commit.sh` by then),
 findings ledger and snapshots with it - the retro reads them first. An abandoned lot's folder has no `lots.json`,
 so neither `prune` nor `handover list` sees it: keep it for the retro, or hand the user its removal command with
@@ -255,15 +282,16 @@ its absolute `cd`.
 Report:
 
 ```
-## Review - lot <id> (round <n>)
-Scope: full | delta against round-<n-1>/     Not looked at by round 1: <one line>   (rounds 2-3)
+## Review - lot <id> (round <n> of <rounds>, <risk class>)
+Scope: full | delta against round-<n-1>/     Not looked at by round 1: <one line>   (later rounds)
 **Pass 1 (correctness)**
 - <id> <severity> <file:line> - <what is wrong> - <why it matters>   | nothing
-- <id> fix verified: <the guard> fails on round-<n-1>/, passes now (run | reasoned) | <what is wrong with the fix>   (rounds 2-3)
+- <id> blast radius: <what the fix widens, excludes, replaces> - holds | <new id> (later rounds)
+- <id> fix verified: <the guard> fails on round-<n-1>/, passes now (run | reasoned) | <what is wrong with the fix>   (later rounds)
 **Pass 2 (fit)**
 - <id> <severity> <file:line> - <finding>
-**Proposed findings-ledger rows**: the new ids above; <id> -> fixed <n> | fix wrong
-**Verdict**: approve | fix-then-repass (blocking or should fix open)
+**Proposed findings-ledger rows**: the new ids above; <id> -> fixed <n> | fixed <n> (reasoned) | fix wrong | reopened <n> by <id>
+**Verdict**: approve | fix-then-repass (a finding at or above this round's floor open) | to the user (the last round, a finding it acts on open)
 ```
 
 ## Station 4 - fix mode
@@ -271,7 +299,21 @@ Scope: full | delta against round-<n-1>/     Not looked at by round 1: <one line
 For each finding: **agree** (fix it, with a test when behaviour changed), **disagree** (one line why, do
 not fix), or **needs the user** (it reopens a decision). Report per finding: fixed / disagreed / escalated.
 You never drop a finding on your own: disagreements go back to the orchestrator, who sets each state in the
-findings ledger (`fix to verify`, `accepted <reason>`, `logged <follow-up>`) before the next round.
+findings ledger (`fix to verify - <blast radius>`, `accepted <reason>`, `logged <follow-up>`, `reopened <n> by
+<id>`) before the next round.
+
+**Every fix reports its blast radius**, one line under its finding: what the fix widens (a pattern, a list, an
+include, a type that now matches more), excludes (what it now skips or no longer accepts) or replaces (the earlier
+code or fix it takes the place of), and which findings-ledger rows it touches - its own, and any other row whose
+code it changes, an earlier fix above all. A fix that touches nothing else says so: `blast radius: none beyond
+<id>`. The orchestrator copies the line into the ledger row (`fix to verify - <blast radius>`); the next round's
+reviewer starts there. A fix's own new finding is the usual way a round fails to converge: a too-wide exclusion
+that fixes one finding and hides another, a fix that undoes an earlier one.
+
+```
+<id> fixed | disagreed: <why> | needs the user: <the decision>
+  blast radius: widens <...> | excludes <...> | replaces <...> | none beyond <id>; ledger rows: <id>, <id>  (fixed only)
+```
 
 ## Station 6 - hand over
 

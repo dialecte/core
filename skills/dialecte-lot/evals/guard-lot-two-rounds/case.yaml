@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: guard-lot-two-rounds
+expected_outcome: |
+  A lot that only changes a guard (a source-scan test) is in the guards-and-tooling risk class, declared in the findings
+  ledger at round 1: two review rounds, the last one acting on blocking findings only. At round 2 a should-fix and a nit
+  with no blocking finding open no fix round: both are logged as follow-ups in the findings ledger, the lot goes on to
+  the full gate and the hand-over, and no third round is run.
