@@ -1,8 +1,8 @@
 import { engineLockNameOf } from '../../engine/project-key'
-import { poolDirectoryOf, takeEngineLock } from './install-pool'
+import { poolDirectoryOf, refuseShortSpace, takeEngineLock } from './install-pool'
 import { FIXTURE_DIALECTE } from './runtime.fixtures.constants'
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 
@@ -121,5 +121,29 @@ describe('the engine lock waited for until a deadline', () => {
 		setTimeout(release, 100)
 		const held = await taking
 		held.release()
+	})
+})
+
+describe('the space an origin has left, asked before a pool or an import writes', () => {
+	afterEach(() => {
+		vi.restoreAllMocks()
+	})
+
+	it('the browser refuses to estimate it → no shortage told: the write goes on, as when it tells no quota', async () => {
+		vi.spyOn(navigator.storage, 'estimate').mockRejectedValueOnce(new Error('estimate refused'))
+		await expect(refuseShortSpace({ project: uniqueProject(), bytes: 1 })).resolves.toBeUndefined()
+	})
+
+	it('fewer bytes left than asked → STORE_QUOTA_EXCEEDED', async () => {
+		vi.spyOn(navigator.storage, 'estimate').mockResolvedValueOnce({ quota: 10, usage: 8 })
+		const refused = await refuseShortSpace({ project: uniqueProject(), bytes: 5 }).then(
+			function notRefused() {
+				return undefined
+			},
+			function keyOf(thrown: unknown) {
+				return toDialecteError(thrown)?.key
+			},
+		)
+		expect(refused).toBe('STORE_QUOTA_EXCEEDED')
 	})
 })

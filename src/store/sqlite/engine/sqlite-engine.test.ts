@@ -7,15 +7,17 @@ import {
 import { loadSqlite } from '../load-sqlite'
 import { LAYOUT_VERSION } from './engine.constants'
 import { ENGINE_TEST_DIALECTE_ID, openMemoryFile, startEngine } from './engine.fixtures'
+import { openSqliteEngine } from './sqlite-engine'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { TABLE_DOCUMENTS } from '@/store/store.constants'
 
 import type { SqliteEngine, SqliteEngineOptions } from './engine.types'
 import type { DialecteErrorKey } from '@/errors'
 import type { AnyRawRecord, RecordPatch } from '@/types'
-import type { Database } from '@sqlite.org/sqlite-wasm'
+import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** The databases a case opened, closed after it (an in-memory file goes with its last connection). */
 const opened: Database[] = []
@@ -34,6 +36,25 @@ function metaOf(params: { db: Database }): Record<string, string> {
 }
 
 describe('openSqliteEngine', () => {
+	it('a SQLite whose text codec is not installed → refused ASSERTION_FAILED, the connection closed', async () => {
+		const sqlite3 = await loadSqlite()
+		const db = (await openFile()).connect()
+		// the same module, its install mark not carried: what a SQLite loaded without loadSqlite looks like
+		const uninstalled = { ...sqlite3, wasm: { ...sqlite3.wasm } } as Sqlite3Static
+		await expectRejectsWith({
+			action: Promise.resolve().then(function openUninstalled() {
+				return openSqliteEngine({
+					sqlite3: uninstalled,
+					db,
+					dialecteId: ENGINE_TEST_DIALECTE_ID,
+					name: 'engine-test',
+				})
+			}),
+			key: 'ASSERTION_FAILED',
+		})
+		expect(db.isOpen()).toBe(false)
+	})
+
 	describe('a fresh file', () => {
 		afterEach(() => {
 			// the device memory a case reports, dropped: the browser's own reads again
@@ -361,11 +382,8 @@ describe('openSqliteEngine', () => {
 		}
 
 		/** `doc-1` with a commit, an undone commit discarded by another, a blob of its own; `kept` with a commit and a blob. */
-		async function seedHoldings(params: {
-			engine: SqliteEngine
-			status?: 'importing'
-		}): Promise<void> {
-			const { engine, status } = params
+		async function seedHoldings(params: { engine: SqliteEngine }): Promise<void> {
+			const { engine } = params
 			const commitOf = (documentId: string, id: string) =>
 				engine.commit({
 					documentId,
@@ -383,7 +401,6 @@ describe('openSqliteEngine', () => {
 			await engine.undo('doc-1')
 			await commitOf('doc-1', 'r3')
 			await engine.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['x'.repeat(5000)]))
-			if (status) await engine.updateDocument('doc-1', { status })
 		}
 
 		const GONE = { entries: 0, keptEntries: 1, historyTables: 1, blobs: 0, bytes: 1, freePages: 0 }
@@ -400,8 +417,12 @@ describe('openSqliteEngine', () => {
 
 		it('a file holding a document left importing with history and a blob → the engine start takes them all with it', async () => {
 			const file = await openFile()
-			const first = await startEngine({ db: file.connect() })
-			await seedHoldings({ engine: first, status: 'importing' })
+			const firstDb = file.connect()
+			const first = await startEngine({ db: firstDb })
+			await seedHoldings({ engine: first })
+			// a state no store call makes (only its import marks a document ready, a commit on one importing is
+			// refused): written in the file, as a crash or an older version may have left it
+			firstDb.exec(`UPDATE ${TABLE_DOCUMENTS} SET status = 'importing' WHERE id = 'doc-1'`)
 			first.close()
 			const db = file.connect()
 			await startEngine({ db })

@@ -410,10 +410,10 @@ const updateCases: Record<string, UpdateCase> = {
 		updates: { name: 'south' },
 		expected: { name: 'south' },
 	},
-	'metadata and status on a document with a path → the path kept': {
+	'metadata on a document with a path → the path kept': {
 		document: { path: 'a/north.scd' },
-		updates: { metadata: { origin: 'x' }, status: 'importing' },
-		expected: { path: 'a/north.scd', metadata: { origin: 'x' }, status: 'importing' },
+		updates: { metadata: { origin: 'x' } },
+		expected: { path: 'a/north.scd', metadata: { origin: 'x' } },
 	},
 	'an extension with two dots kept by a move → the name less that extension': {
 		document: { name: 'north', extension: '.tar.gz', path: 'a/north.tar.gz' },
@@ -455,11 +455,11 @@ const updateCases: Record<string, UpdateCase> = {
 		updates: { name: undefined, metadata: { origin: 'x' } },
 		expected: { path: 'a/north.scd', name: 'north', metadata: { origin: 'x' } },
 	},
-	'metadata and status on a document whose stored path a rule now refuses → applied, the path not checked again':
+	'metadata on a document whose stored path a rule now refuses → applied, the path not checked again':
 		{
 			document: { name: 'north', path: 'a/\u2066north.scd' },
-			updates: { metadata: { origin: 'x' }, status: 'importing' },
-			expected: { metadata: { origin: 'x' }, status: 'importing' },
+			updates: { metadata: { origin: 'x' } },
+			expected: { metadata: { origin: 'x' } },
 		},
 	'a name on a document whose stored path a rule now refuses → refused, the new path checked': {
 		document: { name: 'north', path: 'a/\u2066north.scd' },
@@ -468,7 +468,12 @@ const updateCases: Record<string, UpdateCase> = {
 	},
 	'keys an update does not take → ignored': {
 		document: { path: 'a/north.scd' },
-		updates: { id: 'zz', extension: '.icd', configKey: 'other' } as DocumentUpdates,
+		updates: {
+			id: 'zz',
+			extension: '.icd',
+			configKey: 'other',
+			status: 'importing',
+		} as DocumentUpdates,
 		expected: {},
 	},
 	'a path given as null → refused, a path is a string': {

@@ -12,6 +12,9 @@ export const CONTRACT_SESSION_FUNCTION_VALUE = 'function'
 /** A record of the session's tag whose `bB` holds this value gets a diagnostic whose `meta.note` holds a lone surrogate. */
 export const CONTRACT_SESSION_LONE_SURROGATE_VALUE = 'lone-surrogate'
 
+/** A record of the session's tag whose `bB` holds this value is created again by the session, under its own id. */
+export const CONTRACT_SESSION_REUSE_VALUE = 'reuse'
+
 /** A record of the session's tag whose `bB` holds this value makes the session wait for the case's release. */
 export const CONTRACT_SESSION_HOLD_VALUE = 'hold'
 
@@ -131,7 +134,12 @@ export const STORE_CONTRACT_FEATURES = ['history', 'blobs', 'import', 'export'] 
  * store named by the project's name alone has no other dialecte's); a view away while its project is
  * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away).
  */
-export const STORE_CONTRACT_DIFFERENCES = ['engine-end', 'dialecte-key', 'away'] as const
+export const STORE_CONTRACT_DIFFERENCES = [
+	'engine-end',
+	'dialecte-key',
+	'away',
+	'import-liveness',
+] as const
 
 /** The dialecte a case's store of another dialecte runs (the runtime fixture's `other-dialecte` engine serves it). */
 export const CONTRACT_OTHER_DIALECTE_ID = 'core/test-other'

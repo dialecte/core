@@ -7,10 +7,10 @@ import { createContractRuntime } from '../../contract/store-contract.import-sess
 import { loadSqlite } from '../load-sqlite'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { SqliteEngine } from './engine.types'
-import type { Database } from '@sqlite.org/sqlite-wasm'
+import type { Database, PreparedStatement } from '@sqlite.org/sqlite-wasm'
 
 /** The databases a case opened, closed after it (an in-memory file goes with its last connection). */
 const opened: Database[] = []
@@ -87,6 +87,44 @@ describe('an engine exporting a document', () => {
 		)
 		await expectRejectsWith({ action: exporting, key: 'EXPORT_ABORTED' })
 		expect(statementsAtClose).toBe(0)
+	})
+
+	it('the engine closed while an export reads, the finalize of its statement failing → the close throws it, the connection closed all the same', async () => {
+		const file = await openMemoryFile({ opened })
+		const db = file.connect()
+		const engine = await startEngine({ db, runtime: createContractRuntime() })
+		const { record } = await engine.importFile({
+			file: contractFile({ body: sessionRecords(6) }),
+			writeId: 'w-import',
+			clientId: 'c-1',
+		})
+		// every statement's class, read off one (the module's types do not name it)
+		const probe = db.prepare('SELECT 1')
+		const statementPrototype = Object.getPrototypeOf(probe) as PreparedStatement
+		probe.finalize()
+		const failing = new Error('the statement could not be finalized')
+		let closeThrew: unknown
+		let told = 0
+		const exporting = engine.exportFile(
+			{ documentId: record.id, options: { batchSize: 1 }, exportId: 'e-1', clientId: 'c-1' },
+			function closeOnceReading() {
+				told += 1
+				if (told !== 3) return
+				// a few batches in: the export's statement is held, its finalize fails once
+				vi.spyOn(statementPrototype, 'finalize').mockImplementationOnce(function failToFinalize() {
+					throw failing
+				})
+				try {
+					engine.close()
+				} catch (thrown) {
+					closeThrew = thrown
+				}
+			},
+		)
+		await expectRejectsWith({ action: exporting, key: 'EXPORT_ABORTED' })
+		vi.restoreAllMocks()
+		expect(closeThrew).toBe(failing)
+		expect(db.isOpen()).toBe(false)
 	})
 
 	it('an export asked under the id of one that runs → ASSERTION_FAILED; the running one completes', async () => {

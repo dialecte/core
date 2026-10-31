@@ -4,6 +4,7 @@ import { compareById } from '../compare-by-id'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
+import { isOwnImporting } from '../own-import'
 import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
 import {
@@ -319,12 +320,18 @@ export class InMemoryStore implements Store {
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
 		await this.guardOpen()
 		const { writeId } = params
-		const { documents, changelog, discardedCommits } = this.readState()
+		const { documents, changelog, discardedCommits, runningImports } = this.readState()
 		const committed =
 			[...changelog.values()].some((entries) =>
 				entries.some((entry) => entry.writeId === writeId),
 			) || [...discardedCommits.values()].some((discarded) => discarded.has(writeId))
-		return writeOutcomeOf({ documents: [...documents.values()], writeId, committed })
+		return writeOutcomeOf({
+			documents: [...documents.values()],
+			writeId,
+			committed,
+			// every import of the project in this realm runs on one of its instances: this one sees them all
+			isRunning: (running) => runningImports.has(running.writeId),
+		})
 	}
 
 	// --- Writes ---
@@ -608,6 +615,46 @@ export class InMemoryStore implements Store {
 		state.documents.set(documentId, updated)
 	}
 
+	/** An imported document ready: refused `DOCUMENT_NOT_REGISTERED` once it is no longer the import's own, `importing`. */
+	private async markReadyUnguarded(params: {
+		documentId: string
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, registered } = params
+		this.guardWritable()
+		const state = this.writeState()
+		const held = state?.documents.get(documentId)
+		if (!state || !held || !isOwnImporting({ held, registered })) {
+			throwDocumentNotRegistered({ documentId, what: 'its ready state' })
+		}
+		state.documents.set(documentId, { ...held, status: 'ready' })
+	}
+
+	/** An import's records, into its own document only: refused `DOCUMENT_NOT_REGISTERED` once it is not. */
+	private async bulkWriteOwnImport(params: {
+		documentId: string
+		ops: Parameters<Store['bulkWrite']>[1]
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, ops, registered } = params
+		const held = this.writeState()?.documents.get(documentId)
+		if (!isOwnImporting({ held, registered })) {
+			throwDocumentNotRegistered({ documentId, what: 'records' })
+		}
+		await this.bulkWriteUnguarded(documentId, ops)
+	}
+
+	/** What a failed import leaves goes: its own document only, never one registered since under its id. */
+	private async removeOwnImport(params: {
+		documentId: string
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, registered } = params
+		const held = this.writeState()?.documents.get(documentId)
+		if (!isOwnImporting({ held, registered })) return
+		await this.removeDocumentUnguarded(documentId)
+	}
+
 	private async removeDocumentUnguarded(documentId: string): Promise<void> {
 		this.guardWritable()
 		const state = this.writeState()
@@ -721,12 +768,19 @@ export class InMemoryStore implements Store {
 	 * after it started does not refuse the calls it makes.
 	 */
 	private ownImportTarget(): ImportTarget {
+		// the document this import registered: the only one it marks ready
+		let registered: DocumentRecord | undefined
 		return {
-			registerDocument: (file) => this.registerDocumentUnguarded(file),
+			registerDocument: (file) => {
+				registered = file
+				return this.registerDocumentUnguarded(file)
+			},
 			getDocument: (documentId) => this.getDocumentUnguarded(documentId),
-			updateDocument: (documentId, updates) => this.updateDocumentUnguarded(documentId, updates),
-			removeDocument: (documentId) => this.removeDocumentUnguarded(documentId),
-			bulkWrite: (documentId, ops) => this.bulkWriteUnguarded(documentId, ops),
+			markReady: (documentId) => this.markReadyUnguarded({ documentId, registered }),
+			removeDocument: (documentId) => this.removeOwnImport({ documentId, registered }),
+			bulkWrite: (documentId, ops) => this.bulkWriteOwnImport({ documentId, ops, registered }),
+			// every id held is looked up at each write: the session's are checked as the file's
+			writeSession: (documentId, ops) => this.bulkWriteOwnImport({ documentId, ops, registered }),
 		}
 	}
 

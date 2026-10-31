@@ -256,6 +256,17 @@ async function openEngine(params: {
 			explainIoFailure: function explainIoFailure({ thrown }) {
 				return explainOutOfSpace({ project, thrown })
 			},
+			// a connection is not reopened in place: the worker ends, its clients find their host gone, and the next
+			// engine starts on the file
+			onBroken: function endBrokenWorker() {
+				void closeEngine({ state })
+					.catch(function endAnyway() {
+						// the engine was closed already: what letting it go fails on changes nothing for the worker's end
+					})
+					.finally(function endWorker() {
+						self.close()
+					})
+			},
 		})
 		return { resumed }
 	} catch (thrown) {

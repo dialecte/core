@@ -7,6 +7,7 @@ import {
 	CONTRACT_SESSION_FAIL_VALUE,
 	CONTRACT_SESSION_FUNCTION_VALUE,
 	CONTRACT_SESSION_LONE_SURROGATE_VALUE,
+	CONTRACT_SESSION_REUSE_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
 } from './store-contract.constants'
@@ -71,6 +72,69 @@ const lifecycle: StoreContractCases = {
 			expect(await reopened.getDocuments()).toEqual([])
 		},
 	},
+	'opened twice at once, then closed → it holds nothing: another connection’s destroy goes on': {
+		needs: ['second-connection'],
+		act: async ({ store, connect }) => {
+			await store.close()
+			await Promise.all([store.open(), store.open()])
+			await store.close()
+			const other = await connect()
+			await expect(other.destroy()).resolves.toBeUndefined()
+		},
+	},
+	'destroyed while its own open runs → the destroy waits for the open: both settle, the project gone':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await store.registerDocument(makeDocument())
+				await store.close()
+				const opening = store.open()
+				const destroying = store.destroy()
+				await expect(Promise.all([opening, destroying])).resolves.toEqual([undefined, undefined])
+				const other = await connect()
+				expect(await other.getDocuments()).toEqual([])
+			},
+		},
+	'a commit running when the store is closed → it completes, kept; the close settles after it': {
+		needs: ['history'],
+		act: async ({ store, reopen }) => {
+			await store.registerDocument(makeDocument())
+			const committing = commit({
+				store,
+				documentId: 'doc-1',
+				writeId: 'w-at-close',
+				creates: [makeRecord({ id: 'r1' })],
+			})
+			const closing = store.close()
+			await committing
+			await closing
+			const reopened = await reopen()
+			expect(await reopened.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
+			expect(await reopened.getWriteOutcome({ writeId: 'w-at-close' })).toBe('applied')
+		},
+	},
+	'opened again while its own import runs → the import kept and applied, the open settled': {
+		needs: ['import'],
+		act: async ({ store }) => {
+			const hold = holdContractImport()
+			const importing = store.importFile({
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+				writeId: 'w-reopened',
+			})
+			try {
+				await untilHeld({ hold, importing })
+				const opening = store.open()
+				hold.release()
+				const { record } = await importing
+				await opening
+				expect((await store.getDocument(record.id))?.status).toBe('ready')
+				expect(await store.getWriteOutcome({ writeId: 'w-reopened' })).toBe('applied')
+			} finally {
+				hold.release()
+				await importing.catch(() => undefined)
+			}
+		},
+	},
 	'a project named with nothing, `.` or `..` → refused PROJECT_NAME_INVALID before any store of it is built':
 		{
 			act: async ({ createNamed }) => {
@@ -86,7 +150,6 @@ const lifecycle: StoreContractCases = {
 const documentUpdates: Record<string, DocumentUpdates> = {
 	name: { name: 'renamed' },
 	metadata: { metadata: { origin: 'test' } },
-	status: { status: 'importing' },
 }
 
 const registry: StoreContractCases = {
@@ -123,6 +186,18 @@ const registry: StoreContractCases = {
 			},
 		]),
 	),
+	'updateDocument with a status → the status as it was: only its import marks a document ready': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument({ id: 'a', status: 'importing' }))
+			await store.registerDocument(makeDocument({ id: 'b' }))
+			await store.updateDocument('a', { status: 'ready' } as DocumentUpdates)
+			await store.updateDocument('b', { name: 'renamed', status: 'importing' } as DocumentUpdates)
+			expect(await store.getDocuments()).toEqual([
+				makeDocument({ id: 'a', status: 'importing' }),
+				makeDocument({ id: 'b', name: 'renamed' }),
+			])
+		},
+	},
 	'removes a document: gone from the registry, its records unreadable': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
@@ -2047,47 +2122,80 @@ const removedDocument: StoreContractCases = {
 // ── An edit during an import ─────────────────────────────────────────────────
 
 const duringImport: StoreContractCases = {
+	// the session's writes land after the commit: between the import's batches
 	'a commit on one document lands between the batches of another document being imported': {
-		needs: ['history'],
+		needs: ['history', 'import'],
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument({ id: 'b' }))
 			await store.bulkWrite('b', { creates: [makeRecord({ id: 'rb' })] })
-			await store.registerDocument(makeDocument({ id: 'a', status: 'importing' }))
-			await store.bulkWrite('a', { creates: [makeRecord({ id: 'a1' })] })
-
-			await commit({
-				store,
-				documentId: 'b',
-				updates: [makeRecord({ id: 'rb', value: 'edited' })],
+			const hold = holdContractImport()
+			const importing = store.importFile({
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
 			})
+			try {
+				await untilHeld({ hold, importing })
+				await commit({
+					store,
+					documentId: 'b',
+					updates: [makeRecord({ id: 'rb', value: 'edited' })],
+				})
+				hold.release()
+				const { record } = await importing
 
-			await store.bulkWrite('a', {
-				creates: [makeRecord({ id: 'a2' })],
-				updates: [{ recordId: 'a1', children: [childRef('a2')] }],
-			})
-			await store.updateDocument('a', { status: 'ready' })
-
-			expect((await store.get('rb', 'b'))?.value).toBe('edited')
-			expect(await store.getHistoryStatus('b')).toEqual({ canUndo: true, canRedo: false })
-			expect((await store.getDocument('a'))?.status).toBe('ready')
-			expect(await store.count('a')).toBe(2)
-			expect((await store.get('a1', 'a'))?.children).toEqual([childRef('a2')])
-			expect(await store.getChangeLog('a')).toEqual([])
-			await store.undo('b')
-			expect((await store.get('rb', 'b'))?.value).toBe('')
-			expect(await store.count('a')).toBe(2)
+				expect((await store.get('rb', 'b'))?.value).toBe('edited')
+				expect(await store.getHistoryStatus('b')).toEqual({ canUndo: true, canRedo: false })
+				expect((await store.getDocument(record.id))?.status).toBe('ready')
+				await expectSessionSeen({ store, documentId: record.id, count: 1 })
+				expect(await store.getChangeLog(record.id)).toEqual([])
+				await store.undo('b')
+				expect((await store.get('rb', 'b'))?.value).toBe('')
+				await expectSessionSeen({ store, documentId: record.id, count: 1 })
+			} finally {
+				hold.release()
+				await importing.catch(() => undefined)
+			}
 		},
 	},
 	'the registry lists a document being imported with its status, and reads it as it is': {
+		needs: ['import'],
 		act: async ({ store }) => {
-			await store.registerDocument(makeDocument({ id: 'a', status: 'importing' }))
-			await store.bulkWrite('a', { creates: [makeRecord({ id: 'a1' })] })
-			expect((await store.getDocuments()).map((document) => document.status)).toEqual(['importing'])
-			expect(await store.count('a')).toBe(1)
-			await store.updateDocument('a', { status: 'ready' })
-			expect(await store.getDocument('a')).toEqual(makeDocument({ id: 'a' }))
+			const hold = holdContractImport()
+			const importing = store.importFile({
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+			})
+			try {
+				await untilHeld({ hold, importing })
+				const [listed] = await store.getDocuments()
+				expect(listed?.status).toBe('importing')
+				expect(await store.getDocument(listed!.id)).toEqual(listed)
+				// the file's records stored, the session's writes not yet
+				expect(await store.count(listed!.id)).toBe(2)
+				hold.release()
+				const { record } = await importing
+				expect(await store.getDocument(record.id)).toEqual({ ...listed, status: 'ready' })
+			} finally {
+				hold.release()
+				await importing.catch(() => undefined)
+			}
 		},
 	},
+}
+
+/** Every record of the contract session's tag in the document marked by its session, `count` of them. */
+async function expectSessionSeen(params: {
+	store: Store
+	documentId: string
+	count: number
+}): Promise<void> {
+	const { store, documentId, count } = params
+	const handed = await store.getByTagNameInDocument(CONTRACT_SESSION_TAG, documentId)
+	expect(handed).toHaveLength(count)
+	for (const record of handed) {
+		expect(record.attributes).toContainEqual({
+			name: CONTRACT_SESSION_SEEN_ATTRIBUTE,
+			value: 'yes',
+		})
+	}
 }
 
 // ── Importing a file ─────────────────────────────────────────────────────────
@@ -2109,7 +2217,7 @@ async function expectOnlyKeptDocument(params: { store: Store; writeId: string })
 /** A failing import, and the structured error it must be refused with. */
 type FailingImport = {
 	file: File
-	key: 'PARSE_ERROR' | 'IMPORT_FAILED' | 'STORE_VALUE_NOT_JSON'
+	key: 'PARSE_ERROR' | 'IMPORT_FAILED' | 'STORE_VALUE_NOT_JSON' | 'STORE_DUPLICATE_ID'
 	detail: RegExp
 }
 
@@ -2140,6 +2248,15 @@ const failingImports: Record<string, FailingImport> = {
 			key: 'STORE_VALUE_NOT_JSON',
 			detail:
 				/^A diagnostic of the import session: text that is not well-formed UTF-16 \(a lone surrogate\) is not a JSON value \(field "note"\)/,
+		},
+	// ids made by the import: a store keeping no list of them still finds the one the session reuses, at its write
+	'a session creating a record under an id of the file is refused STORE_DUPLICATE_ID, the id named as one the document holds':
+		{
+			file: contractFile({
+				body: `${sessionRecords(2)}<B aB="x" bB="${CONTRACT_SESSION_REUSE_VALUE}"/>`,
+			}),
+			key: 'STORE_DUPLICATE_ID',
+			detail: /refuses ids to create - already holds: [^;,]+$/,
 		},
 }
 
@@ -2360,15 +2477,20 @@ const importing: StoreContractCases = {
 			expect(await store.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
 		},
 	},
-	'the outcome of a write is read from the document carrying its id: importing → running, ready → applied':
-		{
-			act: async ({ store }) => {
-				await store.registerDocument(makeDocument({ id: 'a', status: 'importing', writeId: 'w-a' }))
-				await store.registerDocument(makeDocument({ id: 'b', writeId: 'w-b' }))
-				expect(await store.getWriteOutcome({ writeId: 'w-a' })).toBe('running')
-				expect(await store.getWriteOutcome({ writeId: 'w-b' })).toBe('applied')
-			},
+	'the outcome of a write is read from the document carrying its id: ready → applied': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument({ id: 'b', writeId: 'w-b' }))
+			expect(await store.getWriteOutcome({ writeId: 'w-b' })).toBe('applied')
 		},
+	},
+	// what a failed import whose removal failed too leaves: its row, no import running
+	'a document left importing, no import of its id running → not-applied, never running': {
+		needs: ['import-liveness'],
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument({ id: 'a', status: 'importing', writeId: 'w-a' }))
+			expect(await store.getWriteOutcome({ writeId: 'w-a' })).toBe('not-applied')
+		},
+	},
 	'the outcome of an id no import carried is not-applied': {
 		act: async ({ store }) => {
 			expect(await store.getWriteOutcome({ writeId: 'never' })).toBe('not-applied')
@@ -2395,6 +2517,67 @@ const importing: StoreContractCases = {
 					await expectRejectsWith({ action: importing, key: 'DOCUMENT_NOT_REGISTERED' })
 					expect(await other.getByDocumentId('new')).toEqual([makeRecord({ id: 'n1' })])
 					expect((await other.getDocuments()).map((document) => document.id)).toEqual(['new'])
+					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('not-applied')
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
+	'a status set through another connection while an import runs → ignored: the import marks its document ready once every write of its session is in':
+		{
+			needs: ['second-connection', 'import'],
+			act: async ({ store, connect }) => {
+				const other = await connect()
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/><B aB="B1"/>` }),
+					writeId: 'w-held',
+				})
+				try {
+					await untilHeld({ hold, importing })
+					const [imported] = await other.getDocuments()
+					await other.updateDocument(imported!.id, { status: 'ready' } as DocumentUpdates)
+					expect((await other.getDocument(imported!.id))?.status).toBe('importing')
+					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('running')
+					hold.release()
+					const { record } = await importing
+					expect((await other.getDocument(record.id))?.status).toBe('ready')
+					await expectSessionSeen({ store: other, documentId: record.id, count: 2 })
+					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('applied')
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
+	'the importing document removed through another connection, another one registered importing under its id → DOCUMENT_NOT_REGISTERED, not applied; nothing of the import written to the other one':
+		{
+			needs: ['second-connection', 'import'],
+			act: async ({ store, connect }) => {
+				const other = await connect()
+				const hold = holdContractImport()
+				// the session creates a record after the hold: a write the other document must not take
+				const importing = store.importFile({
+					file: contractFile({
+						body: `<B aB="B0" bB="${hold.value}"/><B aB="B1" bB="${CONTRACT_SESSION_REUSE_VALUE}"/>`,
+					}),
+					writeId: 'w-held',
+				})
+				try {
+					await untilHeld({ hold, importing })
+					const [imported] = await other.getDocuments()
+					await other.removeDocument(imported!.id)
+					const another = makeDocument({
+						id: imported!.id,
+						status: 'importing',
+						writeId: 'w-other',
+					})
+					await other.registerDocument(another)
+					hold.release()
+					await expectRejectsWith({ action: importing, key: 'DOCUMENT_NOT_REGISTERED' })
+					expect(await other.getDocument(imported!.id)).toEqual(another)
+					expect(await other.getByDocumentId(imported!.id)).toEqual([])
 					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('not-applied')
 				} finally {
 					hold.release()

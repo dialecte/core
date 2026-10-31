@@ -207,15 +207,23 @@ describe('an engine worker opening its project', () => {
 	})
 
 	describe('the origin out of storage while it writes (the file system refuses the writes)', () => {
-		/** An engine on the `disk-full` fixture, a document registered, then the disk filled (after some writes). */
+		/**
+		 * An engine on the `disk-full` fixture, a document registered (and what `prepare` writes), then the disk filled
+		 * (after some writes).
+		 */
 		async function engineOnFullDisk(
-			params: { afterWrites?: number; failing?: boolean } = {},
+			params: {
+				afterWrites?: number
+				failing?: boolean
+				prepare?: (engine: Awaited<ReturnType<typeof clientOf>>) => Promise<void>
+			} = {},
 		): Promise<Awaited<ReturnType<typeof clientOf>>> {
 			const project = uniqueProject()
 			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'disk-full' }) })
 			await control.request({ message: openMessage({ project }), expect: 'opened' })
 			const engine = await clientOf({ control, clientId: 'c-1' })
 			await engine.registerDocument(makeDocument())
+			await params.prepare?.(engine)
 			await orderDisk(
 				params.failing
 					? { type: 'write-fails' }
@@ -245,6 +253,86 @@ describe('an engine worker opening its project', () => {
 			).toBe('STORE_QUOTA_EXCEEDED')
 			expect(await engine.count('doc-1')).toBe(0)
 		})
+
+		type RefusedWrite = {
+			/** Written before the disk fills. */
+			prepare?: (engine: Awaited<ReturnType<typeof engineOnFullDisk>>) => Promise<void>
+			write: (engine: Awaited<ReturnType<typeof engineOnFullDisk>>) => Promise<unknown>
+			/** What is read afterwards: nothing of the write there. */
+			readAfter: (engine: Awaited<ReturnType<typeof engineOnFullDisk>>) => Promise<unknown>
+			expectedAfter: unknown
+		}
+		const refusedWrites: Record<string, RefusedWrite> = {
+			'a bulk write → STORE_QUOTA_EXCEEDED, nothing of it applied': {
+				write: (engine) =>
+					engine.bulkWrite('doc-1', {
+						creates: Array.from({ length: 2_000 }, (_, index) => makeRecord({ id: `r${index}` })),
+					}),
+				readAfter: (engine) => engine.count('doc-1'),
+				expectedAfter: 0,
+			},
+			'a document registered → STORE_QUOTA_EXCEEDED, not registered': {
+				write: (engine) =>
+					engine.registerDocument(
+						makeDocument({ id: 'doc-2', metadata: { note: 'x'.repeat(100_000) } }),
+					),
+				readAfter: (engine) => engine.getDocument('doc-2'),
+				expectedAfter: undefined,
+			},
+			'an undo → STORE_QUOTA_EXCEEDED, the history and the record as they were': {
+				prepare: (engine) => editTwice({ engine }),
+				write: (engine) => engine.undo('doc-1'),
+				readAfter: (engine) => historyAndValue({ engine }),
+				expectedAfter: { history: { canUndo: true, canRedo: false }, value: 'second' },
+			},
+			'a redo → STORE_QUOTA_EXCEEDED, the history and the record as they were': {
+				prepare: async (engine) => {
+					await editTwice({ engine })
+					await engine.undo('doc-1')
+				},
+				write: (engine) => engine.redo('doc-1'),
+				readAfter: (engine) => historyAndValue({ engine }),
+				expectedAfter: { history: { canUndo: true, canRedo: true }, value: 'first' },
+			},
+		}
+
+		/** `r1` created with `first`, then set to `second`: two commits to step through. */
+		async function editTwice(params: {
+			engine: Awaited<ReturnType<typeof engineOnFullDisk>>
+		}): Promise<void> {
+			const { engine } = params
+			const commitOf = (writeId: string, value: string, created: boolean) =>
+				engine.commit({
+					documentId: 'doc-1',
+					writeId,
+					creates: created ? [makeRecord({ id: 'r1', value })] : [],
+					updates: created ? [] : [makeRecord({ id: 'r1', value })],
+					deletes: [],
+				})
+			await commitOf('w-first', 'first', true)
+			await commitOf('w-second', 'second', false)
+		}
+
+		/** The document's history and the value of `r1`. */
+		async function historyAndValue(params: {
+			engine: Awaited<ReturnType<typeof engineOnFullDisk>>
+		}): Promise<{ history: unknown; value: string | undefined }> {
+			const { engine } = params
+			return {
+				history: await engine.getHistoryStatus('doc-1'),
+				value: (await engine.get('r1', 'doc-1'))?.value,
+			}
+		}
+
+		for (const [description, { prepare, write, readAfter, expectedAfter }] of Object.entries(
+			refusedWrites,
+		)) {
+			it(description, async () => {
+				const engine = await engineOnFullDisk({ prepare })
+				expect(await rejectionKey({ action: write(engine) })).toBe('STORE_QUOTA_EXCEEDED')
+				expect(await readAfter(engine)).toEqual(expectedAfter)
+			})
+		}
 
 		it('a commit refused by the file system for another reason while room is left → its own key, STORE_COMMIT_FAILED', async () => {
 			const engine = await engineOnFullDisk({ failing: true })
@@ -665,6 +753,36 @@ describe('an engine worker opening its project', () => {
 		expect(await (await clientOf({ control, clientId: 'reader' })).getDocuments()).toEqual([
 			makeDocument(),
 		])
+	})
+})
+
+describe('an engine worker whose import leaves its connection inside a transaction', () => {
+	it('the import refused, the engine let go with its lock (its worker ending); the next engine finds the document there, no trace of the import', async () => {
+		const project = uniqueProject()
+		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'stranded-window' }) })
+		await control.request({ message: openMessage({ project }), expect: 'opened' })
+		const engine = await clientOf({ control, clientId: 'c-1' })
+		await engine.registerDocument(makeDocument())
+		await orderFixture({ order: { type: 'strand-windows' } })
+		const refused = await rejectionKey({
+			action: engine.importFile({
+				file: contractFile({ body: '<B aB="B0"/><B aB="B1"/>' }),
+				writeId: 'w-stranded',
+			}),
+		})
+		// every commit of the worker refused: the import fails at its window's commit
+		expect(refused).toBe('STORE_COMMIT_FAILED')
+		await vi.waitFor(
+			async function lockLetGo() {
+				expect(await isEngineLockFree({ project })).toBe(true)
+			},
+			{ timeout: 10_000 },
+		)
+		const next = engineWorker({ project })
+		await next.control.request({ message: openMessage({ project }), expect: 'opened' })
+		const reader = await clientOf({ control: next.control, clientId: 'c-2' })
+		expect(await reader.getDocuments()).toEqual([makeDocument()])
+		expect(await reader.getWriteOutcome({ writeId: 'w-stranded' })).toBe('not-applied')
 	})
 })
 

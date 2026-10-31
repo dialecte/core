@@ -16,7 +16,7 @@ import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
 import { ROWS_PER_BIND } from './engine.constants'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE, DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
@@ -819,9 +819,9 @@ describe('an engine importing files', () => {
 		})
 	})
 
-	it('a session creating more records than one bind holds, a window of 0 ms → they are stored a bind at a time, the engine yielding between: a task queued meanwhile finds the first bind committed, no transaction open', async () => {
+	it('a session creating more records than one bind holds, a window of 0 ms → they are stored a bind at a time, the engine yielding between (after its id index first): a task queued at each turn finds the binds committed so far, no transaction open', async () => {
 		const sqlite3 = await loadSqlite()
-		let seen: { stored: Promise<unknown[]>; inTransaction: boolean } | undefined
+		const seen: { stored: Promise<unknown[]>; inTransaction: boolean }[] = []
 		const contract = createContractRuntime()
 		const engineRef: { engine?: SqliteEngine; db?: Database } = {}
 		const runtime: StoreRuntime = {
@@ -830,11 +830,13 @@ describe('an engine importing files', () => {
 				createImportSession: function sessionCreatingMany({ documentId }) {
 					return {
 						afterImport: async function createMany() {
+							// one read at each of the engine's first turns: after the id index, after each bind
 							setTimeout(function readTheTable() {
-								seen = {
+								seen.push({
 									stored: engineRef.engine!.getByDocumentId(documentId),
 									inTransaction: sqlite3.capi.sqlite3_get_autocommit(engineRef.db!) === 0,
-								}
+								})
+								if (seen.length < 3) setTimeout(readTheTable, 0)
 							}, 0)
 							return {
 								creates: Array.from({ length: 2500 }, (_, index) =>
@@ -854,10 +856,68 @@ describe('an engine importing files', () => {
 			writeId: 'w-1',
 			clientId: 'c-1',
 		})
-		// read from the table: the root and A, then the first bind of the session's creates, committed
-		expect(seen?.inTransaction).toBe(false)
-		expect(await seen?.stored).toHaveLength(2 + ROWS_PER_BIND)
+		// read from the table: the root and A, then each bind of the session's creates, committed
+		expect(seen.map((read) => read.inTransaction)).toEqual([false, false, false])
+		const lengths = await Promise.all(seen.map((read) => read.stored.then((rows) => rows.length)))
+		expect(lengths).toEqual([2, 2 + ROWS_PER_BIND, 2 + 2 * ROWS_PER_BIND])
 		expect(await engine.count(result.record.id)).toBe(2 + 2500)
+	})
+
+	it('an import that fails, its window’s ROLLBACK and COMMIT failing too → the engine broken: told once, closed with its connection, its calls refused as its host gone; the next engine on the file finds no trace of the import', async () => {
+		const file = await openMemoryFile({ opened })
+		const db = file.connect()
+		// from the session's failure on, the window can neither roll back nor commit (a lost handle, no memory)
+		const armed = { failing: false }
+		const exec = db.exec.bind(db) as (...args: unknown[]) => unknown
+		vi.spyOn(db, 'exec').mockImplementation(function execUnlessArmed(...args: unknown[]) {
+			const [first] = args
+			const sql = typeof first === 'string' ? first : (first as { sql?: string }).sql
+			if (armed.failing && (sql === 'ROLLBACK' || sql === 'COMMIT')) {
+				throw new Error(`${sql} refused`)
+			}
+			return exec(...args)
+		} as typeof db.exec)
+		const runtime: StoreRuntime = {
+			...createContractRuntime(),
+			hooks: {
+				createImportSession: function failingSession() {
+					return {
+						afterImport: async function failWithWindowStuck() {
+							armed.failing = true
+							throw new Error('the session fails')
+						},
+					}
+				},
+			},
+		}
+		let told = 0
+		const engine = await startEngine({
+			db,
+			runtime,
+			onBroken: function countBroken() {
+				told += 1
+			},
+		})
+		await expectRejectsWith({
+			action: engine.importFile({
+				file: contractFile({ body: '<B aB="B0"/>' }),
+				writeId: 'w-stuck',
+				clientId: 'c-1',
+			}),
+			key: 'IMPORT_FAILED',
+		})
+		armed.failing = false
+		expect(told).toBe(1)
+		expect(db.isOpen()).toBe(false)
+		// the caller's store never closed: its host is gone, a read is made again on the next engine
+		await expectRejectsWith({
+			action: engine.getDocuments(),
+			key: 'STORE_ENGINE_LOST',
+			meta: { reason: 'host-gone' },
+		})
+		const next = await startEngine({ db: file.connect() })
+		expect(await next.getDocuments()).toEqual([])
+		next.close()
 	})
 
 	it('a window of 0 ms → a task queued at a progress runs before the next one: the engine yields after each transaction', async () => {

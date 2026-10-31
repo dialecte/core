@@ -120,7 +120,9 @@ export interface Store {
 	 * refused with `STORE_DUPLICATE_ID`, the registered document left as it was; then a value that is
 	 * not JSON with `STORE_VALUE_NOT_JSON`; then a `path` that is not valid or does not end with the
 	 * document's file name (`name` + `extension`) with `DOCUMENT_PATH_INVALID`; then a place another
-	 * document holds - the same path, or one a folder of the other's - with `DOCUMENT_PATH_TAKEN`.
+	 * document holds - the same path, or one a folder of the other's - with `DOCUMENT_PATH_TAKEN`. A
+	 * document registered `importing` stays so (no update makes it ready): a store of the project opening
+	 * again removes it, as what an import left.
 	 */
 	registerDocument(file: DocumentRecord): Promise<void>
 
@@ -131,7 +133,8 @@ export interface Store {
 	getDocuments(): Promise<DocumentRecord[]>
 
 	/**
-	 * Update a document's name, path, metadata or import status: a value that is not JSON is refused
+	 * Update a document's name, path or metadata (not its status: only its import marks it ready, through
+	 * `ImportTarget.markReady`; a `status` given is ignored): a value that is not JSON is refused
 	 * first (`STORE_VALUE_NOT_JSON`); a field given as `undefined` is left as it was; a document that is
 	 * not registered is then left alone. Its file name and its path stay one fact: a `path` moves and
 	 * renames it (the name follows the file name, which must end with the document's extension), a
@@ -416,14 +419,31 @@ export type ChangeLogMeta = {
 }
 
 /**
- * What an import writes through: the store operations `runImport` and the parser call. A store runs
+ * What an import writes through: the store operations `runImport` calls, the ones the parser writes through
+ * (`ParseTarget`) among them. A store runs
  * its own import against a target of its own, which a `close()` after the import started does not
  * refuse - the import is one operation and completes.
  */
 export type ImportTarget = Pick<
 	Store,
-	'registerDocument' | 'getDocument' | 'updateDocument' | 'removeDocument' | 'bulkWrite'
->
+	'registerDocument' | 'getDocument' | 'removeDocument' | 'bulkWrite'
+> & {
+	/**
+	 * The imported document ready, once every record and write of its session is stored: the one way a document
+	 * becomes ready (`updateDocument` takes no `status`). Refused `DOCUMENT_NOT_REGISTERED` when the document is no
+	 * longer there `importing` (removed meanwhile, or another one registered since under its id).
+	 */
+	markReady(documentId: string): Promise<void>
+	/**
+	 * The writes of the import's session, once every record of the file is stored (`bulkWrite` takes the file's):
+	 * checked as `bulkWrite` checks them, a create of an id the file gave refused `STORE_DUPLICATE_ID` as one the
+	 * document holds. A store whose import keeps no list of the ids it made looks them up here.
+	 */
+	writeSession(
+		documentId: string,
+		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
+	): Promise<void>
+}
 
 /**
  * What an export reads through: the store's reads, and the version of a document - how many writes it

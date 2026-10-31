@@ -280,17 +280,12 @@ const updating: StoreContractCases = {
 			)
 		},
 	},
-	'metadata or status on a document with a path → the path kept': {
+	'metadata on a document with a path → the path kept': {
 		act: async ({ store }) => {
 			await store.registerDocument(documentAt({ id: 'a', path: 'substations/north.xml' }))
-			await store.updateDocument('a', { metadata: { origin: 'test' }, status: 'importing' })
+			await store.updateDocument('a', { metadata: { origin: 'test' } })
 			expect(await store.getDocument('a')).toEqual(
-				documentAt({
-					id: 'a',
-					path: 'substations/north.xml',
-					metadata: { origin: 'test' },
-					status: 'importing',
-				}),
+				documentAt({ id: 'a', path: 'substations/north.xml', metadata: { origin: 'test' } }),
 			)
 		},
 	},
@@ -396,7 +391,7 @@ const updating: StoreContractCases = {
 			expect(await registeredIds(store)).toEqual(['a', 'b', 'c'])
 		},
 	},
-	'keys an update does not take (id, extension, configKey, createdAt, writeId) → ignored, the document as it was':
+	'keys an update does not take (id, extension, configKey, createdAt, writeId, status) → ignored, the document as it was':
 		{
 			act: async ({ store }) => {
 				await store.registerDocument(makeDocument({ id: 'a', writeId: 'w-a' }))
@@ -408,6 +403,7 @@ const updating: StoreContractCases = {
 					configKey: 'other',
 					createdAt: 7,
 					writeId: 'w-other',
+					status: 'importing',
 				} as DocumentUpdates)
 				expect(await store.getDocuments()).toEqual(before)
 			},

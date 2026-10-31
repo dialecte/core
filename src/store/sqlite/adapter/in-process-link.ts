@@ -98,7 +98,7 @@ async function engineOf(
 	if (!file.engine) {
 		// the engine owns its connection, closed by it when its start fails
 		const db = new sqlite3.oo1.DB(fileName({ key }), 'c')
-		file.engine = openSqliteEngine({
+		const engine = openSqliteEngine({
 			sqlite3,
 			db,
 			dialecteId,
@@ -106,7 +106,12 @@ async function engineOf(
 			name,
 			runtime,
 			options,
+			// broken (closed by then): the next call starts an engine afresh on the file
+			onBroken: function startAfresh() {
+				if (file.engine === engine) file.engine = undefined
+			},
 		})
+		file.engine = engine
 	}
 	return file.engine
 }

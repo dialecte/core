@@ -28,6 +28,7 @@ export type RuntimeFixtureScenario =
 	| 'silent-adopt'
 	| 'other-dialecte'
 	| 'unchecked-open'
+	| 'stranded-window'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =
@@ -39,6 +40,7 @@ export type RuntimeFixtureOrder =
 	| { type: 'disk-free' }
 	| { type: 'write-fails' }
 	| { type: 'close-throws' }
+	| { type: 'strand-windows' }
 
 /** What the fixture's engine workers say on the fixture channel: an order taken, a phase reached. */
 export type RuntimeFixtureNotice =

@@ -6,7 +6,11 @@ import {
 	makeRecord,
 	sessionRecords,
 } from '../../contract/store-contract.fixtures'
-import { createContractRuntime } from '../../contract/store-contract.import-session'
+import {
+	createContractRuntime,
+	holdContractImport,
+	untilHeld,
+} from '../../contract/store-contract.import-session'
 import { loadSqlite } from '../load-sqlite'
 import { openMemoryFile, startEngine, untilNoFreePages } from './engine.fixtures'
 import { freePagesOf } from './reclaim'
@@ -199,6 +203,34 @@ describe('the free pages given back in steps', () => {
 			expect(freePagesOf({ db })).toBeGreaterThan(0)
 			expect((await engine.getDocuments()).map((document) => document.id)).toEqual(['kept'])
 			expect(freePagesOf({ db })).toBeGreaterThan(0)
+			await untilNoFreePages({ db })
+		})
+
+		it('an import started while it gives the pages back → no page given back while the import runs (its window never settled for one); the rest once it has ended', async () => {
+			const file = await fileWithDeadImport()
+			const db = file.connect()
+			const engine = await startEngine({
+				db,
+				options: MANY_SLICES,
+				runtime: createContractRuntime(),
+			})
+			const hold = holdContractImport()
+			const importing = engine.importFile({
+				file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+				writeId: 'w-during-reclaim',
+				clientId: 'c-1',
+			})
+			try {
+				await untilHeld({ hold, importing })
+				const atHold = freePagesOf({ db })
+				expect(atHold).toBeGreaterThan(0)
+				// the turns the reclaim would take steps in
+				for (let turn = 0; turn < 20; turn += 1) await yieldToQueue()
+				expect(freePagesOf({ db })).toBe(atHold)
+			} finally {
+				hold.release()
+			}
+			await importing
 			await untilNoFreePages({ db })
 		})
 

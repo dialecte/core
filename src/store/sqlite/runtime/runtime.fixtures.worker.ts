@@ -137,6 +137,7 @@ function serveEngine(): void {
 	if (scenario === 'sqlite-3-53') reportUnsafeSqlite()
 	if (scenario === 'database-fails') failDatabaseOpen()
 	if (scenario === 'close-throws') failCloseWhenOrdered()
+	if (scenario === 'stranded-window') strandWindowsWhenOrdered()
 	if (scenario === 'other-wire') answerAnotherWire()
 	if (scenario === 'unchecked-open') openWhateverAsked()
 	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
@@ -283,6 +284,35 @@ function failCloseWhenOrdered(): void {
 			failNext = false
 			throw new Error('the database would not close')
 		} as typeof close
+	})
+}
+
+/**
+ * Once the case orders `strand-windows`, every ROLLBACK and COMMIT of the worker's connections fails (a lost
+ * file handle): an import then ends with its connection inside a transaction, and the engine breaks.
+ */
+function strandWindowsWhenOrdered(): void {
+	let stranding = false
+	const channel = new BroadcastChannel(RUNTIME_FIXTURE_CHANNEL)
+	channel.addEventListener(
+		'message',
+		function armStranding(event: MessageEvent<RuntimeFixtureOrder>) {
+			if (event.data.type !== 'strand-windows') return
+			stranding = true
+			acknowledge({ channel, order: event.data })
+		},
+	)
+	void loadSqlite().then(function patchExec(sqlite3) {
+		const prototype = sqlite3.oo1.DB.prototype
+		const exec = prototype.exec as (...given: unknown[]) => unknown
+		prototype.exec = function execUnlessStranding(this: typeof prototype, ...args: unknown[]) {
+			const [first] = args
+			const sql = typeof first === 'string' ? first : (first as { sql?: string } | undefined)?.sql
+			if (stranding && (sql === 'ROLLBACK' || sql === 'COMMIT')) {
+				throw new Error(`${sql} refused: the file handle is lost`)
+			}
+			return exec.apply(this, args)
+		} as typeof prototype.exec
 	})
 }
 

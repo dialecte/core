@@ -20,8 +20,8 @@ import { TEST_DIALECTE_CONFIG } from '@/test'
 import { parseXmlFile } from '@/xml'
 
 import type { RecordSchema } from '@/store'
-import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
+import type { ParseTarget } from '@/xml/parse/parse-xml-document.types'
 
 const CONFIG = TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
@@ -64,11 +64,10 @@ async function fetchText(url: URL): Promise<string> {
 /** Parse a fixture into the raw record set, WITHOUT any IndexedDB write (capture store). */
 async function parseRecords(xml: string): Promise<AnyRawRecord[]> {
 	const all: AnyRawRecord[] = []
-	const store = {
-		bulkWrite: async (_documentId: string, ops: { creates?: AnyRawRecord[] }): Promise<void> => {
-			if (ops.creates) all.push(...ops.creates)
-		},
-	} as unknown as Store
+	const capture: ParseTarget['bulkWrite'] = async (_documentId, ops) => {
+		if (ops.creates) all.push(...ops.creates)
+	}
+	const store: ParseTarget = { bulkWrite: capture, writeSession: capture }
 	await parseXmlFile({
 		file: new File([xml], 'writecost.xml', { type: 'text/xml' }),
 		documentId: 'writecost',

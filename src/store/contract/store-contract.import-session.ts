@@ -6,6 +6,7 @@ import {
 	CONTRACT_SESSION_FUNCTION_VALUE,
 	CONTRACT_SESSION_HOLD_VALUE,
 	CONTRACT_SESSION_LONE_SURROGATE_VALUE,
+	CONTRACT_SESSION_REUSE_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
 	CONTRACT_SESSION_TAG,
 	HOLD_ID_SEPARATOR,
@@ -113,7 +114,8 @@ function holdIdOf(params: { handed: { record: AnyRawRecord }[] }): string | unde
  * worker cannot be handed a test's own hooks: it asks for the records of one tag only, says one
  * diagnostic per record it was handed (with the tag names of its open ancestors; a function or a lone
  * surrogate in its `meta` when the record's `bB` asks for one), marks each with an
- * attribute after the parse, fails when one of them has `bB` set to the fail value, and waits for the
+ * attribute after the parse, creates again under its id a record whose `bB` holds the reuse value, fails
+ * when one of them has `bB` set to the fail value, and waits for the
  * case's release when one has it set to the hold value (`holdContractImport`, every file holding it
  * is held).
  */
@@ -133,7 +135,11 @@ function createContractImportSession(): ImportSession {
 				),
 			)
 			if (failing) throw new Error(`the contract session fails on record ${failing.record.id}`)
+			const reused = handed.find(({ record }) =>
+				holdsValue({ record, value: CONTRACT_SESSION_REUSE_VALUE }),
+			)
 			return {
+				...(reused && { creates: [{ ...reused.record, attributes: [] }] }),
 				updates: handed.map(({ record }) => ({
 					recordId: record.id,
 					attributes: [{ name: CONTRACT_SESSION_SEEN_ATTRIBUTE, value: 'yes' }],

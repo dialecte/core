@@ -26,6 +26,9 @@ export function createImportQueue(): ImportQueue {
 		markRegistered: function markRegistered({ writeId }) {
 			for (const entry of entries) if (entry.writeId === writeId) entry.registered = true
 		},
+		runs: function runs({ writeId }) {
+			return entries.some((entry) => entry.writeId === writeId)
+		},
 	}
 }
 

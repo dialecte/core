@@ -22,11 +22,32 @@ function documentRecord(params: { id: string; status: DocumentStatus; writeId?: 
 }
 
 describe('importOutcomeOf', () => {
-	type TestCase = { documents: DocumentRecord[]; expected: WriteOutcome }
+	type TestCase = {
+		documents: DocumentRecord[]
+		/** What the store says of the import of the id, when it can tell. */
+		running?: boolean
+		expected: WriteOutcome
+	}
 	const testCases: Record<string, TestCase> = {
 		'the document carrying the id is importing → running': {
 			documents: [documentRecord({ id: 'a', status: 'importing', writeId: 'w' })],
 			expected: 'running',
+		},
+		'the document carrying the id is importing, its import running → running': {
+			documents: [documentRecord({ id: 'a', status: 'importing', writeId: 'w' })],
+			running: true,
+			expected: 'running',
+		},
+		'the document carrying the id is importing, its import not running (its removal failed) → not-applied':
+			{
+				documents: [documentRecord({ id: 'a', status: 'importing', writeId: 'w' })],
+				running: false,
+				expected: 'not-applied',
+			},
+		'the document carrying the id is ready, no import of it running → applied': {
+			documents: [documentRecord({ id: 'a', status: 'ready', writeId: 'w' })],
+			running: false,
+			expected: 'applied',
 		},
 		'the document carrying the id is ready → applied': {
 			documents: [documentRecord({ id: 'a', status: 'ready', writeId: 'w' })],
@@ -44,7 +65,9 @@ describe('importOutcomeOf', () => {
 
 	for (const [description, testCase] of Object.entries(testCases)) {
 		it(description, () => {
-			expect(importOutcomeOf({ documents: testCase.documents, writeId: 'w' })).toBe(
+			const { running } = testCase
+			const isRunning = running === undefined ? undefined : () => running
+			expect(importOutcomeOf({ documents: testCase.documents, writeId: 'w', isRunning })).toBe(
 				testCase.expected,
 			)
 		})

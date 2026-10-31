@@ -82,6 +82,8 @@ const dexieStoreFactory: StoreContractFactory = {
 		'dialecte-key':
 			'an IndexedDB database is named by the project name alone: naming it by dialecte too would leave every project stored so far behind; the local store moves to SQLite (keyed by dialecte and name) in 0.9.0',
 		away: 'a frozen tab keeps its connection’s hold on the database: another tab’s destroy is refused until that tab is gone, so no view of it is ever away',
+		'import-liveness':
+			'a local store sees no import another tab runs: a document left importing reads running until a store of the project opens again and removes it; the local store moves to SQLite (one engine sees every import) in 0.9.0',
 	},
 	name: 'DexieStore',
 	createNamed: async function createNamedDexieStore({ name }) {

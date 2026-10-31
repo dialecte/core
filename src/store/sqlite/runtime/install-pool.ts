@@ -326,11 +326,15 @@ function isBusy(params: { thrown: unknown }): boolean {
 
 /**
  * `STORE_QUOTA_EXCEEDED` when the origin has fewer than `bytes` left (a new pool's files, an import's
- * rows): refused before anything is written. A browser that tells no quota is trusted.
+ * rows): refused before anything is written. A browser that tells no quota, or refuses to estimate it, is
+ * trusted.
  */
 export async function refuseShortSpace(params: { project: string; bytes: number }): Promise<void> {
 	const { project, bytes } = params
-	const { quota, usage = 0 } = await navigator.storage.estimate()
+	const estimate = await navigator.storage.estimate().catch(function noEstimate() {
+		return undefined
+	})
+	const { quota, usage = 0 } = estimate ?? {}
 	if (quota === undefined) return
 	const available = quota - usage
 	if (available >= bytes) return

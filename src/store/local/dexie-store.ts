@@ -5,6 +5,7 @@ import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
 import { createOpenConnections } from '../open-connections'
+import { isOwnImporting } from '../own-import'
 import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
 import {
@@ -895,13 +896,23 @@ export class DexieStore implements Store {
 	 * after it started does not refuse the calls it makes (each still counted while it runs).
 	 */
 	private ownImportTarget(): ImportTarget {
+		// the document this import registered: the only one it marks ready
+		let registered: DocumentRecord | undefined
 		return {
-			registerDocument: (file) => this.tracked(() => this.registerDocumentUnguarded(file)),
+			registerDocument: (file) => {
+				registered = file
+				return this.tracked(() => this.registerDocumentUnguarded(file))
+			},
 			getDocument: (documentId) => this.tracked(() => this.getDocumentUnguarded(documentId)),
-			updateDocument: (documentId, updates) =>
-				this.tracked(() => this.updateDocumentUnguarded(documentId, updates)),
-			removeDocument: (documentId) => this.tracked(() => this.removeDocumentUnguarded(documentId)),
-			bulkWrite: (documentId, ops) => this.tracked(() => this.bulkWriteUnguarded(documentId, ops)),
+			markReady: (documentId) =>
+				this.tracked(() => this.markReadyUnguarded({ documentId, registered })),
+			removeDocument: (documentId) =>
+				this.tracked(() => this.removeOwnImport({ documentId, registered })),
+			bulkWrite: (documentId, ops) =>
+				this.tracked(() => this.bulkWriteOwnImport({ documentId, ops, registered })),
+			// every id held is looked up at each write: the session's are checked as the file's
+			writeSession: (documentId, ops) =>
+				this.tracked(() => this.bulkWriteOwnImport({ documentId, ops, registered })),
 		}
 	}
 
@@ -1018,6 +1029,59 @@ export class DexieStore implements Store {
 		if (updated && this.knownDocuments.has(documentId)) {
 			this.knownDocuments.set(documentId, updated)
 		}
+	}
+
+	/** An imported document ready: refused `DOCUMENT_NOT_REGISTERED` once it is no longer the import's own, `importing`. */
+	private async markReadyUnguarded(params: {
+		documentId: string
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, registered } = params
+		await this.ensureCurrentSchema()
+		const documents = this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+		// read and marked in one transaction: a removal by another connection lands before or after, never between
+		const ready = await this.db.transaction('rw', documents, async () => {
+			const held = await documents.get(documentId)
+			if (!held || !isOwnImporting({ held: withStatus(held), registered })) return undefined
+			const document: DocumentRecord = { ...withStatus(held), status: 'ready' }
+			await documents.put(document)
+			return document
+		})
+		if (!ready) throwDocumentNotRegistered({ documentId, what: 'its ready state' })
+		if (this.knownDocuments.has(documentId)) this.knownDocuments.set(documentId, ready)
+	}
+
+	/**
+	 * An import's records, into its own document only: refused `DOCUMENT_NOT_REGISTERED` once it is not (read just
+	 * before the write, as for its removal).
+	 */
+	private async bulkWriteOwnImport(params: {
+		documentId: string
+		ops: Parameters<Store['bulkWrite']>[1]
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, ops, registered } = params
+		await this.ensureCurrentSchema()
+		const held = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+		if (!held || !isOwnImporting({ held: withStatus(held), registered })) {
+			throwDocumentNotRegistered({ documentId, what: 'records' })
+		}
+		await this.bulkWriteUnguarded(documentId, ops)
+	}
+
+	/**
+	 * What a failed import leaves goes: its own document only, never one registered since under its id (read just
+	 * before: a tab registering one in between is the local store's to live with until it moves to SQLite).
+	 */
+	private async removeOwnImport(params: {
+		documentId: string
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, registered } = params
+		await this.ensureCurrentSchema()
+		const held = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+		if (!held || !isOwnImporting({ held: withStatus(held), registered })) return
+		await this.removeDocumentUnguarded(documentId)
 	}
 
 	private async removeDocumentUnguarded(documentId: string): Promise<void> {

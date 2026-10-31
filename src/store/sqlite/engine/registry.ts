@@ -13,7 +13,7 @@ import { toJsonCopy } from '@/store/json-values'
 import { throwDocumentAlreadyRegistered } from '@/store/store-errors'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
-import type { DocumentTable, DocumentTables } from './engine.types'
+import type { DocumentTable, DocumentTables, RegistryRowState } from './engine.types'
 import type { DocumentRecord, DocumentStatus, DocumentUpdates } from '@/project/types'
 import type { PathHolderCandidate } from '@/store/document-path.types'
 import type { Database, SqlValue } from '@sqlite.org/sqlite-wasm'
@@ -48,16 +48,24 @@ export function insertDocument(params: { db: Database; document: DocumentRecord 
 	return { seq, table }
 }
 
-/** A document's row number and status, read by its id; none when it is not registered. */
+/** A document's row number, status, write and creation time, read by its id; none when it is not registered. */
 export function readDocumentState(params: {
 	db: Database
 	documentId: string
-}): { seq: number; status: DocumentStatus } | undefined {
+}): RegistryRowState | undefined {
 	const { db, documentId } = params
-	const [row] = db.selectArrays(`SELECT seq, status FROM ${TABLE_DOCUMENTS} WHERE id = ?`, [
-		documentId,
-	])
-	return row ? { seq: Number(row[0]), status: statusOf({ value: row[1]! }) } : undefined
+	const [row] = db.selectArrays(
+		`SELECT seq, status, writeId, createdAt FROM ${TABLE_DOCUMENTS} WHERE id = ?`,
+		[documentId],
+	)
+	if (!row) return undefined
+	const [seq, status, writeId, createdAt] = row
+	return {
+		seq: Number(seq),
+		status: statusOf({ value: status! }),
+		writeId: writeId === null ? undefined : String(writeId),
+		createdAt: Number(createdAt),
+	}
 }
 
 /**
@@ -93,7 +101,7 @@ export function readDocuments(params: { db: Database }): DocumentRecord[] {
 }
 
 /**
- * The name, path, metadata and status of a registered document, in the caller's transaction: a value that
+ * The name, path and metadata of a registered document, in the caller's transaction: a value that
  * is not JSON is refused with `STORE_VALUE_NOT_JSON` first; an unknown document is then left alone; then the
  * path rules (`DOCUMENT_PATH_INVALID`, `DOCUMENT_PATH_TAKEN`), as every store applies them.
  */
@@ -111,14 +119,8 @@ export function updateDocumentRow(params: {
 		assertDocumentPlace({ document: updated, documents: readPlacedDocuments({ db }) })
 	}
 	db.exec({
-		sql: `UPDATE ${TABLE_DOCUMENTS} SET name = ?, metadata = ?, status = ?, path = ? WHERE id = ?`,
-		bind: [
-			updated.name,
-			metadataColumn({ document: updated }),
-			updated.status,
-			updated.path ?? null,
-			documentId,
-		],
+		sql: `UPDATE ${TABLE_DOCUMENTS} SET name = ?, metadata = ?, path = ? WHERE id = ?`,
+		bind: [updated.name, metadataColumn({ document: updated }), updated.path ?? null, documentId],
 	})
 }
 
