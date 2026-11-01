@@ -32,6 +32,8 @@ export type HubRealm = Pick<HubConnection, 'realmId' | 'createHubPort' | 'onRejo
 export type HubConnection = {
 	/** This realm instance's id (a new one after the page came back from a freeze or the cache). */
 	realmId: () => string
+	/** Joined through a port its page made (`adoptHubPort`): a client only, hosting no engine. */
+	readonly bound: boolean
 	/**
 	 * Engines the realm can start from now on, beside those it runs: the hub told at once when welcomed (else in the
 	 * next hello). A dialecte it runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, nothing added; one it

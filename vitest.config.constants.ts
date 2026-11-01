@@ -79,6 +79,14 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'a project on `sqlite` storage: its engine worker, the origin’s hub and private file system',
 	},
 	{
+		path: 'src/store/sqlite/adapter/sqlite-connector.no-hub.test.ts',
+		why: 'a page with workers, no SharedWorker and its private file system refused (a browser realm, stubbed)',
+	},
+	{
+		path: 'src/store/sqlite/adapter/sqlite-connector.offer.test.ts',
+		why: 'what a browser realm offers the hub, its private file system handed or refused',
+	},
+	{
 		path: 'src/store/sqlite/list-projects.opfs.test.ts',
 		why: 'projects listed from the origin’s private file system, destroyed by name',
 	},

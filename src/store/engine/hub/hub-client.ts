@@ -76,6 +76,11 @@ export function openHubConnection(
 	})
 }
 
+/** The realm's hub connection made or under way, if any: none is started for asking (a bound child has its own). */
+export function keptHubConnection(): Promise<HubConnection | undefined> | undefined {
+	return (globalThis as HubRegistry)[HUB_REGISTRY_KEY]
+}
+
 /**
  * `STORE_HUB_SPAWNERS_FIXED` when `asked` names a dialecte the connection runs at another version: a page runs one
  * engine version per dialecte (two would split the project's views between two engines).
@@ -744,6 +749,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		realmId: function currentRealmId() {
 			return realmId
 		},
+		bound,
 		addSpawners: function addSpawners({ spawners: asked }) {
 			refuseOtherVersions({ registered: registeredHubSpawners, asked: asked.map(toHubSpawner) })
 			// a bound child hosts no engine (the hub ignores its spawners)

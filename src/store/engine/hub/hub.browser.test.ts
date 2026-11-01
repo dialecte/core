@@ -84,9 +84,14 @@ function bootStarted(params: { frame: HTMLIFrameElement }): Promise<RealmWindow>
 }
 
 /** A child realm iframe bound to `parent` through a port the parent makes; its unbind for the case. */
-async function boundChildFrame(params: { parent: BrowserRealm }): Promise<BoundChildFrame> {
+async function boundChildFrame(params: {
+	parent: BrowserRealm
+	storageRefused?: boolean
+}): Promise<BoundChildFrame> {
 	const frame = document.createElement('iframe')
-	frame.srcdoc = bootDocument({ params: { canStartEngines: false, bound: true } })
+	frame.srcdoc = bootDocument({
+		params: { canStartEngines: false, bound: true, storageRefused: params.storageRefused },
+	})
 	document.body.append(frame)
 	frames.push(frame)
 	// posted once its module runs: it listens for the port from then on
@@ -266,6 +271,24 @@ describe('the hub across realms of the page', () => {
 				])
 			},
 			{ timeout: 10_000, interval: 100 },
+		)
+	})
+
+	it('a child bound through a port whose private file system is refused (a sandboxed frame) → a project on sqlite opened through the page’s engine; its destroy, which runs a worker of its own, refused STORE_UNAVAILABLE', async () => {
+		const { realm: page } = await realmFrame({ canStartEngines: true })
+		const { realm: child } = await boundChildFrame({ parent: page, storageRefused: true })
+		const project = uniqueProject()
+		expect(await child.registerThroughSqlite({ project, id: 'doc-1' })).toEqual(['doc-1'])
+		expect(await page.documentIds({ project })).toEqual(['doc-1'])
+		expect(await child.destroyThroughSqlite({ project })).toBe('STORE_UNAVAILABLE')
+		page.closeStore({ project })
+	})
+
+	it('a realm joined on its own whose private file system is refused → a project on sqlite refused STORE_UNAVAILABLE, though another realm could host it', async () => {
+		await realmFrame({ canStartEngines: true })
+		const { realm } = await realmFrame({ canStartEngines: false, storageRefused: true })
+		expect(await realm.registerThroughSqlite({ project: uniqueProject(), id: 'doc-1' })).toBe(
+			'STORE_UNAVAILABLE',
 		)
 	})
 
