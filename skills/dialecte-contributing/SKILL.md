@@ -125,7 +125,9 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
    test owns its temporary folder, and a time bound carries slack and never counts a worker's start; a test
    that reads the disk, spawns a process or measures time carries an explicit bound, named
    (`SOURCE_SCAN_TIMEOUT_MS` in core's `src/test/test-timing.constants.ts`) and several times what the test
-   takes on a quiet machine; the test review and the review check that every such test has one
+   takes on a quiet machine; the test review and the review check that every such test has one. A suite that
+   spawns git clears the inherited `GIT_*` variables before any test (a setup file), for the code under test
+   as much as for its own calls: under a commit hook in a worktree they point at the outer repository
    ([references/traps.md](references/traps.md), Tests).
 3. **Implement under the code rules**: [references/code-rules.md](references/code-rules.md).
    Read it before writing the first line; most review comments come from it. `npx dialecte rules`
@@ -189,7 +191,11 @@ warning). A failure names what changed and the read-only commands
 to look at it. `--full` and the heavy steps hold a machine-wide lock: a step the package marks `heavy`, a
 command naming a browser project, and any test step of a package that runs its tests in a browser (a
 `@vitest/browser*` or playwright dependency, a `browser` in its vitest config). A second heavy run waits
-with a line every 30 s naming the holder (`--no-wait` refuses).
+with a line every 30 s naming the holder (`--no-wait` refuses). A heavy run outside the gate (a browser suite,
+mutation tests, a bench) starts with `npx dialecte lock run -- <command>`, which takes the same lock; a cli
+whose `npx dialecte --help` lists no `lock` does not have it yet: run nothing heavy while another heavy run is
+on the machine (`uptime`, and `ps` or `pgrep -fl` for a browser, vitest or Stryker process), and never write a
+lock script of your own.
 
 **Waiting on a long run** (`gate --full`, a mutation run, a bench): start it in the background with its output in
 a log - your harness's background run, or `cmd > "$log" 2>&1 & echo $! > "$pidfile"` - then wait for the

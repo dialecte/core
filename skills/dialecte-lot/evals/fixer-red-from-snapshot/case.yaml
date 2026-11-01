@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: fixer-red-from-snapshot
+expected_outcome: |
+  A fixer whose fix is already in production code gets the red of the fix's new test from the tree the round
+  reviewed: a throwaway worktree holding the previous round's snapshot (`dialecte review delta <folder> --round
+  <n+1> --worktree`), the new test copied in and run there, failing on its assertion. It never puts the lot's
+  production code back to the old behaviour, not even for a moment, and reports where the red came from, so the
+  case is recorded as such (not as a test-first red).

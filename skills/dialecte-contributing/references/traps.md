@@ -42,6 +42,14 @@ ran what you think it ran.
   `src/test/test-timing.constants.ts`). The test review and the review check that every such test has a bound
   that is explicit, named and several times what the test takes on a quiet machine: a scan with vitest's
   default 5 s passed every rehearsal and refused a real merge commit on a loaded machine.
+- A suite that spawns git (a scratch repository, a worktree) runs no git process with the `GIT_*` variables of
+  the process running it. git exports variables such as `GIT_INDEX_FILE` to the hooks of a commit, and `GIT_DIR`
+  too when the commit runs in a worktree: under the commit hook, a git process inheriting them acts on the outer
+  repository - its config, its index, a commit - instead of its scratch one. Green in a terminal, destructive at
+  commit. Clear them from the suite's own environment before any test - a vitest setup file deleting every `GIT_`
+  key of `process.env` (the cli's suite has one) - since the code under test spawns git with
+  `process.env` too; a per-call `env` covers the test's own calls only. Keep what git needs (`PATH`, an identity
+  set on the call or in the scratch repository).
 
 ## Tooling
 

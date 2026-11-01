@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: git-spawning-test-environment
+expected_outcome: |
+  A test suite that spawns git runs no git process with the GIT_* variables of the process that runs it - neither the
+  test's own git calls nor the code under test, which spawns git with `process.env`. It clears those variables from
+  the suite's environment before any test (a vitest setup file or a `beforeAll`), and keeps what git needs (PATH, an
+  identity). Under a commit hook in a worktree, git exports GIT_DIR and GIT_INDEX_FILE: a git process inheriting them
+  acts on the outer repository.

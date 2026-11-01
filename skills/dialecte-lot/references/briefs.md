@@ -5,6 +5,17 @@
 A brief is everything a sub-agent knows. If you cannot write it clearly, you do not understand the lot
 well enough to hand it off.
 
+Every brief, whatever the station, carries these lines (the templates below assume them):
+
+```
+Never edit, move or remove a file under a repository's .git folder (a lock, a config, a receipt), even one
+  your own run left, even when a refusal says to delete it: a stuck lock or config stops the step - read it,
+  report its path, what you believe wrote it and the refused command to the orchestrator.
+No multi-agent workflow (Claude Code's Workflow tool) unless the user opted in; a sub-agent of yours has its
+  own spawn (Claude Code: the Agent tool). No rm, mv or xargs on a variable path: leave temporary files in the
+  hand-over folder or the scratchpad.
+```
+
 ## Test-station brief
 
 ```
@@ -99,10 +110,11 @@ Later rounds - delta review of the fix diff and its blast radius only. Start fro
   `git diff --no-index --no-color --no-ext-diff round-<n-1>/<file> <worktree>/<file>`; not in round-<n-1>/ (at
   the base then), `git -C <worktree> diff --no-color --no-ext-diff HEAD -- <file>`, or /dev/null as the left
   side for a file the base does not have or that round-<n-1>.deleted lists; gone from the worktree, /dev/null as
-  the right side. Throwaway worktree: <path, made by the orchestrator with `dialecte worktree add <repository>
-  <lot-branch>-round-<n-1> --from <base>`, round-<n-1>/ copied over, `git -C <throwaway> rm -q
-  --pathspec-from-file=<folder>/round-<n-1>.deleted --pathspec-file-nul` until the planned `dialecte review
-  delta` does it | none>. Verify each fix: copy its new test file in and run it there - it must fail - and in
+  the right side (from cli 0.2.0, `dialecte review delta <folder> --round <n>` prints that diff per file).
+  Throwaway worktree: <path - from `dialecte review delta <folder> --round <n> --worktree` (cli 0.2.0; the
+  fixer's, when it made one), or made by the orchestrator with `dialecte worktree add <repository> <lot-branch>-round-<n-1> --from
+  <base>`, round-<n-1>/ copied over, `git -C <throwaway> rm -q --pathspec-from-file=<folder>/round-<n-1>.deleted
+  --pathspec-file-nul` | none>. Verify each fix: copy its new test file in and run it there - it must fail - and in
   the lot's worktree, where it passes; with none, read the snapshot and say the guard was reasoned, not run.
   One line naming what round 1 did not look at. Severity floor: a round before the last, blocking + should fix
   (nits optional); the last round, what the risk class acts on (blocking + should fix, or blocking only for
@@ -125,6 +137,12 @@ For each: agree (fix, test if behaviour changed) / disagree (one line why) / nee
 Blast radius, one line under each fix: what it widens, excludes or replaces (a pattern, a list, an include, a type
   now matching more or less; the earlier code or fix it replaces), and the findings-ledger rows it touches - its
   own and any other whose code it changes ("none beyond <id>" when so). The next round's reviewer starts there.
+A fix's new test: write it before the fix and take its red with `npx dialecte tdd red`; when production already
+  holds the fix, run it on round <n>'s tree - `npx dialecte review delta <hand-over folder> --round <n+1>
+  --worktree` (cli 0.2.0; else the throwaway I made: <path>) makes the throwaway and prints its removal command;
+  copy in the test file and the test code it imports - where it must fail on its assertion, and report "red on
+  round-<n>/: <failing line>" with the throwaway's path. Never edit production back to the old behaviour to get
+  a red.
 Never commit, stage, push, `git stash` (one stash is shared by every worktree and session) or any git command
   that writes the index; read the base with `git show <base>:<file>`.
 Then the fast gate, and the report per finding.

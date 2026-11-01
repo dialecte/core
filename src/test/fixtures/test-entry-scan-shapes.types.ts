@@ -5,6 +5,6 @@ export type ShapeRow = { value: string }
 export type Box<GenericContent> = { id: string; brand?: (content: GenericContent) => never }
 
 /** A generic of the test entry that never reads its parameter (a phantom one): reached only as a type argument. */
-export interface Tagged<GenericTag> {
+export interface Tagged<_GenericTag> {
 	label: string
 }
