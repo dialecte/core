@@ -105,7 +105,9 @@ lot - has no red to prove. The orchestrator declares it in the brief and writes
 test files changed)"), the hand-over card shows the same. The file is never committed (the hygiene and the
 hand-over leave it out). A lot that changes behaviour is never exempt, however small. A single case may be
 accepted without a red instead - a new test of behaviour that already exists, an honest cut of an
-assertion: `"accept": [{ "case": "<file>::<name> [project]", "reason": "..." }]` in the same file. It
+assertion, a fix's new test whose red was taken on the previous round's snapshot (Station 4; the reason quotes
+that red): `"accept": [{ "case": "<file>::<name> [project]", "reason": "..." }]` in the same file
+(`dialecte lot accept <case> <reason>` writes it from cli 0.2.0). It
 passes `tdd red` as accepted, does not block its file, and the gate and the card list it with its
 reason.
 
@@ -179,7 +181,8 @@ without a test, a test that passes for the wrong reason (weak assertion, a match
 spec cares about, an XPath matching another element), types that the next lot cannot use without casts,
 a contradiction with the brief or the plan. An exempt lot: does its reason match the diff (a "wording"
 lot that changes an expected value or a production branch is not exempt)? Each accepted case: does its
-reason match the diff (the behaviour really exists at the base, the cut really removes a wrong assertion)?
+reason match the diff (the behaviour really exists at the base, the cut really removes a wrong assertion, a red
+on `round-<n>/` is the one the fix report holds, with its failing line)?
 Each flag the gate prints: why it happened.
 
 **Pass 2 - fit**: does it do what the brief said, no more; did it hand-roll something the API, a hook or
@@ -216,8 +219,9 @@ copy of every file `git status --porcelain -z --untracked-files=all` lists at th
 untracked, at its path relative to the repository root, and beside it `round-<n>.deleted`, NUL-separated, naming
 each deleted file and the old path of each rename (beside the copy, never in it: it is no file of the lot). A copy,
 not a patch: nothing to apply, binary files included. The lot stays uncommitted until the hand-over, so HEAD is the
-base for the whole loop: these snapshots are the only refs the later rounds have. These mechanics move into the
-planned `dialecte record snapshot` (and `dialecte review delta`); the text here is the manual fallback.
+base for the whole loop: these snapshots are the only refs the later rounds have. From cli 0.2.0,
+`dialecte record snapshot <folder> --round <n>` takes it (and `dialecte review delta` reads it); the text here is
+the manual fallback for an older cli.
 
 - **Round 1 - full review**, blind to the implementer's conclusions, every severity. The checklist, each angle
   answered even when empty: correctness; test soundness (each test fails for the right reason); **the
@@ -230,8 +234,9 @@ planned `dialecte record snapshot` (and `dialecte review delta`); the text here 
   the findings ledger. The last round reports what its class acts on; anything below is logged as a follow-up, not
   fixed in the lot. A finding the last round acts on is fixed; the round that would verify the fix goes to the user
   (above). The floor rises so the rounds converge. The review has three parts:
-  - (a) **Each fix verified on the old code.** The planned `dialecte review delta` will make the throwaway
-    worktree and run the guard there; until it exists, the orchestrator makes one by hand on its own branch
+  - (a) **Each fix verified on the old code.** From cli 0.2.0,
+    `dialecte review delta <folder> --round <n> --worktree` makes the throwaway worktree holding `round-<n-1>/`
+    (the fixer's, when it made one: Station 4, reused, never a second); with an older cli, the orchestrator makes one by hand on its own branch
     (never the lot's), copies the snapshot over it, removes its deleted files - the one place a `git rm` is
     allowed, never in the lot's worktree - and passes the path (`worktree prune` lists it after the lot):
 
@@ -266,9 +271,12 @@ planned `dialecte record snapshot` (and `dialecte review delta`); the text here 
   - (c) **One line naming what round 1 did not look at.**
 
 **The findings ledger** (`findings-ledger.md` in the hand-over folder) is the lot's memory across rounds. Only the
-orchestrator writes it - by hand until the cli does (planned: `dialecte record review`, which will append to the
-hand-over folder); reviewers propose rows. It opens with the risk class (`Risk class: <class> - <rounds> rounds,
-last round acts on <floor>, a further round only with the user - set by <files>`). One row per finding: id, round
+orchestrator writes it, by hand or, from cli 0.2.0, with `dialecte record review` (a new row, `open`) and
+`dialecte record decision` (the states `open`, `fix to verify`, `fixed <n> [note]`, `accepted`, `logged`). The
+cli writes neither the risk-class line nor `reopened`, and its `fix to verify` carries no blast radius: write
+those by hand, or keep the blast-radius lines in a fixes file beside the ledger. Reviewers propose rows. It
+opens with the risk class (`Risk class: <class> - <rounds> rounds, last round acts on <floor>, a further round
+only with the user - set by <files>`). One row per finding: id, round
 raised, severity, file:line, state - `open`, `fix to verify - <blast radius>` (the fixer says fixed; its
 blast-radius line comes with it), `fixed <n>` (n = the round that verified the fix; `fixed <n> (reasoned)` when the
 guard was not run), `reopened <n> by <id>` (a later fix broke it again), `accepted <reason>`, `logged <follow-up>`.
@@ -310,9 +318,23 @@ code it changes, an earlier fix above all. A fix that touches nothing else says 
 reviewer starts there. A fix's own new finding is the usual way a round fails to converge: a too-wide exclusion
 that fixes one finding and hides another, a fix that undoes an earlier one.
 
+**The red of a fix's new test comes from the tree the round reviewed, never from production put back.** Write the
+test before the fix and take its red with `npx dialecte tdd red` while the code it pins is still the reviewed one.
+When production already holds the fix, run the new test where the old code still lives: `npx dialecte review delta
+<folder> --round <n+1> --worktree` (n = the round whose findings you fix; cli 0.2.0, else the orchestrator's
+hand-made throwaway of Station 3 (a)) makes a throwaway worktree holding `round-<n>/` and prints its removal
+command; copy the new test file in, with the test code it imports that the round changed, run it there - it must
+fail on its assertion - and in the lot's worktree, where it passes. The report says the red was taken on
+`round-<n>/`, with the failing line, so the orchestrator records the case as accepted with that reason (Station 1),
+never as a test-first red. The throwaway's path and removal command go to the orchestrator: it is round n+1's
+throwaway too (same branch), passed to that reviewer, removed after it. Never edit production code back to the old
+behaviour, not even for one run: that red proves the test can fail, not that it came first, and `tdd` cannot tell
+it from a test-first red (it flags `red after green` only when the case already had a green there).
+
 ```
 <id> fixed | disagreed: <why> | needs the user: <the decision>
   blast radius: widens <...> | excludes <...> | replaces <...> | none beyond <id>; ledger rows: <id>, <id>  (fixed only)
+  red: tdd red before the fix | on round-<n>/ (throwaway <path>): <failing line>  (fixed with a new test only)
 ```
 
 ## Station 6 - hand over
@@ -351,7 +373,8 @@ that is rewritten every retro never settles.
   worktree was made, whatever wrote it. A failure is a finding: look with the read-only commands it prints
   and report it; never repair it with a git command that writes.
 - Write each brief from [references/briefs.md](references/briefs.md): the brief is the agent's whole
-  context; synthesise, do not say "based on the findings".
+  context; synthesise, do not say "based on the findings". Every brief carries its lines for all stations
+  (nothing under `.git` by hand, no workflow without the user's opt-in, no `rm` on a variable path).
 - Spawn the station's own agent when the host has it: Claude Code with `.claude/agents/dialecte-<station>.md`
   (written by `npx @dialecte/cli skills sync`: `dialecte-test-writer`, `dialecte-test-reviewer`,
   `dialecte-implementer`, `dialecte-implementer-strong`, `dialecte-reviewer`, `dialecte-fixer`,
@@ -406,6 +429,14 @@ orchestrator launches in the background gets a **deadline** when it is launched:
 - `git stash` (one stash is shared by every worktree and session) and any git command that writes the index
   (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`; the one exception is the `git rm` of a review round's throwaway worktree). To compare with the base, read it with
   `git show <base>:<file>` or run it in a throwaway worktree; your own tree stays as it is.
+- Edit, move or remove any file under a repository's `.git` folder by hand - a lock, a config, a receipt, a
+  worktree's folder - even one your own run left, even when a refusal says "delete it and its lock". A stuck
+  lock or a broken config stops that step: read it (`ls`, `cat`), then hand it to the orchestrator - its path,
+  what you believe wrote it, the refused command; the orchestrator (or an agent playing every station) takes it
+  to the user. The same for the hand-over script a lock names. Every station, every agent.
+- Start a multi-agent workflow (Claude Code's Workflow tool) without the user's explicit opt-in: each sub-agent
+  has its own spawn (Claude Code: the Agent tool), several at once when they are independent, eval runs included.
+- `rm`, `mv` or `xargs` on a variable path: leave temporary files in the hand-over folder or the scratchpad.
 - Wait on a background run with no deadline, or on its completion notice alone.
 - Hand over a hand-written commit or merge script.
 - Implement two lots in one station "because they are small".
