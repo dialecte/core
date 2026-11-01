@@ -63,7 +63,8 @@ export class EngineStore implements Store {
 	private listenedLink: EngineLink | undefined
 	/**
 	 * The writes of this store refused `STORE_ENGINE_LOST`, by id: one that lands later is announced as another
-	 * connection's, so whoever listens folds it in.
+	 * connection's, so whoever listens folds it in. Forgotten once told, once its outcome answers settled (`applied`,
+	 * `not-applied`), at a resync (the engine gone tells nothing more) and once the link is released.
 	 */
 	private readonly lostWrites = new Set<string>()
 
@@ -286,7 +287,10 @@ export class EngineStore implements Store {
 	}
 
 	async getWriteOutcome(params: { writeId: string }): Promise<WriteOutcome> {
-		return this.call('getWriteOutcome', params)
+		const outcome = await this.call('getWriteOutcome', params)
+		// settled: its change came before this answer, on the same port, or never comes - its id forgotten
+		if (outcome !== 'running') this.lostWrites.delete(params.writeId)
+		return outcome
 	}
 
 	// --- Writes ---
@@ -487,6 +491,8 @@ export class EngineStore implements Store {
 	/** A link's notice told to every listener; one that throws stops no other. */
 	private tellListeners(params: { notice: LinkNotice; link: EngineLink }): void {
 		const { notice, link } = params
+		// another engine: a lost write's change, which the engine gone never told, never comes
+		if (notice.type === 'resync') this.lostWrites.clear()
 		const told: StoreNotice =
 			notice.type === 'resync' ? notice : this.changeOf({ signal: notice.signal, link })
 		for (const listener of Array.from(this.listeners)) {
@@ -501,6 +507,8 @@ export class EngineStore implements Store {
 	/** Called with no operation running, so no connection is under way; settled once the link counts no more. */
 	private releaseLink(): Promise<void> {
 		this.stopListeningToLink()
+		// a lost write's change came on this link, or never comes: nothing more is heard of it
+		this.lostWrites.clear()
 		// a link released already: a later close waits for that release still
 		if (this.link) this.linkReleased = this.link.close()
 		this.link = undefined

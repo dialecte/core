@@ -188,7 +188,7 @@ export const ERROR_CATALOG = {
 		code: 'D1019',
 		message: "The page's hub connection runs another version of this dialecte's engine",
 		explanation: {
-			when: "`connectHub({ spawners })` named a dialecte whose engine the page's connection already runs at another version: a page runs one version of each dialecte's engine (two would split a project's views between two engines). A later call adds the engines of dialectes the page does not run yet. `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added.",
+			when: "`connectHub({ spawners })` named a dialecte whose engine the page's connection already runs at another version, or a project was opened (or destroyed by name) on `sqlite` from a factory of such a version (the project offers its engine to the hub as it opens): a page runs one version of each dialecte's engine (two would split a project's views between two engines). A later call adds the engines of dialectes the page does not run yet. `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added, nothing opened.",
 			fix: "Ship one version of each dialecte in the app: register each dialecte's `factory.spawner` from the copy the app opens its projects with.",
 			docs: `${CORE_DOCS_URL}/api/dialecte`,
 		},

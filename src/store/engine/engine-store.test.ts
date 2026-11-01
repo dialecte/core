@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
-import type { StoreNotice } from '../store.types'
+import type { StoreNotice, WriteOutcome } from '../store.types'
 import type { EngineLostReason } from './client/client.types'
 import type {
 	CallLog,
@@ -450,10 +450,11 @@ function gatedConnector(params: { destroy: GatedDestroy }): GatedConnector {
 
 describe('EngineStore, the changes it tells', () => {
 	/** A link whose engine refuses every commit lost (its writeId on the refusal) and whose notices the case sends. */
-	function lostCommitConnector(): {
+	function lostCommitConnector(params: { outcome?: WriteOutcome } = {}): {
 		connector: EngineConnector
 		tell: (notice: LinkNotice) => void
 	} {
+		const { outcome = 'running' } = params
 		let told: (notice: LinkNotice) => void = function nobody() {}
 		const connector: EngineConnector = {
 			connect: async function connectLosing() {
@@ -470,6 +471,9 @@ describe('EngineStore, the changes it tells', () => {
 									detail: 'lost while it waited',
 									meta: { reason: 'no-heartbeat', writeId: params.writeId },
 								})
+							},
+							getWriteOutcome: async function answerOutcome() {
+								return outcome
 							},
 						} as unknown as EngineApi
 					},
@@ -529,6 +533,77 @@ describe('EngineStore, the changes it tells', () => {
 		).toEqual([false, true, true, false, 'resync'])
 		await store.close()
 	})
+
+	type ForgottenCase = {
+		outcome?: WriteOutcome
+		/** What follows the lost commit before its change is told. */
+		then: (params: { store: EngineStore; tell: (notice: LinkNotice) => void }) => Promise<unknown>
+		toldAsOwn: boolean
+	}
+	const forgottenCases: Record<string, ForgottenCase> = {
+		'its outcome asked, not applied → its id forgotten (a change of that id told as its own)': {
+			outcome: 'not-applied',
+			then: function askOutcome({ store }) {
+				return store.getWriteOutcome({ writeId: 'w-lost' })
+			},
+			toldAsOwn: true,
+		},
+		'its outcome asked, applied → its id forgotten (its change came before that answer, or never comes)':
+			{
+				outcome: 'applied',
+				then: function askOutcome({ store }) {
+					return store.getWriteOutcome({ writeId: 'w-lost' })
+				},
+				toldAsOwn: true,
+			},
+		'its outcome asked, still running → its id kept (its change, when it lands, told as another’s)':
+			{
+				outcome: 'running',
+				then: function askOutcome({ store }) {
+					return store.getWriteOutcome({ writeId: 'w-lost' })
+				},
+				toldAsOwn: false,
+			},
+		'a resync told (another engine: the lost one’s change never comes) → its id forgotten': {
+			then: async function resync({ tell }) {
+				tell({ type: 'resync' })
+			},
+			toldAsOwn: true,
+		},
+		'the store closed and opened again → its id forgotten': {
+			then: async function closeAndOpen({ store }) {
+				await store.close()
+				await store.open()
+			},
+			toldAsOwn: true,
+		},
+	}
+	for (const [description, { outcome, then, toldAsOwn }] of Object.entries(forgottenCases)) {
+		it(`its own commit refused lost, then ${description}`, async () => {
+			const { connector, tell } = lostCommitConnector({ outcome })
+			const store = new EngineStore({ name: `forgotten-${crypto.randomUUID()}`, connector })
+			const changes: boolean[] = []
+			store.subscribe(function keep(notice) {
+				if (notice.type === 'change') changes.push(notice.own)
+			})
+			await store.open()
+			await expectRejectsWith({
+				action: store.commit({
+					documentId: 'doc-1',
+					writeId: 'w-lost',
+					creates: [],
+					updates: [],
+					deletes: [],
+					onProgress: function ignoreProgress() {},
+				}),
+				key: 'STORE_ENGINE_LOST',
+			})
+			await then({ store, tell })
+			tell(commitEvent({ writeId: 'w-lost', connectionId: 'own-connection' }))
+			expect(changes).toEqual([toldAsOwn])
+			await store.close()
+		})
+	}
 
 	it('its last listener gone → it listens to its link no more (a link listened to follows its next engine); a new one → again', async () => {
 		let listening = 0
