@@ -219,6 +219,8 @@ async function endBatch(pass: ExportPass): Promise<boolean> {
 		listener: control.onProgress,
 		value: { recordsWritten, totalRecords },
 		of: TOLD_OF.exportProgress,
+		// the export's ticks: a listener failing at each one reported once
+		call: control,
 	})
 	throwIfExportAborted({ signal: control.signal, documentId })
 	await yieldToQueue()

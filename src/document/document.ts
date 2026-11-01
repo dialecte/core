@@ -45,8 +45,8 @@ export class Document<
 
 	/**
 	 * Name of the project's BroadcastChannel. Open your own instance
-	 * (`new BroadcastChannel(doc.channelName)`) to receive ProjectChannelMessage
-	 * events for this project, same-tab and cross-tab.
+	 * (`new BroadcastChannel(doc.channelName)`) to receive ProjectChannelEvent
+	 * events for this project (each change, and a resync), same-tab and cross-tab.
 	 */
 	readonly channelName: string
 

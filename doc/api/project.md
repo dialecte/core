@@ -349,7 +349,7 @@ project.channelName // `dialecte::project::${name}`, or one of this Project's ow
 
 const channel = project.createChannel() // fresh BroadcastChannel on channelName; caller owns it
 channel.addEventListener('message', (e) => {
-	const message = e.data // ProjectChannelMessage
+	const event = e.data // ProjectChannelEvent: a change (ProjectChannelMessage), or a resync
 })
 // ...
 channel.close()
@@ -357,7 +357,7 @@ channel.close()
 
 How the changes reach the Project depends on its store:
 
-- **A store that announces its changes** (`sqlite`, `inMemory`; a custom store with `subscribe`): the store tells the Project every change, made by any connection of the project (each tab, iframe and Project of it). The Project folds the others' changes into its state, wakes its Documents, and reposts them on a channel of its own, `channelName` = `dialecte::project::<name>::<instance>`; it posts its own changes there once its state holds them - a change no call of the Project made (a write on the store you hold, e.g. a custom `storage`, or a Document of an earlier open) folded into its state and posted once no call of the Project runs (with the running call's own otherwise, or once that call ends; past 256 kept, at once). Every change told while the Project opens - its own (a store's cleanup) and another connection's, from the store or the name's channel - is folded and posted, in the order told, once its documents are read (past 256 of them, or a resync told meanwhile: its state read again instead). A fold no call awaits that fails - a `doc.subscribe` callback throwing as another change is folded in, or the store refusing a read - is reported with `console.error` (not a read refused `STORE_ENGINE_LOST`: the resync that follows reads it again) and the next changes are folded all the same; a callback throwing in a Document's own transaction rejects that transaction, as before. A call that changed nothing (an undo with nothing to undo, an unknown document removed) is told to no one. Two dialectes' projects of one name never hear each other. When the store reaches another engine of the project (its host gone), the Project reads its documents and history again and wakes every Document (`doc.subscribe`); nothing is posted on the channel for it. A change may be told in its steps: a new document as `init-empty-document`, then `commit` for its first records.
+- **A store that announces its changes** (`sqlite`, `inMemory`; a custom store with `subscribe`): the store tells the Project every change, made by any connection of the project (each tab, iframe and Project of it). The Project folds the others' changes into its state, wakes its Documents, and reposts them on a channel of its own, `channelName` = `dialecte::project::<name>::<instance>`; it posts its own changes there once its state holds them - a change no call of the Project made (a write on the store you hold, e.g. a custom `storage`, or a Document of an earlier open) folded into its state and posted once no call of the Project runs (with the running call's own otherwise, or once that call ends; past 256 kept, at once). Every change told while the Project opens - its own (a store's cleanup) and another connection's, from the store or the name's channel - is folded and posted, in the order told, once its documents are read (past 256 of them, or a resync told meanwhile: its state read again instead). A fold no call awaits that fails - a `doc.subscribe` callback throwing as another change is folded in, or the store refusing a read - is reported with `console.error` (not a read refused `STORE_ENGINE_LOST`: the resync that follows reads it again) and the next changes are folded all the same; a callback throwing in a Document's own transaction rejects that transaction, as before. A call that changed nothing (an undo with nothing to undo, an unknown document removed) is told to no one. Two dialectes' projects of one name never hear each other. When the store reaches another engine of the project (its host gone; an idle Project's store follows it at once), or more changes are told while the Project opens than it holds, the Project reads its documents and history again, wakes every Document (`doc.subscribe`) and posts `{ type: 'resync', timestamp }` (`ProjectChannelResync`) on its channel: what changed meanwhile is in its state, not told change by change. The channel carries `ProjectChannelEvent` = `ProjectChannelMessage | ProjectChannelResync`. A Document subscriber that throws stops no other: each is told, and the first failure fails the call that changed the document, or is reported when no call awaits the change. A change may be told in its steps: a new document as `init-empty-document`, then `commit` for its first records.
 - **A store that does not** (`local`, a custom store without `subscribe`): every Project of the name posts its own changes and listens on the name's channel, `dialecte::project::<name>`: a call is announced as made, a no-op included, and a write made through a store alone is told to no one.
 
 Build no channel name by hand: open the channel through `project.createChannel()` or `doc.channelName`.
@@ -383,6 +383,15 @@ type ProjectChannelMessage =
 			timestamp: number
 	  }
 	| { type: 'blob-removed'; blobId: string; timestamp: number }
+```
+
+**ProjectChannelResync**, **ProjectChannelEvent**
+
+A Project on a store that announces its changes also posts a resync once it has read its documents again (its store reached another engine; more changes told while it opened than it holds): read again what you show.
+
+```ts
+type ProjectChannelResync = { type: 'resync'; timestamp: number }
+type ProjectChannelEvent = ProjectChannelMessage | ProjectChannelResync
 ```
 
 ## state (ProjectState)

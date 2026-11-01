@@ -118,8 +118,12 @@ export type WorkerLinkState = {
 	listeners: Set<(notice: LinkNotice) => void>
 	/** Reach the project's engine now (an idle connection with a listener follows the next engine of its project). */
 	follow: () => void
-	/** Whether `follow` may start an engine: once after each call of the connection's own. */
+	/** Whether `follow` may start an engine: again after each call of the connection's own. */
 	mayFollow: boolean
+	/** When the engine `follow` reached was reached: its end is followed once it ran `followRearmMs`. */
+	followedAt: number | undefined
+	/** How long a followed engine must run before its end is followed too (doubled at each follow). */
+	followRearmMs: number
 	/** The client the engine of that generation adopted for the connection (being adopted while pending). */
 	adoption: { generation: number; client: Promise<EngineClient> } | undefined
 	/**
