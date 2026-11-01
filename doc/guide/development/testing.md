@@ -712,7 +712,7 @@ const DIALECTE_NAMESPACES = {
 
 ## Choosing the store
 
-Every helper of this page opens its projects on the store a call names (`storage` on `createTestHelpers`, `createTestRunner`, `createTestProject` and `createTestContext`), else on the runner's default set by `useTestStorage`, else on the local store (IndexedDB). `{ type: 'inMemory' }` is the fast choice for unit and mutation runs; the local store is the one storage paths and end-to-end runs need.
+Every helper of this page opens its projects on the store a call names (`storage` on `createTestHelpers`, `createTestRunner`, `createTestProject` and `createTestContext`), else on the runner's default set by `useTestStorage`, else on the local store (IndexedDB). `{ type: 'inMemory' }` is the fast choice for unit and mutation runs; `{ type: 'sqlite' }` runs the SQLite engine; the local store is the one storage paths and end-to-end runs need.
 
 ### The store is a switch
 
@@ -732,6 +732,8 @@ import { useTestStorage } from '@dialecte/core/test'
 
 useTestStorage({ type: 'inMemory' })
 ```
+
+`{ type: 'sqlite' }` in the test helpers is the SQLite engine run in the test's own process (the engine a project on `sqlite` storage reaches in a worker, its file in memory): the helpers know the dialecte, not its engine worker, so it is the same kind in node and in a browser. Like an app, a test opts into it: the setup file imports `@dialecte/core/sqlite` (without it the kind is refused `PROJECT_SQLITE_NOT_IMPORTED`). A second vitest project with a setup file importing it and calling `useTestStorage({ type: 'sqlite' })` runs a package's Document and Query suites on SQLite with no test changed, as core's `node-sqlite` project does (`createTestContext` by name names the project's `dialecteId` there). Node is the proven tier; a browser run of it is best effort (sqlite-wasm resolves its wasm itself: the test project may need `optimizeDeps.exclude: ['@sqlite.org/sqlite-wasm']`, as core's own browser projects set). Its code is loaded only by a run on it.
 
 ```ts
 // vitest.config.ts - two tiers
@@ -763,6 +765,7 @@ The browser projects set no default: their tests run on the local store. A test 
 | Project          | Runs                                                                                                                                                             | Store                                                                                                                           | When                                                                      |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `node`           | every test file but the browser-only ones                                                                                                                        | in-memory, from `useTestStorage`                                                                                                | each step (`npm run test:node`, the pre-commit hook)                      |
+| `node-sqlite`    | the Document and Query suites (`src/document`)                                                                                                                   | SQLite in the test's own process, from `useTestStorage({ type: 'sqlite' })`                                                     | with `node`                                                               |
 | `node-indexeddb` | the store contract and the project's store switch                                                                                                                | in-memory, IndexedDB through `fake-indexeddb`, and SQLite in the test's own process (the in-process engine, its file in memory) | with `node`                                                               |
 | `browser`        | the browser-only files: the store contract on IndexedDB and SQLite over OPFS, the engine workers, the save dialog, `xmlDocument: true`, IndexedDB-specific cases | local                                                                                                                           | once per lot (`npm run test:browser`; `npm run test` runs node then this) |
 | `browser-all`    | the whole suite in Chromium                                                                                                                                      | local                                                                                                                           | before a branch merges (`npm run test:browser:all`, CI)                   |

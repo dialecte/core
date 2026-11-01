@@ -1,9 +1,21 @@
 import type { EngineApi } from './engine.types'
+import type { EngineEventSignal } from './host/host.types'
+
+/** What a link tells its store: a change the engine announced, or that changes may have been missed. */
+export type LinkNotice = { type: 'event'; signal: EngineEventSignal } | { type: 'resync' }
 
 /** One connection of a store to its project's engine. */
 export type EngineLink = {
 	/** The engine serving the project now: a later call may answer another one, started since. */
 	engine: () => Promise<EngineApi>
+	/** The connection's id: the changes its calls make are announced tagged with it. */
+	connectionId: string
+	/**
+	 * `listener` told every change the engine announces, and `resync` once the connection reached another engine
+	 * (a link with a listener follows the next engine of its project without waiting for a call). Answers the
+	 * unsubscribe.
+	 */
+	onNotice: (listener: (notice: LinkNotice) => void) => () => void
 	/**
 	 * Release the connection; the engine closes once no connection is left. Settled once the connection counts
 	 * no more for a destroy anywhere (its engine's lock let go, the hub told). Idempotent; the released

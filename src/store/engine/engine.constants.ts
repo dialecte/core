@@ -9,4 +9,6 @@ export const ENGINE_SIGNAL = {
 	busy: 'busy',
 	/** A tick of a call's progress, for the listener the client registered under its `progressId`. */
 	progress: 'progress',
+	/** A change of the project, posted on every client's port: who made it, and how (`EngineEventSignal`). */
+	event: 'event',
 } as const

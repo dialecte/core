@@ -1,6 +1,7 @@
-import type { ChangeLogEntry } from '../store.types'
+import type { DistributiveOmit } from '../engine/engine.types'
+import type { ChangeLogEntry, StoreNotice } from '../store.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
-import type { DocumentRecord } from '@/project/types'
+import type { DocumentRecord, ProjectChannelMessage } from '@/project/types'
 import type { AnyRawRecord, BlobRecord } from '@/types'
 
 export type InMemoryStoreOptions = {
@@ -51,3 +52,9 @@ export type ReadonlyInMemoryState = {
 	runningImports: ReadonlySet<string>
 	versions: ReadonlyMap<string, number>
 }
+
+/** A connection of an in-memory project listening to its changes: the store it is, and its listener. */
+export type InMemoryListener = { connection: object; listener: (notice: StoreNotice) => void }
+
+/** A project event as an in-memory store announces it, its timestamp added when told. */
+export type InMemoryChange = DistributiveOmit<ProjectChannelMessage, 'timestamp'>

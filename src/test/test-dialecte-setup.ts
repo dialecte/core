@@ -1,7 +1,7 @@
 import { TEST_DIALECTE_CONFIG } from './config'
 import { TEST_CONFIG_KEY } from './constant'
 import { TEST_DIALECTE } from './test-dialecte'
-import { resolveTestStorage } from './test-storage'
+import { resolveTestStorage, testStoreFor } from './test-storage'
 
 import { onTestFinished, TestRunner } from 'vitest'
 
@@ -109,11 +109,17 @@ export async function openTestProject<
 	const { setup, sourceXml, targetXml, dev } = params
 	const { dialecte, custom } = setup
 	const { configKey } = resolveTestConfig({ setup, configKey: params.configKey })
-	const storage = resolveTestStorage({ storage: params.storage })
+	const name = `test-${crypto.randomUUID()}`
+	const storage = await testStoreFor({
+		storage: resolveTestStorage({ storage: params.storage }),
+		name,
+		dialecte,
+		perf: dev?.perf,
+	})
 
 	// The module types are the overloads' promise; the harness wires the declaration's erased ones.
 	const project = (await createDialecteProject({ dialecte, storage, extensions: custom, dev }).open(
-		`test-${crypto.randomUUID()}`,
+		name,
 	)) as unknown as Project<GenericConfig, GenericModules>
 	destroyWhenTestEnds({ project })
 

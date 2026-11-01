@@ -8,6 +8,7 @@ import { NOOP_PERF } from '@/perf'
 import { checkJsonValues } from '@/store/json-values'
 import { invariant } from '@/utils'
 import { tellListener } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 
 import type {
 	ParseTarget,
@@ -292,6 +293,6 @@ async function flushBatch(params: {
 	} finally {
 		perf.stop('import::insert')
 	}
-	tellListener({ listener: control.onProgress, value: progress })
+	tellListener({ listener: control.onProgress, value: progress, of: TOLD_OF.importProgress })
 	return stored
 }

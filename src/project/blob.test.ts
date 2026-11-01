@@ -111,7 +111,7 @@ describe('Project - blobs', () => {
 		const documentId = await project.initEmptyDocument()
 
 		const messages: unknown[] = []
-		const listener = new BroadcastChannel(`dialecte::project::${name}`)
+		const listener = project.createChannel()
 		listener.onmessage = (event) => messages.push(event.data)
 		cleanups.push(async () => listener.close())
 

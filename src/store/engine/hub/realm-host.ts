@@ -19,9 +19,10 @@ import type { HostedEngine, RealmHost, RealmHostParams } from './realm-host.type
  */
 export function createRealmHost(params: RealmHostParams): RealmHost {
 	const { report, adoptBudgetMs = ENGINE_HEARTBEAT_TIMEOUT_MS } = params
+	// the host's own copies: a spawner added later may turn measuring on for its dialecte's next engines
 	const spawners = new Map(
 		params.spawners.map(function byDialecte(spawner) {
-			return [spawner.dialecteId, spawner]
+			return [spawner.dialecteId, { ...spawner }]
 		}),
 	)
 	const engines = new Map<string, HostedEngine>()
@@ -73,20 +74,25 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				watch: undefined,
 			}
 			engines.set(engineKey(engine), engine)
-			control
-				.request({
-					message: {
-						type: 'open',
-						project,
-						dialecteId,
-						dialecteVersion: spawner.dialecteVersion,
-						...(expectedCreationId !== undefined && { expectedCreationId }),
-						lock: 'wait',
-						budgetMs: openBudgetMs,
-						perf: spawner.perf ?? false,
-						settings: spawner.settings,
-					},
-					expect: 'opened',
+			// measured as the spawner is now; what the engine opens with is loaded meanwhile (the worker loads its script)
+			const perf = spawner.perf ?? false
+			Promise.resolve()
+				.then(spawner.settings)
+				.then(function askOpen(settings) {
+					return control.request({
+						message: {
+							type: 'open',
+							project,
+							dialecteId,
+							dialecteVersion: spawner.dialecteVersion,
+							...(expectedCreationId !== undefined && { expectedCreationId }),
+							lock: 'wait',
+							budgetMs: openBudgetMs,
+							perf,
+							settings,
+						},
+						expect: 'opened',
+					})
 				})
 				.then(function checkWire(answer) {
 					refuseAnotherWire({ found: answer.wireProtocol })
@@ -162,6 +168,14 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 				engine.control.end({ error: releasedError({ project }) })
 				engine.worker.terminate()
 			})
+		},
+		add: function addSpawners({ spawners: added }) {
+			for (const spawner of added) {
+				const running = spawners.get(spawner.dialecteId)
+				if (!running) spawners.set(spawner.dialecteId, { ...spawner })
+				// the dialecte keeps its first spawner; one measured turns measuring on for the engines started next
+				else if (spawner.perf) running.perf = true
+			}
 		},
 		endAll: function endEveryEngine() {
 			for (const engine of engines.values()) {

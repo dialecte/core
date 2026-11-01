@@ -5,6 +5,8 @@ import { outcomeOf, watchedClient } from './engine-client.fixtures'
 import * as Comlink from 'comlink'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
+
 import type { ProgressSignal } from '../host/host.types'
 import type { EngineWire, WireRequest } from '../wire/wire.types'
 import type { EngineClient } from './client.types'
@@ -186,19 +188,22 @@ describe('a client hearing its calls’ progress', () => {
 		expect(second).toEqual([10, 20])
 	})
 
-	it('a listener that throws, or answers a promise that rejects → its call answered all the same', async () => {
+	it('a listener that throws, or answers a promise that rejects → its call answered all the same, each failure reported', async () => {
+		const reports = quietReports()
+		const failed = new Error('the caller’s listener failed')
+		const failedLater = new Error('the caller’s listener failed later')
 		const { client, engineSide } = watchedClient({ cleanups })
 		const held = holdingEngine({ port: engineSide })
 		const throwing = client.api.commit(
 			{ documentId: 'doc-1', operations: [] } as never,
 			function fail() {
-				throw new Error('the caller’s listener failed')
+				throw failed
 			},
 		)
 		const rejecting = client.api.commit(
 			{ documentId: 'doc-1', operations: [] } as never,
 			async function failLater() {
-				throw new Error('the caller’s listener failed later')
+				throw failedLater
 			},
 		)
 		const [one, two] = await heldCommits({ held, count: 2 })
@@ -208,6 +213,9 @@ describe('a client hearing its calls’ progress', () => {
 		two!.answer()
 		const outcomes = await Promise.all([outcomeOf(throwing), outcomeOf(rejecting)])
 		expect(outcomes).toEqual(['resolved', 'resolved'])
+		await vi.waitFor(function bothReported() {
+			expect(new Set(reportedFailures({ reports }))).toEqual(new Set([failed, failedLater]))
+		})
 	})
 
 	it('a tick after the client lost its engine → told to nobody', async () => {

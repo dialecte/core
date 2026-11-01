@@ -4,6 +4,7 @@ import { Transaction } from './transaction'
 import { summarizeOperations } from './transaction/commit/summarize-operations'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
+import { ignoreReadFailure, isEngineLost, wasNotApplied } from '@/store/lost-write'
 
 import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
@@ -229,6 +230,7 @@ export class Document<
 
 			return result
 		} catch (error) {
+			await this.readAgainAfterLoss({ thrown: error })
 			throw this.reportFailure(error)
 		} finally {
 			// the transaction's own state ended first: a subscriber that throws as it is told below never holds the
@@ -239,6 +241,16 @@ export class Document<
 			tx?.progress.forceClear()
 			this.signalStateChange(true)
 		}
+	}
+
+	/**
+	 * A commit refused with its engine lost may have landed (its outcome `running` or `unknown`): the document's
+	 * history is read again and the change the store told of it posted. One known not to have landed changed nothing.
+	 */
+	private async readAgainAfterLoss(params: { thrown: unknown }): Promise<void> {
+		if (!isEngineLost(params) || wasNotApplied(params)) return
+		await this.refreshHistoryStatus().catch(ignoreReadFailure)
+		this.broadcast({ type: 'commit', documentId: this.documentId, timestamp: Date.now() })
 	}
 
 	/**
@@ -332,6 +344,9 @@ export class Document<
 						timestamp: Date.now(),
 					})
 				} catch (error) {
+					// known not to have landed: the prepared commit can be made again
+					if (wasNotApplied({ thrown: error })) settled = false
+					await this.readAgainAfterLoss({ thrown: error })
 					throw this.reportFailure(error)
 				} finally {
 					this.activeTransactions--

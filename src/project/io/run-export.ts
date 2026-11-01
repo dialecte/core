@@ -5,6 +5,7 @@ import { createPerf } from '@/perf'
 import { EXPORT_BATCH_SIZE } from '@/store/store.constants'
 import { orderByConfigSequence } from '@/utils'
 import { tellListener } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 import { isDocumentRoot } from '@/xml/build/document-root'
 import { XmlWriter } from '@/xml/build/xml-writer'
@@ -214,7 +215,11 @@ async function rootOf(params: {
 async function endBatch(pass: ExportPass): Promise<boolean> {
 	const { control, documentId, recordsWritten, totalRecords } = pass
 	takePart(pass)
-	tellListener({ listener: control.onProgress, value: { recordsWritten, totalRecords } })
+	tellListener({
+		listener: control.onProgress,
+		value: { recordsWritten, totalRecords },
+		of: TOLD_OF.exportProgress,
+	})
 	throwIfExportAborted({ signal: control.signal, documentId })
 	await yieldToQueue()
 	return hasMoved(pass)

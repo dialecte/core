@@ -1,14 +1,21 @@
 import type { EngineControl } from '../client/client.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
 
-/** An engine a realm can start for the hub: its dialecte, the version that dialecte runs, its worker. */
+/**
+ * An engine a page can start for the hub: its dialecte, the version that dialecte runs, its worker. A dialecte's
+ * project factory carries its own (`factory.spawner`), built from the declaration.
+ */
 export type HubEngineSpawner = {
 	dialecteId: string
 	dialecteVersion: string
 	/** The address of the dialecte's engine worker (its `?worker&url` export). */
 	engineUrl: string
-	/** What the engine's kind needs to open, handed to it as is (the SQLite engine: its wasm file). */
-	settings: unknown
+}
+
+/** A spawner as the page's host runs it: what its engine opens with, loaded when it spawns one. */
+export type RealmEngineSpawner = HubEngineSpawner & {
+	/** What the engine's kind needs to open, handed to it as is (the SQLite engine: its wasm file), loaded at spawn. */
+	settings: () => Promise<unknown>
 	/** Measure the import's and the export's stages in the engine (`dev.perf`). */
 	perf?: boolean
 }
@@ -45,12 +52,17 @@ export type RealmHost = {
 	/** Settles once the engine has released the client (its port answers no more), or is gone. */
 	clientGone: (params: { project: string; generation: number; clientId: string }) => Promise<void>
 	release: (params: { project: string; generation: number }) => void
+	/**
+	 * Engines the page can start from now on, beside its own: a dialecte it runs already keeps its spawner, measured
+	 * from now on when the one added is (`perf`).
+	 */
+	add: (params: { spawners: RealmEngineSpawner[] }) => void
 	/** Every engine ended at once (the page goes away or freezes): their workers terminated. */
 	endAll: () => void
 }
 
 export type RealmHostParams = {
-	spawners: HubEngineSpawner[]
+	spawners: RealmEngineSpawner[]
 	/** Say something to the hub on the realm's control port. */
 	report: (message: RealmToHubMessage) => void
 	/**

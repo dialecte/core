@@ -132,14 +132,20 @@ export const STORE_CONTRACT_FEATURES = ['history', 'blobs', 'import', 'export'] 
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
  * engine of its own has none to end); a project of the name under another dialecte (`dialecte-key`: a
  * store named by the project's name alone has no other dialecte's); a view away while its project is
- * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away).
+ * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away); the
+ * changes told to every connection (`announce`: a store that tells none leaves it to the project's channel).
  */
 export const STORE_CONTRACT_DIFFERENCES = [
 	'engine-end',
 	'dialecte-key',
 	'away',
 	'import-liveness',
+	'announce',
 ] as const
+
+/** Why the IndexedDB leg announces nothing itself (`subscribe`): the project's channel does it for it. */
+export const ANNOUNCED_BY_PROJECT_REASON =
+	"IndexedDB keeps no connection list to tell: a project on it announces its own changes on the project's BroadcastChannel, which every project of the name hears (until it moves to SQLite)"
 
 /** The dialecte a case's store of another dialecte runs (the runtime fixture's `other-dialecte` engine serves it). */
 export const CONTRACT_OTHER_DIALECTE_ID = 'core/test-other'

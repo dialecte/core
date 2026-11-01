@@ -55,10 +55,14 @@ async function realmFrame(params: BootRealmParams): Promise<RealmFrame> {
 	return { frame, realm }
 }
 
-/** The document a realm iframe loads: the fixture's module booting the realm. */
+/**
+ * The document a realm iframe loads: the fixture's module booting the realm. Vitest serves its modules with every
+ * `import()` wrapped by its runner, which an iframe has not: the frame gets the pass-through vitest gives a worker
+ * (`__vitest_browser_runner__.wrapDynamicImport`, vitest's own name as of vitest 4.1.12: a later version may rename it).
+ */
 function bootDocument(params: { params: BootRealmParams }): string {
 	const boot = JSON.stringify(params.params)
-	return `<script type="module">import { bootRealm } from '${REALM_FIXTURE_URL}'; window.realmReady = bootRealm(${boot})</script>`
+	return `<script>globalThis.__vitest_browser_runner__ = { wrapDynamicImport: (load) => load() }</script><script type="module">import { bootRealm } from '${REALM_FIXTURE_URL}'; window.realmReady = bootRealm(${boot})</script>`
 }
 
 /** The realm the iframe's module booted, once it has joined the hub. */
@@ -80,9 +84,14 @@ function bootStarted(params: { frame: HTMLIFrameElement }): Promise<RealmWindow>
 }
 
 /** A child realm iframe bound to `parent` through a port the parent makes; its unbind for the case. */
-async function boundChildFrame(params: { parent: BrowserRealm }): Promise<BoundChildFrame> {
+async function boundChildFrame(params: {
+	parent: BrowserRealm
+	storageRefused?: boolean
+}): Promise<BoundChildFrame> {
 	const frame = document.createElement('iframe')
-	frame.srcdoc = bootDocument({ params: { canStartEngines: false, bound: true } })
+	frame.srcdoc = bootDocument({
+		params: { canStartEngines: false, bound: true, storageRefused: params.storageRefused },
+	})
 	document.body.append(frame)
 	frames.push(frame)
 	// posted once its module runs: it listens for the port from then on
@@ -218,6 +227,68 @@ describe('the hub across realms of the page', () => {
 				expect(await third.realm.documentIds({ project })).toEqual(['doc-1', 'doc-2'])
 			},
 			{ timeout: 10_000, interval: 100 },
+		)
+	})
+
+	it('a change in one realm → told to a realm only listening, and to a child bound through a port, as another’s', async () => {
+		const project = uniqueProject()
+		const host = await realmFrame({ canStartEngines: true })
+		const listening = await realmFrame({ canStartEngines: false })
+		const child = await boundChildFrame({ parent: listening.realm })
+		await listening.realm.listen({ project })
+		await child.realm.listen({ project })
+		await host.realm.registerDocument({ project, id: 'doc-1' })
+		const told = ['init-empty-document doc-1 other']
+		await vi.waitFor(
+			function toldToBoth() {
+				expect(listening.realm.heard({ project })).toEqual(told)
+				expect(child.realm.heard({ project })).toEqual(told)
+			},
+			{ timeout: 10_000, interval: 100 },
+		)
+	})
+
+	it('the host iframe removed, a realm only listening → it reaches the next engine, told to read again; the next change told to it', async () => {
+		const project = uniqueProject()
+		const host = await realmFrame({ canStartEngines: true })
+		const listening = await realmFrame({ canStartEngines: true })
+		const writer = await realmFrame({ canStartEngines: false })
+		await host.realm.registerDocument({ project, id: 'doc-1' })
+		await listening.realm.listen({ project })
+		host.frame.remove()
+		await vi.waitFor(
+			function toldToReadAgain() {
+				expect(listening.realm.heard({ project })).toEqual(['resync'])
+			},
+			{ timeout: 10_000, interval: 100 },
+		)
+		await writer.realm.registerDocument({ project, id: 'doc-2' })
+		await vi.waitFor(
+			function toldTheChange() {
+				expect(listening.realm.heard({ project })).toEqual([
+					'resync',
+					'init-empty-document doc-2 other',
+				])
+			},
+			{ timeout: 10_000, interval: 100 },
+		)
+	})
+
+	it('a child bound through a port whose private file system is refused (a sandboxed frame) → a project on sqlite opened through the page’s engine; its destroy, which runs a worker of its own, refused STORE_UNAVAILABLE', async () => {
+		const { realm: page } = await realmFrame({ canStartEngines: true })
+		const { realm: child } = await boundChildFrame({ parent: page, storageRefused: true })
+		const project = uniqueProject()
+		expect(await child.registerThroughSqlite({ project, id: 'doc-1' })).toEqual(['doc-1'])
+		expect(await page.documentIds({ project })).toEqual(['doc-1'])
+		expect(await child.destroyThroughSqlite({ project })).toBe('STORE_UNAVAILABLE')
+		page.closeStore({ project })
+	})
+
+	it('a realm joined on its own whose private file system is refused → a project on sqlite refused STORE_UNAVAILABLE, though another realm could host it', async () => {
+		await realmFrame({ canStartEngines: true })
+		const { realm } = await realmFrame({ canStartEngines: false, storageRefused: true })
+		expect(await realm.registerThroughSqlite({ project: uniqueProject(), id: 'doc-1' })).toBe(
+			'STORE_UNAVAILABLE',
 		)
 	})
 

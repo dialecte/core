@@ -1,13 +1,20 @@
+import type { LinkNotice } from '../engine-store.types'
 import type {
 	DistributiveOmit,
 	EngineApi,
 	EngineControlAnswer,
 	EngineControlRequest,
 } from '../engine.types'
+import type { EngineEventSignal } from '../host/host.types'
 
 /** The engine as one client reaches it through its port. */
 export type EngineClient = {
+	/** The engine's members, each call made for the port's own client. */
 	api: EngineApi
+	/** The engine's members, each call made for that connection of the page (several share one port through the hub). */
+	connection: (params: { connectionId: string }) => EngineApi
+	/** `listener` told each change the engine announces on this port; answers the unsubscribe. */
+	onEvent: (listener: (signal: EngineEventSignal) => void) => () => void
 	/** Refuse every call in flight `STORE_ENGINE_LOST` for that reason; the port stays. */
 	lose: (params: { reason: EngineLostReason }) => void
 	/** Release the port: the client reaches the engine no more; a call still waiting is refused `STORE_CLOSED`. */
@@ -107,6 +114,12 @@ export type FreshWorkerDestroy = { done: Promise<void>; released: Promise<void> 
 export type WorkerLinkState = {
 	clientId: string
 	released: boolean
+	/** What the connection's store listens with: each change of its engine, and each resync. */
+	listeners: Set<(notice: LinkNotice) => void>
+	/** Reach the project's engine now (an idle connection with a listener follows the next engine of its project). */
+	follow: () => void
+	/** Whether `follow` may start an engine: once after each call of the connection's own. */
+	mayFollow: boolean
 	/** The client the engine of that generation adopted for the connection (being adopted while pending). */
 	adoption: { generation: number; client: Promise<EngineClient> } | undefined
 	/**
@@ -157,5 +170,12 @@ export type ProgressListeners = {
 	/** The engine lost: every listener let go (their calls are refused). */
 	clear: () => void
 	/** The client closed: nothing heard any more. */
+	stop: () => void
+}
+
+/** The listeners of the changes an engine announces on a client's port. */
+export type EventListeners = {
+	/** Answers the unsubscribe. */
+	add: (params: { listener: (signal: EngineEventSignal) => void }) => () => void
 	stop: () => void
 }

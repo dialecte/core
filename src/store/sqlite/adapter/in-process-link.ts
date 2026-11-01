@@ -1,4 +1,5 @@
 import { refuseOtherCreation } from '../../engine/creation-refusal'
+import { storeEventOf } from '../../engine/host/store-events'
 import { projectKeyOf } from '../../engine/project-key'
 import { refuseUnnamableProject } from '../../project-name'
 import { throwOpenElsewhere, throwStoreClosed } from '../../store-errors'
@@ -6,7 +7,12 @@ import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
 import { realmWasmUrl } from '../sqlite-wasm-url'
 
-import type { EngineConnector, EngineLink } from '../../engine/engine-store.types'
+import { tellListeners } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
+
+import type { EngineConnector, EngineLink, LinkNotice } from '../../engine/engine-store.types'
+import type { EngineApi } from '../../engine/engine.types'
+import type { AnnouncedCall } from '../../engine/host/host.types'
 import type { SqliteEngine } from '../engine/engine.types'
 import type { InProcessConnectorParams, InProcessFile } from './in-process-link.types'
 
@@ -17,6 +23,8 @@ import type { InProcessConnectorParams, InProcessFile } from './in-process-link.
 const FILES = new Map<string, InProcessFile>()
 /** The connections open on each project, by its key: a destroy of it is refused while one is. */
 const CLIENTS = new Map<string, Set<EngineLink>>()
+/** What each connection's store listens with: every change of its project, and each resync. */
+const LISTENERS = new WeakMap<EngineLink, Set<(notice: LinkNotice) => void>>()
 
 /**
  * The engine of a project run in the calling realm, on an in-memory file of its own (`memdb`): a
@@ -55,6 +63,9 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Engine
 	 * kept so that every connection checks its project the same way.
 	 */
 	let creationId: string | undefined
+	/** The engine this connection last reached: another one since is announced with a resync. */
+	let reached: SqliteEngine | undefined
+	const listeners = new Set<(notice: LinkNotice) => void>()
 	const link: EngineLink = {
 		engine: async function currentEngine() {
 			// a released connection is not counted: it must not start an engine nobody would close
@@ -66,10 +77,31 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Engine
 				creationId: engine.creationId,
 			})
 			creationId = engine.creationId
-			return engine.clientView({ clientId })
+			if (reached !== undefined && reached !== engine)
+				tellLink({ link, notice: { type: 'resync' } })
+			reached = engine
+			return announcingView({
+				view: engine.clientView({ clientId }),
+				announce: function announceToProject(call) {
+					const signal = storeEventOf({ ...call, connectionId: clientId })
+					if (!signal) return
+					for (const other of CLIENTS.get(key) ?? []) {
+						tellLink({ link: other, notice: { type: 'event', signal } })
+					}
+				},
+			})
+		},
+		connectionId: clientId,
+		onNotice: function listen(listener) {
+			if (released) return stopNothing
+			listeners.add(listener)
+			return function stopListening() {
+				listeners.delete(listener)
+			}
 		},
 		close: async function releaseEngine() {
 			released = true
+			listeners.clear()
 			if (!clients.delete(link) || clients.size > 0) return
 			CLIENTS.delete(key)
 			const file = FILES.get(key)
@@ -77,9 +109,46 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Engine
 			if (file) file.engine = undefined
 		},
 	}
+	LISTENERS.set(link, listeners)
 	clients.add(link)
 	return link
 }
+
+/**
+ * The engine's members as a connection calls them in the realm: each success announced (`announce`) before the call
+ * resolves, as an engine in a worker tells it on every port before the answer.
+ */
+function announcingView(params: {
+	view: EngineApi
+	announce: (call: Omit<AnnouncedCall, 'connectionId'>) => void
+}): EngineApi {
+	const { view, announce } = params
+	return Object.fromEntries(
+		(Object.keys(view) as (keyof EngineApi)[]).map(function announcingMember(member) {
+			const run = view[member] as (...args: unknown[]) => Promise<unknown>
+			return [
+				member,
+				async function callAndAnnounce(...args: unknown[]) {
+					const value = await run(...args)
+					announce({ member, args, value })
+					return value
+				},
+			]
+		}),
+	) as unknown as EngineApi
+}
+
+/** A connection's store told `notice`; a listener that throws stops no other. */
+function tellLink(params: { link: EngineLink; notice: LinkNotice }): void {
+	tellListeners({
+		listeners: LISTENERS.get(params.link) ?? [],
+		value: params.notice,
+		of: TOLD_OF.engineChanges,
+	})
+}
+
+/** The unsubscribe of a listener never added: a released connection hears nothing. */
+function stopNothing(): void {}
 
 /**
  * The engine running on the project's file, started first (on a new file when the project has none - unless

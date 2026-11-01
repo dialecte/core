@@ -27,6 +27,7 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
 | `@dialecte/core/helpers` | record converters, guards, `readAttribute(s)`, `standardizeRecord`, `mergeExtensions`, `stripAttributes`, write-path guards, namespace constants |
 | `@dialecte/core/utils`   | attribute rules, definition resolution, xsi:type, namespaces, ordering, `invariant`, `formatXml` / `formatEmbeddedXml`, `saveToDisk`             |
 | `@dialecte/core/test`    | `createTestHelpers`, `createTestRunner`, `createTestProject`, XML/XPath assertions, test dialecte, `normalizeUuids`                              |
+| `@dialecte/core/sqlite`  | opt-in SQLite storage: importing it registers `{ type: 'sqlite' }`; `connectHub`, `adoptHubPort`, `listProjects`                                 |
 
 ## Project (`project/project.ts`)
 
@@ -47,7 +48,12 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
 - Blobs: `addBlob`, `getBlob`, `exportBlob`, `attachBlob`, `detachBlob`, `removeBlob`,
   `getBlobsByDocument`, `getBlobsByRecord`, `getStandaloneBlobs`. `getDatabaseInstance()` for the raw DB.
 - Cross-document: `queryFirst(fn)`, `queryAll(fn)`.
-- `state` (documents map), `perf`, BroadcastChannel per project name (multi-tab sync).
+- `state` (documents map), `perf`, `createChannel()` (a BroadcastChannel on the project's channel: what changed,
+  this tab's changes and other tabs'). On a store that announces its changes (`Store.subscribe`: SQLite,
+  in-memory) the channel is the Project's own and reposts what the store tells; on `local` (IndexedDB) it is
+  shared by project name.
+- `listProjects({ dialecteId? })` from `@dialecte/core/sqlite` (SQLite projects of the origin, read from the private
+  file system) and `factory.destroyProject({ name })` (delete one without opening it).
 
 ## Document (`document/document.ts`)
 
@@ -177,7 +183,11 @@ needs the parent's `updated` (children list) too.
 
 ## Stores (`store/`)
 
-- `storage` param: `{ type: 'local' }` (IndexedDB), `{ type: 'inMemory', writable? }`,
+- `storage` param: `{ type: 'local' }` (IndexedDB, the default), `{ type: 'sqlite' }` (the SQLite
+  engine in a worker, one per project shared by every tab through the hub; opt-in: the app imports
+  `@dialecte/core/sqlite` once, else `PROJECT_SQLITE_NOT_IMPORTED`; opened from a dialecte's project
+  factory, which names its engine worker),
+  `{ type: 'inMemory', writable? }`,
   `{ type: 'custom', store }`. The store is a switch: results must be identical on every store,
   only speed changes. A difference is a store bug.
 - `Store` interface is public surface for custom stores. The patch merge every built-in store uses

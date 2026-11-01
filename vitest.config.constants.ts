@@ -75,6 +75,22 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: "the page's `resume` event (a frozen tab coming back)",
 	},
 	{
+		path: 'src/store/sqlite/adapter/sqlite-connector.test.ts',
+		why: 'a project on `sqlite` storage: its engine worker, the origin’s hub and private file system',
+	},
+	{
+		path: 'src/store/sqlite/adapter/sqlite-connector.no-hub.test.ts',
+		why: 'a page with workers, no SharedWorker and its private file system refused (a browser realm, stubbed)',
+	},
+	{
+		path: 'src/store/sqlite/adapter/sqlite-connector.offer.test.ts',
+		why: 'what a browser realm offers the hub, its private file system handed or refused',
+	},
+	{
+		path: 'src/store/sqlite/list-projects.opfs.test.ts',
+		why: 'projects listed from the origin’s private file system, destroyed by name',
+	},
+	{
 		path: 'src/store/sqlite/load-sqlite.test.ts',
 		why: 'fetches the SQLite wasm file the page serves',
 	},
@@ -98,11 +114,19 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	},
 ]
 
-/** The test files that read the package from disk or start node itself: never in a browser. */
+/** The test files that read the package from disk, start node itself or assert what Node lacks: never in a browser. */
 export const NODE_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	{
 		path: 'src/store/sqlite/packaging/engine-packaging.test.ts',
 		why: 'builds the engine and reads the build output from disk',
+	},
+	{
+		path: 'src/store/sqlite/sqlite-unavailable.test.ts',
+		why: 'asserts what SQLite storage answers where no worker and no private file system exist; a browser has both',
+	},
+	{
+		path: 'src/store/shared-shapes.test.ts',
+		why: 'compiles what copies of the library share from disk and reads its recorded shapes',
 	},
 	{
 		path: 'src/test/test-entry-environment.test.ts',
@@ -150,6 +174,9 @@ export const NODE_STORE_CONTRACT_TEST_FILES: readonly string[] = [
 	'src/test/create-test-dialecte.indexeddb.test.ts',
 	'src/test/create-test-helpers.indexeddb.test.ts',
 ]
+
+/** The Document and Query suites: run again on the SQLite engine (`node-sqlite`), store is a switch. */
+export const DOCUMENT_SUITES_PATTERN = 'src/document/**/*.test.ts'
 
 /** Every unit test file; benches run in their own project. */
 export const UNIT_TEST_PATTERN = 'src/**/*.test.{js,ts,jsx,tsx}'

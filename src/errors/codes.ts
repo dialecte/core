@@ -180,16 +180,16 @@ export const ERROR_CATALOG = {
 		message: 'The project engine stopped answering',
 		explanation: {
 			when: "A call to a project engine served from a worker lost that engine: it ended with what hosted it or gave no answer within its budget (`meta.reason` `'host-gone'`), it sent nothing for too long while the call waited (`'no-heartbeat'`, it may still finish), or the hub dropped this view with the page that bound it - frozen, gone, or unbinding it (`'realm-dropped'`: every call, `getWriteOutcome` too, is refused so until the view is bound again).",
-			fix: "Ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again, then open the project again. For `'realm-dropped'`, opening again is refused too: the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`); then ask `getWriteOutcome`.",
+			fix: "A Document's commit and a Project's import ask the outcome themselves, once: a commit that landed resolves; otherwise the refusal says `meta.outcome` - `not-applied` (make it again if wanted), `running` (a silent engine may still apply it: tell the user, read again later), `unknown` (it could not be asked), or `applied` for an import (its document is in the project; its diagnostics were lost). Elsewhere ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again; never retry a write blindly. For `'realm-dropped'`, every call is refused until the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`).",
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
 	STORE_HUB_SPAWNERS_FIXED: {
 		code: 'D1019',
-		message: "The page's hub connection does not run these engines",
+		message: "The page's hub connection runs another version of this dialecte's engine",
 		explanation: {
-			when: "`connectHub({ spawners })` named an engine the page's connection does not run: the page's first `connectHub` (from any copy of the library, or a `connectHub()` naming none) registered the engines it starts, and they stay for the connection's life; a document that joined through `adoptHubPort` registered none. `meta.spawners` names the dialectes (id and version) asked but not run.",
-			fix: 'Call `connectHub` once, early, with every engine the app can start (each dialecte it opens, at the version it ships), before any project opens; a later call names those or fewer, or none.',
+			when: "`connectHub({ spawners })` named a dialecte whose engine the page's connection already runs at another version, or a project was opened (or destroyed by name) on `sqlite` from a factory of such a version (the project offers its engine to the hub as it opens): a page runs one version of each dialecte's engine (two would split a project's views between two engines). A later call adds the engines of dialectes the page does not run yet. `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added, nothing opened.",
+			fix: "Ship one version of each dialecte in the app: register each dialecte's `factory.spawner` from the copy the app opens its projects with.",
 			docs: `${CORE_DOCS_URL}/api/dialecte`,
 		},
 	},
@@ -584,6 +584,24 @@ export const ERROR_CATALOG = {
 			when: "A project's name or its dialecte's id is empty, `.` or `..`: every store refuses it before it is built (a SQLite project's files sit in a directory named after both, which no directory can be); nothing was opened or written. `meta.project` and `meta.dialecteId` say which.",
 			fix: 'Give the project a name of its own (and the dialecte an id) other than an empty one, `.` or `..`.',
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+		},
+	},
+	PROJECT_ENGINE_NOT_DECLARED: {
+		code: 'D7015',
+		message: 'This project has no engine to open it on SQLite',
+		explanation: {
+			when: "A project was opened on `storage: { type: 'sqlite' }` but made by no dialecte's project factory: its engine (the dialecte's id, its version and its engine worker's URL) is known to no one, so nothing can start it. Nothing was opened.",
+			fix: "Make the project with the dialecte's project factory (`createProjectFactory({ dialecte, engineUrl })`, as a dialecte package exports it), or open it on another storage.",
+			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
+		},
+	},
+	PROJECT_SQLITE_NOT_IMPORTED: {
+		code: 'D7016',
+		message: "SQLite storage needs `import '@dialecte/core/sqlite'`",
+		explanation: {
+			when: "A project was opened (or destroyed by name) on `storage: { type: 'sqlite' }`, or a test asked for the `sqlite` test store, but the app never imported `@dialecte/core/sqlite`: the SQLite storage kind lives behind that entry, so an app that never imports it neither emits nor downloads the SQLite engine, its wasm or the hub. Nothing was opened.",
+			fix: "Add `import '@dialecte/core/sqlite'` once to the app's entry (for tests, to the test runner's setup file), before the first project is opened on SQLite; or open the project on another storage. Imported already? The import registers the kind for every copy of @dialecte/core of the same SQLite storage version in the realm: a copy of another one (a dialecte bringing its own core) does not see it - align the core versions.",
+			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
 		},
 	},
 	DOCUMENT_PATH_INVALID: {

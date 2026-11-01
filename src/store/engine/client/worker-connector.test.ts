@@ -21,6 +21,7 @@ import {
 	FIXTURE_DIALECTE,
 	OTHER_FIXTURE_DIALECTE,
 	CROSS_REALM_CLOCK_SLACK_MS,
+	CHANGE_TOLD_WITHIN_MS,
 	DEAF_DESTROY_BUDGET_MS,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	SILENT_ENGINE_WAIT_MS,
@@ -40,13 +41,12 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { isKnownDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
-import { projectChannelName } from '@/project/project-channel'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
+import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 
 import type { EngineLink } from '../engine-store.types'
 import type { EngineApi } from '../engine.types'
 import type { EngineWire } from '../wire/wire.types'
-import type { ProjectChannelMessage } from '@/project/types'
 import type {
 	RuntimeFixtureNotice,
 	RuntimeFixtureOrder,
@@ -79,6 +79,32 @@ async function openWorkerStore(
 	await store.open()
 	opened.push(store)
 	return store
+}
+
+/** What a store is told, each notice as its kind, whose change it was, its type and document. */
+function shapesHeard(params: { store: EngineStore }): unknown[] {
+	const heard: unknown[] = []
+	params.store.subscribe(function keep(notice) {
+		heard.push(
+			notice.type === 'resync'
+				? { type: 'resync' }
+				: {
+						own: notice.own,
+						type: notice.message.type,
+						documentId: 'documentId' in notice.message ? notice.message.documentId : undefined,
+					},
+		)
+	})
+	return heard
+}
+
+/** A change as the store named `store` is told it: its own when it made it. */
+function toldTo(params: {
+	change: { by: string; type: string; documentId: string }
+	store: string
+}): unknown {
+	const { by, type, documentId } = params.change
+	return { own: by === params.store, type, documentId }
 }
 
 function projectName(): string {
@@ -292,14 +318,11 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 		worker.terminate()
 	})
 
-	it('writes through two connections → the project’s channel tells each, with the id of the connection that made it; a refused write tells nothing', async () => {
+	it('writes through two connections → each told every change once, its own as its own, the other’s as another’s; a refused write and a no-op tell nothing', async () => {
 		const first = await openWorkerStore()
 		const second = await openWorkerStore({ name: first.name })
-		const listener = new BroadcastChannel(projectChannelName({ name: first.name }))
-		const heard: (ProjectChannelMessage & { clientId: string })[] = []
-		listener.onmessage = function hear(event) {
-			heard.push(event.data)
-		}
+		const firstHeard = shapesHeard({ store: first })
+		const secondHeard = shapesHeard({ store: second })
 		await first.registerDocument(makeDocument())
 		await first.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 		await commit({ store: second, documentId: 'doc-1', creates: [makeRecord({ id: 'r2' })] })
@@ -308,43 +331,38 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			key: 'STORE_DUPLICATE_ID',
 		})
 		await second.undo('doc-1')
+		await second.redo('doc-1')
+		await second.redo('doc-1')
 		await first.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['b']))
 		const { record } = await second.importFile({
 			file: contractFile({ body: '<A aA="1"/>' }),
 		})
 		await first.removeDocument('doc-1')
-		await expect
-			.poll(
-				function heardCount() {
-					return heard.length
-				},
-				{ timeout: 5_000 },
-			)
-			.toBe(7)
-		listener.close()
-		const told = heard.map(function toldOf({ type, clientId, ...rest }) {
-			return {
-				type,
-				documentId: 'documentId' in rest ? rest.documentId : undefined,
-				clientId,
-			}
-		})
-		const [firstId, secondId] = [told[0]!.clientId, told[2]!.clientId]
-		expect(firstId).not.toBe(secondId)
-		expect(told).toEqual([
-			{ type: 'init-empty-document', documentId: 'doc-1', clientId: firstId },
-			{ type: 'commit', documentId: 'doc-1', clientId: firstId },
-			{ type: 'commit', documentId: 'doc-1', clientId: secondId },
-			{ type: 'commit', documentId: 'doc-1', clientId: secondId },
-			{ type: 'blob-added', documentId: 'doc-1', clientId: firstId },
-			{ type: 'document-imported', documentId: record.id, clientId: secondId },
-			{ type: 'document-removed', documentId: 'doc-1', clientId: firstId },
-		])
-		expect(
-			heard.every(function hasTimestamp(message) {
-				return typeof message.timestamp === 'number'
-			}),
-		).toBe(true)
+		const changes = [
+			{ by: 'first', type: 'init-empty-document', documentId: 'doc-1' },
+			{ by: 'first', type: 'commit', documentId: 'doc-1' },
+			{ by: 'second', type: 'commit', documentId: 'doc-1' },
+			{ by: 'second', type: 'commit', documentId: 'doc-1' },
+			{ by: 'second', type: 'commit', documentId: 'doc-1' },
+			{ by: 'first', type: 'blob-added', documentId: 'doc-1' },
+			{ by: 'second', type: 'document-imported', documentId: record.id },
+			{ by: 'first', type: 'document-removed', documentId: 'doc-1' },
+		]
+		await vi.waitFor(
+			function everyChangeTold() {
+				expect(firstHeard).toEqual(
+					changes.map(function toldToFirst(change) {
+						return toldTo({ change, store: 'first' })
+					}),
+				)
+				expect(secondHeard).toEqual(
+					changes.map(function toldToSecond(change) {
+						return toldTo({ change, store: 'second' })
+					}),
+				)
+			},
+			{ timeout: CHANGE_TOLD_WITHIN_MS },
+		)
 	})
 
 	it('an import measured in the engine → its report on the worker’s clock, merged on this page within the call', async () => {
@@ -570,6 +588,61 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			expect(documents).toEqual([])
 			link.close()
 			await connector.destroy()
+		})
+
+		it('ended from inside, a connection only listening → it reaches the next engine on its own, told to read again; the other’s next change told to it', async () => {
+			const name = projectName()
+			const caller = await openWorkerStore({ name, engineUrl: fixtureUrl({ scenario: 'endable' }) })
+			const listening = await openWorkerStore({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'endable' }),
+			})
+			const heard = shapesHeard({ store: listening })
+			orderFixtures({ type: 'end' })
+			await vi.waitFor(
+				function toldToReadAgain() {
+					expect(heard).toEqual([{ type: 'resync' }])
+				},
+				{ timeout: CHANGE_TOLD_WITHIN_MS },
+			)
+			await caller.registerDocument(makeDocument({ id: 'doc-after' }))
+			await vi.waitFor(
+				function toldTheChange() {
+					expect(heard).toEqual([
+						{ type: 'resync' },
+						{ own: false, type: 'init-empty-document', documentId: 'doc-after' },
+					])
+				},
+				{ timeout: CHANGE_TOLD_WITHIN_MS },
+			)
+		})
+
+		it('ended twice, the connection only listening, no call of its own between → it follows the first end only: no engine runs after the second until it calls', async () => {
+			const name = projectName()
+			const listening = await openWorkerStore({
+				name,
+				engineUrl: fixtureUrl({ scenario: 'endable' }),
+			})
+			const heard = shapesHeard({ store: listening })
+			orderFixtures({ type: 'end' })
+			await vi.waitFor(
+				function followedOnce() {
+					expect(heard).toEqual([{ type: 'resync' }])
+				},
+				{ timeout: CHANGE_TOLD_WITHIN_MS },
+			)
+			orderFixtures({ type: 'end' })
+			await expect
+				.poll(
+					function engineEnded() {
+						return isEngineLockFree({ project: name })
+					},
+					{ timeout: CHANGE_TOLD_WITHIN_MS },
+				)
+				.toBe(true)
+			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
+			expect(await isEngineLockFree({ project: name })).toBe(true)
+			expect(await listening.getDocuments()).toEqual([])
 		})
 
 		it('its engine gone, the project destroyed by another tab → the connection refused PROJECT_DESTROYED_WHILE_AWAY for good; a new connection racing it opens the project anew', async () => {

@@ -24,6 +24,13 @@ export type HubEvent =
 			parentRealmId?: string
 	  }
 	| {
+			/** A realm adds engines it can start, after its hello (a child realm's are ignored: it hosts none). */
+			type: 'spawners'
+			now: number
+			realmId: string
+			spawners: HubSpawner[]
+	  }
+	| {
 			type: 'open'
 			now: number
 			realmId: string

@@ -40,7 +40,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const messages: unknown[] = []
-		const listener = new BroadcastChannel(`dialecte::project::${name}`)
+		const listener = project.createChannel()
 		listener.onmessage = (event) => messages.push(event.data)
 		cleanups.push(async () => listener.close())
 
@@ -60,7 +60,7 @@ describe('Project BroadcastChannel', () => {
 		const documentId = await project.initEmptyDocument()
 
 		const messages: unknown[] = []
-		const listener = new BroadcastChannel(`dialecte::project::${name}`)
+		const listener = project.createChannel()
 		listener.onmessage = (event) => messages.push(event.data)
 		cleanups.push(async () => listener.close())
 
@@ -79,7 +79,7 @@ describe('Project BroadcastChannel', () => {
 		cleanups.push(() => project.destroy())
 
 		const messages: unknown[] = []
-		const listener = new BroadcastChannel(`dialecte::project::${name}`)
+		const listener = project.createChannel()
 		listener.onmessage = (event) => messages.push(event.data)
 		cleanups.push(async () => listener.close())
 
@@ -101,7 +101,7 @@ describe('Project BroadcastChannel', () => {
 		const doc = project.openDocument(documentId)
 
 		const messages: unknown[] = []
-		const listener = new BroadcastChannel(`dialecte::project::${name}`)
+		const listener = project.createChannel()
 		listener.onmessage = (event) => messages.push(event.data)
 		cleanups.push(async () => listener.close())
 
@@ -115,45 +115,50 @@ describe('Project BroadcastChannel', () => {
 		})
 	})
 
-	it('Document receives commit from another Document on same channel', async () => {
+	it('a commit by another project of the name → this Document’s state takes its time, its view woken', async () => {
 		const name = projectName()
 		const project = await openProject(name)
+		const other = await openProject(name)
+		cleanups.push(async () => other.close())
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
 		const { documentId } = await project.importFile(file)
-
-		// Simulate another tab's document by creating a second BroadcastChannel
-		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
-		cleanups.push(async () => otherTabChannel.close())
-
 		const doc = project.openDocument(documentId)
-
 		expect(doc.state.lastUpdate).toBeNull()
+		const heard: { type: string; documentId?: string; timestamp: number }[] = []
+		const listener = project.createChannel()
+		listener.onmessage = (event) => heard.push(event.data)
+		cleanups.push(async () => listener.close())
 
-		// Simulate a commit from another tab
-		otherTabChannel.postMessage({ type: 'commit', documentId, timestamp: 12345 })
+		await other.getDocumentStatus(documentId)
+		await other.openDocument(documentId).transaction(async (tx) => {
+			const root = await tx.getRoot()
+			tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
 
 		await vi.waitFor(function commitHeard() {
-			expect(doc.state.lastUpdate).toBe(12345)
+			const commit = heard.find((message) => message.type === 'commit')
+			expect(commit?.documentId).toBe(documentId)
+			expect(doc.state.lastUpdate).toBe(commit?.timestamp)
 		})
 	})
 
-	it('Document ignores commit messages for other files', async () => {
+	it('a commit by another project of the name on another document → this Document’s state unchanged', async () => {
 		const name = projectName()
 		const project = await openProject(name)
+		const other = await openProject(name)
+		cleanups.push(async () => other.close())
 		cleanups.push(() => project.destroy())
 
 		const file = new File([minimalXml()], 'test.xml', { type: 'application/xml' })
 		const { documentId } = await project.importFile(file)
-
-		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
-		cleanups.push(async () => otherTabChannel.close())
-
 		const doc = project.openDocument(documentId)
-
-		// Send commit for a different file
-		otherTabChannel.postMessage({ type: 'commit', documentId: 'other-file', timestamp: 99999 })
+		const { documentId: otherDocumentId } = await other.importFile(file)
+		await other.openDocument(otherDocumentId).transaction(async (tx) => {
+			const root = await tx.getRoot()
+			tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
 		// nothing to wait for: a bounded wait, longer than a message takes on a loaded machine
 		await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
 
@@ -198,7 +203,8 @@ describe('Project BroadcastChannel', () => {
 		const project = await openProject(name)
 		cleanups.push(() => project.destroy())
 
-		expect(project.channelName).toBe(`dialecte::project::${name}`)
+		// the name's channel, or one of this Project's own where its store announces its changes itself
+		expect(project.channelName.startsWith(`dialecte::project::${name}`)).toBe(true)
 
 		const documentId = await project.initEmptyDocument()
 		const doc = project.openDocument(documentId)
@@ -292,14 +298,18 @@ describe('Project BroadcastChannel', () => {
 		project.openDocument(firstId)
 		project.openDocument(secondId)
 
-		const otherTabChannel = new BroadcastChannel(`dialecte::project::${name}`)
-		cleanups.push(async () => otherTabChannel.close())
-
-		otherTabChannel.postMessage({ type: 'commit', documentId: firstId, timestamp: 4242 })
+		// another tab: a project of the name of its own, committing on the first document
+		const other = await openProject(name)
+		await other.getDocumentStatus(firstId)
+		await other.openDocument(firstId).transaction(async (tx) => {
+			const root = await tx.getRoot()
+			tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
+		await other.close()
 
 		await vi.waitFor(function commitHeard() {
-			expect(firstDoc.state.lastUpdate).toBe(4242)
-			expect(project.state.documents.get(firstId)?.lastUpdate).toBe(4242)
+			expect(firstDoc.state.lastUpdate).not.toBeNull()
+			expect(project.state.documents.get(firstId)?.lastUpdate).toBe(firstDoc.state.lastUpdate)
 		})
 	})
 

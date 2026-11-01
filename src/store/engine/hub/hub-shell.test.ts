@@ -263,6 +263,14 @@ describe('the hub serving realms on their control ports', () => {
 		expect(call).toBe('call')
 	})
 
+	it('a realm that said hello with no spawner adds one, then opens → asked to host the engine', async () => {
+		const hub = serveHub()
+		const shell = await joinRealm({ hub, name: 'shell', spawners: [] })
+		shell.send({ type: 'spawners', spawners: [SCL] })
+		shell.send({ type: 'open', project: 'p', dialecteId: 'scl', dialecteVersion: '1.0.0' })
+		expect(await shell.next('spawn-engine')).toMatchObject({ project: 'p', dialecteId: 'scl' })
+	})
+
 	it('a second realm opens → its port comes only once the host says the engine adopted it', async () => {
 		const hub = serveHub()
 		const shell = await joinRealm({ hub, name: 'shell' })

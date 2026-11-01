@@ -20,7 +20,8 @@ export function classifyPool(params: { files: PoolFileHead[] }): PoolContents {
 	return 'lost'
 }
 
-function namesDatabase(file: PoolFileHead): boolean {
+/** Whether the pool file's header names the project's database (as sqlite-wasm reads it at install). */
+export function namesDatabase(file: PoolFileHead): boolean {
 	return headerPath({ header: file.header }) === POOL_FILE
 }
 

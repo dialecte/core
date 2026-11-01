@@ -18,6 +18,7 @@ import { inWriteTransaction } from './transaction'
 import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered } from '@/store/store-errors'
 import { tellListener } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
 import type {
@@ -419,10 +420,10 @@ export function createProgressRelay(params: {
 	return {
 		onProgress: function relayProgress(progress) {
 			Object.assign(last, progress)
-			tellListener({ listener, value: progress })
+			tellListener({ listener, value: progress, of: TOLD_OF.importProgress })
 		},
 		tellPhase: function tellPhase({ phase }) {
-			tellListener({ listener, value: { ...last, phase } })
+			tellListener({ listener, value: { ...last, phase }, of: TOLD_OF.importProgress })
 		},
 	}
 }

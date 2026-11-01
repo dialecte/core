@@ -1,4 +1,6 @@
 import { makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
+import { refuseRealmStorage } from '../../sqlite/adapter/realm-storage.fixtures'
+import { createSqliteConnector } from '../../sqlite/adapter/sqlite-connector'
 import { sqliteHubSpawner } from '../../sqlite/adapter/sqlite-hub-spawner'
 import { TEST_ENGINE_URL } from '../../sqlite/runtime/runtime.fixtures'
 import { createHubConnector } from '../client/hub-connector'
@@ -8,6 +10,7 @@ import { adoptHubConnection, openHubConnection } from './hub-client'
 import { toDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test'
 
+import type { StoreNotice } from '../../store.types'
 import type { HubConnection } from './hub-client.types'
 import type { BootRealmParams, BrowserRealm, HubPortMessage } from './hub.browser.fixtures.types'
 
@@ -22,7 +25,9 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 		engineUrl = TEST_ENGINE_URL,
 		dialecteVersion = TEST_DIALECTE.version,
 		bound = false,
+		storageRefused = false,
 	} = params
+	if (storageRefused) refuseRealmStorage()
 	const joined = bound
 		? await adoptHubConnection({ port: await handedPorts() })
 		: await openHubConnection({
@@ -39,6 +44,8 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 	if (!joined) throw new Error('the realm found no hub')
 	const connection: HubConnection = joined
 	const stores = new Map<string, Promise<EngineStore>>()
+	/** What each project's store told since the case listened to it. */
+	const heard = new Map<string, string[]>()
 
 	function storeOf(params: { project: string }): Promise<EngineStore> {
 		const { project } = params
@@ -135,6 +142,17 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 				child.postMessage(message, '*', [handle.port])
 			})
 		},
+		listen: async function listenTo({ project }) {
+			const store = await storeOf({ project })
+			const told: string[] = []
+			heard.set(project, told)
+			store.subscribe(function keep(notice) {
+				told.push(describeNotice({ notice }))
+			})
+		},
+		heard: function heardOf({ project }) {
+			return [...(heard.get(project) ?? [])]
+		},
 		closeStore: function closeStoreOf({ project }) {
 			void stores.get(project)?.then(function closeIt(store) {
 				store.close()
@@ -146,7 +164,51 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 			stores.delete(project)
 			await store.destroy()
 		},
+		registerThroughSqlite: async function registerThroughSqlite({ project, id }) {
+			const store = sqliteStoreOf({ project, engineUrl, dialecteVersion })
+			try {
+				await store.open()
+				await store.registerDocument(makeDocument({ id }))
+				const documents = await store.getDocuments()
+				return documents.map(function idOf(document) {
+					return document.id
+				})
+			} catch (thrown) {
+				return toDialecteError(thrown)?.key ?? String(thrown)
+			} finally {
+				store.close()
+			}
+		},
+		destroyThroughSqlite: async function destroyThroughSqlite({ project }) {
+			const store = sqliteStoreOf({ project, engineUrl, dialecteVersion })
+			return store.destroy().then(
+				function destroyed() {
+					return 'destroyed'
+				},
+				function refused(thrown: unknown) {
+					return toDialecteError(thrown)?.key ?? String(thrown)
+				},
+			)
+		},
 	}
+}
+
+/** The project's store on the SQLite connector, as a project on `sqlite` storage makes it (not opened). */
+function sqliteStoreOf(params: {
+	project: string
+	engineUrl: string
+	dialecteVersion: string
+}): EngineStore {
+	const { project, engineUrl, dialecteVersion } = params
+	return new EngineStore({
+		name: project,
+		connector: createSqliteConnector({
+			name: project,
+			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion,
+			engineUrl,
+		}),
+	})
 }
 
 /** The project's store through the realm's hub connection, opened. */
@@ -195,3 +257,11 @@ function handedPorts(): Promise<MessagePort> {
 }
 
 function ignoreProgress(): void {}
+
+/** A notice as a case reads it: `resync`, or `<type> <document> own|other`. */
+function describeNotice(params: { notice: StoreNotice }): string {
+	const { notice } = params
+	if (notice.type === 'resync') return 'resync'
+	const documentId = 'documentId' in notice.message ? notice.message.documentId : '-'
+	return `${notice.message.type} ${documentId} ${notice.own ? 'own' : 'other'}`
+}

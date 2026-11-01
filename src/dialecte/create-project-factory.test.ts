@@ -4,6 +4,8 @@ import { createCountingDialecte, ENGINE_URL } from './create-project-factory.fix
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { Project } from '@/project'
+import { withoutSqliteStorage, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
 import { XMLNS_DEFAULT_NAMESPACE } from '@/test/constant'
 
 const SOURCE_XML = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="1"/><A aA="2"/></Root>`
@@ -20,6 +22,16 @@ describe('createProjectFactory', () => {
 		const factory = createProjectFactory({ dialecte, engineUrl: ENGINE_URL })
 		expect(factory.dialecte).toBe(dialecte)
 		expect(factory.engineUrl).toBe(ENGINE_URL)
+	})
+
+	it('carries the spawner a page registers with the hub: the dialecte, its version and its engine address, nothing else', () => {
+		const dialecte = createCountingDialecte()
+		const factory = createProjectFactory({ dialecte, engineUrl: ENGINE_URL })
+		expect(factory.spawner).toStrictEqual({
+			dialecteId: dialecte.id,
+			dialecteVersion: dialecte.version,
+			engineUrl: ENGINE_URL,
+		})
 	})
 
 	it('a project opens with every config and the declared default key', async () => {
@@ -86,5 +98,60 @@ describe('createProjectFactory', () => {
 		await first.importFile(new File([SOURCE_XML], 'source.xml'))
 		await second.importFile(new File([SOURCE_XML], 'source.xml'))
 		expect(instancesSeen).toEqual([2, 1, 2])
+	})
+
+	describe('a project on sqlite storage refused before any engine', () => {
+		type TestCase = { open: () => Promise<unknown>; refusedWith: string; imported?: false }
+		const testCases: Record<string, TestCase> = {
+			'made by no factory → PROJECT_ENGINE_NOT_DECLARED at open': {
+				open: function openBare() {
+					const dialecte = createCountingDialecte()
+					return new Project({
+						configs: dialecte.configs,
+						storage: { type: 'sqlite' },
+						dialecteId: dialecte.id,
+					}).open(`sqlite-${crypto.randomUUID()}`)
+				},
+				refusedWith: 'PROJECT_ENGINE_NOT_DECLARED',
+			},
+			'made by the factory, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED at open':
+				{
+					open: function openFromFactory() {
+						const factory = createProjectFactory({
+							dialecte: createCountingDialecte(),
+							engineUrl: ENGINE_URL,
+						})
+						return factory({ storage: { type: 'sqlite' } }).open(`sqlite-${crypto.randomUUID()}`)
+					},
+					refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',
+					imported: false,
+				},
+			'destroyed by name, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED': {
+				open: function destroyByName() {
+					const factory = createProjectFactory({
+						dialecte: createCountingDialecte(),
+						engineUrl: ENGINE_URL,
+					})
+					return factory.destroyProject({ name: `sqlite-${crypto.randomUUID()}` })
+				},
+				refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',
+				imported: false,
+			},
+		}
+		for (const [description, { open, refusedWith, imported }] of Object.entries(testCases)) {
+			it(description, async () => {
+				if (imported === false) withoutSqliteStorage()
+				else withSqliteStorage()
+				const key = await open().then(
+					function opened() {
+						return 'opened'
+					},
+					function refused(thrown: unknown) {
+						return toDialecteError(thrown)?.key
+					},
+				)
+				expect(key).toBe(refusedWith)
+			})
+		}
 	})
 })

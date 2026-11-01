@@ -2,7 +2,7 @@ import { resolveStore } from '../store/resolve-store'
 import { exportBlob, exportDocument, initEmptyDocument } from './io'
 import { resolveConfig } from './io/resolve-config'
 import { projectChannelName } from './project-channel'
-import { CLOSE_WAIT_REPORT_MS } from './project.constants'
+import { CHANGES_HELD_MAX, CLOSE_WAIT_REPORT_MS } from './project.constants'
 import { buildDocumentState, reconcileDocumentState } from './state'
 import { isImporting, openableDocuments } from './state/document-lifecycle'
 
@@ -10,6 +10,12 @@ import { Document } from '@/document'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
+import {
+	ignoreReadFailure,
+	isEngineLost,
+	lostWriteError,
+	outcomeAfterLoss,
+} from '@/store/lost-write'
 import { createRunningOperations } from '@/store/running-operations'
 import { invariant } from '@/utils'
 
@@ -32,7 +38,7 @@ import type {
 } from './types'
 import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
 import type { Perf } from '@/perf'
-import type { Store } from '@/store'
+import type { ImportFileResult, Store, StoreNotice } from '@/store'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
@@ -63,6 +69,30 @@ export class Project<
 	private _channel?: BroadcastChannel
 	/** Set once close()/destroy() begins, to stop new channel-triggered store work. */
 	private closing = false
+	/**
+	 * Whether the open store announces its changes itself (`Store.subscribe`): the Project then hears them from it,
+	 * reposts the other connections' on a channel of its own, and posts its own only when the store told one.
+	 */
+	private announcing = false
+	/** The store's notices let go: called as the open project closes. */
+	private stopStoreNotices: () => void = stopNothing
+	/**
+	 * The changes the store told as this Project's own, waiting for the call that made them to post them (none waiting:
+	 * a call changed nothing). Each post takes them all: the call's own posted as the call tells it, the others as the
+	 * store told them, folded too (a change no call of the Project's own waits for is folded then).
+	 */
+	private ownChangesTold: ProjectChannelMessage[] = []
+	/**
+	 * The open's documents read: calls are taken from then on, and the changes told meanwhile - its own and other
+	 * connections' - fold into a state that holds them.
+	 */
+	private openSettled = false
+	/** Every change told while the project opens, its own and other connections', in the order told: folded once open. */
+	private toldWhileOpening: ProjectChannelMessage[] = []
+	/** A resync told while the project opens, or more changes than held: its state read again once the open settled. */
+	private resyncWhenSettled = false
+	/** The name of the open project's channel (`projectChannelName`), set as it opens. */
+	private _channelName?: string
 	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
 	private readonly pendingBroadcastWork = new Set<Promise<void>>()
 	private readonly storage: ProjectParams<GenericConfig>['storage']
@@ -71,6 +101,9 @@ export class Project<
 	 * project a store holds. `undefined` for a Project made with no dialecte.
 	 */
 	readonly dialecteId: string | undefined
+	/** The dialecte's version and its engine worker's address, from its factory: what `sqlite` storage runs. */
+	private readonly dialecteVersion: string | undefined
+	private readonly engineUrl: string | undefined
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private mergedExtensions?: MergedExtensions<GenericModules>
@@ -90,11 +123,11 @@ export class Project<
 
 	/** The store of an open project: one never opened, closed or destroyed has none to read or write. */
 	private get store(): GenericStore {
-		invariant(this._store !== undefined && !this.closing, {
+		invariant(this._store !== undefined && !this.closing && this.openSettled, {
 			key: 'PROJECT_NOT_OPENED',
 			detail: this.closing
 				? 'The project is closed: open it again before using it.'
-				: 'Call project.open(name) before accessing project properties.',
+				: 'Call project.open(name), and await it, before accessing project properties.',
 		})
 		return this._store
 	}
@@ -117,8 +150,10 @@ export class Project<
 		const inFlight = { fileName }
 		this.importsInFlight.add(inFlight)
 		const importsInFlight = this.importsInFlight
+		const drainWhenIdle = () => this.drainWhenIdle()
 		function settleImportInFlight(): void {
 			importsInFlight.delete(inFlight)
+			drainWhenIdle()
 		}
 		void queued.then(settleImportInFlight, settleImportInFlight)
 		return queued
@@ -160,12 +195,14 @@ export class Project<
 	/** A write of the open project counted in `writes` until the function answered is called (once). */
 	private startCountedWrite(): () => void {
 		const writes = this.writes
+		const drainWhenIdle = () => this.drainWhenIdle()
 		writes.start()
 		let ended = false
 		return function endCountedWrite() {
 			if (ended) return
 			ended = true
 			writes.end()
+			drainWhenIdle()
 		}
 	}
 
@@ -176,6 +213,7 @@ export class Project<
 			return await work()
 		} finally {
 			this.writes.end()
+			this.drainWhenIdle()
 		}
 	}
 
@@ -199,7 +237,11 @@ export class Project<
 	 * ProjectChannelMessage, same-tab and cross-tab.
 	 */
 	get channelName(): string {
-		return projectChannelName({ name: this.name })
+		invariant(this._channelName !== undefined, {
+			key: 'PROJECT_NOT_OPENED',
+			detail: 'Call project.open(name) before accessing project properties.',
+		})
+		return this._channelName
 	}
 
 	/**
@@ -212,9 +254,147 @@ export class Project<
 		return new BroadcastChannel(this.channelName)
 	}
 
-	/** Post a message on the project channel. */
+	/**
+	 * Post a change of this Project's on the project channel. On a store that announces, only what the store told: the
+	 * call's own change when the store told it (none: the call changed nothing, nothing posted), and every other change
+	 * of the Project's own told meanwhile (a call running beside it, a second step of the same call), each once.
+	 */
 	private broadcast(message: ProjectChannelMessage): void {
-		this.channel.postMessage(message)
+		if (!this.announcing) {
+			this.channel.postMessage(message)
+			return
+		}
+		this.postToldChanges({ own: message })
+	}
+
+	/**
+	 * Post the changes of this Project's own the store told, each once: `own` (the call's change, its state already
+	 * updated) posted as the call made it when told; every other folded into the state, then posted. Without `own`, as
+	 * after a write refused with its engine lost: only what the store told is posted, nothing guessed.
+	 */
+	private postToldChanges(params: { own?: ProjectChannelMessage }): void {
+		const { own } = params
+		const told = this.ownChangesTold.splice(0)
+		const index = own
+			? told.findIndex(function sameChange(change) {
+					return sameSubject({ first: change, second: own })
+				})
+			: -1
+		for (const [position, change] of told.entries()) {
+			if (own && position === index) {
+				this.channel.postMessage(own)
+				continue
+			}
+			this.channel.postMessage(change)
+			try {
+				this.onChannelMessage(change)
+			} catch (thrown) {
+				// a Document subscriber's own failure, on a change no call made: the call is not refused for it,
+				// the next change folded all the same
+				this.reportFoldFailure({ told: change.type, thrown })
+			}
+		}
+	}
+
+	/**
+	 * A notice of the open store: another connection's change folded into this Project's state and reposted to its
+	 * listeners; its own kept, posted once the call that made it has updated the state - or, folded, once no call runs
+	 * (a write on the store held directly, a call that ended without posting), or at once past `CHANGES_HELD_MAX` (then
+	 * before a running call's state holds its own); a resync reads it all again. While the project opens, every change
+	 * is held until its documents are read (`holdWhileOpening`). A fold no call awaits that fails (a Document's
+	 * subscriber throwing, the store refusing a read) is reported on the console.
+	 */
+	private onStoreNotice(notice: StoreNotice): void {
+		if (!this.openSettled) {
+			this.holdWhileOpening({ notice })
+			return
+		}
+		// a change of this Project's own is kept while it closes too: a call it waits for still tells it
+		if (notice.type === 'change' && notice.own) {
+			this.ownChangesTold.push(notice.message)
+			if (this.ownChangesTold.length > CHANGES_HELD_MAX && this.canPost()) this.postToldChanges({})
+			else this.drainWhenIdle()
+			return
+		}
+		if (this.closing) return
+		if (notice.type === 'resync') {
+			this.trackBroadcastWork({ work: this.resync(), told: 'resync' })
+			return
+		}
+		this.foldTold(notice.message)
+	}
+
+	/** Another Project's change heard on the name's channel (a store that announces nothing): folded once open. */
+	private onChannelHeard(message: ProjectChannelMessage): void {
+		if (!this.openSettled) {
+			this.holdWhileOpening({ notice: { type: 'change', message, own: false } })
+			return
+		}
+		this.onChannelMessage(message)
+	}
+
+	/**
+	 * A change told while the project opens, held: the open reads its documents meanwhile, and a change folded now
+	 * would find no entry, or be undone by that read; no call is taken that would claim it. Folded, in the order told,
+	 * once the open settled - past `CHANGES_HELD_MAX`, or a resync told meanwhile, the state read again instead.
+	 */
+	private holdWhileOpening(params: { notice: StoreNotice }): void {
+		const { notice } = params
+		if (this.resyncWhenSettled) return
+		if (notice.type === 'resync' || this.toldWhileOpening.length >= CHANGES_HELD_MAX) {
+			this.resyncWhenSettled = true
+			this.toldWhileOpening = []
+			return
+		}
+		this.toldWhileOpening.push(notice.message)
+	}
+
+	/**
+	 * A change no call claims folded into this Project's state - reposted first to its listeners where the store
+	 * announces (elsewhere the change came on the channel they hear).
+	 */
+	private foldTold(message: ProjectChannelMessage): void {
+		if (this.announcing) this._channel?.postMessage(message)
+		try {
+			this.onChannelMessage(message)
+		} catch (thrown) {
+			// a Document subscriber's own failure: the store's other listeners are told all the same
+			this.reportFoldFailure({ told: message.type, thrown })
+		}
+	}
+
+	/** Whether a call of this Project runs, which posts the changes its store tells it: a write, a Document's commit, an import. */
+	private callsRunning(): boolean {
+		return this.writes.count > 0 || this.importsInFlight.size > 0
+	}
+
+	/**
+	 * The changes of this Project's own kept, once no call runs to post them (none made them, or the one that did
+	 * ended without posting - a transaction that threw): posted and folded on a microtask. A call running then claims
+	 * them instead, posting them once its state holds its own.
+	 */
+	private drainWhenIdle(): void {
+		if (this.ownChangesTold.length === 0 || this.callsRunning()) return
+		queueMicrotask(() => this.postUnclaimedChanges())
+	}
+
+	private postUnclaimedChanges(): void {
+		if (this.callsRunning() || !this.canPost()) return
+		this.postToldChanges({})
+	}
+
+	/** Whether the open Project posts what no call claims: once its open settled (its documents read), not while it closes. */
+	private canPost(): boolean {
+		return !this.closing && this.openSettled
+	}
+
+	/** Changes may have been missed: the registry, each document's history read again, every document's view woken. */
+	private async resync(): Promise<void> {
+		if (this.closing) return
+		await this.refreshState()
+		const documentIds = Array.from(this.state.documents.keys())
+		await Promise.all(documentIds.map((documentId) => this.refreshHistoryStatus(documentId)))
+		for (const documentId of documentIds) this.signalStateChange(documentId, true)
 	}
 
 	readonly state: ProjectState = {
@@ -255,9 +435,13 @@ export class Project<
 		hooks?: DialecteHooks<GenericConfig>
 		dev?: { perf?: boolean }
 		dialecteId?: ProjectParams<GenericConfig>['dialecteId']
+		dialecteVersion?: ProjectParams<GenericConfig>['dialecteVersion']
+		engineUrl?: ProjectParams<GenericConfig>['engineUrl']
 	}) {
 		const configKeys = Object.keys(params.configs)
 		this.dialecteId = params.dialecteId
+		this.dialecteVersion = params.dialecteVersion
+		this.engineUrl = params.engineUrl
 
 		this.storage = params.storage
 		this.configs = params.configs
@@ -308,14 +492,31 @@ export class Project<
 		let channel: BroadcastChannel | undefined
 		try {
 			store = this.resolveProjectStore({ name })
-			channel = new BroadcastChannel(this.channelName)
-			channel.addEventListener('message', (event: MessageEvent<ProjectChannelMessage>) => {
-				this.onChannelMessage(event.data)
+			// a store that announces is heard from before it opens: no change falls between its first read and the subscription
+			this.announcing = typeof store.subscribe === 'function'
+			this.ownChangesTold = []
+			this.openSettled = false
+			this.toldWhileOpening = []
+			this.resyncWhenSettled = false
+			this._channelName = projectChannelName({
+				name,
+				instance: this.announcing ? crypto.randomUUID() : undefined,
 			})
+			if (store.subscribe) {
+				this.stopStoreNotices = store.subscribe((notice) => this.onStoreNotice(notice))
+			}
+			channel = new BroadcastChannel(this._channelName)
+			// the channel is the transport only where the store announces nothing: others' changes come from it
+			if (!this.announcing) {
+				channel.addEventListener('message', (event: MessageEvent<ProjectChannelMessage>) => {
+					this.onChannelHeard(event.data)
+				})
+			}
 			// The store removes, as it opens, any import left unfinished.
 			await store.open()
 		} catch (thrown) {
 			// what this open opened is closed again; its store is kept only for destroy()
+			this.stopListeningToStore()
 			channel?.close()
 			this.refusedStore = store
 			await closeRefusedStore({ store })
@@ -333,10 +534,11 @@ export class Project<
 			for (const file of files) {
 				this.state.documents.set(file.id, buildDocumentState(file))
 			}
-			await Promise.all(files.map((file) => this.refreshHistoryStatus(file.id)))
+			await Promise.all(files.map((file) => this.readHistoryStatus({ store, documentId: file.id })))
 		} catch (thrown) {
 			// what this open made is closed again, as for a store that refused to open
 			this.closing = true
+			this.stopListeningToStore()
 			channel!.close()
 			this._channel = undefined
 			this._store = undefined
@@ -346,6 +548,16 @@ export class Project<
 			throw thrown
 		}
 
+		// the changes told as the store opened (an unfinished import's cleanup) or as its documents were read waited
+		// for them: folded now, in the order told, into a state that holds them
+		this.openSettled = true
+		const told = this.toldWhileOpening.splice(0)
+		const readAgain = this.resyncWhenSettled
+		this.resyncWhenSettled = false
+		// an open a close or another open was called after: nothing folded, nothing posted
+		if (this.closing) return this
+		if (readAgain) this.trackBroadcastWork({ work: this.resync(), told: 'resync' })
+		else for (const message of told) this.foldTold(message)
 		return this
 	}
 
@@ -362,6 +574,8 @@ export class Project<
 				// (the import pipeline is registry-driven).
 				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
 				perf: this.perfEnabled,
+				dialecteVersion: this.dialecteVersion,
+				engineUrl: this.engineUrl,
 			},
 			perf: this.perf,
 		})
@@ -376,6 +590,12 @@ export class Project<
 	private onChannelMessage(message: ProjectChannelMessage | undefined): void {
 		if (this.closing) return
 		switch (message?.type) {
+			case 'document-updated':
+				this.trackBroadcastWork({
+					work: this.refreshDocumentRecord(message.documentId),
+					told: message.type,
+				})
+				break
 			case 'init-empty-document':
 			case 'document-removed':
 			case 'document-imported':
@@ -383,7 +603,10 @@ export class Project<
 				// together for this realm. Tracked so teardown can await it — a late
 				// foreign message must not read/reconcile the store after destroy()
 				// deleted it.
-				this.trackBroadcastWork(this.reconcileFromBroadcast(message.documentId))
+				this.trackBroadcastWork({
+					work: this.reconcileFromBroadcast(message.documentId),
+					told: message.type,
+				})
 				break
 			case 'commit': {
 				const entry = this.state.documents.get(message.documentId)
@@ -392,7 +615,10 @@ export class Project<
 				}
 				// Tracked fire-and-forget: a late foreign message must not refresh
 				// flags on a store that teardown already closed.
-				this.trackBroadcastWork(this.refreshHistoryStatus(message.documentId))
+				this.trackBroadcastWork({
+					work: this.refreshHistoryStatus(message.documentId),
+					told: message.type,
+				})
 				// A cross-realm commit changed this document — wake local subscribers so
 				// the UI refetches (the fold above already updated the shared entry).
 				this.signalStateChange(message.documentId, true)
@@ -401,28 +627,73 @@ export class Project<
 		}
 	}
 
+	/** The open store's notices let go. */
+	private stopListeningToStore(): void {
+		this.stopStoreNotices()
+		this.stopStoreNotices = stopNothing
+	}
+
 	/**
 	 * Track channel-triggered fire-and-forget work so `close`/`destroy` can wait for
 	 * it to settle before tearing down the store. A foreign message delivered as the
 	 * project is closing would otherwise read or reconcile the store after it was
-	 * closed/deleted — surfacing as DatabaseClosedError or ConstraintError. The work
-	 * keeps its own error swallowing; here it is only awaited, never rethrown.
+	 * closed/deleted — surfacing as DatabaseClosedError or ConstraintError. A failure
+	 * is reported unless the project closes; never rethrown.
 	 */
-	private trackBroadcastWork(work: Promise<void>): void {
+	private trackBroadcastWork(params: {
+		work: Promise<void>
+		told: ProjectChannelMessage['type'] | 'resync'
+	}): void {
+		const { work, told } = params
 		const tracked = work
-			.catch(() => {})
+			.catch((thrown: unknown) => {
+				// as it closes, the store refuses what the work reads: nothing is lost; its engine lost, the resync
+				// that follows reads it all again
+				if (this.closing || toDialecteError(thrown)?.key === 'STORE_ENGINE_LOST') return
+				this.reportFoldFailure({ told, thrown })
+			})
 			.finally(() => {
 				this.pendingBroadcastWork.delete(tracked)
 			})
 		this.pendingBroadcastWork.add(tracked)
 	}
 
-	/** Recompute canUndo/canRedo for a document from the store's history. */
-	private async refreshHistoryStatus(documentId: string): Promise<void> {
+	/**
+	 * A change of its store no call awaits, failing as it is folded in - a Document's subscriber throwing, or the store
+	 * refusing a read: told on the console, the other changes folded all the same.
+	 */
+	private reportFoldFailure(params: {
+		told: ProjectChannelMessage['type'] | 'resync'
+		thrown: unknown
+	}): void {
+		console.error(
+			`Project "${this._name}": folding in a change of its store (${params.told}) failed; the other changes are folded in all the same:`,
+			params.thrown,
+		)
+	}
+
+	/** A document's registry entry read again (another view renamed or moved it): its view woken. */
+	private async refreshDocumentRecord(documentId: string): Promise<void> {
 		if (this.closing) return
 		const entry = this.state.documents.get(documentId)
 		if (!entry) return
-		const { canUndo, canRedo } = await this.store.getHistoryStatus(documentId)
+		const record = await this.store.getDocument(documentId)
+		if (!record || this.closing) return
+		entry.record = record
+		this.signalStateChange(documentId, true)
+	}
+
+	/** Recompute canUndo/canRedo for a document from the store's history. */
+	private async refreshHistoryStatus(documentId: string): Promise<void> {
+		if (this.closing) return
+		await this.readHistoryStatus({ store: this.store, documentId })
+	}
+
+	/** A document's canUndo/canRedo read from `store` into its entry (the open's own read, before calls are taken). */
+	private async readHistoryStatus(params: { store: Store; documentId: string }): Promise<void> {
+		const entry = this.state.documents.get(params.documentId)
+		if (!entry) return
+		const { canUndo, canRedo } = await params.store.getHistoryStatus(params.documentId)
 		entry.canUndo = canUndo
 		entry.canRedo = canRedo
 	}
@@ -460,6 +731,7 @@ export class Project<
 			// Wait for any in-flight foreign-message work to settle on the live store
 			// before closing it, so no read/reconcile outlives it.
 			await Promise.allSettled(this.pendingBroadcastWork)
+			this.stopListeningToStore()
 			this._channel?.close()
 			this._channel = undefined
 			// settled once the store counts no more (its hub, or another tab, told)
@@ -559,7 +831,7 @@ export class Project<
 	 */
 	async removeDocument(documentId: string): Promise<void> {
 		return this.counted(async () => {
-			await this.store.removeDocument(documentId)
+			await this.writeOrReadAgain({ write: () => this.store.removeDocument(documentId) })
 			this.state.documents.delete(documentId)
 			this.broadcast({ type: 'document-removed', documentId, timestamp: Date.now() })
 		})
@@ -586,7 +858,7 @@ export class Project<
 	 * Import Files into the project: one entry per file, in the order given. The files are imported
 	 * one after the other - memory is bounded by one file's batches, the registry sees one import -
 	 * and a file that fails is its own `failed` entry, the next file still attempted: nothing of a
-	 * failed file lands. The call itself rejects only for what is about the call: an unknown
+	 * failed file lands (but an import whose engine was lost after it landed: see `importFile`). The call itself rejects only for what is about the call: an unknown
 	 * `configKey`, a project not open, a `path` (`DOCUMENT_PATH_INVALID`: a path names one file,
 	 * `importFile` takes it).
 	 *
@@ -627,7 +899,8 @@ export class Project<
 	 * The document is in the project state and broadcast once the store answers it `ready`; whatever
 	 * fails before that, or an abort through `options.signal`, leaves nothing and is thrown
 	 * (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign
-	 * error). `options.onProgress` is told after each stored batch, never awaited. One file is in
+	 * error). One refusal leaves its document: an import whose engine was lost after it landed is
+	 * refused `STORE_ENGINE_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told after each stored batch, never awaited. One file is in
 	 * flight per project: a call made while another import runs waits for it.
 	 *
 	 * @intent import an XML file, load a file into the project, parse XML into records
@@ -647,7 +920,15 @@ export class Project<
 	}): Promise<ImportedDocument> {
 		const { file, options = {}, store } = params
 		const { onProgress, signal, ...fileOptions } = options
-		const result = await store.importFile({ file, options: fileOptions, onProgress, signal })
+		// the import's id: asked after a lost engine, never imported again
+		const writeId = crypto.randomUUID()
+		let result: ImportFileResult
+		try {
+			result = await store.importFile({ file, options: fileOptions, writeId, onProgress, signal })
+		} catch (thrown) {
+			if (!isEngineLost({ thrown })) throw thrown
+			throw await this.lostImportError({ store, thrown, writeId })
+		}
 		if (result.perf) this.perf.merge({ report: result.perf, prefix: 'store' })
 		this.state.documents.set(result.record.id, buildDocumentState(result.record))
 		this.broadcast({
@@ -661,6 +942,66 @@ export class Project<
 			recordCount: result.recordCount,
 			diagnostics: result.diagnostics,
 		}
+	}
+
+	/**
+	 * A write of the project with no id to ask its outcome by (an undo, a redo, a removal): refused `STORE_ENGINE_LOST`
+	 * it may have landed, so the project's documents (and the document's history) are read again before the refusal is
+	 * thrown - never made again. The change the store told before its engine went is posted to the listeners.
+	 */
+	private async writeOrReadAgain(params: {
+		write: () => Promise<void>
+		documentId?: string
+	}): Promise<void> {
+		const { write, documentId } = params
+		try {
+			await write()
+		} catch (thrown) {
+			if (!isEngineLost({ thrown })) throw thrown
+			await this.refreshState().catch(ignoreReadFailure)
+			if (documentId !== undefined) {
+				await this.refreshHistoryStatus(documentId).catch(ignoreReadFailure)
+				this.signalStateChange(documentId, true)
+			}
+			if (this.announcing) this.postToldChanges({})
+			throw thrown
+		}
+	}
+
+	/**
+	 * An import refused `STORE_ENGINE_LOST`: its outcome asked once by its id; landed, its document read into the
+	 * project's state (its diagnostics went with the lost answer, so it is no entry) and posted to the listeners - the
+	 * refusal says which outcome, and the document it made (none when the documents could not be read again).
+	 */
+	private async lostImportError(params: {
+		store: GenericStore
+		thrown: unknown
+		writeId: string
+	}): Promise<Error> {
+		const { store, thrown, writeId } = params
+		const outcome = await outcomeAfterLoss({ store, writeId })
+		if (outcome !== 'applied') {
+			// a `running` or `unknown` import may have landed: what the store told of it is posted
+			if (this.announcing) this.postToldChanges({})
+			return lostWriteError({ thrown, writeId, outcome })
+		}
+		await this.refreshState().catch(ignoreReadFailure)
+		const landed = Array.from(this.state.documents.values()).find(function madeByImport(entry) {
+			return entry.record.writeId === writeId
+		})
+		if (landed) {
+			this.broadcast({
+				type: 'document-imported',
+				documentId: landed.record.id,
+				timestamp: Date.now(),
+			})
+		} else if (this.announcing) this.postToldChanges({})
+		return lostWriteError({
+			thrown,
+			writeId,
+			outcome,
+			meta: landed && { documentId: landed.record.id },
+		})
 	}
 
 	/**
@@ -809,7 +1150,7 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
-			await this.store.undo(documentId)
+			await this.writeOrReadAgain({ documentId, write: () => this.store.undo(documentId) })
 			// Update local state deterministically (the channel echo would do this
 			// too, but asynchronously) before announcing.
 			const timestamp = Date.now()
@@ -834,7 +1175,7 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
-			await this.store.redo(documentId)
+			await this.writeOrReadAgain({ documentId, write: () => this.store.redo(documentId) })
 			const timestamp = Date.now()
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
@@ -1087,3 +1428,29 @@ function unsubscribeNothing(): void {}
 
 /** The end of a write never counted: a Document of an open that closed. */
 function endNothing(): void {}
+
+/** Whether two changes are of one thing: their type, and the document and the blob they name. */
+function sameSubject(params: {
+	first: ProjectChannelMessage
+	second: ProjectChannelMessage
+}): boolean {
+	const { first, second } = params
+	return (
+		first.type === second.type &&
+		subjectIdOf({ message: first, field: 'documentId' }) ===
+			subjectIdOf({ message: second, field: 'documentId' }) &&
+		subjectIdOf({ message: first, field: 'blobId' }) ===
+			subjectIdOf({ message: second, field: 'blobId' })
+	)
+}
+
+function subjectIdOf(params: {
+	message: ProjectChannelMessage
+	field: 'documentId' | 'blobId'
+}): string | undefined {
+	const { message, field } = params
+	return field in message ? (message as unknown as Record<string, string>)[field] : undefined
+}
+
+/** The unsubscribe of a store that announces nothing, or of no store. */
+function stopNothing(): void {}

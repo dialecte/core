@@ -65,7 +65,10 @@ export type DeclaredTestRunnerParams<
 	GenericModules extends ExtensionModules = Record<never, never>,
 	GenericConfigKey extends string = string,
 > = DeclaredTestDialecteParams<GenericConfig, GenericModules, GenericConfigKey> & {
-	/** The store the test projects run on. Defaults to the local store. */
+	/**
+	 * The store the test projects run on: the test helpers' default when absent (`useTestStorage`, else the local
+	 * store). `sqlite`: the SQLite engine in this process.
+	 */
 	storage?: StorageParam
 }
 
@@ -73,7 +76,10 @@ export type DeclaredTestRunnerParams<
 export type LegacyTestRunnerParams<GenericConfig extends AnyDialecteConfig> =
 	LegacyTestDialecteParams<GenericConfig> & {
 		dialecteConfig: GenericConfig
-		/** The store the test projects run on. Defaults to the local store. */
+		/**
+		 * The store the test projects run on: the test helpers' default when absent (`useTestStorage`, else the local
+		 * store). `sqlite`: the SQLite engine in this process.
+		 */
 		storage?: StorageParam
 	}
 
@@ -87,10 +93,15 @@ export type TestContextParams<GenericConfig extends AnyDialecteConfig> = {
 			databaseName: string
 			/**
 			 * The dialecte of the project named, as the project says it (`project.dialecteId`): with the name, which
-			 * project the in-memory store holds. `undefined` for a project made with no dialecte.
+			 * project the in-memory and SQLite stores hold. `undefined` for a project made with no dialecte (refused
+			 * `ASSERTION_FAILED` on `sqlite`).
 			 */
 			dialecteId: string | undefined
-			/** The store of the project named; the local store when absent. */
+			/**
+			 * The store of the project named; the test helpers' default when absent (`useTestStorage`, else the local
+			 * store). `sqlite`: the SQLite engine in this process. A context reads: an import through it runs with no
+			 * dialecte hooks.
+			 */
 			storage?: StorageParam
 			store?: undefined
 	  }
@@ -101,7 +112,10 @@ export type TestProjectOptions = {
 	targetXml?: string
 	/** The declared config the source and target are imported under. Defaults to the default key. */
 	configKey?: string
-	/** The store the test project runs on. Defaults to the local store. */
+	/**
+	 * The store the test project runs on: the test helpers' default when absent (`useTestStorage`, else the local
+	 * store). `sqlite`: the SQLite engine in this process.
+	 */
 	storage?: StorageParam
 	/** Project dev options; `perf: true` makes `document.perf.report()` count the store reads. */
 	dev?: { perf?: boolean }

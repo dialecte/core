@@ -2,8 +2,12 @@ import { ENGINE_OPEN_WINDOW_MS } from '../client/client.constants'
 
 import type { DialecteErrorKey } from '@/errors'
 
-/** The wire protocol a realm and the hub speak; a realm speaking another one is refused. */
-export const HUB_PROTOCOL_VERSION = 2
+/**
+ * The wire protocol a realm and the hub speak; a realm speaking another one is refused. It also keys the connection
+ * every copy of the library in a realm shares (`HubRegistry`). Bumped with any change of either: `shared-shapes.test.ts`
+ * fails until it is, the shape recorded per version in `src/store/__shapes__/hub-protocol-v<version>.txt`.
+ */
+export const HUB_PROTOCOL_VERSION = 3
 
 /** An engine left without client is told to close after this long; an open meanwhile keeps it. */
 export const ENGINE_IDLE_CLOSE_MS = 5_000

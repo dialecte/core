@@ -158,11 +158,36 @@ export type EngineCommitParams = {
 export type CommitProgressListener = (current: number, total: number) => void
 
 /**
+ * The members whose answer says whether they changed anything (`false`: nothing to undo or redo, an unknown
+ * document or blob, an update or a bulk write changing nothing, a blob attached where it is or detached from a record
+ * it is not attached to): the engine announces no change then.
+ */
+export type EngineChangeMember =
+	| 'updateDocument'
+	| 'removeDocument'
+	| 'bulkWrite'
+	| 'undo'
+	| 'redo'
+	| 'attachBlob'
+	| 'detachBlob'
+	| 'removeBlob'
+
+/** Those members as the engine serves them: the port's arguments, an answer saying whether anything changed. */
+export type EngineChangeMembers = {
+	[GenericMember in EngineChangeMember]: (
+		...args: Parameters<Store[GenericMember]>
+	) => Promise<boolean>
+}
+
+/**
  * The port members an engine serves alike to every client, with the port's signatures: registry,
  * reads, bulk writes, write outcomes, history; and a commit, its progress listener an argument of its own.
  */
-export type EngineMembers = Pick<Store, EngineMember> &
-	EngineBlobMembers & {
+export type EngineMembers = Omit<
+	Pick<Store, EngineMember> & EngineBlobMembers,
+	EngineChangeMember
+> &
+	EngineChangeMembers & {
 		commit: (params: EngineCommitParams, onProgress?: CommitProgressListener) => Promise<void>
 	}
 

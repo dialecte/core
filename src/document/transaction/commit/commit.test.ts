@@ -3,10 +3,11 @@ import { commitTransaction } from './commit'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createProgressReporter } from '@/document/progress'
+import { createDialecteError, toDialecteError } from '@/errors'
 import { createTestRecord } from '@/test'
 
 import type { DocumentState } from '@/document'
-import type { Store } from '@/store'
+import type { Store, WriteOutcome } from '@/store'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyRawRecord, Operation } from '@/types'
 
@@ -322,5 +323,88 @@ describe('commitTransaction', () => {
 		).rejects.toThrow()
 
 		expect(state.lastUpdate).toBeNull()
+	})
+
+	describe('a commit whose engine is lost (STORE_ENGINE_LOST) → its outcome asked once by its writeId, never committed again', () => {
+		type TestCase = {
+			outcome: WriteOutcome | 'ask-fails'
+			expected: { committed: true } | { refusedWith: string; outcome: string }
+		}
+		const testCases: Record<string, TestCase> = {
+			'applied → the commit stands: resolved, lastUpdate set': {
+				outcome: 'applied',
+				expected: { committed: true },
+			},
+			'not applied → STORE_ENGINE_LOST, meta.outcome not-applied: commit it again if wanted': {
+				outcome: 'not-applied',
+				expected: { refusedWith: 'STORE_ENGINE_LOST', outcome: 'not-applied' },
+			},
+			'still running (a silent engine) → STORE_ENGINE_LOST, meta.outcome running': {
+				outcome: 'running',
+				expected: { refusedWith: 'STORE_ENGINE_LOST', outcome: 'running' },
+			},
+			'the outcome itself not answered → STORE_ENGINE_LOST, meta.outcome unknown': {
+				outcome: 'ask-fails',
+				expected: { refusedWith: 'STORE_ENGINE_LOST', outcome: 'unknown' },
+			},
+		}
+		for (const [description, { outcome, expected }] of Object.entries(testCases)) {
+			it(description, async () => {
+				const lost = createDialecteError('STORE_ENGINE_LOST', {
+					detail: 'its host went',
+					meta: { reason: 'host-gone' },
+				})
+				const { store } = makeStore({ shouldThrow: lost })
+				const asked: string[] = []
+				store.getWriteOutcome = vi.fn(async ({ writeId }: { writeId: string }) => {
+					asked.push(writeId)
+					if (outcome === 'ask-fails') throw lost
+					return outcome
+				})
+				const state = makeState()
+				const op: Operation<TestDialecteConfig> = {
+					status: 'created',
+					oldRecord: undefined,
+					newRecord: createTestRecord({ record: { tagName: 'A', id: 'r1' } }),
+				}
+				const settled = await commitTransaction({
+					stagedOperations: [op],
+					store,
+					documentId: 'doc-1',
+					documentState: state,
+					progress: createProgressReporter(state),
+				}).then(
+					function committed() {
+						return { committed: true } as const
+					},
+					function refused(thrown: unknown) {
+						const error = toDialecteError(thrown)
+						return { refusedWith: error?.key, outcome: error?.meta?.outcome }
+					},
+				)
+				expect(settled).toEqual(expected)
+				expect(store.commit).toHaveBeenCalledTimes(1)
+				const [{ writeId }] = (store.commit as ReturnType<typeof vi.fn>).mock.calls[0]!
+				expect(asked).toEqual([writeId])
+				expect(state.lastUpdate !== null).toBe('committed' in expected)
+				// refused, the commit gives the loading flag back; committed, its Document does
+				if (!('committed' in expected)) expect(state.loading).toBe(false)
+			})
+		}
+
+		it('another error → thrown as it is, no outcome asked', async () => {
+			const { store } = makeStore({ shouldThrow: new Error('store failure') })
+			const state = makeState()
+			await expect(
+				commitTransaction({
+					stagedOperations: [],
+					store,
+					documentId: 'doc-1',
+					documentState: state,
+					progress: createProgressReporter(state),
+				}),
+			).rejects.toThrow('store failure')
+			expect(store.getWriteOutcome).not.toHaveBeenCalled()
+		})
 	})
 })

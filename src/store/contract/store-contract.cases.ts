@@ -26,10 +26,11 @@ import {
 } from './store-contract.fixtures'
 import { holdContractImport, untilHeld } from './store-contract.import-session'
 
-import { expect } from 'vitest'
+import { expect, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE, DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
+import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
 import type { JsonWithRawJson } from '../json-values.types'
 import type { ImportProgress, Store, WriteOutcome } from '../store.types'
@@ -468,12 +469,15 @@ const bulkWrites: StoreContractCases = {
 
 // ── Commit and history ───────────────────────────────────────────────────────
 
-/** Progress listeners that fail: a store ignores their failure, as it never awaits them. */
+/** What the failing progress listeners throw. */
+const LISTENER_FAILURE = new Error('listener failed')
+
+/** Progress listeners that fail: a store never awaits them, their failure reported on the console. */
 const FAILING_PROGRESS_LISTENERS: Record<string, (current: number, total: number) => unknown> = {
 	throws: () => {
-		throw new Error('listener failed')
+		throw LISTENER_FAILURE
 	},
-	rejects: () => Promise.reject(new Error('listener failed')),
+	rejects: () => Promise.reject(LISTENER_FAILURE),
 }
 
 const history: StoreContractCases = {
@@ -769,9 +773,10 @@ const history: StoreContractCases = {
 	},
 	...Object.fromEntries(
 		Object.entries(FAILING_PROGRESS_LISTENERS).map(([name, listener]) => [
-			`a commit whose progress listener ${name} → the commit lands whole, undoable`,
+			`a commit whose progress listener ${name} → the commit lands whole, undoable; the failure reported`,
 			{
 				act: async ({ store }: StoreContractContext) => {
+					const reports = quietReports()
 					await seedTwoRecords(store)
 					await store.commit({
 						documentId: 'doc-1',
@@ -790,6 +795,10 @@ const history: StoreContractCases = {
 						'r1',
 						'r2',
 					])
+					await vi.waitFor(function reported() {
+						expect(reportedFailures({ reports })).toContain(LISTENER_FAILURE)
+					})
+					expect(new Set(reportedFailures({ reports }))).toEqual(new Set([LISTENER_FAILURE]))
 				},
 			},
 		]),
@@ -2370,26 +2379,33 @@ const importing: StoreContractCases = {
 				})
 			},
 		},
-	'a progress listener that never answers, rejects or throws neither holds nor fails the import': {
-		needs: ['import'],
-		act: async ({ store }) => {
-			const listeners: ((progress: ImportProgress) => unknown)[] = [
-				() => new Promise(() => {}),
-				() => Promise.reject(new Error('listener gone')),
-				() => {
-					throw new Error('listener broken')
-				},
-			]
-			for (const listener of listeners) {
-				const result = await store.importFile({
-					file: contractFile({ body: sessionRecords(2) }),
-					options: { chunkOptions: SMALL_BATCHES },
-					onProgress: listener,
+	'a progress listener that never answers, rejects or throws neither holds nor fails the import; a failure reported':
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				const reports = quietReports()
+				const gone = new Error('listener gone')
+				const broken = new Error('listener broken')
+				const listeners: ((progress: ImportProgress) => unknown)[] = [
+					() => new Promise(() => {}),
+					() => Promise.reject(gone),
+					() => {
+						throw broken
+					},
+				]
+				for (const listener of listeners) {
+					const result = await store.importFile({
+						file: contractFile({ body: sessionRecords(2) }),
+						options: { chunkOptions: SMALL_BATCHES },
+						onProgress: listener,
+					})
+					expect(result.record.status).toBe('ready')
+				}
+				await vi.waitFor(function bothReported() {
+					expect(new Set(reportedFailures({ reports }))).toEqual(new Set([gone, broken]))
 				})
-				expect(result.record.status).toBe('ready')
-			}
+			},
 		},
-	},
 	'an import aborted while it runs is refused IMPORT_ABORTED and leaves nothing': {
 		needs: ['import'],
 		act: async ({ store }) => {

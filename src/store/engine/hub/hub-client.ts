@@ -19,12 +19,15 @@ import {
 import { createRealmHost } from './realm-host'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
+import { tellListeners } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 
 import type { EngineLostReason } from '../client/client.types'
+import type { LinkNotice } from '../engine-store.types'
 import type {
-	ConnectHubParams,
 	EngineWaiter,
 	HubConnection,
+	HubConnectionOptions,
 	HubConnectionParams,
 	HubLifecycleTargets,
 	HubPortOpening,
@@ -41,52 +44,67 @@ import type {
 } from './hub-client.types'
 import type { HubToRealmMessage, RealmToHubMessage } from './hub-protocol.types'
 import type { HubSpawner } from './hub.types'
-import type { HubEngineSpawner, RealmHost } from './realm-host.types'
+import type { HubEngineSpawner, RealmEngineSpawner, RealmHost } from './realm-host.types'
 
 /**
  * Connect this realm to the origin's hub, once: a second call - from this copy of the library or
  * another one of the same protocol - gets the first connection. Answers `undefined` where the browser
  * has no SharedWorker, or the hub never welcomed the realm (its script failed to load or was blocked,
  * or it stayed silent past the welcome budget): the caller then runs the engine itself, and a later
- * call tries again. The realm registers the engines it can start whose worker is of its own origin, at
- * its first join and for the connection's life: a later call naming one the connection does not run is
- * refused `STORE_HUB_SPAWNERS_FIXED` (the connection kept); naming those or fewer, or none, gets it.
+ * call tries again. The realm registers the engines it can start whose worker is of its own origin: a
+ * later call adds those the connection does not run yet (`addSpawners`); one naming a dialecte the
+ * connection runs at another version, or two versions of one dialecte, is refused `STORE_HUB_SPAWNERS_FIXED`,
+ * the connection kept. A realm that cannot store (`hostsNoEngine`) registers none, its spawners checked all the same.
  */
 export function openHubConnection(
-	params: ConnectHubParams = {},
+	params: HubConnectionOptions = {},
 ): Promise<HubConnection | undefined> {
+	// two versions of one dialecte in one call: refused before any connection is made
+	refuseOtherVersions({ registered: [], asked: (params.spawners ?? []).map(toHubSpawner) })
+	const spawners = params.hostsNoEngine ? [] : (params.spawners ?? [])
 	const kept = (globalThis as HubRegistry)[HUB_REGISTRY_KEY]
 	if (!kept) {
 		return keptAttempt({
 			attempt: function connect() {
-				return openHub(params)
+				return openHub({ spawners })
 			},
 		})
 	}
-	const asked = sameOriginSpawners({ spawners: params.spawners ?? [] }).map(toHubSpawner)
-	// none to check: the kept attempt itself, as every copy of the library gets it
+	const asked = sameOriginSpawners({ spawners })
+	// none to add: the kept attempt itself, as every copy of the library gets it
 	if (asked.length === 0) return kept
-	return kept.then(function refuseOthersRun(connection) {
-		if (connection) refuseSpawnersNotRun({ connection, asked })
+	return kept.then(function addAsked(connection) {
+		connection?.addSpawners({ spawners: asked })
 		return connection
 	})
 }
 
-/** `STORE_HUB_SPAWNERS_FIXED` when `asked` names an engine the connection does not run. */
-function refuseSpawnersNotRun(params: { connection: HubConnection; asked: HubSpawner[] }): void {
-	const { connection, asked } = params
-	const notRun = asked.filter(function runByNone(spawner) {
-		return !connection.spawners.some(function runs(registered) {
+/** The realm's hub connection made or under way, if any: none is started for asking (a bound child has its own). */
+export function keptHubConnection(): Promise<HubConnection | undefined> | undefined {
+	return (globalThis as HubRegistry)[HUB_REGISTRY_KEY]
+}
+
+/**
+ * `STORE_HUB_SPAWNERS_FIXED` when `asked` names a dialecte the connection runs at another version: a page runs one
+ * engine version per dialecte (two would split the project's views between two engines).
+ */
+function refuseOtherVersions(params: {
+	registered: readonly HubSpawner[]
+	asked: readonly HubSpawner[]
+}): void {
+	const { registered, asked } = params
+	const conflicting = asked.filter(function runAtAnotherVersion(spawner) {
+		return [...registered, ...asked].some(function sameDialecteOtherVersion(running) {
 			return (
-				registered.dialecteId === spawner.dialecteId &&
-				registered.dialecteVersion === spawner.dialecteVersion
+				running.dialecteId === spawner.dialecteId &&
+				running.dialecteVersion !== spawner.dialecteVersion
 			)
 		})
 	})
-	if (notRun.length === 0) return
+	if (conflicting.length === 0) return
 	throwDialecteError('STORE_HUB_SPAWNERS_FIXED', {
-		detail: `This page's hub connection runs ${describeSpawners({ spawners: connection.spawners })}, not ${describeSpawners({ spawners: notRun })}: connectHub registers its engines once`,
-		meta: { spawners: notRun },
+		detail: `This page's hub connection runs ${describeSpawners({ spawners: registered })}, not ${describeSpawners({ spawners: conflicting })}: a page runs one version of each dialecte's engine`,
+		meta: { spawners: conflicting },
 	})
 }
 
@@ -166,7 +184,7 @@ function keptAttempt(params: {
 	return attempt
 }
 
-async function openHub(params: ConnectHubParams = {}): Promise<HubConnection | undefined> {
+async function openHub(params: HubConnectionOptions = {}): Promise<HubConnection | undefined> {
 	if (typeof SharedWorker === 'undefined') return undefined
 	// a hub the browser refuses to make (blocked, a sandbox: a DOMException): no hub; anything else is a bug, thrown
 	let first: HubPortOpening
@@ -230,10 +248,10 @@ function hubPort(): HubPortOpening {
  * resolves as `new Worker` resolves it, against the document's base URL (in a srcdoc document
  * `location` resolves nothing), and is compared with this realm's origin.
  */
-export function sameOriginSpawners(params: {
-	spawners: HubEngineSpawner[]
+export function sameOriginSpawners<GenericSpawner extends HubEngineSpawner>(params: {
+	spawners: GenericSpawner[]
 	realm?: SpawnerRealm
-}): HubEngineSpawner[] {
+}): GenericSpawner[] {
 	const { spawners, realm = globalThis as unknown as SpawnerRealm } = params
 	const base = realm.document?.baseURI ?? realm.location?.href
 	return spawners.filter(function isSameOrigin(spawner) {
@@ -309,6 +327,10 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	let hubWatch: AbortController | undefined
 	/** Ends the hello in progress when the realm is suspended meanwhile (its port closed, no welcome comes). */
 	let abandonJoin: () => void = releaseNothing
+	/** The engines the realm can start: those of its first join, then those added; each hello names them all. */
+	const registered: RealmEngineSpawner[] = [...spawners]
+	/** What the hub knows of them, in the same order. */
+	const registeredHubSpawners: HubSpawner[] = registered.map(toHubSpawner)
 	const host: RealmHost = createRealmHost({ spawners, report: send })
 
 	function send(message: RealmToHubMessage, transfer: Transferable[] = []): void {
@@ -416,7 +438,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				protocol: HUB_PROTOCOL_VERSION,
 				realmId: instanceId,
 				topLevel,
-				spawners: spawners.map(toHubSpawner),
+				spawners: [...registeredHubSpawners],
 			}
 			instancePort.postMessage(hello)
 			await welcomedWithin({ welcomed, failed: instanceFailed, expired: budget.expired })
@@ -730,7 +752,26 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		realmId: function currentRealmId() {
 			return realmId
 		},
-		spawners: spawners.map(toHubSpawner),
+		bound,
+		addSpawners: function addSpawners({ spawners: asked }) {
+			refuseOtherVersions({ registered: registeredHubSpawners, asked: asked.map(toHubSpawner) })
+			// a bound child hosts no engine (the hub ignores its spawners)
+			if (bound) return
+			const added: RealmEngineSpawner[] = []
+			for (const spawner of asked) {
+				const known = [...registered, ...added].some(function sameDialecte(running) {
+					return running.dialecteId === spawner.dialecteId
+				})
+				if (!known) added.push(spawner)
+			}
+			// the host keeps its first spawner of a dialecte, measured from now on when one asked is (`perf`)
+			host.add({ spawners: asked })
+			if (added.length === 0) return
+			registered.push(...added)
+			registeredHubSpawners.push(...added.map(toHubSpawner))
+			// said once welcomed when the realm is joining (its hello may be on its way already), before any open it asks
+			sendWhenJoined({ type: 'spawners', spawners: added.map(toHubSpawner) })
+		},
 		ended,
 		close: function closeConnection() {
 			if (phase === 'refused') return
@@ -764,10 +805,14 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			let released = false
 			/** The release under way or done: a second release settles with it. */
 			let releasing: Promise<void> | undefined
+			/** What this link listens with: let go with it. */
+			const ownListeners = new Set<(notice: LinkNotice) => void>()
 			/** The link counted no more in the realm; the project left with its last link, once the hub said so. */
 			async function releaseOnce(): Promise<void> {
 				released = true
 				countedLinks.delete(link)
+				for (const listener of ownListeners) entry.listeners.delete(listener)
+				ownListeners.clear()
 				entry.users -= 1
 				if (entry.users > 0) return
 				// an entry forgotten meanwhile (refused as away) may have been replaced by a fresh one
@@ -796,6 +841,15 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				release: function releaseLink() {
 					releasing ??= releaseOnce()
 					return releasing
+				},
+				onNotice: function listen(listener) {
+					if (released) return stopNothing
+					ownListeners.add(listener)
+					entry.listeners.add(listener)
+					return function stopListening() {
+						ownListeners.delete(listener)
+						entry.listeners.delete(listener)
+					}
 				},
 			}
 			countedLinks.add(link)
@@ -903,13 +957,21 @@ function refusedLink(params: { error: Error; project: string }): HubProjectLink 
 		release: async function releaseRefused() {
 			released = true
 		},
+		onNotice: function listenToNothing() {
+			return stopNothing
+		},
 	}
 }
+
+/** The unsubscribe of a listener never added: a refused or released link hears nothing. */
+function stopNothing(): void {}
 
 function newEntry(params: HubProjectParams): ProjectEntry {
 	return {
 		...params,
 		users: 0,
+		listeners: new Set(),
+		reached: false,
 		asked: false,
 		current: undefined,
 		waiters: [],
@@ -956,7 +1018,22 @@ function engineReady(params: {
 		heartbeatTimeoutMs: entry.heartbeatTimeoutMs,
 	})
 	entry.current = { generation: message.generation, client }
+	client.onEvent(function tellLinks(signal) {
+		tellEntry({ entry, notice: { type: 'event', signal } })
+	})
+	// another engine than the one the realm had: what changed between the two was told to no one here
+	if (entry.reached) tellEntry({ entry, notice: { type: 'resync' } })
+	entry.reached = true
 	for (const waiter of entry.waiters.splice(0)) waiter.resolve(client)
+}
+
+/** Every link of the project in the realm told `notice`; one that throws stops no other. */
+function tellEntry(params: { entry: ProjectEntry; notice: LinkNotice }): void {
+	tellListeners({
+		listeners: params.entry.listeners,
+		value: params.notice,
+		of: TOLD_OF.engineChanges,
+	})
 }
 
 /** The engine's host is gone: the calls in flight refused `host-gone`, the next ones wait for the hub. */

@@ -1,9 +1,10 @@
 import { TEST_CONFIG_KEY } from './constant'
 import { openTestProject, resolveTestDialecte } from './test-dialecte-setup'
-import { resolveTestStorage } from './test-storage'
+import { resolveTestStorage, testStoreFor } from './test-storage'
 
 import { createStagedOperations } from '@/document'
 import { createProgressReporter } from '@/document/progress'
+import { createDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
 import { resolveStore } from '@/store/resolve-store'
 
@@ -15,6 +16,7 @@ import type {
 	TestProjectResult,
 } from './create-test-dialecte.types'
 import type { Context, ExtensionModules } from '@/document'
+import type { StorageParam } from '@/project'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig } from '@/types'
 
@@ -72,18 +74,7 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 	params: TestContextParams<GenericConfig>,
 ): Promise<Context<GenericConfig>> {
 	const { dialecteConfig, documentId } = params
-	const store =
-		params.store === undefined
-			? resolveStore({
-					name: params.databaseName,
-					dialecteId: params.dialecteId,
-					storage: resolveTestStorage({ storage: params.storage }),
-					runtime: {
-						configs: { [TEST_CONFIG_KEY]: dialecteConfig },
-						defaultConfigKey: TEST_CONFIG_KEY,
-					},
-				})
-			: params.store
+	const store = params.store ?? (await storeByName({ ...params, dialecteConfig }))
 	await store.open()
 	if (params.store === undefined) OPENED_CONTEXT_STORES.add(store)
 	return {
@@ -101,6 +92,39 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 		}),
 		perf: NOOP_PERF,
 	}
+}
+
+/**
+ * The store of the project named, of the kind `storage` names (else the test helpers' default): on `sqlite`, the
+ * SQLite engine in this realm, which needs the project's dialecte.
+ */
+async function storeByName<GenericConfig extends AnyDialecteConfig>(params: {
+	databaseName: string
+	dialecteId: string | undefined
+	storage?: StorageParam
+	dialecteConfig: GenericConfig
+}): Promise<Store> {
+	const { databaseName, dialecteId, dialecteConfig } = params
+	const runtime = {
+		configs: { [TEST_CONFIG_KEY]: dialecteConfig },
+		defaultConfigKey: TEST_CONFIG_KEY,
+	}
+	const kind = resolveTestStorage({ storage: params.storage })
+	if (kind.type !== 'sqlite')
+		return resolveStore({ name: databaseName, dialecteId, storage: kind, runtime })
+	if (dialecteId === undefined) {
+		throw createDialecteError('ASSERTION_FAILED', {
+			detail: `A test context on SQLite names its project's dialecte: "${databaseName}" has none`,
+			meta: { databaseName },
+		})
+	}
+	// a context reads: its engine, when it starts one, imports with no dialecte hooks
+	const storage = await testStoreFor({
+		storage: kind,
+		name: databaseName,
+		dialecte: { id: dialecteId, ...runtime },
+	})
+	return resolveStore({ name: databaseName, dialecteId, storage, runtime })
 }
 
 /** Close every store `createTestContext` opened by name, so the projects they read can be destroyed: settled once they count no more. */

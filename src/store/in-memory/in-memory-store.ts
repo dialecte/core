@@ -7,6 +7,7 @@ import { checkWriteId, toJsonCopy } from '../json-values'
 import { isOwnImporting } from '../own-import'
 import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
+import { sameJsonValue } from '../same-json-value'
 import {
 	throwDocumentAlreadyRegistered,
 	throwDocumentNotRegistered,
@@ -20,12 +21,14 @@ import { toStoredRecords } from '../stored-record'
 import { removeUnfinishedImports } from '../unfinished-imports'
 import { writeOutcomeOf } from '../write-outcome'
 import {
+	announceInMemoryChange,
 	bumpVersion,
 	CLOSING_IN_MEMORY_CONNECTIONS,
 	dropInMemoryState,
 	ensureInMemoryState,
 	findInMemoryState,
 	inMemoryStateKeyOf,
+	listenToInMemoryProject,
 	OPEN_IN_MEMORY_CONNECTIONS,
 } from './in-memory-state'
 import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
@@ -44,9 +47,15 @@ import type {
 	ImportFileParams,
 	ImportFileResult,
 	ImportTarget,
+	StoreNotice,
 	WriteOutcome,
 } from '../store.types'
-import type { InMemoryState, InMemoryStoreOptions, ReadonlyInMemoryState } from './types'
+import type {
+	InMemoryChange,
+	InMemoryState,
+	InMemoryStoreOptions,
+	ReadonlyInMemoryState,
+} from './types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
@@ -217,7 +226,8 @@ export class InMemoryStore implements Store {
 
 	async registerDocument(file: DocumentRecord): Promise<void> {
 		await this.guardOpen()
-		return this.registerDocumentUnguarded(file)
+		await this.registerDocumentUnguarded(file)
+		this.announce({ type: 'init-empty-document', documentId: file.id })
 	}
 
 	async getDocument(documentId: string): Promise<DocumentRecord | undefined> {
@@ -232,12 +242,19 @@ export class InMemoryStore implements Store {
 
 	async updateDocument(documentId: string, updates: DocumentUpdates): Promise<void> {
 		await this.guardOpen()
-		return this.updateDocumentUnguarded(documentId, updates)
+		const before = this.readState().documents.get(documentId)
+		await this.updateDocumentUnguarded(documentId, updates)
+		const after = this.readState().documents.get(documentId)
+		if (!sameJsonValue({ first: before, second: after })) {
+			this.announce({ type: 'document-updated', documentId })
+		}
 	}
 
 	async removeDocument(documentId: string): Promise<void> {
 		await this.guardOpen()
-		return this.removeDocumentUnguarded(documentId)
+		const known = this.readState().documents.has(documentId)
+		await this.removeDocumentUnguarded(documentId)
+		if (known) this.announce({ type: 'document-removed', documentId })
 	}
 
 	// --- Record access ---
@@ -284,10 +301,12 @@ export class InMemoryStore implements Store {
 		runningImports.add(writeId)
 		this.operations.start()
 		try {
-			return await runImport(
+			const imported = await runImport(
 				{ store: this.ownImportTarget(), runtime, file, options, writeId },
 				{ onProgress, signal },
 			)
+			this.announce({ type: 'document-imported', documentId: imported.record.id })
+			return imported
 		} finally {
 			runningImports.delete(writeId)
 			this.operations.end()
@@ -341,7 +360,13 @@ export class InMemoryStore implements Store {
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
 	): Promise<void> {
 		await this.guardOpen()
-		return this.bulkWriteUnguarded(documentId, ops)
+		const table = this.readTable(documentId)
+		const deleting = (ops.deletes ?? []).filter(function held(id) {
+			return table.has(id)
+		})
+		await this.bulkWriteUnguarded(documentId, ops)
+		const writes = (ops.creates?.length ?? 0) + (ops.updates?.length ?? 0) + deleting.length
+		if (writes > 0) this.announce({ type: 'commit', documentId })
 	}
 
 	async commit(params: {
@@ -415,6 +440,8 @@ export class InMemoryStore implements Store {
 			onProgress,
 			parts: [creates.length, updates.length, deletes.length],
 		})
+		// announced once its progress is told, as the engine does
+		this.announce({ type: 'commit', documentId })
 	}
 
 	// --- History ---
@@ -440,6 +467,7 @@ export class InMemoryStore implements Store {
 
 		state.heads.set(documentId, head - 1)
 		bumpVersion({ state, documentId })
+		this.announce({ type: 'commit', documentId })
 	}
 
 	async redo(documentId: string): Promise<void> {
@@ -463,6 +491,7 @@ export class InMemoryStore implements Store {
 
 		state.heads.set(documentId, next)
 		bumpVersion({ state, documentId })
+		this.announce({ type: 'commit', documentId })
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
@@ -497,6 +526,7 @@ export class InMemoryStore implements Store {
 		state.blobs.set(entry.id, toJsonCopy({ value: entry }))
 		const blobData = state.blobData.get(entry.documentId) ?? new Map<string, Blob>()
 		state.blobData.set(entry.documentId, blobData.set(entry.id, data))
+		this.announce({ type: 'blob-added', blobId: entry.id, documentId: entry.documentId })
 	}
 
 	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
@@ -558,6 +588,7 @@ export class InMemoryStore implements Store {
 			...entry,
 			attachedTo: [...entry.attachedTo, checked],
 		})
+		this.announce({ type: 'blob-attached', blobId, ref: checked })
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
@@ -571,7 +602,13 @@ export class InMemoryStore implements Store {
 		const attachedTo = entry.attachedTo.filter(
 			(a) => !(a.documentId === ref.documentId && a.recordRef === ref.recordRef),
 		)
+		if (attachedTo.length === entry.attachedTo.length) return
 		state.blobs.set(blobId, { ...entry, attachedTo })
+		this.announce({
+			type: 'blob-detached',
+			blobId,
+			ref: { documentId: ref.documentId, recordRef: ref.recordRef },
+		})
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
@@ -582,6 +619,31 @@ export class InMemoryStore implements Store {
 		if (!state || !entry) return
 		state.blobs.delete(blobId)
 		state.blobData.get(entry.documentId)?.delete(blobId)
+		this.announce({ type: 'blob-removed', blobId })
+	}
+
+	// --- Change announcement ---
+
+	/**
+	 * Every change of the project made through any in-memory store of it in this page, this store's own told `own`,
+	 * before the call that made it settles; a call that changed nothing tells nothing. A placeholder (not writable)
+	 * shares no state: it is told nothing.
+	 */
+	subscribe(listener: (notice: StoreNotice) => void): () => void {
+		if (!this.writable) return listenToNothing
+		return listenToInMemoryProject({
+			key: this.stateKey,
+			connection: this,
+			// a store closed hears nothing until opened again, as a store over an engine let its link go
+			listener: (notice) => {
+				if (!this.closed) listener(notice)
+			},
+		})
+	}
+
+	/** A change this store made, told to every store of the project listening. */
+	private announce(change: InMemoryChange): void {
+		announceInMemoryChange({ key: this.stateKey, name: this.name, connection: this, change })
 	}
 
 	private async registerDocumentUnguarded(file: DocumentRecord): Promise<void> {
@@ -838,3 +900,6 @@ export class InMemoryStore implements Store {
 		}
 	}
 }
+
+/** The unsubscribe of a placeholder's listener, never added. */
+function listenToNothing(): void {}

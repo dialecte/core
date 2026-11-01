@@ -16,6 +16,8 @@ export type RealmToHubMessage =
 			topLevel: boolean
 			spawners: HubSpawner[]
 	  }
+	/** Engines the realm can start from now on, beside those of its hello (a child realm's are ignored). */
+	| { type: 'spawners'; spawners: HubSpawner[] }
 	| {
 			type: 'open'
 			project: string

@@ -1,11 +1,24 @@
 import type { EngineClient } from '../client/client.types'
+import type { LinkNotice } from '../engine-store.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
-import type { HubSpawner } from './hub.types'
-import type { HubEngineSpawner } from './realm-host.types'
+import type { HubEngineSpawner, RealmEngineSpawner } from './realm-host.types'
 
 export type ConnectHubParams = {
-	/** The engines this realm can start for the hub (a spawner whose worker is of another origin is left out). */
+	/**
+	 * The engines this page can start for the hub: each dialecte's `factory.spawner` (a spawner whose worker is of
+	 * another origin is left out). A later call adds the engines the page does not run yet.
+	 */
 	spawners?: HubEngineSpawner[]
+}
+
+/** How the realm connects: the engines it can start, with what each opens with. */
+export type HubConnectionOptions = {
+	spawners?: RealmEngineSpawner[]
+	/**
+	 * The realm cannot store (no private file system): its spawners are checked - two versions of one dialecte
+	 * refused - but none registered: elected to host an engine, it could not open it.
+	 */
+	hostsNoEngine?: boolean
 }
 
 /** The realm's global object as the hub connection is kept on it, under the protocol's key. */
@@ -24,8 +37,14 @@ export type HubRealm = Pick<HubConnection, 'realmId' | 'createHubPort' | 'onRejo
 export type HubConnection = {
 	/** This realm instance's id (a new one after the page came back from a freeze or the cache). */
 	realmId: () => string
-	/** The engines this realm registered with the hub at its first join (dialecte id and version), for its life. */
-	spawners: readonly HubSpawner[]
+	/** Joined through a port its page made (`adoptHubPort`): a client only, hosting no engine. */
+	readonly bound: boolean
+	/**
+	 * Engines the realm can start from now on, beside those it runs: the hub told at once when welcomed (else in the
+	 * next hello). A dialecte it runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, nothing added; one it
+	 * runs already, or any for a child bound through `adoptHubPort` (it hosts none), adds nothing.
+	 */
+	addSpawners: (params: { spawners: RealmEngineSpawner[] }) => void
 	/** The realm's link to a project's engine: one per project, shared by the realm's connections to it. */
 	openProject: (params: HubProjectParams) => HubProjectLink
 	/**
@@ -75,6 +94,11 @@ export type HubProjectLink = {
 	/** The project's engine client now: waits for the hub's answer, rejects with its refusal. */
 	engine: () => Promise<EngineClient>
 	/**
+	 * `listener` told every change the project's engine announces to the realm, and `resync` once the realm reached
+	 * another engine of it; until released. Answers the unsubscribe.
+	 */
+	onNotice: (listener: (notice: LinkNotice) => void) => () => void
+	/**
 	 * This connection done with the project; the realm leaves it with its last connection, settled once the hub
 	 * acknowledged the leave - from then on no destroy is refused for this realm (at once when another connection of
 	 * the realm still uses it, or the hub was never asked).
@@ -101,6 +125,10 @@ export type EngineWaiter = {
 /** The realm's link to one project: the connections using it, the engine client now, the calls waiting. */
 export type ProjectEntry = HubProjectParams & {
 	users: number
+	/** What the realm's links of the project listen with: each change of its engine, and each resync. */
+	listeners: Set<(notice: LinkNotice) => void>
+	/** An engine was reached once already: the next one is announced with a resync. */
+	reached: boolean
 	/** The hub was asked for the project and has not refused it since. */
 	asked: boolean
 	current: { generation: number; client: EngineClient } | undefined
@@ -149,7 +177,7 @@ export type HubConnectionParams = {
 	/** How long the realm waits for the hub's welcome (the default when absent). */
 	welcomeBudgetMs?: number
 	topLevel: boolean
-	spawners: HubEngineSpawner[]
+	spawners: RealmEngineSpawner[]
 	/** Whether the realm holds a lock of its own (a child realm's liveness is its parent's). */
 	holdsLock: boolean
 	/** The page's lifecycle to watch (freeze, the back/forward cache, the page going away); none for a child realm. */

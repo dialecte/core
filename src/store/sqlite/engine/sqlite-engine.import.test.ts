@@ -699,7 +699,12 @@ describe('an engine importing files', () => {
 					}),
 				expectedCount: 2,
 			},
-			'an undo': { run: (engine) => engine.undo('other'), expectedCount: 0 },
+			'an undo': {
+				run: async (engine) => {
+					await engine.undo('other')
+				},
+				expectedCount: 0,
+			},
 			'a redo': {
 				run: async (engine) => {
 					await engine.undo('other')

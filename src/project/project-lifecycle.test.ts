@@ -515,7 +515,7 @@ describe('Project - open() on a Project already open closes it wholly first', ()
 		await project.destroy()
 	})
 
-	it('a Document of the previous open, the same custom store opened again → its commit writes, nothing of it posted on the channel', async () => {
+	it('a Document of the previous open, the same custom store opened again → its commit writes; posted once, as the store tells it (the Document’s own post reaches no later open)', async () => {
 		const name = uniqueName({ prefix: 'reused-store' })
 		const store = new CountingStore(name, { runtime: RUNTIME })
 		const project = projectOver({ [name]: store })
@@ -536,7 +536,7 @@ describe('Project - open() on a Project already open closes it wholly first', ()
 			setTimeout(resolve, 20)
 		})
 		listener.close()
-		expect(heard).toEqual([])
+		expect(heard).toEqual([expect.objectContaining({ type: 'commit', documentId })])
 		await project.destroy()
 	})
 

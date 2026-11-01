@@ -1,5 +1,6 @@
 import type { ExtensionModules } from '@/document'
 import type { Project, StorageParam } from '@/project'
+import type { HubEngineSpawner } from '@/store'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 /** What a dialecte gives `defineDialecte`: everything core derives a Project, a test runner and an engine from. */
@@ -76,6 +77,13 @@ export type ProjectFactory<
 	): Project<GenericConfig, GenericModules & CustomModules>
 	readonly dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>
 	readonly engineUrl: string
+	/** The dialecte's engine as a page registers it with the hub: `connectHub({ spawners: [factory.spawner] })`. */
+	readonly spawner: HubEngineSpawner
+	/**
+	 * Delete the dialecte's project of that name on SQLite storage without opening it (an `outdated` or `lost` one of
+	 * `listProjects` too); refused `PROJECT_OPEN_ELSEWHERE` while a view has it open.
+	 */
+	readonly destroyProject: (params: { name: string }) => Promise<void>
 }
 
 /** What every Project of a dialecte is made from: the declaration and what one consumer chooses. */
@@ -85,4 +93,6 @@ export type CreateDialecteProjectParams<
 	CustomModules extends ExtensionModules = Record<never, never>,
 > = CreateProjectParams<CustomModules> & {
 	dialecte: DialecteDeclaration<GenericConfig, GenericModules, string>
+	/** The address of the dialecte's engine worker, from its project factory: `sqlite` storage needs it. */
+	engineUrl?: string
 }

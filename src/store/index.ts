@@ -16,6 +16,9 @@ export type {
 	ImportPhase,
 	ImportProgress,
 	ImportTarget,
+	StoreChange,
+	StoreNotice,
+	StoreResync,
 	WriteOutcome,
 } from './store.types'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'
@@ -34,8 +37,6 @@ export {
 	DOCUMENT_UPDATE_FIELDS,
 } from './document-path.constants'
 export { removeUnfinishedImports } from './unfinished-imports'
-export { adoptHubPort, connectHub } from './engine/hub/hub-public'
-export type { ConnectHubParams, HubPortHandle, HubRealm } from './engine/hub/hub-client.types'
 export type { HubEngineSpawner } from './engine/hub/realm-host.types'
 export * from './local'
 export * from './in-memory'
