@@ -130,10 +130,15 @@ Then, within the step:
   breaking the code afterwards: the test goes back to the test station.
 - Only the lot's scope. A refactor outside it is a new lot, said out loud.
 
-A **skill text change** is code too: when the lot changes what a skill tells agents to do (a new command
-to run, a rule), go through skill-creator's loop - add or update an eval case under the skill's
-`evals/` first (it describes the behaviour the new text must produce; the current text fails it), edit
-the skill, run the case with and without the skill, grade it. Then `skills:generate` and `skills:check`.
+A **skill text change** is code too: when the lot changes what a skill tells agents to do (a new command to
+run, a rule), load `anthropic-skills:skill-creator` with the Skill tool and follow it. A skill change judged
+by hand, or by the agent that wrote it, looks green on one run and its own reading; skill-creator's loop is
+what shows the change moves behaviour. As it applies here: the eval case under the skill's `evals/` first
+(it describes the behaviour the new text must produce; the text before the change fails it); runs with the
+changed text and with the text before it (`git show <base>:skills/...` into the eval workspace), on the
+standard and the strong tier, several runs per configuration, every run with the same tools; grading by a
+separate agent that is not told which text produced a run; skill-creator's benchmark and viewer handed on
+with the report. Then `skills:generate` and `skills:check`.
 
 Report (exactly this shape):
 
@@ -144,7 +149,7 @@ Files: <list>
 Tests: <n> passing of <m> table cases - command: <the exact command, unfiltered>
 Red seen: <the `tdd red` line of each case: case, kind, failing message>   (one line per behaviour)
 Gates: <the lines `dialecte gate` printed, with their counts>; rules <n errors, m warnings>
-Skill evals: <case: with / without>   | n/a
+Skill evals: <case: pass rate with / before, runs per configuration; benchmark and viewer paths>   | n/a
 Deviations from the brief: <none | what and why>
 Open questions: <none | ...>
 ```

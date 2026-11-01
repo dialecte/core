@@ -47,9 +47,11 @@ ran what you think it ran.
   too when the commit runs in a worktree: under the commit hook, a git process inheriting them acts on the outer
   repository - its config, its index, a commit - instead of its scratch one. Green in a terminal, destructive at
   commit. Clear them from the suite's own environment before any test - a vitest setup file deleting every `GIT_`
-  key of `process.env` (the cli's suite has one) - since the code under test spawns git with
-  `process.env` too; a per-call `env` covers the test's own calls only. Keep what git needs (`PATH`, an identity
-  set on the call or in the scratch repository).
+  key of `process.env` - since the code under test spawns git with `process.env` too; a per-call `env` covers
+  the test's own calls only. Read the package's vitest config before relying on such a file: only a file in the
+  `setupFiles` of the project that runs the test runs (with `test.projects`, a root `setupFiles` reaches a
+  project only through `extends: true`), and a package without one gets it, registered there, in the same step.
+  Keep what git needs (`PATH`, an identity set on the call or in the scratch repository).
 
 ## Tooling
 
