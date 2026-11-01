@@ -51,6 +51,12 @@ export type DialecteHooks<GenericConfig extends AnyDialecteConfig> = IOHooks &
 	TransactionHooks<GenericConfig>
 
 export type IOConfig = {
+	/**
+	 * The file extensions the dialecte reads, with their dot (`['.scd', '.ssd']`). `.xml` is always read besides them,
+	 * listed or not (a dialecte's own extension is still XML): an import's file name, an import's `path` and a new
+	 * document's `path`, compared lower-cased. The first entry (`.xml` for an empty list) is the extension core gives a
+	 * new document without a path.
+	 */
 	supportedFileExtensions: readonly string[]
 	importOptions?: Partial<ImportOptions>
 	exportOptions?: Partial<ExportOptions>

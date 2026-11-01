@@ -1,4 +1,5 @@
 import {
+	ALWAYS_READ_EXTENSION,
 	DOCUMENT_PATH_MAX_BYTES,
 	DOCUMENT_PATH_SEGMENT_MAX_BYTES,
 	DOCUMENT_PATH_INVISIBLE_CHARACTER,
@@ -26,6 +27,17 @@ export function parseDocumentPath(params: { path: string }): DocumentPathParts {
 	const segments = path.split(DOCUMENT_PATH_SEPARATOR)
 	const fileName = segments.pop()!
 	return { folders: segments, fileName }
+}
+
+/**
+ * The extensions a document's config reads: the ones it lists, in their order, then `ALWAYS_READ_EXTENSION` (`.xml`)
+ * unless one of them is exactly it (a listed `.XML` matches no lower-cased file name, so `.xml` is still added). The
+ * first one is the extension core gives a document nothing names one for: the first listed, `.xml` for an empty list.
+ */
+export function readableExtensionsOf(params: { extensions: readonly string[] }): readonly string[] {
+	const { extensions } = params
+	const listsAlwaysRead = extensions.includes(ALWAYS_READ_EXTENSION)
+	return listsAlwaysRead ? extensions : [...extensions, ALWAYS_READ_EXTENSION]
 }
 
 /**

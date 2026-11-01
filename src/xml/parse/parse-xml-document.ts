@@ -5,6 +5,7 @@ import { setSaxParser } from './parser'
 import { throwDialecteError, toDialecteError } from '@/errors'
 import { assertXmlCharacters } from '@/helpers/assert-xml-characters'
 import { NOOP_PERF } from '@/perf'
+import { readableExtensionsOf } from '@/store/document-path'
 import { checkJsonValues } from '@/store/json-values'
 import { invariant } from '@/utils'
 import { tellListener } from '@/utils/tell-listener'
@@ -50,10 +51,10 @@ export async function parseXmlFile(
 	} = params
 	let { file } = params
 
-	const { supportedFileExtensions } = config.io
+	const readableExtensions = readableExtensionsOf({ extensions: config.io.supportedFileExtensions })
 
 	invariant(
-		supportedFileExtensions.some((ext) => file.name.toLowerCase().endsWith(ext)),
+		readableExtensions.some((extension) => file.name.toLowerCase().endsWith(extension)),
 		{ key: 'ASSERTION_FAILED', detail: `Unsupported file type: ${file.name}` },
 	)
 

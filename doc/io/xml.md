@@ -76,7 +76,9 @@ type IOConfig = {
 
 ### `supportedFileExtensions`
 
-Array of accepted file extensions (without `.`). Files with other extensions are rejected during import.
+The file extensions the dialecte reads, with their dot (`['.scd', '.ssd']`). `.xml` is always read besides them, listed or not - a dialecte's own extension is still XML: an import's file name, an import's `path` and a new document's `path` may end in any of them or in `.xml` (compared lower-cased). Any other extension is refused (`Unsupported file type` on import, `DOCUMENT_PATH_INVALID` for a path).
+
+The first entry (`.xml` for an empty list) is the extension core gives a new document without a path. An export names its file with the document's own extension.
 
 ### `importOptions`
 

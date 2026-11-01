@@ -155,8 +155,8 @@ export type InitEmptyDocumentOptions = {
 	/** Filename without extension. Defaults to the path's file name less its extension, else 'untitled'. */
 	name?: string
 	/**
-	 * File extension including leading dot. Defaults to the path's file name's (one the config reads), else the
-	 * config's first supported extension.
+	 * File extension including leading dot. Defaults to the path's file name's (one the config reads, `.xml` always
+	 * read besides its list), else the config's first supported extension (`.xml` for an empty list).
 	 */
 	extension?: string
 	/**

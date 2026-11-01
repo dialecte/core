@@ -302,9 +302,9 @@ export type ImportFileOptions = {
 	useCustomRecordsIds?: boolean
 	/**
 	 * Where the document sits in the project (`substations/north.scd`): it takes its name and its extension from the
-	 * path's file name, not from the file's, and the extension must be one its config reads. Refused before anything
-	 * is registered: `DOCUMENT_PATH_INVALID` for a path breaking a rule or of another extension,
-	 * `DOCUMENT_PATH_TAKEN` for a place another document holds.
+	 * path's file name, not from the file's, and the extension must be one its config reads (`.xml` always read besides
+	 * its list). Refused before anything is registered: `DOCUMENT_PATH_INVALID` for a path breaking a rule or of another
+	 * extension, `DOCUMENT_PATH_TAKEN` for a place another document holds.
 	 */
 	path?: string
 }

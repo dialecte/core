@@ -19,3 +19,6 @@ export const DOCUMENT_PATH_INVISIBLE_CHARACTER = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u
  * only its import marks a document ready (`ImportTarget.markReady`).
  */
 export const DOCUMENT_UPDATE_FIELDS = ['name', 'path', 'metadata'] as const
+
+/** The extension every dialecte reads, besides the ones its config lists: a dialecte's own extension is still XML. */
+export const ALWAYS_READ_EXTENSION = '.xml'
