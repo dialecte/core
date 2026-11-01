@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: new-test-helper-documented-and-checked
+expected_outcome: |
+  The new test helper exported from `@dialecte/core/test` carries a JSDoc summary and an `@intent` tag written in
+  the same change (a test-entry export is public API too), and the checks before the hand-over include
+  `skills:check` after `skills:generate`.
+  It runs that check with a cli that holds it (0.2.0 or later: `npx @dialecte/cli@^0.2.0 skills check`), since
+  the package pins an older one. Graders 01 and 03 are floors (the prompt or the old text already asks for them);
+  02 and 04 discriminate.

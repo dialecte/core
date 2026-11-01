@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: new-export-summary-and-intent
+expected_outcome: |
+  Regression guard, not red on the text before the change: the utils beside the new function already carry
+  `@intent`, so agents copy it without the rule (the two other cases isolate the rule). It must stay green.
+  The planned function is exported from the utils entry with a JSDoc whose first paragraph says what a caller
+  gets and an `@intent` tag naming what a caller is trying to do, written in the same change; the plan runs
+  `npm run skills:generate` and `npm run skills:check` (or `dialecte skills generate|check`) with the other gates
+  before the hand-over.

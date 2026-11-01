@@ -207,8 +207,10 @@ ends (`pgrep -f "[m]utants.ts"` if it is unavoidable). When the wait ends, read 
 summary line: "no process found" is not a pass.
 
 Read the step list in the package's `package.json` (`"dialecte": { "gate" }`) when it overrides the
-defaults. The gate, `rules`, `new verb` and `handover` come with `@dialecte/cli` 0.2.0 or later; with
-an older cli in the package, run `npx @dialecte/cli@latest gate`, or the steps by hand:
+defaults. The gate, `rules`, `new verb`, `handover` and the `skills` check of step 6 come with `@dialecte/cli`
+0.2.0 or later. Read the package's pin first (`npm ls @dialecte/cli`): with an older one, every such command
+runs as `npx @dialecte/cli@^0.2.0 <command>` - never `@latest`, which can be older than 0.2.0 and lacks them -
+or the steps by hand:
 
 1. `npm run check` - type-checks sources AND tests, lint, format. Never a bare `tsc --noEmit`
    (`tsconfig.json` is a solution file and checks nothing).
@@ -222,16 +224,30 @@ an older cli in the package, run `npx @dialecte/cli@latest gate`, or the steps b
    (`npm run test` is watch mode in some packages; create uses `npm run test:ts` + `test:py`).
    One file while iterating: [Test tiers](#test-tiers).
 5. `npm run doc:build` - the VitePress docs build.
+6. `npm run skills:generate`, then `npm run skills:check` - every change, not only one that touches a skill:
+   the check fails on a name, path or script a skill cites that no longer exists, and on a public function
+   without its JSDoc summary and `@intent` (below). The scripts run the package's pinned cli; with a pin
+   older than 0.2.0 they check neither, so run `npx @dialecte/cli@^0.2.0 skills generate` and
+   `npx @dialecte/cli@^0.2.0 skills check` instead (it fails loudly while 0.2.0 is unpublished, never falls
+   back to an older cli).
 
 If public API or user-visible behaviour changed, it is not done until you also:
 
+- give every new public function or method a JSDoc whose first paragraph says what a caller gets, and an
+  `@intent` tag - comma-separated phrases naming what a caller is trying to do when they reach for it
+  (`@intent validate an exported file against its XSD, find what a document breaks`) - even when the
+  functions beside it carry none. Public means any function exported from an entry of the package's
+  `package.json` `exports` (every entry: the main one, `./utils`, `./helpers`, `./sqlite`, `./test` - other
+  packages' suites import the test entry - a dialecte's version entry) and any method reached from `project`,
+  `doc`, `doc.query` or `tx`. The skills' API index (`skills/dialecte/references/api.md`, `api.json`, what
+  `dialecte api find` answers from) is built from these two: a function without them is one the next agent
+  cannot find, and writes again. An export not meant for callers is tagged `@internal` instead and stays out
+  of the index;
 - update the `doc/` page that describes that surface (types, verbs, contracts),
 - add a line under `## UNRELEASED` in the package's `CHANGELOG.md`, written for the user, and
 - update the package's `skills/` when the change touches what a skill describes (API, hooks,
-  extensions, scripts, layout, rules): `npm run skills:generate` refreshes the generated tables,
-  `npm run skills:check` (run it with the other gates) fails on any name, path or script a skill cites
-  that no longer exists. Both scripts call `@dialecte/cli` 0.2.0 or later; with an older cli in the
-  package, run `npx @dialecte/cli@latest skills generate` / `npx @dialecte/cli@latest skills check`.
+  extensions, scripts, layout, rules); `npm run skills:generate` refreshes the generated tables, and the
+  check runs in the gate (step 6).
 
 Type performance: `npm run type-bench:check` compares type instantiations with
 `benchmarks/types/baseline.json` (one per version folder in a dialecte package:
@@ -268,11 +284,11 @@ core has `dialecte`, `dialecte-contributing` and `dialecte-lot`, create `dialect
 package its own `dialecte-<id>` with the knowledge of its schema. A skill changes in the same PR as the code it describes - never
 in another repository afterwards. `@dialecte/cli` maintains them:
 
-| Command                    | Does                                                                                                                                                                                      |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dialecte skills sync`     | installs the skills of the app's dependencies into `.claude/skills` + `.agents/skills` (`--agent claude,copilot,agents`, `--copy`); `--from <workspace>` takes them from local checkouts  |
-| `dialecte skills generate` | rewrites the `<!-- dialecte-skills:generated ... -->` blocks (verb map, method index, hook files) from the source                                                                         |
-| `dialecte skills check`    | frontmatter, links, and every API / path / npm script a page cites must exist; generated blocks must be fresh; `--workspace <dir>` also verifies pages that describe several repositories |
+| Command                    | Does                                                                                                                                                                                                                                                             |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dialecte skills sync`     | installs the skills of the app's dependencies into `.claude/skills` + `.agents/skills` (`--agent claude,copilot,agents`, `--copy`); `--from <workspace>` takes them from local checkouts                                                                         |
+| `dialecte skills generate` | rewrites the `<!-- dialecte-skills:generated ... -->` blocks (verb map, method and export index, hook files) from the source                                                                                                                                     |
+| `dialecte skills check`    | frontmatter, links, and every API / path / npm script a page cites must exist; generated blocks must be fresh; every public function and method has a JSDoc summary and an `@intent`; `--workspace <dir>` also verifies pages that describe several repositories |
 
 Write claims so the check can verify them: API as `query.<method>` / `tx.<ns>.<verb>`, paths
 relative to a package, scripts as `npm run <script>`. A deliberate mention of something outside the package goes in
