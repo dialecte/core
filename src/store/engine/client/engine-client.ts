@@ -8,6 +8,8 @@ import { watchHeartbeat } from './heartbeat-watch'
 import * as Comlink from 'comlink'
 
 import { createDialecteError } from '@/errors'
+import { tellListener, tellListeners } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 
 import type { EngineApi } from '../engine.types'
 import type { EngineEventSignal, ProgressSignal } from '../host/host.types'
@@ -177,7 +179,7 @@ export function createEngineClient(params: {
 
 /**
  * The progress listeners of the calls in flight, each under the id its call sends: a tick the engine
- * posts on the port reaches its listener; a listener that throws is the caller's own affair.
+ * posts on the port reaches its listener; a listener that fails is reported, its call goes on.
  */
 function createProgressListeners(params: { port: MessagePort }): ProgressListeners {
 	const { port } = params
@@ -186,13 +188,16 @@ function createProgressListeners(params: { port: MessagePort }): ProgressListene
 	function hear(event: MessageEvent<ProgressSignal | undefined>): void {
 		const signal = event.data
 		if (signal?.type !== ENGINE_SIGNAL.progress) return
-		try {
-			const told = listeners.get(signal.progressId)?.(...signal.progress)
-			// a listener answering a promise that rejects fails as one that throws: its call goes on
-			Promise.resolve(told).catch(ignoreListenerFailure)
-		} catch {
-			// the caller's listener failed: its call goes on
-		}
+		const listener = listeners.get(signal.progressId)
+		tellListener({
+			listener:
+				listener &&
+				function tellTick(progress: unknown[]) {
+					return listener(...progress)
+				},
+			value: signal.progress,
+			of: TOLD_OF.callProgress,
+		})
 	}
 	// beside Comlink's own listener: one port, the ticks heard in their order with the answers
 	port.addEventListener('message', hear)
@@ -215,8 +220,6 @@ function createProgressListeners(params: { port: MessagePort }): ProgressListene
 	}
 }
 
-function ignoreListenerFailure(): void {}
-
 /**
  * The listeners of the changes the engine announces on the port, each told every one in the port's order (a change a
  * call made before its answer); a listener that throws stops no other.
@@ -227,13 +230,7 @@ function createEventListeners(params: { port: MessagePort }): EventListeners {
 	function hear(event: MessageEvent<EngineEventSignal | undefined>): void {
 		const signal = event.data
 		if (signal?.type !== ENGINE_SIGNAL.event) return
-		for (const listener of Array.from(listeners)) {
-			try {
-				listener(signal)
-			} catch {
-				// a listener's own failure: the others are told all the same
-			}
-		}
+		tellListeners({ listeners, value: signal, of: TOLD_OF.engineChanges })
 	}
 	port.addEventListener('message', hear)
 	// a port delivers nothing until started, and Comlink starts it only at a first call: a client that only listens

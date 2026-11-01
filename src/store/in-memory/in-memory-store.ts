@@ -643,7 +643,7 @@ export class InMemoryStore implements Store {
 
 	/** A change this store made, told to every store of the project listening. */
 	private announce(change: InMemoryChange): void {
-		announceInMemoryChange({ key: this.stateKey, connection: this, change })
+		announceInMemoryChange({ key: this.stateKey, name: this.name, connection: this, change })
 	}
 
 	private async registerDocumentUnguarded(file: DocumentRecord): Promise<void> {

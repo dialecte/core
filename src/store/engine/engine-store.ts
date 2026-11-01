@@ -7,6 +7,7 @@ import { ENGINE_WIRE_MEMBERS } from './wire/wire.constants'
 
 import { toDialecteError } from '@/errors'
 import { throwIfExportAborted } from '@/project/io/run-export'
+import { changesOfProject, tellListeners } from '@/utils/tell-listener'
 
 import type {
 	ChangeLogEntry,
@@ -495,13 +496,11 @@ export class EngineStore implements Store {
 		if (notice.type === 'resync') this.lostWrites.clear()
 		const told: StoreNotice =
 			notice.type === 'resync' ? notice : this.changeOf({ signal: notice.signal, link })
-		for (const listener of Array.from(this.listeners)) {
-			try {
-				listener(told)
-			} catch {
-				// a listener's own failure: the others are told all the same
-			}
-		}
+		tellListeners({
+			listeners: this.listeners,
+			value: told,
+			of: changesOfProject({ name: this.name }),
+		})
 	}
 
 	/** Called with no operation running, so no connection is under way; settled once the link counts no more. */

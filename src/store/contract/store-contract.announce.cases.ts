@@ -320,6 +320,33 @@ export const STORE_ANNOUNCE_CONTRACT: Record<string, StoreContractCases> = {
 				)
 			},
 		},
+		'a listener throwing → reported on the console; the store’s other listeners told all the same, the change made':
+			{
+				needs: ['announce'],
+				act: async ({ store }) => {
+					const failure = new Error('a listener failing')
+					const reported = vi.spyOn(console, 'error').mockImplementation(function quiet() {})
+					try {
+						store.subscribe!(function failing() {
+							throw failure
+						})
+						const notices = heard({ store })
+						await store.registerDocument(makeDocument({ id: 'doc-told-on' }))
+						expect(notices.map(shapeOf)).toEqual([
+							{ own: true, type: 'init-empty-document', documentId: 'doc-told-on' },
+						])
+						expect(reported.mock.calls).toEqual([
+							[
+								`[dialecte] a listener of the changes of project "${store.name}" threw; what told it goes on:`,
+								failure,
+							],
+						])
+						expect(await store.getDocument('doc-told-on')).toBeDefined()
+					} finally {
+						reported.mockRestore()
+					}
+				},
+			},
 		'a listener unsubscribed → told nothing more': {
 			needs: ['announce'],
 			act: async ({ store }) => {

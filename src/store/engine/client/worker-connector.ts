@@ -18,6 +18,8 @@ import { answeredOrSilent, createEngineControl } from './engine-control'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
+import { tellListeners } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 
 import type { EngineConnector, EngineLink, LinkNotice, OwnEngineLink } from '../engine-store.types'
 import type { EngineApi, EngineLockMode } from '../engine.types'
@@ -384,13 +386,11 @@ function loseClientsOf(params: { engine: RealmEngine }): void {
 
 /** The connection's store told `notice`; a listener that throws stops no other. */
 function tellLink(params: { state: WorkerLinkState; notice: LinkNotice }): void {
-	for (const listener of Array.from(params.state.listeners)) {
-		try {
-			listener(params.notice)
-		} catch {
-			// a listener's own failure: the others are told all the same
-		}
-	}
+	tellListeners({
+		listeners: params.state.listeners,
+		value: params.notice,
+		of: TOLD_OF.engineChanges,
+	})
 }
 
 function followNothing(): void {}

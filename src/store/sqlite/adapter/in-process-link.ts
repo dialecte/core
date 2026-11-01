@@ -7,6 +7,9 @@ import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
 import { realmWasmUrl } from '../sqlite-wasm-url'
 
+import { tellListeners } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
+
 import type { EngineConnector, EngineLink, LinkNotice } from '../../engine/engine-store.types'
 import type { EngineApi } from '../../engine/engine.types'
 import type { AnnouncedCall } from '../../engine/host/host.types'
@@ -137,13 +140,11 @@ function announcingView(params: {
 
 /** A connection's store told `notice`; a listener that throws stops no other. */
 function tellLink(params: { link: EngineLink; notice: LinkNotice }): void {
-	for (const listener of Array.from(LISTENERS.get(params.link) ?? [])) {
-		try {
-			listener(params.notice)
-		} catch {
-			// a listener's own failure: the others are told all the same
-		}
-	}
+	tellListeners({
+		listeners: LISTENERS.get(params.link) ?? [],
+		value: params.notice,
+		of: TOLD_OF.engineChanges,
+	})
 }
 
 /** The unsubscribe of a listener never added: a released connection hears nothing. */

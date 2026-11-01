@@ -1,5 +1,6 @@
 import { resolveStore } from '../store/resolve-store'
 import { Project } from './project'
+import { projectChannelName } from './project-channel'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,6 +12,7 @@ import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 import { selectFirstNode, withXmlDocument } from '@/test/xml'
 
 import type { ProjectChannelMessage, StorageParam } from './types'
+import type { Store } from '@/store'
 import type { BaseTestCase } from '@/test'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
@@ -154,6 +156,79 @@ async function addChild(params: {
 		const root = await tx.getRoot()
 		await tx.addChild(root, { tagName: 'A', attributes: [] })
 	})
+}
+
+/** `during` run once the project's own read of its documents answered, before the open goes on (the store's open reads them too). */
+function duringOpenRead(params: { store: Store; during: () => Promise<void> }): void {
+	const { store, during } = params
+	const opened = store.open.bind(store)
+	store.open = async function openThenWrapRead() {
+		await opened()
+		const read = store.getDocuments.bind(store)
+		store.getDocuments = async function readThenDuring() {
+			store.getDocuments = read
+			const documents = await read()
+			await during()
+			return documents
+		}
+	}
+}
+
+/**
+ * Settles once `store` has heard another connection's change: told by the store where it announces, else on the
+ * name's channel the projects post on.
+ */
+function changeHeard(params: { store: Store; name: string }): Promise<void> {
+	const { store, name } = params
+	return new Promise(function waitForChange(resolve) {
+		if (store.subscribe) {
+			const stop = store.subscribe(function heard(notice) {
+				if (notice.type !== 'change' || notice.own) return
+				stop()
+				resolve()
+			})
+			return
+		}
+		const channel = new BroadcastChannel(projectChannelName({ name }))
+		channel.onmessage = function heard() {
+			channel.close()
+			resolve()
+		}
+	})
+}
+
+/** A store of the project named on `storage` (another connection to it, not a project), not opened. */
+async function storeOf(params: { storage: StorageOf; name: string }): Promise<Store> {
+	const { storage, name } = params
+	return resolveStore({
+		name,
+		dialecteId: DIALECTE_ID,
+		storage: await storage({ name, dialecteId: DIALECTE_ID }),
+		runtime: { configs: { default: CONFIG }, defaultConfigKey: 'default' },
+	})
+}
+
+/** A project of the name opened on a store of `storage` whose own read of its documents lets `during` run first. */
+async function openReadingAround(params: {
+	storage: StorageOf
+	name: string
+	during: (params: { store: Store }) => Promise<void>
+}): Promise<Project<AnyDialecteConfig>> {
+	const { storage, name, during } = params
+	const store = await storeOf({ storage, name })
+	duringOpenRead({
+		store,
+		during: function duringRead() {
+			return during({ store })
+		},
+	})
+	const project = await new Project({
+		configs: { default: CONFIG },
+		storage: { type: 'custom', store },
+		dialecteId: DIALECTE_ID,
+	}).open(name)
+	opened.push(project)
+	return project
 }
 
 const CASES: Record<
@@ -387,6 +462,56 @@ const CASES: Record<
 							{ type: 'document-imported', documentId },
 							{ type: 'document-removed', documentId },
 						])
+					},
+					{ timeout: CHANGE_TOLD_WITHIN_MS },
+				)
+			},
+		},
+	'another project of the name removes a document while this one reads its documents as it opens → gone from its state once open, no ghost':
+		{
+			act: async function removedWhileOpening(storage) {
+				const other = await openProject({ storage })
+				const { documentId } = await other.importFile(leafFile())
+				const project = await openReadingAround({
+					storage,
+					name: other.name,
+					during: async function removedElsewhere({ store }) {
+						const heard = changeHeard({ store, name: other.name })
+						await other.removeDocument(documentId)
+						await heard
+					},
+				})
+				await vi.waitFor(
+					function gone() {
+						expect(project.state.documents.has(documentId)).toBe(false)
+					},
+					{ timeout: CHANGE_TOLD_WITHIN_MS },
+				)
+			},
+		},
+	'a store of the project renames a document while a project reads its documents as it opens → its new name in that project’s state once open':
+		{
+			differs: { 'on IndexedDB': INDEXEDDB_ANNOUNCES_NOTHING },
+			act: async function renamedWhileOpening(storage) {
+				const other = await openProject({ storage })
+				const { documentId } = await other.importFile(leafFile())
+				const project = await openReadingAround({
+					storage,
+					name: other.name,
+					during: async function renamedElsewhere({ store }) {
+						const heard = changeHeard({ store, name: other.name })
+						const writer = await storeOf({ storage, name: other.name })
+						await writer.open()
+						await writer.updateDocument(documentId, { name: 'renamed while opening' })
+						await writer.close()
+						await heard
+					},
+				})
+				await vi.waitFor(
+					function renamed() {
+						expect(project.state.documents.get(documentId)?.record.name).toBe(
+							'renamed while opening',
+						)
 					},
 					{ timeout: CHANGE_TOLD_WITHIN_MS },
 				)

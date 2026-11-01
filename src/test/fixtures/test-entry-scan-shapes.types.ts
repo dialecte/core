@@ -5,6 +5,7 @@ export type ShapeRow = { value: string }
 export type Box<GenericContent> = { id: string; brand?: (content: GenericContent) => never }
 
 /** A generic of the test entry that never reads its parameter (a phantom one): reached only as a type argument. */
+// oxlint-disable-next-line no-unused-vars -- the phantom parameter is what the scan case reads
 export interface Tagged<GenericTag> {
 	label: string
 }

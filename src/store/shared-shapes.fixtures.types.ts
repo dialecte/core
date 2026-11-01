@@ -1,3 +1,5 @@
+import type { ENGINE_WIRE_MEMBERS } from './engine/wire/wire.constants'
+
 /** Named types a source file of the package declares or imports, the roots of a shared shape. */
 export type SharedShapeRoot = {
 	/** The file, from the package root (`src/store/...`). */
@@ -22,10 +24,14 @@ export type SharedShapeCase = {
 	roots: SharedShapeRoot[]
 }
 
+/** The wire table as copies of the library share it (how each member of the engine crosses a port): a shared root. */
+export type EngineWireTable = typeof ENGINE_WIRE_MEMBERS
+
 /** A type of the walk's own cases: a member whose union is open (a catalogue any string may extend). */
 export type OpenUnionCase = {
 	key: 'FIRST' | 'SECOND' | (string & {})
 	closed: 'FIRST' | 'SECOND'
 	optional?: 'FIRST' | (string & {})
 	mixed: 'FIRST' | (string & {}) | { kind: 'object' } | 0
+	branded: 'FIRST' | (string & { readonly brand: 'Id' })
 }

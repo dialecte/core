@@ -1,7 +1,14 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, sep } from 'node:path'
+import { basename, dirname, sep } from 'node:path'
 
-import { WRITTEN, WRITTEN_AS_ALIAS } from './shared-shapes.fixtures.constants'
+import {
+	GIT_LS_FILES_TIMEOUT_MS,
+	GIT_NOT_A_REPOSITORY,
+	GIT_NOT_TRACKED,
+	WRITTEN,
+	WRITTEN_AS_ALIAS,
+} from './shared-shapes.fixtures.constants'
 
 import ts from 'typescript'
 
@@ -21,30 +28,79 @@ export function runsInCi(params: { value: string | undefined }): boolean {
 
 /**
  * The text recorded at `file`, read from disk each time and never rewritten. Absent, it is written from `text` (a
- * new version's first local run) - except in CI, where it would be lost: refused with `missing`, nothing written.
+ * new version's first local run) - except in CI, where it would be lost: refused with `missing`; and except when git
+ * tracks it (`committed`: deleted by hand), refused - it is restored, never written again. Nothing written then.
  */
 export function recordedText(params: {
 	file: string
 	text: string
 	ci: boolean
+	/** Whether git tracks `file`: asked only when it is absent. */
+	committed: (params: { file: string }) => boolean
 	missing: string
 }): string {
-	const { file, text, ci, missing } = params
+	const { file, text, ci, committed, missing } = params
 	if (existsSync(file)) return readFileSync(file, 'utf8')
+	if (committed({ file })) {
+		throw new Error(
+			`${file} is committed: restore it (git checkout -- ${file}); a recorded shape is never written again.`,
+		)
+	}
 	if (ci) throw new Error(missing)
 	mkdirSync(dirname(file), { recursive: true })
 	writeFileSync(file, text)
 	return text
 }
 
-/** `string & {}`: a string the checker keeps apart from its literals, which keeps a union of them open. */
-function isOpenString(type: ts.Type): boolean {
-	return (
-		type.isIntersection() &&
-		type.types.some(function isString(member) {
-			return (member.flags & ts.TypeFlags.String) !== 0
+/** Whether git tracks `file` (a version's recorded shape, committed); outside a repository, not. */
+export function committedInGit(params: {
+	file: string
+	/** The git command run (another only for a case). */
+	git?: string
+}): boolean {
+	const { file, git = 'git' } = params
+	try {
+		execFileSync(git, ['ls-files', '--error-unmatch', basename(file)], {
+			cwd: dirname(file),
+			// git's own variables left out: inside a hook they name the commit's repository and index, not the file's
+			env: gitFreeEnvironment(),
+			stdio: 'ignore',
+			timeout: GIT_LS_FILES_TIMEOUT_MS,
 		})
+		return true
+	} catch (thrown) {
+		// git's answer: 1, not tracked; 128, not in a repository. Anything else (no git, a hung one) is not an
+		// answer: thrown, so the guard fails rather than writes
+		const { status } = thrown as { status?: number | null }
+		if (status === GIT_NOT_TRACKED || status === GIT_NOT_A_REPOSITORY) return false
+		throw thrown
+	}
+}
+
+/** The process's environment without git's own variables (`GIT_DIR`, `GIT_INDEX_FILE`, ...). */
+function gitFreeEnvironment(): NodeJS.ProcessEnv {
+	return Object.fromEntries(
+		Object.entries(process.env).filter(function notGits([name]) {
+			return !name.startsWith('GIT_')
+		}),
 	)
+}
+
+/**
+ * `string & {}`: a string the checker keeps apart from its literals, which keeps a union of them open. A branded
+ * string (`string & { brand }`) is not: its brand is part of the shape.
+ */
+function isOpenString(type: ts.Type): boolean {
+	if (!type.isIntersection() || type.types.length !== 2) return false
+	return type.types.every(function stringOrEmpty(member) {
+		if (member.flags & ts.TypeFlags.String) return true
+		return (
+			(member.flags & ts.TypeFlags.Object) !== 0 &&
+			member.getProperties().length === 0 &&
+			member.getCallSignatures().length === 0 &&
+			member.getConstructSignatures().length === 0
+		)
+	})
 }
 
 /** Whether a type's declaration is the package's own (a type a copy of another version may hold otherwise). */
@@ -250,8 +306,28 @@ export function sharedShape(params: {
 		described.add(symbol)
 		blocks.push(blockOf({ symbol }))
 	}
+	/** The package's values a described type is computed from (`typeof X`): their files hold the shape too. */
+	function valuesReadBy(params: { symbol: ts.Symbol }): ts.Symbol[] {
+		const read: ts.Symbol[] = []
+		function visit(node: ts.Node): void {
+			if (ts.isTypeQueryNode(node)) {
+				const value = checker.getSymbolAtLocation(node.exprName)
+				const target =
+					value && value.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(value) : value
+				if (target && declaredInPackage({ symbol: target, sources })) read.push(target)
+			}
+			ts.forEachChild(node, visit)
+		}
+		for (const declaration of params.symbol.declarations ?? []) visit(declaration)
+		return read
+	}
 	const declaredIn = new Set(
-		Array.from(described, function fileOf(symbol) {
+		[
+			...described,
+			...Array.from(described).flatMap(function readBy(symbol) {
+				return valuesReadBy({ symbol })
+			}),
+		].map(function fileOf(symbol) {
 			return symbol.declarations![0]!.getSourceFile().fileName.slice(packageRoot.length + 1)
 		}),
 	)

@@ -73,7 +73,7 @@
 		"type-bench": "npm run coverage:gen && dialecte bench",
 		"type-bench:check": "npm run coverage:gen && dialecte bench --check",
 		"type-narrowing": "npm run coverage:gen && dialecte narrowing",
-		"lint:check": "oxlint",
+		"lint:check": "oxlint --deny-warnings",
 		"lint:fix": "oxlint . --fix -D correctness --ignore-path .gitignore",
 		"format:check": "oxfmt --check",
 		"format:fix": "oxfmt",

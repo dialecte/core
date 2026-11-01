@@ -5,7 +5,8 @@
 export const CLOSE_WAIT_REPORT_MS = 10_000
 
 /**
- * The most changes of a Project's own its store may have told while a call that will post them runs: past it they
- * are posted at once (a call that runs on, a store written beside the Project, never hold an unbounded list).
+ * The most changes a Project holds before it folds them: its own told while a call that will post them runs (past
+ * it, posted at once), and every change told while it opens (past it, its state read again once open). A call that
+ * runs on, a store written beside the Project, a long open, never hold an unbounded list.
  */
-export const OWN_CHANGES_TOLD_MAX = 256
+export const CHANGES_HELD_MAX = 256

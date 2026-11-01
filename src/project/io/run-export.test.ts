@@ -3,6 +3,7 @@ import { runExport } from './run-export'
 import { describe, expect, it } from 'vitest'
 
 import { DIALECTE_TEST_NAMESPACES, runTestCases, TEST_DIALECTE_CONFIG } from '@/test'
+import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 import { writeXmlRecords } from '@/xml/build/write-xml-records'
 
 import type { StoreRuntime } from './store-runtime.types'
@@ -295,13 +296,15 @@ describe('runExport', () => {
 			])
 		})
 
-		it('a listener that throws or never settles -> the export completes', async () => {
+		it('a listener that throws or never settles -> the export completes, the throw reported', async () => {
+			const reports = quietReports()
+			const failure = new Error('listener failed')
 			const source = createFakeSource({ records: wideTree({ width: 3 }) })
 			const throwing = await runExport(
 				{ source, runtime: RUNTIME, documentId: DOCUMENT_ID, options: { batchSize: 2 } },
 				{
 					onProgress: () => {
-						throw new Error('listener failed')
+						throw failure
 					},
 				},
 			)
@@ -310,6 +313,7 @@ describe('runExport', () => {
 				{ onProgress: () => new Promise(() => {}) },
 			)
 			expect(await textOf(throwing.file)).toBe(await textOf(pending.file))
+			expect(new Set(reportedFailures({ reports }))).toEqual(new Set([failure]))
 		})
 	})
 

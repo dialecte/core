@@ -2,6 +2,8 @@ import { createClosingConnections } from '../closing-connections'
 import { projectKeyOf } from '../engine/project-key'
 import { createOpenConnections } from '../open-connections'
 
+import { changesOfProject, tellListener } from '@/utils/tell-listener'
+
 import type { StoreNotice } from '../store.types'
 import type { InMemoryChange, InMemoryListener, InMemoryState } from './types'
 import type { ProjectChannelMessage } from '@/project/types'
@@ -39,20 +41,21 @@ export function listenToInMemoryProject(params: {
 	}
 }
 
-/** A change of the project (its key) told to every instance listening, `own` to the one that made it. */
+/** A change of the project (its key; `name`, as a failing listener's report names it) told to every instance listening, `own` to the one that made it. */
 export function announceInMemoryChange(params: {
 	key: string
+	name: string
 	connection: object
 	change: InMemoryChange
 }): void {
-	const { key, connection, change } = params
+	const { key, name, connection, change } = params
 	const message = { ...change, timestamp: Date.now() } as ProjectChannelMessage
 	for (const entry of Array.from(LISTENERS.get(key) ?? [])) {
-		try {
-			entry.listener({ type: 'change', message, own: entry.connection === connection })
-		} catch {
-			// a listener's own failure: the others are told all the same
-		}
+		tellListener({
+			listener: entry.listener,
+			value: { type: 'change', message, own: entry.connection === connection },
+			of: changesOfProject({ name }),
+		})
 	}
 }
 

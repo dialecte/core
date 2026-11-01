@@ -1,8 +1,9 @@
 import { Project } from './project'
-import { OWN_CHANGES_TOLD_MAX } from './project.constants'
+import { CHANGES_HELD_MAX } from './project.constants'
 
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
+import { createDialecteError, toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
 import { makeRecord } from '@/store/contract/store-contract.fixtures'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
@@ -212,7 +213,7 @@ describe('a change of the project’s own store that no Project call made (the s
 		})
 	})
 
-	it(`more than ${OWN_CHANGES_TOLD_MAX} such changes while a Project call runs → posted before the call ends`, async () => {
+	it(`more than ${CHANGES_HELD_MAX} such changes while a Project call runs → posted before the call ends`, async () => {
 		const { project, store, documentId } = await openHeld()
 		const heard = listenTo({ project })
 		let release: () => void = function notYet() {}
@@ -222,11 +223,11 @@ describe('a change of the project’s own store that no Project call made (the s
 		const running = project.openDocument(documentId).transaction(async function heldOpen() {
 			await gate
 		})
-		for (let index = 0; index <= OWN_CHANGES_TOLD_MAX; index += 1) {
+		for (let index = 0; index <= CHANGES_HELD_MAX; index += 1) {
 			await store.updateDocument(documentId, { name: `name-${index}` })
 		}
 		await vi.waitFor(function postedWhileRunning() {
-			expect(heard.length).toBeGreaterThan(OWN_CHANGES_TOLD_MAX)
+			expect(heard.length).toBeGreaterThan(CHANGES_HELD_MAX)
 		})
 		release()
 		await running
@@ -237,7 +238,7 @@ describe('a change of the project’s own store that no Project call made (the s
 				heard.filter(function isUpdate(line) {
 					return line.startsWith('document-updated')
 				}),
-			).toHaveLength(OWN_CHANGES_TOLD_MAX + 1)
+			).toHaveLength(CHANGES_HELD_MAX + 1)
 			expect(
 				heard.some(function isNew(line) {
 					return line.startsWith('init-empty-document')
@@ -246,7 +247,7 @@ describe('a change of the project’s own store that no Project call made (the s
 		})
 	})
 
-	it(`more than ${OWN_CHANGES_TOLD_MAX} such changes (commits, whose fold wakes the Document) while a call runs, a Document’s subscriber throwing at one → every one posted all the same`, async () => {
+	it(`more than ${CHANGES_HELD_MAX} such changes (commits, whose fold wakes the Document) while a call runs, a Document’s subscriber throwing at one → every one posted all the same`, async () => {
 		const { project, store, documentId } = await openHeld()
 		const heard = listenTo({ project })
 		let thrown = false
@@ -256,6 +257,11 @@ describe('a change of the project’s own store that no Project call made (the s
 			thrown = true
 			throw new Error('a subscriber failing')
 		})
+		// the subscriber's failure is reported: quiet here, its report is another case's
+		const reported = vi.spyOn(console, 'error').mockImplementation(function quiet() {})
+		onTestFinished(function restoreConsole() {
+			reported.mockRestore()
+		})
 		let release: () => void = function notYet() {}
 		const gate = new Promise<void>(function hold(resolve) {
 			release = resolve
@@ -263,7 +269,7 @@ describe('a change of the project’s own store that no Project call made (the s
 		const running = project.openDocument(documentId).transaction(async function heldOpen() {
 			await gate
 		})
-		for (let index = 0; index <= OWN_CHANGES_TOLD_MAX; index += 1) {
+		for (let index = 0; index <= CHANGES_HELD_MAX; index += 1) {
 			await store.bulkWrite(documentId, { creates: [makeRecord({ id: `r-${index}` })] })
 		}
 		await vi.waitFor(function allPosted() {
@@ -271,7 +277,7 @@ describe('a change of the project’s own store that no Project call made (the s
 				heard.filter(function isCommit(line) {
 					return line.startsWith('commit')
 				}),
-			).toHaveLength(OWN_CHANGES_TOLD_MAX + 1)
+			).toHaveLength(CHANGES_HELD_MAX + 1)
 		})
 		release()
 		await running.catch(function failedByTheSubscriber() {})
@@ -488,4 +494,204 @@ describe('a change of the project’s own store told while it opens (the store h
 			expect(heard).toEqual([`document-updated ${documentId}`, `commit ${documentId}`])
 		})
 	}
+})
+
+/** `during` run once the project's own read of its documents answered, before the open goes on (the store's open read is its own). */
+function duringOpenRead(params: { store: Store; during: () => Promise<void> }): void {
+	const { store, during } = params
+	const opened = store.open.bind(store)
+	store.open = async function openThenWrapRead() {
+		await opened()
+		const read = store.getDocuments.bind(store)
+		store.getDocuments = async function readThenDuring() {
+			store.getDocuments = read
+			const documents = await read()
+			await during()
+			return documents
+		}
+	}
+}
+
+describe('a call made while the project opens', () => {
+	it('made as the open reads its documents → refused PROJECT_NOT_OPENED, nothing done', async () => {
+		const name = `called-${crypto.randomUUID()}`
+		const store = new InMemoryStore(name, { runtime: RUNTIME })
+		made.push(store)
+		const project = new Project({
+			configs: { default: CONFIG },
+			storage: { type: 'custom', store },
+		})
+		let answer: unknown
+		duringOpenRead({
+			store,
+			during: async function calledDuringOpen() {
+				answer = await project.initEmptyDocument().then(
+					function accepted() {
+						return 'accepted'
+					},
+					function refused(thrown: unknown) {
+						return toDialecteError(thrown)?.key
+					},
+				)
+			},
+		})
+		await project.open(name)
+		onTestFinished(function closeProject() {
+			return project.close()
+		})
+		expect(answer).toBe('PROJECT_NOT_OPENED')
+		expect(project.state.documents.size).toBe(0)
+	})
+})
+
+type ReadFailureCase = { thrown: () => unknown; reported: boolean }
+const readFailureCases: Record<string, ReadFailureCase> = {
+	'its engine lost (the resync that follows repairs it) → not reported': {
+		thrown: function engineLost() {
+			return createDialecteError('STORE_ENGINE_LOST', { detail: 'the host went away' })
+		},
+		reported: false,
+	},
+	'any other failure → reported': {
+		thrown: function readRefused() {
+			return new Error('the read refused')
+		},
+		reported: true,
+	},
+}
+
+describe('a fold whose read of the store fails', () => {
+	for (const [description, { thrown, reported }] of Object.entries(readFailureCases)) {
+		it(description, async () => {
+			const { project, store, documentId } = await openHeld()
+			const failure = thrown()
+			const read = store.getDocument.bind(store)
+			store.getDocument = async function refusedOnce() {
+				store.getDocument = read
+				throw failure
+			}
+			const logged = vi.spyOn(console, 'error').mockImplementation(function quiet() {})
+			onTestFinished(function restoreConsole() {
+				logged.mockRestore()
+			})
+			await store.updateDocument(documentId, { name: 'renamed' })
+			// a later fold read again, once the failed one ran
+			await store.updateDocument(documentId, { name: 'renamed again' })
+			await vi.waitFor(function foldedAgain() {
+				expect(project.state.documents.get(documentId)?.record.name).toBe('renamed again')
+			})
+			expect(logged.mock.calls.length).toBe(reported ? 1 : 0)
+		})
+	}
+})
+
+type ReadAgainCase = {
+	tell: (params: { tell: (notice: StoreNotice) => void }) => void
+	/** Whether the project reads its documents again once open (else the changes are folded one by one). */
+	readAgain: boolean
+}
+/** `count` commits of another connection, of a document the project does not hold. */
+function commitsTold(params: { tell: (notice: StoreNotice) => void; count: number }): void {
+	for (let index = 0; index < params.count; index += 1) {
+		params.tell({
+			type: 'change',
+			message: { type: 'commit', documentId: 'unknown', timestamp: index },
+			own: false,
+		})
+	}
+}
+const readAgainCases: Record<string, ReadAgainCase> = {
+	'a resync': {
+		tell: function resyncTold({ tell }) {
+			tell({ type: 'resync' })
+		},
+		readAgain: true,
+	},
+	[`${CHANGES_HELD_MAX} changes`]: {
+		tell: function heldTold({ tell }) {
+			commitsTold({ tell, count: CHANGES_HELD_MAX })
+		},
+		readAgain: false,
+	},
+	[`more than ${CHANGES_HELD_MAX} changes`]: {
+		tell: function manyTold({ tell }) {
+			commitsTold({ tell, count: CHANGES_HELD_MAX + 1 })
+		},
+		readAgain: true,
+	},
+}
+
+describe('told while the project opens', () => {
+	for (const [description, { tell: toldDuringOpen, readAgain }] of Object.entries(readAgainCases)) {
+		it(`${description} → ${readAgain ? 'its documents read again once open: one written meanwhile, told to no one, in its state' : 'folded one by one once open, its documents not read again'}`, async () => {
+			const name = `read-again-${crypto.randomUUID()}`
+			const { store, tell } = toldStore({ name })
+			made.push(store)
+			let unseen = ''
+			let readsAfterOpen = 0
+			duringOpenRead({
+				store,
+				during: async function writtenUntold() {
+					const elsewhere = new InMemoryStore(name, { runtime: RUNTIME })
+					await elsewhere.open()
+					const { record } = await elsewhere.importFile({
+						file: new File([`<Root ${XMLNS_DEFAULT_NAMESPACE}/>`], 'unseen.xml'),
+					})
+					await elsewhere.close()
+					unseen = record.id
+					toldDuringOpen({ tell })
+					// the open's own read answered: every later one is a reading again
+					const read = store.getDocuments.bind(store)
+					store.getDocuments = function countedRead() {
+						readsAfterOpen += 1
+						return read()
+					}
+				},
+			})
+			const project = await new Project({
+				configs: { default: CONFIG },
+				storage: { type: 'custom', store },
+			}).open(name)
+			onTestFinished(function closeProject() {
+				return project.close()
+			})
+			// a reading again starts as the open settles: counted by now
+			expect(readsAfterOpen).toBe(readAgain ? 1 : 0)
+			if (!readAgain) return
+			await vi.waitFor(function readAgainHolds() {
+				expect(project.state.documents.has(unseen)).toBe(true)
+			})
+		})
+	}
+})
+
+describe('an open a close was called after', () => {
+	it('changes told while it opened → neither folded nor posted: the project closes', async () => {
+		const name = `overtaken-${crypto.randomUUID()}`
+		const { store, tell } = toldStore({ name })
+		made.push(store)
+		const project = new Project({
+			configs: { default: CONFIG },
+			storage: { type: 'custom', store },
+		})
+		const posted = vi.spyOn(BroadcastChannel.prototype, 'postMessage')
+		onTestFinished(function restorePost() {
+			posted.mockRestore()
+		})
+		let closing: Promise<void> = Promise.resolve()
+		duringOpenRead({
+			store,
+			during: async function closedWhileOpening() {
+				tell({
+					type: 'change',
+					message: { type: 'commit', documentId: 'unknown', timestamp: 1 },
+					own: false,
+				})
+				closing = project.close()
+			},
+		})
+		await project.open(name)
+		await closing
+		expect(posted).not.toHaveBeenCalled()
+	})
 })

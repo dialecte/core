@@ -19,6 +19,8 @@ import {
 import { createRealmHost } from './realm-host'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
+import { tellListeners } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 
 import type { EngineLostReason } from '../client/client.types'
 import type { LinkNotice } from '../engine-store.types'
@@ -1027,13 +1029,11 @@ function engineReady(params: {
 
 /** Every link of the project in the realm told `notice`; one that throws stops no other. */
 function tellEntry(params: { entry: ProjectEntry; notice: LinkNotice }): void {
-	for (const listener of Array.from(params.entry.listeners)) {
-		try {
-			listener(params.notice)
-		} catch {
-			// a listener's own failure: the others are told all the same
-		}
-	}
+	tellListeners({
+		listeners: params.entry.listeners,
+		value: params.notice,
+		of: TOLD_OF.engineChanges,
+	})
 }
 
 /** The engine's host is gone: the calls in flight refused `host-gone`, the next ones wait for the hub. */
