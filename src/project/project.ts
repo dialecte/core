@@ -2,7 +2,7 @@ import { resolveStore } from '../store/resolve-store'
 import { exportBlob, exportDocument, initEmptyDocument } from './io'
 import { resolveConfig } from './io/resolve-config'
 import { projectChannelName } from './project-channel'
-import { CLOSE_WAIT_REPORT_MS } from './project.constants'
+import { CLOSE_WAIT_REPORT_MS, OWN_CHANGES_TOLD_MAX } from './project.constants'
 import { buildDocumentState, reconcileDocumentState } from './state'
 import { isImporting, openableDocuments } from './state/document-lifecycle'
 
@@ -141,8 +141,10 @@ export class Project<
 		const inFlight = { fileName }
 		this.importsInFlight.add(inFlight)
 		const importsInFlight = this.importsInFlight
+		const drainWhenIdle = () => this.drainWhenIdle()
 		function settleImportInFlight(): void {
 			importsInFlight.delete(inFlight)
+			drainWhenIdle()
 		}
 		void queued.then(settleImportInFlight, settleImportInFlight)
 		return queued
@@ -184,12 +186,14 @@ export class Project<
 	/** A write of the open project counted in `writes` until the function answered is called (once). */
 	private startCountedWrite(): () => void {
 		const writes = this.writes
+		const drainWhenIdle = () => this.drainWhenIdle()
 		writes.start()
 		let ended = false
 		return function endCountedWrite() {
 			if (ended) return
 			ended = true
 			writes.end()
+			drainWhenIdle()
 		}
 	}
 
@@ -200,6 +204,7 @@ export class Project<
 			return await work()
 		} finally {
 			this.writes.end()
+			this.drainWhenIdle()
 		}
 	}
 
@@ -272,18 +277,28 @@ export class Project<
 				continue
 			}
 			this.channel.postMessage(change)
-			this.onChannelMessage(change)
+			try {
+				this.onChannelMessage(change)
+			} catch {
+				// a Document subscriber's own failure, on a change no call made: the call is not refused for it,
+				// the next change folded all the same
+			}
 		}
 	}
 
 	/**
 	 * A notice of the open store: another connection's change folded into this Project's state and reposted to its
-	 * listeners; its own counted, posted once the call that made it has updated the state; a resync reads it all again.
+	 * listeners; its own kept, posted once the call that made it has updated the state - or, folded, once no call runs
+	 * (a write on the store held directly, a call that ended without posting), or at once past `OWN_CHANGES_TOLD_MAX`
+	 * (then before a running call's state holds its own); a resync reads it all again.
 	 */
 	private onStoreNotice(notice: StoreNotice): void {
-		// a change of this Project's own is counted while it closes too: a call it waits for still tells it
+		// a change of this Project's own is kept while it closes too: a call it waits for still tells it
 		if (notice.type === 'change' && notice.own) {
 			this.ownChangesTold.push(notice.message)
+			if (this.ownChangesTold.length > OWN_CHANGES_TOLD_MAX && this.canPost())
+				this.postToldChanges({})
+			else this.drainWhenIdle()
 			return
 		}
 		if (this.closing) return
@@ -293,6 +308,31 @@ export class Project<
 		}
 		this._channel?.postMessage(notice.message)
 		this.onChannelMessage(notice.message)
+	}
+
+	/** Whether a call of this Project runs, which posts the changes its store tells it: a write, a Document's commit, an import. */
+	private callsRunning(): boolean {
+		return this.writes.count > 0 || this.importsInFlight.size > 0
+	}
+
+	/**
+	 * The changes of this Project's own kept, once no call runs to post them (none made them, or the one that did
+	 * ended without posting - a transaction that threw): posted and folded on a microtask. A call running then claims
+	 * them instead, posting them once its state holds its own.
+	 */
+	private drainWhenIdle(): void {
+		if (this.ownChangesTold.length === 0 || this.callsRunning()) return
+		queueMicrotask(() => this.postUnclaimedChanges())
+	}
+
+	private postUnclaimedChanges(): void {
+		if (this.callsRunning() || !this.canPost()) return
+		this.postToldChanges({})
+	}
+
+	/** Whether the open Project posts on its channel: not before its open settled, not while it closes. */
+	private canPost(): boolean {
+		return !this.closing && this._channel !== undefined
 	}
 
 	/** Changes may have been missed: the registry, each document's history read again, every document's view woken. */
