@@ -5,6 +5,7 @@ import { basename, dirname, sep } from 'node:path'
 import {
 	GIT_LS_FILES_TIMEOUT_MS,
 	GIT_NOT_A_REPOSITORY,
+	GIT_NOT_A_REPOSITORY_SAYS,
 	GIT_NOT_TRACKED,
 	WRITTEN,
 	WRITTEN_AS_ALIAS,
@@ -64,26 +65,34 @@ export function committedInGit(params: {
 			cwd: dirname(file),
 			// git's own variables left out: inside a hook they name the commit's repository and index, not the file's
 			env: gitFreeEnvironment(),
-			stdio: 'ignore',
+			stdio: ['ignore', 'ignore', 'pipe'],
 			timeout: GIT_LS_FILES_TIMEOUT_MS,
 		})
 		return true
 	} catch (thrown) {
-		// git's answer: 1, not tracked; 128, not in a repository. Anything else (no git, a hung one) is not an
-		// answer: thrown, so the guard fails rather than writes
-		const { status } = thrown as { status?: number | null }
-		if (status === GIT_NOT_TRACKED || status === GIT_NOT_A_REPOSITORY) return false
+		// git's answer: 1, not tracked; 128 saying so, not in a repository. Anything else (no git, a hung one, a
+		// repository git refuses - `safe.directory`) is not an answer: thrown, so the guard fails rather than writes
+		const { status, stderr } = thrown as { status?: number | null; stderr?: Buffer | string }
+		if (status === GIT_NOT_TRACKED) return false
+		if (status === GIT_NOT_A_REPOSITORY && String(stderr ?? '').includes(GIT_NOT_A_REPOSITORY_SAYS))
+			return false
 		throw thrown
 	}
 }
 
-/** The process's environment without git's own variables (`GIT_DIR`, `GIT_INDEX_FILE`, ...). */
+/**
+ * The process's environment without git's own variables (`GIT_DIR`, `GIT_INDEX_FILE`, ...), in the C locale: git's
+ * messages read as written, untranslated.
+ */
 function gitFreeEnvironment(): NodeJS.ProcessEnv {
-	return Object.fromEntries(
-		Object.entries(process.env).filter(function notGits([name]) {
-			return !name.startsWith('GIT_')
-		}),
-	)
+	return {
+		...Object.fromEntries(
+			Object.entries(process.env).filter(function notGits([name]) {
+				return !name.startsWith('GIT_')
+			}),
+		),
+		LC_ALL: 'C',
+	}
 }
 
 /**

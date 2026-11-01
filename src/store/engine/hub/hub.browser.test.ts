@@ -274,14 +274,21 @@ describe('the hub across realms of the page', () => {
 		)
 	})
 
-	it('a child bound through a port whose private file system is refused (a sandboxed frame) → a project on sqlite opened through the page’s engine; its destroy, which runs a worker of its own, refused STORE_UNAVAILABLE', async () => {
+	it('a child bound through a port whose private file system is refused (a sandboxed frame) → a project on sqlite opened through the page’s engine, and destroyed by the page for it', async () => {
 		const { realm: page } = await realmFrame({ canStartEngines: true })
 		const { realm: child } = await boundChildFrame({ parent: page, storageRefused: true })
 		const project = uniqueProject()
 		expect(await child.registerThroughSqlite({ project, id: 'doc-1' })).toEqual(['doc-1'])
 		expect(await page.documentIds({ project })).toEqual(['doc-1'])
-		expect(await child.destroyThroughSqlite({ project })).toBe('STORE_UNAVAILABLE')
 		page.closeStore({ project })
+		await vi.waitFor(
+			async function destroyedOnceClosed() {
+				expect(await child.destroyThroughSqlite({ project })).toBe('destroyed')
+			},
+			{ timeout: 10_000, interval: 200 },
+		)
+		// the project made again, empty: the document of before is gone
+		expect(await child.registerThroughSqlite({ project, id: 'doc-2' })).toEqual(['doc-2'])
 	})
 
 	it('a realm joined on its own whose private file system is refused → a project on sqlite refused STORE_UNAVAILABLE, though another realm could host it', async () => {

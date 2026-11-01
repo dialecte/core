@@ -367,7 +367,7 @@
 			"signature": "(documentId: string, file: File, attachedTo?: BlobAttachment[]) => Promise<string>",
 			"summary": "Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`. Returns the generated blob id.",
 			"intents": ["store a binary file in the project", "add an attachment owned by a document"],
-			"declaredAt": "src/project/project.ts:1195"
+			"declaredAt": "src/project/project.ts:1233"
 		},
 		{
 			"path": "project.attachBlob",
@@ -376,7 +376,7 @@
 			"signature": "(blobId: string, ref: BlobAttachment) => Promise<void>",
 			"summary": "Reference an existing blob from an element of a document (optionally from one of its attributes) and tell other tabs.",
 			"intents": ["link a stored file to an element", "attach a blob to a record"],
-			"declaredAt": "src/project/project.ts:1267"
+			"declaredAt": "src/project/project.ts:1305"
 		},
 		{
 			"path": "project.close",
@@ -385,7 +385,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Close the store and release resources, once the imports in flight (running and queued), the project's writes running (a Document's transaction or prepared commit included) and the work other realms' messages started have settled. Then the channel and the store are closed, `state.documents` is emptied and the Documents' subscriptions are dropped. From the call on, the project is closed: a new call throws `PROJECT_NOT_OPENED`, a Document opened before answers `STORE_CLOSED` (on a `custom` store opened again it writes but tells nothing: open it again). The stored documents stay. Runs in turn with the Project's other `open`, `close` and `destroy` calls.",
 			"intents": ["close a project", "release the database connection when leaving a page"],
-			"declaredAt": "src/project/project.ts:716"
+			"declaredAt": "src/project/project.ts:747"
 		},
 		{
 			"path": "project.createChannel",
@@ -394,7 +394,7 @@
 			"signature": "() => BroadcastChannel",
 			"summary": "Convenience: a fresh BroadcastChannel on this project's channel. The caller owns it — call channel.close() when done listening.",
 			"intents": ["listen to project events", "receive commits and imports made in other tabs"],
-			"declaredAt": "src/project/project.ts:253"
+			"declaredAt": "src/project/project.ts:254"
 		},
 		{
 			"path": "project.destroy",
@@ -403,7 +403,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Destroy the project - deletes the database entirely, every document with its history and blobs, once the imports in flight have landed; refused `PROJECT_OPEN_ELSEWHERE`, nothing removed, while another connection - a project or store of the name, in this page or another tab - has it open. To delete one document, use `removeDocument`.",
 			"intents": ["delete a whole project", "wipe the project database with every document"],
-			"declaredAt": "src/project/project.ts:780"
+			"declaredAt": "src/project/project.ts:811"
 		},
 		{
 			"path": "project.detachBlob",
@@ -412,7 +412,7 @@
 			"signature": "(blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>",
 			"summary": "Drop the reference from an element of a document to a blob; the blob itself stays stored.",
 			"intents": ["unlink a file from an element", "detach a blob from a record"],
-			"declaredAt": "src/project/project.ts:1279"
+			"declaredAt": "src/project/project.ts:1317"
 		},
 		{
 			"path": "project.export",
@@ -427,7 +427,7 @@
 				"save a document as XML",
 				"read the exported XML as a DOM"
 			],
-			"declaredAt": "src/project/project.ts:1015"
+			"declaredAt": "src/project/project.ts:1051"
 		},
 		{
 			"path": "project.exportBlob",
@@ -440,7 +440,7 @@
 				"save a blob to disk",
 				"read a blob with its file name"
 			],
-			"declaredAt": "src/project/project.ts:1231"
+			"declaredAt": "src/project/project.ts:1269"
 		},
 		{
 			"path": "project.getBlob",
@@ -449,7 +449,7 @@
 			"signature": "(blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>",
 			"summary": "Read a stored blob: its metadata entry and its binary data, or `undefined` when the id is unknown.",
 			"intents": ["read an attached file's content", "load a blob by id"],
-			"declaredAt": "src/project/project.ts:1221"
+			"declaredAt": "src/project/project.ts:1259"
 		},
 		{
 			"path": "project.getBlobsByDocument",
@@ -458,7 +458,7 @@
 			"signature": "(documentId: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from a document (any of their attachments points into it).",
 			"intents": ["list the files attached to a document"],
-			"declaredAt": "src/project/project.ts:1240"
+			"declaredAt": "src/project/project.ts:1278"
 		},
 		{
 			"path": "project.getBlobsByRecord",
@@ -467,7 +467,7 @@
 			"signature": "(documentId: string, recordRef: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from one element of a document.",
 			"intents": ["list the files attached to one element"],
-			"declaredAt": "src/project/project.ts:1249"
+			"declaredAt": "src/project/project.ts:1287"
 		},
 		{
 			"path": "project.getDatabaseInstance",
@@ -476,7 +476,7 @@
 			"signature": "() => ReturnType<GenericStore['getDatabaseInstance']>",
 			"summary": "Expose the underlying database instance. Return type is inferred from the store (Dexie for local storage).",
 			"intents": ["inspect the underlying database", "debug what the store holds"],
-			"declaredAt": "src/project/project.ts:1383"
+			"declaredAt": "src/project/project.ts:1421"
 		},
 		{
 			"path": "project.getDocument",
@@ -485,7 +485,7 @@
 			"signature": "(documentId: string) => Promise<DocumentRecord | undefined>",
 			"summary": "The metadata record of one document of the project, or `undefined` when it is unknown or still importing.",
 			"intents": ["check a document exists", "read a document's name or config key by id"],
-			"declaredAt": "src/project/project.ts:1046"
+			"declaredAt": "src/project/project.ts:1082"
 		},
 		{
 			"path": "project.getDocumentConfig",
@@ -494,7 +494,7 @@
 			"signature": "(documentId: string) => GenericConfig | undefined",
 			"summary": "Get the dialecte config a document uses, or `undefined` for a document the project does not know.",
 			"intents": ["get the dialecte config of a document", "know which schema a document uses"],
-			"declaredAt": "src/project/project.ts:1131"
+			"declaredAt": "src/project/project.ts:1167"
 		},
 		{
 			"path": "project.getDocuments",
@@ -503,7 +503,7 @@
 			"signature": "() => Promise<DocumentRecord[]>",
 			"summary": "The documents of the project; one still importing - here or in another realm - is not among them.",
 			"intents": ["list the documents of a project", "show the files a project holds"],
-			"declaredAt": "src/project/project.ts:1037"
+			"declaredAt": "src/project/project.ts:1073"
 		},
 		{
 			"path": "project.getDocumentStatus",
@@ -515,7 +515,7 @@
 				"check that a document imported in another tab can be opened",
 				"wait for a document from another realm"
 			],
-			"declaredAt": "src/project/project.ts:1118"
+			"declaredAt": "src/project/project.ts:1154"
 		},
 		{
 			"path": "project.getStandaloneBlobs",
@@ -524,7 +524,7 @@
 			"signature": "() => Promise<BlobRecord[]>",
 			"summary": "The blobs of the project that no document references (no attachment).",
 			"intents": ["list unattached files", "find orphan blobs to clean up"],
-			"declaredAt": "src/project/project.ts:1258"
+			"declaredAt": "src/project/project.ts:1296"
 		},
 		{
 			"path": "project.import",
@@ -536,7 +536,7 @@
 				"import several XML files at once",
 				"get one result per file without a throw for a failed file"
 			],
-			"declaredAt": "src/project/project.ts:867"
+			"declaredAt": "src/project/project.ts:898"
 		},
 		{
 			"path": "project.importFile",
@@ -545,7 +545,7 @@
 			"signature": "(file: File, options?: ImportDocumentOptions) => Promise<ImportedDocument>",
 			"summary": "Import one File into the project: the store registers, parses and stores it next to the data. The document is in the project state and broadcast once the store answers it `ready`; whatever fails before that, or an abort through `options.signal`, leaves nothing and is thrown (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign error). One refusal leaves its document: an import whose engine was lost after it landed is refused `STORE_ENGINE_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told after each stored batch, never awaited. One file is in flight per project: a call made while another import runs waits for it.",
 			"intents": ["import an XML file", "load a file into the project", "parse XML into records"],
-			"declaredAt": "src/project/project.ts:908"
+			"declaredAt": "src/project/project.ts:939"
 		},
 		{
 			"path": "project.initEmptyDocument",
@@ -554,7 +554,7 @@
 			"signature": "(options?: InitEmptyDocumentOptions) => Promise<string>",
 			"summary": "Register a new empty document in the project. Returns the new documentId. Records are added later via import or transactions.",
 			"intents": ["create a new empty document", "start a document from scratch without a file"],
-			"declaredAt": "src/project/project.ts:803"
+			"declaredAt": "src/project/project.ts:834"
 		},
 		{
 			"path": "project.open",
@@ -567,7 +567,7 @@
 				"start working on a project",
 				"reopen a project after close"
 			],
-			"declaredAt": "src/project/project.ts:479"
+			"declaredAt": "src/project/project.ts:510"
 		},
 		{
 			"path": "project.openDocument",
@@ -576,7 +576,7 @@
 			"signature": "(documentId: string) => Document<GenericConfig, MergedExtensions<GenericModules>>",
 			"summary": "Open a file-scoped Document for querying and mutating a specific file.",
 			"intents": ["open a document to read or write it", "get the Document of an id"],
-			"declaredAt": "src/project/project.ts:1058"
+			"declaredAt": "src/project/project.ts:1094"
 		},
 		{
 			"path": "project.queryAll",
@@ -585,7 +585,7 @@
 			"signature": "<Result>(queryFunction: (query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>) => Promise<Result[]>) => Promise<Result[]>",
 			"summary": "Run a query function across all documents, collect and flatten results. Iterates documents sequentially; merges all non-empty arrays.",
 			"intents": ["collect results from every document", "run one query over all documents"],
-			"declaredAt": "src/project/project.ts:1327"
+			"declaredAt": "src/project/project.ts:1365"
 		},
 		{
 			"path": "project.queryFirst",
@@ -597,7 +597,7 @@
 				"find the first match across every document",
 				"search all documents of a project"
 			],
-			"declaredAt": "src/project/project.ts:1306"
+			"declaredAt": "src/project/project.ts:1344"
 		},
 		{
 			"path": "project.redo",
@@ -606,7 +606,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Re-apply the last undone transaction of a document and tell other tabs. Does nothing when there is nothing to redo.",
 			"intents": ["redo an undone change to a document"],
-			"declaredAt": "src/project/project.ts:1169"
+			"declaredAt": "src/project/project.ts:1206"
 		},
 		{
 			"path": "project.removeBlob",
@@ -615,7 +615,7 @@
 			"signature": "(blobId: string) => Promise<void>",
 			"summary": "Delete a blob and its binary data from the project and tell other tabs. Does nothing when the id is unknown.",
 			"intents": ["delete a stored file", "remove a blob for good"],
-			"declaredAt": "src/project/project.ts:1291"
+			"declaredAt": "src/project/project.ts:1329"
 		},
 		{
 			"path": "project.removeDocument",
@@ -624,7 +624,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Remove one document from the project - its records, history and blobs - and tell other tabs. The other documents stay.",
 			"intents": ["delete a document from the project", "remove one file and its records"],
-			"declaredAt": "src/project/project.ts:832"
+			"declaredAt": "src/project/project.ts:863"
 		},
 		{
 			"path": "project.undo",
@@ -633,7 +633,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Revert the last committed transaction of a document and tell other tabs. Does nothing when there is nothing to undo.",
 			"intents": ["undo the last change to a document", "roll back a commit"],
-			"declaredAt": "src/project/project.ts:1144"
+			"declaredAt": "src/project/project.ts:1180"
 		},
 		{
 			"path": "tx.addChild",

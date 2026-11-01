@@ -7,6 +7,8 @@ import { engineLockNameOf, projectKeyOf } from '../project-key'
 import { refuseAnotherWire } from './check-engine-wire'
 import {
 	ENGINE_CLOSE_BUDGET_MS,
+	ENGINE_FOLLOW_REARM_FIRST_MS,
+	ENGINE_FOLLOW_REARM_MAX_MS,
 	ENGINE_HEARTBEAT_TIMEOUT_MS,
 	ENGINE_OPEN_BUDGET_MS,
 	ENGINE_OPEN_WINDOW_MS,
@@ -72,6 +74,8 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		listeners: new Set(),
 		follow: followNothing,
 		mayFollow: true,
+		followedAt: undefined,
+		followRearmMs: ENGINE_FOLLOW_REARM_FIRST_MS,
 		adoption: undefined,
 		creationId: undefined,
 		refusal: undefined,
@@ -119,6 +123,7 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		engine: function currentEngine() {
 			// a call of the connection's own: once it ended, a lost engine may be followed again
 			state.mayFollow = true
+			state.followRearmMs = ENGINE_FOLLOW_REARM_FIRST_MS
 			return reach()
 		},
 		connectionId: state.clientId,
@@ -136,12 +141,22 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		},
 	}
 	state.follow = function followNextEngine() {
-		// once per call of its own: an engine that ends at every start is not started again and again for a listener
-		if (state.released || state.listeners.size === 0 || !state.mayFollow) return
+		// once after each call of its own, and again once the engine it followed lasted (a while longer each time): an
+		// idle connection hears every engine that lasts, one that does not is not started again and again for it
+		const lasted =
+			state.followedAt !== undefined && performance.now() - state.followedAt >= state.followRearmMs
+		if (state.released || state.listeners.size === 0 || !(state.mayFollow || lasted)) return
+		if (lasted) state.followRearmMs = Math.min(state.followRearmMs * 2, ENGINE_FOLLOW_REARM_MAX_MS)
 		state.mayFollow = false
-		reach().catch(function notReached() {
-			// no engine now (refused, closed meanwhile): the next call says why
-		})
+		state.followedAt = undefined
+		reach().then(
+			function followed() {
+				state.followedAt = performance.now()
+			},
+			function notReached() {
+				// no engine now (refused, closed meanwhile): the next call says why
+			},
+		)
 	}
 	/** The connection released: counted no more, its engine closed when it was the last one. */
 	async function releaseConnection(): Promise<void> {

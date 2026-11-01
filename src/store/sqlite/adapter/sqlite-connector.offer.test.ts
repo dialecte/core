@@ -8,12 +8,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { toDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test'
 
+import type { HubConnectorParams } from '../../engine/client/hub-connector.types'
 import type { HubConnectionOptions } from '../../engine/hub/hub-client.types'
 
 /** What the realm asked of the hub: each connection opened (with the engines it named), and the one it kept. */
 const hub = vi.hoisted(function hubOfTheCase() {
 	return {
 		opened: [] as HubConnectionOptions[],
+		/** Each connector through the hub made, as asked. */
+		connectors: [] as HubConnectorParams[],
 		kept: undefined as Promise<{ bound: boolean } | undefined> | undefined,
 	}
 })
@@ -35,7 +38,8 @@ vi.mock('../../engine/hub/hub-client', function mockHubClient() {
 
 vi.mock('../../engine/client/hub-connector', function mockHubConnector() {
 	return {
-		createHubConnector: function hubConnector() {
+		createHubConnector: function hubConnector(params: HubConnectorParams) {
+			hub.connectors.push(params)
 			return {
 				connect: async function connectThroughHub() {
 					return 'through the hub'
@@ -54,6 +58,7 @@ function noPort(): never {
 
 afterEach(function restoreRealm() {
 	hub.opened.splice(0)
+	hub.connectors.splice(0)
 	hub.kept = undefined
 	restoreRealmStorage()
 })
@@ -93,7 +98,13 @@ describe('the way a project on sqlite goes, by what the realm can store and how 
 		/** The connection the realm has already: bound by its page, joined on its own, or none. */
 		kept?: 'bound' | 'own'
 		call: 'connect' | 'destroy'
-		expected: { answer: unknown; offered: string[]; connectionsOpened: number }
+		expected: {
+			answer: unknown
+			offered: string[]
+			connectionsOpened: number
+			/** Whether the connector made deletes the project's files in this realm (a destroy through the hub). */
+			deletesFiles?: boolean
+		}
 	}
 	const testCases: Record<string, TestCase> = {
 		'a realm that can store, connecting → through the hub, its project’s engine offered': {
@@ -121,10 +132,32 @@ describe('the way a project on sqlite goes, by what the realm can store and how 
 				call: 'connect',
 				expected: { answer: 'STORE_UNAVAILABLE', offered: [], connectionsOpened: 0 },
 			},
-		'a bound child whose private file system is refused, destroying (a worker of its own deletes the files) → STORE_UNAVAILABLE':
+		'a realm that can store, destroying → through the hub, its files deleted here': {
+			storageRefused: false,
+			call: 'destroy',
+			expected: {
+				answer: 'destroyed through the hub',
+				offered: [TEST_DIALECTE.id],
+				connectionsOpened: 1,
+				deletesFiles: true,
+			},
+		},
+		'a bound child whose private file system is refused, destroying → through the hub, its files deleted by a view that can store':
 			{
 				storageRefused: true,
 				kept: 'bound',
+				call: 'destroy',
+				expected: {
+					answer: 'destroyed through the hub',
+					offered: [],
+					connectionsOpened: 0,
+					deletesFiles: false,
+				},
+			},
+		'a realm joined on its own whose private file system is refused, destroying → STORE_UNAVAILABLE, nothing asked of the hub':
+			{
+				storageRefused: true,
+				kept: 'own',
 				call: 'destroy',
 				expected: { answer: 'STORE_UNAVAILABLE', offered: [], connectionsOpened: 0 },
 			},
@@ -142,6 +175,13 @@ describe('the way a project on sqlite goes, by what the realm can store and how 
 			expect(answer).toBe(expected.answer)
 			expect(namedDialectes()).toEqual(expected.offered)
 			expect(hub.opened).toHaveLength(expected.connectionsOpened)
+			if (expected.deletesFiles !== undefined) {
+				expect(
+					hub.connectors.map(function deletesHere(made) {
+						return made.deletesFiles ?? true
+					}),
+				).toEqual([expected.deletesFiles])
+			}
 		})
 	}
 

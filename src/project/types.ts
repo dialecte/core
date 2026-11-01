@@ -102,6 +102,16 @@ export type ProjectChannelMessage =
 	  }
 	| { type: 'blob-removed'; blobId: string; timestamp: number }
 
+/**
+ * Posted on a Project's own channel (a store that announces its changes) once it read its documents and their history
+ * again - its store reached another engine of the project, or more changes were told while it opened than it holds:
+ * what changed meanwhile is in its state, not told change by change. A listener reads what it shows again.
+ */
+export type ProjectChannelResync = { type: 'resync'; timestamp: number }
+
+/** What a Project's channel carries: each change (`ProjectChannelMessage`), and a resync. */
+export type ProjectChannelEvent = ProjectChannelMessage | ProjectChannelResync
+
 // ── Storage ──────────────────────────────────────────────────────────────────
 
 /**

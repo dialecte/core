@@ -408,8 +408,8 @@ function markOwnReady(params: {
 }
 
 /**
- * The import's progress relayed to the caller's listener (never awaited, its failure ignored): the
- * parser's progress told on and kept, so a phase is told with the bytes read so far.
+ * The import's progress relayed to the caller's listener (never awaited, its failure reported once for the import):
+ * the parser's progress told on and kept, so a phase is told with the bytes read so far.
  */
 export function createProgressRelay(params: {
 	file: File
@@ -420,10 +420,10 @@ export function createProgressRelay(params: {
 	return {
 		onProgress: function relayProgress(progress) {
 			Object.assign(last, progress)
-			tellListener({ listener, value: progress, of: TOLD_OF.importProgress })
+			tellListener({ listener, value: progress, of: TOLD_OF.importProgress, call: last })
 		},
 		tellPhase: function tellPhase({ phase }) {
-			tellListener({ listener, value: { ...last, phase }, of: TOLD_OF.importProgress })
+			tellListener({ listener, value: { ...last, phase }, of: TOLD_OF.importProgress, call: last })
 		},
 	}
 }

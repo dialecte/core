@@ -17,4 +17,9 @@ export type HubConnectorParams = {
 	destroyBudgetMs?: number
 	/** How long a call waits on a silent engine (the default when absent). */
 	heartbeatTimeoutMs?: number
+	/**
+	 * Whether this realm deletes the project's files on a destroy (a fresh worker here; the default). A realm that
+	 * cannot store (`false`): the hub has a view that runs an engine of the dialecte delete them.
+	 */
+	deletesFiles?: boolean
 }

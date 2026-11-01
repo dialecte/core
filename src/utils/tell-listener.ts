@@ -1,25 +1,31 @@
+/** The calls a listener's failure was reported for already: a progress listener failing at every tick is reported once. */
+const REPORTED = new WeakSet<object>()
+
 /**
  * Tell a listener, never waiting for it: a listener on the far side of a closed port may never answer, and its
- * failure is not the caller's - reported on the console with what it was told of (`of`), the caller going on.
+ * failure is not the caller's - reported on the console with what it was told of (`of`), the caller going on: once
+ * per `call` when it names one (a progress listener's import, export or commit), else each time.
  */
 export function tellListener<GenericValue>(params: {
 	listener: ((value: GenericValue) => unknown) | undefined
 	value: GenericValue
 	/** What the listener is told of, as the report names it ("an import's progress"). */
 	of: string
+	/** The call the listener is told for, its failures reported once for it; none: each failure reported. */
+	call?: object
 }): void {
-	const { listener, value, of } = params
+	const { listener, value, of, call } = params
 	if (!listener) return
 	try {
 		const answer: unknown = listener(value)
 		// a promise of another realm, or any thenable, is not `instanceof Promise` here
 		if (isThenable(answer)) {
 			Promise.resolve(answer).catch(function reportRejection(thrown: unknown) {
-				reportListenerFailure({ of, thrown })
+				reportListenerFailure({ call, of, thrown })
 			})
 		}
 	} catch (thrown) {
-		reportListenerFailure({ of, thrown })
+		reportListenerFailure({ call, of, thrown })
 	}
 }
 
@@ -38,7 +44,16 @@ export function tellListeners<GenericValue>(params: {
 	for (const listener of Array.from(listeners)) tellListener({ listener, value, of })
 }
 
-function reportListenerFailure(params: { of: string; thrown: unknown }): void {
+function reportListenerFailure(params: {
+	call: object | undefined
+	of: string
+	thrown: unknown
+}): void {
+	const { call } = params
+	if (call !== undefined) {
+		if (REPORTED.has(call)) return
+		REPORTED.add(call)
+	}
 	console.error(`[dialecte] a listener of ${params.of} threw; what told it goes on:`, params.thrown)
 }
 

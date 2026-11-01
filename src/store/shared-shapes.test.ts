@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -290,6 +298,14 @@ describe('a file committed in git', () => {
 			},
 			committed: false,
 		},
+		'git refusing the repository (its owner not the user: `safe.directory`) → thrown, not taken for "not a repository"':
+			{
+				file: function tracked({ repository }) {
+					return join(repository, 'tracked.txt')
+				},
+				git: 'dubious-ownership',
+				refused: true,
+			},
 		'no git to ask (or one that hangs) → thrown, not taken for "not committed": the guard fails, never writes':
 			{
 				file: function tracked({ repository }) {
@@ -299,11 +315,24 @@ describe('a file committed in git', () => {
 				refused: true,
 			},
 	}
+	/** A git that refuses every repository as git does one of another owner: exit 128, its message. */
+	function dubiousOwnershipGit(params: { directory: string }): string {
+		const script = join(params.directory, 'dubious-git.sh')
+		writeFileSync(
+			script,
+			`#!/bin/sh\necho "fatal: detected dubious ownership in repository at '$PWD'" >&2\nexit 128\n`,
+		)
+		chmodSync(script, 0o755)
+		return script
+	}
+
 	for (const [description, { file, git, committed, refused }] of Object.entries(committedCases)) {
 		it(description, () => {
 			const repository = repositoryOfTheCase()
+			const command =
+				git === 'dubious-ownership' ? dubiousOwnershipGit({ directory: repository }) : git
 			const asked = function askGit(): boolean {
-				return committedInGit({ file: file({ repository }), git })
+				return committedInGit({ file: file({ repository }), git: command })
 			}
 			if (refused) expect(asked).toThrow()
 			else expect(asked()).toBe(committed)

@@ -15,6 +15,14 @@ export const ENGINE_OPEN_WINDOW_MS = 30_000
 export const ENGINE_CLOSE_BUDGET_MS = 2_000
 
 /**
+ * How long an engine a listening connection followed (no call of its own) must run before its end is followed too;
+ * doubled at each such follow up to `ENGINE_FOLLOW_REARM_MAX_MS`, back to this at a call of its own: an engine that
+ * does not last is not started again and again for a listener.
+ */
+export const ENGINE_FOLLOW_REARM_FIRST_MS = 1_000
+export const ENGINE_FOLLOW_REARM_MAX_MS = 30_000
+
+/**
  * A client takes its engine for lost after this long with no message while a call waits: the engine
  * beats every second while it works (inside its longest steps too), and says `busy` before dialecte
  * code that may run longer.

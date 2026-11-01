@@ -32,6 +32,7 @@ import type {
 	ProjectExportBlobParams,
 	ExportBlobResult,
 	ProjectChannelMessage,
+	ProjectChannelResync,
 	ProjectParams,
 	ProjectState,
 	DocumentRecord,
@@ -234,7 +235,7 @@ export class Project<
 	/**
 	 * Name of this project's BroadcastChannel — the public event contract.
 	 * Open your own instance (see createChannel) to receive every
-	 * ProjectChannelMessage, same-tab and cross-tab.
+	 * ProjectChannelEvent (each change, and a resync), same-tab and cross-tab.
 	 */
 	get channelName(): string {
 		invariant(this._channelName !== undefined, {
@@ -330,7 +331,7 @@ export class Project<
 			this.holdWhileOpening({ notice: { type: 'change', message, own: false } })
 			return
 		}
-		this.onChannelMessage(message)
+		this.foldTold(message)
 	}
 
 	/**
@@ -391,10 +392,28 @@ export class Project<
 	/** Changes may have been missed: the registry, each document's history read again, every document's view woken. */
 	private async resync(): Promise<void> {
 		if (this.closing) return
-		await this.refreshState()
-		const documentIds = Array.from(this.state.documents.keys())
-		await Promise.all(documentIds.map((documentId) => this.refreshHistoryStatus(documentId)))
-		for (const documentId of documentIds) this.signalStateChange(documentId, true)
+		let documentIds: string[] = []
+		try {
+			await this.refreshState()
+			documentIds = Array.from(this.state.documents.keys())
+			await Promise.all(documentIds.map((documentId) => this.refreshHistoryStatus(documentId)))
+		} finally {
+			// its own channel's listeners told too once the documents and their history are read again, the reads failed
+			// or not: what changed meanwhile reaches them through the state, not one by one (the name's channel of a
+			// store that announces nothing told them each change)
+			if (this.announcing && !this.closing) {
+				const resync: ProjectChannelResync = { type: 'resync', timestamp: Date.now() }
+				this._channel?.postMessage(resync)
+			}
+		}
+		for (const documentId of documentIds) {
+			// one document's subscriber failing wakes every other all the same
+			try {
+				this.signalStateChange(documentId, true)
+			} catch (thrown) {
+				this.reportFoldFailure({ told: 'resync', thrown })
+			}
+		}
 	}
 
 	readonly state: ProjectState = {
@@ -421,10 +440,22 @@ export class Project<
 		return () => set.delete(callback)
 	}
 
+	/**
+	 * Every subscriber of the document told, one that throws stopping no other; the first failure thrown once all are
+	 * told - the call that changed the document fails with it, a fold no call awaits reports it.
+	 */
 	private signalStateChange(documentId: string, terminal: boolean): void {
 		const set = this.stateSubscribers.get(documentId)
 		if (!set) return
-		for (const callback of set) callback(terminal)
+		const failures: unknown[] = []
+		for (const callback of Array.from(set)) {
+			try {
+				callback(terminal)
+			} catch (thrown) {
+				failures.push(thrown)
+			}
+		}
+		if (failures.length > 0) throw failures[0]
 	}
 
 	constructor(params: {
@@ -959,11 +990,16 @@ export class Project<
 		} catch (thrown) {
 			if (!isEngineLost({ thrown })) throw thrown
 			await this.refreshState().catch(ignoreReadFailure)
+			if (this.announcing) this.postToldChanges({})
 			if (documentId !== undefined) {
 				await this.refreshHistoryStatus(documentId).catch(ignoreReadFailure)
-				this.signalStateChange(documentId, true)
+				try {
+					this.signalStateChange(documentId, true)
+				} catch (failure) {
+					// the lost engine is what the call is refused for; its subscriber's failure told beside it
+					this.reportFoldFailure({ told: 'resync', thrown: failure })
+				}
 			}
-			if (this.announcing) this.postToldChanges({})
 			throw thrown
 		}
 	}
@@ -1156,8 +1192,9 @@ export class Project<
 			const timestamp = Date.now()
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
-			this.signalStateChange(documentId, true)
+			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
 			this.broadcast({ type: 'commit', documentId, timestamp })
+			this.signalStateChange(documentId, true)
 		})
 	}
 
@@ -1179,8 +1216,9 @@ export class Project<
 			const timestamp = Date.now()
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
-			this.signalStateChange(documentId, true)
+			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
 			this.broadcast({ type: 'commit', documentId, timestamp })
+			this.signalStateChange(documentId, true)
 		})
 	}
 

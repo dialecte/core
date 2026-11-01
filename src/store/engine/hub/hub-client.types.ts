@@ -48,13 +48,17 @@ export type HubConnection = {
 	/** The realm's link to a project's engine: one per project, shared by the realm's connections to it. */
 	openProject: (params: HubProjectParams) => HubProjectLink
 	/**
-	 * Destroy a project once the hub grants it (no other view uses it): `destroy` deletes the files. `own`,
-	 * the destroying connection's link, does not count, and is let go once the destroy goes ahead.
+	 * Destroy a project once the hub grants it (no other view uses it): `destroy` deletes the files. Without
+	 * `destroy` (a view that cannot store), the hub has a view that runs an engine of the dialecte delete them, and
+	 * answers once it has. `own`, the destroying connection's link, does not count, and is let go once the destroy
+	 * goes ahead.
 	 */
 	destroyProject: (params: {
 		project: string
 		dialecteId: string
-		destroy: () => Promise<void>
+		/** The version this realm runs: a view at that version deletes the files for it (no `destroy`) when one runs. */
+		dialecteVersion: string
+		destroy?: () => Promise<void>
 		own?: OwnHubLink
 	}) => Promise<void>
 	/** A port for a child realm that cannot reach the hub: it joins through it with `adoptHubPort`. */

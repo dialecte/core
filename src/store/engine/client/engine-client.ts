@@ -183,20 +183,23 @@ export function createEngineClient(params: {
  */
 function createProgressListeners(params: { port: MessagePort }): ProgressListeners {
 	const { port } = params
-	const listeners = new Map<number, (...progress: unknown[]) => unknown>()
+	/** By the id its call sends: the call's listener, the entry itself naming the call for its reports. */
+	const listeners = new Map<number, { listener: (...progress: unknown[]) => unknown }>()
 	let nextId = 0
 	function hear(event: MessageEvent<ProgressSignal | undefined>): void {
 		const signal = event.data
 		if (signal?.type !== ENGINE_SIGNAL.progress) return
-		const listener = listeners.get(signal.progressId)
+		const entry = listeners.get(signal.progressId)
 		tellListener({
 			listener:
-				listener &&
+				entry &&
 				function tellTick(progress: unknown[]) {
-					return listener(...progress)
+					return entry.listener(...progress)
 				},
 			value: signal.progress,
 			of: TOLD_OF.callProgress,
+			// the call's ticks: a listener failing at each one reported once
+			call: entry,
 		})
 	}
 	// beside Comlink's own listener: one port, the ticks heard in their order with the answers
@@ -204,7 +207,7 @@ function createProgressListeners(params: { port: MessagePort }): ProgressListene
 	return {
 		add: function addListener({ listener }) {
 			nextId += 1
-			listeners.set(nextId, listener)
+			listeners.set(nextId, { listener })
 			return nextId
 		},
 		remove: function removeListener({ progressId }) {

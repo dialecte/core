@@ -24,7 +24,7 @@ import type { HubCommand, HubEvent, HubRefusal } from './hub.types'
  * host says the engine adopted the other end; an adoption that fails ends that engine.
  *
  * The hub holds a Web Lock of its own for its life, named in each welcome (a realm granted it knows the hub is
- * gone): a hub served in a page holds it as long as the page lives.
+ * gone): a hub served in a page holds it as long as the page lives. No realm is heard before the hub holds it.
  */
 export function serveHub(params: ServeHubParams = {}): HubShell {
 	const { helloBudgetMs = HUB_HELLO_BUDGET_MS } = params
@@ -38,8 +38,11 @@ export function serveHub(params: ServeHubParams = {}): HubShell {
 		timer: undefined,
 		hubLock: `${HUB_LOCK_PREFIX}${crypto.randomUUID()}`,
 	}
-	// asked before any realm can be welcomed, so before any realm asks for it to watch it
-	holdForLife({ name: state.hubLock })
+	// held before any realm is heard, so before any is welcomed and asks for it to watch it: a busy browser may grant
+	// it late, and a realm granted it first would take a live hub for gone
+	const lifeLockHeld = holdForLife({ name: state.hubLock })
+	// a refusal before any realm connects is told to each one that does (below): not an unhandled rejection meanwhile
+	lifeLockHeld.catch(ignoreLockRefusal)
 
 	function feed(params: ShellFeed): void {
 		const output = router.handle(params.event)
@@ -106,6 +109,30 @@ export function serveHub(params: ServeHubParams = {}): HubShell {
 				return feed({ event: { ...message, now, realmId } })
 			case 'spawners':
 				return feed({ event: { type: 'spawners', now, realmId, spawners: message.spawners } })
+			case 'ping':
+				return post({ port: state.realms.get(realmId)!.port, message: { type: 'pong' } })
+			case 'files-deleted':
+				return feed({
+					event: {
+						type: 'files-deleted',
+						now,
+						realmId,
+						project: message.project,
+						dialecteId: message.dialecteId,
+						...(message.error !== undefined && { error: message.error }),
+					},
+				})
+			case 'destroy-elsewhere':
+				return feed({
+					event: {
+						type: 'destroy-elsewhere',
+						now,
+						realmId,
+						project: message.project,
+						dialecteId: message.dialecteId,
+						dialecteVersion: message.dialecteVersion,
+					},
+				})
 			case 'leave':
 			case 'destroy':
 			case 'destroyed':
@@ -177,7 +204,28 @@ export function serveHub(params: ServeHubParams = {}): HubShell {
 
 	return {
 		connect: function connectRealm({ port }) {
-			attachPort({ port })
+			// the port queues what the realm says until it is attached
+			lifeLockHeld.then(
+				function attachOnceHeld() {
+					attachPort({ port })
+				},
+				function refuseWithoutLock(thrown: unknown) {
+					// a realm granted the lock a hub does not hold would take it for gone at once: no hub, said at once
+					post({
+						port,
+						message: {
+							type: 'hello-refused',
+							error: toThrownData({
+								thrown: createDialecteError('STORE_CONNECTION_FAILED', {
+									detail: "The origin's hub could not hold its lock: it welcomes no view",
+									...(thrown instanceof Error && { cause: thrown }),
+								}),
+							}),
+						},
+					})
+					port.close()
+				},
+			)
 		},
 	}
 }
@@ -301,6 +349,13 @@ function perform(params: {
 					project: command.project,
 					dialecteId: command.dialecteId,
 				},
+			})
+		case 'delete-files':
+		case 'destroyed-elsewhere':
+			return postTo({
+				state,
+				realmId: command.realmId,
+				message: { type: command.type, project: command.project, dialecteId: command.dialecteId },
 			})
 		case 'refuse-destroy':
 			return postTo({
@@ -601,9 +656,19 @@ function post(params: {
 	params.port.postMessage(params.message, params.transfer ?? [])
 }
 
-/** A Web Lock held for as long as this hub lives: let go with it. */
-function holdForLife(params: { name: string }): void {
-	void navigator.locks.request(params.name, function holdForever() {
-		return new Promise<never>(function neverSettle() {})
+function ignoreLockRefusal(): void {}
+
+/**
+ * The Web Lock held for as long as this hub lives, let go with it: settled once the browser granted it, refused when
+ * the browser refuses it.
+ */
+function holdForLife(params: { name: string }): Promise<void> {
+	return new Promise(function waitForGrant(granted, refused) {
+		navigator.locks
+			.request(params.name, function holdForever() {
+				granted()
+				return new Promise<never>(function neverSettle() {})
+			})
+			.catch(refused)
 	})
 }

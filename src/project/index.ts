@@ -24,6 +24,8 @@ export type {
 	DocumentEntry,
 	ProjectState,
 	ProjectChannelMessage,
+	ProjectChannelResync,
+	ProjectChannelEvent,
 } from './types'
 export type {
 	InitEmptyDocumentParams,

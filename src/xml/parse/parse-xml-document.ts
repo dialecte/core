@@ -294,6 +294,12 @@ async function flushBatch(params: {
 	} finally {
 		perf.stop('import::insert')
 	}
-	tellListener({ listener: control.onProgress, value: progress, of: TOLD_OF.importProgress })
+	tellListener({
+		listener: control.onProgress,
+		value: progress,
+		of: TOLD_OF.importProgress,
+		// the import's ticks: a listener failing at each one reported once
+		call: control,
+	})
 	return stored
 }
