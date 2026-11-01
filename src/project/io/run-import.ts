@@ -2,7 +2,7 @@ import { resolveConfig } from './resolve-config'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
-import { splitFileName } from '@/store/document-path'
+import { readableExtensionsOf, splitFileName } from '@/store/document-path'
 import { parseXmlFile } from '@/xml'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
@@ -65,7 +65,8 @@ export async function runImport(
 
 /**
  * The name and extension of the document a file becomes: its path's file name when it is given one (an extension
- * its config reads), else the file's own name.
+ * its config reads, `.xml` always among them), else the file's own name (the first extension its config reads when
+ * the name has no dot, which only a config entry without a dot lets through).
  */
 function documentNameOf(params: {
 	file: File
@@ -73,13 +74,11 @@ function documentNameOf(params: {
 	config: AnyDialecteConfig
 }): Pick<DocumentRecord, 'name' | 'extension'> {
 	const { file, path, config } = params
-	const { supportedFileExtensions } = config.io
-	if (path !== undefined) return splitFileName({ path, extensions: supportedFileExtensions })
+	const extensions = readableExtensionsOf({ extensions: config.io.supportedFileExtensions })
+	if (path !== undefined) return splitFileName({ path, extensions })
 	return {
 		name: file.name.replace(/\.[^.]+$/, '') || 'untitled',
-		extension: file.name.includes('.')
-			? `.${file.name.split('.').pop()!}`
-			: supportedFileExtensions[0],
+		extension: file.name.includes('.') ? `.${file.name.split('.').pop()!}` : extensions[0],
 	}
 }
 

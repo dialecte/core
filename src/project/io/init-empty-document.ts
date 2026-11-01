@@ -2,7 +2,7 @@ import { buildDocumentState } from '../state/document-state'
 import { resolveConfig } from './resolve-config'
 
 import { standardizeRecord } from '@/helpers'
-import { parseDocumentPath, splitFileName } from '@/store/document-path'
+import { parseDocumentPath, readableExtensionsOf, splitFileName } from '@/store/document-path'
 
 import type {
 	InitEmptyDocumentOptions,
@@ -62,8 +62,8 @@ export async function initEmptyDocument(
 
 /**
  * The name and extension of a new document: the options', else its path's file name's (the extension one its config
- * reads, unless the options give one), else 'untitled' and the config's first extension. Whether the path then
- * names the document's file is the store's to check.
+ * reads, `.xml` always among them, unless the options give one), else 'untitled' and the first extension it reads.
+ * Whether the path then names the document's file is the store's to check.
  */
 function emptyDocumentNameOf(params: {
 	options: InitEmptyDocumentOptions | undefined
@@ -71,14 +71,12 @@ function emptyDocumentNameOf(params: {
 }): Pick<DocumentRecord, 'name' | 'extension'> {
 	const { options, config } = params
 	const { path, name, extension } = options ?? {}
+	const extensions = readableExtensionsOf({ extensions: config.io.supportedFileExtensions })
 	if (path === undefined) {
-		return {
-			name: name ?? 'untitled',
-			extension: extension ?? config.io.supportedFileExtensions[0],
-		}
+		return { name: name ?? 'untitled', extension: extension ?? extensions[0] }
 	}
 	if (extension === undefined) {
-		const split = splitFileName({ path, extensions: config.io.supportedFileExtensions })
+		const split = splitFileName({ path, extensions })
 		return { name: name ?? split.name, extension: split.extension }
 	}
 	const { fileName } = parseDocumentPath({ path })
