@@ -9,6 +9,8 @@ import type { AnyDialecteConfig, AnyTreeRecord, ElementsOf, TreeRecord } from '@
  * Reuses the same `orderByConfigSequence` comparator as XML building, so a tree
  * and its XML serialization share one ordering. Apply as the final post-pass
  * (after `omit`/`unwrap`) so promoted children also sort into sequence.
+ *
+ * @internal child-order post-pass of the tree reads
  */
 export function applyOrder<
 	GenericConfig extends AnyDialecteConfig,

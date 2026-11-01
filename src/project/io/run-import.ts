@@ -20,6 +20,8 @@ import type { AnyDialecteConfig } from '@/types'
  * error as `IMPORT_FAILED`, its cause kept; diagnostics that are not plain JSON as
  * `STORE_VALUE_NOT_JSON`). The progress listener and the abort come apart from the import's data, as
  * a worker call carries them.
+ *
+ * @intent implement importFile of a custom store, import a file into a store with core's import pipeline
  */
 export async function runImport(
 	params: RunImportParams,

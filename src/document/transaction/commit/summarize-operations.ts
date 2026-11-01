@@ -7,6 +7,8 @@ import type { AnyDialecteConfig, Operation } from '@/types'
  * What staged operations write, counted per record as the commit merges them (a record created then
  * updated is one creation; created then deleted, nothing): totals, and per tag in tag order.
  *
+ * @intent count what a transaction will create, update and delete, summarize a prepared transaction per tag, show a confirmation summary before commit
+ *
  * @example
  * ```ts
  * const prepared = await doc.prepare(async (tx) => { ... })

@@ -8,6 +8,8 @@ import type { AnyDialecteConfig, ElementsOf, ResolvedDefinition } from '@/types'
  * The definition of an element in its context. The record is fetched (staged → cache → store),
  * so the parent is always known and a homonym reads as declared under it. `undefined` when the
  * ref points at no record, or at a tag the dialecte does not know.
+ *
+ * @internal the context-level read behind `doc.query.getDefinition`; callers use the query
  */
 export async function getDefinition<
 	GenericConfig extends AnyDialecteConfig,

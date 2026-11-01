@@ -25,6 +25,8 @@ type DefinitionConfig = Pick<AnyDialecteConfig, 'definition' | 'types' | 'namesp
  * when its declaration admits the type, gives what the type lets it hold.
  * It takes a record, whose `parent` is always known (`null` for the root); a ref carries no parent,
  * so a caller holding one uses `query.getDefinition(ref)`, which fetches the record first.
+ *
+ * @intent read the definition of a record you hold without a query, know what an element may hold under its parent, walk definitions top-down
  */
 export function resolveDefinition(params: {
 	dialecteConfig: DefinitionConfig
@@ -56,6 +58,8 @@ export function resolveDefinition(params: {
  * The types the record may name with xsi:type (Clark names): its declared type when named and not abstract, and its
  * variants; where its parent leaves the declaration open, those any declaration of the tag admits. The record's own
  * xsi:type is not read.
+ *
+ * @intent list the xsi:type values an element may take, offer type choices for an element
  */
 export function admittedXsiTypes(params: {
 	dialecteConfig: DefinitionConfig

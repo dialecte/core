@@ -11,6 +11,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  * The starting record is NOT included.
  * When `stopAtTagName` is set, the walk stops after collecting that element (inclusive).
  * When `depth` is set, at most that many ancestors are returned.
+ *
+ * @internal the context-level read behind `doc.query.findAncestors`; callers use the query
  */
 export async function findAncestors<
 	GenericConfig extends AnyDialecteConfig,

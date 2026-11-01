@@ -18,6 +18,8 @@ import type { AnyDialecteConfig } from '@/types'
  * `engineUrl`, the address of the dialecte's engine worker, for the store that spawns it, and `spawner`,
  * the engine as a page registers it with the hub (`connectHub({ spawners })`). `destroyProject({ name })` deletes the
  * dialecte's project of that name on SQLite storage without opening it (an outdated or lost one too).
+ *
+ * @intent open projects of a dialecte from an app, get the factory that creates a dialecte's projects, delete a dialecte's project without opening it, register a dialecte's engine with the hub
  */
 export function createProjectFactory<
 	GenericConfig extends AnyDialecteConfig,

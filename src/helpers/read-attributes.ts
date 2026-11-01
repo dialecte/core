@@ -22,6 +22,8 @@ import type { AttributeDefaults } from '@/utils'
  * Reads the record as you hold it. Inside a transaction use `tx.getAttribute`, which sees the transaction's staged
  * writes: a record held from before a write still reads its old values here.
  *
+ * @intent look up an attribute value on a record you already hold in an import hook, look up an attribute of a held record in a pure function with no query
+ *
  * @example
  * readAttribute({ record, dialecteConfig, name: 'aA' })                                      // → 'v' | ''
  * readAttribute({ record, dialecteConfig, name: 'aA', defaults: 'none', fullObject: true }) // → undefined when absent
@@ -85,6 +87,8 @@ function resolveStoredAttributeName(params: {
  *
  * Reads the record as you hold it. Inside a transaction use `tx.getAttributes`, which sees the transaction's staged
  * writes: a record held from before a write still reads its old values here.
+ *
+ * @intent look up the attribute values of a record you already hold in an import hook, look up the attributes of a held record in a pure function with no query
  *
  * @example
  * readAttributes({ record, dialecteConfig })                        // → { aA: 'v', 'ext:cA': 'w' }

@@ -7,6 +7,8 @@ import type { DocumentRecord } from '@/project/types'
  * removal - `not-applied`. A store that knows which imports run says so (`isRunning`): a document
  * `importing` whose import does not run is what a failed import left when its removal failed too -
  * `not-applied`, removed when a store of the project next opens.
+ *
+ * @intent tell whether an import is running, applied or not applied, recover after a connection lost during an import
  */
 export function importOutcomeOf(params: {
 	documents: readonly DocumentRecord[]
@@ -24,6 +26,8 @@ export function importOutcomeOf(params: {
  * What became of a write - an import or a commit - read from the registry first, then from the
  * history: `committed` says whether a history entry carries the id (a commit is applied whole or not
  * at all, never running).
+ *
+ * @intent tell whether an import or a commit was applied, recover after a connection lost during a write
  */
 export function writeOutcomeOf(params: {
 	documents: readonly DocumentRecord[]

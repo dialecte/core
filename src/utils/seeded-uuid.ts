@@ -7,6 +7,8 @@ import type { CreateSeededRandomUuidParams, UuidShaped } from './seeded-uuid.typ
  * sequence, every id in the layout of a version 4 UUID - so a check that reads the layout of an id
  * passes, and two runs of the same script mint the same ids. Not for ids that must be unguessable.
  *
+ * @intent make generated ids reproducible, seed crypto.randomUUID for a script or a test
+ *
  * @example
  * ```ts
  * crypto.randomUUID = createSeededRandomUuid({ seed: 1 })

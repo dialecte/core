@@ -20,6 +20,8 @@ import type { AnyDefinition, Particle } from '@/types'
  * sequence, the input order is returned unchanged.
  *
  * Pure function — no side effects.
+ *
+ * @intent sort children in schema order, order nodes the way the export writes them
  */
 export function orderByConfigSequence<GenericNode extends { tagName: string }>(params: {
 	parentTagName: string

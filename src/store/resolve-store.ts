@@ -17,6 +17,8 @@ import type { Store } from '@/store'
  * which imports and exports with its own (`PROJECT_SQLITE_NOT_IMPORTED` when the app never imported that entry; a
  * project made by no dialecte's factory is refused `PROJECT_ENGINE_NOT_DECLARED`);
  * 'custom' passes through the user-provided store, which imports and exports with its own.
+ *
+ * @internal store selection when a project opens; callers pass `storage` to the project factory
  */
 export function resolveStore(params: {
 	name: string

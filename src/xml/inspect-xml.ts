@@ -45,6 +45,8 @@ export type InspectionReport<
  *
  * Streams the input via SAX and stops as soon as all elements are found.
  * Case-sensitive: `'project'` and `'Project'` are distinct entries.
+ *
+ * @intent peek at an XML file before importing it, read the root element or a version attribute without a full parse, detect which config a file needs
  */
 export function inspectXml<
 	const GenericConfig extends AnyDialecteConfig = AnyDialecteConfig,

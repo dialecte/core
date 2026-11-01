@@ -16,6 +16,8 @@ import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord } from '@/
  *
  * Side effect: populates context.recordCache on store hits.
  *
+ * @internal the context-level read behind `doc.query.getRecord`; callers use the query
+ *
  * @throws {@link DialecteError} `ELEMENT_TAGNAME_MISMATCH` when a record is found by id
  * but its tagName differs from `ref.tagName` (mirrors the staged-lookup path).
  */

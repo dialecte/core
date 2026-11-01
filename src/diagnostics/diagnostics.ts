@@ -14,6 +14,8 @@ import type {
  * their type on the way out, so a dialecte's typed diagnostic (`Diagnostic<'x'> & { meta: {…} }`) is
  * what this returns when it is given that `meta`.
  *
+ * @intent report an import or validation problem as a typed diagnostic, build a diagnostic from a dialecte's catalogue, attach meta to a diagnostic
+ *
  * @example
  * createDiagnostic(SCL_IMPORT_DIAGNOSTICS, 'unresolved-reference', {
  *   ref: { tagName: 'FunctionRef', id, attribute: 'function' },
@@ -51,6 +53,8 @@ export function createDiagnostic<
  * Whether a diagnostic is one the caller knows: an entry of one of the catalogues named, matched on
  * the pair (`source`, `code`) - two dialectes may both have an `unresolved-reference`. Its `code` is
  * then narrowed to those catalogues' codes, so a `switch` on it or a table read with it is checked.
+ *
+ * @intent tell which diagnostic an import reported, narrow a diagnostic to a catalogue's codes, word a diagnostic for a user
  *
  * @example
  * if (isKnownDiagnostic(diagnostic, { catalogues: [SCL_IMPORT_DIAGNOSTICS] })) sentences[diagnostic.code]

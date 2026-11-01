@@ -6,7 +6,8 @@ import type {
 } from './types.extensions'
 
 /**
- * Binds an extension map to an instance (Query or Transaction).
+ * The extension map bound to an instance (a Query or a Transaction): same shape, each function called with the
+ * instance.
  * Each function in the map gets `instance` prepended as its first argument,
  * so the public API signature has that argument stripped.
  *
@@ -15,6 +16,8 @@ import type {
  * So `{ a: { aa: { getItems } } }` yields `instance.a.aa.getItems`.
  *
  * Returns an object mirroring the map's shape with each function bound.
+ *
+ * @intent attach an extension map to a query or a transaction, call extension functions as methods of an instance
  */
 export function bindExtensions<
 	GenericExtensionsMap extends ExtensionMap<QueryExtensionFn | TransactionExtensionFn>,

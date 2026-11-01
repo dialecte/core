@@ -27,6 +27,8 @@ export type OmitSpecification<GenericConfig extends AnyDialecteConfig> = {
  * Simple string entries go into `unconditional` (O(1) Set lookup).
  * Object entries with `where` conditions go into `conditional` (checked against record attributes).
  * This avoids re-parsing the omit array on every node visit.
+ *
+ * @internal `omit` parsing of `getTree` and `getSnapshot`
  */
 export function parseOmit<GenericConfig extends AnyDialecteConfig>(params: {
 	omit: OmitEntry<GenericConfig>[] | undefined
@@ -66,6 +68,8 @@ export function parseOmit<GenericConfig extends AnyDialecteConfig>(params: {
 /**
  * Whether a node itself should be dropped (`scope:'self'` omit, conditional or
  * unconditional).
+ *
+ * @internal `omit` check of the tree reads
  */
 export function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
@@ -92,6 +96,8 @@ export function isOmitted<GenericConfig extends AnyDialecteConfig>(params: {
 /**
  * Whether traversal should stop below a node (`scope:'children'` omit) — the
  * node is kept but its descendants are dropped.
+ *
+ * @internal `omit` check of the tree reads
  */
 export function shouldStopTraversal<GenericConfig extends AnyDialecteConfig>(params: {
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
@@ -119,6 +125,8 @@ export function shouldStopTraversal<GenericConfig extends AnyDialecteConfig>(par
  * The root is never dropped (it is the queried element); omit is applied to its
  * descendants, mirroring `getTree`'s fetch-time pruning so both features share
  * the same semantics.
+ *
+ * @internal `omit` post-pass of `getSnapshot`
  */
 export function applyOmit<
 	GenericConfig extends AnyDialecteConfig,

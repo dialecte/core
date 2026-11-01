@@ -12,6 +12,8 @@ import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord } from '@/
  * applied on top by overlayStaged.
  *
  * Side effect: populates context.recordCache for all fetched DB records.
+ *
+ * @internal the context-level read behind `doc.query.getRecordsByTagName`; callers use the query
  */
 export async function getRecordsByTagName<
 	GenericConfig extends AnyDialecteConfig,

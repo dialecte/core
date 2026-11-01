@@ -6,6 +6,8 @@ import type { DocumentRecord } from '@/project/types'
  * it, so what a store finds `importing` when it opens is a leftover - a closed tab, a crash. A store
  * shared by several connections names the imports still running (`isRunning`): they are kept. A row
  * is read again before it goes, so an import that ended since the registry was listed stays.
+ *
+ * @intent clean up the imports a closed tab or a crash left behind, clean up leftover imports when a custom store opens
  */
 export async function removeUnfinishedImports(params: {
 	store: Pick<Store, 'getDocuments' | 'getDocument' | 'removeDocument'>

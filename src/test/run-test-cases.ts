@@ -33,6 +33,8 @@ const originalRandomUUID = crypto.randomUUID.bind(crypto)
 /**
  * The `crypto.randomUUID` a test case's act runs with: UUID-shaped ids that follow from a seed (0 by
  * default), the same sequence on every run.
+ *
+ * @intent get deterministic uuids in a test, mock crypto.randomUUID
  */
 export function createMockRandomUUID(params?: CreateMockRandomUuidParams): () => UuidShaped {
 	return createSeededRandomUuid({ seed: params?.seed ?? 0 })
@@ -176,6 +178,8 @@ function genericTestCases<GenericTestCase extends BaseTestCase>(
  * The test runner of a declared dialecte: each case runs on a fresh project with every config,
  * the default key, the dialecte's extensions and its own hooks instance, on the store `storage`
  * names (the local one by default).
+ *
+ * @intent run table-driven test cases on a dialecte, test a transaction against expected XML
  */
 export function createTestRunner<
 	GenericConfig extends AnyDialecteConfig,

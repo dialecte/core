@@ -22,24 +22,25 @@ import type {
 import type { AnyAttribute, ResolvedDefinition } from '@/types'
 
 /**
- * Create structural XML assertions bound to a dialecte's generated `definition`
- * and declared `namespaces`. Instantiate once per dialecte (e.g. in scl test) and
- * re-export alongside createTestProject, like createXmlAssertions.
+ * Structural schema assertions for tests, bound to a dialecte's generated `definition` and declared `namespaces`:
+ * `assertValidXml` (and its table form `assertValidXmlTestCases`) fails when an XML text holds an element in the
+ * wrong namespace, an element its parent may not hold, an unknown attribute or, with `requireComplete`, a missing
+ * required attribute. It is not a full XSD validation: it does not check the order of children, how many times a
+ * child occurs (min/max, a missing required child), attribute values (patterns, enumerations, datatypes) nor
+ * constraints across elements (unique keys, key references). Made once per dialecte (e.g. in scl's
+ * test entry) and offered beside `createTestProject`, like `createXmlAssertions`.
  *
- * `assertValidXml` asserts, structurally: every element's namespace matches its
- * parent context, every element is an allowed child of its parent, and every
- * attribute is a known attribute of its element - in whatever namespace: declared by the element (a dialecte
- * namespace under any prefix the document binds), or allowed by its attribute wildcard. Namespace declarations,
- * `xsi:*` and the test record id are always allowed. Elements unknown to the schema are
- * skipped (bespoke content under a transparent `Private`), and so is any element in
- * a namespace the dialecte does not declare — even when its local name collides with
- * a schema element. An element in NO namespace is not foreign — it is a schema
- * element the snippet forgot to put in its namespace, and stays validated.
+ * What it checks: every element's namespace matches its parent context, every element is an allowed child of its
+ * parent, and every attribute is a known attribute of its element - in whatever namespace: declared by the element
+ * (a dialecte namespace under any prefix the document binds), or allowed by its attribute wildcard. Namespace
+ * declarations, `xsi:*` and the test record id are always allowed. Elements unknown to the schema are skipped
+ * (bespoke content under a transparent `Private`), and so is any element in a namespace the dialecte does not
+ * declare - even when its local name collides with a schema element. An element in NO namespace is not foreign - it
+ * is a schema element the snippet forgot to put in its namespace, and stays validated.
  *
- * `requireComplete` (default `true`) additionally requires every schema-required
- * attribute to be present. NOT yet enforced (planned with the validation feature):
- * attribute VALUE facets (uuid pattern, enums, datatypes) and cross-element
- * constraints (unique keys, keyref resolution).
+ * `requireComplete` (default `true`) additionally requires every schema-required attribute to be present.
+ *
+ * @intent validate an exported XML file against the schema in a test, check exported XML against the XSD structure (namespaces, allowed children, known and required attributes), assert in a test that a document is structurally valid for its schema
  */
 export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParams) {
 	const { definition, types, namespaces, schemaName = 'XML' } = params

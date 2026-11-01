@@ -2,6 +2,1076 @@
 	"package": "@dialecte/core",
 	"methods": [
 		{
+			"path": "@dialecte/core.applyDocumentUpdates",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { document: DocumentRecord; updates: DocumentUpdates; }) => DocumentRecord",
+			"summary": "A document with the updates applied, its file name and its path kept one fact: a `path` moves and renames it (its `name` follows the file name, which must end with the document's own `extension`); a `name` on a document with a path rewrites the file name in it, the folders kept; both given must agree; a field given as `undefined` is left as it was, a key beyond `DOCUMENT_UPDATE_FIELDS` ignored. Refused with `DOCUMENT_PATH_INVALID` when the result breaks a rule; the document given is left as it was. Whether the place is free is the store's to check (`assertDocumentPlace`).",
+			"intents": [
+				"rename or move a document by its path",
+				"apply document updates in a custom store"
+			],
+			"declaredAt": "src/store/document-path.ts:103"
+		},
+		{
+			"path": "@dialecte/core.assertDocumentPlace",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { document: Pick<DocumentRecord, 'id' | 'name' | 'extension' | 'path'>; documents: PathHolderCandidate[]; }) => void",
+			"summary": "Check a document to register against the registered ones: its path valid and ending with its file name (`DOCUMENT_PATH_INVALID`), then its place free (`DOCUMENT_PATH_TAKEN`). A document without a path passes.",
+			"intents": [
+				"check a document path is valid and free before registering it",
+				"register documents in a custom store"
+			],
+			"declaredAt": "src/store/document-path.ts:144"
+		},
+		{
+			"path": "@dialecte/core.bindExtensions",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<GenericExtensionsMap extends ExtensionMap<QueryExtensionFn | TransactionExtensionFn>>(extensionMap: GenericExtensionsMap | undefined, instance: unknown) => BoundExtensionMap<GenericExtensionsMap>",
+			"summary": "The extension map bound to an instance (a Query or a Transaction): same shape, each function called with the instance. Each function in the map gets `instance` prepended as its first argument, so the public API signature has that argument stripped.",
+			"intents": [
+				"attach an extension map to a query or a transaction",
+				"call extension functions as methods of an instance"
+			],
+			"declaredAt": "src/document/bind-extensions.ts:22"
+		},
+		{
+			"path": "@dialecte/core.blobTableName",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => string",
+			"summary": "The name of the store table holding the blob data of the document `documentId`.",
+			"intents": [
+				"name the store table holding a document's blob data",
+				"store blobs in a custom store"
+			],
+			"declaredAt": "src/store/store.constants.ts:52"
+		},
+		{
+			"path": "@dialecte/core.createDiagnostic",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<const GenericCatalogue extends DiagnosticCatalogue, GenericCode extends keyof GenericCatalogue['codes'] & string, GenericParams extends CreateDiagnosticParams>(catalogue: GenericCatalogue, code: GenericCode, params: GenericParams) => CreatedDiagnostic<GenericCode, GenericParams>",
+			"summary": "Build a diagnostic of a catalogue: `severity`, `source` and the default `message` come from the entry, so a producer only says what the diagnostic is about. The `meta` and `related` given keep their type on the way out, so a dialecte's typed diagnostic (`Diagnostic<'x'> & { meta: {…} }`) is what this returns when it is given that `meta`.",
+			"intents": [
+				"report an import or validation problem as a typed diagnostic",
+				"build a diagnostic from a dialecte's catalogue",
+				"attach meta to a diagnostic"
+			],
+			"declaredAt": "src/diagnostics/diagnostics.ts:25"
+		},
+		{
+			"path": "@dialecte/core.createDialecteError",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(key: DialecteErrorKey | DialecteErrorDefinition, params: ThrowDialecteErrorParams) => Error",
+			"summary": "Build the Error `throwDialecteError` throws, without throwing it — for a caller that reports an error it caught instead of raising one.",
+			"intents": [
+				"report a caught error as a dialecte error without throwing",
+				"build the Error throwDialecteError would throw"
+			],
+			"declaredAt": "src/errors/errors.ts:41"
+		},
+		{
+			"path": "@dialecte/core.createPerf",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "({ enabled, timeline = true, }: { enabled: boolean; timeline?: boolean; }) => Perf",
+			"summary": "Dev metrics on the platform User Timing API. Disabled builds get `NOOP_PERF`.",
+			"intents": [
+				"measure how long operations take in development",
+				"collect timing spans and read a report of them"
+			],
+			"declaredAt": "src/perf/create-perf.ts:21"
+		},
+		{
+			"path": "@dialecte/core.createProjectFactory",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>, GenericConfigKey extends string = string>(params: CreateProjectFactoryParams<GenericConfig, GenericModules, GenericConfigKey>) => ProjectFactory<GenericConfig, GenericModules, GenericConfigKey>",
+			"summary": "The project factory of a dialecte: every config, the default key, the dialecte's extensions merged under the consumer's, and a fresh hooks instance per Project. It carries the declaration, `engineUrl`, the address of the dialecte's engine worker, for the store that spawns it, and `spawner`, the engine as a page registers it with the hub (`connectHub({ spawners })`). `destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (an outdated or lost one too).",
+			"intents": [
+				"open projects of a dialecte from an app",
+				"get the factory that creates a dialecte's projects",
+				"delete a dialecte's project without opening it",
+				"register a dialecte's engine with the hub"
+			],
+			"declaredAt": "src/dialecte/create-project-factory.ts:24"
+		},
+		{
+			"path": "@dialecte/core.defineDialecte",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>, GenericConfigKey extends string = string>(params: DefineDialecteParams<GenericConfig, GenericModules, GenericConfigKey>) => DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>",
+			"summary": "Declare a dialecte once: its identity, its configs, its extensions and how its hooks are made. Core derives the rest: `createProjectFactory`, `createTestRunner`, `createTestProject` and, in a worker, the engine. The declaration is frozen.",
+			"intents": [
+				"declare a dialecte package",
+				"register a dialecte's configs and extensions and hooks once",
+				"set up a new dialecte"
+			],
+			"declaredAt": "src/dialecte/define-dialecte.ts:20"
+		},
+		{
+			"path": "@dialecte/core.defineErrors",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<const GenericCatalog extends DialecteErrorCatalogInput>(catalog: GenericCatalog & CoreCatalogueCollisions<GenericCatalog>) => DialecteErrorDefinitions<GenericCatalog>",
+			"summary": "Declare the errors of a dialecte: each entry gets its property name as `key`, so it can be passed wherever a core key is — `throwDialecteError`, `invariant`.",
+			"intents": [
+				"declare a dialecte's own error catalogue",
+				"add error keys usable with invariant and throwDialecteError"
+			],
+			"declaredAt": "src/errors/errors.ts:71"
+		},
+		{
+			"path": "@dialecte/core.importOutcomeOf",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { documents: readonly DocumentRecord[]; writeId: string; isRunning?: (params: { writeId: string; }) => boolean; }) => WriteOutcome",
+			"summary": "What became of an import, read from the registry: the document its `writeId` is on is `running` while `importing`, `applied` once `ready`; no document carries it after a failure, an abort or a removal - `not-applied`. A store that knows which imports run says so (`isRunning`): a document `importing` whose import does not run is what a failed import left when its removal failed too - `not-applied`, removed when a store of the project next opens.",
+			"intents": [
+				"tell whether an import is running",
+				"applied or not applied",
+				"recover after a connection lost during an import"
+			],
+			"declaredAt": "src/store/write-outcome.ts:13"
+		},
+		{
+			"path": "@dialecte/core.inspectXml",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<const GenericConfig extends AnyDialecteConfig = AnyDialecteConfig, const GenericElements extends readonly ElementsOf<GenericConfig>[] = readonly ElementsOf<GenericConfig>[]>(xml: string, params: { config?: GenericConfig; elements: GenericElements; }) => Record<string, InspectedElement<GenericConfig, GenericElements[number]> | undefined>",
+			"summary": "Inspect an XML string for the first occurrence of each requested element name. Returns a typed report keyed by the requested names.",
+			"intents": [
+				"peek at an XML file before importing it",
+				"read the root element or a version attribute without a full parse",
+				"detect which config a file needs"
+			],
+			"declaredAt": "src/xml/inspect-xml.ts:51"
+		},
+		{
+			"path": "@dialecte/core.isKnownDiagnostic",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<const GenericCatalogues extends readonly DiagnosticCatalogue[]>(diagnostic: Diagnostic, params: { catalogues: GenericCatalogues; }) => diagnostic is Diagnostic<KnownDiagnosticCode<GenericCatalogues>>",
+			"summary": "Whether a diagnostic is one the caller knows: an entry of one of the catalogues named, matched on the pair (`source`, `code`) - two dialectes may both have an `unresolved-reference`. Its `code` is then narrowed to those catalogues' codes, so a `switch` on it or a table read with it is checked.",
+			"intents": [
+				"tell which diagnostic an import reported",
+				"narrow a diagnostic to a catalogue's codes",
+				"word a diagnostic for a user"
+			],
+			"declaredAt": "src/diagnostics/diagnostics.ts:62",
+			"example": "if (isKnownDiagnostic(diagnostic, { catalogues: [SCL_IMPORT_DIAGNOSTICS] })) sentences[diagnostic.code]"
+		},
+		{
+			"path": "@dialecte/core.isKnownDialecteError",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<const GenericCatalogues extends readonly DialecteErrorDefinitions<DialecteErrorCatalogInput>[]>(error: DialecteError, params: { catalogues: GenericCatalogues; }) => error is DialecteError<KnownDialecteErrorKey<GenericCatalogues>>",
+			"summary": "Whether a structured error is one the caller knows: a key of the core catalogue, or an entry of one of the catalogues named — same key, same code. Its `key` is then narrowed to those keys, so a `switch` on it or a table read with it is checked again.",
+			"intents": [
+				"tell which error was thrown",
+				"narrow an error key for a switch",
+				"word an error for a user"
+			],
+			"declaredAt": "src/errors/errors.ts:129",
+			"example": "const error = toDialecteError(thrown)\nif (error && isKnownDialecteError(error, { catalogues: [MY_ERRORS] })) sentences[error.key]"
+		},
+		{
+			"path": "@dialecte/core.parseDocumentPath",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { path: string; }) => DocumentPathParts",
+			"summary": "A document's path read apart into its folders and its file name. A path is relative and written one way only: segments joined by `/`, none empty, none `.` or `..`, no backslash, no invisible format, separator or control character, well-formed and in Unicode NFC, each segment at most 255 UTF-8 bytes and the whole at most 1024. Nothing is rewritten: a path breaking a rule is refused with `DOCUMENT_PATH_INVALID`, `detail` naming the rule, `meta.path` the path as given.",
+			"intents": ["validate a document path", "split a document path into folders and file name"],
+			"declaredAt": "src/store/document-path.ts:25"
+		},
+		{
+			"path": "@dialecte/core.parseXmlDocument",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: ParseXmlDocumentParams) => Promise<XMLDocument>",
+			"summary": "The DOM of an XML file, in the page (a worker or Node has no `DOMParser`). Parse the compact export (`indent: false`) to get the document the stored records make, with no whitespace-only text node. A file that is not well-formed throws `PARSE_ERROR`, with what the parser said.",
+			"intents": [
+				"get the DOM of an exported XML file",
+				"read an export as an XMLDocument in the page",
+				"query an export with XPath"
+			],
+			"declaredAt": "src/xml/dom/xml-document-from-file.ts:12"
+		},
+		{
+			"path": "@dialecte/core.pathHolderOf",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { path: string; documents: PathHolderCandidate[]; documentId?: string; }) => string | undefined",
+			"summary": "The document whose path clashes with `path`, the document `documentId` excepted: one at that very place, or one whose path is a folder of the other's - a file system holds no file and folder of one name. Paths compare exactly; a document without a path holds no place. None when the place is free.",
+			"intents": [
+				"find which document holds a path",
+				"check whether a file or folder path is free"
+			],
+			"declaredAt": "src/store/document-path.ts:163"
+		},
+		{
+			"path": "@dialecte/core.recordTableName",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(documentId: string) => string",
+			"summary": "The name of the store table holding the records of the document `documentId`.",
+			"intents": [
+				"name the store table holding a document's records",
+				"read a document's records from the local database directly"
+			],
+			"declaredAt": "src/store/store.constants.ts:37"
+		},
+		{
+			"path": "@dialecte/core.removeUnfinishedImports",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { store: Pick<Store, 'getDocuments' | 'getDocument' | 'removeDocument'>; isRunning?: (document: DocumentRecord) => boolean | Promise<boolean>; }) => Promise<void>",
+			"summary": "Remove every document an import left `importing`: an import never outlives the store that ran it, so what a store finds `importing` when it opens is a leftover - a closed tab, a crash. A store shared by several connections names the imports still running (`isRunning`): they are kept. A row is read again before it goes, so an import that ended since the registry was listed stays.",
+			"intents": [
+				"clean up the imports a closed tab or a crash left behind",
+				"clean up leftover imports when a custom store opens"
+			],
+			"declaredAt": "src/store/unfinished-imports.ts:12"
+		},
+		{
+			"path": "@dialecte/core.runExport",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: RunExportParams, control?: ExportControl) => Promise<ExportFileResult>",
+			"summary": "The export of one document, next to the data - what every store's `exportFile` runs. The records are read parent by parent, `batchSize` children per call in the order they are written (never the whole document in one call), and written as they come; each written batch becomes a part of the answered `Blob`, whose head (declaration and root start tag) is put in front at the end. A write on the document while it is exported restarts it once from the start; a second one fails it with `EXPORT_CONFLICT`. The progress listener and the abort come apart from the export's data, as a worker call carries them.",
+			"intents": [
+				"implement exportFile of a custom store",
+				"export a document from a store in batches"
+			],
+			"declaredAt": "src/project/io/run-export.ts:29"
+		},
+		{
+			"path": "@dialecte/core.runImport",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: RunImportParams, control?: ImportControl) => Promise<ImportFileResult>",
+			"summary": "The import of one file, next to the data - what every store's `importFile` runs. It registers the document `importing` under the caller's `writeId`, parses the file with the dialecte's import session and stores it batch by batch, applies the session's writes, marks the document `ready`. A document is whole or absent: whatever fails, or an abort, removes it and is thrown (a foreign error as `IMPORT_FAILED`, its cause kept; diagnostics that are not plain JSON as `STORE_VALUE_NOT_JSON`). The progress listener and the abort come apart from the import's data, as a worker call carries them.",
+			"intents": [
+				"implement importFile of a custom store",
+				"import a file into a store with core's import pipeline"
+			],
+			"declaredAt": "src/project/io/run-import.ts:26"
+		},
+		{
+			"path": "@dialecte/core.summarizeOperations",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig>(operations: ReadonlyArray<Operation<GenericConfig>>) => OperationsSummary",
+			"summary": "What staged operations write, counted per record as the commit merges them (a record created then updated is one creation; created then deleted, nothing): totals, and per tag in tag order.",
+			"intents": [
+				"count what a transaction will create",
+				"update and delete",
+				"summarize a prepared transaction per tag",
+				"show a confirmation summary before commit"
+			],
+			"declaredAt": "src/document/transaction/commit/summarize-operations.ts:18",
+			"example": "const prepared = await doc.prepare(async (tx) => { ... })\nsummarizeOperations(prepared.operations).byTag // { A: { created: 0, updated: 1, deleted: 0 }, ... }"
+		},
+		{
+			"path": "@dialecte/core.throwDialecteError",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(key: DialecteErrorKey | DialecteErrorDefinition, params: ThrowDialecteErrorParams) => never",
+			"summary": "Create a structured error and throw it. When `method` is omitted, the caller's name is extracted from the stack trace.",
+			"intents": [
+				"throw a structured error",
+				"fail with a core or dialecte error key",
+				"raise an error a consumer can read by key"
+			],
+			"declaredAt": "src/errors/errors.ts:28",
+			"example": "throwDialecteError('ELEMENT_NOT_FOUND', { detail: 'parent not found' })"
+		},
+		{
+			"path": "@dialecte/core.toDialecteError",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(thrown: unknown) => DialecteError | undefined",
+			"summary": "The structured error a caught value carries — thrown by `throwDialecteError` or `invariant` — or nothing when it is any other error or value.",
+			"intents": [
+				"read the structured error from a caught value",
+				"handle a dialecte error in a catch block"
+			],
+			"declaredAt": "src/errors/errors.ts:109"
+		},
+		{
+			"path": "@dialecte/core.writeOutcomeOf",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { documents: readonly DocumentRecord[]; writeId: string; committed: boolean; isRunning?: (params: { writeId: string; }) => boolean; }) => WriteOutcome",
+			"summary": "What became of a write - an import or a commit - read from the registry first, then from the history: `committed` says whether a history entry carries the id (a commit is applied whole or not at all, never running).",
+			"intents": [
+				"tell whether an import or a commit was applied",
+				"recover after a connection lost during a write"
+			],
+			"declaredAt": "src/store/write-outcome.ts:32"
+		},
+		{
+			"path": "@dialecte/core/engine.serveDialecteEngine",
+			"root": "export",
+			"entry": "@dialecte/core/engine",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules, GenericConfigKey extends string>(params: { dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>; }) => void",
+			"summary": "Serve the dialecte's engine from this worker - today the SQLite engine on the origin's private file system (opfs-sahpool), its client side engine-agnostic (`store/engine`). The realm that spawned it (or the hub, through it) sends control messages - open the project, adopt a client's port, a client gone, close, destroy - handled one at a time and each answered once; every adopted port is served the engine's members. One project per worker.",
+			"intents": [],
+			"declaredAt": "src/store/sqlite/runtime/serve-dialecte-engine.ts:39"
+		},
+		{
+			"path": "@dialecte/core/helpers.evaluateExpectations",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig>(query: Query<GenericConfig>, params: EvaluateExpectationsParams) => Promise<ExpectationsOutcome>",
+			"summary": "Check what a document holds against expectations written before the script that builds it, with no DOM: each expectation counts the elements of its tag (with its attribute values, under an element of its `under` scope) through the query, so a prepared transaction's `query` is checked on what `commit()` would write. Every expectation is answered, met or failed with the count found.",
+			"intents": [
+				"check a built document against expected element counts",
+				"verify a script's result before committing",
+				"test what a prepared transaction would write"
+			],
+			"declaredAt": "src/helpers/evaluate-expectations.ts:26"
+		},
+		{
+			"path": "@dialecte/core/helpers.isAttributeOf",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement>, name: string) => name is AttributesOf<GenericConfig, GenericElement>",
+			"summary": "Type predicate narrowing a string to a valid attribute name for a given record.",
+			"intents": [
+				"check that a string is an attribute of an element",
+				"narrow an attribute name before a typed read"
+			],
+			"declaredAt": "src/helpers/guard.ts:201",
+			"example": "if (isAttributeOf(record, entry.uuidAttr)) {\n  const value = await query.getAttribute(record, entry.uuidAttr) // fully typed\n}"
+		},
+		{
+			"path": "@dialecte/core/helpers.isChildOf",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<T extends string>(child: AnyRelationship, tagName: T) => child is AnyRelationship & { tagName: T; }",
+			"summary": "Type predicate narrowing a relationship to a specific tag name.",
+			"intents": ["filter child refs by tag name", "narrow a child relationship to one tag"],
+			"declaredAt": "src/helpers/guard.ts:152"
+		},
+		{
+			"path": "@dialecte/core/helpers.isElementOf",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig>(tagName: string, dialecteConfig: GenericConfig) => tagName is ElementsOf<GenericConfig>",
+			"summary": "Type predicate narrowing a string to a valid element tag name for a given config.",
+			"intents": [
+				"check that a string is a tag name of the dialecte",
+				"narrow an unknown tag name before a typed query"
+			],
+			"declaredAt": "src/helpers/guard.ts:184"
+		},
+		{
+			"path": "@dialecte/core/helpers.isFullAttributeArray",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(attributes: AttributesValueObjectOf<GenericConfig, GenericElement> | FullAttributeObjectOf<GenericConfig, GenericElement>[]) => attributes is FullAttributeObjectOf<GenericConfig, GenericElement>[]",
+			"summary": "Whether attributes come as an array of attribute objects (`FullAttributeObject[]`) rather than a value object.",
+			"intents": [
+				"tell an attribute array from an attribute value object",
+				"narrow attribute input"
+			],
+			"declaredAt": "src/helpers/guard.ts:53"
+		},
+		{
+			"path": "@dialecte/core/helpers.isParentOf",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<T extends string>(parent: AnyRelationship, tagName: T) => parent is AnyRelationship & { tagName: T; }",
+			"summary": "Type predicate narrowing a parent relationship to a specific tag name.",
+			"intents": ["check the tag of a record's parent", "narrow a parent relationship to one tag"],
+			"declaredAt": "src/helpers/guard.ts:167",
+			"example": "if (record.parent && isParentOf(record.parent, 'Root')) { ... }"
+		},
+		{
+			"path": "@dialecte/core/helpers.isRawRecord",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: unknown) => record is RawRecord<GenericConfig, GenericElement>",
+			"summary": "Whether a record is a `RawRecord`: the stored shape, without a change status or tree children.",
+			"intents": [
+				"tell a stored record from a tracked or tree record",
+				"narrow a record to its raw shape"
+			],
+			"declaredAt": "src/helpers/guard.ts:69"
+		},
+		{
+			"path": "@dialecte/core/helpers.isRecordOf",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericTagName extends ElementsOf<GenericConfig>>(record: TreeRecord<GenericConfig, ElementsOf<GenericConfig>>, tagName: GenericTagName) => record is TreeRecord<GenericConfig, GenericTagName>\n<GenericConfig extends AnyDialecteConfig, GenericTagName extends ElementsOf<GenericConfig>>(record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>, tagName: GenericTagName) => record is TrackedRecord<GenericConfig, GenericTagName>\n<GenericConfig extends AnyDialecteConfig, GenericTagName extends ElementsOf<GenericConfig>>(record: RawRecord<GenericConfig, ElementsOf<GenericConfig>>, tagName: GenericTagName) => record is RawRecord<GenericConfig, GenericTagName>",
+			"summary": "Whether a record is of the tag name given, narrowing its type to that element (raw, tracked or tree record alike).",
+			"intents": ["narrow a record to one tag name", "check an element's tag with types"],
+			"declaredAt": "src/helpers/guard.ts:115"
+		},
+		{
+			"path": "@dialecte/core/helpers.isTrackedRecord",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement>) => record is TrackedRecord<GenericConfig, GenericElement>",
+			"summary": "Whether a record is a `TrackedRecord`: a stored record with its change status, as queries return it.",
+			"intents": [
+				"tell a tracked record from a raw or tree record",
+				"narrow a record to its tracked shape"
+			],
+			"declaredAt": "src/helpers/guard.ts:81"
+		},
+		{
+			"path": "@dialecte/core/helpers.isTreeRecord",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement>) => record is TreeRecord<GenericConfig, GenericElement>",
+			"summary": "Whether a record is a `TreeRecord`: a node of a tree read, holding its child nodes.",
+			"intents": [
+				"tell a tree record from a raw or tracked record",
+				"narrow a record to a tree node"
+			],
+			"declaredAt": "src/helpers/guard.ts:98"
+		},
+		{
+			"path": "@dialecte/core/helpers.mergeExtensions",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<BaseModules extends ExtensionModules, CustomModules extends ExtensionModules = Record<never, never>>(modules: { base?: BaseModules; custom?: CustomModules; }) => MergedExtensions<BaseModules & CustomModules>",
+			"summary": "Merges named extension modules into the flat { query, transaction } registry",
+			"intents": [
+				"combine extension modules into one registry",
+				"add custom extensions next to a dialecte's base extensions"
+			],
+			"declaredAt": "src/helpers/merge-extensions.ts:34",
+			"example": "mergeExtensions({ base: { history, dataModel }, custom: { myFeature } })\n// → { query: { history: ..., dataModel: ..., myFeature: ... }, transaction: { ... } }"
+		},
+		{
+			"path": "@dialecte/core/helpers.readAttribute",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "(params: ReadAttributesBaseParams & { name: string; namespace?: string; fullObject?: false; }) => string\n(params: ReadAttributesBaseParams & { name: string; namespace?: string; fullObject: true; }) => AnyAttribute | undefined",
+			"summary": "Read one attribute of a record you hold, the way `query.getAttribute` reads it - same `namespace` scope, same `defaults` fill, same `''` for an absent attribute - with no query: synchronous, for an import pass or a pure composer. `query.getAttribute` itself delegates to it once it has the record.",
+			"intents": [
+				"look up an attribute value on a record you already hold in an import hook",
+				"look up an attribute of a held record in a pure function with no query"
+			],
+			"declaredAt": "src/helpers/read-attributes.ts:33"
+		},
+		{
+			"path": "@dialecte/core/helpers.readAttributes",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "(params: ReadAttributesBaseParams & { namespace?: string; fullObject?: false; }) => Record<string, string>\n(params: ReadAttributesBaseParams & { fullObject: true; }) => AnyAttribute[]",
+			"summary": "Read the attributes of a record you hold, the way `query.getAttributes` reads them - each under the name it is stored by, or keyed by local name in a `namespace` scope, absent schema attributes filled per `defaults` - with no query: synchronous, for an import pass or a pure composer. `query.getAttributes` itself delegates to it once it has the record. Values are plain strings: for typed reads use the query.",
+			"intents": [
+				"look up the attribute values of a record you already hold in an import hook",
+				"look up the attributes of a held record in a pure function with no query"
+			],
+			"declaredAt": "src/helpers/read-attributes.ts:100"
+		},
+		{
+			"path": "@dialecte/core/helpers.stripAttributes",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: TreeRecord<GenericConfig, GenericElement>, names: string[]) => TreeRecord<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: TrackedRecord<GenericConfig, GenericElement>, names: string[]) => TrackedRecord<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: RawRecord<GenericConfig, GenericElement>, names: string[]) => RawRecord<GenericConfig, GenericElement>",
+			"summary": "Returns a new record with specified attribute names removed. Pure function — does not mutate the input.",
+			"intents": ["remove attributes from a record", "drop attributes before cloning a record"],
+			"declaredAt": "src/helpers/strip-attributes.ts:9"
+		},
+		{
+			"path": "@dialecte/core/helpers.toFullAttributeArray",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(params: { dialecteConfig: GenericConfig; tagName: GenericElement; attributes: Partial<AttributesValueObjectOf<GenericConfig, GenericElement>> | AttributeInputOf<GenericConfig, GenericElement>[]; stored?: readonly { readonly name: string; readonly namespace?: Namespace; }[]; }) => FullAttributeObjectOf<GenericConfig, GenericElement>[]",
+			"summary": "Converts attributes to FullAttributeObject array format and canonicalizes each attribute name to the two naming rules (see `canonicalizeAttributeName`), so records from import, create, and update share one stored name per attribute.",
+			"intents": [
+				"turn an attribute value object into an attribute array",
+				"canonicalize attribute names before a write"
+			],
+			"declaredAt": "src/helpers/converter.ts:166"
+		},
+		{
+			"path": "@dialecte/core/helpers.toRawRecord",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(record: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement>) => RawRecord<GenericConfig, GenericElement>",
+			"summary": "A new `RawRecord` holding the seven stored fields of a raw, tracked or tree record (`id`, `tagName`, `namespace`, `attributes`, `value`, `parent`, `children`); a change status or tree children are left out. Only the record object is new: `attributes`, `parent` and `children` are the same arrays and objects as the record's, not cloned.",
+			"intents": [
+				"strip a record to its stored fields",
+				"pass a record where a raw record is expected"
+			],
+			"declaredAt": "src/helpers/converter.ts:34"
+		},
+		{
+			"path": "@dialecte/core/helpers.toRef",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: Ref<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: ParentRelationship<GenericConfig, GenericElement> | ChildRelationship<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: RefOrRecord<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>",
+			"summary": "Convert a Ref, ParentRelationship, ChildRelationship, or Record to a Ref. ParentsOf/ChildrenOf are subsets of ElementsOf by design, so this is semantically safe.",
+			"intents": ["get the ref of a record or a relationship", "pass a ref to a query"],
+			"declaredAt": "src/helpers/converter.ts:312"
+		},
+		{
+			"path": "@dialecte/core/helpers.toTrackedRecord",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(params: { record: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement>; status?: OperationStatus; }) => TrackedRecord<GenericConfig, GenericElement>",
+			"summary": "A new `TrackedRecord` of a raw, tracked or tree record: its stored fields (as `toRawRecord` takes them) and a change status - the `status` given, else the record's own, else `'unchanged'`. The field values are shared with the record, not cloned.",
+			"intents": [
+				"give a raw record a change status",
+				"pass a raw or tree record where a tracked record is expected"
+			],
+			"declaredAt": "src/helpers/converter.ts:112"
+		},
+		{
+			"path": "@dialecte/core/helpers.toTreeRecord",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(params: { record: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement>; status?: OperationStatus; tree?: TreeRecord<GenericConfig, GenericElement>[]; }) => TreeRecord<GenericConfig, GenericElement>",
+			"summary": "A new `TreeRecord` of a raw, tracked or tree record: its stored fields and change status as `toTrackedRecord` gives them, and its child nodes - the `tree` given, else the record's own, else `[]`. The field values and the `tree` array are shared with the record, not cloned.",
+			"intents": [
+				"turn a record into a tree node",
+				"build a tree record from a raw or tracked record"
+			],
+			"declaredAt": "src/helpers/converter.ts:138"
+		},
+		{
+			"path": "@dialecte/core/helpers.widen",
+			"root": "export",
+			"entry": "@dialecte/core/helpers",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(thing: TreeRecord<GenericConfig, GenericElement>) => TreeRecord<GenericConfig, ElementsOf<GenericConfig>>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(thing: TrackedRecord<GenericConfig, GenericElement>) => TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(thing: RawRecord<GenericConfig, GenericElement>) => RawRecord<GenericConfig, ElementsOf<GenericConfig>>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(thing: Ref<GenericConfig, GenericElement>) => Ref<GenericConfig, ElementsOf<GenericConfig>>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(thing: Attribute<GenericConfig, GenericElement>) => Attribute<GenericConfig, ElementsOf<GenericConfig>>",
+			"summary": "Widen any per-element dialecte value to its element-union form — the same value, with its element type parameter widened from a specific `GenericElement` to `ElementsOf<GenericConfig>`.",
+			"intents": [
+				"pass a per-element record or ref to an API typed with the element union",
+				"fix an invariance type error on a record or ref"
+			],
+			"declaredAt": "src/helpers/converter.ts:73"
+		},
+		{
+			"path": "@dialecte/core/sqlite.adoptHubPort",
+			"root": "export",
+			"entry": "@dialecte/core/sqlite",
+			"otherRoutes": [],
+			"signature": "(params: { port: MessagePort; }) => Promise<HubRealm | undefined>",
+			"summary": "Join the hub through a port a page made with `createHubPort` (a document that cannot reach the hub's script): a client only, whose liveness is that page's. A port nobody answers fails the join `STORE_CONNECTION_FAILED` once the welcome budget has passed. A document that connected already gets its connection - `undefined` when that one found no hub. One the hub dropped with its page (its calls refused `STORE_ENGINE_LOST`, `realm-dropped`) joins again on the new port, on its own: the page makes it one from `onRejoined`, and a join that fails leaves it dropped until the next one.",
+			"intents": [],
+			"declaredAt": "src/store/hub-public.ts:50"
+		},
+		{
+			"path": "@dialecte/core/sqlite.connectHub",
+			"root": "export",
+			"entry": "@dialecte/core/sqlite",
+			"otherRoutes": [],
+			"signature": "(params?: ConnectHubParams) => Promise<HubRealm | undefined>",
+			"summary": "Connect this page to the origin's hub, once: a second call - from this copy of the library or another one of the same protocol - gets the same connection. Answers `undefined` where the browser has no SharedWorker, or the hub never welcomed the page (its script failed to load or was blocked, or it stayed silent): a later call tries again. A hub of another protocol refuses the page: `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub, any other error thrown making it is thrown. The page registers the engines it can start whose worker is of its own origin (each dialecte's `factory.spawner`); a later call adds those it does not run yet - a project opened on `sqlite` adds its own as it opens - and one naming a dialecte the page runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept. A document that joined through `adoptHubPort` hosts no engine: the spawners it names are not registered; neither are those of a page that cannot store (no private file system; two versions of one dialecte refused all the same): its own projects on `sqlite` are refused `STORE_UNAVAILABLE` unless its page bound it, its connection serving to hand ports to its children. An engine's files (the SQLite wasm) are fetched when the page first starts one.",
+			"intents": [],
+			"declaredAt": "src/store/hub-public.ts:22"
+		},
+		{
+			"path": "@dialecte/core/sqlite.listProjects",
+			"root": "export",
+			"entry": "@dialecte/core/sqlite",
+			"otherRoutes": [],
+			"signature": "(params?: { dialecteId?: string; }) => Promise<ProjectListing[]>",
+			"summary": "The projects on SQLite storage of this origin - every dialecte's, or `dialecteId`'s - read from the origin's private file system alone (no engine started, no wasm loaded; a project whose engine runs is read too), sorted by dialecte and name: each one's state (`current`, `outdated`, `lost`, `new`, `unknown`), the bytes it takes and when it was last written. Where the browser gives no private file system (Node, a private window) it refuses `STORE_UNAVAILABLE`.",
+			"intents": [],
+			"declaredAt": "src/store/sqlite/list-projects.ts:31"
+		},
+		{
+			"path": "@dialecte/core/test.assertExpectedElementQueries",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params: XmlQueriesWithNamespacesParams) => void",
+			"summary": "Asserts that each XPath query selects at least one node of the XML text, parsed once for all of them. A failure names the steps that matched, the step that failed, where the last match sits, what the failing step finds there without its predicates, and the XML around it.",
+			"intents": [
+				"assert that XML holds the elements XPath queries select",
+				"check that an export holds an element"
+			],
+			"declaredAt": "src/test/assert-xml/assert-xml.ts:47"
+		},
+		{
+			"path": "@dialecte/core/test.assertUnexpectedElementQueries",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params: XmlQueriesWithNamespacesParams) => void",
+			"summary": "Asserts that no XPath query selects a node of the XML text, parsed once for all of them.",
+			"intents": [
+				"assert that XML does not hold an element",
+				"check that an element was removed from an export"
+			],
+			"declaredAt": "src/test/assert-xml/assert-xml.ts:61"
+		},
+		{
+			"path": "@dialecte/core/test.createMockRandomUUID",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params?: CreateMockRandomUuidParams) => () => UuidShaped",
+			"summary": "The `crypto.randomUUID` a test case's act runs with: UUID-shaped ids that follow from a seed (0 by default), the same sequence on every run.",
+			"intents": ["get deterministic uuids in a test", "mock crypto.randomUUID"],
+			"declaredAt": "src/test/run-test-cases.ts:39"
+		},
+		{
+			"path": "@dialecte/core/test.createTestHelpers",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>, GenericConfigKey extends string = string>(params: CreateTestHelpersParams<GenericConfig, GenericModules, GenericConfigKey>) => TestHelpers<GenericConfig, GenericModules>",
+			"summary": "Every test helper a dialecte needs, derived from its declaration: the runner, the test project, the record factory, the XPath assertions and the schema assertions. A fixture is checked against the schema of the config it is imported under, then by the dialecte's extra checks, before a case or a test project uses it.",
+			"intents": [
+				"get every test helper of a dialecte",
+				"set up a dialecte package's tests",
+				"check fixtures against the schema"
+			],
+			"declaredAt": "src/test/create-test-helpers.ts:41"
+		},
+		{
+			"path": "@dialecte/core/test.createTestProject",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig = TestDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>, GenericConfigKey extends string = string>(params: DeclaredTestProjectParams<GenericConfig, GenericModules, GenericConfigKey>) => Promise<TestProjectResult<GenericConfig, GenericModules>>\n<GenericConfig extends AnyDialecteConfig = TestDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>>(params: LegacyTestProjectParams<GenericConfig>) => Promise<TestProjectResult<GenericConfig, GenericModules>>",
+			"summary": "Spin up a Project of the declared dialecte - every config, the default key, its extensions and its own hooks instance; core's own test dialecte when none is given - with the source (and optionally the target) imported under the default config. Returns project + pre-opened documents. Opened inside a running test, the project is destroyed when the test ends (after its other `onTestFinished` hooks); opened outside one (`beforeAll`), the caller destroys it. Spin up a Project from a config, extensions and hooks given one by one, with the source (and optionally the target) imported under the key `default`.",
+			"intents": [
+				"open a project in a test with a fixture imported",
+				"get documents to test against"
+			],
+			"declaredAt": "src/test/create-test-dialecte.ts:32"
+		},
+		{
+			"path": "@dialecte/core/test.createTestRecordFactory",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig>(dialecteConfig: GenericConfig) => { (params: { record: TestRecord<GenericConfig>; }): RawRecord<GenericConfig, ElementsOf<GenericConfig>>; (params: { type: \"raw\"; record: TestRecord<GenericConfig>; }): RawRecord<GenericConfig, ElementsOf<GenericConfig>>; (params: { type: \"tracked\"; record: TestRecord<GenericConfig>; }): TrackedRecord<GenericConfig, ...",
+			"summary": "A record factory bound to a dialecte config: given a record (its tag and fields) and a `type`, it builds a raw (default), tracked or tree record of that dialecte, standardized as core stores it.",
+			"intents": [
+				"build typed test records for a dialecte",
+				"expose a record factory in a dialecte's test entry"
+			],
+			"declaredAt": "src/test/test-record.ts:17"
+		},
+		{
+			"path": "@dialecte/core/test.createTestRunner",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>, GenericConfigKey extends string = string>(params: DeclaredTestRunnerParams<GenericConfig, GenericModules, GenericConfigKey>) => TestRunner<GenericConfig, GenericModules>\n<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>>(params: LegacyTestRunnerParams<GenericConfig>) => TestRunner<GenericConfig, GenericModules>",
+			"summary": "The test runner of a declared dialecte: each case runs on a fresh project with every config, the default key, the dialecte's extensions and its own hooks instance, on the store `storage` names (the local one by default). A test runner from a config, extensions and one hooks instance shared by every case.",
+			"intents": [
+				"run table-driven test cases on a dialecte",
+				"test a transaction against expected XML"
+			],
+			"declaredAt": "src/test/run-test-cases.ts:184"
+		},
+		{
+			"path": "@dialecte/core/test.createXmlAssertions",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params: { namespaces: Record<string, Namespace>; }) => XmlAssertions",
+			"summary": "The query assertions of a dialecte: XPath prefixes are its config's namespace keys, mapped to their URIs once here. Made once per dialecte (e.g. in scl's test entry) and offered beside `createTestProject`.",
+			"intents": [
+				"make XPath assertions bound to a dialecte's namespaces",
+				"assert exported XML in tests"
+			],
+			"declaredAt": "src/test/assert-xml/assert-xml.ts:26"
+		},
+		{
+			"path": "@dialecte/core/test.createXmlSchemaAssertions",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params: CreateXmlSchemaAssertionsParams) => { assertValidXml: (params: AssertValidXmlParams) => void; assertValidXmlTestCases: (params: AssertValidXmlTestCasesParams) => void; }",
+			"summary": "Structural schema assertions for tests, bound to a dialecte's generated `definition` and declared `namespaces`: `assertValidXml` (and its table form `assertValidXmlTestCases`) fails when an XML text holds an element in the wrong namespace, an element its parent may not hold, an unknown attribute or, with `requireComplete`, a missing required attribute. It is not a full XSD validation: it does not check the order of children, how many times a child occurs (min/max, a missing required child), attribute values (patterns, enumerations, datatypes) nor constraints across elements (unique keys, key references). Made once per dialecte (e.g. in scl's test entry) and offered beside `createTestProject`, like `createXmlAssertions`.",
+			"intents": [
+				"validate an exported XML file against the schema in a test",
+				"check exported XML against the XSD structure (namespaces, allowed children, known and required attributes)",
+				"assert in a test that a document is structurally valid for its schema"
+			],
+			"declaredAt": "src/test/assert-valid-xml/assert-valid-xml.ts:45"
+		},
+		{
+			"path": "@dialecte/core/test.normalizeUuids",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(text: string) => string",
+			"summary": "Replace every uuid value in a serialized document with a stable, first-appearance token (`uuid-1`, `uuid-2`, …). The same uuid always maps to the same token, so relationships — a `templateUuid` pointing at an element's `uuid`, a reference's target — stay visible, while the result no longer depends on the random uuid VALUES.",
+			"intents": [
+				"snapshot a document independently of random uuids",
+				"compare XML holding generated ids"
+			],
+			"declaredAt": "src/test/normalize-uuids.ts:15"
+		},
+		{
+			"path": "@dialecte/core/test.useTestStorage",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(storage: StorageParam | undefined) => void",
+			"summary": "The store the test helpers open their projects on when a call names none, for the whole process: the runner (`createTestRunner`), `createTestProject` and `createTestHelpers`. A runner's setup file calls it (`useTestStorage({ type: 'inMemory' })` for a node test project); a test file never does. A call's own `storage` (on the helper or on one call) still wins; `undefined` gives the project's own default back (the local store). In the test helpers `{ type: 'sqlite' }` is the SQLite engine run in the test's own process (its file in memory), in node as in a browser, once the setup file imports `@dialecte/core/sqlite` (as an app opts into SQLite storage).",
+			"intents": [
+				"choose the store tests run on",
+				"run node tests on the in-memory store",
+				"run tests on SQLite"
+			],
+			"declaredAt": "src/test/test-storage/use-test-storage.ts:17"
+		},
+		{
+			"path": "@dialecte/core/utils.admittedXsiTypes",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: DefinitionConfig; record: ResolvableRecord; parentDefinition?: DeclarationDefinition; }) => readonly string[]",
+			"summary": "The types the record may name with xsi:type (Clark names): its declared type when named and not abstract, and its variants; where its parent leaves the declaration open, those any declaration of the tag admits. The record's own xsi:type is not read.",
+			"intents": [
+				"list the xsi:type values an element may take",
+				"offer type choices for an element"
+			],
+			"declaredAt": "src/utils/resolve-definition.ts:64"
+		},
+		{
+			"path": "@dialecte/core/utils.canonicalXsiType",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: NamespacesConfig; value: string; namespaceOf: NamespaceLookup; }) => string",
+			"summary": "The form core stores an xsi:type value in: the local name for a type in the dialecte's default namespace, the dialecte's prefix and the local name for a type in another namespace it declares. A value whose prefix is bound nowhere, or naming a namespace the dialecte does not declare, is kept as written. The value keeps what XML says it means: only the prefix it is written with changes.",
+			"intents": [
+				"write an xsi:type value the way core stores it",
+				"compare xsi:type values written with different prefixes"
+			],
+			"declaredAt": "src/utils/xsi-type.ts:98"
+		},
+		{
+			"path": "@dialecte/core/utils.childOccurrences",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { definition: Pick<ContentDefinition, 'children' | 'contentModel'>; }) => Readonly<Record<string, ChildOccurrences>>",
+			"summary": "How often each child may appear under an element, read from its resolved definition (`resolveDefinition`, or `query.getDefinition`): per child in `children.sequence` order, `{ min, max }` with `max` undefined for unbounded. An absent `minOccurs` is 0 and an absent `maxOccurs` unbounded, as the generator writes them; a sequence adds what its particles allow, a choice keeps the widest of its branches (0 when a branch lacks the child), a group's own occurrences multiply what it holds. A child the content model does not name (no model, or one only a variant holds) is optional and unbounded.",
+			"intents": [
+				"how many times a child may appear",
+				"required or optional children of an element",
+				"cardinality of children"
+			],
+			"declaredAt": "src/utils/child-occurrences.ts:19"
+		},
+		{
+			"path": "@dialecte/core/utils.createSeededRandomUuid",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: CreateSeededRandomUuidParams) => () => UuidShaped",
+			"summary": "A stand-in for `crypto.randomUUID` whose ids follow from a seed: the same seed gives the same sequence, every id in the layout of a version 4 UUID - so a check that reads the layout of an id passes, and two runs of the same script mint the same ids. Not for ids that must be unguessable.",
+			"intents": [
+				"make generated ids reproducible",
+				"seed crypto.randomUUID for a script or a test"
+			],
+			"declaredAt": "src/utils/seeded-uuid.ts:17",
+			"example": "crypto.randomUUID = createSeededRandomUuid({ seed: 1 })"
+		},
+		{
+			"path": "@dialecte/core/utils.enumeratedValues",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(datatype: DataType | undefined) => readonly string[]",
+			"summary": "The values a datatype enumerates: its own enumeration, else those its union members enumerate - a member restricted by a pattern alone enumerates none. A qualified name's values are written `{uri}local`.",
+			"intents": [
+				"list the allowed values of an attribute",
+				"read the enumeration of a datatype",
+				"fill a dropdown with allowed values"
+			],
+			"declaredAt": "src/utils/datatype.ts:9"
+		},
+		{
+			"path": "@dialecte/core/utils.extractLocalName",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(name: string) => string",
+			"summary": "Local part of an attribute name — strips a namespace prefix if present (`a:b` → `b`).",
+			"intents": [
+				"strip the prefix from an attribute name",
+				"get the local name of a qualified name"
+			],
+			"declaredAt": "src/utils/attribute-rules.ts:94"
+		},
+		{
+			"path": "@dialecte/core/utils.formatEmbeddedXml",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(sourceCode: string, options?: { indent?: string; }) => string",
+			"summary": "Reformat every XML snippet embedded in a JS/TS source string — a template literal preceded by a `/* xml *\\/` marker comment — with `formatXml`, re-indented under the marker's own line with the closing backtick aligned to the statement. Leaves the rest of the source untouched. The reusable core of an `xmlfmt`-style step for test fixtures (see the `dialecte-xmlfmt` bin).",
+			"intents": [
+				"format XML fixtures inside test files",
+				"reindent xml template literals in source code"
+			],
+			"declaredAt": "src/utils/format-xml.ts:192"
+		},
+		{
+			"path": "@dialecte/core/utils.formatXml",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(source: string, options?: { indent?: string; baseIndent?: string; }) => string",
+			"summary": "Format an XML string to a canonical, readable shape: one structural tag per line, indented by depth, with pure-text leaves kept inline (`<Name ...>text</Name>`).",
+			"intents": [
+				"pretty-print an XML string",
+				"format XML for a snapshot or a fixture",
+				"indent XML without changing values"
+			],
+			"declaredAt": "src/utils/format-xml.ts:17"
+		},
+		{
+			"path": "@dialecte/core/utils.getAttributeRules",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: AnyDialecteConfig; record: ResolvableRecord; attributeName: string; }) => AttributeRules",
+			"summary": "The schema rules of one attribute of an element where it sits: whether the element and the attribute are declared, whether the attribute is required or an identity field, its `fixed` and `default` values and its namespace.",
+			"intents": [
+				"know whether an attribute is required",
+				"read an attribute's default or fixed value",
+				"check whether an attribute is declared for an element"
+			],
+			"declaredAt": "src/utils/attribute-rules.ts:16"
+		},
+		{
+			"path": "@dialecte/core/utils.invariant",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(condition: unknown, error: { detail: string; key?: DialecteErrorKey | DialecteErrorDefinition; ref?: { tagName: string; id?: string; }; meta?: Record<string, unknown>; }) => asserts condition",
+			"summary": "Assert a condition, throwing a structured DialecteError if it fails.",
+			"intents": [
+				"assert a condition and throw a structured error",
+				"guard against a missing record",
+				"fail with a dialecte error key"
+			],
+			"declaredAt": "src/utils/invariant.ts:17",
+			"example": "invariant(record, { detail: 'addChild: parent not found' })\ninvariant(ref.id, { detail: 'Singleton element has no id', key: 'ELEMENT_NOT_FOUND' })"
+		},
+		{
+			"path": "@dialecte/core/utils.isNamespaceAllowedByWildcard",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { wildcard: Wildcard | undefined; namespaceUri: string; }) => boolean",
+			"summary": "Whether a wildcard allows a namespace (`''` = none): the namespaces it lists, or every one it does not exclude.",
+			"intents": [
+				"check whether a wildcard admits a namespace",
+				"tell whether foreign attributes or elements are allowed"
+			],
+			"declaredAt": "src/utils/namespaces.ts:97"
+		},
+		{
+			"path": "@dialecte/core/utils.isSchemaDefaultValue",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: AnyDialecteConfig; record: ResolvableRecord; attributeName: string; value: string; }) => boolean",
+			"summary": "Whether a value equals the attribute's schema default for COMPARE: matches the `fixed` value if any, else the `default` (including an empty-string default). Compare sites drop attributes for which this is true so that an authored default-equal value and an absent attribute fold to the same thing.",
+			"intents": [
+				"compare attributes ignoring schema defaults",
+				"tell whether a value equals an attribute's default"
+			],
+			"declaredAt": "src/utils/attribute-rules.ts:77"
+		},
+		{
+			"path": "@dialecte/core/utils.orderAttributesBySequence",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "<GenericAttribute extends { name: string; namespace?: Namespace; }>(attributes: readonly GenericAttribute[], sequence: readonly string[]) => GenericAttribute[]",
+			"summary": "Put an element's attributes into canonical order: schema-sequence attributes first (in `sequence` order), then everything else sorted deterministically. Never drops attributes — reorders only — so it is safe to re-apply after an `afterStandardizedRecord` hook to normalize whatever the hook added or moved.",
+			"intents": ["put attributes in schema order", "normalize attribute order after a hook"],
+			"declaredAt": "src/utils/namespaces.ts:79"
+		},
+		{
+			"path": "@dialecte/core/utils.orderByConfigSequence",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "<GenericNode extends { tagName: string; }>(params: { parentTagName: string; children: GenericNode[]; childrenConfig: Record<string, readonly string[]>; definition?: AnyDefinition; }) => GenericNode[]",
+			"summary": "Order a parent's child nodes by the config-declared child sequence.",
+			"intents": ["sort children in schema order", "order nodes the way the export writes them"],
+			"declaredAt": "src/utils/order-children.ts:26"
+		},
+		{
+			"path": "@dialecte/core/utils.requiredChoices",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { definition: Pick<ContentDefinition, 'contentModel'>; }) => readonly RequiredChoice[]",
+			"summary": "The choices an element's content model requires (`resolveDefinition`, or `query.getDefinition`): each one reached through groups that are all required, with how many times it is taken (the groups' own minimum occurrences multiplied) and its branches in order - per branch, how often it holds each child (as `childOccurrences` counts them) and the choices it requires in turn. `childOccurrences` reads a child of a choice of several branches as optional; this is where a valid instance learns it must take one branch. An optional choice, or one inside an optional group, is not listed.",
+			"intents": [
+				"which children an element must hold where its content model offers a choice",
+				"the branches of a required choice",
+				"build a valid element from its content model"
+			],
+			"declaredAt": "src/utils/required-choices.ts:18"
+		},
+		{
+			"path": "@dialecte/core/utils.resolveDefinition",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: DefinitionConfig; record: ResolvableRecord; parentDefinition?: DeclarationDefinition; }) => ResolvedDefinition | undefined",
+			"summary": "The definition that applies to a record - the one rule every reader of the definition follows. A tag declared one way is its tag level. A tag declared several ways takes the declaration its parent holds in the record's namespace (the only namespace held there, for a record that has none yet); a parent whose wildcard admits it, or no parent, gives the global declaration of that namespace; a parent leaving it to the particle the record matches gives the tag level, the union, lenient where the declarations differ. The parent is read at its tag level unless the caller gives its resolved definition (`parentDefinition`, a top-down walk does). Then the record's `xsi:type`, when its declaration admits the type, gives what the type lets it hold. It takes a record, whose `parent` is always known (`null` for the root); a ref carries no parent, so a caller holding one uses `query.getDefinition(ref)`, which fetches the record first.",
+			"intents": [
+				"read the definition of a record you hold without a query",
+				"know what an element may hold under its parent",
+				"walk definitions top-down"
+			],
+			"declaredAt": "src/utils/resolve-definition.ts:31"
+		},
+		{
+			"path": "@dialecte/core/utils.resolveNamespaceByPrefix",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(dialecteConfig: Pick<AnyDialecteConfig, 'namespaces'>, prefix: string) => Namespace | undefined",
+			"summary": "Resolve a namespace declared in the config by its prefix (e.g. `ext`, `dev`). Returns `undefined` for an empty prefix or an unknown one — consumers cannot extend `config.namespaces`, so an unknown prefix is a caller error.",
+			"intents": ["find a declared namespace by its prefix", "map a prefix to its namespace URI"],
+			"declaredAt": "src/utils/namespaces.ts:10"
+		},
+		{
+			"path": "@dialecte/core/utils.resolveNamespaceByScope",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(dialecteConfig: Pick<AnyDialecteConfig, 'namespaces'>, scope: string) => Namespace | undefined",
+			"summary": "Resolve a namespace *scope* string to its full `Namespace`. A scope is normally a `config.namespaces` key (e.g. `ext`, `dev`); as a fallback it is matched against declared prefixes. Returns `undefined` when the scope is neither a known key nor a known prefix — an authoring error, since a registered namespace must be referenced by key (use a full `{ prefix, uri }` object for custom namespaces).",
+			"intents": [
+				"find a namespace by its config key",
+				"resolve a namespace scope to its prefix and URI"
+			],
+			"declaredAt": "src/utils/namespaces.ts:28"
+		},
+		{
+			"path": "@dialecte/core/utils.resolvePrefixByNamespaceScope",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(dialecteConfig: Pick<AnyDialecteConfig, 'namespaces'>, namespaceScope: string) => string",
+			"summary": "Resolve the XML prefix to store attributes under for a namespace *scope*. The scope is normally a config namespace **key** (e.g. `ext`, `dev`), which we map to its declared prefix. If the scope is not a declared key it is treated as a raw prefix, so callers can still target custom namespaces the config is unaware of.",
+			"intents": [
+				"find the prefix to store an attribute under",
+				"write an attribute in a declared or custom namespace"
+			],
+			"declaredAt": "src/utils/namespaces.ts:44"
+		},
+		{
+			"path": "@dialecte/core/utils.resolveSchemaAttributeValue",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: AnyDialecteConfig; record: ResolvableRecord; attributeName: string; defaults: AttributeDefaults; }) => string | undefined",
+			"summary": "The schema value to inject for an **absent** attribute, per the requested view. Derived entirely from `getAttributeRules`, so read, compare, and export share one source of truth. Returns `undefined` when nothing should be injected. A stored value always wins and is handled by the caller before this is consulted.",
+			"intents": [
+				"know which schema value an absent attribute takes",
+				"fill an absent attribute with its schema default or fixed value"
+			],
+			"declaredAt": "src/utils/attribute-rules.ts:47"
+		},
+		{
+			"path": "@dialecte/core/utils.resolveXsiType",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: NamespacesConfig; record: { readonly attributes: readonly AttributeLike[]; }; }) => XsiTypeName | undefined",
+			"summary": "The type a record names with xsi:type, read as core stores it (`storedNamespaceLookup`); `undefined` without xsi:type or when its prefix is bound nowhere.",
+			"intents": [
+				"read the type an element names with xsi:type",
+				"resolve an xsi:type prefix to its namespace"
+			],
+			"declaredAt": "src/utils/xsi-type.ts:55"
+		},
+		{
+			"path": "@dialecte/core/utils.saveToDisk",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { data: Blob; filename: string; pickerType?: SavePickerType; }) => Promise<void>",
+			"summary": "Save a Blob to disk using the native File System Access API when available (Chrome / Edge) and falling back to a hidden anchor download (Safari / Firefox), also when the dialog is refused because the user's gesture lapsed. The user cancelling the dialog saves nothing; any other failure is thrown.",
+			"intents": [
+				"save a Blob as a file",
+				"download an exported document",
+				"open a save dialog in the browser"
+			],
+			"declaredAt": "src/utils/save-to-disk.ts:17"
+		},
+		{
+			"path": "@dialecte/core/utils.valuePatterns",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(datatype: DataType | undefined) => readonly RegExp[]",
+			"summary": "The patterns of a datatype's own levels, each anchored to the whole value and compiled with the `u` flag the definition writes them for: a value must match every one (one pattern of a level is enough within it).",
+			"intents": [
+				"validate an attribute value against its datatype patterns",
+				"get the regular expressions an attribute value must match"
+			],
+			"declaredAt": "src/utils/datatype.ts:22"
+		},
+		{
 			"path": "doc.close",
 			"root": "doc",
 			"otherRoutes": [],
@@ -81,8 +1151,9 @@
 			"root": "q",
 			"otherRoutes": [],
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { name: AttributesOf<GenericConfig, GenericElement> | (string & {}); namespace?: NamespaceKeysUsedByElement<GenericConfig, GenericElement> | (string & {}); fullObject?: false; defaults?: AttributeDefaults; }) => Promise<FullAttributeObjectOf<GenericConfig, GenericElement>['value'] | ''>\n<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { name: AttributesOf<GenericConfig, GenericElement> | (string & {}); namespace?: NamespaceKeysUsedByElement<GenericConfig, GenericElement> | (string & {}); fullObject: true; defaults?: AttributeDefaults; }) => Promise<FullAttributeObjectOf<GenericConfig, GenericElement> | undefined>",
-			"summary": "Get a single attribute value from a record.",
+			"summary": "Read a single attribute value of an element (a ref, a record or a relationship).",
 			"intents": [
+				"read an attribute of an element",
 				"read one attribute value",
 				"read a namespaced attribute",
 				"read an attribute with its schema default"
@@ -95,8 +1166,9 @@
 			"root": "q",
 			"otherRoutes": [],
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params?: { namespace?: undefined; fullObject?: false; defaults?: AttributeDefaults; }) => Promise<AttributesValueObjectOf<GenericConfig, GenericElement>>\n<GenericElement extends ElementsOf<GenericConfig>, GenericNamespaceKey extends NamespaceKeysUsedByElement<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { namespace: GenericNamespaceKey; fullObject?: false; defaults?: AttributeDefaults; }) => Promise<NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey>>\n<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { namespace: string; fullObject?: false; defaults?: AttributeDefaults; }) => Promise<Record<string, string>>\n<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { fullObject: true; defaults?: AttributeDefaults; }) => Promise<FullAttributeObjectOf<GenericConfig, GenericElement>[]>",
-			"summary": "Get a record's attributes as a destructurable value object, each under the name it is stored by - what a write takes back. Get a record's attributes for a namespace scope, keyed by **local** name. Get a record's attributes for a custom namespace scope not declared in the config, keyed by local name. Get all attributes of a record as an array of full attribute objects.",
+			"summary": "Read an element's attributes as a destructurable value object, each under the name it is stored by - what a write takes back. Get a record's attributes for a namespace scope, keyed by **local** name. Get a record's attributes for a custom namespace scope not declared in the config, keyed by local name. Get all attributes of a record as an array of full attribute objects.",
 			"intents": [
+				"read the attributes of an element",
 				"read all attribute values of an element",
 				"destructure several attributes at once",
 				"read attributes of one namespace"

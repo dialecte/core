@@ -15,6 +15,8 @@ const ROOT_PREFIX = 'dialecte::'
  * `timeline: false` keeps the spans in this perf only (`report()` and `snapshot()` read them, the
  * shared timeline never sees them): what a perf whose spans another realm merges uses, so the realm
  * running it holds them once.
+ *
+ * @intent measure how long operations take in development, collect timing spans and read a report of them
  */
 export function createPerf({
 	enabled,

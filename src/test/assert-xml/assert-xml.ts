@@ -20,6 +20,8 @@ import type { Namespace } from '@/types'
 /**
  * The query assertions of a dialecte: XPath prefixes are its config's namespace keys, mapped to their URIs
  * once here. Made once per dialecte (e.g. in scl's test entry) and offered beside `createTestProject`.
+ *
+ * @intent make XPath assertions bound to a dialecte's namespaces, assert exported XML in tests
  */
 export function createXmlAssertions(params: {
 	namespaces: Record<string, Namespace>
@@ -39,6 +41,8 @@ export function createXmlAssertions(params: {
  * Asserts that each XPath query selects at least one node of the XML text, parsed once for all of them.
  * A failure names the steps that matched, the step that failed, where the last match sits, what the failing
  * step finds there without its predicates, and the XML around it.
+ *
+ * @intent assert that XML holds the elements XPath queries select, check that an export holds an element
  */
 export function assertExpectedElementQueries(params: XmlQueriesWithNamespacesParams): void {
 	const { xml, queries, namespaces = {} } = params
@@ -51,6 +55,8 @@ export function assertExpectedElementQueries(params: XmlQueriesWithNamespacesPar
  * Every step but the last must still select a node: an absence is only meaningful when the ancestors
  * exist, so a missing ancestor (a fixture bug) fails the assertion instead of passing it for the wrong
  * reason.
+ *
+ * @intent assert that XML does not hold an element, check that an element was removed from an export
  */
 export function assertUnexpectedElementQueries(params: XmlQueriesWithNamespacesParams): void {
 	const { xml, queries, namespaces = {} } = params

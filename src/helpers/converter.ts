@@ -25,8 +25,11 @@ import type {
 } from '@/types'
 
 /**
- * Converts a TrackedRecord | TreeRecord to RawRecord
- * If already a RawRecord, returns as-is.
+ * A new `RawRecord` holding the seven stored fields of a raw, tracked or tree record (`id`, `tagName`, `namespace`,
+ * `attributes`, `value`, `parent`, `children`); a change status or tree children are left out. Only the record
+ * object is new: `attributes`, `parent` and `children` are the same arrays and objects as the record's, not cloned.
+ *
+ * @intent strip a record to its stored fields, pass a record where a raw record is expected
  */
 export function toRawRecord<
 	GenericConfig extends AnyDialecteConfig,
@@ -64,6 +67,8 @@ export function toRawRecord<
  * Use it wherever a per-element value must flow into an element-union API — e.g.
  * building an `Operation`, or passing a `Ref<Config, GenericElement>` to a
  * union-typed method.
+ *
+ * @intent pass a per-element record or ref to an API typed with the element union, fix an invariance type error on a record or ref
  */
 export function widen<
 	GenericConfig extends AnyDialecteConfig,
@@ -98,8 +103,11 @@ export function widen(thing: unknown): unknown {
 }
 
 /**
- * Converts a RawRecord | TreeRecord to TrackedRecord
- * If already a TrackedRecord, returns as-is.
+ * A new `TrackedRecord` of a raw, tracked or tree record: its stored fields (as `toRawRecord` takes them) and a change
+ * status - the `status` given, else the record's own, else `'unchanged'`. The field values are shared with the
+ * record, not cloned.
+ *
+ * @intent give a raw record a change status, pass a raw or tree record where a tracked record is expected
  */
 export function toTrackedRecord<
 	GenericConfig extends AnyDialecteConfig,
@@ -121,8 +129,11 @@ export function toTrackedRecord<
 }
 
 /**
- * Converts a RawRecord | TrackedRecord to TreeRecord
- * If already a TreeRecord, returns as-is.
+ * A new `TreeRecord` of a raw, tracked or tree record: its stored fields and change status as `toTrackedRecord`
+ * gives them, and its child nodes - the `tree` given, else the record's own, else `[]`. The field values and the
+ * `tree` array are shared with the record, not cloned.
+ *
+ * @intent turn a record into a tree node, build a tree record from a raw or tracked record
  */
 export function toTreeRecord<
 	GenericConfig extends AnyDialecteConfig,
@@ -149,6 +160,8 @@ export function toTreeRecord<
  * Converts attributes to FullAttributeObject array format and canonicalizes each
  * attribute name to the two naming rules (see `canonicalizeAttributeName`), so
  * records from import, create, and update share one stored name per attribute.
+ *
+ * @intent turn an attribute value object into an attribute array, canonicalize attribute names before a write
  */
 export function toFullAttributeArray<
 	GenericConfig extends AnyDialecteConfig,
@@ -293,6 +306,8 @@ function dialecteNamespaceOf(params: {
 /**
  * Convert a Ref, ParentRelationship, ChildRelationship, or Record to a Ref.
  * ParentsOf/ChildrenOf are subsets of ElementsOf by design, so this is semantically safe.
+ *
+ * @intent get the ref of a record or a relationship, pass a ref to a query
  */
 export function toRef<
 	GenericConfig extends AnyDialecteConfig,

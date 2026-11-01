@@ -15,6 +15,8 @@ import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 /**
  * Build a DocumentRecord, persist it, and create a root record in the store.
  * Pure orchestration - no class state mutation.
+ *
+ * @internal the store-level step behind `project.initEmptyDocument`; callers use the project
  */
 export async function initEmptyDocument(
 	params: InitEmptyDocumentParams,

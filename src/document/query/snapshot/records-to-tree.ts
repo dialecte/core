@@ -13,6 +13,8 @@ import type { AnyTrackedRecord, AnyTreeRecord } from '@/types'
  * tombstones (`status:'deleted'`) under their original parent, after the live
  * children — so the tree shows what a node looked like including pending
  * deletions. XML serialization never uses this path.
+ *
+ * @internal tree assembly step of `getSnapshot`
  */
 export function recordsToTree(snapshot: CollectedSnapshot): AnyTreeRecord {
 	const { liveRecords, deletedRecords, rootId } = snapshot

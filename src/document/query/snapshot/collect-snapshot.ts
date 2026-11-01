@@ -16,6 +16,8 @@ import type { AnyDialecteConfig, AnyTrackedRecord, ElementsOf, TrackedRecord } f
  * document (no `ref`, no `depth`) is collected via one bulk read + overlay; any
  * bounded scope (a `ref`, or a `depth` from the root) walks the tree (down
  * `depth`, up `ancestors`, optional `siblings`).
+ *
+ * @internal record collection step of `getSnapshot`
  */
 export async function collectSnapshotRecords<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>

@@ -6,6 +6,8 @@ import type { AnyDialecteConfig, ElementsOf, TreeRecord } from '@/types'
  *
  * Used to hide "transparent" structural elements that are abstracted away in the
  * UI, so both `getTree` and `getSnapshot` present the same shape.
+ *
+ * @internal `unwrap` post-pass of `getTree` and `getSnapshot`
  */
 export function applyUnwrap<
 	GenericConfig extends AnyDialecteConfig,

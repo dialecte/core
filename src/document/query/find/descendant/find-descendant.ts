@@ -23,6 +23,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  *
  * Order: the groups are keyed by tag name; the records of a group come in no guaranteed order
  * (the store's own; it is not guaranteed to be document order).
+ *
+ * @internal the context-level read behind `doc.query.findDescendants`; callers use the query
  */
 export async function findDescendants<
 	GenericConfig extends AnyDialecteConfig,

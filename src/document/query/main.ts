@@ -456,9 +456,9 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	//== Attribute queries
 
 	/**
-	 * Get a single attribute value from a record.
+	 * Read a single attribute value of an element (a ref, a record or a relationship).
 	 *
-	 * @intent read one attribute value, read a namespaced attribute, read an attribute with its schema default
+	 * @intent read an attribute of an element, read one attribute value, read a namespaced attribute, read an attribute with its schema default
 	 *
 	 * @param refOrRecord - The element to read from.
 	 * @param params - Attribute `name` and an optional `namespace` scope. Without a
@@ -509,10 +509,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get a record's attributes as a destructurable value object, each under the name it is stored by - what a write
-	 * takes back.
+	 * Read an element's attributes as a destructurable value object, each under the name it is stored by - what a
+	 * write takes back.
 	 *
-	 * @intent read all attribute values of an element, destructure several attributes at once, read attributes of one namespace
+	 * @intent read the attributes of an element, read all attribute values of an element, destructure several attributes at once, read attributes of one namespace
 	 *
 	 * @param refOrRecord - The element to read from.
 	 * @returns A `{ aA, bA, 'ext:cA', 'xsi:type', ... }` object: unprefixed in the default namespace, prefixed otherwise.

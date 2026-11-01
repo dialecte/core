@@ -21,6 +21,8 @@ import type { AnyDialecteConfig, AnyTreeRecord, ElementsOf } from '@/types'
  *
  * `omit`/`unwrap` shape the tree output only (shared with `getTree`); the XML
  * always reflects the full, unfiltered document — it is what `commit()` writes.
+ *
+ * @internal the context-level read behind `doc.query.getSnapshot`; callers use the query
  */
 export async function getSnapshot<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>

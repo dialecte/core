@@ -35,6 +35,8 @@ export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-documen
  * - `control`: progress told after each stored batch (never awaited), an abort honoured before each
  *   batch and before the session's writes (`IMPORT_ABORTED`; the records already stored are the
  *   caller's to remove)
+ *
+ * @internal the streaming parser `runImport` drives; callers import through the project
  */
 export async function parseXmlFile(
 	params: ParseXmlFileParams,

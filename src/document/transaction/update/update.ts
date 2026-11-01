@@ -26,6 +26,8 @@ import type {
  * Merges attribute/value changes onto an existing record.
  * Undefined/null attribute values are stripped (treated as removals).
  * Returns the same ref — the element does not move.
+ *
+ * @internal the staging step behind `tx.update`; callers use the transaction
  */
 export async function stageUpdate<
 	GenericConfig extends AnyDialecteConfig,

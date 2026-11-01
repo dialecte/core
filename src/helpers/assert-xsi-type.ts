@@ -12,6 +12,8 @@ import type { ResolvableRecord } from '@/utils'
  * nowhere. Runs on the WRITE path (`addChild`, `ensureChild`, clone, `update`) - never on import: a document is
  * loaded as it is, validation reports it. A built-in XSD type is not judged: the definition does not list the
  * built-in hierarchy.
+ *
+ * @internal write-path guard core runs on every addChild, ensureChild, deepClone and update
  */
 export function assertXsiTypeAdmitted(params: {
 	dialecteConfig: AnyDialecteConfig
@@ -51,6 +53,8 @@ export function assertXsiTypeAdmitted(params: {
  * Reject an update that changes the type an element names while it keeps content the new type does not admit: the
  * attributes the new type would drop (clear them in the same update) and the children it does not hold (an update
  * touches attributes only: delete them first). Each is named in the error's `meta`.
+ *
+ * @internal update guard core runs on every update
  */
 export function assertXsiTypeChangeLeavesNothing(params: {
 	dialecteConfig: AnyDialecteConfig

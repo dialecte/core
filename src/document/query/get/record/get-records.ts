@@ -6,6 +6,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 /**
  * Batch lookup — resolve multiple refs in parallel.
  * Delegates to getRecord per ref; cache hits avoid redundant store calls.
+ *
+ * @internal the context-level read behind `doc.query.getRecords`; callers use the query
  */
 export async function getRecords<
 	GenericConfig extends AnyDialecteConfig,
