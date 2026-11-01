@@ -1,0 +1,301 @@
+AnyAttribute {
+  name: string
+  namespace?: Namespace | undefined
+  value: string
+}
+
+AnyRawRecord {
+  attributes: AnyAttribute[]
+  children: AnyRelationship[]
+  id: string
+  namespace: Namespace
+  parent: AnyRelationship | null
+  tagName: string
+  value: string
+}
+
+AnyRelationship {
+  id: string
+  tagName: string
+}
+
+BlobAttachment {
+  attribute?: string | undefined
+  documentId: string
+  recordRef: string
+}
+
+BlobRecord {
+  attachedTo: BlobAttachment[]
+  createdAt: number
+  documentId: string
+  id: string
+  mimeType?: string | undefined
+  name: string
+  size?: number | undefined
+}
+
+ChangeLogEntry {
+  documentId: string
+  id: number
+  operations: { creates: AnyRawRecord[]; updates: { before: AnyRawRecord; after: AnyRawRecord; }[]; deletes: AnyRawRecord[]; }
+  sequenceNumber: number
+  timestamp: number
+  writeId: string
+}
+
+ChunkOptions {
+  batchSize: number
+  chunkSize: number
+}
+
+CommitProgressListener = (current: number, total: number) => void
+
+Diagnostic<GenericCode extends string = string> {
+  code: GenericCode
+  message: string
+  meta?: Record<string, unknown> | undefined
+  ref: DiagnosticRef
+  related?: undefined | { ref: DiagnosticRef; message: string; }[]
+  severity: DiagnosticSeverity
+  source: string
+}
+
+DiagnosticRef {
+  attribute?: string | undefined
+  id: string
+  tagName: string
+}
+
+DiagnosticSeverity = "error" | "hint" | "information" | "warning"
+
+DialecteErrorData {
+  cause?: undefined | { kind: "dialecte"; message: string; stack?: string | undefined; error: DialecteErrorData; } | { kind: "error"; name: string; message: string; stack?: string | undefined; cause?: ThrownData | undefined; } | { kind: "value"; value: unknown; }
+  code: string
+  detail: string
+  key: string
+  message: string
+  meta?: Record<string, unknown> | undefined
+  method: string
+  ref?: undefined | { tagName: string; id: string; }
+}
+
+DocumentRecord {
+  configKey: string
+  createdAt: number
+  extension: string
+  id: string
+  metadata?: Record<string, unknown> | undefined
+  name: string
+  path?: string | undefined
+  status: DocumentStatus
+  writeId?: string | undefined
+}
+
+DocumentStatus = "importing" | "ready"
+
+EngineApi {
+  abortExport: (params: { exportId: string; }) => Promise<void>
+  abortImport: (params: { writeId: string; }) => Promise<void>
+  addBlob: (entry: BlobRecord, data: Blob) => Promise<void>
+  attachBlob: (blobId: string, ref: BlobAttachment) => Promise<boolean>
+  bulkWrite: (documentId: string, ops: { creates?: AnyRawRecord[] | undefined; updates?: RecordPatch[] | undefined; deletes?: string[] | undefined; }) => Promise<boolean>
+  commit: (params: EngineCommitParams, onProgress?: CommitProgressListener | undefined) => Promise<void>
+  count: (documentId: string) => Promise<number>
+  detachBlob: (blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<boolean>
+  exportFile: (params: EngineExportParams, onProgress?: ((progress: ExportProgress) => void) | undefined) => Promise<ExportFileResult>
+  get: (id: string, documentId: string) => Promise<AnyRawRecord | undefined>
+  getBlob: (blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>
+  getBlobsByDocument: (documentId: string) => Promise<BlobRecord[]>
+  getBlobsByRecord: (documentId: string, recordRef: string) => Promise<BlobRecord[]>
+  getByDocumentId: (documentId: string) => Promise<AnyRawRecord[]>
+  getByTagNameInDocument: (tagName: string, documentId: string) => Promise<AnyRawRecord[]>
+  getChangeLog: (documentId: string) => Promise<ChangeLogEntry[]>
+  getDocument: (documentId: string) => Promise<DocumentRecord | undefined>
+  getDocuments: () => Promise<DocumentRecord[]>
+  getHistoryStatus: (documentId: string) => Promise<{ canUndo: boolean; canRedo: boolean; }>
+  getMany: (ids: string[], documentId: string) => Promise<(AnyRawRecord | undefined)[]>
+  getStandaloneBlobs: () => Promise<BlobRecord[]>
+  getWriteOutcome: (params: { writeId: string; }) => Promise<WriteOutcome>
+  importFile: (params: EngineImportParams, onProgress?: ((progress: ImportProgress) => void) | undefined) => Promise<ImportFileResult>
+  redo: (documentId: string) => Promise<boolean>
+  registerDocument: (file: DocumentRecord) => Promise<void>
+  removeBlob: (blobId: string) => Promise<boolean>
+  removeDocument: (documentId: string) => Promise<boolean>
+  undo: (documentId: string) => Promise<boolean>
+  updateDocument: (documentId: string, updates: Partial<Pick<DocumentRecord, "name" | "path" | "metadata">>) => Promise<boolean>
+}
+
+EngineClient {
+  api: EngineApi
+  close: (params: { storeName: string; }) => void
+  connection: (params: { connectionId: string; }) => EngineApi
+  lose: (params: { reason: EngineLostReason; }) => void
+  onEvent: (listener: (signal: EngineEventSignal) => void) => () => void
+}
+
+EngineCommitParams {
+  creates: AnyRawRecord[]
+  deletes: string[]
+  documentId: string
+  updates: AnyRawRecord[]
+  writeId: string
+}
+
+EngineEventSignal {
+  connectionId: string
+  message: ProjectChannelMessage
+  type: "event"
+  writeId?: string | undefined
+}
+
+EngineExportParams {
+  documentId: string
+  exportId: string
+  options?: ExportFileOptions | undefined
+}
+
+EngineImportParams {
+  file: File
+  options?: ImportFileOptions | undefined
+  writeId: string
+}
+
+EngineLostReason = "host-gone" | "no-heartbeat" | "realm-dropped"
+
+ExportFileOptions {
+  batchSize?: number | undefined
+  indent?: false | true | undefined
+  withDatabaseIds?: false | true | undefined
+}
+
+ExportFileResult {
+  file: Blob
+  filename: string
+  perf?: PerfSnapshot | undefined
+}
+
+ExportProgress {
+  recordsWritten: number
+  totalRecords: number
+}
+
+HubConnection {
+  addSpawners: (params: { spawners: RealmEngineSpawner[]; }) => void
+  adoptPort: (params: { port: MessagePort; }) => boolean
+  bound: false | true
+  close: () => void
+  createHubPort: () => HubPortHandle
+  destroyProject: (params: { project: string; dialecteId: string; destroy: () => Promise<void>; own?: OwnHubLink | undefined; }) => Promise<void>
+  ended: Promise<unknown>
+  onRejoined: (listener: () => void) => () => void
+  openProject: (params: HubProjectParams) => HubProjectLink
+  realmId: () => string
+}
+
+HubPortHandle {
+  port: MessagePort
+  unbind: () => void
+}
+
+HubProjectLink {
+  engine: () => Promise<EngineClient>
+  onNotice: (listener: (notice: LinkNotice) => void) => () => void
+  release: () => Promise<void>
+}
+
+HubProjectParams {
+  dialecteId: string
+  dialecteVersion: string
+  heartbeatTimeoutMs?: number | undefined
+  project: string
+}
+
+HubRegistry {
+  [key: symbol]: Promise<HubConnection | undefined> | undefined
+}
+
+HubSpawner {
+  dialecteId: string
+  dialecteVersion: string
+}
+
+HubToRealmMessage = { type: "adopt-client"; project: string; dialecteId: string; generation: number; adoptionId: number; clientId: string; port: MessagePort; } | { type: "client-gone"; project: string; dialecteId: string; generation: number; clientId: string; } | { type: "destroy-granted"; project: string; dialecteId: string; } | { type: "destroy-refused"; project: string; dialecteId: string; error: ThrownData; } | { type: "dropped"; } | { type: "engine-lost"; project: string; dialecteId: string; generation: number; } | { type: "engine-ready"; project: string; dialecteId: string; generation: number; port: MessagePort; creationId: string; } | { type: "hello-refused"; error: ThrownData; } | { type: "left"; project: string; dialecteId: string; } | { type: "open-refused"; project: string; dialecteId: string; error: ThrownData; } | { type: "release-engine"; project: string; dialecteId: string; generation: number; } | { type: "spawn-engine"; project: string; dialecteId: string; generation: number; openBudgetMs: number; expectedCreationId?: string | undefined; } | { type: "welcome"; realmId: string; hubLock: string; }
+
+ImportFileOptions {
+  chunkOptions?: Partial<ChunkOptions> | undefined
+  configKey?: string | undefined
+  metadata?: Record<string, unknown> | undefined
+  path?: string | undefined
+  useCustomRecordsIds?: false | true | undefined
+}
+
+ImportFileResult {
+  diagnostics: Diagnostic[]
+  perf?: PerfSnapshot | undefined
+  record: DocumentRecord
+  recordCount: number
+}
+
+ImportPhase = "indexing" | "storing"
+
+ImportProgress {
+  bytesRead: number
+  phase: ImportPhase
+  totalBytes: number
+}
+
+LinkNotice = { type: "event"; signal: EngineEventSignal; } | { type: "resync"; }
+
+Namespace {
+  prefix: string
+  uri: string
+}
+
+OwnHubLink {
+  letGo: () => Promise<void>
+  link: HubProjectLink
+}
+
+PerfReport {
+  [key: string]: { calls: number; totalMs: number; avgMs: number; count?: number | undefined; }
+}
+
+PerfSnapshot {
+  spans: PerfSpan[]
+  timeOrigin: number
+  totals: PerfReport
+}
+
+PerfSpan {
+  duration: number
+  name: string
+  startTime: number
+}
+
+ProjectChannelMessage = { type: "blob-added"; blobId: string; documentId: string; timestamp: number; } | { type: "blob-attached"; blobId: string; ref: BlobAttachment; timestamp: number; } | { type: "blob-detached"; blobId: string; ref: { documentId: string; recordRef: string; }; timestamp: number; } | { type: "blob-removed"; blobId: string; timestamp: number; } | { type: "commit"; documentId: string; timestamp: number; } | { type: "document-imported"; documentId: string; timestamp: number; } | { type: "document-removed"; documentId: string; timestamp: number; } | { type: "document-updated"; documentId: string; timestamp: number; } | { type: "init-empty-document"; documentId: string; timestamp: number; }
+
+RealmEngineSpawner {
+  dialecteId: string
+  dialecteVersion: string
+  engineUrl: string
+  perf?: false | true | undefined
+  settings: () => Promise<unknown>
+}
+
+RealmToHubMessage = { type: "bind-child"; bindingId: string; port: MessagePort; } | { type: "client-adopt-failed"; adoptionId: number; } | { type: "client-adopted"; adoptionId: number; } | { type: "destroy"; project: string; dialecteId: string; } | { type: "destroyed"; project: string; dialecteId: string; } | { type: "engine-ended"; project: string; dialecteId: string; generation: number; } | { type: "engine-open-failed"; project: string; dialecteId: string; generation: number; key: string | undefined; error: ThrownData; } | { type: "engine-opened"; project: string; dialecteId: string; generation: number; creationId: string; } | { type: "hello"; protocol: number; realmId: string; topLevel: boolean; spawners: HubSpawner[]; } | { type: "leave"; project: string; dialecteId: string; } | { type: "open"; project: string; dialecteId: string; dialecteVersion: string; expectedCreationId?: string | undefined; } | { type: "port-unused"; } | { type: "spawners"; spawners: HubSpawner[]; } | { type: "unbind-child"; bindingId: string; }
+
+RecordPatch {
+  attributes?: AnyAttribute[] | undefined
+  children?: AnyRelationship[] | undefined
+  namespace?: Namespace | undefined
+  parent?: AnyRelationship | null | undefined
+  recordId: string
+  removeAttributes?: readonly string[] | undefined
+  tagName?: string | undefined
+  value?: string | undefined
+}
+
+ThrownData = { kind: "dialecte"; message: string; stack?: string | undefined; error: DialecteErrorData; } | { kind: "error"; name: string; message: string; stack?: string | undefined; cause?: ThrownData | undefined; } | { kind: "value"; value: unknown; }
+
+WriteOutcome = "applied" | "not-applied" | "running"

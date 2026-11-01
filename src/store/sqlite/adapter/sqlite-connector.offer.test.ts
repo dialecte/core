@@ -10,7 +10,7 @@ import { TEST_DIALECTE } from '@/test'
 
 import type { HubConnectionOptions } from '../../engine/hub/hub-client.types'
 
-/** What the realm asked of the hub: each connection opened (with the engines it offered), and the one it kept. */
+/** What the realm asked of the hub: each connection opened (with the engines it named), and the one it kept. */
 const hub = vi.hoisted(function hubOfTheCase() {
 	return {
 		opened: [] as HubConnectionOptions[],
@@ -67,8 +67,8 @@ function connector(): ReturnType<typeof createSqliteConnector> {
 	})
 }
 
-/** The dialectes of the engines offered in every connection the realm opened. */
-function offeredDialectes(): string[] {
+/** The dialectes of the engines named in every connection the realm opened (offered unless `hostsNoEngine`). */
+function namedDialectes(): string[] {
 	return hub.opened.flatMap(function dialectesOf({ spawners = [] }) {
 		return spawners.map(function dialecteOf(spawner) {
 			return spawner.dialecteId
@@ -140,21 +140,21 @@ describe('the way a project on sqlite goes, by what the realm can store and how 
 				},
 			})
 			expect(answer).toBe(expected.answer)
-			expect(offeredDialectes()).toEqual(expected.offered)
+			expect(namedDialectes()).toEqual(expected.offered)
 			expect(hub.opened).toHaveLength(expected.connectionsOpened)
 		})
 	}
 
-	type ConnectHubCase = { storageRefused: boolean; offered: string[] }
+	type ConnectHubCase = { storageRefused: boolean; hostsNoEngine: boolean }
 	const connectHubCases: Record<string, ConnectHubCase> = {
 		'connectHub in a page that can store → the dialecte’s engine offered': {
 			storageRefused: false,
-			offered: [TEST_DIALECTE.id],
+			hostsNoEngine: false,
 		},
-		'connectHub in a page whose private file system is refused → no engine offered: it joins as a client':
-			{ storageRefused: true, offered: [] },
+		'connectHub in a page whose private file system is refused → its spawners checked, none offered (it hosts no engine)':
+			{ storageRefused: true, hostsNoEngine: true },
 	}
-	for (const [description, { storageRefused, offered }] of Object.entries(connectHubCases)) {
+	for (const [description, { storageRefused, hostsNoEngine }] of Object.entries(connectHubCases)) {
 		it(description, async () => {
 			if (storageRefused) refuseRealmStorage()
 			await connectHub({
@@ -166,7 +166,12 @@ describe('the way a project on sqlite goes, by what the realm can store and how 
 					},
 				],
 			})
-			expect(offeredDialectes()).toEqual(offered)
+			expect(namedDialectes()).toEqual([TEST_DIALECTE.id])
+			expect(
+				hub.opened.map(function hostsNone(opened) {
+					return opened.hostsNoEngine
+				}),
+			).toEqual([hostsNoEngine])
 		})
 	}
 })

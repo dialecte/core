@@ -125,8 +125,8 @@ export const NODE_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'asserts what SQLite storage answers where no worker and no private file system exist; a browser has both',
 	},
 	{
-		path: 'src/store/sqlite-storage.shape.test.ts',
-		why: 'compiles the store contract from disk to check its recorded shape',
+		path: 'src/store/shared-shapes.test.ts',
+		why: 'compiles what copies of the library share from disk and reads its recorded shapes',
 	},
 	{
 		path: 'src/test/test-entry-environment.test.ts',

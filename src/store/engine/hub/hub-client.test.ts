@@ -1,5 +1,9 @@
 import { makeDocument, outcomeOf } from '../../contract/store-contract.fixtures'
 import { connectHub } from '../../hub-public'
+import {
+	refuseRealmStorage,
+	restoreRealmStorage,
+} from '../../sqlite/adapter/realm-storage.fixtures'
 import { isEngineLockFree, TEST_ENGINE_URL } from '../../sqlite/runtime/runtime.fixtures'
 import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../../sqlite/runtime/runtime.fixtures.constants'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
@@ -385,26 +389,45 @@ describe('a realm connected to the hub', () => {
 		expect(realm).toBeUndefined()
 	})
 
-	it('connectHub given the engines the page can start → its hello names them to the hub', async () => {
-		withEmptyRegistry()
-		const hub = fakeHub()
-		vi.stubGlobal(
-			'SharedWorker',
-			class AnsweredSharedWorker extends EventTarget {
-				readonly port = hub.openPort()
-			},
-		)
-		onTestFinished(function restoreGlobals() {
-			vi.unstubAllGlobals()
+	type HelloCase = { storageRefused: boolean; named: HubSpawner[] }
+	const helloCases: Record<string, HelloCase> = {
+		'connectHub given the engines the page can start → its hello names them to the hub': {
+			storageRefused: false,
+			named: [{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version }],
+		},
+		'connectHub in a page whose private file system is refused → its hello names none; a later one adds none':
+			{ storageRefused: true, named: [] },
+	}
+	for (const [description, { storageRefused, named }] of Object.entries(helloCases)) {
+		it(description, async () => {
+			withEmptyRegistry()
+			if (storageRefused) refuseRealmStorage()
+			onTestFinished(restoreRealmStorage)
+			const hub = fakeHub()
+			vi.stubGlobal(
+				'SharedWorker',
+				class AnsweredSharedWorker extends EventTarget {
+					readonly port = hub.openPort()
+				},
+			)
+			onTestFinished(function restoreGlobals() {
+				vi.unstubAllGlobals()
+			})
+			const realm = await connectHub({ spawners: [SPAWNER] })
+			expect(realm).toBeDefined()
+			const connection = await openHubConnection()
+			onTestFinished(connection!.close)
+			expect(hub.hellos[0]?.message).toMatchObject({ type: 'hello', spawners: named })
+			if (!storageRefused) return
+			await connectHub({ spawners: [{ ...SPAWNER, dialecteId: 'other' }] })
+			// an open asked after it: a spawners message said would come before it
+			askEngine({
+				link: openLink({ connection: connection!, project: `barrier-${crypto.randomUUID()}` }),
+			})
+			await hub.next('open')
+			expect(hub.received.map(typeOfMessage)).not.toContain('spawners')
 		})
-		const realm = await connectHub({ spawners: [SPAWNER] })
-		expect(realm).toBeDefined()
-		const connection = await openHubConnection()
-		onTestFinished(connection!.close)
-		expect(hub.hellos[0]?.message).toMatchObject({
-			spawners: [{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version }],
-		})
-	})
+	}
 
 	describe('the hub’s worker throwing as it is made', () => {
 		type TestCase = { thrown: Error; expected: 'no hub' | 'thrown' }
@@ -600,22 +623,32 @@ describe('a realm connected to the hub', () => {
 		expect(hub.received.map(typeOfMessage)).toEqual(['spawners'])
 	})
 
-	it('connectHub naming two versions of one dialecte → STORE_HUB_SPAWNERS_FIXED, no connection made', async () => {
-		withEmptyRegistry()
-		const hub = fakeHub()
-		vi.stubGlobal(
-			'SharedWorker',
-			class AnsweredSharedWorker extends EventTarget {
-				readonly port = hub.openPort()
-			},
-		)
-		onTestFinished(function restoreGlobals() {
-			vi.unstubAllGlobals()
+	const twoVersionsCases: Record<string, { storageRefused: boolean }> = {
+		'in a page that can store': { storageRefused: false },
+		'in a page whose private file system is refused (it offers no engine)': {
+			storageRefused: true,
+		},
+	}
+	for (const [description, { storageRefused }] of Object.entries(twoVersionsCases)) {
+		it(`connectHub naming two versions of one dialecte ${description} → STORE_HUB_SPAWNERS_FIXED, no connection made`, async () => {
+			withEmptyRegistry()
+			if (storageRefused) refuseRealmStorage()
+			onTestFinished(restoreRealmStorage)
+			const hub = fakeHub()
+			vi.stubGlobal(
+				'SharedWorker',
+				class AnsweredSharedWorker extends EventTarget {
+					readonly port = hub.openPort()
+				},
+			)
+			onTestFinished(function restoreGlobals() {
+				vi.unstubAllGlobals()
+			})
+			const asked = connectHub({ spawners: [SPAWNER, { ...SPAWNER, dialecteVersion: '99.0.0' }] })
+			expect(await refusalKeyOf({ action: asked })).toBe('STORE_HUB_SPAWNERS_FIXED')
+			expect(hub.ports()).toBe(0)
 		})
-		const asked = connectHub({ spawners: [SPAWNER, { ...SPAWNER, dialecteVersion: '99.0.0' }] })
-		expect(await refusalKeyOf({ action: asked })).toBe('STORE_HUB_SPAWNERS_FIXED')
-		expect(hub.ports()).toBe(0)
-	})
+	}
 
 	it('an engine added, then the page frozen and back → its hello names every engine it runs', async () => {
 		withEmptyRegistry()

@@ -82,6 +82,8 @@ export class Project<
 	 * store told them, folded too (a change no call of the Project's own waits for is folded then).
 	 */
 	private ownChangesTold: ProjectChannelMessage[] = []
+	/** The open's documents read: the changes kept meanwhile fold into a state that holds them. */
+	private openSettled = false
 	/** The name of the open project's channel (`projectChannelName`), set as it opens. */
 	private _channelName?: string
 	/** In-flight fire-and-forget work triggered by foreign messages, awaited on teardown. */
@@ -279,9 +281,10 @@ export class Project<
 			this.channel.postMessage(change)
 			try {
 				this.onChannelMessage(change)
-			} catch {
+			} catch (thrown) {
 				// a Document subscriber's own failure, on a change no call made: the call is not refused for it,
 				// the next change folded all the same
+				this.reportFoldFailure({ told: change.type, thrown })
 			}
 		}
 	}
@@ -289,8 +292,10 @@ export class Project<
 	/**
 	 * A notice of the open store: another connection's change folded into this Project's state and reposted to its
 	 * listeners; its own kept, posted once the call that made it has updated the state - or, folded, once no call runs
-	 * (a write on the store held directly, a call that ended without posting), or at once past `OWN_CHANGES_TOLD_MAX`
-	 * (then before a running call's state holds its own); a resync reads it all again.
+	 * (a write on the store held directly, a call that ended without posting) and the open settled (a change told as
+	 * the store opened, or its documents were read), or at once past `OWN_CHANGES_TOLD_MAX` (then before a running
+	 * call's state holds its own); a resync reads it all again. A fold no call awaits that fails (a Document's
+	 * subscriber throwing, the store refusing a read) is reported on the console.
 	 */
 	private onStoreNotice(notice: StoreNotice): void {
 		// a change of this Project's own is kept while it closes too: a call it waits for still tells it
@@ -303,11 +308,16 @@ export class Project<
 		}
 		if (this.closing) return
 		if (notice.type === 'resync') {
-			this.trackBroadcastWork(this.resync())
+			this.trackBroadcastWork({ work: this.resync(), told: 'resync' })
 			return
 		}
 		this._channel?.postMessage(notice.message)
-		this.onChannelMessage(notice.message)
+		try {
+			this.onChannelMessage(notice.message)
+		} catch (thrown) {
+			// a Document subscriber's own failure: the store's other listeners are told all the same
+			this.reportFoldFailure({ told: notice.message.type, thrown })
+		}
 	}
 
 	/** Whether a call of this Project runs, which posts the changes its store tells it: a write, a Document's commit, an import. */
@@ -330,9 +340,9 @@ export class Project<
 		this.postToldChanges({})
 	}
 
-	/** Whether the open Project posts on its channel: not before its open settled, not while it closes. */
+	/** Whether the open Project posts what no call claims: once its open settled (its documents read), not while it closes. */
 	private canPost(): boolean {
-		return !this.closing && this._channel !== undefined
+		return !this.closing && this.openSettled
 	}
 
 	/** Changes may have been missed: the registry, each document's history read again, every document's view woken. */
@@ -442,6 +452,7 @@ export class Project<
 			// a store that announces is heard from before it opens: no change falls between its first read and the subscription
 			this.announcing = typeof store.subscribe === 'function'
 			this.ownChangesTold = []
+			this.openSettled = false
 			this._channelName = projectChannelName({
 				name,
 				instance: this.announcing ? crypto.randomUUID() : undefined,
@@ -492,6 +503,10 @@ export class Project<
 			throw thrown
 		}
 
+		// a change of its own the store told as it opened (an unfinished import's cleanup), or as its documents were
+		// read, waited for them: folded now into a state that holds them
+		this.openSettled = true
+		this.drainWhenIdle()
 		return this
 	}
 
@@ -525,7 +540,10 @@ export class Project<
 		if (this.closing) return
 		switch (message?.type) {
 			case 'document-updated':
-				this.trackBroadcastWork(this.refreshDocumentRecord(message.documentId))
+				this.trackBroadcastWork({
+					work: this.refreshDocumentRecord(message.documentId),
+					told: message.type,
+				})
 				break
 			case 'init-empty-document':
 			case 'document-removed':
@@ -534,7 +552,10 @@ export class Project<
 				// together for this realm. Tracked so teardown can await it — a late
 				// foreign message must not read/reconcile the store after destroy()
 				// deleted it.
-				this.trackBroadcastWork(this.reconcileFromBroadcast(message.documentId))
+				this.trackBroadcastWork({
+					work: this.reconcileFromBroadcast(message.documentId),
+					told: message.type,
+				})
 				break
 			case 'commit': {
 				const entry = this.state.documents.get(message.documentId)
@@ -543,7 +564,10 @@ export class Project<
 				}
 				// Tracked fire-and-forget: a late foreign message must not refresh
 				// flags on a store that teardown already closed.
-				this.trackBroadcastWork(this.refreshHistoryStatus(message.documentId))
+				this.trackBroadcastWork({
+					work: this.refreshHistoryStatus(message.documentId),
+					told: message.type,
+				})
 				// A cross-realm commit changed this document — wake local subscribers so
 				// the UI refetches (the fold above already updated the shared entry).
 				this.signalStateChange(message.documentId, true)
@@ -562,16 +586,37 @@ export class Project<
 	 * Track channel-triggered fire-and-forget work so `close`/`destroy` can wait for
 	 * it to settle before tearing down the store. A foreign message delivered as the
 	 * project is closing would otherwise read or reconcile the store after it was
-	 * closed/deleted — surfacing as DatabaseClosedError or ConstraintError. The work
-	 * keeps its own error swallowing; here it is only awaited, never rethrown.
+	 * closed/deleted — surfacing as DatabaseClosedError or ConstraintError. A failure
+	 * is reported unless the project closes; never rethrown.
 	 */
-	private trackBroadcastWork(work: Promise<void>): void {
+	private trackBroadcastWork(params: {
+		work: Promise<void>
+		told: ProjectChannelMessage['type'] | 'resync'
+	}): void {
+		const { work, told } = params
 		const tracked = work
-			.catch(() => {})
+			.catch((thrown: unknown) => {
+				// as it closes, the store refuses what the work reads: nothing is lost
+				if (!this.closing) this.reportFoldFailure({ told, thrown })
+			})
 			.finally(() => {
 				this.pendingBroadcastWork.delete(tracked)
 			})
 		this.pendingBroadcastWork.add(tracked)
+	}
+
+	/**
+	 * A change of its store no call awaits, failing as it is folded in - a Document's subscriber throwing, or the store
+	 * refusing a read: told on the console, the other changes folded all the same.
+	 */
+	private reportFoldFailure(params: {
+		told: ProjectChannelMessage['type'] | 'resync'
+		thrown: unknown
+	}): void {
+		console.error(
+			`Project "${this._name}": folding in a change of its store (${params.told}) failed; the other changes are folded in all the same:`,
+			params.thrown,
+		)
 	}
 
 	/** A document's registry entry read again (another view renamed or moved it): its view woken. */

@@ -537,13 +537,16 @@ describe('EngineStore, the changes it tells', () => {
 	type ForgottenCase = {
 		outcome?: WriteOutcome
 		/** What follows the lost commit before its change is told. */
-		then: (params: { store: EngineStore; tell: (notice: LinkNotice) => void }) => Promise<unknown>
+		followedBy: (params: {
+			store: EngineStore
+			tell: (notice: LinkNotice) => void
+		}) => Promise<unknown>
 		toldAsOwn: boolean
 	}
 	const forgottenCases: Record<string, ForgottenCase> = {
 		'its outcome asked, not applied → its id forgotten (a change of that id told as its own)': {
 			outcome: 'not-applied',
-			then: function askOutcome({ store }) {
+			followedBy: function askOutcome({ store }) {
 				return store.getWriteOutcome({ writeId: 'w-lost' })
 			},
 			toldAsOwn: true,
@@ -551,7 +554,7 @@ describe('EngineStore, the changes it tells', () => {
 		'its outcome asked, applied → its id forgotten (its change came before that answer, or never comes)':
 			{
 				outcome: 'applied',
-				then: function askOutcome({ store }) {
+				followedBy: function askOutcome({ store }) {
 					return store.getWriteOutcome({ writeId: 'w-lost' })
 				},
 				toldAsOwn: true,
@@ -559,26 +562,26 @@ describe('EngineStore, the changes it tells', () => {
 		'its outcome asked, still running → its id kept (its change, when it lands, told as another’s)':
 			{
 				outcome: 'running',
-				then: function askOutcome({ store }) {
+				followedBy: function askOutcome({ store }) {
 					return store.getWriteOutcome({ writeId: 'w-lost' })
 				},
 				toldAsOwn: false,
 			},
 		'a resync told (another engine: the lost one’s change never comes) → its id forgotten': {
-			then: async function resync({ tell }) {
+			followedBy: async function resync({ tell }) {
 				tell({ type: 'resync' })
 			},
 			toldAsOwn: true,
 		},
 		'the store closed and opened again → its id forgotten': {
-			then: async function closeAndOpen({ store }) {
+			followedBy: async function closeAndOpen({ store }) {
 				await store.close()
 				await store.open()
 			},
 			toldAsOwn: true,
 		},
 	}
-	for (const [description, { outcome, then, toldAsOwn }] of Object.entries(forgottenCases)) {
+	for (const [description, { outcome, followedBy, toldAsOwn }] of Object.entries(forgottenCases)) {
 		it(`its own commit refused lost, then ${description}`, async () => {
 			const { connector, tell } = lostCommitConnector({ outcome })
 			const store = new EngineStore({ name: `forgotten-${crypto.randomUUID()}`, connector })
@@ -598,7 +601,7 @@ describe('EngineStore, the changes it tells', () => {
 				}),
 				key: 'STORE_ENGINE_LOST',
 			})
-			await then({ store, tell })
+			await followedBy({ store, tell })
 			tell(commitEvent({ writeId: 'w-lost', connectionId: 'own-connection' }))
 			expect(changes).toEqual([toldAsOwn])
 			await store.close()

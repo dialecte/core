@@ -52,22 +52,23 @@ import type { HubEngineSpawner, RealmEngineSpawner, RealmHost } from './realm-ho
  * call tries again. The realm registers the engines it can start whose worker is of its own origin: a
  * later call adds those the connection does not run yet (`addSpawners`); one naming a dialecte the
  * connection runs at another version, or two versions of one dialecte, is refused `STORE_HUB_SPAWNERS_FIXED`,
- * the connection kept.
+ * the connection kept. A realm that cannot store (`hostsNoEngine`) registers none, its spawners checked all the same.
  */
 export function openHubConnection(
 	params: HubConnectionOptions = {},
 ): Promise<HubConnection | undefined> {
 	// two versions of one dialecte in one call: refused before any connection is made
 	refuseOtherVersions({ registered: [], asked: (params.spawners ?? []).map(toHubSpawner) })
+	const spawners = params.hostsNoEngine ? [] : (params.spawners ?? [])
 	const kept = (globalThis as HubRegistry)[HUB_REGISTRY_KEY]
 	if (!kept) {
 		return keptAttempt({
 			attempt: function connect() {
-				return openHub(params)
+				return openHub({ spawners })
 			},
 		})
 	}
-	const asked = sameOriginSpawners({ spawners: params.spawners ?? [] })
+	const asked = sameOriginSpawners({ spawners })
 	// none to add: the kept attempt itself, as every copy of the library gets it
 	if (asked.length === 0) return kept
 	return kept.then(function addAsked(connection) {

@@ -14,6 +14,11 @@ export type ConnectHubParams = {
 /** How the realm connects: the engines it can start, with what each opens with. */
 export type HubConnectionOptions = {
 	spawners?: RealmEngineSpawner[]
+	/**
+	 * The realm cannot store (no private file system): its spawners are checked - two versions of one dialecte
+	 * refused - but none registered: elected to host an engine, it could not open it.
+	 */
+	hostsNoEngine?: boolean
 }
 
 /** The realm's global object as the hub connection is kept on it, under the protocol's key. */

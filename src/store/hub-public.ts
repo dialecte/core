@@ -15,13 +15,17 @@ import type { HubEngineSpawner, RealmEngineSpawner } from './engine/hub/realm-ho
  * its own origin (each dialecte's `factory.spawner`); a later call adds those it does not run yet - a project opened on `sqlite` adds its own as it opens - and one naming a dialecte the page runs at another version is
  * refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept. A document that joined through `adoptHubPort` hosts no
  * engine: the spawners it names are not registered; neither are those of a page that cannot store (no private file
- * system: it joins as a client only). An engine's files (the SQLite wasm) are fetched when the page
- * first starts one.
+ * system; two versions of one dialecte refused all the same): its own projects on `sqlite` are refused
+ * `STORE_UNAVAILABLE` unless its page bound it, its connection serving to hand ports to its children. An engine's
+ * files (the SQLite wasm) are fetched when the page first starts one.
  */
 export async function connectHub(params: ConnectHubParams = {}): Promise<HubRealm | undefined> {
-	// a page that cannot store offers no engine: elected to host one, it could not open it
-	const spawners = (await storesHere()) ? params.spawners?.map(withDefaultSettings) : []
-	const connection = await openHubConnection({ spawners })
+	const stores = await storesHere()
+	const connection = await openHubConnection({
+		spawners: params.spawners?.map(withDefaultSettings),
+		// a page that cannot store offers no engine: elected to host one, it could not open it
+		hostsNoEngine: !stores,
+	})
 	return connection && toHubRealm({ connection })
 }
 

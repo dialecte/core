@@ -277,12 +277,17 @@ describe('a change of the project’s own store that no Project call made (the s
 		await running.catch(function failedByTheSubscriber() {})
 	})
 
-	it('a change told while a removal runs, a subscriber of its document throwing as the removal posts it → the removal resolves, posted after it', async () => {
+	it('a change told while a removal runs, a subscriber of its document throwing as the removal posts it → the removal resolves, posted after it, the failure reported', async () => {
 		const { project, store, documentId: other } = await openHeld()
 		const removed = await project.initEmptyDocument()
 		const heard = listenTo({ project })
+		const failure = new Error('a subscriber failing')
 		project.openDocument(other).subscribe(function failAtTheFold(terminal) {
-			if (terminal) throw new Error('a subscriber failing')
+			if (terminal) throw failure
+		})
+		const reported = vi.spyOn(console, 'error').mockImplementation(function quiet() {})
+		onTestFinished(function restoreConsole() {
+			reported.mockRestore()
 		})
 		let release: () => void = function notYet() {}
 		const gate = new Promise<void>(function hold(resolve) {
@@ -300,6 +305,12 @@ describe('a change of the project’s own store that no Project call made (the s
 		await vi.waitFor(function bothPosted() {
 			expect(heard).toEqual([`commit ${other}`, `document-removed ${removed}`])
 		})
+		expect(reported.mock.calls).toEqual([
+			[
+				`Project "${project.name}": folding in a change of its store (commit) failed; the other changes are folded in all the same:`,
+				failure,
+			],
+		])
 	})
 
 	type FailingCallCase = {
@@ -355,6 +366,126 @@ describe('a change of the project’s own store that no Project call made (the s
 				expect(heard).toEqual([`document-updated ${documentId}`])
 				expect(project.state.documents.get(documentId)?.record.name).toBe('renamed')
 			})
+		})
+	}
+})
+
+type FoldFailureCase = {
+	/** The change made, as the project's store tells it. */
+	told: string
+	change: (params: { store: Store; documentId: string }) => Promise<void>
+}
+const foldFailureCases: Record<string, FoldFailureCase> = {
+	'a rename on the store it holds (its record read again, no call awaiting it)': {
+		told: 'document-updated',
+		change: function renamed({ store, documentId }) {
+			return store.updateDocument(documentId, { name: 'renamed' })
+		},
+	},
+	'a commit of another connection to the project (folded as it is told)': {
+		told: 'commit',
+		change: async function committedElsewhere({ store, documentId }) {
+			const elsewhere = new InMemoryStore(store.name, { runtime: RUNTIME })
+			await elsewhere.open()
+			await elsewhere.bulkWrite(documentId, { creates: [makeRecord({ id: 'r-elsewhere' })] })
+			await elsewhere.close()
+		},
+	},
+}
+
+describe('a change of the project’s store folded in, a Document’s subscriber throwing', () => {
+	for (const [description, { told, change }] of Object.entries(foldFailureCases)) {
+		it(`${description} → reported on the console, the next change folded all the same`, async () => {
+			const { project, store, documentId } = await openHeld()
+			const failure = new Error('a subscriber failing')
+			let failed = false
+			project.openDocument(documentId).subscribe(function failOnce(terminal) {
+				if (!terminal || failed) return
+				failed = true
+				throw failure
+			})
+			const reported = vi.spyOn(console, 'error').mockImplementation(function quiet() {})
+			onTestFinished(function restoreConsole() {
+				reported.mockRestore()
+			})
+			await change({ store, documentId })
+			await vi.waitFor(function reportedOnce() {
+				expect(reported.mock.calls).toEqual([
+					[
+						`Project "${project.name}": folding in a change of its store (${told}) failed; the other changes are folded in all the same:`,
+						failure,
+					],
+				])
+			})
+			await store.updateDocument(documentId, { name: 'renamed again' })
+			await vi.waitFor(function foldedAgain() {
+				expect(project.state.documents.get(documentId)?.record.name).toBe('renamed again')
+			})
+		})
+	}
+})
+
+type OpeningCase = {
+	/** The store wrapped so that `rename` runs inside its open, at the moment the case names. */
+	wrap: (params: { store: Store; rename: () => Promise<void> }) => void
+}
+const openingCases: Record<string, OpeningCase> = {
+	'as the store opens (its cleanup of an unfinished import)': {
+		wrap: function renameInOpen({ store, rename }) {
+			const opened = store.open.bind(store)
+			store.open = async function renamedWhileOpening() {
+				await opened()
+				await rename()
+			}
+		},
+	},
+	'as the project reads its documents, after the store answered them': {
+		wrap: function renameAfterRead({ store, rename }) {
+			const opened = store.open.bind(store)
+			store.open = async function readThenRenamed() {
+				await opened()
+				// the project's own read, once the store opened (its open reads the documents too)
+				const read = store.getDocuments.bind(store)
+				store.getDocuments = async function renamedOnceRead() {
+					store.getDocuments = read
+					const documents = await read()
+					await rename()
+					return documents
+				}
+			}
+		},
+	},
+}
+
+describe('a change of the project’s own store told while it opens (the store held directly)', () => {
+	for (const [description, { wrap }] of Object.entries(openingCases)) {
+		it(`${description} → folded and posted as the open settles, not held for a later change`, async () => {
+			const { project: first, store, documentId } = await openHeld()
+			await first.close()
+			wrap({
+				store,
+				rename: function renameDocument() {
+					return store.updateDocument(documentId, { name: 'renamed while opening' })
+				},
+			})
+			const project = await new Project({
+				configs: { default: CONFIG },
+				storage: { type: 'custom', store },
+			}).open(store.name)
+			onTestFinished(function closeProject() {
+				return project.close()
+			})
+			await vi.waitFor(function readAgain() {
+				expect(project.state.documents.get(documentId)?.record.name).toBe('renamed while opening')
+			})
+			const heard = listenTo({ project })
+			// posted already: the later changes of the store post those changes only, in order
+			await store.updateDocument(documentId, { name: 'renamed later' })
+			await store.bulkWrite(documentId, { creates: [makeRecord({ id: 'r-later' })] })
+			await vi.waitFor(function lastHeard() {
+				expect(heard.at(-1)).toBe(`commit ${documentId}`)
+			})
+			expect(heard).toEqual([`document-updated ${documentId}`, `commit ${documentId}`])
 		})
 	}
 })
