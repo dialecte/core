@@ -16,7 +16,7 @@ const HUB_LINKS = new WeakMap<EngineLink, HubProjectLink>()
  * this realm a port to it; a call made before the hub answered waits for its answer. The connection's
  * engine is the one the realm holds now: after its host is gone, the next one. The project is destroyed
  * once the hub grants it (no other view uses it), by a fresh worker that waits for the lock of the
- * engine the hub just released.
+ * engine the hub just released - in this realm, or (`deletesFiles: false`) in a view the hub picks.
  */
 export function createHubConnector(params: HubConnectorParams): EngineConnector {
 	refuseUnnamableProject({ project: params.name, dialecteId: params.dialecteId })
@@ -28,6 +28,7 @@ export function createHubConnector(params: HubConnectorParams): EngineConnector 
 		engineUrl,
 		destroyBudgetMs = ENGINE_OPEN_BUDGET_MS,
 		heartbeatTimeoutMs,
+		deletesFiles = true,
 	} = params
 	return {
 		connect: async function connectThroughHub() {
@@ -68,15 +69,18 @@ export function createHubConnector(params: HubConnectorParams): EngineConnector 
 				project: name,
 				dialecteId,
 				own: own && hubLink && { link: hubLink, letGo: own.letGo },
-				destroy: function destroyFiles() {
-					return destroyFromFreshWorker({
-						name,
-						dialecteId,
-						engineUrl,
-						budgetMs: destroyBudgetMs,
-						lock: 'wait',
-					})
-				},
+				// a realm that cannot store names no files to delete: the hub has another view delete them
+				destroy: deletesFiles
+					? function destroyFiles() {
+							return destroyFromFreshWorker({
+								name,
+								dialecteId,
+								engineUrl,
+								budgetMs: destroyBudgetMs,
+								lock: 'wait',
+							})
+						}
+					: undefined,
 			})
 		},
 	}

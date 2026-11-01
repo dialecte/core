@@ -98,6 +98,26 @@ export type HubEvent =
 			project: string
 			dialecteId: string
 	  }
+	| {
+			/**
+			 * A realm that cannot store (a child whose storage is refused) asks to destroy the project: granted as a
+			 * `destroy` is, its files deleted by a realm that runs an engine of the dialecte.
+			 */
+			type: 'destroy-elsewhere'
+			now: number
+			realmId: string
+			project: string
+			dialecteId: string
+	  }
+	| {
+			/** The realm asked to delete a project's files for another has done it, or failed with `error`. */
+			type: 'files-deleted'
+			now: number
+			realmId: string
+			project: string
+			dialecteId: string
+			error?: unknown
+	  }
 	| { /** The deadline the router last answered as `wakeAt` came. */ type: 'tick'; now: number }
 
 // ── Router output ────────────────────────────────────────────────────────────
@@ -177,6 +197,10 @@ export type HubCommand =
 	  }
 	/** The realm's leave handled: it counts no more for the project (a destroy asked after it is not refused for it). */
 	| { type: 'left'; realmId: string; project: string; dialecteId: string }
+	/** Delete the project's files for the realm that asked (`destroy-elsewhere`); answer `files-deleted`. */
+	| { type: 'delete-files'; realmId: string; project: string; dialecteId: string }
+	/** The project the realm asked to destroy elsewhere is deleted. */
+	| { type: 'destroyed-elsewhere'; realmId: string; project: string; dialecteId: string }
 
 export type HubOutput = {
 	commands: HubCommand[]
@@ -237,6 +261,8 @@ export type HubHold = {
 	dialecteId: string
 	/** The realm destroying it. */
 	realmId: string
+	/** The realm deleting its files for it (`destroy-elsewhere`); none: the destroying realm deletes them itself. */
+	deleterRealmId?: string
 	opens: Map<string, Extract<HubEvent, { type: 'open' }>>
 }
 

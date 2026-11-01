@@ -29,6 +29,10 @@ export type RealmToHubMessage =
 	| { type: 'leave'; project: string; dialecteId: string }
 	| { type: 'destroy'; project: string; dialecteId: string }
 	| { type: 'destroyed'; project: string; dialecteId: string }
+	/** A realm that cannot store destroys the project: the hub has a realm that can delete its files. */
+	| { type: 'destroy-elsewhere'; project: string; dialecteId: string }
+	/** The project's files deleted as the hub asked (`delete-files`), or what failed. */
+	| { type: 'files-deleted'; project: string; dialecteId: string; error?: ThrownData }
 	/**
 	 * Said on a port a parent bound for a child, before any hello, when the child lets it go unused (a newer one
 	 * handed to it): the hub forgets that binding. A hub of the same protocol that does not know it ignores it.
@@ -80,6 +84,10 @@ export type HubToRealmMessage =
 	/** The realm's leave of the project handled: it counts no more for it. */
 	| { type: 'left'; project: string; dialecteId: string }
 	| { type: 'destroy-refused'; project: string; dialecteId: string; error: ThrownData }
+	/** The project this realm asked to destroy elsewhere is deleted. */
+	| { type: 'destroyed-elsewhere'; project: string; dialecteId: string }
+	/** Delete the project's files for a realm that cannot store; answer `files-deleted`. */
+	| { type: 'delete-files'; project: string; dialecteId: string }
 	/**
 	 * Said to a child realm before its port closes, when the hub drops it with the page that bound it (that
 	 * page gone, frozen, or unbinding it): its calls are refused until a new port binds it again. A realm

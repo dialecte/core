@@ -2,6 +2,7 @@ import { fromThrownData } from '../wire/error-envelope'
 import { serveHub } from './hub-shell'
 import {
 	ENGINE_IDLE_CLOSE_MS,
+	HUB_LOCK_PREFIX,
 	HUB_OPEN_BUDGET_MS,
 	HUB_PROTOCOL_VERSION,
 	REALM_LOCK_PREFIX,
@@ -11,6 +12,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 
+import type { ThrownData } from '../wire/wire.types'
 import type { HubToRealmMessage, RealmToHubMessage } from './hub-protocol.types'
 import type { HubShell } from './hub-shell.types'
 import type { HubSpawner } from './hub.types'
@@ -598,6 +600,49 @@ describe('the hub serving realms on their control ports', () => {
 			.toBe('PROJECT_ENGINE_UNAVAILABLE')
 	})
 
+	it('the browser granting the hub its own lock late → no realm welcomed before the hub holds it (a realm watching it would take the hub for gone)', async () => {
+		const request = navigator.locks.request.bind(navigator.locks)
+		const spy = vi.spyOn(navigator.locks, 'request').mockImplementation(function hubLockLate(
+			name: string,
+			...rest: unknown[]
+		) {
+			const asked = function askNow(): Promise<unknown> {
+				return (request as (...args: unknown[]) => Promise<unknown>)(name, ...rest)
+			}
+			if (!name.startsWith(HUB_LOCK_PREFIX)) return asked()
+			// the hub's own life lock, asked late: as a busy browser may grant it
+			return new Promise<unknown>(function late(resolve, reject) {
+				setTimeout(function askLate() {
+					asked().then(resolve, reject)
+				}, 200)
+			})
+		} as typeof navigator.locks.request)
+		onTestFinished(function restoreLocks() {
+			spy.mockRestore()
+		})
+		const hub = serveHub()
+		const realmId = uniqueRealm('shell')
+		const release = await holdLock({ name: `${REALM_LOCK_PREFIX}${realmId}` })
+		cleanups.push(release)
+		const channel = new MessageChannel()
+		hub.connect({ port: channel.port2 })
+		const realm = realmOn({ realmId, port: channel.port1, die: release })
+		realm.send({
+			type: 'hello',
+			protocol: HUB_PROTOCOL_VERSION,
+			realmId,
+			topLevel: true,
+			spawners: [SCL],
+		})
+		const welcome = await realm.next('welcome')
+		const { held = [] } = await navigator.locks.query()
+		expect(
+			held.some(function isHubLock(lock) {
+				return lock.name === welcome.hubLock
+			}),
+		).toBe(true)
+	})
+
 	it('a destroy while another realm uses the project → refused PROJECT_OPEN_ELSEWHERE; alone → granted', async () => {
 		const hub = serveHub()
 		const shell = await joinRealm({ hub, name: 'shell' })
@@ -616,4 +661,35 @@ describe('the hub serving realms on their control ports', () => {
 		await tab.next('release-engine')
 		shell.send({ type: 'destroyed', project: 'p', dialecteId: 'scl' })
 	})
+
+	type DeletedCase = { error?: ThrownData; answered: 'destroyed-elsewhere' | 'destroy-refused' }
+	const deletedCases: Record<string, DeletedCase> = {
+		'deleted → the child told its project is destroyed': { answered: 'destroyed-elsewhere' },
+		'failed → the child refused with the page’s error': {
+			error: { kind: 'error', name: 'Error', message: 'the files stayed' },
+			answered: 'destroy-refused',
+		},
+	}
+	for (const [description, { error, answered }] of Object.entries(deletedCases)) {
+		it(`a child that cannot store destroys a project → its page asked to delete the files; ${description}`, async () => {
+			const hub = serveHub()
+			const shell = await joinRealm({ hub, name: 'shell' })
+			const child = await bindChild({ parent: shell, bindingId: 'binding-delete' })
+			child.send({ type: 'destroy-elsewhere', project: 'p', dialecteId: 'scl' })
+			const asked = await shell.next('delete-files')
+			expect(asked).toEqual({ type: 'delete-files', project: 'p', dialecteId: 'scl' })
+			shell.send({
+				type: 'files-deleted',
+				project: 'p',
+				dialecteId: 'scl',
+				...(error !== undefined && { error }),
+			})
+			const told = await child.next(answered)
+			expect(told).toEqual(
+				answered === 'destroyed-elsewhere'
+					? { type: 'destroyed-elsewhere', project: 'p', dialecteId: 'scl' }
+					: { type: 'destroy-refused', project: 'p', dialecteId: 'scl', error },
+			)
+		})
+	}
 })

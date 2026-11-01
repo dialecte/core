@@ -16,11 +16,17 @@ import {
 import {
 	HUB_REGISTRY_KEY,
 	HUB_REJOIN_FIRST_DELAY_MS,
+	HUB_REJOIN_MAX_DELAY_MS,
 	HUB_WELCOME_BUDGET_MS,
 } from './hub-client.constants'
 import { serveHub } from './hub-shell'
 import { HUB_LOCK_PREFIX, HUB_PROTOCOL_VERSION, REALM_LOCK_PREFIX } from './hub.constants'
-import { fakePage, loadSettings, recordingEngineUrl } from './hub.fixtures'
+import {
+	fakePage,
+	loadSettings,
+	recordingEngineUrl,
+	refusingDestroyEngineUrl,
+} from './hub.fixtures'
 
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
@@ -124,7 +130,7 @@ type FakeHub = {
 	reply: (message: HubToRealmMessage, transfer?: Transferable[]) => void
 	/** Said to the realm on the port it opened at that rank (from 0). */
 	replyOn: (params: { portIndex: number; message: HubToRealmMessage }) => void
-	/** The hub gone: the lock it named in its welcomes let go. */
+	/** The hub gone: the lock it named in its welcomes let go, its ports closed; the next ports' hellos welcomed by the next hub. */
 	end: () => void
 	/** Welcome now the hello it left unanswered at that rank (from 0). */
 	welcomeLate: (params: { helloIndex: number }) => void
@@ -145,14 +151,18 @@ function fakeHub(
 	const hellos: FakeHub['hellos'] = []
 	const received: RealmToHubMessage[] = []
 	const waiters: { type: string; resolve: (message: RealmToHubMessage) => void }[] = []
-	// the lock a hub holds for its life, named in its welcomes
-	const hubLock = `${HUB_LOCK_PREFIX}fake-${crypto.randomUUID()}`
+	// the lock a hub holds for its life, named in its welcomes: ended, the next hub of the origin holds another
+	let hubLock = ''
 	let endHub: () => void = refuseNone
-	void navigator.locks.request(hubLock, function holdWhileTheHubLives() {
-		return new Promise<void>(function untilEnded(release) {
-			endHub = release
+	function startHubLife(): void {
+		hubLock = `${HUB_LOCK_PREFIX}fake-${crypto.randomUUID()}`
+		void navigator.locks.request(hubLock, function holdWhileTheHubLives() {
+			return new Promise<void>(function untilEnded(release) {
+				endHub = release
+			})
 		})
-	})
+	}
+	startHubLife()
 	function deliver(message: RealmToHubMessage): void {
 		const waiter = waiters.find(function waitsFor(candidate) {
 			return candidate.type === message.type
@@ -222,6 +232,9 @@ function fakeHub(
 		},
 		end: function endFakeHub() {
 			endHub()
+			// its ports die with it; the next hub of the origin welcomes the hellos on the next ones
+			for (const port of ports) port.close()
+			startHubLife()
 		},
 		welcomeLate: function welcomeHeldHello({ helloIndex }) {
 			const realmId = hellos[helloIndex]!.realmId
@@ -1634,24 +1647,158 @@ describe('a realm connected to the hub', () => {
 		expect(hub.received.filter(isOpen)).toHaveLength(opens)
 	})
 
-	it('the hub gone (its lock let go) → the realm’s calls refused STORE_CONNECTION_FAILED meanwhile, and it says hello again, as a new instance', async () => {
+	it('the hub gone (its lock let go) while a link waits for its engine → the realm says hello again at once, as a new instance; the link answered by the next hub’s engine (a read made again there)', async () => {
 		const hub = fakeHub()
 		const connection = await joinFakeHub({ hub })
 		onTestFinished(connection.close)
 		const project = uniqueProject()
 		const link = openLink({ connection, project })
 		await connectEngine({ hub, link, project })
+		// a hub that lasted (longer than the rejoin delay)
+		await pause({ ms: HUB_REJOIN_FIRST_DELAY_MS + 100 })
 		hub.end()
-		await vi.waitFor(async function refusedMeanwhile() {
-			expect(await outcomeOf({ promise: link.engine() })).toBe('STORE_CONNECTION_FAILED')
-		})
 		await vi.waitFor(
-			function saysHelloAgain() {
+			function saysHelloAgainAtOnce() {
+				expect(hub.hellos).toHaveLength(2)
+			},
+			{ timeout: HUB_REJOIN_FIRST_DELAY_MS / 2 },
+		)
+		expect(hub.hellos[1]!.realmId).not.toBe(hub.hellos[0]!.realmId)
+		// waiting, not refused, while the realm joins the next hub
+		await connectEngine({ hub, link, project })
+		expect(await outcomeOf({ promise: link.engine() })).toBe('settled')
+	})
+
+	it('the hub gone, the next one never welcoming → the link waiting refused STORE_CONNECTION_FAILED once the welcome budget has passed', async () => {
+		const hub = fakeHub({
+			silences: function silenceTheSecond(helloIndex) {
+				return helloIndex === 1
+			},
+		})
+		const connection = await startHubConnection({
+			openPort: function fakeHubPort() {
+				return { port: hub.openPort() }
+			},
+			topLevel: true,
+			spawners: [SPAWNER],
+			holdsLock: true,
+			lifecycle: undefined,
+			welcomeBudgetMs: 200,
+		})
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const link = openLink({ connection, project })
+		await connectEngine({ hub, link, project })
+		await pause({ ms: HUB_REJOIN_FIRST_DELAY_MS + 100 })
+		hub.end()
+		await vi.waitFor(function saysHelloAgain() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		expect(await outcomeOf({ promise: link.engine() })).toBe('STORE_CONNECTION_FAILED')
+	})
+
+	it('a bound child handed a port while welcomed, no `dropped` coming (its hub gone: a child watches no hub lock) → it joins on that port once the welcome budget has passed, its link answered by the next hub’s engine', async () => {
+		const hub = fakeHub()
+		const child = await joinFakeHubAsChild({ hub, welcomeBudgetMs: 300 })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		hub.end()
+		child.adoptPort({ port: hub.openPort() })
+		await vi.waitFor(function joinedOnTheHandedPort() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		// the engine of the hub gone let go: the link waits for the next hub's
+		await connectEngine({ hub, link, project })
+		expect(await outcomeOf({ promise: link.engine() })).toBe('settled')
+	})
+
+	it('a bound child switching to a handed port on a live hub that sent no `dropped` → it leaves its projects on the old port first: that hub counts it no more', async () => {
+		const hub = fakeHub()
+		const child = await joinFakeHubAsChild({ hub, welcomeBudgetMs: 300 })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		child.adoptPort({ port: hub.openPort() })
+		const left = await hub.next('leave')
+		expect(left).toEqual({ type: 'leave', project, dialecteId: TEST_DIALECTE.id })
+		await vi.waitFor(function joinedOnTheHandedPort() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+	})
+
+	it('a hub out of reach for good (no welcome) → its rejoin delay keeps doubling, however long the outage: never back to its first without a welcome', async () => {
+		const hub = fakeHub({
+			silences: function silenceAfterTheFirst(helloIndex) {
+				return helloIndex > 0
+			},
+		})
+		const connection = await startHubConnection({
+			openPort: function fakeHubPort() {
+				return { port: hub.openPort() }
+			},
+			topLevel: true,
+			spawners: [SPAWNER],
+			holdsLock: true,
+			lifecycle: undefined,
+			welcomeBudgetMs: 100,
+		})
+		onTestFinished(connection.close)
+		const now = performance.now.bind(performance)
+		let jumpedMs = 0
+		const clock = vi.spyOn(performance, 'now').mockImplementation(function shiftedNow() {
+			return now() + jumpedMs
+		})
+		onTestFinished(function restoreClock() {
+			clock.mockRestore()
+		})
+		// a hub that did not last: out of reach at once, joined again after the first delay
+		hub.end()
+		await vi.waitFor(
+			function secondHello() {
 				expect(hub.hellos).toHaveLength(2)
 			},
 			{ timeout: HUB_REJOIN_FIRST_DELAY_MS * 3 },
 		)
-		expect(hub.hellos[1]!.realmId).not.toBe(hub.hellos[0]!.realmId)
+		// a long outage as the clock goes: the next delay is still the doubled one
+		jumpedMs = HUB_REJOIN_MAX_DELAY_MS + 1_000
+		const secondAt = now()
+		await vi.waitFor(
+			function thirdHello() {
+				expect(hub.hellos).toHaveLength(3)
+			},
+			{ timeout: HUB_REJOIN_FIRST_DELAY_MS * 5 },
+		)
+		expect(now() - secondAt).toBeGreaterThanOrEqual(HUB_REJOIN_FIRST_DELAY_MS * 2)
+	})
+
+	it('a hub gone within the first rejoin delay of its welcome (a hub that does not last) → the realm’s calls refused STORE_CONNECTION_FAILED meanwhile, and it says hello again after its delay', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const link = openLink({ connection, project })
+		await connectEngine({ hub, link, project })
+		await pause({ ms: HUB_REJOIN_FIRST_DELAY_MS + 100 })
+		hub.end()
+		await vi.waitFor(function joinedTheNext() {
+			expect(hub.hellos).toHaveLength(2)
+		})
+		await connectEngine({ hub, link, project })
+		// the next hub lost too, at once: not joined again and again
+		hub.end()
+		await vi.waitFor(async function refusedMeanwhile() {
+			expect(await outcomeOf({ promise: link.engine() })).toBe('STORE_CONNECTION_FAILED')
+		})
+		expect(hub.hellos).toHaveLength(2)
+		await vi.waitFor(
+			function saysHelloAgainLater() {
+				expect(hub.hellos).toHaveLength(3)
+			},
+			{ timeout: HUB_REJOIN_FIRST_DELAY_MS * 4 },
+		)
 	})
 
 	it('a realm whose lock the browser refuses, or never grants within the welcome budget → its join fails STORE_CONNECTION_FAILED', async () => {
@@ -1904,6 +2051,226 @@ describe('a realm connected to the hub', () => {
 		connection.close()
 		const closed = await outcomeOf({ promise: connection.openProject(otherVersion).engine() })
 		expect(closed).toBe('STORE_CLOSED')
+	})
+
+	type DeleteFilesCase = {
+		/** The engines the realm runs. */
+		spawners: () => RealmEngineSpawner[]
+		/** The error the realm answers, as a key or a message; none: deleted. */
+		failure?: { key?: DialecteErrorKey; message?: string }
+	}
+	const deleteFilesCases: Record<string, DeleteFilesCase> = {
+		'its engine of the dialecte deletes them → told deleted': {
+			spawners: function ownEngine() {
+				return [SPAWNER]
+			},
+		},
+		'its engine refuses → told with the engine’s error': {
+			spawners: function refusingEngine() {
+				return [{ ...SPAWNER, engineUrl: refusingDestroyEngineUrl() }]
+			},
+			failure: { message: 'the files stayed' },
+		},
+		'it runs no engine of the dialecte → told STORE_UNAVAILABLE': {
+			spawners: function otherDialecte() {
+				return [{ ...SPAWNER, dialecteId: 'other' }]
+			},
+			failure: { key: 'STORE_UNAVAILABLE' },
+		},
+	}
+	for (const [description, { spawners, failure }] of Object.entries(deleteFilesCases)) {
+		it(
+			`asked by the hub to delete a project's files for a view that cannot store: ${description}`,
+			async () => {
+				const hub = fakeHub()
+				const connection = await startHubConnection({
+					openPort: function fakeHubPort() {
+						return { port: hub.openPort() }
+					},
+					topLevel: true,
+					spawners: spawners(),
+					holdsLock: true,
+					lifecycle: undefined,
+				})
+				onTestFinished(connection.close)
+				const project = uniqueProject()
+				hub.reply({ type: 'delete-files', project, dialecteId: TEST_DIALECTE.id })
+				const deleted = await hub.next('files-deleted')
+				expect(deleted).toMatchObject({ project, dialecteId: TEST_DIALECTE.id })
+				if (!failure) {
+					expect(deleted.error).toBeUndefined()
+					return
+				}
+				const error = fromThrownData({ data: deleted.error! })
+				if (failure.key) expect(toDialecteError(error)?.key).toBe(failure.key)
+				if (failure.message) expect((error as Error).message).toBe(failure.message)
+			},
+			ENGINE_WORKER_CASE_TIMEOUT_MS,
+		)
+	}
+
+	type ElsewhereCase = { answer: HubToRealmMessage; outcome: string }
+	const elsewhereCases: Record<string, ElsewhereCase> = {
+		'the hub says it is deleted → settled, its own link let go': {
+			answer: { type: 'destroyed-elsewhere', project: '', dialecteId: '' },
+			outcome: 'settled',
+		},
+		'the hub refuses → refused with its error, its own link kept': {
+			answer: {
+				type: 'destroy-refused',
+				project: '',
+				dialecteId: '',
+				error: toThrownData({
+					thrown: createDialecteError('PROJECT_OPEN_ELSEWHERE', { detail: 'open in another view' }),
+				}),
+			},
+			outcome: 'PROJECT_OPEN_ELSEWHERE',
+		},
+	}
+	for (const [description, { answer, outcome }] of Object.entries(elsewhereCases)) {
+		it(`a destroy with no files to delete here (a view that cannot store) → the hub asked to delete them elsewhere; ${description}`, async () => {
+			const hub = fakeHub()
+			const connection = await joinFakeHub({ hub })
+			onTestFinished(connection.close)
+			const project = uniqueProject()
+			const own = openLink({ connection, project })
+			let letGo = 0
+			const destroying = outcomeOf({
+				promise: connection.destroyProject({
+					project,
+					dialecteId: TEST_DIALECTE.id,
+					own: {
+						link: own,
+						letGo: async function letOwnGo() {
+							letGo += 1
+						},
+					},
+				}),
+			})
+			const asked = await hub.next('destroy-elsewhere')
+			expect(asked).toEqual({ type: 'destroy-elsewhere', project, dialecteId: TEST_DIALECTE.id })
+			hub.reply({ ...answer, project, dialecteId: TEST_DIALECTE.id } as HubToRealmMessage)
+			expect(await destroying).toBe(outcome)
+			expect(letGo).toBe(outcome === 'settled' ? 1 : 0)
+			// no file deleted here, nothing said done: the hub's hold is the deleting view's
+			await pause({ ms: 50 })
+			expect(hub.received.map(typeOfMessage)).not.toContain('destroyed')
+		})
+	}
+
+	type AskedAgainCase = {
+		answer: (params: { project: string }) => HubToRealmMessage
+		/** Whether another link of the realm opens the project while the files are deleted. */
+		openedMeanwhile: boolean
+		outcome: string
+		/** The creation the next engine opens: the same project, or one made anew. */
+		creationId: string
+	}
+	const askedAgainCases: Record<string, AskedAgainCase> = {
+		'refused (its own link kept, its engine dropped with the project) → the own link asks the hub again':
+			{
+				answer: function refused({ project }) {
+					return {
+						type: 'destroy-refused',
+						project,
+						dialecteId: TEST_DIALECTE.id,
+						error: toThrownData({
+							thrown: createDialecteError('STORE_ENGINE_LOST', {
+								detail: 'the deleting view is gone',
+							}),
+						}),
+					}
+				},
+				openedMeanwhile: false,
+				outcome: 'STORE_ENGINE_LOST',
+				creationId: 'creation-1',
+			},
+		'deleted, another link of the realm opened meanwhile → that link asks the hub again (the project made anew)':
+			{
+				answer: function deleted({ project }) {
+					return { type: 'destroyed-elsewhere', project, dialecteId: TEST_DIALECTE.id }
+				},
+				openedMeanwhile: true,
+				outcome: 'settled',
+				creationId: 'creation-2',
+			},
+	}
+	for (const [description, { answer, openedMeanwhile, outcome, creationId }] of Object.entries(
+		askedAgainCases,
+	)) {
+		it(`a destroy elsewhere while its own link had an engine, ${description}`, async () => {
+			const hub = fakeHub()
+			const connection = await joinFakeHub({ hub })
+			onTestFinished(connection.close)
+			const project = uniqueProject()
+			const own = openLink({ connection, project })
+			await connectEngine({ hub, link: own, project })
+			const destroying = outcomeOf({
+				promise: connection.destroyProject({
+					project,
+					dialecteId: TEST_DIALECTE.id,
+					own: { link: own, letGo: own.release },
+				}),
+			})
+			await hub.next('destroy-elsewhere')
+			hub.reply({ type: 'engine-lost', project, dialecteId: TEST_DIALECTE.id, generation: 1 })
+			await engineLostHeard({ link: own })
+			const other = openedMeanwhile ? openLink({ connection, project }) : own
+			const reaching = other.engine()
+			// nothing asked while the files are deleted: an open then would be held, and answered for the old creation
+			await pause({ ms: 50 })
+			expect(hub.received.map(typeOfMessage)).not.toContain('open')
+			hub.reply(answer({ project }))
+			expect(await destroying).toBe(outcome)
+			// asked again once answered: the creation it expects the one of before, unless the project was deleted
+			const asked = await hub.next('open')
+			expect(asked.expectedCreationId).toBe(outcome === 'settled' ? undefined : 'creation-1')
+			const channel = new MessageChannel()
+			onTestFinished(function closeEnginePort() {
+				channel.port2.close()
+			})
+			hub.reply(
+				{
+					type: 'engine-ready',
+					creationId,
+					project,
+					dialecteId: TEST_DIALECTE.id,
+					generation: 2,
+					port: channel.port1,
+				},
+				[channel.port1],
+			)
+			expect(await outcomeOf({ promise: reaching })).toBe('settled')
+		})
+	}
+
+	it('a destroy elsewhere refused before the hub held anything (another view uses the project) → its own link keeps its engine: nothing asked again', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const own = openLink({ connection, project })
+		await connectEngine({ hub, link: own, project })
+		const destroying = outcomeOf({
+			promise: connection.destroyProject({
+				project,
+				dialecteId: TEST_DIALECTE.id,
+				own: { link: own, letGo: own.release },
+			}),
+		})
+		await hub.next('destroy-elsewhere')
+		hub.reply({
+			type: 'destroy-refused',
+			project,
+			dialecteId: TEST_DIALECTE.id,
+			error: toThrownData({
+				thrown: createDialecteError('PROJECT_OPEN_ELSEWHERE', { detail: 'open in another view' }),
+			}),
+		})
+		expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
+		expect(await outcomeOf({ promise: own.engine() })).toBe('settled')
+		await pause({ ms: 50 })
+		expect(hub.received.map(typeOfMessage)).not.toContain('open')
 	})
 
 	it('a destroy while another link of the realm has the project → refused PROJECT_OPEN_ELSEWHERE in the realm, the hub not asked', async () => {

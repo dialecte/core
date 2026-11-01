@@ -45,6 +45,22 @@ export function recordingEngineUrl(): string {
 	return url
 }
 
+/** A worker that refuses every `destroy`, the files kept: `{ kind: 'error', message: 'the files stayed' }`. */
+export function refusingDestroyEngineUrl(): string {
+	const source = [
+		'self.onmessage = function refuseDestroy(event) {',
+		'	const request = event.data',
+		"	if (request?.type !== 'destroy') return",
+		"	self.postMessage({ type: 'failed', requestId: request.requestId, thrown: { kind: 'error', name: 'Error', message: 'the files stayed' } })",
+		'}',
+	].join('\n')
+	const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }))
+	onTestFinished(function revokeUrl() {
+		URL.revokeObjectURL(url)
+	})
+	return url
+}
+
 /** What the cases' engines open with: the consumer's wasm, as a page gives it. */
 export async function loadSettings(): Promise<unknown> {
 	return sqliteEngineSettings()

@@ -68,6 +68,10 @@ function routeEvent(params: { step: HubStep; event: HubEvent }): void {
 			return destroyProject({ step, destroy: event })
 		case 'destroyed':
 			return liftHold({ step, key: projectKeyOf(event), realmId: event.realmId })
+		case 'destroy-elsewhere':
+			return destroyElsewhere({ step, destroy: event })
+		case 'files-deleted':
+			return filesDeleted({ step, deleted: event })
 		case 'tick':
 			return passDeadlines({ step })
 		default:
@@ -351,36 +355,130 @@ function destroyProject(params: {
 	destroy: Extract<HubEvent, { type: 'destroy' }>
 }): void {
 	const { step, destroy } = params
-	const { realmId } = destroy
 	const refusal = destroyRefusal({ state: step.state, destroy })
 	if (refusal) {
-		step.commands.push({
-			type: 'refuse-destroy',
-			realmId,
-			project: destroy.project,
-			dialecteId: destroy.dialecteId,
-			refusal,
+		refuseDestroy({ step, destroy, refusal })
+		return
+	}
+	holdForDestroy({ step, destroy, deleterRealmId: undefined })
+	step.commands.push({
+		type: 'destroy-granted',
+		realmId: destroy.realmId,
+		project: destroy.project,
+		dialecteId: destroy.dialecteId,
+	})
+}
+
+/**
+ * A realm that cannot store destroys the project: refused as `destroy` is, or when no realm runs an engine of the
+ * dialecte; else held as `destroy` is, and the realm deleting its files asked to - the asking child's page when it runs
+ * one, else the first other realm that does. Opens wait until that realm says it is done, or is gone.
+ */
+function destroyElsewhere(params: {
+	step: HubStep
+	destroy: Extract<HubEvent, { type: 'destroy-elsewhere' }>
+}): void {
+	const { step, destroy } = params
+	const refusal = destroyRefusal({ state: step.state, destroy })
+	if (refusal) {
+		refuseDestroy({ step, destroy, refusal })
+		return
+	}
+	const deleter = deleterFor({ state: step.state, destroy })
+	if (deleter === undefined) {
+		refuseDestroy({
+			step,
+			destroy,
+			refusal: {
+				origin: 'hub',
+				key: 'STORE_UNAVAILABLE',
+				detail: `no view of the origin runs an engine of "${destroy.dialecteId}" to delete "${destroy.project}"`,
+				meta: { project: destroy.project, dialecteId: destroy.dialecteId },
+			},
 		})
 		return
 	}
+	holdForDestroy({ step, destroy, deleterRealmId: deleter })
+	step.commands.push({
+		type: 'delete-files',
+		realmId: deleter,
+		project: destroy.project,
+		dialecteId: destroy.dialecteId,
+	})
+}
+
+/** The realm to delete a project's files for one that cannot store: its page when it runs an engine of the dialecte, else the first other realm that does. */
+function deleterFor(params: {
+	state: HubState
+	destroy: Extract<HubEvent, { type: 'destroy-elsewhere' }>
+}): string | undefined {
+	const { state, destroy } = params
+	const asker = state.realms.get(destroy.realmId)
+	function runsTheDialecte(realm: HubRealm | undefined): boolean {
+		return realm !== undefined && realm.spawners.has(destroy.dialecteId)
+	}
+	const parent =
+		asker?.parentRealmId === undefined ? undefined : state.realms.get(asker.parentRealmId)
+	if (runsTheDialecte(parent)) return parent!.realmId
+	return [...state.realms.values()]
+		.filter(function canDelete(realm) {
+			return realm.realmId !== destroy.realmId && runsTheDialecte(realm)
+		})
+		.sort(function byConnectionOrder(first, second) {
+			return first.order - second.order
+		})[0]?.realmId
+}
+
+/** The realm's destroy refused, as it came. */
+function refuseDestroy(params: {
+	step: HubStep
+	destroy: { realmId: string; project: string; dialecteId: string }
+	refusal: HubRefusal
+}): void {
+	const { step, destroy, refusal } = params
+	step.commands.push({
+		type: 'refuse-destroy',
+		realmId: destroy.realmId,
+		project: destroy.project,
+		dialecteId: destroy.dialecteId,
+		refusal,
+	})
+}
+
+/**
+ * The project held for a destroy: its engine released - the asking realm, if still a client, told its engine is gone
+ * and held - and the opens made from now on waiting until the destroy is done. A realm whose files another deletes
+ * (`deleterRealmId`) is not held: its connection lets the project go once told it is deleted, and an open of it
+ * elected meanwhile would make the project again.
+ */
+function holdForDestroy(params: {
+	step: HubStep
+	destroy: { realmId: string; project: string; dialecteId: string }
+	deleterRealmId: string | undefined
+}): void {
+	const { step, destroy, deleterRealmId } = params
+	const { realmId } = destroy
 	const hold: HubHold = {
 		project: destroy.project,
 		dialecteId: destroy.dialecteId,
 		realmId,
+		...(deleterRealmId !== undefined && { deleterRealmId }),
 		opens: new Map(),
 	}
 	const project = step.state.projects.get(projectKeyOf(destroy))
 	if (project) {
 		const version = project.clients.get(realmId)
 		if (version !== undefined) {
-			hold.opens.set(realmId, {
-				type: 'open',
-				now: step.now,
-				realmId,
-				project: project.project,
-				dialecteId: project.dialecteId,
-				dialecteVersion: version,
-			})
+			if (deleterRealmId === undefined) {
+				hold.opens.set(realmId, {
+					type: 'open',
+					now: step.now,
+					realmId,
+					project: project.project,
+					dialecteId: project.dialecteId,
+					dialecteVersion: version,
+				})
+			}
 			if (project.engine.status === 'ready') {
 				step.commands.push({
 					type: 'engine-lost',
@@ -395,18 +493,39 @@ function destroyProject(params: {
 		step.state.projects.delete(projectKeyOf(project))
 	}
 	step.state.holds.set(projectKeyOf(destroy), hold)
-	step.commands.push({
-		type: 'destroy-granted',
-		realmId,
-		project: destroy.project,
-		dialecteId: destroy.dialecteId,
-	})
+}
+
+/**
+ * The realm deleting a project's files for another is done: the asking realm, if still there, answered - its project
+ * deleted, or refused with the deleting realm's error - then the hold lifted. Ignored from a realm not asked to.
+ */
+function filesDeleted(params: {
+	step: HubStep
+	deleted: Extract<HubEvent, { type: 'files-deleted' }>
+}): void {
+	const { step, deleted } = params
+	const key = projectKeyOf(deleted)
+	const hold = step.state.holds.get(key)
+	if (hold?.deleterRealmId === undefined || hold.deleterRealmId !== deleted.realmId) return
+	if (step.state.realms.has(hold.realmId)) {
+		if (deleted.error === undefined) {
+			step.commands.push({
+				type: 'destroyed-elsewhere',
+				realmId: hold.realmId,
+				project: hold.project,
+				dialecteId: hold.dialecteId,
+			})
+		} else {
+			refuseDestroy({ step, destroy: hold, refusal: { origin: 'engine', error: deleted.error } })
+		}
+	}
+	liftHold({ step, key, realmId: hold.realmId, held: true })
 }
 
 /** Why a realm may not destroy the project now: unknown to the hub, another destroy runs, another realm uses it. */
 function destroyRefusal(params: {
 	state: HubState
-	destroy: Extract<HubEvent, { type: 'destroy' }>
+	destroy: Extract<HubEvent, { type: 'destroy' | 'destroy-elsewhere' }>
 }): HubRefusal | undefined {
 	const { state, destroy } = params
 	const { realmId, project } = destroy
@@ -440,11 +559,15 @@ function destroyRefusal(params: {
 	}
 }
 
-/** The destroy of the project (its key) done, or its realm gone: the opens made meanwhile go on, in their order. */
-function liftHold(params: { step: HubStep; key: string; realmId: string }): void {
-	const { step, key, realmId } = params
+/**
+ * The destroy of the project (its key) done, or its realm gone: the opens made meanwhile go on, in their order. A
+ * destroy whose files another realm deletes is lifted only once that one is done or gone (`held`).
+ */
+function liftHold(params: { step: HubStep; key: string; realmId: string; held?: boolean }): void {
+	const { step, key, realmId, held = false } = params
 	const hold = step.state.holds.get(key)
 	if (hold?.realmId !== realmId) return
+	if (hold.deleterRealmId !== undefined && !held) return
 	step.state.holds.delete(key)
 	for (const open of hold.opens.values()) {
 		openProject({ step, open: { ...open, now: step.now } })
@@ -484,6 +607,23 @@ function removeRealm(params: { step: HubStep; realmId: string }): void {
 	}
 	for (const hold of step.state.holds.values()) {
 		for (const goneId of gone) hold.opens.delete(goneId)
+		if (hold.deleterRealmId !== undefined && gone.includes(hold.deleterRealmId)) {
+			// what it deleted is unknown: the asking realm, if still there, told so
+			if (!gone.includes(hold.realmId)) {
+				refuseDestroy({
+					step,
+					destroy: hold,
+					refusal: {
+						origin: 'hub',
+						key: 'STORE_ENGINE_LOST',
+						detail: `the view deleting "${hold.project}" is gone: its files may be partly deleted`,
+						meta: { project: hold.project, reason: 'host-gone' },
+					},
+				})
+			}
+			liftHold({ step, key: projectKeyOf(hold), realmId: hold.realmId, held: true })
+			continue
+		}
 		if (gone.includes(hold.realmId))
 			liftHold({ step, key: projectKeyOf(hold), realmId: hold.realmId })
 	}
