@@ -1,6 +1,6 @@
 import { EngineStore } from './engine/engine-store'
 import { resolveStore, sqliteConnectorParamsOf } from './resolve-store'
-import { registerSqliteStorage } from './sqlite-storage'
+import { replaceSqliteStorage } from './sqlite-storage'
 import { withoutSqliteStorage, withSqliteStorage } from './sqlite-storage.fixtures'
 
 import { describe, it, expect, onTestFinished, vi } from 'vitest'
@@ -169,7 +169,7 @@ describe('resolveStore', () => {
 			const storeOf = vi.fn(function builtStore() {
 				return built
 			})
-			onTestFinished(registerSqliteStorage({ storage: { storeOf } }))
+			onTestFinished(replaceSqliteStorage({ storage: { storeOf } }))
 			const store = resolveStore({
 				name: 'resolve-store',
 				storage: { type: 'sqlite' },

@@ -1,7 +1,9 @@
 /**
  * The version of what copies of the library share through the registration: the `SqliteStorage` it holds and the
  * Store contract of the stores it builds (a copy's Project calls another copy's store). Bumped with any change of
- * either, so a copy of another version finds no kind (`PROJECT_SQLITE_NOT_IMPORTED`) instead of a store it cannot use.
+ * either, so a copy of another version finds no kind (`PROJECT_SQLITE_NOT_IMPORTED`) instead of a store it cannot use:
+ * `sqlite-storage.shape.test.ts` fails until it is: the shape (their members, and every type of the package they reach)
+ * is recorded per version in `__shapes__/sqlite-storage-v<version>.txt`, written at the first run of a new version.
  */
 export const SQLITE_STORAGE_VERSION = 1
 

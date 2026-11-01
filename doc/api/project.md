@@ -436,7 +436,7 @@ A project's name and its dialecte's id name what holds it on every store (a SQLi
 
 `{ type: 'sqlite' }` keeps a project in SQLite on the origin's private file system. One engine serves the project to every tab, window and iframe of the app: it runs in a worker started by one view - elected by the origin's hub when the page has one (`connectHub`), else the page itself - and every other view reaches it through a port. `local` stays IndexedDB and the default.
 
-SQLite storage is opt-in: the app imports `@dialecte/core/sqlite` once, in its entry, before it opens a project on it. The import registers the `sqlite` storage kind and gives what only SQLite storage uses: the hub (`connectHub`, `adoptHubPort`) and `listProjects`. An app that never imports it never emits nor downloads the SQLite engine's side, its wasm file or the hub's worker; a project opened (or destroyed by name) on `sqlite` there is refused `PROJECT_SQLITE_NOT_IMPORTED`, the import to add named.
+SQLite storage is opt-in: the app imports `@dialecte/core/sqlite` once, in its entry, before it opens a project on it. The import registers the `sqlite` storage kind for every copy of `@dialecte/core` of the same storage version in the page (the first import kept: one copy runs the page's engines) and gives what only SQLite storage uses: the hub (`connectHub`, `adoptHubPort`) and `listProjects`. An app that never imports it never emits nor downloads the SQLite engine's side, its wasm file or the hub's worker; a project opened (or destroyed by name) on `sqlite` there is refused `PROJECT_SQLITE_NOT_IMPORTED`, the import to add named.
 
 ```ts
 import '@dialecte/core/sqlite'

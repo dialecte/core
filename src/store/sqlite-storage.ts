@@ -6,10 +6,17 @@ import type { SqliteStorage, SqliteStorageHolder } from './sqlite-storage.types'
 
 /**
  * Register the `sqlite` storage kind for every copy of the library of the same storage version in this realm (what
- * importing `@dialecte/core/sqlite` does; `undefined`: none, a test's case). Answers the restore of the one
- * registered before.
+ * importing `@dialecte/core/sqlite` does). A kind registered already - an earlier import, another copy of the same
+ * version - is kept: the realm's engines run in direct mode are one copy's (its open connections, its engines), so
+ * every project of the realm goes through that copy.
  */
-export function registerSqliteStorage(params: { storage: SqliteStorage | undefined }): () => void {
+export function registerSqliteStorage(params: { storage: SqliteStorage }): void {
+	const holder = globalThis as SqliteStorageHolder
+	holder[SQLITE_STORAGE_KEY] ??= params.storage
+}
+
+/** A test's kind for its case (`undefined`: none, an app that never imported the entry); answers the restore. */
+export function replaceSqliteStorage(params: { storage: SqliteStorage | undefined }): () => void {
 	const holder = globalThis as SqliteStorageHolder
 	const before = holder[SQLITE_STORAGE_KEY]
 	holder[SQLITE_STORAGE_KEY] = params.storage
