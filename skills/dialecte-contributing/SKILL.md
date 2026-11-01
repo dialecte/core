@@ -126,8 +126,9 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
    that reads the disk, spawns a process or measures time carries an explicit bound, named
    (`SOURCE_SCAN_TIMEOUT_MS` in core's `src/test/test-timing.constants.ts`) and several times what the test
    takes on a quiet machine; the test review and the review check that every such test has one. A suite that
-   spawns git clears the inherited `GIT_*` variables before any test (a setup file), for the code under test
-   as much as for its own calls: under a commit hook in a worktree they point at the outer repository
+   spawns git clears the inherited `GIT_*` variables before any test (a setup file in the `setupFiles` of
+   every vitest project that runs the suite - read the config, add one when none does it), for the code
+   under test as much as for its own calls: under a commit hook in a worktree they point at the outer repository
    ([references/traps.md](references/traps.md), Tests).
 3. **Implement under the code rules**: [references/code-rules.md](references/code-rules.md).
    Read it before writing the first line; most review comments come from it. `npx dialecte rules`
@@ -299,8 +300,8 @@ and every correction the user made that a skill should have prevented. Then:
 
 - **Inside a dialecte repository**: draft each skill edit as before/after and show it to the user; an
   approved edit goes in the same change (skills ship with the package that owns the code), through
-  skill-creator - the eval case first, failing on the current text, as `dialecte-lot` describes - then
-  `npm run skills:generate` and `npm run skills:check`.
+  `anthropic-skills:skill-creator` loaded with the Skill tool - the eval case first, failing on the text
+  before the change, as `dialecte-lot` describes - then `npm run skills:generate` and `npm run skills:check`.
 - **In an app**: draft an issue for the package that ships the skill - the statement that was wrong
   or missing, the evidence (file, behaviour), the wording you propose - and show it to the user.
   Post it only with their approval.

@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: skill-change-brief-loads-skill-creator
+expected_outcome: |
+  The implementer brief of a lot that changes skill text tells the implementer to load
+  `anthropic-skills:skill-creator` with the Skill tool and follow its eval loop: the eval case first, run with the
+  changed text and with the text before the change on both station tiers, several runs per configuration, graded
+  by a separate agent that does not know which text produced a run, and its benchmark and viewer handed to the
+  user. The implementer never grades its own runs.

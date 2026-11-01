@@ -79,8 +79,11 @@ Tests: written by the test station, red (`npx dialecte tdd status`), approved by
   with the reason. Never edit test code (tests, helpers, fixtures, snapshots): an edit after red is refused
   at green; if you made one, undo it by hand first (no git command), then hand the case back. Exempt lot: <none | the
   reason, written in .dialecte/lot.json by the orchestrator>
-Skills: load dialecte, dialecte-contributing, dialecte-lot. A skill text change goes through skill-creator
-  (eval case first, with/without run).
+Skills: load dialecte, dialecte-contributing, dialecte-lot. A skill text change: load
+  `anthropic-skills:skill-creator` with the Skill tool and follow it - eval case first, failing on the text
+  before the change; runs with and before the change on the standard and strong tiers, several per
+  configuration; graded blind by
+  a separate agent, never by you; its benchmark and viewer paths in your report.
 Gates: fast gate per behaviour; full Definition of Done once at the end (<the package's commands>).
 Machine: one heavy browser run at a time; vitest --no-file-parallelism; nice -n 10.
 Report: the implement report shape of dialecte-lot, nothing else.
