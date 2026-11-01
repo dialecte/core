@@ -371,8 +371,8 @@ function destroyProject(params: {
 
 /**
  * A realm that cannot store destroys the project: refused as `destroy` is, or when no realm runs an engine of the
- * dialecte; else held as `destroy` is, and the realm deleting its files asked to - the asking child's page when it runs
- * one, else the first other realm that does. Opens wait until that realm says it is done, or is gone.
+ * dialecte; else held as `destroy` is, and the realm deleting its files asked to (`deleterFor`: at the asker's
+ * version first, the child's page first). Opens wait until that realm says it is done, or is gone.
  */
 function destroyElsewhere(params: {
 	step: HubStep
@@ -407,26 +407,34 @@ function destroyElsewhere(params: {
 	})
 }
 
-/** The realm to delete a project's files for one that cannot store: its page when it runs an engine of the dialecte, else the first other realm that does. */
+/**
+ * The realm to delete a project's files for one that cannot store: one running the dialecte at the asker's version
+ * first, else at any version (a destroy removes the project's files by its dialecte and name, whatever their layout) -
+ * each time the asking child's page first, then the other realms in connection order.
+ */
 function deleterFor(params: {
 	state: HubState
 	destroy: Extract<HubEvent, { type: 'destroy-elsewhere' }>
 }): string | undefined {
 	const { state, destroy } = params
 	const asker = state.realms.get(destroy.realmId)
-	function runsTheDialecte(realm: HubRealm | undefined): boolean {
-		return realm !== undefined && realm.spawners.has(destroy.dialecteId)
-	}
 	const parent =
 		asker?.parentRealmId === undefined ? undefined : state.realms.get(asker.parentRealmId)
-	if (runsTheDialecte(parent)) return parent!.realmId
-	return [...state.realms.values()]
-		.filter(function canDelete(realm) {
-			return realm.realmId !== destroy.realmId && runsTheDialecte(realm)
+	const others = [...state.realms.values()]
+		.filter(function notTheAsker(realm) {
+			return realm.realmId !== destroy.realmId && realm !== parent
 		})
 		.sort(function byConnectionOrder(first, second) {
 			return first.order - second.order
-		})[0]?.realmId
+		})
+	const candidates = parent ? [parent, ...others] : others
+	function atTheAskersVersion(realm: HubRealm): boolean {
+		return realm.spawners.get(destroy.dialecteId) === destroy.dialecteVersion
+	}
+	function runsTheDialecte(realm: HubRealm): boolean {
+		return realm.spawners.has(destroy.dialecteId)
+	}
+	return (candidates.find(atTheAskersVersion) ?? candidates.find(runsTheDialecte))?.realmId
 }
 
 /** The realm's destroy refused, as it came. */

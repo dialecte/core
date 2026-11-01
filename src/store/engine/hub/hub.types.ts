@@ -108,6 +108,8 @@ export type HubEvent =
 			realmId: string
 			project: string
 			dialecteId: string
+			/** The version the asking realm runs: a realm deleting the files at that version is preferred. */
+			dialecteVersion: string
 	  }
 	| {
 			/** The realm asked to delete a project's files for another has done it, or failed with `error`. */

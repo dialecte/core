@@ -271,9 +271,20 @@ function destroyed(params: { realmId: string; now?: number }): HubEvent {
 	return { type: 'destroyed', now, realmId, project: PROJECT, dialecteId: 'scl' }
 }
 
-function destroyElsewhere(params: { realmId: string; now?: number }): HubEvent {
-	const { realmId, now = 0 } = params
-	return { type: 'destroy-elsewhere', now, realmId, project: PROJECT, dialecteId: 'scl' }
+function destroyElsewhere(params: {
+	realmId: string
+	now?: number
+	dialecteVersion?: string
+}): HubEvent {
+	const { realmId, now = 0, dialecteVersion = SCL.dialecteVersion } = params
+	return {
+		type: 'destroy-elsewhere',
+		now,
+		realmId,
+		project: PROJECT,
+		dialecteId: 'scl',
+		dialecteVersion,
+	}
 }
 
 function filesDeleted(params: { realmId: string; now?: number; error?: unknown }): HubEvent {
@@ -2558,6 +2569,37 @@ describe('createHubRouter', () => {
 						event: destroyElsewhere({ realmId: 'child' }),
 						commands: [
 							{ type: 'delete-files', realmId: 'other-tab', project: PROJECT, dialecteId: 'scl' },
+						],
+					},
+				],
+			},
+		'a child that cannot store, its page running the dialecte at another version, another tab at the child’s → the tab at its version deletes the files':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [{ ...SCL, dialecteVersion: '2.0.0' }] }),
+					hello({ realmId: 'other-tab' }),
+					STORAGELESS_CHILD,
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{ type: 'delete-files', realmId: 'other-tab', project: PROJECT, dialecteId: 'scl' },
+						],
+					},
+				],
+			},
+		'a child that cannot store, only its page running the dialecte, at another version → the page deletes the files (a destroy removes them by name, whatever their layout)':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [{ ...SCL, dialecteVersion: '2.0.0' }] }),
+					STORAGELESS_CHILD,
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{ type: 'delete-files', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
 						],
 					},
 				],

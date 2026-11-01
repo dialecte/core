@@ -392,18 +392,20 @@ export class Project<
 	/** Changes may have been missed: the registry, each document's history read again, every document's view woken. */
 	private async resync(): Promise<void> {
 		if (this.closing) return
+		let documentIds: string[] = []
 		try {
 			await this.refreshState()
+			documentIds = Array.from(this.state.documents.keys())
+			await Promise.all(documentIds.map((documentId) => this.refreshHistoryStatus(documentId)))
 		} finally {
-			// its own channel's listeners told too, the read failed or not: what changed meanwhile reaches them through
-			// the state, not one by one (the name's channel of a store that announces nothing told them each change)
+			// its own channel's listeners told too once the documents and their history are read again, the reads failed
+			// or not: what changed meanwhile reaches them through the state, not one by one (the name's channel of a
+			// store that announces nothing told them each change)
 			if (this.announcing && !this.closing) {
 				const resync: ProjectChannelResync = { type: 'resync', timestamp: Date.now() }
 				this._channel?.postMessage(resync)
 			}
 		}
-		const documentIds = Array.from(this.state.documents.keys())
-		await Promise.all(documentIds.map((documentId) => this.refreshHistoryStatus(documentId)))
 		for (const documentId of documentIds) {
 			// one document's subscriber failing wakes every other all the same
 			try {

@@ -24,3 +24,10 @@ export const HUB_HELLO_BUDGET_MS = 2 * HUB_WELCOME_BUDGET_MS
 export const HUB_REJOIN_FIRST_DELAY_MS = 1_000
 
 export const HUB_REJOIN_MAX_DELAY_MS = 30_000
+
+/**
+ * How many times in a row a view joins the next hub at once after a hub that lasted was lost, its calls waiting for an
+ * engine kept waiting: past it (hubs that keep ending), they are refused and the next hub is joined after the delay -
+ * the bound on how long a call waits across hub restarts. Counted again from zero after a quiet while.
+ */
+export const HUB_REJOIN_AT_ONCE_MAX = 3

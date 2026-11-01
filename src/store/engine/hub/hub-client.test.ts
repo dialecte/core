@@ -15,6 +15,7 @@ import {
 } from './hub-client'
 import {
 	HUB_REGISTRY_KEY,
+	HUB_REJOIN_AT_ONCE_MAX,
 	HUB_REJOIN_FIRST_DELAY_MS,
 	HUB_REJOIN_MAX_DELAY_MS,
 	HUB_WELCOME_BUDGET_MS,
@@ -1320,6 +1321,7 @@ describe('a realm connected to the hub', () => {
 			promise: child.destroyProject({
 				project,
 				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
 				destroy: settleNothing,
 			}),
 		})
@@ -1551,6 +1553,7 @@ describe('a realm connected to the hub', () => {
 		await other.destroyProject({
 			project,
 			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion: TEST_DIALECTE.version,
 			destroy: async function destroyFiles() {
 				destroyed = true
 			},
@@ -1714,7 +1717,23 @@ describe('a realm connected to the hub', () => {
 		expect(await outcomeOf({ promise: link.engine() })).toBe('settled')
 	})
 
-	it('a bound child switching to a handed port on a live hub that sent no `dropped` → it leaves its projects on the old port first: that hub counts it no more', async () => {
+	it('a bound child handed a port again while its hub lives (it answers the probe, no `dropped`) → it stays on its port, its link kept', async () => {
+		const hub = fakeHub()
+		const child = await joinFakeHubAsChild({ hub, welcomeBudgetMs: 300 })
+		onTestFinished(child.close)
+		const project = uniqueProject()
+		const link = openLink({ connection: child, project })
+		await connectEngine({ hub, link, project })
+		child.adoptPort({ port: hub.openPort() })
+		await hub.next('ping')
+		hub.replyOn({ portIndex: 0, message: { type: 'pong' } })
+		await pause({ ms: 600 })
+		expect(hub.hellos).toHaveLength(1)
+		expect(hub.received.map(typeOfMessage)).not.toContain('leave')
+		expect(await outcomeOf({ promise: link.engine() })).toBe('settled')
+	})
+
+	it('a bound child switching to a handed port, its hub answering neither the probe nor with `dropped` → it leaves its projects on the old port first: a hub still alive counts it no more', async () => {
 		const hub = fakeHub()
 		const child = await joinFakeHubAsChild({ hub, welcomeBudgetMs: 300 })
 		onTestFinished(child.close)
@@ -1727,6 +1746,34 @@ describe('a realm connected to the hub', () => {
 		await vi.waitFor(function joinedOnTheHandedPort() {
 			expect(hub.hellos).toHaveLength(2)
 		})
+	})
+
+	it(`hubs that last a while but keep ending → joined again at once ${HUB_REJOIN_AT_ONCE_MAX} times, then the calls waiting refused STORE_CONNECTION_FAILED and the next hub joined after the delay`, async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const link = openLink({ connection, project })
+		for (let lost = 1; lost <= HUB_REJOIN_AT_ONCE_MAX; lost += 1) {
+			await connectEngine({ hub, link, project })
+			await pause({ ms: HUB_REJOIN_FIRST_DELAY_MS + 100 })
+			hub.end()
+			await vi.waitFor(
+				function joinedAgainAtOnce() {
+					expect(hub.hellos).toHaveLength(lost + 1)
+				},
+				{ timeout: HUB_REJOIN_FIRST_DELAY_MS / 2 },
+			)
+		}
+		await connectEngine({ hub, link, project })
+		await pause({ ms: HUB_REJOIN_FIRST_DELAY_MS + 100 })
+		hub.end()
+		await vi.waitFor(async function refusedMeanwhile() {
+			expect(await outcomeOf({ promise: link.engine(), withinMs: 100 })).toBe(
+				'STORE_CONNECTION_FAILED',
+			)
+		})
+		expect(hub.hellos).toHaveLength(HUB_REJOIN_AT_ONCE_MAX + 1)
 	})
 
 	it('a hub out of reach for good (no welcome) → its rejoin delay keeps doubling, however long the outage: never back to its first without a welcome', async () => {
@@ -2139,6 +2186,7 @@ describe('a realm connected to the hub', () => {
 				promise: connection.destroyProject({
 					project,
 					dialecteId: TEST_DIALECTE.id,
+					dialecteVersion: TEST_DIALECTE.version,
 					own: {
 						link: own,
 						letGo: async function letOwnGo() {
@@ -2148,7 +2196,12 @@ describe('a realm connected to the hub', () => {
 				}),
 			})
 			const asked = await hub.next('destroy-elsewhere')
-			expect(asked).toEqual({ type: 'destroy-elsewhere', project, dialecteId: TEST_DIALECTE.id })
+			expect(asked).toEqual({
+				type: 'destroy-elsewhere',
+				project,
+				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
+			})
 			hub.reply({ ...answer, project, dialecteId: TEST_DIALECTE.id } as HubToRealmMessage)
 			expect(await destroying).toBe(outcome)
 			expect(letGo).toBe(outcome === 'settled' ? 1 : 0)
@@ -2209,6 +2262,7 @@ describe('a realm connected to the hub', () => {
 				promise: connection.destroyProject({
 					project,
 					dialecteId: TEST_DIALECTE.id,
+					dialecteVersion: TEST_DIALECTE.version,
 					own: { link: own, letGo: own.release },
 				}),
 			})
@@ -2244,6 +2298,23 @@ describe('a realm connected to the hub', () => {
 		})
 	}
 
+	it('a destroy elsewhere sent, then the hub gone before it answered → refused STORE_ENGINE_LOST: a view may have deleted part of the files', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const destroying = outcomeOf({
+			promise: connection.destroyProject({
+				project,
+				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
+			}),
+		})
+		await hub.next('destroy-elsewhere')
+		hub.end()
+		expect(await destroying).toBe('STORE_ENGINE_LOST')
+	})
+
 	it('a destroy elsewhere refused before the hub held anything (another view uses the project) → its own link keeps its engine: nothing asked again', async () => {
 		const hub = fakeHub()
 		const connection = await joinFakeHub({ hub })
@@ -2255,6 +2326,7 @@ describe('a realm connected to the hub', () => {
 			promise: connection.destroyProject({
 				project,
 				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
 				own: { link: own, letGo: own.release },
 			}),
 		})
@@ -2284,6 +2356,7 @@ describe('a realm connected to the hub', () => {
 			promise: connection.destroyProject({
 				project,
 				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
 				destroy: async function destroyFiles() {
 					destroyed = true
 				},
@@ -2305,6 +2378,7 @@ describe('a realm connected to the hub', () => {
 			promise: connection.destroyProject({
 				project,
 				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
 				destroy: async function destroyFiles() {
 					destroyed = true
 				},
@@ -2332,6 +2406,7 @@ describe('a realm connected to the hub', () => {
 			promise: connection.destroyProject({
 				project,
 				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
 				destroy: async function destroyFiles() {
 					destroyed = true
 				},
@@ -2379,6 +2454,7 @@ describe('a realm connected to the hub', () => {
 			promise: connection.destroyProject({
 				project,
 				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
 				destroy: async function destroyFiles() {
 					destroyed = true
 				},
@@ -2425,6 +2501,7 @@ describe('a realm connected to the hub', () => {
 		const first = connection.destroyProject({
 			project,
 			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion: TEST_DIALECTE.version,
 			destroy: settleNothing,
 		})
 		await hub.next('destroy')
@@ -2435,6 +2512,7 @@ describe('a realm connected to the hub', () => {
 		const second = connection.destroyProject({
 			project,
 			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion: TEST_DIALECTE.version,
 			destroy: async function destroyFiles() {
 				destroyed = true
 			},
@@ -2456,13 +2534,19 @@ describe('a realm connected to the hub', () => {
 		const connection = await joinFakeHub({ hub })
 		const project = uniqueProject()
 		void connection
-			.destroyProject({ project, dialecteId: TEST_DIALECTE.id, destroy: settleNothing })
+			.destroyProject({
+				project,
+				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
+				destroy: settleNothing,
+			})
 			.catch(settleNothing)
 		await hub.next('destroy')
 		const outcome = await outcomeOf({
 			promise: connection.destroyProject({
 				project,
 				dialecteId: TEST_DIALECTE.id,
+				dialecteVersion: TEST_DIALECTE.version,
 				destroy: settleNothing,
 			}),
 		})

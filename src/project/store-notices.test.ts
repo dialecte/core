@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
-import { makeRecord } from '@/store/contract/store-contract.fixtures'
+import { commit, makeRecord } from '@/store/contract/store-contract.fixtures'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
@@ -789,6 +789,48 @@ describe('a resync, a subscriber of one document throwing', () => {
 		await vi.waitFor(function secondWoken() {
 			expect(woken).toBe(1)
 			expect(reportedFailures({ reports })).toContain(failure)
+		})
+	})
+})
+
+describe('a resync told to the channel’s listeners', () => {
+	it('→ posted once the documents and their history are read again: a listener reading canUndo then sees the commit made meanwhile', async () => {
+		const name = `resync-history-${crypto.randomUUID()}`
+		const { store, tell } = toldStore({ name })
+		made.push(store)
+		const project = await new Project({
+			configs: { default: CONFIG },
+			storage: { type: 'custom', store },
+		}).open(name)
+		onTestFinished(function closeProject() {
+			return project.close()
+		})
+		const documentId = await project.initEmptyDocument()
+		// a commit by another connection, told to no one
+		const elsewhere = new InMemoryStore(name, { runtime: RUNTIME })
+		await elsewhere.open()
+		await commit({ store: elsewhere, documentId, creates: [makeRecord({ id: 'r-elsewhere' })] })
+		await elsewhere.close()
+		// the history read slow: a notice posted before it would show the history of before
+		const readHistory = store.getHistoryStatus.bind(store)
+		store.getHistoryStatus = async function slowHistory(id) {
+			await new Promise(function slowly(resolve) {
+				setTimeout(resolve, 100)
+			})
+			return readHistory(id)
+		}
+		const seen: boolean[] = []
+		const channel = project.createChannel()
+		onTestFinished(function closeChannel() {
+			channel.close()
+		})
+		channel.onmessage = function readOnResync(event: MessageEvent<{ type: string }>) {
+			if (event.data.type !== 'resync') return
+			seen.push(project.state.documents.get(documentId)?.canUndo ?? false)
+		}
+		tell({ type: 'resync' })
+		await vi.waitFor(function told() {
+			expect(seen).toEqual([true])
 		})
 	})
 })

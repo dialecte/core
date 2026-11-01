@@ -68,6 +68,7 @@ export function createHubConnector(params: HubConnectorParams): EngineConnector 
 			return connection.destroyProject({
 				project: name,
 				dialecteId,
+				dialecteVersion,
 				own: own && hubLink && { link: hubLink, letGo: own.letGo },
 				// a realm that cannot store names no files to delete: the hub has another view delete them
 				destroy: deletesFiles

@@ -643,6 +643,43 @@ describe('the hub serving realms on their control ports', () => {
 		).toBe(true)
 	})
 
+	it('a realm asking whether the hub lives (`ping`) → answered `pong`', async () => {
+		const hub = serveHub()
+		const realm = await joinRealm({ hub, name: 'child' })
+		realm.send({ type: 'ping' })
+		expect(await realm.next('pong')).toEqual({ type: 'pong' })
+	})
+
+	it('the browser refusing the hub its own lock → each realm refused STORE_CONNECTION_FAILED at once (no hub), never welcomed', async () => {
+		const request = navigator.locks.request.bind(navigator.locks)
+		const spy = vi.spyOn(navigator.locks, 'request').mockImplementation(function hubLockRefused(
+			name: string,
+			...rest: unknown[]
+		) {
+			if (name.startsWith(HUB_LOCK_PREFIX)) {
+				return Promise.reject(new DOMException('not fully active', 'InvalidStateError'))
+			}
+			return (request as (...args: unknown[]) => Promise<unknown>)(name, ...rest)
+		} as typeof navigator.locks.request)
+		onTestFinished(function restoreLocks() {
+			spy.mockRestore()
+		})
+		const hub = serveHub()
+		const realmId = uniqueRealm('shell')
+		const channel = new MessageChannel()
+		hub.connect({ port: channel.port2 })
+		const realm = realmOn({ realmId, port: channel.port1 })
+		realm.send({
+			type: 'hello',
+			protocol: HUB_PROTOCOL_VERSION,
+			realmId,
+			topLevel: true,
+			spawners: [SCL],
+		})
+		const refused = await realm.next('hello-refused')
+		expect(keyOf(refused.error)).toBe('STORE_CONNECTION_FAILED')
+	})
+
 	it('a destroy while another realm uses the project → refused PROJECT_OPEN_ELSEWHERE; alone → granted', async () => {
 		const hub = serveHub()
 		const shell = await joinRealm({ hub, name: 'shell' })
@@ -675,7 +712,12 @@ describe('the hub serving realms on their control ports', () => {
 			const hub = serveHub()
 			const shell = await joinRealm({ hub, name: 'shell' })
 			const child = await bindChild({ parent: shell, bindingId: 'binding-delete' })
-			child.send({ type: 'destroy-elsewhere', project: 'p', dialecteId: 'scl' })
+			child.send({
+				type: 'destroy-elsewhere',
+				project: 'p',
+				dialecteId: 'scl',
+				dialecteVersion: SCL.dialecteVersion,
+			})
 			const asked = await shell.next('delete-files')
 			expect(asked).toEqual({ type: 'delete-files', project: 'p', dialecteId: 'scl' })
 			shell.send({

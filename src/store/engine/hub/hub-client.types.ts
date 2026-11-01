@@ -56,6 +56,8 @@ export type HubConnection = {
 	destroyProject: (params: {
 		project: string
 		dialecteId: string
+		/** The version this realm runs: a view at that version deletes the files for it (no `destroy`) when one runs. */
+		dialecteVersion: string
 		destroy?: () => Promise<void>
 		own?: OwnHubLink
 	}) => Promise<void>
