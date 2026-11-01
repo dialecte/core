@@ -36,6 +36,10 @@ function subjectOf(params: { message: ProjectChannelMessage }): Record<string, u
 
 const DOCUMENT_ID = 'doc-1'
 
+function asProgress(): string {
+	return 'progress'
+}
+
 /** A document with one record `r1`, and history: one commit applied (creating `r2`). */
 async function seedProject(params: { store: Store }): Promise<void> {
 	const { store } = params
@@ -234,6 +238,30 @@ export const STORE_ANNOUNCE_CONTRACT: Record<string, StoreContractCases> = {
 			return [`${description} → nothing told`, silentCase({ call })]
 		}),
 	),
+	'when a change is told': {
+		'a commit → its progress told to its caller first, then its change announced to it': {
+			needs: ['announce'],
+			act: async ({ store }) => {
+				await seedProject({ store })
+				const told: string[] = []
+				store.subscribe!(function keep(notice) {
+					if (notice.type === 'change') told.push('change')
+				})
+				await store.commit({
+					documentId: DOCUMENT_ID,
+					creates: [makeRecord({ id: 'r3' }), makeRecord({ id: 'r4' })],
+					updates: [],
+					deletes: [],
+					onProgress: function tick() {
+						told.push('progress')
+					},
+				})
+				expect(told.length).toBeGreaterThan(1)
+				expect(told.slice(0, -1)).toEqual(told.slice(0, -1).map(asProgress))
+				expect(told.at(-1)).toBe('change')
+			},
+		},
+	},
 	'whose change it was': {
 		'an import by one connection → document-imported, told to it as its own and to the other as another’s':
 			{

@@ -6,8 +6,10 @@ import { createStagedOperations } from '@/document'
 import { NOOP_PROGRESS_REPORTER } from '@/document/progress'
 import { stageOperation } from '@/document/transaction/stage-operations'
 import { createPerf } from '@/perf'
-import { InMemoryStore } from '@/store'
-import { TEST_DIALECTE_CONFIG } from '@/test'
+import { resolveStore } from '@/store/resolve-store'
+import { TEST_DIALECTE, TEST_DIALECTE_CONFIG } from '@/test'
+import { resolveTestStorage } from '@/test/test-storage/resolve-test-storage'
+import { testStoreFor } from '@/test/test-storage/test-store-for'
 
 import type { Context, Ref } from '@/document'
 import type { Perf } from '@/perf'
@@ -49,11 +51,30 @@ afterEach(async () => {
 	for (const store of opened.splice(0)) await store.destroy()
 })
 
-/** A context over a real in-memory store of its own holding `records`, its store reads counted. */
+/** A store of the test dialecte on the runner's storage (in memory, SQLite, IndexedDB: the runner chooses), opened. */
+async function runnerStore(params: { name: string }): Promise<Store> {
+	const { name } = params
+	const storage = await testStoreFor({
+		storage: resolveTestStorage({}),
+		name,
+		dialecte: TEST_DIALECTE,
+	})
+	// a custom storage (the SQLite engine in process) is that store; another kind as its project opens it
+	const store = resolveStore({
+		name,
+		storage,
+		runtime: { configs: TEST_DIALECTE.configs, defaultConfigKey: TEST_DIALECTE.defaultConfigKey },
+		dialecteId: TEST_DIALECTE.id,
+	})
+	await store.open()
+	return store
+}
+
+/** A context over a store of its own on the runner's storage holding `records`, its store reads counted. */
 async function createSourceContext(
 	records: AnyRawRecord[],
 ): Promise<{ context: Context<TestDialecteConfig>; perf: Perf }> {
-	const store = new InMemoryStore(`record-source-${crypto.randomUUID()}`, { writable: true })
+	const store = await runnerStore({ name: `record-source-${crypto.randomUUID()}` })
 	opened.push(store)
 	await store.registerDocument({
 		id: DOCUMENT_ID,

@@ -436,11 +436,12 @@ export class InMemoryStore implements Store {
 		trimmed.push(entry)
 		changelog.set(documentId, trimmed)
 		heads.set(documentId, newSeq)
-		this.announce({ type: 'commit', documentId })
 		tellCommitProgress({
 			onProgress,
 			parts: [creates.length, updates.length, deletes.length],
 		})
+		// announced once its progress is told, as the engine does
+		this.announce({ type: 'commit', documentId })
 	}
 
 	// --- History ---
