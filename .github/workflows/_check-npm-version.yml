@@ -10,7 +10,7 @@ on:
 jobs:
   check:
     name: Get Deployed Version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version_changed: ${{ steps.compare_versions.outputs.version_changed }}
     steps:
