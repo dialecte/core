@@ -27,6 +27,8 @@ import type {
  * dialecte and name: each one's state (`current`, `outdated`, `lost`, `new`, `unknown`), the bytes it takes and when
  * it was last written. Where the browser gives no private file system (Node, a private window) it refuses
  * `STORE_UNAVAILABLE`.
+ *
+ * @intent list the projects stored in the browser on SQLite storage, find outdated or lost projects on SQLite storage, show how much space each project takes, check whether a project exists on SQLite storage without opening it
  */
 export async function listProjects(
 	params: { dialecteId?: string } = {},

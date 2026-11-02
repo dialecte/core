@@ -104,7 +104,9 @@
 				"open projects of a dialecte from an app",
 				"get the factory that creates a dialecte's projects",
 				"delete a dialecte's project without opening it",
-				"register a dialecte's engine with the hub"
+				"register a dialecte's engine with the hub",
+				"use SQLite storage in an app (import `@dialecte/core/sqlite` once and open with `storage: { type: 'sqlite' }`)",
+				"share one SQLite engine per project between the tabs of an app"
 			],
 			"declaredAt": "src/dialecte/create-project-factory.ts:24"
 		},
@@ -345,9 +347,13 @@
 			"entry": "@dialecte/core/engine",
 			"otherRoutes": [],
 			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules, GenericConfigKey extends string>(params: { dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>; }) => void",
-			"summary": "Serve the dialecte's engine from this worker - today the SQLite engine on the origin's private file system (opfs-sahpool), its client side engine-agnostic (`store/engine`). The realm that spawned it (or the hub, through it) sends control messages - open the project, adopt a client's port, a client gone, close, destroy - handled one at a time and each answered once; every adopted port is served the engine's members. One project per worker.",
-			"intents": [],
-			"declaredAt": "src/store/sqlite/runtime/serve-dialecte-engine.ts:39"
+			"summary": "Serve the dialecte's project engine from this worker, the one call of a dialecte package's engine worker file - today the SQLite engine on the origin's private file system (opfs-sahpool). The realm that spawned it (or the hub, through it) sends control messages - open the project, adopt a client's port, a client gone, close, destroy - handled one at a time and each answered once; every adopted port is served the engine's members. One project per worker.",
+			"intents": [
+				"serve a dialecte's engine from a worker",
+				"write a dialecte package's engine worker file",
+				"ship a dialecte's SQLite engine in its package"
+			],
+			"declaredAt": "src/store/sqlite/runtime/serve-dialecte-engine.ts:41"
 		},
 		{
 			"path": "@dialecte/core/helpers.evaluateExpectations",
@@ -604,9 +610,13 @@
 			"entry": "@dialecte/core/sqlite",
 			"otherRoutes": [],
 			"signature": "(params: { port: MessagePort; }) => Promise<HubRealm | undefined>",
-			"summary": "Join the hub through a port a page made with `createHubPort` (a document that cannot reach the hub's script): a client only, whose liveness is that page's. A port nobody answers fails the join `STORE_CONNECTION_FAILED` once the welcome budget has passed. A document that connected already gets its connection - `undefined` when that one found no hub. One the hub dropped with its page (its calls refused `STORE_ENGINE_LOST`, `realm-dropped`) joins again on the new port, on its own: the page makes it one from `onRejoined`, and a join that fails leaves it dropped until the next one.",
-			"intents": [],
-			"declaredAt": "src/store/hub-public.ts:50"
+			"summary": "Join the hub through a port a page made with `createHubPort` (a document that cannot reach the hub's script), and get that document's connection: a client only, whose liveness is that page's. A port nobody answers fails the join `STORE_CONNECTION_FAILED` once the welcome budget has passed. A document that connected already gets its connection - `undefined` when that one found no hub. One the hub dropped with its page (its calls refused `STORE_ENGINE_LOST`, `realm-dropped`) joins again on the new port, on its own: the page makes it one from `onRejoined`, and a join that fails leaves it dropped until the next one.",
+			"intents": [
+				"join the hub from an iframe of another origin",
+				"open projects on SQLite storage in a child frame through its page's engine",
+				"bind a child frame again after its page rejoined the hub"
+			],
+			"declaredAt": "src/store/hub-public.ts:55"
 		},
 		{
 			"path": "@dialecte/core/sqlite.connectHub",
@@ -614,9 +624,14 @@
 			"entry": "@dialecte/core/sqlite",
 			"otherRoutes": [],
 			"signature": "(params?: ConnectHubParams) => Promise<HubRealm | undefined>",
-			"summary": "Connect this page to the origin's hub, once: a second call - from this copy of the library or another one of the same protocol - gets the same connection. Answers `undefined` where the browser has no SharedWorker, or the hub never welcomed the page (its script failed to load or was blocked, or it stayed silent): a later call tries again. A hub of another protocol refuses the page: `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub, any other error thrown making it is thrown. The page registers the engines it can start whose worker is of its own origin (each dialecte's `factory.spawner`); a later call adds those it does not run yet - a project opened on `sqlite` adds its own as it opens - and one naming a dialecte the page runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept. A document that joined through `adoptHubPort` hosts no engine: the spawners it names are not registered; neither are those of a page that cannot store (no private file system; two versions of one dialecte refused all the same): its own projects on `sqlite` are refused `STORE_UNAVAILABLE` unless its page bound it, its connection serving to hand ports to its children. An engine's files (the SQLite wasm) are fetched when the page first starts one.",
-			"intents": [],
-			"declaredAt": "src/store/hub-public.ts:22"
+			"summary": "Connect this page to the origin's hub, once, and get its connection (`HubRealm`: `realmId`, `createHubPort` to bind a child frame, `onRejoined`, the moment to bind child frames again after a freeze or a drop): a second call - from this copy of the library or another one of the same protocol - gets the same connection. Answers `undefined` where the browser has no SharedWorker, or the hub never welcomed the page (its script failed to load or was blocked, or it stayed silent): a later call tries again. A hub of another protocol refuses the page: `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub, any other error thrown making it is thrown. The page registers the engines it can start whose worker is of its own origin (each dialecte's `factory.spawner`); a later call adds those it does not run yet - a project opened on `sqlite` adds its own as it opens - and one naming a dialecte the page runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept. A document that joined through `adoptHubPort` hosts no engine: the spawners it names are not registered; neither are those of a page that cannot store (no private file system; two versions of one dialecte refused all the same): its own projects on `sqlite` are refused `STORE_UNAVAILABLE` unless its page bound it, its connection serving to hand ports to its children. An engine's files (the SQLite wasm) are fetched when the page first starts one.",
+			"intents": [
+				"register this page's dialecte engines with the hub before any project opens",
+				"connect a page to the origin's hub",
+				"offer a dialecte's engine to the hub (`factory.spawner`)",
+				"get a port to hand a child frame of another origin"
+			],
+			"declaredAt": "src/store/hub-public.ts:25"
 		},
 		{
 			"path": "@dialecte/core/sqlite.listProjects",
@@ -625,8 +640,13 @@
 			"otherRoutes": [],
 			"signature": "(params?: { dialecteId?: string; }) => Promise<ProjectListing[]>",
 			"summary": "The projects on SQLite storage of this origin - every dialecte's, or `dialecteId`'s - read from the origin's private file system alone (no engine started, no wasm loaded; a project whose engine runs is read too), sorted by dialecte and name: each one's state (`current`, `outdated`, `lost`, `new`, `unknown`), the bytes it takes and when it was last written. Where the browser gives no private file system (Node, a private window) it refuses `STORE_UNAVAILABLE`.",
-			"intents": [],
-			"declaredAt": "src/store/sqlite/list-projects.ts:31"
+			"intents": [
+				"list the projects stored in the browser on SQLite storage",
+				"find outdated or lost projects on SQLite storage",
+				"show how much space each project takes",
+				"check whether a project exists on SQLite storage without opening it"
+			],
+			"declaredAt": "src/store/sqlite/list-projects.ts:33"
 		},
 		{
 			"path": "@dialecte/core/test.assertExpectedElementQueries",

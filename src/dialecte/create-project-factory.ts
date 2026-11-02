@@ -19,7 +19,7 @@ import type { AnyDialecteConfig } from '@/types'
  * the engine as a page registers it with the hub (`connectHub({ spawners })`). `destroyProject({ name })` deletes the
  * dialecte's project of that name on SQLite storage without opening it (an outdated or lost one too).
  *
- * @intent open projects of a dialecte from an app, get the factory that creates a dialecte's projects, delete a dialecte's project without opening it, register a dialecte's engine with the hub
+ * @intent open projects of a dialecte from an app, get the factory that creates a dialecte's projects, delete a dialecte's project without opening it, register a dialecte's engine with the hub, use SQLite storage in an app (import `@dialecte/core/sqlite` once and open with `storage: { type: 'sqlite' }`), share one SQLite engine per project between the tabs of an app
  */
 export function createProjectFactory<
 	GenericConfig extends AnyDialecteConfig,
