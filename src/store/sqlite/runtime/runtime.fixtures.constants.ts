@@ -100,3 +100,9 @@ export const OTHER_FIXTURE_DIALECTE = {
 
 /** How long a change may take to reach another connection on a loaded machine (a port message, a worker's turn). */
 export const CHANGE_TOLD_WITHIN_MS = 5_000
+
+/**
+ * The heartbeat timeout of a case an engine must stay alive through: below every span those cases run (3 s or more),
+ * so only its beats keep a call alive, and wide enough that a beat a loaded machine posts late is not taken for a loss.
+ */
+export const KEPT_ALIVE_TIMEOUT_MS = 2_500

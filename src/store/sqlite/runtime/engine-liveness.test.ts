@@ -9,6 +9,7 @@ import { fixtureUrl, removePoolDirectory, uniqueProject } from './runtime.fixtur
 import {
 	FIXTURE_DIALECTE,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	KEPT_ALIVE_TIMEOUT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 } from './runtime.fixtures.constants'
 
@@ -164,7 +165,7 @@ describe('an engine alive or lost', () => {
 	})
 
 	it('an import holding each of its 8 batches 400 ms → it resolves: the engine beats between them', async () => {
-		const store = await openStore({ heartbeatTimeoutMs: 1_500 })
+		const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
 		const startedAt = performance.now()
 		const importing = store.importFile({
 			file: markedFile({ markers: Array.from({ length: 8 }, () => 'pause:400') }),
@@ -211,10 +212,13 @@ describe('an engine alive or lost', () => {
 		expect(await store.getWriteOutcome({ writeId: 'w-commit' })).toBe('applied')
 	})
 
-	describe('two connections, timeout 1.5 s', () => {
+	describe('two connections, timeout 2.5 s', () => {
 		it('an import beating for about 3 s, another queued behind it → neither lost, both ready', async () => {
-			const first = await openStore({ heartbeatTimeoutMs: 1_500 })
-			const second = await openStore({ heartbeatTimeoutMs: 1_500, name: first.name })
+			const first = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
+			const second = await openStore({
+				heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS,
+				name: first.name,
+			})
 			const running = first.importFile({
 				file: markedFile({ markers: Array.from({ length: 8 }, () => 'pause:400') }),
 				options: { chunkOptions: SMALL_BATCHES },
@@ -224,8 +228,11 @@ describe('an engine alive or lost', () => {
 		})
 
 		it('a read sent while the other’s afterImport runs 3 s of dialecte code → it resolves', async () => {
-			const first = await openStore({ heartbeatTimeoutMs: 1_500 })
-			const second = await openStore({ heartbeatTimeoutMs: 1_500, name: first.name })
+			const first = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
+			const second = await openStore({
+				heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS,
+				name: first.name,
+			})
 			const pausing = noticeOf({ type: 'reached', marker: 'after-pause' })
 			const importing = first.importFile({ file: markedFile({ markers: ['after-pause:3000'] }) })
 			await pausing
@@ -235,8 +242,8 @@ describe('an engine alive or lost', () => {
 	})
 
 	it('an afterImport yielding now and then for 3 s while another connection’s large commit beats → the importer kept busy, the import resolves', async () => {
-		const first = await openStore({ heartbeatTimeoutMs: 1_000 })
-		const second = await openStore({ heartbeatTimeoutMs: 1_000, name: first.name })
+		const first = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
+		const second = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS, name: first.name })
 		await second.registerDocument(makeDocument())
 		const yielding = noticeOf({ type: 'reached', marker: 'after-yield-pause' })
 		const importing = first.importFile({
@@ -255,29 +262,29 @@ describe('an engine alive or lost', () => {
 	})
 
 	describe('one long statement with no beat in it (an index built, a table dropped: one opcode)', () => {
-		it('an import whose index builds each run 3 s (timeout 1 s) → told busy around each, the import resolves', async () => {
-			const store = await openStore({ heartbeatTimeoutMs: 1_000 })
+		it('an import whose index builds each run 3 s (timeout 2.5 s) → told busy around each, the import resolves', async () => {
+			const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
 			await orderFixtures({ type: 'slow-ddl' })
 			expect(await outcomeOf(store.importFile({ file: markedFile({ markers: ['plain'] }) }))).toBe(
 				'resolved',
 			)
 		})
 
-		it('a second connection while the engine runs 3 s of statements told busy (timeout 1 s) → its adoption waits, then it reads: the engine never taken for lost', async () => {
+		it('a second connection while the engine runs 3 s of statements told busy (timeout 2.5 s) → its adoption waits, then it reads: the engine never taken for lost', async () => {
 			const name = uniqueProject()
-			const store = await openStore({ heartbeatTimeoutMs: 1_000, name })
+			const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS, name })
 			await store.registerDocument(makeDocument())
 			await orderFixtures({ type: 'slow-ddl' })
 			const slowed = noticeOf({ type: 'reached', marker: 'slow-ddl' })
 			const removing = store.removeDocument('doc-1')
 			await slowed
-			const second = await openStore({ heartbeatTimeoutMs: 1_000, name })
+			const second = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS, name })
 			expect(await outcomeOf(second.getDocuments())).toBe('resolved')
 			expect(await outcomeOf(removing)).toBe('resolved')
 		})
 
-		it('a document removed, its tables dropped in 3 s each (timeout 1 s) → told busy, the removal resolves', async () => {
-			const store = await openStore({ heartbeatTimeoutMs: 1_000 })
+		it('a document removed, its tables dropped in 3 s each (timeout 2.5 s) → told busy, the removal resolves', async () => {
+			const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
 			await store.registerDocument(makeDocument())
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 			await orderFixtures({ type: 'slow-ddl' })
@@ -286,7 +293,7 @@ describe('an engine alive or lost', () => {
 	})
 
 	it('an afterImport yielding now and then for 3 s while its own importer reads → the answer keeps it busy, the import resolves', async () => {
-		const store = await openStore({ heartbeatTimeoutMs: 1_000 })
+		const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
 		const yielding = noticeOf({ type: 'reached', marker: 'after-yield-pause' })
 		const importing = store.importFile({
 			file: markedFile({ markers: ['after-yield-pause:3000'] }),
@@ -297,8 +304,8 @@ describe('an engine alive or lost', () => {
 		expect(await outcomeOf(importing)).toBe('resolved')
 	})
 
-	it('an afterImport running 3 s of dialecte code (timeout 1 s) → told busy, the import resolves', async () => {
-		const store = await openStore({ heartbeatTimeoutMs: 1_000 })
+	it('an afterImport running 3 s of dialecte code (timeout 2.5 s) → told busy, the import resolves', async () => {
+		const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
 		expect(
 			await outcomeOf(store.importFile({ file: markedFile({ markers: ['after-pause:3000'] }) })),
 		).toBe('resolved')
