@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: brief-machine-line-no-throttle
+expected_outcome: |
+  The implementer brief tells the implementer to run tests with the runner's defaults (full parallelism, no
+  `nice`, no `--maxWorkers`, no `--no-file-parallelism`, no machine lock), to rerun a failing run's files once with
+  `--no-file-parallelism` to tell a flake from a real failure, to report a flake as a finding to fix at its cause, and
+  to limit runs only when the user asks.

@@ -137,8 +137,7 @@
 					"name": "tests",
 					"run": "npx vitest run --changed --project node --project node-indexeddb",
 					"counts": "tests",
-					"changedOnly": true,
-					"heavy": false
+					"changedOnly": true
 				}
 			],
 			"full": [
@@ -156,13 +155,12 @@
 				},
 				{
 					"name": "tests",
-					"run": "nice -n 10 npm run test:node",
-					"counts": "tests",
-					"heavy": false
+					"run": "npm run test:node",
+					"counts": "tests"
 				},
 				{
 					"name": "browser tests",
-					"run": "nice -n 10 npx vitest run --project browser --no-file-parallelism",
+					"run": "npx vitest run --project browser",
 					"counts": "tests"
 				},
 				{

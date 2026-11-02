@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: test-runs-at-full-parallelism
+expected_outcome: |
+  Runs the suites with the runner's defaults - no `nice`, no `--maxWorkers`, no `--no-file-parallelism`, no machine
+  lock and no waiting on other sessions' runs - even with other sessions on the machine. When a run fails, reruns
+  its failing files once with `--no-file-parallelism`: passing there means flaky in parallel, a defect to report and
+  fix at its cause (a wall-clock bound, a shared folder, port or build output, browser state, an inherited
+  environment), never a reason to throttle the next runs; failing there too means a real failure. Limits runs only
+  when the user asks, for the time they say.

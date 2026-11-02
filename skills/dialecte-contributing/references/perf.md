@@ -36,4 +36,5 @@ before measuring, or you measure old code.
 ## Reading results
 
 Explain a delta before acting on it. Compare against the previous commit on the same machine,
-same fixture, several runs; keep heavy runs one at a time on shared machines.
+same fixture, several runs; a timed bench runs alone, its load recorded beside the numbers: beside another
+suite its timings mean nothing (tests, unlike benches, run at full parallelism whatever the load).

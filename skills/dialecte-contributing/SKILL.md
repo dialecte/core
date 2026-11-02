@@ -157,7 +157,8 @@ In a package whose vitest config has a `node` project (core), a test runs in one
   `npx vitest run --project browser <path>`. A file that reads the package from disk or starts node goes
   to `NODE_ONLY_TEST_FILES` the same way. The config refuses a listed path that names no file.
 - **A difference between the tiers is a bug**, of the store or of the assertion. Never move a test to
-  the browser list to hide it, never retry it. Reproduce it with `--project node`, pin it with a red
+  the browser list to hide it, never retry it beyond the one serial rerun every failing run gets (a case that
+  fails in one tier only after that rerun is a difference, not a flake). Reproduce it with `--project node`, pin it with a red
   case first: in the store contract (`src/store/contract`) when a store answers differently, beside
   core's assertion helper (`src/test/assert-xml`) when it reads the XML differently between tiers.
   Then fix it. When the test's own assertion depends on something no store promises (an XPath `[1]`
@@ -179,7 +180,7 @@ hand-over script holds the repository. With `--fast`, a change that touches no t
 passes the tests step with the note "no test file is affected by the change"; any other run that
 counts no test fails. Paste its lines in your report: they are the real counts. A gate of the same
 mode on a tree it already passed, with the same lock, linked dependencies and steps, runs its hygiene and `tdd`
-step, then answers the rest from that record (`reused`, from cli 0.2.0). `--rerun` forces a run: only when the
+step, then answers the rest from that record (`reused`, from cli 0.2.0). `--no-reuse` forces a run: only when the
 person asks, or when something outside the key changed (an edit, a lock or a linked dependency already makes a
 new key).
 
@@ -193,14 +194,21 @@ and the gate prints how many production and test files the change still touches.
 worktree's branch since `dialecte worktree add` made it (other branches' entries are only noted), and
 every new file declared (`--declare <path>`, one per new file or folder; an undeclared one is a
 warning). A failure names what changed and the read-only commands
-to look at it. `--full` and the heavy steps hold a machine-wide lock: a step the package marks `heavy`, a
-command naming a browser project, and any test step of a package that runs its tests in a browser (a
-`@vitest/browser*` or playwright dependency, a `browser` in its vitest config). A second heavy run waits
-with a line every 30 s naming the holder (`--no-wait` refuses). A heavy run outside the gate (a browser suite,
-mutation tests, a bench) starts with `npx dialecte lock run -- <command>`, which takes the same lock; a cli
-whose `npx dialecte --help` lists no `lock` does not have it yet: run nothing heavy while another heavy run is
-on the machine (`uptime`, and `ps` or `pgrep -fl` for a browser, vitest or Stryker process), and never write a
-lock script of your own.
+to look at it.
+
+**Test runs use the runner's defaults**: full parallelism, no `nice`, no `--maxWorkers`, no
+`--no-file-parallelism`, no lock and no waiting on other sessions' runs or on the load - the machine is shared,
+and that is the user's to manage: when they ask you to limit (to leave room for other sessions), do it for the
+time they say. A run that fails is rerun **once, serially, on its failing files**: the same command, its
+`--project` flags kept so the rerun stays in the failing tier, with the failing files and `--no-file-parallelism`
+added (through an npm script, after `--`). Failing there too, it is a real failure; passing there, it is **flaky in
+parallel** - a defect of the test or the code, reported with its files and fixed at its cause (a wall-clock bound
+tuned on a quiet machine, a shared temporary folder, port or build output, browser state, an inherited environment
+variable), never answered by throttling the next runs. The gate does this rerun itself on a vitest test step: a
+step that passes on it is green and its line says `flaky in parallel` with one `flaky <file>` line per file - read
+the flag on a green gate; one that fails again says `real failure`. A failing step line that says neither comes
+from a cli without the rerun: rerun its files by hand. Such a cli may still hold a machine lock around `--full`,
+its heavy steps and `tdd`: let it wait.
 
 **Waiting on a long run** (`gate --full`, a mutation run, a bench): start it in the background with its output in
 a log - your harness's background run, or `cmd > "$log" 2>&1 & echo $! > "$pidfile"` - then wait for the
@@ -222,9 +230,10 @@ or the steps by hand:
 3. `npm run build` - runs the type-check in parallel and emits declarations (vite-plugin-dts),
    which catches union-assignability errors the editor misses.
 4. The tests, by tier: `npm run test:node` per step (the fast gate runs its changed files), the
-   browser-only list once per lot (`npx vitest run --project browser --no-file-parallelism`, in the full
-   gate), and `npm run test:browser:all` - the whole suite in the browser - once before the branch
-   merges: any difference fails it, never retried. A package without a `node` project: `npx vitest run`
+   browser-only list once per lot (`npx vitest run --project browser`, in the full gate), and
+   `npm run test:browser:all` - the whole suite in the browser - once before the branch merges. A failing run of
+   any tier first gets its one serial rerun (above); a case that still fails there while it passes in the other
+   tier is a tier difference - a bug, never retried further, never hidden ([Test tiers](#test-tiers)). A package without a `node` project: `npx vitest run`
    (`npm run test` is watch mode in some packages; create uses `npm run test:ts` + `test:py`).
    One file while iterating: [Test tiers](#test-tiers).
 5. `npm run doc:build` - the VitePress docs build.

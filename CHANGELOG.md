@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Guide page _Delivering a change with agents_: for the person working with coding agents on a Dialecte package, the steps from a plan to a published version in one diagram and one table - who acts at each step, the `dialecte` command it runs, what it records, what can stop it - the review depth by risk class, how to read a hand-over card, and what agents never do. The docs now draw Mermaid diagrams (`vitepress-plugin-mermaid`).
 
+### Changed
+
+- The `dialecte-contributing` and `dialecte-lot` skills run tests with the runner's defaults: full parallelism, no `nice`, no `--maxWorkers`, no `--no-file-parallelism`, no machine lock and no waiting on other sessions' runs, limiting only when the user asks, for the time they say. A failing run is rerun once, serially, on its failing files: failing there too it is a real failure; passing there it is flaky in parallel, a defect reported and fixed at its cause (a wall-clock bound, a shared folder, port or build output, browser state, an inherited environment variable), never answered by throttling; the gate of the next `@dialecte/cli` does this rerun on its test steps. The implementer brief's machine line says the same; a timed bench still runs alone. The flag that runs a gate's steps although a green record of the tree exists is `--no-reuse` (it was `--rerun`, unreleased in a cli). New eval cases: `test-runs-at-full-parallelism`, `brief-machine-line-no-throttle`.
+
 ## [0.8.0] - 2026-11-02
 
 ### Added
