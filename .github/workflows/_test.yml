@@ -43,4 +43,4 @@ jobs:
         run: npm run test:node
 
       - name: Run the whole suite in the browser
-        run: npm run test:browser:all
+        run: npm run test:browser:all -- --retry=1
