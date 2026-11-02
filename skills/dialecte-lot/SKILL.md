@@ -351,6 +351,27 @@ run <folder> --rehearse`: a scratch clone holding your tree, the hooks folder an
 runs as it will for the user. Rehearse a heavy hook while another suite loads the machine, or at least note
 the load at rehearsal time (`uptime`) after the card: a quiet rehearsal hides a time bound that fails under load.
 
+**A check's result belongs to the tree it ran on.** From cli 0.2.0 every gate and hook result is recorded with
+what it checked - the tree, the installed lock, the linked `file:` dependencies and the command - and a run with
+the same key answers from that record instead of running again. A suite run on a tree that already passed it finds
+nothing new; the repeats are what costs: a lot that merged once ran the same suite four times (lot rehearsal, lot
+commit, merge rehearsal, merge commit). So:
+
+- A second `gate` of the same mode on an unchanged tree runs its hygiene and `tdd` step (they read the worktree,
+  not the tree), then answers the rest from its record (`reused: gate --full green on this tree ...`). Run it when
+  you want its lines; never `--rerun` "to be safe": an edit, a lock, a linked dependency already make a new key.
+  `--rerun` is for when the person asks, or when something outside the key changed (a machine fault you suspect).
+- `handover run --rehearse` decides per lot and prints why (the rules: `dialecte-contributing`
+  references/landing-changes.md). Paste those lines with the card; never add `--full` to force a rehearsal the cli
+  skipped, and start no load for it. A lot it does rehearse runs under load as above.
+- A merge onto a main that moved since the cut leaves a tree no check has seen: it is rehearsed. The branch's green
+  records say nothing about it - not its suite, nor a gate step the hook does not run (docs, skills check, the
+  browser suite). The rehearsal's hook runs the suite on the merged tree; run only the steps the hook does not run,
+  in the clone `--rehearse --keep` leaves, never a `gate --full` that would run the suite there again. A `reused`
+  line for such a merge is a cli bug to report, never a result to pass on.
+- The real commit's hook always runs, whatever the records say: it is the person's last net. Nothing passes
+  `--no-verify`.
+
 The hand-over message to the user **is the card** `handover` printed - repository, worktree, branch, HEAD,
 gates, the lots with their files and messages, and the command with its absolute `cd` - pasted as printed,
 never retyped. After it: what was not verified, and one usage line (the lot's sub-agent tokens, in total
@@ -376,7 +397,8 @@ that is rewritten every retro never settles.
 - **After every agent hands back** (implementer, fixer), run `npx dialecte gate --fast --declare <new path>`
   in its worktree before anything else. Its hygiene step fails on a staged file or a stash added since the
   worktree was made, whatever wrote it. A failure is a finding: look with the read-only commands it prints
-  and report it; never repair it with a git command that writes.
+  and report it; never repair it with a git command that writes. When the agent changed nothing, the gate
+  still runs its hygiene and `tdd` step and answers the rest from its record of that tree.
 - Write each brief from [references/briefs.md](references/briefs.md): the brief is the agent's whole
   context; synthesise, do not say "based on the findings". Every brief carries its lines for all stations
   (nothing under `.git` by hand, no workflow without the user's opt-in, no `rm` on a variable path).

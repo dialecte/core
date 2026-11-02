@@ -28,6 +28,11 @@ workspace root, outside every repo); the hand-over files are written next to it 
 - **Lots**: paths are files, or folders ending with `/`. Every lot is build-safe on its own (compiles,
   tests green) and does not reference a later lot. Typical order: types/constants → implementation +
   tests → docs → CHANGELOG → bench re-baseline (own lot) → release bump (own lot).
+- **A branch lands on main through a merge lot**, in a lots file whose `repository` is the main checkout:
+  `{ "kind": "merge", "branch": "<branch>", "tip": "<sha>", "resolved": {}, "message": "merge: ..." }` -
+  a merge commit, never a fast-forward. `resolved` maps each conflicting path to the file holding its
+  resolution (`null` removes it). The run needs the merge's `tree`, which the rehearsal prints (`tree <sha>`):
+  copy it into the lot as `"tree"`, then `--rehash`.
 - **Never in a lot**: generated docs data (`.vitepress/data/*`), lockfiles and version bumps (unless
   the lot is the release lot), local links to sibling repos. Restore them before the hand-over
   (`git checkout -- <file>` while no hand-over waits): a changed file in no lot makes `handover` refuse.
@@ -48,9 +53,16 @@ workspace root, outside every repo); the hand-over files are written next to it 
   committed.
 - **Rehearse** when the repository has a commit hook: `npx dialecte handover run <folder> --rehearse`
   commits the lots in a scratch clone holding the working tree, the hooks folder and a copy of
-  `node_modules`, then removes it (`--keep` keeps it). A heavy hook (a whole unit suite, a build) is
-  rehearsed while another suite loads the machine, as it will be when the user commits; when that is not
-  possible, the hand-over notes the machine's load at rehearsal time (`uptime`).
+  `node_modules`, then removes it (`--keep` keeps it). From cli 0.2.0 it rehearses only what can find
+  something new and prints why per lot. A plain lot is not rehearsed when its exact tree has a green
+  `gate --full` (same lock, linked dependencies and command), the lot leaves the lock alone and the hook
+  stages no files. A merge is not rehearsed when its tree is its branch tip's (main has not moved), the
+  tip's tree has a green record (the branch commit's hook or a `gate --full`) and the merge leaves the lock
+  alone; it still prints the merge's `tree <sha>`. Anything else is rehearsed: a merge onto a moved main, a
+  lock change, a hook that stages files. Paste the per-lot lines with the card; `--full` forces every lot
+  and is for when the person asks. A heavy hook that does run is rehearsed while another suite loads the
+  machine, as it will be when the user commits; when that is not possible, the hand-over notes the machine's
+  load at rehearsal time (`uptime`). The real commit's hook always runs.
 - Edited a file after the snapshot (a review fix)? `npx dialecte handover --rehash <lots.json>`.
 - `npx dialecte handover list` shows every hand-over folder with its state (pending, partly committed,
   committed, stale); after a merge, `npx dialecte worktree prune` lists the committed ones with the merged

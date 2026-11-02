@@ -1,0 +1,5 @@
+schema_version: '1.1'
+name: merge-onto-moved-main-is-rehearsed
+expected_outcome: |
+  A merge onto a main that moved since the branch was cut leaves a tree no check has seen: the merge is rehearsed with
+  its hook before the maintainer runs it, and the branch's green records are not taken as proof of it.

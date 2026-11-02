@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: landing-reuses-green-records
+expected_outcome: |
+  A lot whose `gate --full` is green on a tree nobody changed since, and whose branch merges onto a main that has not
+  moved, lands without running the suite again before the person commits: no second `gate --full` "to be safe", a
+  rehearsal through `handover run --rehearse` that the cli answers from the green record (no `--full`, no suite
+  started to load the machine), no rehearsal of the merge for its own sake since the merge's tree is the branch tip's;
+  the real commits' hooks still run, nothing skips them.
