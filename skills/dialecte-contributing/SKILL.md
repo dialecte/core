@@ -177,7 +177,11 @@ the step printed (a test step that counts no test fails), prints one line per st
 restores the generated docs the package declares after the docs build, and refuses to run while a
 hand-over script holds the repository. With `--fast`, a change that touches no test (a doc edit)
 passes the tests step with the note "no test file is affected by the change"; any other run that
-counts no test fails. Paste its lines in your report: they are the real counts.
+counts no test fails. Paste its lines in your report: they are the real counts. A gate of the same
+mode on a tree it already passed, with the same lock, linked dependencies and steps, runs its hygiene and `tdd`
+step, then answers the rest from that record (`reused`, from cli 0.2.0). `--rerun` forces a run: only when the
+person asks, or when something outside the key changed (an edit, a lock or a linked dependency already makes a
+new key).
 
 Both modes run a **`tdd` step** after the hygiene: every new or changed test case holds a red receipt and a
 later green one (`dialecte tdd red` / `green`), and the test code (helpers, fixtures, snapshots included)

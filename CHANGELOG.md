@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## UNRELEASED
+
+### Added
+
+- The `dialecte-lot` and `dialecte-contributing` skills stop re-running a check on a tree that already passed it, with `@dialecte/cli` 0.2.0's records keyed by tree: a second `gate` of the same mode on an unchanged tree runs its hygiene and `tdd` step and answers the rest from its record, `--rerun` only when the person asks or something outside the key changed; `handover run --rehearse` decides per lot and its lines are pasted with the card, never forced with `--full`; a merge onto a main that did not move reuses the branch commit's records, a merge onto a moved main is rehearsed and runs, in the kept clone, only the gate steps the hook does not run; the real commit's hook always runs. `references/landing-changes.md` gives the merge lot's form (`kind: "merge"`, the rehearsal's `tree`, then `--rehash`).
+
 ## [0.8.0] - 2026-11-02
 
 ### Added
