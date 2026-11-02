@@ -78,6 +78,14 @@ spans placed on the page's timeline (shifted by the difference of the two realms
 | `store::import::writes.after` | span  | the writes `afterImport` returned                          |
 | `store::import::finalize`     | span  | the document set `ready`                                   |
 
+On `sqlite` storage the import runs in the engine's worker, on the engine's clock, and its report holds three more names:
+
+| Name                    | Kind  | What                                                                                      |
+| ----------------------- | ----- | ----------------------------------------------------------------------------------------- |
+| `store::import::encode` | tally | records checked as JSON and encoded for SQLite, per batch                                 |
+| `store::import::commit` | tally | one import transaction committed (the import commits in time-capped transactions)         |
+| `store::import::index`  | span  | one index built on the document's table (the edits of other views wait while it is built) |
+
 ## Export stages
 
 Each store export is measured the same way and merged under `store::` (a `Project.export` that makes two store exports

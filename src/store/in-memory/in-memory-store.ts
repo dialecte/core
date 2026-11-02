@@ -211,7 +211,7 @@ export class InMemoryStore implements Store {
 			InMemoryStore.reconcileWarned = true
 			console.warn(
 				'[dialecte] InMemoryStore.reconcile() is a no-op: in-memory documents are not ' +
-					'shared across realms/tabs. Use the local (IndexedDB) store for cross-realm sync.',
+					'shared across realms/tabs. Use the local (IndexedDB) or sqlite store for cross-realm sync.',
 			)
 		}
 	}

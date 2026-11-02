@@ -1,8 +1,8 @@
 /**
  * Shared table naming and schema constants for all Store implementations.
  *
- * These define the logical storage layout regardless of backend
- * (DexieStore, SQLiteStore, InMemoryStore, etc.).
+ * The table names are the local store's layout (DexieStore; the in-memory store keys its record maps the same way);
+ * the SQLite engine keeps a schema of its own (blob bytes in one chunked table).
  */
 
 import type { RecordSchema } from './store.types'
@@ -55,7 +55,7 @@ export function blobTableName(documentId: string): string {
 
 // --- System table schemas (backend-agnostic) ---
 
-/** Schema for the _files registry table */
+/** Schema for the _documents registry table */
 export const DOCUMENTS_SCHEMA: RecordSchema = {
 	primaryKey: 'id',
 	indexes: ['name', 'configKey'],

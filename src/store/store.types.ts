@@ -411,7 +411,7 @@ export type ExportFileResult = {
 export type WriteOutcome = 'applied' | 'running' | 'not-applied'
 
 export type ChangeLogEntry = {
-	/** Auto-increment primary key (assigned by Dexie) */
+	/** Auto-increment primary key, assigned by the store */
 	id: number
 	documentId: string
 	sequenceNumber: number

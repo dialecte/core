@@ -196,7 +196,7 @@ type BaseXmlTestCase = {
 3. If `act` returns `ActResult`: exports the source or target document as text (or takes the `xmlString` of `assertOn: 'custom'`) and runs the XPath assertions on it
 4. Destroys the project (cleans up all databases)
 
-The `project` instance is useful for multi-document operations (e.g. importing additional files, calling `project.getDatabaseInstance()`, or exporting intermediate states).
+The `project` instance is useful for multi-document operations (e.g. importing additional files, or exporting intermediate states).
 
 ### Stable record IDs with dev:db-id
 
