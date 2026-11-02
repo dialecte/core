@@ -4,7 +4,7 @@ import { TOLD_OF } from '@/utils/tell-listener.constants'
 /**
  * A commit's progress as every store tells it, once its records are written: after its creates, its
  * updates and its deletes, each time out of all of them. The listener is never awaited; its failure
- * is reported on the console, the commit stands whole.
+ * is reported on the console, once for the commit, the commit stands whole.
  */
 export function tellCommitProgress(params: {
 	onProgress: ((current: number, total: number) => unknown) | undefined
@@ -13,6 +13,8 @@ export function tellCommitProgress(params: {
 	const { onProgress, parts } = params
 	const total = parts.reduce((sum, part) => sum + part, 0)
 	let written = 0
+	// the commit's ticks: a listener failing at each one reported once
+	const commit = {}
 	for (const part of parts) {
 		written += part
 		tellListener({
@@ -21,6 +23,7 @@ export function tellCommitProgress(params: {
 			},
 			value: written,
 			of: TOLD_OF.commitProgress,
+			call: commit,
 		})
 	}
 }

@@ -10,6 +10,7 @@ import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 import { testStoreFor } from '@/test/test-storage'
 import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 import { selectFirstNode, withXmlDocument } from '@/test/xml'
+import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
 import type { ProjectChannelMessage, StorageParam } from './types'
 import type { Store } from '@/store'
@@ -512,6 +513,52 @@ const CASES: Record<
 						expect(project.state.documents.get(documentId)?.record.name).toBe(
 							'renamed while opening',
 						)
+					},
+					{ timeout: CHANGE_TOLD_WITHIN_MS },
+				)
+			},
+		},
+	'a commit of another project of the name folded here, a subscriber of its Document throwing → reported on the console; the Document’s next subscriber woken all the same':
+		{
+			act: async function subscriberThrowing(storage) {
+				const other = await openProject({ storage })
+				const { documentId } = await other.importFile(leafFile())
+				const project = await openProject({ storage, name: other.name })
+				const reports = quietReports()
+				const failure = new Error('a subscriber failing')
+				const document = project.openDocument(documentId)
+				document.subscribe(function failing(terminal) {
+					if (terminal) throw failure
+				})
+				let woken = 0
+				document.subscribe(function counting(terminal) {
+					if (terminal) woken += 1
+				})
+				await addChild({ project: other, documentId })
+				await vi.waitFor(
+					function wokenAndReported() {
+						expect(woken).toBeGreaterThan(0)
+						expect(reportedFailures({ reports })).toContain(failure)
+					},
+					{ timeout: CHANGE_TOLD_WITHIN_MS },
+				)
+			},
+		},
+	'an undo whose Document subscriber throws → rejected with the subscriber’s failure (as a transaction), its commit posted on the channel all the same':
+		{
+			act: async function undoSubscriberThrowing(storage) {
+				const project = await openProject({ storage })
+				const { documentId } = await project.importFile(leafFile())
+				await addChild({ project, documentId })
+				const heard = channelHeard({ project })
+				const failure = new Error('a subscriber failing')
+				project.openDocument(documentId).subscribe(function failing(terminal) {
+					if (terminal) throw failure
+				})
+				await expect(project.undo(documentId)).rejects.toBe(failure)
+				await vi.waitFor(
+					function commitPosted() {
+						expect(heard.map(subjectOf)).toContainEqual({ type: 'commit', documentId })
 					},
 					{ timeout: CHANGE_TOLD_WITHIN_MS },
 				)

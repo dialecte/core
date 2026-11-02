@@ -7,7 +7,7 @@ import type { DialecteErrorKey } from '@/errors'
  * every copy of the library in a realm shares (`HubRegistry`). Bumped with any change of either: `shared-shapes.test.ts`
  * fails until it is, the shape recorded per version in `src/store/__shapes__/hub-protocol-v<version>.txt`.
  */
-export const HUB_PROTOCOL_VERSION = 3
+export const HUB_PROTOCOL_VERSION = 5
 
 /** An engine left without client is told to close after this long; an open meanwhile keeps it. */
 export const ENGINE_IDLE_CLOSE_MS = 5_000

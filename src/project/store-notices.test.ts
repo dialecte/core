@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
-import { makeRecord } from '@/store/contract/store-contract.fixtures'
+import { commit, makeRecord } from '@/store/contract/store-contract.fixtures'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
+import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
 import type { Store, StoreNotice } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
@@ -44,7 +45,7 @@ function toldStore(params: { name: string }): {
 }
 
 describe('a project told by its store', () => {
-	it('to read again (resync) → the documents written meanwhile in its state, each document’s view woken', async () => {
+	it('to read again (resync) → the documents written meanwhile in its state, each document’s view woken, its channel’s listeners told to read again', async () => {
 		const name = `notices-${crypto.randomUUID()}`
 		const { store, tell } = toldStore({ name })
 		const project = await new Project({
@@ -67,12 +68,14 @@ describe('a project told by its store', () => {
 		})
 		await elsewhere.close()
 		expect(project.state.documents.has(record.id)).toBe(false)
+		const heard = listenTo({ project })
 
 		tell({ type: 'resync' })
 
 		await vi.waitFor(function readAgain() {
 			expect(project.state.documents.has(record.id)).toBe(true)
 			expect(woken).toBeGreaterThan(0)
+			expect(heard).toEqual(['resync -'])
 		})
 		await project.close()
 	})
@@ -623,15 +626,22 @@ const readAgainCases: Record<string, ReadAgainCase> = {
 
 describe('told while the project opens', () => {
 	for (const [description, { tell: toldDuringOpen, readAgain }] of Object.entries(readAgainCases)) {
-		it(`${description} → ${readAgain ? 'its documents read again once open: one written meanwhile, told to no one, in its state' : 'folded one by one once open, its documents not read again'}`, async () => {
+		it(`${description} → ${readAgain ? 'its documents read again once open: one written meanwhile, told to no one, in its state; a listener joined meanwhile told to read again' : 'folded one by one once open, its documents not read again; a listener joined meanwhile told each'}`, async () => {
 			const name = `read-again-${crypto.randomUUID()}`
 			const { store, tell } = toldStore({ name })
 			made.push(store)
+			const project = new Project({
+				configs: { default: CONFIG },
+				storage: { type: 'custom', store },
+			})
+			let heard: string[] = []
 			let unseen = ''
 			let readsAfterOpen = 0
 			duringOpenRead({
 				store,
 				during: async function writtenUntold() {
+					// a listener of the project's channel joined while it opens
+					heard = listenTo({ project })
 					const elsewhere = new InMemoryStore(name, { runtime: RUNTIME })
 					await elsewhere.open()
 					const { record } = await elsewhere.importFile({
@@ -648,18 +658,21 @@ describe('told while the project opens', () => {
 					}
 				},
 			})
-			const project = await new Project({
-				configs: { default: CONFIG },
-				storage: { type: 'custom', store },
-			}).open(name)
+			await project.open(name)
 			onTestFinished(function closeProject() {
 				return project.close()
 			})
 			// a reading again starts as the open settles: counted by now
 			expect(readsAfterOpen).toBe(readAgain ? 1 : 0)
-			if (!readAgain) return
+			if (!readAgain) {
+				await vi.waitFor(function eachTold() {
+					expect(heard).toEqual(Array(CHANGES_HELD_MAX).fill('commit unknown'))
+				})
+				return
+			}
 			await vi.waitFor(function readAgainHolds() {
 				expect(project.state.documents.has(unseen)).toBe(true)
+				expect(heard).toEqual(['resync -'])
 			})
 		})
 	}
@@ -693,5 +706,131 @@ describe('an open a close was called after', () => {
 		await project.open(name)
 		await closing
 		expect(posted).not.toHaveBeenCalled()
+	})
+})
+
+describe('a Document subscriber throwing as a call of the project changes its document', () => {
+	type CallCase = {
+		/** The store wrapped before the call, when the call meets a lost engine. */
+		engineLost: boolean
+		/** What the call rejects with: the subscriber's failure, or the lost engine. */
+		rejected: 'subscriber' | 'STORE_ENGINE_LOST'
+	}
+	const callCases: Record<string, CallCase> = {
+		'an undo its store refuses STORE_ENGINE_LOST → rejected STORE_ENGINE_LOST, the subscriber’s failure reported':
+			{
+				engineLost: true,
+				rejected: 'STORE_ENGINE_LOST',
+			},
+	}
+	for (const [description, { engineLost, rejected }] of Object.entries(callCases)) {
+		it(description, async () => {
+			const { project, store, documentId } = await openHeld()
+			await project.openDocument(documentId).transaction(async function addOne(tx) {
+				const root = await tx.getRoot()
+				await tx.addChild(root, { tagName: 'A', attributes: [] })
+			})
+			const heard = listenTo({ project })
+			const reports = quietReports()
+			const failure = new Error('a subscriber failing')
+			project.openDocument(documentId).subscribe(function failing(terminal) {
+				if (terminal) throw failure
+			})
+			if (engineLost) {
+				store.undo = async function lostWhileUndoing() {
+					throw createDialecteError('STORE_ENGINE_LOST', { detail: 'the host went away' })
+				}
+			}
+			const outcome = await project.undo(documentId).then(
+				function undone() {
+					return 'undone'
+				},
+				function refused(thrown: unknown) {
+					return thrown === failure ? 'subscriber' : toDialecteError(thrown)?.key
+				},
+			)
+			expect(outcome).toBe(rejected)
+			if (engineLost) {
+				expect(reportedFailures({ reports })).toEqual([failure])
+				return
+			}
+			await vi.waitFor(function commitPosted() {
+				expect(heard).toContain(`commit ${documentId}`)
+			})
+		})
+	}
+})
+
+describe('a resync, a subscriber of one document throwing', () => {
+	it('→ every other document’s subscribers woken all the same, the failure reported', async () => {
+		const name = `resync-throwing-${crypto.randomUUID()}`
+		const { store, tell } = toldStore({ name })
+		made.push(store)
+		const project = await new Project({
+			configs: { default: CONFIG },
+			storage: { type: 'custom', store },
+		}).open(name)
+		onTestFinished(function closeProject() {
+			return project.close()
+		})
+		const first = await project.initEmptyDocument()
+		const second = await project.initEmptyDocument()
+		const reports = quietReports()
+		const failure = new Error('a subscriber failing')
+		let woken = 0
+		for (const documentId of [first, second]) {
+			project.openDocument(documentId).subscribe(function failingOrCounting(terminal) {
+				if (!terminal) return
+				if (documentId === first) throw failure
+				woken += 1
+			})
+		}
+		tell({ type: 'resync' })
+		await vi.waitFor(function secondWoken() {
+			expect(woken).toBe(1)
+			expect(reportedFailures({ reports })).toContain(failure)
+		})
+	})
+})
+
+describe('a resync told to the channel’s listeners', () => {
+	it('→ posted once the documents and their history are read again: a listener reading canUndo then sees the commit made meanwhile', async () => {
+		const name = `resync-history-${crypto.randomUUID()}`
+		const { store, tell } = toldStore({ name })
+		made.push(store)
+		const project = await new Project({
+			configs: { default: CONFIG },
+			storage: { type: 'custom', store },
+		}).open(name)
+		onTestFinished(function closeProject() {
+			return project.close()
+		})
+		const documentId = await project.initEmptyDocument()
+		// a commit by another connection, told to no one
+		const elsewhere = new InMemoryStore(name, { runtime: RUNTIME })
+		await elsewhere.open()
+		await commit({ store: elsewhere, documentId, creates: [makeRecord({ id: 'r-elsewhere' })] })
+		await elsewhere.close()
+		// the history read slow: a notice posted before it would show the history of before
+		const readHistory = store.getHistoryStatus.bind(store)
+		store.getHistoryStatus = async function slowHistory(id) {
+			await new Promise(function slowly(resolve) {
+				setTimeout(resolve, 100)
+			})
+			return readHistory(id)
+		}
+		const seen: boolean[] = []
+		const channel = project.createChannel()
+		onTestFinished(function closeChannel() {
+			channel.close()
+		})
+		channel.onmessage = function readOnResync(event: MessageEvent<{ type: string }>) {
+			if (event.data.type !== 'resync') return
+			seen.push(project.state.documents.get(documentId)?.canUndo ?? false)
+		}
+		tell({ type: 'resync' })
+		await vi.waitFor(function told() {
+			expect(seen).toEqual([true])
+		})
 	})
 })

@@ -16,48 +16,52 @@ import type { SqliteConnectorParams } from '../../sqlite-storage.types'
  * says by then - and a page the hub never welcomed asks it again at its next connection. A destroy goes the way a
  * connection would, and runs a worker of its own in this realm. Where the realm can run no engine (no worker, no
  * private file system: Node, a private window, a sandboxed or storage-blocked frame) it refuses `STORE_UNAVAILABLE`,
- * nothing started - but a child its page bound through `adoptHubPort` connects through the page's engine.
+ * nothing started - but a child its page bound through `adoptHubPort` connects through the page's engine, and its
+ * destroys are deleted by a view of the origin that can store.
  */
 export function createSqliteConnector(params: SqliteConnectorParams): EngineConnector {
 	const { name, dialecteId, dialecteVersion, engineUrl, perf } = params
 	const direct = createSqliteWorkerConnector({ name, dialecteId, dialecteVersion, engineUrl, perf })
 
-	function throughHub(params: { connection: HubConnection }): EngineConnector {
+	function throughHub(params: {
+		connection: HubConnection
+		deletesFiles: boolean
+	}): EngineConnector {
 		return createHubConnector({
 			name,
 			connection: params.connection,
 			dialecteId,
 			dialecteVersion,
 			engineUrl,
+			deletesFiles: params.deletesFiles,
 		})
 	}
 
 	/**
 	 * The way a connection or a destroy goes: direct when the page runs the project already or has no hub, else
-	 * through the hub - this project's engine offered to it. A realm that cannot store starts nothing: a connection
-	 * goes through the hub only as a child bound by its page (which hosts no engine), and a destroy, which runs a
-	 * worker here, is refused.
+	 * through the hub - this project's engine offered to it. A realm that cannot store starts nothing: it goes through
+	 * the hub only as a child bound by its page (which hosts no engine), its destroys' files deleted by a view that can.
 	 */
-	async function chosen(params: { destroying: boolean }): Promise<EngineConnector> {
+	async function chosen(): Promise<EngineConnector> {
 		if (!(await storesHere())) {
-			const bound = params.destroying ? undefined : await boundConnection()
-			if (bound) return throughHub({ connection: bound })
+			const bound = await boundConnection()
+			if (bound) return throughHub({ connection: bound, deletesFiles: false })
 			refuseWithoutStorage({ name })
 		}
 		if (runsDirectly({ name, dialecteId })) return direct
 		const connection = await openHubConnection({
 			spawners: [sqliteHubSpawner({ dialecteId, dialecteVersion, engineUrl, perf })],
 		})
-		return connection ? throughHub({ connection }) : direct
+		return connection ? throughHub({ connection, deletesFiles: true }) : direct
 	}
 
 	return {
 		connect: async function connectToEngine() {
-			const connector = await chosen({ destroying: false })
+			const connector = await chosen()
 			return connector.connect()
 		},
 		destroy: async function destroyProject(destroyParams) {
-			const connector = await chosen({ destroying: true })
+			const connector = await chosen()
 			return connector.destroy(destroyParams)
 		},
 	}

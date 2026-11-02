@@ -48,7 +48,8 @@ export function createProjectFactory<
 	/**
 	 * The dialecte's project of that name on SQLite storage deleted, never opened (one of another layout, or whose
 	 * database is lost, too): through the page's hub when it has one, else by the page; refused `PROJECT_OPEN_ELSEWHERE`
-	 * while a view has it open, `STORE_UNAVAILABLE` where the browser gives no private file system.
+	 * while a view has it open, `STORE_UNAVAILABLE` where the browser gives no private file system - but in a child bound
+	 * through `adoptHubPort`, deleted by a view of the origin that can store.
 	 */
 	async function destroyProject(destroyParams: { name: string }): Promise<void> {
 		const { name } = destroyParams

@@ -13,3 +13,6 @@ export const GIT_NOT_TRACKED = 1
 
 /** The exit status of git asked outside any repository. */
 export const GIT_NOT_A_REPOSITORY = 128
+
+/** What git says, exiting `GIT_NOT_A_REPOSITORY`, outside any repository (other refusals exit 128 too). */
+export const GIT_NOT_A_REPOSITORY_SAYS = 'not a git repository'

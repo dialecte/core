@@ -271,6 +271,42 @@ function destroyed(params: { realmId: string; now?: number }): HubEvent {
 	return { type: 'destroyed', now, realmId, project: PROJECT, dialecteId: 'scl' }
 }
 
+function destroyElsewhere(params: {
+	realmId: string
+	now?: number
+	dialecteVersion?: string
+}): HubEvent {
+	const { realmId, now = 0, dialecteVersion = SCL.dialecteVersion } = params
+	return {
+		type: 'destroy-elsewhere',
+		now,
+		realmId,
+		project: PROJECT,
+		dialecteId: 'scl',
+		dialecteVersion,
+	}
+}
+
+function filesDeleted(params: { realmId: string; now?: number; error?: unknown }): HubEvent {
+	const { realmId, now = 0, error } = params
+	return {
+		type: 'files-deleted',
+		now,
+		realmId,
+		project: PROJECT,
+		dialecteId: 'scl',
+		...(error !== undefined && { error }),
+	}
+}
+
+/** A child bound to the shell that cannot store: it hosts no engine. */
+const STORAGELESS_CHILD = hello({
+	realmId: 'child',
+	topLevel: false,
+	spawners: [],
+	parentRealmId: 'shell',
+})
+
 /** The engine the shell is asked to spawn for the project, by generation. */
 const SPAWN_SHELL_1: HubCommand = {
 	type: 'spawn-engine',
@@ -2436,6 +2472,274 @@ describe('createHubRouter', () => {
 					{ event: destroyed({ realmId: 'shell' }), commands: [] },
 				],
 			},
+		'a child that cannot store destroys the project its page hosts → engine released, the page asked to delete the files; deleted: the child told, then the open made meanwhile elected':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					STORAGELESS_CHILD,
+					open({ realmId: 'shell' }),
+					engineOpened({ generation: 1 }),
+					leave({ realmId: 'shell' }),
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{ type: 'delete-files', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
+						],
+					},
+					{ event: open({ realmId: 'shell' }), commands: [] },
+					{
+						event: filesDeleted({ realmId: 'shell' }),
+						commands: [
+							{
+								type: 'destroyed-elsewhere',
+								realmId: 'child',
+								project: PROJECT,
+								dialecteId: 'scl',
+							},
+							SPAWN_SHELL_2,
+						],
+					},
+				],
+			},
+		'a child that cannot store destroys the project it is a client of → told its engine is gone, not held: once deleted, no engine started again for it':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					STORAGELESS_CHILD,
+					open({ realmId: 'child' }),
+					engineOpened({ generation: 1 }),
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{
+								type: 'engine-lost',
+								realmId: 'child',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+							},
+							{
+								type: 'release-engine',
+								project: PROJECT,
+								dialecteId: 'scl',
+								generation: 1,
+								hostRealmId: 'shell',
+							},
+							{ type: 'delete-files', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
+						],
+					},
+					{
+						event: filesDeleted({ realmId: 'shell' }),
+						commands: [
+							{
+								type: 'destroyed-elsewhere',
+								realmId: 'child',
+								project: PROJECT,
+								dialecteId: 'scl',
+							},
+						],
+					},
+					// its connection lets the project go, told it is deleted
+					{
+						event: leave({ realmId: 'child' }),
+						commands: [{ type: 'left', realmId: 'child', project: PROJECT, dialecteId: 'scl' }],
+					},
+				],
+			},
+		'a child that cannot store, its page running no engine of the dialecte → another view that does deletes the files':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [] }),
+					hello({ realmId: 'other-tab' }),
+					STORAGELESS_CHILD,
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{ type: 'delete-files', realmId: 'other-tab', project: PROJECT, dialecteId: 'scl' },
+						],
+					},
+				],
+			},
+		'a child that cannot store, its page running the dialecte at another version, another tab at the child’s → the tab at its version deletes the files':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [{ ...SCL, dialecteVersion: '2.0.0' }] }),
+					hello({ realmId: 'other-tab' }),
+					STORAGELESS_CHILD,
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{ type: 'delete-files', realmId: 'other-tab', project: PROJECT, dialecteId: 'scl' },
+						],
+					},
+				],
+			},
+		'a child that cannot store, only its page running the dialecte, at another version → the page deletes the files (a destroy removes them by name, whatever their layout)':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [{ ...SCL, dialecteVersion: '2.0.0' }] }),
+					STORAGELESS_CHILD,
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{ type: 'delete-files', realmId: 'shell', project: PROJECT, dialecteId: 'scl' },
+						],
+					},
+				],
+			},
+		'a child that cannot store, no view running an engine of the dialecte → refused STORE_UNAVAILABLE, nothing held':
+			{
+				history: [hello({ realmId: 'shell', spawners: [NSD] }), STORAGELESS_CHILD],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{
+								type: 'refuse-destroy',
+								realmId: 'child',
+								project: PROJECT,
+								dialecteId: 'scl',
+								refusal: {
+									origin: 'hub',
+									key: 'STORE_UNAVAILABLE',
+									detail: `no view of the origin runs an engine of "scl" to delete "${PROJECT}"`,
+									meta: { project: PROJECT, dialecteId: 'scl' },
+								},
+							},
+						],
+					},
+					{
+						event: open({ realmId: 'shell', dialecteId: 'nsd' }),
+						commands: [{ ...SPAWN_SHELL_1, dialecteId: 'nsd' }],
+					},
+				],
+			},
+		'a child that cannot store destroys the project another view uses → refused PROJECT_OPEN_ELSEWHERE, no view asked':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					STORAGELESS_CHILD,
+					open({ realmId: 'other-tab' }),
+				],
+				steps: [
+					{
+						event: destroyElsewhere({ realmId: 'child' }),
+						commands: [
+							{
+								type: 'refuse-destroy',
+								realmId: 'child',
+								project: PROJECT,
+								dialecteId: 'scl',
+								refusal: {
+									origin: 'hub',
+									key: 'PROJECT_OPEN_ELSEWHERE',
+									detail: `"${PROJECT}" is open in 1 other view(s)`,
+									meta: { project: PROJECT, connections: 1 },
+								},
+							},
+						],
+					},
+				],
+			},
+		'the files of a child’s destroy fail to delete → the child refused with the deleting view’s error, the hold lifted':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					STORAGELESS_CHILD,
+					destroyElsewhere({ realmId: 'child' }),
+				],
+				steps: [
+					{
+						event: filesDeleted({ realmId: 'shell', error: QUOTA_ERROR }),
+						commands: [
+							{
+								type: 'refuse-destroy',
+								realmId: 'child',
+								project: PROJECT,
+								dialecteId: 'scl',
+								refusal: { origin: 'engine', error: QUOTA_ERROR },
+							},
+						],
+					},
+					{ event: open({ realmId: 'shell' }), commands: [SPAWN_SHELL_1] },
+				],
+			},
+		'the view deleting a child’s project gone before it is done → the child refused STORE_ENGINE_LOST, the hold lifted':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [] }),
+					hello({ realmId: 'other-tab' }),
+					STORAGELESS_CHILD,
+					destroyElsewhere({ realmId: 'child' }),
+				],
+				steps: [
+					{
+						event: realmGone({ realmId: 'other-tab' }),
+						commands: [
+							{ type: 'drop-realm', realmId: 'other-tab' },
+							{
+								type: 'refuse-destroy',
+								realmId: 'child',
+								project: PROJECT,
+								dialecteId: 'scl',
+								refusal: {
+									origin: 'hub',
+									key: 'STORE_ENGINE_LOST',
+									detail: `the view deleting "${PROJECT}" is gone: its files may be partly deleted`,
+									meta: { project: PROJECT, reason: 'host-gone' },
+								},
+							},
+						],
+					},
+				],
+			},
+		'the child gone while its project’s files are deleted → held until the deleting view is done, then the open made meanwhile elected; nothing told to the child':
+			{
+				history: [
+					hello({ realmId: 'shell', spawners: [] }),
+					hello({ realmId: 'other-tab' }),
+					STORAGELESS_CHILD,
+					destroyElsewhere({ realmId: 'child' }),
+				],
+				steps: [
+					{
+						event: realmGone({ realmId: 'child' }),
+						commands: [{ type: 'drop-realm', realmId: 'child' }],
+					},
+					{ event: open({ realmId: 'other-tab' }), commands: [] },
+					{
+						event: filesDeleted({ realmId: 'other-tab' }),
+						commands: [{ ...SPAWN_SHELL_1, realmId: 'other-tab' }],
+					},
+				],
+			},
+		'files said deleted by a view that was not asked → ignored, the hold kept': {
+			history: [
+				hello({ realmId: 'shell' }),
+				hello({ realmId: 'other-tab' }),
+				STORAGELESS_CHILD,
+				destroyElsewhere({ realmId: 'child' }),
+			],
+			steps: [{ event: filesDeleted({ realmId: 'other-tab' }), commands: [] }],
+		},
 		'the destroying realm dies before it is done → the hold lifted: the open made meanwhile is elected':
 			{
 				history: [

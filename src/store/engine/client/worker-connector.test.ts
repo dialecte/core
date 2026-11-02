@@ -32,7 +32,11 @@ import { SQLITE_WASM_URL } from '../../sqlite/sqlite-wasm-url'
 import { EngineStore } from '../engine-store'
 import { engineLockNameOf } from '../project-key'
 import { ENGINE_WIRE_PROTOCOL } from '../wire/wire.constants'
-import { ENGINE_CLOSE_BUDGET_MS, ENGINE_OPEN_BUDGET_MS } from './client.constants'
+import {
+	ENGINE_CLOSE_BUDGET_MS,
+	ENGINE_FOLLOW_REARM_FIRST_MS,
+	ENGINE_OPEN_BUDGET_MS,
+} from './client.constants'
 import { createEngineControl } from './engine-control'
 import { destroyFromFreshWorker } from './worker-connector'
 
@@ -617,33 +621,73 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			)
 		})
 
-		it('ended twice, the connection only listening, no call of its own between → it follows the first end only: no engine runs after the second until it calls', async () => {
-			const name = projectName()
-			const listening = await openWorkerStore({
-				name,
-				engineUrl: fixtureUrl({ scenario: 'endable' }),
-			})
-			const heard = shapesHeard({ store: listening })
-			orderFixtures({ type: 'end' })
-			await vi.waitFor(
-				function followedOnce() {
-					expect(heard).toEqual([{ type: 'resync' }])
-				},
-				{ timeout: CHANGE_TOLD_WITHIN_MS },
-			)
-			orderFixtures({ type: 'end' })
-			await expect
-				.poll(
-					function engineEnded() {
-						return isEngineLockFree({ project: name })
+		type FollowCase = {
+			/** How long the engine it followed runs before it ends again. */
+			livedMs: number
+			followedAgain: boolean
+		}
+		const followCases: Record<string, FollowCase> = {
+			'the engine it followed lasting → it follows that end too: told to read again each time, another connection’s change after it told':
+				{ livedMs: ENGINE_FOLLOW_REARM_FIRST_MS + 200, followedAgain: true },
+			'the engine it followed ending at once (an engine that does not last) → not followed again: no engine runs until it calls':
+				{ livedMs: 0, followedAgain: false },
+		}
+		for (const [description, { livedMs, followedAgain }] of Object.entries(followCases)) {
+			it(`ended twice, the connection only listening, no call of its own between, ${description}`, async () => {
+				const name = projectName()
+				const caller = await openWorkerStore({
+					name,
+					engineUrl: fixtureUrl({ scenario: 'endable' }),
+				})
+				const listening = await openWorkerStore({
+					name,
+					engineUrl: fixtureUrl({ scenario: 'endable' }),
+				})
+				const heard = shapesHeard({ store: listening })
+				orderFixtures({ type: 'end' })
+				await vi.waitFor(
+					function followedOnce() {
+						expect(heard).toEqual([{ type: 'resync' }])
 					},
 					{ timeout: CHANGE_TOLD_WITHIN_MS },
 				)
-				.toBe(true)
-			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
-			expect(await isEngineLockFree({ project: name })).toBe(true)
-			expect(await listening.getDocuments()).toEqual([])
-		})
+				await new Promise(function engineRuns(resolve) {
+					setTimeout(resolve, livedMs)
+				})
+				orderFixtures({ type: 'end' })
+				if (!followedAgain) {
+					await expect
+						.poll(
+							function engineEnded() {
+								return isEngineLockFree({ project: name })
+							},
+							{ timeout: CHANGE_TOLD_WITHIN_MS },
+						)
+						.toBe(true)
+					await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
+					expect(await isEngineLockFree({ project: name })).toBe(true)
+					expect(heard).toEqual([{ type: 'resync' }])
+					return
+				}
+				await vi.waitFor(
+					function followedAgain() {
+						expect(heard).toEqual([{ type: 'resync' }, { type: 'resync' }])
+					},
+					{ timeout: CHANGE_TOLD_WITHIN_MS },
+				)
+				await caller.registerDocument(makeDocument({ id: 'doc-after' }))
+				await vi.waitFor(
+					function toldTheChange() {
+						expect(heard.at(-1)).toEqual({
+							own: false,
+							type: 'init-empty-document',
+							documentId: 'doc-after',
+						})
+					},
+					{ timeout: CHANGE_TOLD_WITHIN_MS },
+				)
+			})
+		}
 
 		it('its engine gone, the project destroyed by another tab → the connection refused PROJECT_DESTROYED_WHILE_AWAY for good; a new connection racing it opens the project anew', async () => {
 			const name = projectName()

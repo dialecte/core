@@ -40,6 +40,57 @@ describe('a listener told', () => {
 	}
 })
 
+describe('a listener failing at every tell', () => {
+	type OnceCase = {
+		/** The call each tell belongs to (a progress listener's import, export or commit), by index; none: no call named. */
+		calls: (number | undefined)[]
+		/** The failures reported, by the tell's index. */
+		reported: number[]
+	}
+	const onceCases: Record<string, OnceCase> = {
+		'its ticks of one call → told every time, reported once (the first)': {
+			calls: [0, 0, 0],
+			reported: [0],
+		},
+		'its ticks of two calls (one listener reused) → reported once per call': {
+			calls: [0, 0, 1, 1],
+			reported: [0, 2],
+		},
+		'no call named (a store’s subscriber) → every failure reported': {
+			calls: [undefined, undefined],
+			reported: [0, 1],
+		},
+	}
+	for (const [description, { calls, reported }] of Object.entries(onceCases)) {
+		it(description, () => {
+			const reports = quietReports()
+			const told: number[] = []
+			const failures = calls.map(function failureOf(_call, index) {
+				return new Error(`tick ${index}`)
+			})
+			const callObjects = [{}, {}]
+			function failingEachTime(value: number): void {
+				told.push(value)
+				throw failures[value]
+			}
+			for (const [value, call] of calls.entries()) {
+				tellListener({
+					listener: failingEachTime,
+					value,
+					of: 'the case’s ticks',
+					...(call !== undefined && { call: callObjects[call] }),
+				})
+			}
+			expect(told).toEqual(calls.map((_call, index) => index))
+			expect(reports.mock.calls).toEqual(
+				reported.map(function reportOf(index) {
+					return [REPORT, failures[index]]
+				}),
+			)
+		})
+	}
+})
+
 describe('listeners told one value', () => {
 	it('one throwing → the others told all the same, in order, its failure reported once', () => {
 		const reports = quietReports()

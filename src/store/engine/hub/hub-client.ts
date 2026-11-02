@@ -1,11 +1,13 @@
 import { throwOpenElsewhere } from '../../store-errors'
-import { ENGINE_LOST_DETAILS } from '../client/client.constants'
+import { ENGINE_LOST_DETAILS, ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
+import { destroyFromFreshWorker } from '../client/worker-connector'
 import { refuseOtherCreation } from '../creation-refusal'
 import { projectKeyOf } from '../project-key'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
 	HUB_REGISTRY_KEY,
+	HUB_REJOIN_AT_ONCE_MAX,
 	HUB_REJOIN_FIRST_DELAY_MS,
 	HUB_REJOIN_MAX_DELAY_MS,
 	HUB_WELCOME_BUDGET_MS,
@@ -30,12 +32,13 @@ import type {
 	HubConnectionOptions,
 	HubConnectionParams,
 	HubLifecycleTargets,
-	HubPortOpening,
-	HubRegistry,
-	JoinBudget,
 	HubPortHandle,
+	HubPortOpening,
 	HubProjectLink,
 	HubProjectParams,
+	HubRegistry,
+	JoinBudget,
+	OwnHubLink,
 	PendingDestroy,
 	ProjectEntry,
 	QueuedMessage,
@@ -294,6 +297,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	}
 	/** The links of this realm counted among their project's users: from their open until released. */
 	const countedLinks = new WeakSet<HubProjectLink>()
+	/** The projects (key -> name) another view deletes the files of for this realm: no link of them asks meanwhile. */
+	const deletingElsewhere = new Map<string, string>()
 	/** The destroys asked of the hub and not answered yet, by project key. */
 	const destroys = new Map<string, PendingDestroy>()
 	/** The leaves said and not acknowledged yet, by project key, in the order said: each released link waits on its own. */
@@ -318,7 +323,17 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	/** The port a child's page handed it to join on next: at once when dropped, else once it is. */
 	let standbyPort: MessagePort | undefined
 	let rejoinTimer: ReturnType<typeof setTimeout> | undefined
+	/** A bound child handed a port while welcomed: its switch to that port once no `dropped` came. */
+	let standbyTimer: ReturnType<typeof setTimeout> | undefined
+	/** Told when the hub answers the child's probe (`pong`): it lives, the child stays on its port. */
+	let hubAnswered: () => void = releaseNothing
 	let rejoinDelayMs = HUB_REJOIN_FIRST_DELAY_MS
+	/** When the realm was last welcomed: a hub lost within the first rejoin delay of it is not joined again at once. */
+	let joinedAt: number | undefined
+	/** When the hub was last lost or out of reach: the rejoin delay starts again from its first after a quiet while. */
+	let lastTroubleAt: number | undefined
+	/** The next hub joined at once this many times in a row (troubles close together): capped at `HUB_REJOIN_AT_ONCE_MAX`. */
+	let rejoinsAtOnce = 0
 	let markEnded: (reason: unknown) => void = releaseNothing
 	const ended = new Promise<unknown>(function waitForEnd(resolve) {
 		markEnded = resolve
@@ -335,6 +350,85 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 
 	function send(message: RealmToHubMessage, transfer: Transferable[] = []): void {
 		port.postMessage(message, transfer)
+	}
+
+	/**
+	 * No files here (a view that cannot store): another view deletes them, the hub answers once it has. The hub drops
+	 * this realm's use of the project with its engine, so the links left - its own when refused, another opened
+	 * meanwhile - ask for an engine again once it is answered; a project deleted is opened anew (its creation forgotten).
+	 */
+	async function destroyElsewhere(params: {
+		key: string
+		project: string
+		dialecteId: string
+		dialecteVersion: string
+		own: OwnHubLink | undefined
+	}): Promise<void> {
+		const { key, project, dialecteId, dialecteVersion, own } = params
+		const before = entries.get(key)
+		if (before) before.asked = false
+		// no link asks meanwhile: the hub would hold its open and answer it for the creation the files had
+		deletingElsewhere.set(key, project)
+		try {
+			await new Promise<void>(function waitForDeletion(deleted, refused) {
+				destroys.set(key, { granted: deleted, refused })
+				sendWhenJoined({ type: 'destroy-elsewhere', project, dialecteId, dialecteVersion })
+			}).finally(function forgetDestroy() {
+				destroys.delete(key)
+				deletingElsewhere.delete(key)
+			})
+		} catch (thrown) {
+			const kept = entries.get(key)
+			// refused before the hub held anything: its engine still connected, its use still counted by the hub
+			if (kept?.current) kept.asked = true
+			else askForLinksLeft({ key, own: undefined })
+			throw thrown
+		}
+		const deleted = entries.get(key)
+		if (deleted) deleted.creationId = undefined
+		// its own link let go first: only another link left asks for the project made anew
+		void own?.letGo()
+		askForLinksLeft({ key, own: own?.link })
+	}
+
+	/** The project's links in this realm but `own` asking for an engine, when any is left in use or waiting. */
+	function askForLinksLeft(params: { key: string; own: HubProjectLink | undefined }): void {
+		const entry = entries.get(params.key)
+		if (!entry) return
+		if (otherUsers({ key: params.key, own: params.own }) > 0 || entry.waiters.length > 0) ask(entry)
+	}
+
+	/**
+	 * The project's files deleted for a view that cannot store, by a fresh worker of this realm's engine of the
+	 * dialecte (once the hub released the project's engine); the hub told it is done, or what failed.
+	 */
+	function deleteFilesFor(params: { project: string; dialecteId: string }): void {
+		const { project, dialecteId } = params
+		const spawner = registered.find(function ofTheDialecte(candidate) {
+			return candidate.dialecteId === dialecteId
+		})
+		const deleting = spawner
+			? destroyFromFreshWorker({
+					name: project,
+					dialecteId,
+					engineUrl: spawner.engineUrl,
+					budgetMs: ENGINE_OPEN_BUDGET_MS,
+					lock: 'wait',
+				})
+			: Promise.reject(
+					createDialecteError('STORE_UNAVAILABLE', {
+						detail: `Project "${project}" cannot be deleted from this view: it runs no engine of "${dialecteId}"`,
+						meta: { project, dialecteId },
+					}),
+				)
+		deleting.then(
+			function deleted() {
+				send({ type: 'files-deleted', project, dialecteId })
+			},
+			function failed(thrown: unknown) {
+				send({ type: 'files-deleted', project, dialecteId, error: toThrownData({ thrown }) })
+			},
+		)
 	}
 
 	/** Said now when the realm is welcomed, else once it is (the hub drops anything before the hello). */
@@ -371,6 +465,14 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			case 'destroy-refused':
 				destroys.get(projectKeyOf(message))?.refused(fromThrownData({ data: message.error }))
 				return
+			case 'destroyed-elsewhere':
+				destroys.get(projectKeyOf(message))?.granted()
+				return
+			case 'pong':
+				hubAnswered()
+				return
+			case 'delete-files':
+				return deleteFilesFor({ project: message.project, dialecteId: message.dialecteId })
 			case 'dropped':
 				return stayDropped({})
 			case 'spawn-engine':
@@ -460,8 +562,13 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	}
 
 	/**
-	 * The hub's lock asked for: granted once the hub is gone (its worker crashed or was ended) - this realm
-	 * instance is then over, its calls refused as for a hub out of reach, and it joins the next hub after a delay.
+	 * The hub's lock asked for: granted once the hub is gone (its worker crashed or was ended) - this realm instance is
+	 * then over (the calls on its engines refused `STORE_ENGINE_LOST`, `host-gone`) and it joins the next hub at once,
+	 * the calls waiting for an engine waiting for that hub's: a read is made again there, as a single engine would
+	 * answer it - at most `HUB_REJOIN_AT_ONCE_MAX` times in a row. That join failing, a hub lost within the first rejoin
+	 * delay of its welcome (a hub that does not last), or hubs that keep ending past that cap: its calls are refused as
+	 * for a hub out of reach, and it joins after the delay - doubled each time; delay and count start again after a
+	 * quiet while.
 	 */
 	function watchHub(params: { hubLock: string; instanceId: string }): void {
 		const { hubLock, instanceId } = params
@@ -470,18 +577,101 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		navigator.locks
 			.request(hubLock, { signal: watch.signal }, function hubGone() {
 				if (realmId !== instanceId || phase !== 'joined') return
-				stayUnreachable({
-					error: createDialecteError('STORE_CONNECTION_FAILED', {
-						detail: "The origin's hub ended: this view joins the next one",
-					}),
+				const error = createDialecteError('STORE_CONNECTION_FAILED', {
+					detail: "The origin's hub ended: this view joins the next one",
 				})
+				const lived = joinedAt === undefined ? 0 : performance.now() - joinedAt
+				noteTrouble()
+				// a hub that did not last: refused meanwhile, joined after the delay (doubled each time)
+				if (lived < HUB_REJOIN_FIRST_DELAY_MS) {
+					stayUnreachable({ error })
+					return
+				}
+				// hubs that last a while but keep ending: past the cap, the calls waiting are refused as well
+				if (rejoinsAtOnce >= HUB_REJOIN_AT_ONCE_MAX) {
+					stayUnreachable({
+						error: createDialecteError('STORE_CONNECTION_FAILED', {
+							detail:
+								"The origin's hub keeps ending: this view's calls are refused until it joins one that lasts",
+						}),
+					})
+					return
+				}
+				rejoinsAtOnce += 1
+				joinNextHub({ error })
 			})
 			.catch(ignoreWithdrawnWatch)
+	}
+
+	/**
+	 * A hub lost or out of reach now: the rejoin delay starts again from its first only after a quiet while - a welcome
+	 * since the last trouble, the longest delay ago - never in the middle of an outage, however long.
+	 */
+	function noteTrouble(): void {
+		const now = performance.now()
+		const quietSince =
+			joinedAt !== undefined &&
+			(lastTroubleAt === undefined || joinedAt > lastTroubleAt) &&
+			now - joinedAt > HUB_REJOIN_MAX_DELAY_MS
+		if (quietSince) {
+			rejoinDelayMs = HUB_REJOIN_FIRST_DELAY_MS
+			rejoinsAtOnce = 0
+		}
+		lastTroubleAt = now
+	}
+
+	/** The hub gone: this instance ended, the next hub joined at once; the calls waiting for an engine keep waiting. */
+	function joinNextHub(params: { error: unknown }): void {
+		phase = 'suspended'
+		// a call made meanwhile waits for the join, as one made while the realm joins does
+		unreachable = undefined
+		endInstance({ reason: 'host-gone' })
+		dropQueued({ error: params.error })
+		void resume()
+	}
+
+	/**
+	 * A bound child handed a port while welcomed: its page joined a hub as a new instance, so the hub drops this one
+	 * (`dropped`) - unless that hub is gone, which a child cannot watch (it holds no lock of its own): it asks (`ping`).
+	 * Neither an answer nor `dropped` within the welcome budget: the hub is taken for gone, and the child joins on the
+	 * handed port, its calls waiting for an engine kept waiting. Answered, the child stays on its port.
+	 */
+	function awaitDroppedOrSwitch(): void {
+		clearTimeout(standbyTimer)
+		const instanceId = realmId
+		// its hub asked whether it lives: an answer keeps the child on its port (the handed one kept for a `dropped`)
+		let answered = false
+		hubAnswered = function hubLives() {
+			answered = true
+		}
+		send({ type: 'ping' })
+		standbyTimer = setTimeout(function switchToHandedPort() {
+			standbyTimer = undefined
+			hubAnswered = releaseNothing
+			if (answered) return
+			if (realmId !== instanceId || phase !== 'joined' || !standbyPort) return
+			// a hub alive that never sent `dropped` would count this instance on: it leaves its projects first
+			for (const entry of entries.values()) {
+				if (entry.asked)
+					send({ type: 'leave', project: entry.project, dialecteId: entry.dialecteId })
+			}
+			unreachable = undefined
+			endInstance({ reason: 'host-gone' })
+			dropQueued({
+				error: createDialecteError('STORE_CONNECTION_FAILED', {
+					detail: "The origin's hub ended: this view joins the next one",
+				}),
+			})
+			phase = 'dropped'
+			droppedError = undefined
+			joinOnStandby()
+		}, welcomeBudgetMs)
 	}
 
 	/** Welcomed: what was said meanwhile goes, then every link with a use asks for its engine. */
 	function joined(): void {
 		phase = 'joined'
+		joinedAt = performance.now()
 		for (const { message, transfer } of queued.splice(0)) send(message, transfer)
 		for (const entry of entries.values()) {
 			if (entry.waiters.length > 0 || entry.users > 0) ask(entry)
@@ -503,7 +693,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	 * (an ask before the hello is dropped by the hub): the realm asks for every waiting link when it is.
 	 */
 	function ask(entry: ProjectEntry): void {
-		if (entry.asked || phase !== 'joined') return
+		if (entry.asked || phase !== 'joined' || deletingElsewhere.has(projectKeyOf(entry))) return
 		entry.asked = true
 		send({
 			type: 'open',
@@ -536,9 +726,26 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 
 	/** The destroys not granted yet refused (the hub that would grant them forgot this realm instance). */
 	function refuseDestroys(params: { error: unknown }): void {
-		for (const pending of destroys.values()) pending.refused(params.error)
+		// asked of the hub already, a delete elsewhere may have begun: the view deleting the files may delete part of them
+		const unsent = new Set<string>()
 		for (let index = queued.length - 1; index >= 0; index--) {
-			if (queued[index]!.message.type === 'destroy') queued.splice(index, 1)
+			const { message } = queued[index]!
+			if (message.type !== 'destroy' && message.type !== 'destroy-elsewhere') continue
+			unsent.add(projectKeyOf(message))
+			queued.splice(index, 1)
+		}
+		for (const [key, pending] of destroys) {
+			const project = deletingElsewhere.get(key)
+			if (project === undefined || unsent.has(key)) {
+				pending.refused(params.error)
+				continue
+			}
+			pending.refused(
+				createDialecteError('STORE_ENGINE_LOST', {
+					detail: `Project "${project}" may be partly deleted: this view lost its hub before the deletion was answered`,
+					meta: { project, reason: 'host-gone' },
+				}),
+			)
 		}
 	}
 
@@ -579,6 +786,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		phase = 'refused'
 		refusal = error
 		clearTimeout(rejoinTimer)
+		clearTimeout(standbyTimer)
 		markEnded(error)
 		lifecycleWatch.abort()
 		endInstance({ reason: 'host-gone' })
@@ -597,6 +805,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	 */
 	function stayUnreachable(params: { error: unknown }): void {
 		const { error } = params
+		noteTrouble()
 		phase = 'suspended'
 		unreachable = error
 		endInstance({ reason: 'host-gone' })
@@ -664,6 +873,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		if (phase !== 'suspended' && phase !== 'dropped') return
 		clearTimeout(rejoinTimer)
 		rejoinTimer = undefined
+		clearTimeout(standbyTimer)
+		standbyTimer = undefined
 		phase = 'joining'
 		realmId = crypto.randomUUID()
 		try {
@@ -672,7 +883,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			// false: suspended again while saying hello
 			if (!(await join())) return
 			unreachable = undefined
-			rejoinDelayMs = HUB_REJOIN_FIRST_DELAY_MS
+			// the delay starts again from its first only after a quiet while (noteTrouble): troubles close together grow it
 			joined()
 		} catch (error) {
 			// closed meanwhile, or suspended again: this attempt is over
@@ -855,7 +1066,13 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			countedLinks.add(link)
 			return link
 		},
-		destroyProject: async function destroyThroughHub({ project, dialecteId, destroy, own }) {
+		destroyProject: async function destroyThroughHub({
+			project,
+			dialecteId,
+			dialecteVersion,
+			destroy,
+			own,
+		}) {
 			const key = projectKeyOf({ project, dialecteId })
 			const refused = cannotWait()
 			if (refused !== undefined) throw refused
@@ -868,6 +1085,10 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 					detail: `"${project}" is being destroyed from this view already`,
 					meta: { project },
 				})
+			}
+			if (!destroy) {
+				await destroyElsewhere({ key, project, dialecteId, dialecteVersion, own })
+				return
 			}
 			await new Promise<void>(function waitForGrant(granted, refused) {
 				destroys.set(key, { granted, refused })
@@ -900,8 +1121,11 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			standbyPort = newPort
 			if (phase === 'dropped') joinOnStandby()
 			// welcomed still: its page handed the port as its own instance ended, so the hub forgets this one (or is
-			// gone) - its leaves count no more; it goes on with the old port until the hub drops it
-			else if (phase === 'joined') settleLeaves()
+			// gone) - its leaves count no more; it goes on with the old port until the hub drops it, or switches
+			else if (phase === 'joined') {
+				settleLeaves()
+				awaitDroppedOrSwitch()
+			}
 			// joining on an older handed port (its page frozen again meanwhile, say): that join left for this one
 			else if (phase === 'joining') joinNewerPort()
 			return true

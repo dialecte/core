@@ -85,12 +85,12 @@ await prepared.commit()
 
 ## channelName
 
-`doc.channelName` is the name of the owning project's `BroadcastChannel`. Open your own instance to receive every [ProjectChannelMessage](/api/project#project-channel-events) for this project, same-tab and cross-tab:
+`doc.channelName` is the name of the owning project's `BroadcastChannel`. Open your own instance to receive every [ProjectChannelEvent](/api/project#project-channel-events) for this project, same-tab and cross-tab:
 
 ```ts
 const channel = new BroadcastChannel(doc.channelName)
 channel.addEventListener('message', (e) => {
-	// e.data is a ProjectChannelMessage
+	// e.data is a ProjectChannelEvent: a change (ProjectChannelMessage), or a resync
 })
 ```
 
