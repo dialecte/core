@@ -11,8 +11,8 @@ import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } fro
 /**
  * DocumentRecord - metadata entry for a file registered in a Project.
  *
- * Stored in the `_files` table. Each file gets its own `xel_{id}` table
- * for XML records (created/dropped via dynamic Dexie versioning).
+ * Kept in the store's document registry (`_documents`); the local store keeps each document's records in a
+ * table of its own.
  */
 export type DocumentRecord = {
 	/** Primary key - crypto.randomUUID() */
@@ -140,7 +140,7 @@ export type ProjectParams<
 	configs: Record<string, GenericConfig>
 	/** Used when configKey is omitted in createDocument. Defaults to first key. */
 	defaultConfigKey?: string
-	/** Storage backend. 'local' uses DexieStore; 'custom' brings your own Store. */
+	/** Storage backend: 'local' (IndexedDB, the default), 'sqlite' (after `import '@dialecte/core/sqlite'`), 'inMemory', or a 'custom' Store. */
 	storage: StorageParam
 	/** Extensions applied to all Documents opened from this Project */
 	extensions?: { base?: BaseExtensions; custom?: CustomExtensions }

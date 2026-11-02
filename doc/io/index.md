@@ -8,17 +8,17 @@ Dialecte splits its surface into two layers.
 
 ## Two layers, one pipeline
 
-| Layer       | Entry point                        | What it does                                                                                     |
-| ----------- | ---------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Project** | `project.import`, `project.export` | Streams XML in/out of IndexedDB via the Project container.                                       |
-| **API**     | `project.openDocument(id)`         | Opens a document backed by IndexedDB. All reads and writes go through `Query` and `Transaction`. |
+| Layer       | Entry point                        | What it does                                                                                        |
+| ----------- | ---------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Project** | `project.import`, `project.export` | Streams XML in/out of the project's store via the Project container.                                |
+| **API**     | `project.openDocument(id)`         | Opens a document of the project's store. All reads and writes go through `Query` and `Transaction`. |
 
-They operate on the same IndexedDB store but at different times:
+They operate on the same store (IndexedDB on `local`, SQLite in the engine worker on `sqlite`) but at different times:
 
 ```
 XML file
-  +- project.importFile(file)        <- IO (SAX stream -> IndexedDB partition)
-       +- project.openDocument(id)  <- API (IndexedDB -> Document)
+  +- project.importFile(file)        <- IO (SAX stream -> the store, inside it)
+       +- project.openDocument(id)  <- API (store -> Document)
              +- doc.query.*           (reads)
              +- doc.transaction()     (writes)
                    +- project.export({ documentId })  <- IO (store -> XML file)
@@ -176,13 +176,13 @@ Every store keeps a document's path as one fact with its name (`DocumentRecord.p
 
 ## The SQLite project store's page cache
 
-No `storage` option of `Project` reaches the SQLite project store in this release: what this page says of it holds for its engine as the library tests it, and for the store once it can be chosen.
+A project on `storage: { type: 'sqlite' }` (see [SQLite storage](/api/project#sqlite-storage)) runs on this store.
 
 The SQLite project store sizes its page cache on the device's memory, as the browser reports it (`navigator.deviceMemory`, in a page and in a worker; a device that does not report it, Firefox for one, is sized as a 4 GiB one): 64 MiB per GiB, held between 64 and 512 MiB. The cache outside imports and the cache of an import follow the same rule. A worker's wasm memory never shrinks, so after a large import (826 MiB measured at 500 MB) the memory is already taken; above 512 MiB nothing is gained, and the SQLite build caps its memory at 2 GiB. Deleting a tenth of a 500 MB document takes about 10 s on a device given 64 MiB (1 GiB reported or less) and about 4.5 s at 512 MiB (8 GiB and more).
 
 ## Cross-realm reconciliation
 
-A `Project` can be instantiated in more than one JS realm over the same persisted storage (e.g. an `iframe` running its own `Project`). Importing a document in one realm adds a per-document partition and bumps the store schema; other realms must catch up before they can read it.
+A `Project` can be instantiated in more than one JS realm over the same persisted storage (e.g. an `iframe` running its own `Project`). On `local`, importing a document in one realm adds a per-document partition and bumps the IndexedDB schema; other realms must catch up before they can read it.
 
 The `Store` port carries this concern:
 
@@ -194,6 +194,7 @@ The `Store` port carries this concern:
 Backend behaviour:
 
 - **`DexieStore`** self-heals transparently: it listens for IndexedDB `versionchange` (fired when another connection upgrades the schema), releases its connection, and rebuilds it from the persisted schema version on the next access — so reads never miss the partition because of an import in another realm. `reconcile` performs this catch-up on demand.
+- **The SQLite store** (`sqlite`) has nothing to catch up: one engine serves every view of the project, so `reconcile` does nothing and a document is readable once registered.
 - **`InMemoryStore`** is a no-op (its data is the realm's, shared by every in-memory store of the same project - its dialecte and its name - there, never across realms); readiness reduces to liveness. It warns once if `reconcile` is called.
 
 `Project.getDocumentStatus` builds on these to report a document's [`live` / `ready`](/api/project#getdocumentstatus) status regardless of cross-realm signal ordering.
@@ -201,6 +202,8 @@ Backend behaviour:
 ::: warning Custom stores
 `reconcile` and `isDocumentReadable` are **required** members of the `Store` interface. A `{ type: 'custom' }` store must implement both — return a resolved no-op / liveness check when the backend has no cross-realm concern. It also implements `importFile`, `getWriteOutcome` and `exportFile`: see [Import inside the store](#import-inside-the-store) and [Export inside the store](#export-inside-the-store). A store several connections share may implement the optional `subscribe(listener)`: it tells each connection every change of the project (its own marked `own`, told before the call that made it settles; nothing for a call that changed nothing; `resync` when changes may have been missed); a Project on it then posts only what the store tells.
 :::
+
+What a custom store implements, and in which order it tells changes: [Implementing a store](/guide/development/implementing-a-store).
 
 ## Further reading
 

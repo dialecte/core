@@ -1,10 +1,10 @@
 ---
-description: Explains the problem Dialecte solves — turning an XSD schema into a fully-typed DSL with Document/Query/Transaction API, IndexedDB persistence, and streaming XML import/export — eliminating repetitive parser and storage boilerplate for XML-heavy applications.
+description: Explains the problem Dialecte solves — turning an XSD schema into a fully-typed DSL with Document/Query/Transaction API, persistent storage, and streaming XML import/export — eliminating repetitive parser and storage boilerplate for XML-heavy applications.
 ---
 
 # What is Dialecte?
 
-Dialecte is an SDK for **turning an XSD schema into a fully-typed, domain-specific language (DSL)**. Point it at your XSD, generate a definition, and you get a Document API that speaks your XML dialect natively — complete type safety, IndexedDB persistence, and streaming import/export included.
+Dialecte is an SDK for **turning an XSD schema into a fully-typed, domain-specific language (DSL)**. Point it at your XSD, generate a definition, and you get a Document API that speaks your XML dialect natively — complete type safety, persistent storage, and streaming import/export included.
 
 The key idea: **every XML standard that ships with an XSD can become its own Dialecte.** You own the DSL; Dialecte handles everything underneath it.
 
@@ -53,11 +53,11 @@ await doc.transaction(async (tx) => {
 
 Reads and writes never mix in the same scope. Transactions are atomic — either everything commits or nothing does.
 
-### IndexedDB persistence
+### Persistent storage
 
-Dialecte streams XML files through a SAX parser and writes each element to IndexedDB. Once imported, all reads and writes go through the database — no in-memory tree, no full-document re-serialisation. This keeps large files fast.
+Dialecte streams XML files through a SAX parser and writes each element to the project's store: IndexedDB by default, or SQLite on the origin's private file system, in a worker shared by every tab ([SQLite storage](/api/project#sqlite-storage)). Once imported, all reads and writes go through the database — no in-memory tree, no full-document re-serialisation. This keeps large files fast.
 
-Export reconstructs the XML from IndexedDB on demand.
+Export reconstructs the XML from the store on demand.
 
 ## Building your own dialecte
 

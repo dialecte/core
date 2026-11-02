@@ -51,6 +51,7 @@ export default defineConfig({
 						{ text: 'State & Errors', link: '/guide/development/state-and-errors' },
 						{ text: 'Dev Perf', link: '/guide/development/dev-perf' },
 						{ text: 'Testing', link: '/guide/development/testing' },
+						{ text: 'Implementing a store', link: '/guide/development/implementing-a-store' },
 						{ text: 'Helpers', link: '/guide/development/helpers' },
 						{ text: 'Utils', link: '/guide/development/utils' },
 						{ text: 'Type Performance', link: '/guide/development/type-performance' },

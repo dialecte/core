@@ -27,18 +27,18 @@ const project = await new Project({
 
 Key methods:
 
-| Method                           | Description                                                                      |
-| -------------------------------- | -------------------------------------------------------------------------------- |
-| `project.open(name)`             | Async: connects store, hydrates state, returns `this`                            |
-| `project.import(files)`          | Streams each XML file → IndexedDB partitions; returns one `ImportEntry` per file |
-| `project.importFile(file)`       | One file: the `ImportedDocument`, or the failure thrown                          |
-| `project.export({ documentId })` | The document as an XML file (`Blob`), its DOM and its save on request            |
-| `project.initEmptyDocument()`    | Creates an empty document from config root element                               |
-| `project.openDocument(id)`       | Returns a file-scoped `Document`                                                 |
-| `project.getDocuments()`         | List all registered document metadata                                            |
-| `project.undo(documentId)`       | Undoes the last transaction for a document                                       |
-| `project.redo(documentId)`       | Redoes the last undone transaction for a document                                |
-| `project.destroy()`              | Drops the entire store and closes the channel                                    |
+| Method                           | Description                                                                  |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `project.open(name)`             | Async: connects store, hydrates state, returns `this`                        |
+| `project.import(files)`          | Imports each XML file inside the project's store; one `ImportEntry` per file |
+| `project.importFile(file)`       | One file: the `ImportedDocument`, or the failure thrown                      |
+| `project.export({ documentId })` | The document as an XML file (`Blob`), its DOM and its save on request        |
+| `project.initEmptyDocument()`    | Creates an empty document from config root element                           |
+| `project.openDocument(id)`       | Returns a file-scoped `Document`                                             |
+| `project.getDocuments()`         | List all registered document metadata                                        |
+| `project.undo(documentId)`       | Undoes the last transaction for a document                                   |
+| `project.redo(documentId)`       | Redoes the last undone transaction for a document                            |
+| `project.destroy()`              | Drops the entire store and closes the channel                                |
 
 See [Project reference](/api/project) for the full API.
 
@@ -65,6 +65,7 @@ See [Document reference](/api/document) for the full API.
 ```ts
 type StorageParam =
 	| { type: 'local' } // built-in DexieStore (IndexedDB)
+	| { type: 'sqlite' } // SQLite in a shared engine worker: import '@dialecte/core/sqlite', a dialecte's factory
 	| { type: 'inMemory'; writable?: boolean } // in-memory store (tests, demos, placeholders)
 	| { type: 'custom'; store: Store } // bring your own Store implementation
 ```
@@ -82,3 +83,4 @@ The `extensions` constructor param accepts `{ base?, custom? }` — each is an `
 - [Hooks](/api/hooks) — transaction lifecycle hooks
 - [Dialecte declaration](/api/dialecte) — defineDialecte, createProjectFactory, createTestHelpers
 - [IO](/io/) — low-level XML utilities and IO hooks
+- [Implementing a store](/guide/development/implementing-a-store) — the `Store` port a custom store implements, its order and liveness duties

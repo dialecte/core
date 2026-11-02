@@ -44,7 +44,7 @@ Hooks keep state (an import session's bookkeeping, a counter). A factory gives e
 ### createProjectFactory
 
 ```ts
-import engineUrl from './worker?worker&url'
+import engineUrl from './engine.worker?worker&url'
 import { createProjectFactory } from '@dialecte/core'
 
 export const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE, engineUrl })
@@ -60,7 +60,7 @@ The factory makes a `Project` with every config of the declaration, its default 
 | `extensions` | `ExtensionModules`   | The consumer's own modules, merged over the dialecte's. |
 | `dev`        | `{ perf?: boolean }` | Project dev options (see [Project](/api/project)).      |
 
-The factory carries what it was made with: `createSclProject.dialecte` and `createSclProject.engineUrl`, and `createSclProject.spawner`, the dialecte's engine as a page offers it to the hub (`connectHub`, below). `createSclProject.destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (see [SQLite storage](/api/project#sqlite-storage)). `engineUrl` is the address of the dialecte's engine worker, the URL the dialecte's module exports from a `?worker&url` import of its worker entry (`./<version>/worker` in the package); the store that runs the engine spawns `new Worker(engineUrl, { type: 'module' })` on it and ships in the same release. The worker entry and its assets are described with the engine.
+The factory carries what it was made with: `createSclProject.dialecte` and `createSclProject.engineUrl`, and `createSclProject.spawner`, the dialecte's engine as a page offers it to the hub (`connectHub`, below). `createSclProject.destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (see [SQLite storage](/api/project#sqlite-storage)). `engineUrl` is the address of the dialecte's engine worker, the URL the dialecte's module exports from a `?worker&url` import of its worker entry; a project on `sqlite` storage starts `new Worker(engineUrl, { type: 'module' })` on it. See [The engine worker and its packaging](#the-engine-worker-and-its-packaging).
 
 ### createTestHelpers
 
@@ -93,6 +93,46 @@ createTestHelpers({
 ```
 
 The builders it is made of take the declaration too: `createTestRunner({ dialecte, storage? })` and `createTestProject({ dialecte?, sourceXml, ... })`, without the fixture check. `createTestProject` without a `dialecte` builds core's own test dialecte (`TEST_DIALECTE`, its one config under the key `default`). Passing `dialecteConfig`, `extensions` and `hooks` one by one still works and is deprecated: the one config goes under the key `default` and one hooks instance is shared across every project. See [Testing](/guide/development/testing).
+
+## The engine worker and its packaging
+
+A project on `sqlite` storage runs in the dialecte's engine worker. A dialecte package ships that worker; an app only bundles it.
+
+**The worker entry.** One call, in a file of the dialecte package. Core's `@dialecte/core/engine` entry serves the engine, with the dialecte's configs and its own hooks instance (`createHooks()`):
+
+```ts
+// src/v2019C1/engine.worker.ts
+import { serveDialecteEngine } from '@dialecte/core/engine'
+import { SCL_DIALECTE } from './dialecte'
+
+serveDialecteEngine({ dialecte: SCL_DIALECTE })
+```
+
+**The engine URL.** The module that builds the project factory imports the worker entry as a URL and hands it to `createProjectFactory` (core starts it with `new Worker(engineUrl, { type: 'module' })`). Put that module behind a sub-path of its own: a dialecte whose main entry imports the worker makes every app that imports the dialecte emit the worker, SQLite engine inside, used or not.
+
+```ts
+import engineUrl from './engine.worker?worker&url'
+import { createProjectFactory } from '@dialecte/core'
+
+export const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE, engineUrl })
+```
+
+**A dialecte's library build** (Vite): `base: './'` (the default base writes absolute `/assets/` URLs, which break once the package is installed elsewhere), `worker: { format: 'es' }`, and `@dialecte/core` external. The worker chunk holds no wasm: every engine is handed the app's one SQLite wasm file at open.
+
+```ts
+export default defineConfig({
+	base: './',
+	worker: { format: 'es' },
+	build: {
+		lib: { entry: { index: 'src/index.ts' }, formats: ['es'] },
+		rollupOptions: { external: [/^@dialecte\/core/] },
+	},
+})
+```
+
+**An app's build** needs nothing: no `optimizeDeps.exclude`, no `worker.format` (dev server and production build both checked with core's built package and with a packed tarball). Once the app imports `@dialecte/core/sqlite` it emits one content-hashed `sqlite3-*.wasm` for every dialecte engine and the hub's worker (`hub.worker-*.js`); an app that never imports it emits neither. Each dialecte's engine worker is emitted when the app imports the module that names it. An app that works offline (a PWA) adds those to its precache list - the hub chunk (`hub.worker-*.js`), each engine chunk (named after the dialecte's worker entry file: `engine.worker.ts` gives `engine.worker-*.js`) and the wasm (`sqlite3-*.wasm`) - and nothing else. The app installs nothing beyond `@dialecte/core` and its dialectes: sqlite-wasm and comlink are core's dependencies.
+
+**Version check.** A view and the engine it reaches run the same dialecte version: the engine runs the copy of the view that started it, and a view of another version is refused `PROJECT_DIALECTE_VERSION_MISMATCH` (reload every tab after a deploy).
 
 ## Views sharing a project: the origin's hub
 

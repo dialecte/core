@@ -497,7 +497,7 @@ export class Project<
 	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls. On a Project already open -
 	 * on another project or on the same one - it first closes it as `close()` does, and a call made from the
 	 * `open` call on is refused until the last `open`, `close` or `destroy` called has settled; a Document of that
-	 * open answers `STORE_CLOSED` when the store is made for each open (`local`, `inMemory`) - a `custom` store is
+	 * open answers `STORE_CLOSED` when the store is made for each open (`local`, `sqlite`, `inMemory`) - a `custom` store is
 	 * the same one opened again: open the Documents again. An open whose store refuses, or whose documents cannot
 	 * be read, leaves the Project closed; `destroy()` on it still removes that project (the reset of
 	 * `PROJECT_DATABASE_LOST`), then `open` makes it again, empty.
@@ -1414,7 +1414,8 @@ export class Project<
 	// ── Internal ─────────────────────────────────────────────────────────────
 
 	/**
-	 * Expose the underlying database instance. Return type is inferred from the store (Dexie for local storage).
+	 * Expose the store's own database object, for debugging: the Dexie instance on `local` (cast it: the type is the
+	 * store's, `unknown` unless the Project's store type is given), `null` on `sqlite` and `inMemory`.
 	 *
 	 * @intent inspect the underlying database, debug what the store holds
 	 */

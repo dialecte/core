@@ -474,9 +474,9 @@
 			"root": "project",
 			"otherRoutes": [],
 			"signature": "() => ReturnType<GenericStore['getDatabaseInstance']>",
-			"summary": "Expose the underlying database instance. Return type is inferred from the store (Dexie for local storage).",
+			"summary": "Expose the store's own database object, for debugging: the Dexie instance on `local` (cast it: the type is the store's, `unknown` unless the Project's store type is given), `null` on `sqlite` and `inMemory`.",
 			"intents": ["inspect the underlying database", "debug what the store holds"],
-			"declaredAt": "src/project/project.ts:1421"
+			"declaredAt": "src/project/project.ts:1422"
 		},
 		{
 			"path": "project.getDocument",

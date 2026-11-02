@@ -28,7 +28,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The project's database could not be opened (the SQLite file or its worker did not start), or the origin's hub could not be joined: its SharedWorker failed to start or was blocked, or a child's port went unanswered past the welcome budget (its page unbound it).",
 			fix: 'Check the browser supports the store (OPFS, workers, SharedWorker for the hub) and that no other tab holds the project; reload, or open the project with another storage. A child view refused so is bound again by its page (`createHubPort`, then `adoptHubPort`).',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_COMMIT_FAILED: {
@@ -37,7 +37,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The database refused a transaction's write as it committed (the failure is the `cause`).",
 			fix: 'Read `cause`; a full disk or a lost connection are the usual reasons. Retry the transaction once the store is back.',
-			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_RECORD_NOT_FOUND: {
@@ -46,7 +46,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'A write updated or deleted a record the store does not hold in that document.',
 			fix: 'Read the record again before writing: it was deleted, or the ref names another document.',
-			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_BULK_ADD_FAILED: {
@@ -55,7 +55,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'The database refused to add a batch of records (import, commit); the failure is the `cause`.',
 			fix: 'Read `cause`; a full disk or a closed store are the usual reasons.',
-			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_BULK_UPDATE_FAILED: {
@@ -64,7 +64,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'The database refused to update a batch of records; the failure is the `cause`.',
 			fix: 'Read `cause`; a full disk or a closed store are the usual reasons.',
-			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_DELETE_FAILED: {
@@ -73,7 +73,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'The database refused to delete records; the failure is the `cause`.',
 			fix: 'Read `cause`; a closed store is the usual reason.',
-			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_NOT_WRITABLE: {
@@ -100,7 +100,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'A write would create a record (or register a document) with an id the store already holds; `meta.recordIds` lists them.',
 			fix: 'Let core mint ids (omit `id`), or pick ids no record of the document has; `deepClone` mints new ids itself.',
-			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_CLOSED: {
@@ -118,7 +118,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The SQLite store's database failed under a read; the failure is the `cause`.",
 			fix: 'Read `cause`; reopen the project. A lasting failure means the file is damaged: import its documents again.',
-			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_PROTOCOL_MISMATCH: {
@@ -127,7 +127,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'Another version of the library already holds the shared store connection (another tab runs an older or newer build).',
 			fix: 'Close the other tabs of the app, or reload them all on the same version.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_REALM_ID_TAKEN: {
@@ -136,7 +136,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'A view joined the shared store with an id another connected view already uses.',
 			fix: 'Give each view its own id; reload the page that reused one.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_REALM_UNKNOWN: {
@@ -145,7 +145,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'A view spoke to the shared store without having joined it, or after it left.',
 			fix: 'Join (open the project) before reading or writing; reload a view that was disconnected.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_VALUE_NOT_JSON: {
@@ -163,7 +163,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'The browser gives the page no private file system (a private window), or a worker no synchronous file access, so the SQLite project store cannot create, open or destroy the project; nothing is changed.',
 			fix: 'Open the app in a normal (not private) window of a browser that supports the origin private file system.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_QUOTA_EXCEEDED: {
@@ -172,7 +172,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The origin has too little storage left: for a new project's files, for an import (eight times the file's size and at least 1 MiB, less the project's free pages), or the file system refused a write for want of space; nothing of the call applied. The SQLite project store answers it; the local (IndexedDB) store answers the failing write's own error (`STORE_COMMIT_FAILED`, `STORE_BULK_ADD_FAILED`, `STORE_BULK_UPDATE_FAILED`; an import `IMPORT_FAILED`) until it moves to SQLite; the in-memory store has no limit.",
 			fix: 'Free storage for the origin (delete projects no longer needed) or import a smaller file, then try again; `meta.needed` and `meta.available` give the sizes when known.',
-			docs: `${CORE_DOCS_URL}/api/project#import`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_ENGINE_LOST: {
@@ -181,7 +181,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "A call to a project engine served from a worker lost that engine: it ended with what hosted it or gave no answer within its budget (`meta.reason` `'host-gone'`), it sent nothing for too long while the call waited (`'no-heartbeat'`, it may still finish), or the hub dropped this view with the page that bound it - frozen, gone, or unbinding it (`'realm-dropped'`: every call, `getWriteOutcome` too, is refused so until the view is bound again).",
 			fix: "A Document's commit and a Project's import ask the outcome themselves, once: a commit that landed resolves; otherwise the refusal says `meta.outcome` - `not-applied` (make it again if wanted), `running` (a silent engine may still apply it: tell the user, read again later), `unknown` (it could not be asked), or `applied` for an import (its document is in the project; its diagnostics were lost). Elsewhere ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again; never retry a write blindly. For `'realm-dropped'`, every call is refused until the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`).",
-			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	STORE_HUB_SPAWNERS_FIXED: {
@@ -190,7 +190,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "`connectHub({ spawners })` named a dialecte whose engine the page's connection already runs at another version, or a project was opened (or destroyed by name) on `sqlite` from a factory of such a version (the project offers its engine to the hub as it opens): a page runs one version of each dialecte's engine (two would split a project's views between two engines). A later call adds the engines of dialectes the page does not run yet. `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added, nothing opened.",
 			fix: "Ship one version of each dialecte in the app: register each dialecte's `factory.spawner` from the copy the app opens its projects with.",
-			docs: `${CORE_DOCS_URL}/api/dialecte`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 
@@ -502,7 +502,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'The project file was stored by another version of the library (another layout); nothing was written to it.',
 			fix: 'Delete the project and import its files again with this version.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	PROJECT_ENGINE_UNAVAILABLE: {
@@ -511,7 +511,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The project's engine could not be started or reached: its worker failed to load or never answered its open within the open budget; through the origin's hub, no open view offers an engine for the project's dialecte, or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it.",
 			fix: "Keep one tab of the app open and reload; check the dialecte's `engineUrl` points at its worker and that it loads (the console names a script that fails); a destroy refused so is asked again once the project is closed elsewhere.",
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	PROJECT_ENGINE_BUSY: {
@@ -520,7 +520,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: 'Another engine still holds the project (another tab or a worker that did not stop).',
 			fix: 'Close the other tabs of the app, then open the project again.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	PROJECT_DIALECTE_MISMATCH: {
@@ -529,7 +529,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "A project file stored by another dialecte was opened (nothing of it written); or an engine was asked for a project of another dialecte than its own - the dialecte's `engineUrl` (its project factory's, or a hub spawner's) pointing at another dialecte's worker. Two dialectes' projects of one name are two projects: opening one never meets the other. `meta`: `project`, `projectDialecteId` (the engine's or the file's), `realmDialecteId` (the one asked).",
 			fix: "Open the project with the dialecte it was created with; point the dialecte's `engineUrl` at its own worker.",
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	PROJECT_DIALECTE_VERSION_MISMATCH: {
@@ -538,7 +538,7 @@ export const ERROR_CATALOG = {
 		explanation: {
 			when: "The project's engine runs another version of the dialecte than this view.",
 			fix: 'Reload every tab of the app so they run the same version.',
-			docs: `${CORE_DOCS_URL}/api/project#creating-and-opening-a-project`,
+			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	PROJECT_DESTROY_FAILED: {
