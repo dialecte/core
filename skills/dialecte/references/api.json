@@ -353,7 +353,7 @@
 				"write a dialecte package's engine worker file",
 				"ship a dialecte's SQLite engine in its package"
 			],
-			"declaredAt": "src/store/sqlite/runtime/serve-dialecte-engine.ts:41"
+			"declaredAt": "src/store/sqlite/runtime/serve-dialecte-engine.ts:42"
 		},
 		{
 			"path": "@dialecte/core/helpers.evaluateExpectations",
