@@ -85,7 +85,9 @@ Skills: load dialecte, dialecte-contributing, dialecte-lot. A skill text change:
   configuration; graded blind by
   a separate agent, never by you; its benchmark and viewer paths in your report.
 Gates: fast gate per behaviour; full Definition of Done once at the end (<the package's commands>).
-Machine: one heavy browser run at a time; vitest --no-file-parallelism; nice -n 10.
+Machine: the runner's defaults (full parallelism, no nice, no lock); a failing run rerun once, the same command
+  and --project flags on its failing files with --no-file-parallelism: a pass there is a flake to report as a
+  finding, a failure there is real; limit only when the user asks.
 Report: the implement report shape of dialecte-lot, nothing else.
 ```
 

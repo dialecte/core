@@ -243,7 +243,7 @@ passing test changed to fail) always deserves a question.
 
 **A check result belongs to its tree.** A gate record is keyed by the exact files it
 checked (the git tree), the installed packages and the commands it ran. A second `dialecte gate` on the
-same tree answers from the record and says `reused`; `--rerun` forces a new run. A rehearsal skips each
+same tree answers from the record and says `reused`; `--no-reuse` forces a new run. A rehearsal skips each
 lot whose tree already has a green record made with the same installed packages, unless the lot changes
 `package-lock.json` or the commit hook stages files of its own; the cli says why it rehearses the
 others. The

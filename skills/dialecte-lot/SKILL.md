@@ -359,8 +359,8 @@ commit, merge rehearsal, merge commit). So:
 
 - A second `gate` of the same mode on an unchanged tree runs its hygiene and `tdd` step (they read the worktree,
   not the tree), then answers the rest from its record (`reused: gate --full green on this tree ...`). Run it when
-  you want its lines; never `--rerun` "to be safe": an edit, a lock, a linked dependency already make a new key.
-  `--rerun` is for when the person asks, or when something outside the key changed (a machine fault you suspect).
+  you want its lines; never `--no-reuse` "to be safe": an edit, a lock, a linked dependency already make a new key.
+  `--no-reuse` is for when the person asks, or when something outside the key changed (a machine fault you suspect).
 - `handover run --rehearse` decides per lot and prints why (the rules: `dialecte-contributing`
   references/landing-changes.md). Paste those lines with the card; never add `--full` to force a rehearsal the cli
   skipped, and start no load for it. A lot it does rehearse runs under load as above.
@@ -414,9 +414,13 @@ that is rewritten every retro never settles.
   runs well above the lot's other stations, tell the user then, not at the end.
 - Spawn the reviewer only after the implementer's report; give it the brief, not the implementer's
   conclusions. You review too: read the diff yourself before accepting a verdict.
-- Heavy runs share one machine: one browser test suite at a time (`--no-file-parallelism`), low
-  concurrency for mutation tests. `gate --full` and the heavy gate steps (any test step of a package that
-  runs its tests in a browser) hold a machine-wide lock: a second one waits, naming the holder.
+- Runs use the runner's defaults, whoever else shares the machine: no `nice`, no worker cap added on the
+  command line (a config's own setting, such as mutation tests' measured concurrency, is the runner's default), no
+  `--no-file-parallelism`, no lock - unless the user asks to limit, for the time they say. A failing run is rerun
+  once, the same command with its `--project` flags, on its failing files with `--no-file-parallelism` (the gate
+  does it on its test steps): a pass
+  there is a flake, a finding fixed at its cause, never a reason to throttle; a failure there is real
+  (`dialecte-contributing`, Definition of Done).
 - After the user merged: `npx dialecte worktree prune` lists the merged worktrees and branches, the
   committed hand-over folders and the rehearsal clones, each with its command (a worktree just made, one
   holding ignored files, an unmerged branch are kept, with why). `--yes` asks for a confirmation on a
