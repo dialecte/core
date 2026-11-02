@@ -49,6 +49,8 @@ export function xsiTypeNameOf(params: {
 /**
  * The type a record names with xsi:type, read as core stores it (`storedNamespaceLookup`); `undefined` without
  * xsi:type or when its prefix is bound nowhere.
+ *
+ * @intent read the type an element names with xsi:type, resolve an xsi:type prefix to its namespace
  */
 export function resolveXsiType(params: {
 	dialecteConfig: NamespacesConfig
@@ -90,6 +92,8 @@ export function storedNamespaceLookup(params: {
  * dialecte's prefix and the local name for a type in another namespace it declares. A value whose prefix is bound
  * nowhere, or naming a namespace the dialecte does not declare, is kept as written. The value keeps what XML says it
  * means: only the prefix it is written with changes.
+ *
+ * @intent write an xsi:type value the way core stores it, compare xsi:type values written with different prefixes
  */
 export function canonicalXsiType(params: {
 	dialecteConfig: NamespacesConfig

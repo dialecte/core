@@ -13,6 +13,8 @@ import type { AnyDialecteConfig, AnyTrackedRecord, ElementsOf } from '@/types'
  * element of its `under` scope) through the query, so a prepared transaction's `query` is checked
  * on what `commit()` would write. Every expectation is answered, met or failed with the count found.
  *
+ * @intent check a built document against expected element counts, verify a script's result before committing, test what a prepared transaction would write
+ *
  * @example
  * ```ts
  * const { failed } = await evaluateExpectations(doc.query, {

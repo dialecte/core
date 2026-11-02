@@ -16,6 +16,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  *
  * Perf: counts `core::query::getRecord.fromRecord` when the record given is the one read.
  *
+ * @internal the record lookup every context-level read starts with; callers use the query
+ *
  * @throws {@link DialecteError} when `ref` is undefined.
  */
 export async function resolveRecord<

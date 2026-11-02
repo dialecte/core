@@ -15,6 +15,8 @@ import type { AttributeDefaults } from '@/utils'
  * controls the fallback for an absent attribute: `'none'` → `''`; `'optional'` → `fixed` /
  * non-empty `default` (else `''`); `'required'` → required/fixed materialized value.
  *
+ * @internal the context-level read behind `doc.query.getAttribute`; callers use the query
+ *
  * @example
  * getAttribute({ context, ref, name: 'aA' })                    // → string | ''
  * getAttribute({ context, ref, name: 'cA', namespace: 'ext' })  // → ext:cA value
@@ -44,6 +46,8 @@ export async function getAttribute<
  * namespace), read with {@link readAttribute}. `defaults` (default `'optional'`) fills an
  * absent schema attribute by synthesizing its object; `'none'` returns `undefined` when the
  * attribute is not stored.
+ *
+ * @internal the context-level read behind `doc.query.getAttribute` with `fullObject`; callers use the query
  *
  * @example
  * getAttribute({ context, ref, name: 'name', fullObject: true }) // → FullAttributeObject | undefined

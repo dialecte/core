@@ -3,6 +3,8 @@ import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord, TreeRecor
 /**
  * Returns a new record with specified attribute names removed.
  * Pure function — does not mutate the input.
+ *
+ * @intent remove attributes from a record, drop attributes before cloning a record
  */
 export function stripAttributes<
 	GenericConfig extends AnyDialecteConfig,

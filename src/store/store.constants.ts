@@ -29,7 +29,11 @@ export const TABLE_META = '_meta'
 /** Prefix for per-file record tables */
 export const TABLE_RECORD_PREFIX = 'xel_'
 
-/** Derive the record table name for a given documentId */
+/**
+ * The name of the store table holding the records of the document `documentId`.
+ *
+ * @intent name the store table holding a document's records, read a document's records from the local database directly
+ */
 export function recordTableName(documentId: string): string {
 	return `${TABLE_RECORD_PREFIX}${documentId}`
 }
@@ -40,7 +44,11 @@ export const TABLE_BLOBS = '_blobs'
 /** Prefix for per-document blob data tables */
 export const TABLE_BLOB_PREFIX = 'blob_'
 
-/** Derive the blob data table name for a given documentId */
+/**
+ * The name of the store table holding the blob data of the document `documentId`.
+ *
+ * @intent name the store table holding a document's blob data, store blobs in a custom store
+ */
 export function blobTableName(documentId: string): string {
 	return `${TABLE_BLOB_PREFIX}${documentId}`
 }

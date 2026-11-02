@@ -152,6 +152,8 @@ export function overlayStaged<
  * and deleted in the same staged set (a net no-op that never reaches the store).
  *
  * Pure function — no DB access, no side effects.
+ *
+ * @internal staged-write overlay of the query layer
  */
 export function overlayAllStaged<GenericConfig extends AnyDialecteConfig>(params: {
 	rawRecords: AnyRawRecord[]
@@ -209,6 +211,8 @@ export function overlayAllStaged<GenericConfig extends AnyDialecteConfig>(params
  * no-op that never reaches the store).
  *
  * Pure function — no DB access, no side effects.
+ *
+ * @internal staged-delete index of the snapshot and tree reads
  */
 export function indexStagedDeletesByParent<GenericConfig extends AnyDialecteConfig>(
 	stagedOperations: ReadonlyArray<Operation<GenericConfig>>,

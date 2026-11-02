@@ -1,3 +1,5 @@
+import { UUID_PATTERN } from './normalize-uuids.constants'
+
 /**
  * Replace every uuid value in a serialized document with a stable, first-appearance token
  * (`uuid-1`, `uuid-2`, …). The same uuid always maps to the same token, so relationships — a
@@ -7,9 +9,9 @@
  * Use it to freeze a document `snapshot` on structure + lineage without mocking `crypto.randomUUID`:
  * `expect(normalizeUuids(xml)).toMatchSnapshot()`. A real structural or lineage change still moves the
  * snapshot; only the opaque random values are tokenized.
+ *
+ * @intent snapshot a document independently of random uuids, compare XML holding generated ids
  */
-const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
-
 export function normalizeUuids(text: string): string {
 	const tokens = new Map<string, string>()
 	return text.replace(UUID_PATTERN, (uuid) => {

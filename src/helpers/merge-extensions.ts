@@ -23,6 +23,8 @@ function assertNoGroupCollision(
  * "history"), their query and transaction groups are merged at the method level.
  * A DialecteError is thrown immediately if any method name appears in both groups.
  *
+ * @intent combine extension modules into one registry, add custom extensions next to a dialecte's base extensions
+ *
  * @example
  * ```ts
  * mergeExtensions({ base: { history, dataModel }, custom: { myFeature } })

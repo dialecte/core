@@ -8,6 +8,8 @@ import type { DialecteErrorDefinition, DialecteErrorKey } from '@/errors'
  * `key` is a key of the core catalogue or an error a dialecte declared with `defineErrors`;
  * `meta` says what the error is about, as data a consumer can build its own wording from.
  *
+ * @intent assert a condition and throw a structured error, guard against a missing record, fail with a dialecte error key
+ *
  * @example
  * invariant(record, { detail: 'addChild: parent not found' })
  * invariant(ref.id, { detail: 'Singleton element has no id', key: 'ELEMENT_NOT_FOUND' })

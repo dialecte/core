@@ -4,6 +4,8 @@ import type { AnyDialecteConfig, Namespace, Wildcard } from '@/types'
  * Resolve a namespace declared in the config by its prefix (e.g. `ext`,
  * `dev`). Returns `undefined` for an empty prefix or an unknown one —
  * consumers cannot extend `config.namespaces`, so an unknown prefix is a caller error.
+ *
+ * @intent find a declared namespace by its prefix, map a prefix to its namespace URI
  */
 export function resolveNamespaceByPrefix(
 	dialecteConfig: Pick<AnyDialecteConfig, 'namespaces'>,
@@ -20,6 +22,8 @@ export function resolveNamespaceByPrefix(
  * against declared prefixes. Returns `undefined` when the scope is neither a known
  * key nor a known prefix — an authoring error, since a registered namespace must be
  * referenced by key (use a full `{ prefix, uri }` object for custom namespaces).
+ *
+ * @intent find a namespace by its config key, resolve a namespace scope to its prefix and URI
  */
 export function resolveNamespaceByScope(
 	dialecteConfig: Pick<AnyDialecteConfig, 'namespaces'>,
@@ -34,6 +38,8 @@ export function resolveNamespaceByScope(
  * The scope is normally a config namespace **key** (e.g. `ext`, `dev`), which we map
  * to its declared prefix. If the scope is not a declared key it is treated as a raw
  * prefix, so callers can still target custom namespaces the config is unaware of.
+ *
+ * @intent find the prefix to store an attribute under, write an attribute in a declared or custom namespace
  */
 export function resolvePrefixByNamespaceScope(
 	dialecteConfig: Pick<AnyDialecteConfig, 'namespaces'>,
@@ -48,6 +54,8 @@ export function resolvePrefixByNamespaceScope(
  * foreign-namespace attributes). Sorted by namespace URI, then name, so two
  * records carrying the same attribute set compare equal regardless of the order
  * they were parsed, cloned, or updated in.
+ *
+ * @internal the comparator `orderAttributesBySequence` sorts extra attributes with
  */
 export function compareQualifiedAttributes(
 	a: { name: string; namespace?: Namespace },
@@ -65,6 +73,8 @@ export function compareQualifiedAttributes(
  * first (in `sequence` order), then everything else sorted deterministically.
  * Never drops attributes — reorders only — so it is safe to re-apply after an
  * `afterStandardizedRecord` hook to normalize whatever the hook added or moved.
+ *
+ * @intent put attributes in schema order, normalize attribute order after a hook
  */
 export function orderAttributesBySequence<
 	GenericAttribute extends { name: string; namespace?: Namespace },
@@ -79,7 +89,11 @@ export function orderAttributesBySequence<
 	return [...inSequence, ...extras]
 }
 
-/** Whether a wildcard allows a namespace (`''` = none): the namespaces it lists, or every one it does not exclude. */
+/**
+ * Whether a wildcard allows a namespace (`''` = none): the namespaces it lists, or every one it does not exclude.
+ *
+ * @intent check whether a wildcard admits a namespace, tell whether foreign attributes or elements are allowed
+ */
 export function isNamespaceAllowedByWildcard(params: {
 	wildcard: Wildcard | undefined
 	namespaceUri: string

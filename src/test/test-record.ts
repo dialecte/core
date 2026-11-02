@@ -6,11 +6,13 @@ import type { TestRecord } from './test-record.types'
 import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord, TreeRecord } from '@/types'
 
 /**
- * Creates a `createTestRecord` function bound to a specific dialecte config.
+ * A record factory bound to a dialecte config: given a record (its tag and fields) and a `type`, it builds a raw
+ * (default), tracked or tree record of that dialecte, standardized as core stores it.
  *
  * Use this in a dialecte package to expose a properly-typed record factory
  * without re-implementing the logic.
  *
+ * @intent build typed test records for a dialecte, expose a record factory in a dialecte's test entry
  */
 export function createTestRecordFactory<GenericConfig extends AnyDialecteConfig>(
 	dialecteConfig: GenericConfig,
@@ -60,4 +62,10 @@ export function createTestRecordFactory<GenericConfig extends AnyDialecteConfig>
 	return createTestRecord
 }
 
+/**
+ * A raw, tracked or tree record of core's test dialecte for a unit test: `createTestRecordFactory` bound to the
+ * test config.
+ *
+ * @internal record factory of core's own unit tests
+ */
 export const createTestRecord = createTestRecordFactory(TEST_DIALECTE_CONFIG)

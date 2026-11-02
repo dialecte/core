@@ -6,6 +6,13 @@ import type { AnyDialecteConfig } from '@/types'
 
 export type { AttributeDefaults, AttributeRules } from './attribute-rules.types'
 
+/**
+ * The schema rules of one attribute of an element where it sits: whether the element and the attribute are
+ * declared, whether the attribute is required or an identity field, its `fixed` and `default` values and its
+ * namespace.
+ *
+ * @intent know whether an attribute is required, read an attribute's default or fixed value, check whether an attribute is declared for an element
+ */
 export function getAttributeRules(params: {
 	dialecteConfig: AnyDialecteConfig
 	/** The element and its parent: the rules are those of its definition there. */
@@ -34,6 +41,8 @@ export function getAttributeRules(params: {
  * Derived entirely from {@link getAttributeRules}, so read, compare, and export share
  * one source of truth. Returns `undefined` when nothing should be injected. A stored
  * value always wins and is handled by the caller before this is consulted.
+ *
+ * @intent know which schema value an absent attribute takes, fill an absent attribute with its schema default or fixed value
  */
 export function resolveSchemaAttributeValue(params: {
 	dialecteConfig: AnyDialecteConfig
@@ -62,6 +71,8 @@ export function resolveSchemaAttributeValue(params: {
  * `fixed` value if any, else the `default` (including an empty-string default).
  * Compare sites drop attributes for which this is true so that an authored
  * default-equal value and an absent attribute fold to the same thing.
+ *
+ * @intent compare attributes ignoring schema defaults, tell whether a value equals an attribute's default
  */
 export function isSchemaDefaultValue(params: {
 	dialecteConfig: AnyDialecteConfig
@@ -75,7 +86,11 @@ export function isSchemaDefaultValue(params: {
 	return schemaValue !== undefined && value === schemaValue
 }
 
-/** Local part of an attribute name — strips a namespace prefix if present (`a:b` → `b`). */
+/**
+ * Local part of an attribute name — strips a namespace prefix if present (`a:b` → `b`).
+ *
+ * @intent strip the prefix from an attribute name, get the local name of a qualified name
+ */
 export function extractLocalName(name: string): string {
 	const colonIndex = name.lastIndexOf(':')
 	return colonIndex === -1 ? name : name.slice(colonIndex + 1)

@@ -11,6 +11,8 @@ import { trimXmlWhitespace } from './xml-whitespace'
  * whitespace *between* elements: attribute text and leaf text are preserved verbatim, and an element with
  * mixed text + element content is emitted with its original inner content untouched, so no significant
  * value is ever altered. Idempotent.
+ *
+ * @intent pretty-print an XML string, format XML for a snapshot or a fixture, indent XML without changing values
  */
 export function formatXml(
 	source: string,
@@ -184,6 +186,8 @@ function printNode(node: XmlNode, indentStr: string, unit: string, out: string[]
  * `/* xml *\/` marker comment — with {@link formatXml}, re-indented under the marker's own line with the
  * closing backtick aligned to the statement. Leaves the rest of the source untouched. The reusable core
  * of an `xmlfmt`-style step for test fixtures (see the `dialecte-xmlfmt` bin).
+ *
+ * @intent format XML fixtures inside test files, reindent xml template literals in source code
  */
 export function formatEmbeddedXml(sourceCode: string, options: { indent?: string } = {}): string {
 	const indent = options.indent ?? '\t'

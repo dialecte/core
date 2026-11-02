@@ -20,6 +20,8 @@ import type {
 /**
  * Fetches parent, builds and stages operations for adding a child.
  * Pushes operations directly to context.stagedOperations.log.
+ *
+ * @internal the staging step behind `tx.addChild`; callers use the transaction
  */
 export async function stageAddChild<
 	GenericConfig extends AnyDialecteConfig,

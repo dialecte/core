@@ -23,6 +23,8 @@ import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
  * (declaration and root start tag) is put in front at the end. A write on the document while it is exported
  * restarts it once from the start; a second one fails it with `EXPORT_CONFLICT`. The progress listener and the
  * abort come apart from the export's data, as a worker call carries them.
+ *
+ * @intent implement exportFile of a custom store, export a document from a store in batches
  */
 export async function runExport(
 	params: RunExportParams,

@@ -26,6 +26,8 @@ import type { AnyDialecteConfig } from '@/types'
  * optionally the target) imported under the default config. Returns project + pre-opened
  * documents. Opened inside a running test, the project is destroyed when the test ends (after its other
  * `onTestFinished` hooks); opened outside one (`beforeAll`), the caller destroys it.
+ *
+ * @intent open a project in a test with a fixture imported, get documents to test against
  */
 export async function createTestProject<
 	GenericConfig extends AnyDialecteConfig = TestDialecteConfig,
@@ -69,6 +71,8 @@ const OPENED_CONTEXT_STORES = new Set<Store>()
  * of the project named `databaseName` - of the kind `storage` names, else the test helpers' default
  * (`useTestStorage`), else the local store - opened to discover its tables. Opened by name, it is a
  * connection of its own: the project cannot be destroyed while it is open - `closeTestContexts()` first.
+ *
+ * @internal test context of core's own context-level query tests
  */
 export async function createTestContext<GenericConfig extends AnyDialecteConfig>(
 	params: TestContextParams<GenericConfig>,
@@ -127,7 +131,12 @@ async function storeByName<GenericConfig extends AnyDialecteConfig>(params: {
 	return resolveStore({ name: databaseName, dialecteId, storage, runtime })
 }
 
-/** Close every store `createTestContext` opened by name, so the projects they read can be destroyed: settled once they count no more. */
+/**
+ * Close every store `createTestContext` opened by name, so the projects they read can be destroyed: settled once
+ * they count no more.
+ *
+ * @internal cleanup of `createTestContext`
+ */
 export async function closeTestContexts(): Promise<void> {
 	const stores = [...OPENED_CONTEXT_STORES]
 	OPENED_CONTEXT_STORES.clear()

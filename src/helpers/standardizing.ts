@@ -14,6 +14,16 @@ import type {
 	TransactionHooks,
 } from '@/types'
 
+/**
+ * The raw record core stores for an element input. A record of a tag the dialecte does not declare, or in a
+ * namespace it does not declare, returns early: only an id, the attribute array (xsi:type in stored form) and empty
+ * fields are filled in, nothing else touched, no hook run. A schema element gets canonical attribute names, xsi:type
+ * and order, its namespace resolved, then the `afterStandardizedRecord` hook applied; for it, an unqualified
+ * attribute the schema does not declare is dropped (unless its attribute wildcard admits no-namespace attributes),
+ * and so is a schema attribute without a value (an empty one is kept only where a `default` or `fixed` is declared).
+ *
+ * @internal record normalization of every record core stores (import, create, clone, update)
+ */
 export function standardizeRecord<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,

@@ -30,11 +30,13 @@ import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /**
- * Serve the dialecte's engine from this worker - today the SQLite engine on the origin's private file
- * system (opfs-sahpool), its client side engine-agnostic (`store/engine`). The realm that spawned it (or
+ * Serve the dialecte's project engine from this worker, the one call of a dialecte package's engine worker file -
+ * today the SQLite engine on the origin's private file system (opfs-sahpool). The realm that spawned it (or
  * the hub, through it) sends control messages - open the project, adopt a client's port, a client gone, close, destroy -
  * handled one at a time and each answered once; every adopted port is served the engine's members.
  * One project per worker.
+ *
+ * @intent serve a dialecte's engine from a worker, write a dialecte package's engine worker file, ship a dialecte's SQLite engine in its package
  */
 export function serveDialecteEngine<
 	GenericConfig extends AnyDialecteConfig,

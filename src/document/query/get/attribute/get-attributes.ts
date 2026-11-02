@@ -23,6 +23,8 @@ import type { AttributeDefaults } from '@/utils'
  * `'none'` = stored only; `'optional'` = read view (fixed / non-empty default);
  * `'required'` = XSD/export view (required as `''` + fixed). Stored values always win.
  *
+ * @internal the context-level read behind `doc.query.getAttributes`; callers use the query
+ *
  * @example
  * getAttributes({ context, ref })                       // → { aA: '', bA: '', ... }
  * getAttributes({ context, ref, namespace: 'ext' })     // → { cA: '...' }
@@ -56,6 +58,8 @@ export async function getAttributes<
  * {@link getAttributes}: `'none'` returns the faithful stored-only set;
  * `'optional'`/`'required'` synthesize missing schema attributes (with their
  * schema-derived namespace).
+ *
+ * @internal the context-level read behind `doc.query.getAttributes` with `fullObject`; callers use the query
  *
  * @example
  * getAttributes({ context, ref, fullObject: true })    // → FullAttributeObject[]

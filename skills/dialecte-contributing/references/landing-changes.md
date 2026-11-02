@@ -57,7 +57,7 @@ workspace root, outside every repo); the hand-over files are written next to it 
   worktrees and prints their removal commands: an agent hands them (or the `--yes` command, which asks on
   a terminal) to the user with their `cd`.
 - `handover` comes with `@dialecte/cli` 0.2.0 or later; with an older cli in the package, run
-  `npx @dialecte/cli@latest handover <lots.json>`.
+  `npx @dialecte/cli@^0.2.0 handover <lots.json>` (never `@latest`, which can be older).
 
 ## Commit messages
 

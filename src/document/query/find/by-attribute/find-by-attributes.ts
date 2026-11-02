@@ -14,6 +14,8 @@ import type {
  * Find elements by tagName and attributes.
  * Core primitive for all query operations.
  * Returns all records matching tagName and attributes - no scope filtering.
+ *
+ * @internal the context-level read behind `doc.query.findByAttributes`; callers use the query
  */
 export async function findByAttributes<
 	GenericConfig extends AnyDialecteConfig,
@@ -50,6 +52,8 @@ export async function findByAttributes<
  * - Undefined values: ignored (attribute removed from filter)
  * - `xsi:type`: compared as the type it names, whatever form the filter writes it in (local name, dialecte prefix,
  *   Clark name) or the record holds it in
+ *
+ * @internal the attribute filter of `findByAttributes` and `getTree`'s `where`
  */
 export function matchesAttributeFilter<
 	GenericConfig extends AnyDialecteConfig,

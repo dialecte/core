@@ -35,6 +35,8 @@ function createSchemaAssertions(params: CreateSchemaAssertionsParams): XmlSchema
  * the record factory, the XPath assertions and the schema assertions. A fixture is checked against
  * the schema of the config it is imported under, then by the dialecte's extra checks, before a
  * case or a test project uses it.
+ *
+ * @intent get every test helper of a dialecte, set up a dialecte package's tests, check fixtures against the schema
  */
 export function createTestHelpers<
 	GenericConfig extends AnyDialecteConfig,

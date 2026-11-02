@@ -2,6 +2,8 @@ import type { DocumentEntry, DocumentRecord } from '@/project'
 
 /**
  * Build the initial DocumentState for a newly registered document.
+ *
+ * @internal the project's in-memory document registry entry
  */
 export function buildDocumentState(document: DocumentRecord): DocumentEntry {
 	return {
@@ -19,6 +21,8 @@ export function buildDocumentState(document: DocumentRecord): DocumentEntry {
 /**
  * Reconcile in-memory document state Map with the current store contents.
  * Adds new documents, removes stale ones. Returns the mutated map for convenience.
+ *
+ * @internal the project's in-memory document registry sync
  */
 export function reconcileDocumentState(
 	state: Map<string, DocumentEntry>,

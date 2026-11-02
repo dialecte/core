@@ -20,6 +20,8 @@ import type {
  * Reference rewiring (e.g. repointing cloned refs onto the clone's identities) is
  * the dialecte's concern, done by the caller over the returned `mappings` — core
  * stays agnostic and structural.
+ *
+ * @internal the staging step behind `tx.deepClone`; callers use the transaction
  */
 export async function stageDeepClone<
 	GenericConfig extends AnyDialecteConfig,

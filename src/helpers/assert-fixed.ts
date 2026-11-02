@@ -11,6 +11,8 @@ import type { ResolvableRecord } from '@/utils'
  * that already violates a fixed value can still be loaded. Attributes are matched by
  * their canonical stored name (`prefix:local`), so pass the array produced by
  * `toFullAttributeArray`.
+ *
+ * @internal write-path guard core runs on every addChild, ensureChild, deepClone and update
  */
 export function assertNoFixedViolation(params: {
 	dialecteConfig: AnyDialecteConfig

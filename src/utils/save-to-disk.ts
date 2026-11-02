@@ -11,6 +11,8 @@ export type { SavePickerType, SaveTarget } from './save-to-disk.types'
  * saves nothing; any other failure is thrown.
  *
  * Browser-only: relies on `window`, `document`, and `URL`.
+ *
+ * @intent save a Blob as a file, download an exported document, open a save dialog in the browser
  */
 export async function saveToDisk(params: {
 	data: Blob

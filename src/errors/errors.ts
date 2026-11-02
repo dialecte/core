@@ -20,6 +20,8 @@ import type {
  *
  * `key` is a key of the core catalogue, or an error a dialecte declared with `defineErrors`.
  *
+ * @intent throw a structured error, fail with a core or dialecte error key, raise an error a consumer can read by key
+ *
  * @example
  * throwDialecteError('ELEMENT_NOT_FOUND', { detail: 'parent not found' })
  */
@@ -33,6 +35,8 @@ export function throwDialecteError(
 /**
  * Build the Error `throwDialecteError` throws, without throwing it — for a caller that reports an
  * error it caught instead of raising one.
+ *
+ * @intent report a caught error as a dialecte error without throwing, build the Error throwDialecteError would throw
  */
 export function createDialecteError(
 	key: DialecteErrorKey | DialecteErrorDefinition,
@@ -57,6 +61,8 @@ export function createDialecteError(
 /**
  * Declare the errors of a dialecte: each entry gets its property name as `key`, so it can be
  * passed wherever a core key is — `throwDialecteError`, `invariant`.
+ *
+ * @intent declare a dialecte's own error catalogue, add error keys usable with invariant and throwDialecteError
  *
  * @example
  * const ERRORS = defineErrors({ NAME_TAKEN: { code: 'X1001', message: 'The name is already taken' } })
@@ -97,6 +103,8 @@ const CORE_CODES = new Set<string>(Object.values(ERROR_CATALOG).map((entry) => e
 /**
  * The structured error a caught value carries — thrown by `throwDialecteError` or `invariant` —
  * or nothing when it is any other error or value.
+ *
+ * @intent read the structured error from a caught value, handle a dialecte error in a catch block
  */
 export function toDialecteError(thrown: unknown): DialecteError | undefined {
 	if (!(thrown instanceof Error)) return undefined
@@ -111,6 +119,8 @@ export function toDialecteError(thrown: unknown): DialecteError | undefined {
  * Whether a structured error is one the caller knows: a key of the core catalogue, or an entry of
  * one of the catalogues named — same key, same code. Its `key` is then narrowed to those keys, so a
  * `switch` on it or a table read with it is checked again.
+ *
+ * @intent tell which error was thrown, narrow an error key for a switch, word an error for a user
  *
  * @example
  * const error = toDialecteError(thrown)

@@ -19,6 +19,8 @@ import type { DocumentRecord, DocumentUpdates } from '@/project/types'
  * character, well-formed and in Unicode NFC, each segment at most 255 UTF-8 bytes and the whole at most 1024.
  * Nothing is rewritten: a path breaking a rule is refused with `DOCUMENT_PATH_INVALID`, `detail` naming the rule,
  * `meta.path` the path as given.
+ *
+ * @intent validate a document path, split a document path into folders and file name
  */
 export function parseDocumentPath(params: { path: string }): DocumentPathParts {
 	const { path } = params
@@ -95,6 +97,8 @@ export function assertDocumentPath(params: {
  * path rewrites the file name in it, the folders kept; both given must agree; a field given as `undefined` is left
  * as it was, a key beyond `DOCUMENT_UPDATE_FIELDS` ignored. Refused with `DOCUMENT_PATH_INVALID` when the result breaks a rule; the document given is left as it
  * was. Whether the place is free is the store's to check (`assertDocumentPlace`).
+ *
+ * @intent rename or move a document by its path, apply document updates in a custom store
  */
 export function applyDocumentUpdates(params: {
 	document: DocumentRecord
@@ -134,6 +138,8 @@ export function applyDocumentUpdates(params: {
 /**
  * Check a document to register against the registered ones: its path valid and ending with its file name
  * (`DOCUMENT_PATH_INVALID`), then its place free (`DOCUMENT_PATH_TAKEN`). A document without a path passes.
+ *
+ * @intent check a document path is valid and free before registering it, register documents in a custom store
  */
 export function assertDocumentPlace(params: {
 	document: Pick<DocumentRecord, 'id' | 'name' | 'extension' | 'path'>
@@ -151,6 +157,8 @@ export function assertDocumentPlace(params: {
  * The document whose path clashes with `path`, the document `documentId` excepted: one at that very place, or one
  * whose path is a folder of the other's - a file system holds no file and folder of one name. Paths compare exactly;
  * a document without a path holds no place. None when the place is free.
+ *
+ * @intent find which document holds a path, check whether a file or folder path is free
  */
 export function pathHolderOf(params: {
 	path: string

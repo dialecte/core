@@ -7,6 +7,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  * Read every record of the document once and overlay the staged operations: the in-memory
  * data source of a whole-tree read (`getTree`) and of a descendant collect that has outgrown
  * its climb (`findDescendants`). One `getByDocumentId` round trip, whatever the document size.
+ *
+ * @internal whole-document read of `getTree` and `findDescendants`
  */
 export async function loadLiveRecords<GenericConfig extends AnyDialecteConfig>(
 	context: Context<GenericConfig>,

@@ -18,6 +18,12 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord, TreeRecord } from '@
 
 //== Main export
 
+/**
+ * The subtree under a ref as a `TreeRecord`, staged writes overlaid, shaped by `select`, `omit`, `unwrap` and
+ * `depth`; the context-level read behind `doc.query.getTree`.
+ *
+ * @internal the context-level read behind `doc.query.getTree`; callers use the query
+ */
 export async function getTree<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,

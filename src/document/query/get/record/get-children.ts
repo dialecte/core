@@ -11,6 +11,8 @@ import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@
  * looks through those wrapper elements to find matching children one level deeper.
  *
  * Returns an empty array when the parent does not exist or has no matching children.
+ *
+ * @internal the context-level read behind `doc.query.getChildren`; callers use the query
  */
 export async function getChildren<
 	GenericConfig extends AnyDialecteConfig,
