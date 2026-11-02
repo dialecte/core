@@ -42,5 +42,17 @@ jobs:
       - name: Run the node tests
         run: npm run test:node
 
+      # Diagnostic, to remove once the Linux failures are fixed: each test's result as it ends, the two files
+      # that fail or hang only on this image run alone first, a hang cut short.
+      - name: 'Diagnose: the engine worker suite alone'
+        continue-on-error: true
+        timeout-minutes: 10
+        run: npx vitest run --project browser-all --reporter=verbose src/store/sqlite/runtime/serve-dialecte-engine.test.ts
+
+      - name: 'Diagnose: the store contract alone'
+        continue-on-error: true
+        timeout-minutes: 15
+        run: npx vitest run --project browser-all --reporter=verbose src/store/contract/store-contract.test.ts
+
       - name: Run the whole suite in the browser
         run: npm run test:browser:all
