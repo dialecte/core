@@ -37,6 +37,10 @@ The skills tell the agent to confirm every signature in the version you run (the
 `node_modules/@dialecte/*/dist`), so keeping the Dialecte repositories checked out next to your
 project makes it more precise still.
 
+How a change to Dialecte itself goes from a plan to a published version with agents - the steps,
+the gates, the review rounds and the hand-over you run - is explained for people in
+[Delivering a change with agents](../development/delivering-with-agents.md).
+
 ## Documentation for agents without skills
 
 Each documentation site publishes an `llms.txt` index (and `llms-full.txt`, the full text):

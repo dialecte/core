@@ -1,96 +1,100 @@
 import { defineConfig } from 'vitepress'
 import llmstxt from 'vitepress-plugin-llms'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
 // https://vitepress.dev/reference/site-config
-export default defineConfig({
-	vite: {
-		plugins: [llmstxt()],
-	},
-	srcDir: 'doc',
-	base: '/core/',
-
-	title: 'Dialecte',
-	description: 'XML based DSL builder',
-	head: [['link', { rel: 'icon', href: '/core/logo.svg' }]],
-	themeConfig: {
-		// https://vitepress.dev/reference/default-theme-config
-		logo: '/logo.svg',
-
-		search: {
-			provider: 'local',
+export default withMermaid(
+	defineConfig({
+		vite: {
+			plugins: [llmstxt()],
 		},
+		srcDir: 'doc',
+		base: '/core/',
 
-		nav: [
-			{ text: 'Home', link: '/' },
-			{ text: 'Guide', link: '/guide/introduction/getting-started' },
-			{ text: 'Api', link: '/api/' },
-			{ text: 'IO', link: '/io/' },
-			{
-				text: 'LLMs',
-				items: [
-					{ text: 'llms.txt', link: '/core/llms.txt', target: '_blank' },
-					{ text: 'llms-full.txt', link: '/core/llms-full.txt', target: '_blank' },
+		title: 'Dialecte',
+		description: 'XML based DSL builder',
+		head: [['link', { rel: 'icon', href: '/core/logo.svg' }]],
+		themeConfig: {
+			// https://vitepress.dev/reference/default-theme-config
+			logo: '/logo.svg',
+
+			search: {
+				provider: 'local',
+			},
+
+			nav: [
+				{ text: 'Home', link: '/' },
+				{ text: 'Guide', link: '/guide/introduction/getting-started' },
+				{ text: 'Api', link: '/api/' },
+				{ text: 'IO', link: '/io/' },
+				{
+					text: 'LLMs',
+					items: [
+						{ text: 'llms.txt', link: '/core/llms.txt', target: '_blank' },
+						{ text: 'llms-full.txt', link: '/core/llms-full.txt', target: '_blank' },
+					],
+				},
+			],
+
+			sidebar: {
+				'/guide/': [
+					{
+						text: 'Getting Started',
+						items: [
+							{ text: 'Introduction', link: '/guide/introduction/what-is-dialecte' },
+							{ text: 'Quick Start', link: '/guide/introduction/getting-started' },
+							{ text: 'Working with AI agents', link: '/guide/introduction/ai-agents' },
+						],
+					},
+					{
+						text: 'Development',
+						items: [
+							{ text: 'Overview', link: '/guide/development/' },
+							{ text: 'State & Errors', link: '/guide/development/state-and-errors' },
+							{ text: 'Dev Perf', link: '/guide/development/dev-perf' },
+							{ text: 'Testing', link: '/guide/development/testing' },
+							{ text: 'Implementing a store', link: '/guide/development/implementing-a-store' },
+							{ text: 'Helpers', link: '/guide/development/helpers' },
+							{ text: 'Utils', link: '/guide/development/utils' },
+							{ text: 'Type Performance', link: '/guide/development/type-performance' },
+							{ text: 'Delivering with agents', link: '/guide/development/delivering-with-agents' },
+						],
+					},
+					{
+						text: 'Extensions',
+						items: [{ text: 'Writing Extensions', link: '/guide/extensions/' }],
+					},
+				],
+				'/api/': [
+					{
+						text: 'Introduction',
+						items: [{ text: 'Overview', link: '/api/' }],
+					},
+					{
+						text: 'API Reference',
+						items: [
+							{ text: 'Document', link: '/api/document' },
+							{ text: 'Project', link: '/api/project' },
+							{ text: 'Query', link: '/api/query' },
+							{ text: 'Transaction', link: '/api/transaction' },
+							{ text: 'Hooks', link: '/api/hooks' },
+							{ text: 'Dialecte declaration', link: '/api/dialecte' },
+						],
+					},
+				],
+				'/io/': [
+					{
+						text: 'IO',
+						items: [
+							{ text: 'Overview', link: '/io/' },
+							{ text: 'XML', link: '/io/xml' },
+							{ text: 'Hooks', link: '/io/hooks' },
+						],
+					},
 				],
 			},
-		],
 
-		sidebar: {
-			'/guide/': [
-				{
-					text: 'Getting Started',
-					items: [
-						{ text: 'Introduction', link: '/guide/introduction/what-is-dialecte' },
-						{ text: 'Quick Start', link: '/guide/introduction/getting-started' },
-						{ text: 'Working with AI agents', link: '/guide/introduction/ai-agents' },
-					],
-				},
-				{
-					text: 'Development',
-					items: [
-						{ text: 'Overview', link: '/guide/development/' },
-						{ text: 'State & Errors', link: '/guide/development/state-and-errors' },
-						{ text: 'Dev Perf', link: '/guide/development/dev-perf' },
-						{ text: 'Testing', link: '/guide/development/testing' },
-						{ text: 'Implementing a store', link: '/guide/development/implementing-a-store' },
-						{ text: 'Helpers', link: '/guide/development/helpers' },
-						{ text: 'Utils', link: '/guide/development/utils' },
-						{ text: 'Type Performance', link: '/guide/development/type-performance' },
-					],
-				},
-				{
-					text: 'Extensions',
-					items: [{ text: 'Writing Extensions', link: '/guide/extensions/' }],
-				},
-			],
-			'/api/': [
-				{
-					text: 'Introduction',
-					items: [{ text: 'Overview', link: '/api/' }],
-				},
-				{
-					text: 'API Reference',
-					items: [
-						{ text: 'Document', link: '/api/document' },
-						{ text: 'Project', link: '/api/project' },
-						{ text: 'Query', link: '/api/query' },
-						{ text: 'Transaction', link: '/api/transaction' },
-						{ text: 'Hooks', link: '/api/hooks' },
-						{ text: 'Dialecte declaration', link: '/api/dialecte' },
-					],
-				},
-			],
-			'/io/': [
-				{
-					text: 'IO',
-					items: [
-						{ text: 'Overview', link: '/io/' },
-						{ text: 'XML', link: '/io/xml' },
-						{ text: 'Hooks', link: '/io/hooks' },
-					],
-				},
-			],
+			socialLinks: [{ icon: 'github', link: 'https://github.com/dialecte/core' }],
 		},
-
-		socialLinks: [{ icon: 'github', link: 'https://github.com/dialecte/core' }],
-	},
-})
+	}),
+)

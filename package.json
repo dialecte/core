@@ -97,6 +97,7 @@
 		"fake-indexeddb": "^6.2.6",
 		"husky": "^9.1.7",
 		"jiti": "^2.4.2",
+		"mermaid": "11.17.2",
 		"npm-run-all2": "^8.0.4",
 		"oxfmt": "^0.53.0",
 		"oxlint": "^1.68.0",
@@ -108,7 +109,13 @@
 		"vite-plugin-dts": "^5.0.2",
 		"vitepress": "^2.0.0-alpha.17",
 		"vitepress-plugin-llms": "^1.13.2",
+		"vitepress-plugin-mermaid": "2.0.17",
 		"vitest": "^4.1.10"
+	},
+	"overrides": {
+		"vitepress-plugin-mermaid": {
+			"vitepress": "$vitepress"
+		}
 	},
 	"dialecte": {
 		"tdd": {
