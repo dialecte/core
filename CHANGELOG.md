@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Guide page _Delivering a change with agents_: for the person working with coding agents on a Dialecte package, the steps from a plan to a published version in one diagram and one table - who acts at each step, the `dialecte` command it runs, what it records, what can stop it - the review depth by risk class, how to read a hand-over card, and what agents never do. The docs now draw Mermaid diagrams (`vitepress-plugin-mermaid`).
+
 ## [0.8.0] - 2026-11-02
 
 ### Added

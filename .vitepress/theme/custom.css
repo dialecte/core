@@ -18,3 +18,9 @@
 	);
 	--vp-home-hero-image-filter: blur(44px);
 }
+
+/* Mermaid sizes its labels at the label's own line height: keep the doc's paragraph spacing out of them */
+.vp-doc .mermaid p {
+	line-height: inherit;
+	margin: 0;
+}
