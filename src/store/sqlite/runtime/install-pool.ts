@@ -49,6 +49,8 @@ export async function openPool(params: {
 }): Promise<{ pool: SAHPoolUtil; lock: HeldEngineLock }> {
 	const { sqlite3, dialecteId, project, lock: mode, budgetMs, expectedCreationId } = params
 	refuseUnsafeSqlite({ sqlite3, project })
+	// a name no directory can be named after is refused before the lock is asked: a refusal holds nothing
+	const directory = poolDirectoryOf({ dialecteId, project })
 	const deadline = performance.now() + budgetMs
 	const root = await privateRoot({ project })
 	const lock = await takeEngineLock({ dialecteId, project, mode, deadline })
@@ -63,7 +65,7 @@ export async function openPool(params: {
 		}
 		const options: PoolInstallOptions = {
 			name: POOL_VFS_NAME,
-			directory: poolDirectoryOf({ dialecteId, project }),
+			directory,
 			initialCapacity: POOL_CAPACITY,
 			preserveOnInitFailure: true,
 			forceReinitIfPreviouslyFailed: true,

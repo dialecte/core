@@ -5,6 +5,7 @@ import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
 import { createStoreEvents } from '../../engine/host/store-events'
 import { toThrownData } from '../../engine/wire/error-envelope'
 import { ENGINE_WIRE_PROTOCOL } from '../../engine/wire/wire.constants'
+import { refuseUnnamableProject } from '../../project-name'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
 import { closeEngine, endEngineAndClients, releasePool } from './close-engine'
@@ -183,6 +184,8 @@ async function openEngine(params: {
 		engine: { dialecteId: dialecte.id, dialecteVersion: dialecte.version },
 		asked: request,
 	})
+	// a name no directory can be named after is refused before the lock is asked: a refusal holds nothing
+	refuseUnnamableProject({ project, dialecteId: dialecte.id })
 	if (state.engine) {
 		throw createDialecteError('ASSERTION_FAILED', {
 			detail: `The engine of project "${state.project}" is open already`,
@@ -316,6 +319,8 @@ async function destroyProject(params: {
 		engine: { dialecteId: dialecte.id, dialecteVersion: dialecte.version },
 		asked: { dialecteId: request.dialecteId },
 	})
+	// a name no directory can be named after is refused before the lock is asked: a refusal holds nothing
+	refuseUnnamableProject({ project, dialecteId: dialecte.id })
 	const deadline = performance.now() + budgetMs
 	let removing = false
 	try {

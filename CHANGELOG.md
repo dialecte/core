@@ -150,6 +150,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The SQLite engine refuses a project named with nothing, `.` or `..` (`PROJECT_NAME_INVALID`) before it asks for the project's engine lock, on open and on destroy: it answered `PROJECT_OPEN_ELSEWHERE` while another engine held that lock.
 - `@dialecte/core/test` exports every type its functions' signatures name: `XmlAssertions` (what `createXmlAssertions` returns), `XmlQueriesParams` and `XmlQueriesWithNamespacesParams`, so a dialecte re-exporting the query assertions types them without reaching into core's sources.
 - A test project `createTestProject` opens inside a running test is destroyed after every other `onTestFinished` hook of that test, whatever their order of registration: a wrapper's teardown registered before the project was opened still finds it open. A project opened outside a running test (a `beforeAll`) stays the caller's to destroy: vitest offers no way to tie its teardown to that suite.
 - core's `package.json` declares its shipped test entry as production for `dialecte tdd` (`"dialecte": { "tdd": { "production": ["src/test"] } }`): an edit there is code, not test code.

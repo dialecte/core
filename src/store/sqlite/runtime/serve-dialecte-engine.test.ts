@@ -172,6 +172,20 @@ describe('an engine worker opening its project', () => {
 		},
 	)
 
+	it.each(['', '.', '..'])(
+		'a project named %j, its engine lock held elsewhere → refused PROJECT_NAME_INVALID: the name is refused before the lock is asked',
+		async (project) => {
+			const release = await holdEngineLock({ project })
+			cleanups.push(release)
+			const started = startEngineWorker({})
+			cleanups.push(started.end)
+			const refused = await rejectionKey({
+				action: started.control.request({ message: openMessage({ project }), expect: 'opened' }),
+			})
+			expect(refused).toBe('PROJECT_NAME_INVALID')
+		},
+	)
+
 	it('a new project where too little space is left → STORE_QUOTA_EXCEEDED, nothing created', async () => {
 		const project = uniqueProject()
 		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'small-quota' }) })
@@ -1045,6 +1059,29 @@ describe('an engine worker destroying its project', () => {
 		})
 		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
 	})
+
+	it.each(['', '.', '..'])(
+		'a project named %j, its engine lock held elsewhere → refused PROJECT_NAME_INVALID: the name is refused before the lock is asked',
+		async (project) => {
+			const release = await holdEngineLock({ project })
+			cleanups.push(release)
+			const started = startEngineWorker({})
+			cleanups.push(started.end)
+			const refused = await rejectionKey({
+				action: started.control.request({
+					message: {
+						type: 'destroy',
+						project,
+						dialecteId: FIXTURE_DIALECTE.dialecteId,
+						lock: 'if-available',
+						budgetMs: 1_000,
+					},
+					expect: 'destroyed',
+				}),
+			})
+			expect(refused).toBe('PROJECT_NAME_INVALID')
+		},
+	)
 
 	it('a pool file another worker holds a moment (as a worker just ended does) → the removal retried within the budget, the directory gone', async () => {
 		const project = uniqueProject()
