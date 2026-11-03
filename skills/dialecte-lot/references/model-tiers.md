@@ -10,7 +10,7 @@ project uses, `--json` for a script); read it there instead of guessing or writi
 
 | Tier       | For                                                                                                                                                                                                           |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fast`     | search and locate, graders with a schema, log and diff summaries, format and shape checks, "does file X say Y"                                                                                                |
+| `fast`     | search and locate, graders of a fixed schema (not the blind skill-eval graders: strong), log and diff summaries, format and shape checks, "does file X say Y"                                                 |
 | `standard` | the test station, an implementer on a mechanical or fully specified lot, fix mode on wording or naming findings, skill-eval runs (with strong), independent readers of a standard                             |
 | `strong`   | the orchestrator, the test review, an implementer on a design-heavy lot, the review (one agent, both passes), adjudicating a disagreement, the retro, skill-eval runs (with standard) and their blind graders |
 | `frontier` | rare: a plan challenge, a decision across repositories, a lot still stuck at the review cap, once the user decided to go on                                                                                   |

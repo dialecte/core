@@ -35,6 +35,13 @@ package (`dialecte-contributing`, `dialecte-lot`) come with `--contributing`, wh
 remember until `--no-contributing`. Working on Dialecte itself, `--from <folder> --contributing` takes every skill from your
 local checkouts (needs `@dialecte/cli` 0.2.1 or later).
 
+From `@dialecte/cli` 0.2.2, a contributing sync also adds a short section to the project's `AGENTS.md`
+(read by Codex, Cursor, Gemini CLI, Copilot): run `npx --no-install @dialecte/cli doctor --brief` at the start
+of a session, so skills out of date are seen before any work. Claude Code gets the same check as a
+`SessionStart` hook; `--no-session-check` leaves both out. The agents of a lot's stations are defined in the
+`dialecte-lot` skill for every agent; Claude Code also gets them as `.claude/agents/dialecte-<station>.md`
+files, adapters of those definitions.
+
 The skills tell the agent to confirm every signature in the version you run (the repository or
 `node_modules/@dialecte/*/dist`), so keeping the Dialecte repositories checked out next to your
 project makes it more precise still.

@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: host-without-station-adapters
+expected_outcome: |
+  On a host with no station agent files and none of Claude Code's tools, the orchestrator still runs the stations
+  as the skill defines them: it runs the session-start check (`doctor --brief`) before the first station, and each
+  spawn takes the station's vendor-neutral definition (role, tier, access) from the skill - the grader read-only
+  and running nothing, the test reviewer running commands but editing nothing, the eval runner editing - with its
+  tier resolved by `dialecte models`, never a model name; the background test reviewer gets a deadline armed
+  with what the host has.

@@ -376,7 +376,7 @@ and every correction the user made that a skill should have prevented. Then:
 
 - **Inside a dialecte repository**: draft each skill edit as before/after and show it to the user; an
   approved edit goes in the same change (skills ship with the package that owns the code), through
-  `anthropic-skills:skill-creator` loaded with the Skill tool - the eval case first, failing on the text
+  the skill-creator skill (`anthropic-skills:skill-creator`) loaded - the eval case first, failing on the text
   before the change, as `dialecte-lot` describes - then `npm run skills:generate` and `npm run skills:check`.
 - **In an app**: draft an issue for the package that ships the skill - the statement that was wrong
   or missing, the evidence (file, behaviour), the wording you propose - and show it to the user.
