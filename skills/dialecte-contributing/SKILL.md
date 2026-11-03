@@ -1,6 +1,6 @@
 ---
 name: dialecte-contributing
-description: Change Dialecte itself - @dialecte/core, a dialecte package, the generator (create) or the type-perf CLI (cli). Covers how the repos are split, the placement decision (core vs dialecte hook vs dialecte extension vs helper vs consumer code), the red-first table-driven workflow, the Definition of Done gates (check, format, build, test, doc:build, docs + CHANGELOG), the team code rules, the verification traps that give false greens, and how a change is handed over (a commit-by-lots hand-over the user runs, never pushed by the agent). Use it whenever the working directory is inside a dialecte repo, the task says "add to core", "new hook", "new extension method", "fix dialecte", "bump core in a dialecte package", or a consumer feature is blocked on a missing dialecte capability. Load the dialecte skill too for the API map; for a dialecte's own schema knowledge also load its skill (dialecte-<id>).
+description: Change Dialecte itself - @dialecte/core, a dialecte package, the generator (create) or the type-perf CLI (cli). Covers how the repos are split, the placement decision (core vs dialecte hook vs dialecte extension vs helper vs consumer code), the red-first table-driven workflow, the Definition of Done gates (check, format, build, test, doc:build, docs + CHANGELOG), mutation testing and its survivors (`dialecte mutants`), the team code rules, the verification traps that give false greens, and how a change is handed over (a commit-by-lots hand-over the user runs, never pushed by the agent). Use it whenever the working directory is inside a dialecte repo, the task says "add to core", "new hook", "new extension method", "fix dialecte", "bump core in a dialecte package", or a consumer feature is blocked on a missing dialecte capability. Load the dialecte skill too for the API map; for a dialecte's own schema knowledge also load its skill (dialecte-<id>).
 license: MIT
 metadata:
   author: dialecte
@@ -215,7 +215,7 @@ a log - your harness's background run, or `cmd > "$log" 2>&1 & echo $! > "$pidfi
 harness's completion notice or on that PID (`while kill -0 "$(cat "$pidfile")" 2>/dev/null; do sleep 5; done`),
 with an upper bound tied to the run's expected duration; at the bound, report "timed out" with the log's tail.
 Never wait with `pgrep -f "<text>"` when that text is in your own wait command: the loop finds itself and never
-ends (`pgrep -f "[m]utants.ts"` if it is unavoidable). When the wait ends, read the exit code and the log's
+ends (`pgrep -f "[v]itest run"` if it is unavoidable). When the wait ends, read the exit code and the log's
 summary line: "no process found" is not a pass.
 
 Read the step list in the package's `package.json` (`"dialecte": { "gate" }`) when it overrides the
@@ -268,8 +268,54 @@ Type performance: `npm run type-bench:check` compares type instantiations with
 and explain the growth; if it is legitimate, re-baseline with `npm run type-bench` in its own lot.
 Never hand-edit `baseline.json`, never twist code to dodge the gate.
 
-Run slow gates (create's `npm run proof`, corpora, mutation testing) once per lot before hand-over,
-not after every fix. Fast targeted runs while iterating.
+Run slow gates (create's `npm run proof`, corpora) once per lot before hand-over, not after every fix.
+Fast targeted runs while iterating. Mutation testing runs beside the lot instead (below).
+
+## Mutation testing
+
+In a package that declares a mutation scope (`package.json` `"dialecte": { "mutation" }`), `dialecte mutants`
+(`@dialecte/cli` 0.2.0) runs StrykerJS on it and keeps every survivor in a ledger until it is handled; `dialecte
+mutants` with no verb prints each verb's usage. The scripts do the bookkeeping, so your tokens go to judgment only.
+
+- **The switch is per lot**, in `.dialecte/lot.json`: `dialecte lot mutation off|changed|audit|gate`. Without it, a
+  lot whose diff touches the scope runs `changed` (its changed lines), any other lot `off`. `gate` is for a
+  robustness lot only: its hand-over waits for a run reported on the tree it commits, so it runs again after the
+  last fix. `audit` mutates the whole scope.
+- **Off the critical path.** Start `dialecte mutants run` as a background run of your harness (the cli has no
+  background flag): the run is written `running` in the store before Stryker starts, so a killed session leaves a
+  `died` run, never nothing. Go on working (to wait on it: Waiting on a long run, above). A hand-over does not wait
+  for it, except a `gate` lot's; a merge does.
+- **Before every hand-over and every merge: `dialecte mutants status`.** Pending items block the card and the
+  `handover run` guard: `new` survivors of the package (whatever their lot), `died` runs, and a `running` run of the
+  branch for a merge or a `gate` lot (on a plain hand-over it is a `!`). `scheduled` survivors belong to their
+  follow-up lot and do not block.
+- **Judge one file at a time**: `dialecte mutants judge [--file <file>] --json` gives each file's packet (code,
+  covering tests, a family guess). Per survivor, one of:
+  - a test that kills it (a `gap`: red first like any test), then run again;
+  - `dialecte mutants record --key <key> --family <family> --reason "<why>"`, the reason saying in 200 characters at
+    most why no tested behaviour changes. An `invariant-guard` or `fallback-never-taken` also gets a follow-up lot
+    that deletes the guard or tightens the type: `dialecte mutants schedule <follow-up lot> <key>` first, then
+    `record ... --removable` (a scheduled survivor keeps its follow-up when recorded; a recorded one can no longer be
+    scheduled);
+  - `dialecte mutants schedule <follow-up lot> <key>` when another lot owns it.
+
+  The families are a closed list, the words of the judgment: `invariant-guard` (a check the types, or internal
+  callers only, already guarantee), `fallback-never-taken` (a default no input reaches), `exhaustive-default` (the
+  default of a switch that covers every case), `no-op-on-empty` (a skip of work that would do nothing),
+  `perf-shortcut` (a cache or an early exit that only saves time), `static-init` (module-level setup),
+  `schema-default-read` (a read of a value the schema already defaults), `wording` (message or log text). None
+  fits: it is a `gap`. Judge on the standard tier; the strong tier only for a `gap` with no obvious test.
+
+- **The cli is the only writer** of `.dialecte/mutation-records.json` and of the store under
+  `<git-common-dir>/dialecte-mutation/`: never edit either by hand (nor anything else under `.git`).
+- **Runs**: a `died` run is rerun, or `dialecte mutants abandon <run id>`; `dialecte mutants drop <run id>` removes
+  only an abandoned run or a reported one the ledger took in.
+- **Full audit** (`dialecte mutants run --mode audit`): before a release or on request, in the background; its
+  survivors are scheduled as named follow-up lots, not fixed in the release.
+
+A lot that builds tooling with shared state or drives an external tool has its own traps (plan it as a transition
+table, one real run in a scratch clone, cited third-party values): [references/traps.md](references/traps.md), Tools
+with shared state.
 
 ## Cross-package changes
 

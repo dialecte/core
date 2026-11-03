@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: mutation-lot-plan-rules
+expected_outcome: |
+  The shared store change is specified before the test station as a transition table (event, from, to, condition),
+  an invariant and the interleavings that must not break it, each interleaving a forced-order test written before
+  the code. The lot drives an external tool, so one real run on a known target with expected numbers is recorded in
+  SMOKE.md in the hand-over folder, in a scratch `git clone`, never a worktree of a real repository (any real store
+  state cleared through the cli only). A test that pins a value Stryker produces cites its source.

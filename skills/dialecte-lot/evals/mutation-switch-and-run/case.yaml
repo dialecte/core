@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: mutation-switch-and-run
+expected_outcome: |
+  Each lot's mutation switch goes in its `.dialecte/lot.json` through `dialecte lot mutation <mode>`: the rename lot keeps the
+  default (`changed`, its diff touches the scope) and the hardening lot, a robustness lot, is `gate`. Each lot starts
+  `dialecte mutants run` as a background run of the harness (no flag) and goes on working: the rename lot hands over without
+  waiting for it, the hardening lot waits. Before every hand-over and merge `dialecte mutants status` runs and pending items (new
+  survivors, running or died runs) are handled first. Before the release a full audit (`dialecte mutants run --mode
+  audit`) runs in the background and its survivors are scheduled as named follow-up lots.
