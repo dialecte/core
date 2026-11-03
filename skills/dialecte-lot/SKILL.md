@@ -46,6 +46,22 @@ the orchestrator's: a finding the last round acts on is fixed, then the fix and 
 decides whether one more round checks it. Findings that keep coming past the cap mean the plan or the brief is
 wrong.
 
+## Station 0 - what the plan and the brief settle
+
+Before the test station, the plan holds what the tests will pin; a gap found by a reviewer costs a round.
+
+- **Mutation switch** (a package that declares a mutation scope): the orchestrator sets it per lot in the worktree's
+  `.dialecte/lot.json` with `dialecte lot mutation <mode>` and names it in the brief - the default (`changed` when the
+  diff touches the scope, `off` otherwise) for most lots, `gate` only for a robustness lot (its hand-over waits for
+  a run reported on the tree it commits: it runs again after the last fix), `audit` on request. The implementer
+  starts `dialecte mutants run` in the background once green and judges the survivors as `dialecte-contributing`
+  (Mutation testing) says. Before a release, a full audit in the background;
+  its survivors become named follow-up lots (`dialecte mutants schedule <follow-up lot> <key>`).
+- **A tooling lot with shared state or an external tool**: the plan carries the store's transition table, its
+  invariant and the interleavings, the test-station brief asks one forced-order test per interleaving, and the
+  hand-over folder gets a `SMOKE.md` with the lot's one real run; how and where that run happens, and citing
+  third-party values: `dialecte-contributing` references/traps.md, Tools with shared state.
+
 ## Station 1 - test, test review, implement (per brief step)
 
 The order matters, not only the outcome: a test written after the code can be shaped to please it. So each
@@ -344,7 +360,10 @@ it from a test-first red (it flags `red after green` only when the case already 
 
 ## Station 6 - hand over
 
-The `dialecte-contributing` landing rules apply. Write only the lots file and run `npx dialecte handover
+The `dialecte-contributing` landing rules apply. In a package with a mutation scope, run `dialecte mutants status`
+before every hand-over and every merge: a `new` survivor or a `died` run blocks the card and the guard until it is
+handled (`dialecte-contributing`, Mutation testing); the lot's own run still running blocks only a merge or a `gate`
+lot (on a plain hand-over it is a `!`). Write only the lots file and run `npx dialecte handover
 <lots.json>`: it writes the hand-over folder and prints its card. Never a hand-written script, nor a file per
 commit. When the repository has a commit hook (`core.hooksPath`), rehearse first with `npx dialecte handover
 run <folder> --rehearse`: a scratch clone holding your tree, the hooks folder and `node_modules`, so the hook

@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: mutation-status-before-handover
+expected_outcome: |
+  The died run blocks: it is rerun or abandoned with `dialecte mutants abandon <id>` (never dropped first, never
+  deleted under .git). The running run of the branch does not block the plain hand-over (a `!`, its survivors not in
+  yet), but the merge waits for it, and its survivors are handled. The scheduled items do not block. Old entries go
+  only through `dialecte mutants drop`, for an abandoned or applied reported run; nothing under
+  `.git/dialecte-mutation/` is edited by hand. `dialecte mutants status` runs again before the merge.

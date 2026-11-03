@@ -1,0 +1,48 @@
+src/document/staging/resolve-insert-position.ts - 4 pending survivors
+
+3e1c9a07b2d4f5a6  line 18  ConditionalExpression: !cached -> true
+  guess: unclassified (no rule matched: a test (gap) or a family after reading the code)
+  tests: src/document/staging/resolve-insert-position.test.ts#insert position after the last sibling of its tag, src/document/staging/resolve-insert-position.test.ts#insert position first child when no sibling of an earlier tag …and 41 more
+     14 | 	const orderCache = new Map<string, readonly string[]>()
+     15 | 	return function resolveInsertPosition(params: ResolveInsertPositionParams): number {
+     16 | 		const { parent, tagName } = params
+     17 | 		let cached = orderCache.get(parent.tagName)
+>    18 | 		if (!cached) {
+     19 | 			cached = definition[parent.tagName].children.sequence
+     20 | 			orderCache.set(parent.tagName, cached)
+     21 | 		}
+     22 | 		const rank = cached.indexOf(tagName)
+  record:   dialecte mutants record --key 3e1c9a07b2d4f5a6 --family <family> --reason "<why no output can change>"
+  schedule: dialecte mutants schedule <follow-up> 3e1c9a07b2d4f5a6
+
+7f02d8e1a9c3b4d5  line 24  ConditionalExpression: rank === -1 -> false
+  guess: unclassified (no rule matched: a test (gap) or a family after reading the code)
+  tests: src/document/staging/resolve-insert-position.test.ts#insert position after the last sibling of its tag …and 42 more
+     20 | 			orderCache.set(parent.tagName, cached)
+     21 | 		}
+     22 | 		const rank = cached.indexOf(tagName)
+     23 | 		// tagName: ChildTagOf<typeof parent.tagName> - the type only admits children of the parent's sequence
+>    24 | 		if (rank === -1) return parent.children.length
+     25 | 		let position = 0
+  record:   dialecte mutants record --key 7f02d8e1a9c3b4d5 --family <family> --reason "<why no output can change>"
+  schedule: dialecte mutants schedule <follow-up> 7f02d8e1a9c3b4d5
+
+a4b5c6d7e8f90112  line 27  EqualityOperator: childRank <= rank -> childRank < rank
+  guess: unclassified (no rule matched: a test (gap) or a family after reading the code)
+  tests: src/document/staging/resolve-insert-position.test.ts#insert position after the last sibling of its tag, src/document/staging/resolve-insert-position.test.ts#insert position first child when no sibling of an earlier tag
+     25 | 		let position = 0
+     26 | 		for (const child of parent.children) {
+>    27 | 			if (cached.indexOf(child.tagName) <= rank) position++
+     28 | 		}
+     29 | 		return position
+  record:   dialecte mutants record --key a4b5c6d7e8f90112 --family <family> --reason "<why no output can change>"
+  schedule: dialecte mutants schedule <follow-up> a4b5c6d7e8f90112
+
+c0ffee1234567890  line 31  StringLiteral: `insert position cache: ${orderCache.size} parents` -> ``
+  guess: unclassified (no rule matched: a test (gap) or a family after reading the code)
+  tests: (none named)
+     29 | 		return position
+     30 | 	}
+>    31 | 	debugLog(`insert position cache: ${orderCache.size} parents`)
+  record:   dialecte mutants record --key c0ffee1234567890 --family <family> --reason "<why no output can change>"
+  schedule: dialecte mutants schedule <follow-up> c0ffee1234567890

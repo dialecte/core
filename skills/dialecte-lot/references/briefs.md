@@ -85,6 +85,10 @@ Skills: load dialecte, dialecte-contributing, dialecte-lot. A skill text change:
   configuration; graded blind by
   a separate agent, never by you; its benchmark and viewer paths in your report.
 Gates: fast gate per behaviour; full Definition of Done once at the end (<the package's commands>).
+Mutation: <off | changed | gate | audit, set in .dialecte/lot.json>; once green (a gate lot: again after the last
+  fix), `dialecte mutants run` in the background, survivors judged (`dialecte mutants judge --json`, then a
+  test, `record` or `schedule`), `dialecte mutants status` before the report: no new survivor, no died run, a
+  gate lot's run reported (dialecte-contributing, Mutation testing).
 Machine: the runner's defaults (full parallelism, no nice, no lock); a failing run rerun once, the same command
   and --project flags on its failing files with --no-file-parallelism: a pass there is a flake to report as a
   finding, a failure there is real; limit only when the user asks.

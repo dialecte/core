@@ -72,6 +72,26 @@ ran what you think it ran.
 - `dialecte-xmlfmt` reformats `/* xml */` template literals; it can mangle a nested template
   literal - check the diff.
 
+## Tools with shared state
+
+For a lot that builds tooling (the cli above all) rather than engine code. Each trap cost a lot several review rounds.
+
+- **A store several runs share** (a ledger, a records file, a run store, a cache, a lock) planned as prose is wrong
+  in ways only interleavings show: two runs finishing in either order, overlapping runs, a crash between two writes,
+  a dead or reused owner. The plan writes it as a transition table (event, from, to, condition), its invariant
+  ("an item leaves pending only by ...") and the list of interleavings; the test station writes one forced-order
+  test per interleaving before any code. Liveness is the process id plus its start time read in UTC, never the id
+  alone.
+- **A fake runner proves the wiring, not the integration.** A lot that drives an external tool (StrykerJS, vitest,
+  git, npm) records one real run on a known target with its expected numbers before the hand-over, in `SMOKE.md` in
+  the hand-over folder.
+- **That run happens in a scratch `git clone`** (its own `.git`), never a worktree of a real repository: worktrees
+  share the git folder, so a store under it (`dialecte-mutation/`, the check records) takes the experiment's state
+  and blocks the next real hand-over. State that landed in a real store anyway is cleared through the cli only.
+- **A value a third-party tool produces or consumes** (a report field, a column, a config key) is pinned by a test
+  that cites its source: a file and line of the tool, or a recorded real run. A shape from memory merged once one
+  column off.
+
 ## Shell
 
 - zsh does not word-split `$FILES`: `git diff -- $FILES` with a space-separated list addresses one
