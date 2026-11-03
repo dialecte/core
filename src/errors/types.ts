@@ -45,11 +45,13 @@ export type DialecteErrorDefinitions<GenericCatalog extends DialecteErrorCatalog
  * `defineErrors` refuses them at the type-check, on the entry itself.
  */
 export type CoreCatalogueCollisions<GenericCatalog extends DialecteErrorCatalogInput> = {
-	[GenericKey in keyof GenericCatalog as GenericKey extends DialecteErrorKey
-		? GenericKey
-		: GenericCatalog[GenericKey]['code'] extends DialecteErrorCode
+	[
+		GenericKey in keyof GenericCatalog as GenericKey extends DialecteErrorKey
 			? GenericKey
-			: never]: never
+			: GenericCatalog[GenericKey]['code'] extends DialecteErrorCode
+				? GenericKey
+				: never
+	]: never
 }
 
 /**

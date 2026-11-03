@@ -340,12 +340,14 @@ export type NamespacedAttributesValueObjectOf<
 	GenericElement extends ElementsOf<GenericConfig>,
 	GenericNamespaceKey extends NamespaceKeysOf<GenericConfig>,
 > = {
-	[K in keyof AttributesValueObjectOf<
-		GenericConfig,
-		GenericElement
-	> as K extends `${PrefixOfNamespaceKey<GenericConfig, GenericNamespaceKey>}:${infer GenericLocal}`
-		? GenericLocal
-		: never]: AttributesValueObjectOf<GenericConfig, GenericElement>[K]
+	[
+		K in keyof AttributesValueObjectOf<
+			GenericConfig,
+			GenericElement
+		> as K extends `${PrefixOfNamespaceKey<GenericConfig, GenericNamespaceKey>}:${infer GenericLocal}`
+			? GenericLocal
+			: never
+	]: AttributesValueObjectOf<GenericConfig, GenericElement>[K]
 }
 
 /** Local attribute names available under a namespace key for an element. */

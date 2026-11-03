@@ -187,6 +187,7 @@ A dialecte declares its codes once, in a catalogue - `source`, and per code the 
 
 ```ts
 import { createDiagnostic } from '@dialecte/core'
+
 import type { DiagnosticCatalogue } from '@dialecte/core'
 
 export const MY_IMPORT_DIAGNOSTICS = {

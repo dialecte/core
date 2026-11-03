@@ -8,6 +8,7 @@ A `Project` reads and writes through one `Store`: core ships `local` (IndexedDB)
 
 ```ts
 import { Project } from '@dialecte/core'
+
 import type { Store } from '@dialecte/core'
 
 const project = await new Project({
@@ -34,6 +35,7 @@ A store runs a file's import and a document's export itself, next to its data, s
 
 ```ts
 import { runExport, runImport } from '@dialecte/core'
+
 import type { ExportFileParams, ImportFileParams, StoreRuntime } from '@dialecte/core'
 
 class MyStore implements Store {

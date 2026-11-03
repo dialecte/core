@@ -79,8 +79,7 @@ const entries = await project.import([file1, file2], {
 	chunkOptions: { batchSize: 5000 },
 })
 for (const entry of entries) {
-	if (entry.status === 'failed')
-		notifyFailed(entry.fileName, entry.error) // key, message, meta
+	if (entry.status === 'failed') notifyFailed(entry.fileName, entry.error) // key, message, meta
 	else if (entry.diagnostics.length) notifyDiagnostics(entry.fileName, entry.diagnostics)
 }
 const last = entries.findLast((entry) => entry.status === 'imported')

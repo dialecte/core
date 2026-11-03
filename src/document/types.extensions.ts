@@ -138,16 +138,16 @@ export type ExtensionModules = Record<string, ExtensionModule>
  */
 export type MergedExtensions<Modules extends ExtensionModules> = {
 	query: {
-		[K in keyof Modules as Modules[K]['query'] extends ExtensionGroup<QueryExtensionFn>
-			? K
-			: never]: Modules[K]['query'] extends ExtensionGroup<QueryExtensionFn>
-			? Modules[K]['query']
-			: never
+		[
+			K in keyof Modules as Modules[K]['query'] extends ExtensionGroup<QueryExtensionFn> ? K : never
+		]: Modules[K]['query'] extends ExtensionGroup<QueryExtensionFn> ? Modules[K]['query'] : never
 	}
 	transaction: {
-		[K in keyof Modules as Modules[K]['transaction'] extends ExtensionGroup<TransactionExtensionFn>
-			? K
-			: never]: Modules[K]['transaction'] extends ExtensionGroup<TransactionExtensionFn>
+		[
+			K in keyof Modules as Modules[K]['transaction'] extends ExtensionGroup<TransactionExtensionFn>
+				? K
+				: never
+		]: Modules[K]['transaction'] extends ExtensionGroup<TransactionExtensionFn>
 			? Modules[K]['transaction']
 			: never
 	}

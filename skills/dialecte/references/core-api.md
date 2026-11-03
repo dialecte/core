@@ -70,6 +70,7 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
 - Transaction only (`tx`): `addChild`, `clearRecordCache`, `clearStagedOperations`, `commit`, `deepClone`, `delete`, `ensureChild`, `finishStaging`, `getStagedOperations`, `update`
 - Document: `close`, `destroy`, `prepare`, `subscribe`, `transaction`
 - Project: `addBlob`, `attachBlob`, `close`, `createChannel`, `destroy`, `detachBlob`, `export`, `exportBlob`, `getBlob`, `getBlobsByDocument`, `getBlobsByRecord`, `getDatabaseInstance`, `getDocument`, `getDocumentConfig`, `getDocumentStatus`, `getDocuments`, `getStandaloneBlobs`, `import`, `importFile`, `initEmptyDocument`, `open`, `openDocument`, `queryAll`, `queryFirst`, `redo`, `removeBlob`, `removeDocument`, `undo`
+
 <!-- /dialecte-skills:generated -->
 
 ## Query (`document/query/main.ts`)

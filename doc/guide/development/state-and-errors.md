@@ -197,14 +197,13 @@ A structured error thrown inside `doc.transaction` or `doc.prepare` — by the c
 
 ```ts
 import { isKnownDialecteError, toDialecteError } from '@dialecte/core'
+
 import type { DialecteErrorKey } from '@dialecte/core'
 
 const SENTENCES: Record<
 	DialecteErrorKey | keyof typeof MY_ERRORS,
 	(meta?: Record<string, unknown>) => string
-> = {
-	/* … one sentence per key: a key left out is a type error */
-}
+> = {/* … one sentence per key: a key left out is a type error */}
 
 try {
 	await doc.transaction(/* … */)

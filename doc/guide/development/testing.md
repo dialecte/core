@@ -34,8 +34,9 @@ runTestCases.generic(
 ### Pattern
 
 ```ts
-import { describe, expect } from 'vitest'
 import { runTestCases } from '@dialecte/core/test'
+import { describe, expect } from 'vitest'
+
 import type { BaseTestCase } from '@dialecte/core/test'
 
 type TestCase = BaseTestCase & {
@@ -70,8 +71,9 @@ Two methods enforce the right contract at call-site.
 Use when `act` makes all assertions directly on query results via `expect`. No XML export needed.
 
 ```ts
-import { describe, expect } from 'vitest'
 import { runTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
+import { describe, expect } from 'vitest'
+
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@dialecte/core/test'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
@@ -108,8 +110,9 @@ describe('getAttribute', () => {
 Use when `act` performs transactions and assertions must run on the exported XML via XPath.
 
 ```ts
-import { describe } from 'vitest'
 import { runTestCases, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@dialecte/core/test'
+import { describe } from 'vitest'
+
 import type {
 	ActParams,
 	ActResult,
