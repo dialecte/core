@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: logic-out-of-the-ui
+expected_outcome: |
+  Splits the panel into four layers, each owning one thing: a local dialecte extension verb that reads the
+  document only (the Bays of a VoltageLevel with their equipment count, in one read without a query per Bay
+  where possible), a service that calls it and returns the app's row shape, a composable or store holding the
+  reactive rows and the filter, and the component left with its template and local UI state. The component
+  and the composable import nothing from @dialecte; the extension imports nothing from the app.

@@ -1,10 +1,11 @@
 ---
 name: dialecte
-description: Work with Dialecte, the XSD-to-typed-DSL engine (@dialecte/core plus a dialecte package - one published under @dialecte or one generated from your own XSD) in application code - open a Project, read with doc.query, write with doc.transaction, import/export XML, add a custom extension, write table-driven tests. It gives the mental model (core engine / generated definition / dialecte hooks + business extensions / your app), the reuse ladder to run before writing any helper, and the traps that make code slow or wrong. Use it whenever code imports @dialecte/*, touches records, refs, getAttributes, getTree, findDescendants, addChild, deepClone, hooks or run*TestCases, or the user mentions dialecte, even for a small read. To change dialecte itself use dialecte-contributing; for a dialecte's own business verbs use that dialecte's skill (dialecte-<id>, shipped with its package); to generate a dialecte from an XSD use dialecte-create.
+description: Work with Dialecte, the XSD-to-typed-DSL engine (@dialecte/core plus a dialecte package, published or generated from your own XSD) in application code - open a Project, read with doc.query, write with doc.transaction, import/export XML, write a local (custom) extension in your app (shape, node-tier tests, product choices passed per call as a policy, promotion), keep document logic out of UI components, write table-driven tests. It gives the mental model, the reuse ladder to run before writing any helper, and the traps that make code slow or wrong. Use it whenever code imports @dialecte/*, touches records, refs, getAttributes, getTree, findDescendants, addChild, deepClone, hooks or run*TestCases, or the user mentions dialecte, even for a small read. To change dialecte itself use dialecte-contributing; for a dialecte's own business verbs use that dialecte's skill (dialecte-<id>, shipped with its package); to generate a dialecte from an XSD use dialecte-create.
 license: MIT
 metadata:
   author: dialecte
   version: '0.1.0'
+  audience: consumer
 ---
 
 <!-- dialecte-skills ignore: doc.query.inventory.lowStock tx.inventory.restock project.state doc.state doc.query.myFeature.findOrphanParts -->
@@ -31,7 +32,11 @@ dialecte package    @dialecte/<id>, @acme/widget              (domain)
 ```
 
 - **Core knows no domain.** It never contains the rules of any schema. A domain rule lives in the
-  dialecte package; an app-only rule lives in the app.
+  dialecte package; an app-only rule lives in the app (a local extension for document code, a policy
+  for your product's choices: see below).
+- **Using is not changing.** This skill is for code that uses a dialecte. Changing a dialecte package
+  itself (its gates, lots, hand-overs, its pull request) is `dialecte-contributing`; nothing in it is
+  needed to use one.
 - **The definition is the source of truth** for which elements, attributes, children, parents,
   defaults and types exist. From app code read it through the package's config
   (`<NAME>_DIALECTE_CONFIG.children / parents / attributes / descendants / ancestors`) or
@@ -87,7 +92,7 @@ Never invent a signature. If the three disagree, the code you actually run wins.
 
 ## The reuse ladder - run it before writing ANY helper, stop at the first hit
 
-1. **Your app's own dialecte layer** (custom extensions, services). Someone may have written it.
+1. **Your app's own dialecte layer** (its local extensions, services). Someone may have written it.
 2. **The dialecte's business extensions.** Each dialecte package ships a skill (`dialecte-<id>`)
    with `references/api.md`: an index of its verbs by intent ("label of an element", "copy a
    subtree from another document"), generated from the JSDoc. Search it by what you are trying to
@@ -101,9 +106,9 @@ Never invent a signature. If the three disagree, the code you actually run wins.
 5. **Core and package helpers/utils** (`@dialecte/core/helpers`, `@dialecte/core/utils`, the
    package's own helpers): `toRef`, record converters, guards, `readAttribute(s)`, definition and
    attribute rules, namespaces, canonical ordering, `invariant`, XML formatting.
-6. **Only then write it** - as a custom extension in the standard shape (below), not as a loose
-   util. If every consumer of that dialecte would need it, it belongs in the dialecte package
-   (propose it, see `dialecte-contributing`).
+6. **Only then write it** - as a local extension in the package's extension shape (see _A local
+   extension in your app_), not as a loose util. If every consumer of that dialecte would need it,
+   it belongs in the dialecte package (see _Promoting it to the package_).
 
 When you do write new code, say in your hand-off which rung you checked and why nothing fit.
 A verb whose name or summary is close to your need is read in full (JSDoc and tests) before you
@@ -189,22 +194,35 @@ Consequences to remember:
   `afterImport` from what was collected. Import writes are not undoable.
 - `afterStandardizedRecord` runs on create, update, import and init: it must be idempotent.
 
-## Adding your own extension (app side)
+## A local extension in your app
 
-Same shape as the dialecte's own extensions, passed at project creation:
+A **local extension** is your app's own dialecte extension: code that reads or writes the document,
+written in exactly the shape of a package extension and passed at project creation. Write one when the
+reuse ladder found nothing and the verb is yours (no package has it yet, or your product needs it before
+a package ships it). Because the shape is the package's, the folder can later move into the package with
+no call-site change.
+
+```
+src/dialecte-extension/              (your app's folder for local extensions)
+  index.ts                           export const LOCAL_EXTENSIONS = { myFeature }
+  my-feature/
+    index.ts                         export const myFeature = { query: { findOrphanParts }, transaction: {} }
+    query/
+      find-orphan-parts.ts           one function per file
+      find-orphan-parts.types.ts     its params and result types
+      find-orphan-parts.test.ts      next to it
+    transaction/
+```
 
 ```ts
-// my-feature/query/find-orphan-parts.ts - one function per file, types in find-orphan-parts.types.ts, test next to it
+// my-feature/query/find-orphan-parts.ts
 import type * as Core from '@dialecte/core'
 import type { Config } from '@acme/widget/v1'   // the package's Config type (check its exports)
 
 export async function findOrphanParts(query: Core.Query<Config>, params: FindOrphanPartsParams) { ... }
 
-// my-feature/index.ts
-export const myFeature = { query: { findOrphanParts }, transaction: { ... } }
-
 // app
-const project = createWidgetProject({ extensions: { myFeature } })
+const project = createWidgetProject({ extensions: LOCAL_EXTENSIONS })
 doc.query.myFeature.findOrphanParts({ assembly })   // first param is bound away
 ```
 
@@ -215,7 +233,56 @@ doc.query.myFeature.findOrphanParts({ assembly })   // first param is bound away
 - Pick a namespace key of your own. A custom module whose key equals a module key the dialecte
   already uses (`inventory` in `@acme/widget`) merges into it, and only a same-named method there throws `EXTENSION_METHOD_COLLISION`. Nothing
   stops a top-level name from shadowing a core member: never name a module like a core method.
-- Tests call the function directly with `source.query` / `tx`, not through the bound method.
+- **It holds no product choice.** It reads and writes the document; it imports nothing from your app
+  (no service, store, composable, component, policy file) and carries none of your product's rules.
+  Where your product decides differently from the plain behaviour, see policies below.
+- **Tests on the node tier**: table-driven with the package's runner (`<package>/<version>/test` →
+  `run<Name>TestCases`), inline XML fixtures, the function called directly with `source.query` / `tx`,
+  not through the bound method. No test names a store: the runner runs them in Node on the in-memory
+  store. See [Testing](#testing).
+
+### Policies: your product's choices, passed per call
+
+When products may want different answers from the same verb (which parts count as orphans, how a
+created element is named), the verb stays product-neutral and the product passes its choice **on each
+call**. A **policy** is that set of values (or, where a value is not enough, an injected function).
+
+- The verb declares the choice in its params type, typed, **with the plain behaviour as default**:
+  an option (`includeSpares?: boolean`, default `false`) or a strategy (`nameOf?: (part) => string`,
+  default the plain naming). It branches on it inside, in one pass.
+- The product keeps its values in a policy file next to the service that calls the verb
+  (`my-feature.policy.ts`), and the service passes them: `doc.query.myFeature.findOrphanParts({ assembly, ...MY_FEATURE_POLICY })`.
+- Something the plain verb does not know at all (an extra element only your product writes) is
+  composition: the addition is a verb of its own in your local extension, and the service calls the
+  plain verb and then that one inside the same transaction.
+- Never patch the output afterwards (create, then rename or delete what the verb wrote): it depends on
+  the verb's internals, breaks silently when the verb changes and hides the decision from its tests.
+  Never branch on your product inside the verb either.
+- Test both: the default, and the option your product sets.
+
+### Promoting it to the package
+
+When other consumers want the verb, propose it to the package: draft an issue on the package's
+repository with the extension folder and its tests (same shape, so call sites do not change), show it to
+the user and post it only with their approval. The option and its plain default move with the verb; your
+policy file and its values stay in your app. Once a package version ships it, bump the package, delete the
+local folder and its entry in your local extensions index, keep passing your policy.
+
+## Keep the logic out of the UI
+
+Four layers, each owns one thing, so the document code can be unit-tested without a render and moved
+to a package without a rewrite (framework names below are examples, e.g. Vue):
+
+| Layer                           | Owns                                                                          | Never                                               |
+| ------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| local extension                 | reads and writes of the document; returns records or plain data               | UI, app types, reactive state, imports from the app |
+| service (`<domain>.service.ts`) | calls the verbs, passes the policy, turns document data into the app's shapes | reactive state                                      |
+| composable / store              | reactive state, derived values, domain logic; calls services                  | runtime `@dialecte/*` imports, `doc.query`          |
+| component                       | template and local UI state (toggles, dialogs, emits)                         | document calls, service imports, domain transforms  |
+
+Types of the dialecte package (`<Name>.Record`, tag names) may pass through a service unchanged (a
+composable then imports them with `import type`): do not wrap a type only to re-export it. Read the subtree once in the extension (`getTree` or a filtered
+`findDescendants`) instead of one read per element from a component loop.
 
 ## Testing
 
@@ -258,6 +325,8 @@ against an in-memory project of the installed dialecte; ids are seeded, so the s
 - Does a hook already do any write you added by hand?
 - Any query inside a loop over elements? Any `findAncestors` that could be a parent step?
 - Any hand-written list that the definition or a registry already holds?
+- Does a local extension import anything from the app, or hold a product choice instead of an option?
+- Does a component or composable call `doc.query` / import `@dialecte/*` instead of going through a service?
 - Every Dialecte method you call confirmed in the installed version?
 
 ## Retro gate - before you hand over

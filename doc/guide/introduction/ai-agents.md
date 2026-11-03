@@ -30,8 +30,10 @@ npx @dialecte/cli skills sync
 This links the skills of your dependencies into `.claude/skills` (Claude Code) and `.agents/skills`
 (Codex, Cursor, Gemini CLI, GitHub Copilot). Add `--agent copilot` for `.github/skills`, `--copy` to
 copy instead of link. Links follow the versions you have installed; run it again after adding a
-Dialecte dependency. Working on Dialecte itself, `--from <folder>` takes the skills from your local
-checkouts.
+Dialecte dependency. It installs the skills for using Dialecte; the skills for changing a Dialecte
+package (`dialecte-contributing`, `dialecte-lot`) come with `--contributing`, which later syncs
+remember until `--no-contributing`. Working on Dialecte itself, `--from <folder> --contributing` takes every skill from your
+local checkouts (needs `@dialecte/cli` 0.2.1 or later).
 
 The skills tell the agent to confirm every signature in the version you run (the repository or
 `node_modules/@dialecte/*/dist`), so keeping the Dialecte repositories checked out next to your
