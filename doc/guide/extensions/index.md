@@ -24,8 +24,8 @@ Each function takes the query (or transaction) as its first argument. The remain
 **Query extension** (`a/query/get-aa-items.ts`):
 
 ```ts
-import type { TestDialecteConfig } from '@dialecte/core/test'
 import type { Document } from '@dialecte/core'
+import type { TestDialecteConfig } from '@dialecte/core/test'
 
 type Query = Document<TestDialecteConfig>['query']
 
@@ -36,8 +36,9 @@ export async function getAaItems(query: Query): Promise<void> {}
 
 ```ts
 import { getAaItems } from './get-aa-items'
-import type { TestDialecteConfig } from '@dialecte/core/test'
+
 import type { Document } from '@dialecte/core'
+import type { TestDialecteConfig } from '@dialecte/core/test'
 
 type Query = Document<TestDialecteConfig>['query']
 
@@ -49,8 +50,8 @@ export async function getLatestAaItem(query: Query): Promise<void> {
 **Transaction extension** (`a/transaction/add-aa-item.ts`):
 
 ```ts
-import type { TestDialecteConfig } from '@dialecte/core/test'
 import type { Document } from '@dialecte/core'
+import type { TestDialecteConfig } from '@dialecte/core/test'
 
 type Transaction = Parameters<Parameters<Document<TestDialecteConfig>['transaction']>[0]>[0]
 
@@ -125,12 +126,13 @@ export const MY_EXTENSION_MODULES = { a, b }
 The modules go in the dialecte's declaration; the project factory core derives from it merges them into every project (see [Dialecte declaration](/api/dialecte)):
 
 ```ts
-// dialecte.ts
-import engineUrl from './worker?worker&url'
-import { createProjectFactory, defineDialecte } from '@dialecte/core'
+import { version } from '../package.json'
 import { MY_CONFIG } from './config'
 import { MY_EXTENSION_MODULES } from './extensions'
-import { version } from '../package.json'
+// dialecte.ts
+import engineUrl from './worker?worker&url'
+
+import { createProjectFactory, defineDialecte } from '@dialecte/core'
 
 export const MY_DIALECTE = defineDialecte({
 	id: 'my/v1',
@@ -192,9 +194,10 @@ TypeScript infers the full extension shape from the extension modules object:
 Registering extensions changes the shape of the returned `Document`: its `query` and its `transaction` callback now carry your extension methods. To _name_ that augmented type — for a function parameter, a store, or a re-export — use the `ExtendedDocument<Config, Modules>` helper instead of hand-rolling it:
 
 ```ts
-import type { ExtendedDocument } from '@dialecte/core'
-import type { MyConfig } from './config'
 import { MY_EXTENSION_MODULES } from './extensions'
+
+import type { MyConfig } from './config'
+import type { ExtendedDocument } from '@dialecte/core'
 
 // A Document augmented with MY_EXTENSION_MODULES, on both query.* and tx.*
 type MyDocument = ExtendedDocument<MyConfig, typeof MY_EXTENSION_MODULES>
@@ -218,10 +221,11 @@ A manual intersection such as `BaseDocument & { query: …; transaction: … }` 
 A config package already knows its own `Config` and its base modules, so it can pre-bind both and expose a **single-parameter** helper. Consumers then name their document from just the modules they add, without repeating the config:
 
 ```ts
+import { MY_BASE_MODULES } from './extensions'
+
+import type { MyConfig } from './config'
 // my-dialecte/hydrated.types.ts
 import type * as Core from '@dialecte/core'
-import type { MyConfig } from './config'
-import { MY_BASE_MODULES } from './extensions'
 
 type BaseModules = typeof MY_BASE_MODULES
 
@@ -235,8 +239,9 @@ export namespace My {
 Downstream code — in any framework, or none — then writes:
 
 ```ts
-import type { My } from 'my-dialecte'
 import { localExtensions } from './local-extensions'
+
+import type { My } from 'my-dialecte'
 
 const LOCAL_MODULES = { local: localExtensions }
 
@@ -263,9 +268,10 @@ src/
 ```
 
 ```ts
+import { local } from './local'
+
 // dialecte-extension/index.ts
 import type { My } from 'my-dialecte'
-import { local } from './local'
 
 export const LOCAL_MODULES = { local }
 export type LocalDocument = My.ExtendedDocument<typeof LOCAL_MODULES>

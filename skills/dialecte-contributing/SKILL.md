@@ -107,7 +107,7 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
 1. **Orient**: read the nearest existing example of what you build (an extension in the same
    package, a hook sub-file, its test) and the package's `doc/` page for the surface. Copy shapes,
    don't invent them. A new extension verb starts from `npx dialecte new verb <namespace>
-<query|transaction> <name>`: it writes the function, its `.types.ts`, a red table case marked
+   <query|transaction> <name>`: it writes the function, its `.types.ts`, a red table case marked
    `only`, the barrel export and the namespace registration, and lists the `FILL:` placeholders
    (`skills check` refuses them until written).
 2. **Red first, proven by the cli**: the tests come first, from the spec, before any production code:

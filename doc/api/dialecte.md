@@ -9,8 +9,9 @@ A dialecte declares itself once with `defineDialecte`. Everything core builds fo
 ## defineDialecte
 
 ```ts
-import { defineDialecte } from '@dialecte/core'
 import { version } from '../../package.json'
+
+import { defineDialecte } from '@dialecte/core'
 
 export const SCL_DIALECTE = defineDialecte({
 	id: 'scl/v2019C1',
@@ -45,6 +46,7 @@ Hooks keep state (an import session's bookkeeping, a counter). A factory gives e
 
 ```ts
 import engineUrl from './engine.worker?worker&url'
+
 import { createProjectFactory } from '@dialecte/core'
 
 export const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE, engineUrl })
@@ -101,9 +103,10 @@ A project on `sqlite` storage runs in the dialecte's engine worker. A dialecte p
 **The worker entry.** One call, in a file of the dialecte package. Core's `@dialecte/core/engine` entry serves the engine, with the dialecte's configs and its own hooks instance (`createHooks()`):
 
 ```ts
+import { SCL_DIALECTE } from './dialecte'
+
 // src/v2019C1/engine.worker.ts
 import { serveDialecteEngine } from '@dialecte/core/engine'
-import { SCL_DIALECTE } from './dialecte'
 
 serveDialecteEngine({ dialecte: SCL_DIALECTE })
 ```
@@ -112,6 +115,7 @@ serveDialecteEngine({ dialecte: SCL_DIALECTE })
 
 ```ts
 import engineUrl from './engine.worker?worker&url'
+
 import { createProjectFactory } from '@dialecte/core'
 
 export const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE, engineUrl })

@@ -322,8 +322,9 @@ const report = inspectXml(xml, { elements: ['Project', 'project'] as const })
 **Type-safe with a config:**
 
 ```ts
-import { inspectXml } from '@dialecte/core'
 import { MY_DIALECTE_CONFIG } from './config'
+
+import { inspectXml } from '@dialecte/core'
 
 const report = inspectXml(xml, {
 	config: MY_DIALECTE_CONFIG,
