@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: app-pr-after-handover
+expected_outcome: |
+  Says the lot process ends at the hand-over in an app: the pull request is opened with the app's own PR skill
+  and template, not with a dialecte step; the hand-over's records may feed it (`dialecte recap`
+  for the details part) but the app's PR rules decide. Nothing is pushed or posted without the user.

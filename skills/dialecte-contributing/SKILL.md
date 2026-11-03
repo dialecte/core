@@ -5,6 +5,7 @@ license: MIT
 metadata:
   author: dialecte
   version: '0.1.0'
+  audience: contributor
 ---
 
 <!-- dialecte-skills workspace -->
@@ -343,11 +344,11 @@ core has `dialecte`, `dialecte-contributing` and `dialecte-lot`, create `dialect
 package its own `dialecte-<id>` with the knowledge of its schema. A skill changes in the same PR as the code it describes - never
 in another repository afterwards. `@dialecte/cli` maintains them:
 
-| Command                    | Does                                                                                                                                                                                                                                                             |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dialecte skills sync`     | installs the skills of the app's dependencies into `.claude/skills` + `.agents/skills` (`--agent claude,copilot,agents`, `--copy`); `--from <workspace>` takes them from local checkouts                                                                         |
-| `dialecte skills generate` | rewrites the `<!-- dialecte-skills:generated ... -->` blocks (verb map, method and export index, hook files) from the source                                                                                                                                     |
-| `dialecte skills check`    | frontmatter, links, and every API / path / npm script a page cites must exist; generated blocks must be fresh; every public function and method has a JSDoc summary and an `@intent`; `--workspace <dir>` also verifies pages that describe several repositories |
+| Command                    | Does                                                                                                                                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dialecte skills sync`     | installs the skills of the app's dependencies into `.claude/skills` + `.agents/skills` (`--agent claude,copilot,agents`, `--copy`); consumer skills only unless `--contributing` (remembered); `--from <workspace> --contributing` takes every skill from local checkouts |
+| `dialecte skills generate` | rewrites the `<!-- dialecte-skills:generated ... -->` blocks (verb map, method and export index, hook files) from the source                                                                                                                                              |
+| `dialecte skills check`    | frontmatter, links, and every API / path / npm script a page cites must exist; generated blocks must be fresh; every public function and method has a JSDoc summary and an `@intent`; `--workspace <dir>` also verifies pages that describe several repositories          |
 
 Write claims so the check can verify them: API as `query.<method>` / `tx.<ns>.<verb>`, paths
 relative to a package, scripts as `npm run <script>`. A deliberate mention of something outside the package goes in

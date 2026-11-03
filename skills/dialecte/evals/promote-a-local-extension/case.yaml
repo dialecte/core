@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: promote-a-local-extension
+expected_outcome: |
+  Promotes by proposing it to the package: drafts an issue on @dialecte/scl carrying the extension folder and
+  its tests (the shape already matches, so call sites do not change once the package ships it), shown to the
+  user, posted only with their approval. The policy file and the app's option values stay in the app; the
+  option and its product-neutral default move with the verb. The app keeps its local copy until a package
+  version ships it, then drops the folder and bumps the dependency.

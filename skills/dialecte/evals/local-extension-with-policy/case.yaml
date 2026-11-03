@@ -1,0 +1,11 @@
+schema_version: '1.1'
+name: local-extension-with-policy
+expected_outcome: |
+  Writes a local dialecte extension in the real extension shape (a namespace folder with query/<verb>.ts, one
+  function per file, its types in a *.types.ts file, an index exporting { query, transaction }), the function
+  taking `Core.Query<Config>` first and one params object. The product choice (IFL counts as empty) is not
+  hard-coded in the extension: the verb exposes it as an option whose default is the plain behaviour (no
+  ConductingEquipment at all), and the app passes its value per call from a policy file next to the service
+  that calls the verb. The test runs on the node tier with the package's table-driven runner and inline XML,
+  calling the function with the source query. The panel reaches the verb through a service, not through
+  doc.query in the component.

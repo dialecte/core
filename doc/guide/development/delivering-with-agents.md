@@ -270,7 +270,7 @@ stations, the review rounds, the hand-over) and the `dialecte-contributing` skil
 landing a change), shipped in core's `skills/` folder. Install them for your agents with:
 
 ```bash
-npx @dialecte/cli skills sync
+npx @dialecte/cli skills sync --contributing
 ```
 
 See [Working with AI agents](../introduction/ai-agents.md) for the skills of every package.

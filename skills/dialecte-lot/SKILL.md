@@ -5,6 +5,7 @@ license: MIT
 metadata:
   author: dialecte
   version: '0.1.0'
+  audience: contributor
 ---
 
 <!-- dialecte-skills workspace -->
@@ -34,6 +35,15 @@ are what the next station reads. A decision that is not in one of them was not a
 | 5   | Full gate   | implementer                 | no agent                                                    | -                                                                                                    | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
 | 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                                      | `dialecte handover`: a hand-over folder and its card; a human runs it; nothing committed, nothing pushed     |
 | 7   | Retro       | orchestrator                | strong                                                      | reports, loops, the user's corrections                                                               | retro entries; skill edits drafted, applied on approval                                                      |
+
+**After the hand-over, the pull request is the repository's own.** In a dialecte repository Station 7
+follows the hand-over, and the branch goes up by pull request through that repository's landing rules
+(`dialecte-contributing`). In an app that consumes a dialecte, the lot ends at
+Station 6: what comes after belongs to the app's own process - its PR skill and template for the pull
+request, its own retro and clean-up if it has them - and no further station of this skill runs (no Station 7,
+no `dialecte worktree prune`, no dialecte PR or release step). The hand-over's records (`dialecte recap`
+prints a PR's details part from them) feed the app's template only where its rules ask for it. Pushing and
+posting stay the user's (or wait for their approval).
 
 The Tier column names the kind of model a station runs on, never a model: the tiers, the rules that go with
 them (escalate one tier after a failed round, never down-tier a correctness review, effort as a second knob)
@@ -422,7 +432,7 @@ that is rewritten every retro never settles.
   context; synthesise, do not say "based on the findings". Every brief carries its lines for all stations
   (nothing under `.git` by hand, no workflow without the user's opt-in, no `rm` on a variable path).
 - Spawn the station's own agent when the host has it: Claude Code with `.claude/agents/dialecte-<station>.md`
-  (written by `npx @dialecte/cli skills sync`: `dialecte-test-writer`, `dialecte-test-reviewer`,
+  (written by `npx @dialecte/cli skills sync --contributing`: `dialecte-test-writer`, `dialecte-test-reviewer`,
   `dialecte-implementer`, `dialecte-implementer-strong`, `dialecte-reviewer`, `dialecte-fixer`,
   `dialecte-eval-runner`, `dialecte-grader`, `dialecte-standard-reader`, `dialecte-searcher`). The test
   writer edits tests and stubs; the test reviewer reads; the implementer keeps every edit tool, the freeze
