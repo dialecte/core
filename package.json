@@ -1,6 +1,6 @@
 {
 	"name": "@dialecte/core",
-	"version": "0.8.0",
+	"version": "0.8.1",
 	"description": "Dialecte - Core functionality for Dialecte SDK",
 	"license": "MIT",
 	"repository": {
@@ -61,6 +61,7 @@
 		"test:browser:all": "vitest run --project browser-all",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
 		"test:perf:node": "VITE_BENCH=1 vitest run --project perf-node --mode bench --reporter=verbose",
+		"test:hook": "dialecte gate --hook",
 		"//====== CHECK ======//": "",
 		"check": "run-p type-check type-check:test type-check:node lint:check format:check",
 		"skills:generate": "dialecte skills generate",
@@ -89,7 +90,7 @@
 		"sax": "^1.4.3"
 	},
 	"devDependencies": {
-		"@dialecte/cli": "0.0.3",
+		"@dialecte/cli": "0.3.0",
 		"@tsconfig/node24": "^24.0.4",
 		"@types/node": "^24.12.4",
 		"@typescript/native": "npm:typescript@^7.0.2",
@@ -118,6 +119,7 @@
 		}
 	},
 	"dialecte": {
+		"profile": "contributor",
 		"tdd": {
 			"production": [
 				"src/test"
@@ -162,15 +164,6 @@
 					"name": "browser tests",
 					"run": "npx vitest run --project browser",
 					"counts": "tests"
-				},
-				{
-					"name": "docs",
-					"run": "npm run doc:build",
-					"restoresGeneratedDocs": true
-				},
-				{
-					"name": "type-bench",
-					"run": "npm run type-bench:check"
 				}
 			]
 		}
