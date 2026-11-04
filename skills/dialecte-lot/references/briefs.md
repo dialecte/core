@@ -11,8 +11,8 @@ Every brief, whatever the station, carries these lines (the templates below assu
 Never edit, move or remove a file under a repository's .git folder (a lock, a config, a receipt), even one
   your own run left, even when a refusal says to delete it: a stuck lock or config stops the step - read it,
   report its path, what you believe wrote it and the refused command to the orchestrator.
-No multi-agent workflow (Claude Code's Workflow tool) unless the user opted in; a sub-agent of yours has its
-  own spawn (Claude Code: the Agent tool). No rm, mv or xargs on a variable path: leave temporary files in the
+No multi-agent workflow (a host tool that fans out many agents at once) unless the user opted in; a sub-agent
+  of yours has its own spawn. No rm, mv or xargs on a variable path: leave temporary files in the
   hand-over folder or the scratchpad.
 ```
 
@@ -20,7 +20,7 @@ No multi-agent workflow (Claude Code's Workflow tool) unless the user opted in; 
 
 ```
 You are the test station (Station 1a of the dialecte-lot skill) of step <n> of lot <id> (<plan path>).
-Tier: standard (model-tiers.md; `npx @dialecte/cli models` says which model). Claude Code: dialecte-test-writer.
+Tier: standard (model-tiers.md; `npx @dialecte/cli models` says which model). Station: test-writer (references/stations.md).
 
 Step: <the 3-6 behaviours of the step, as case keys "<state> → <outcome>">
 Spec: <the plan section(s), by path and heading; the decisions that bind it>
@@ -44,7 +44,7 @@ Report: the `tdd red` output, unfiltered, and the list of stubs.
 ```
 You review the tests (Station 1b of the dialecte-lot skill) of step <n> of lot <id>, before any code.
 Read-only: modify nothing; `npx dialecte tdd status` is the one command to run.
-Tier: strong - never lower. Claude Code: dialecte-test-reviewer.
+Tier: strong - never lower. Station: test-reviewer (references/stations.md).
 
 Spec: <plan path + sections>; the step: <the behaviours>.
 Read: the test code of the step - test files, and the helpers, fixtures and snapshots they changed
@@ -63,6 +63,7 @@ Verdict: approve | back to the test station with the findings. Max ~50 lines, fi
 
 ```
 You implement lot <id> of <plan path>, as the implement station of the dialecte-lot skill.
+Station: implementer | implementer-strong (references/stations.md).
 Tier: <standard for a mechanical or fully specified lot | strong for a design-heavy one> (model-tiers.md;
   `npx @dialecte/cli models` says which model; a failed round may go one tier up, said in the report)
 
@@ -79,8 +80,9 @@ Tests: written by the test station, red (`npx dialecte tdd status`), approved by
   with the reason. Never edit test code (tests, helpers, fixtures, snapshots): an edit after red is refused
   at green; if you made one, undo it by hand first (no git command), then hand the case back. Exempt lot: <none | the
   reason, written in .dialecte/lot.json by the orchestrator>
-Skills: load dialecte, dialecte-contributing, dialecte-lot. A skill text change: load
-  `anthropic-skills:skill-creator` with the Skill tool and follow it - eval case first, failing on the text
+Skills: load dialecte, dialecte-contributing, dialecte-lot. A skill text change: load the
+  skill-creator skill (`anthropic-skills:skill-creator`; a host without it runs the loop below by hand) and
+  follow it - eval case first, failing on the text
   before the change; runs with and before the change on the standard and strong tiers, several per
   configuration; graded blind by
   a separate agent, never by you; its benchmark and viewer paths in your report.
@@ -100,7 +102,7 @@ Report: the implement report shape of dialecte-lot, nothing else.
 ```
 You review lot <id>, round <n> of <rounds> (<risk class>, from the findings ledger), as the review station of
 the dialecte-lot skill. Read-only: modify nothing, no git command that writes in the lot's worktree.
-Tier: strong, effort high, for both passes - never lower.
+Tier: strong, effort high, for both passes - never lower. Station: reviewer (references/stations.md).
 
 Spec: <plan path + sections>; the implementer's brief: <inline or path> - not the implementer's conclusions.
 Findings ledger: <hand-over folder>/findings-ledger.md (round 1: the risk class only), written by the
@@ -140,6 +142,7 @@ Max ~80 lines, most severe first, file:line for each finding.
 
 ```
 Fix mode for lot <id> (round <n>). Findings: <the open rows of the findings ledger, verbatim, with id and severity>.
+Station: fixer, or the implementer's own station (references/stations.md).
 Tier: <standard for wording or naming findings | the implementer's tier otherwise> (resume the implementer
   when it is on that tier: its context is warm)
 For each: agree (fix, test if behaviour changed) / disagree (one line why) / needs the user.

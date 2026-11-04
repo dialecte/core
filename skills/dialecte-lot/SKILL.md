@@ -77,7 +77,7 @@ Before the test station, the plan holds what the tests will pin; a gap found by 
 The order matters, not only the outcome: a test written after the code can be shaped to please it. So each
 step of the brief (3-6 behaviours) goes through three agents, and the cli keeps the receipts:
 
-1. **Test station** (own agent, `standard`; `dialecte-test-writer` in Claude Code). Reads the brief step and
+1. **Test station** (own agent, `standard`; station `test-writer`). Reads the brief step and
    the existing code only. Writes the step's tests from the spec and, where the code does not exist yet,
    stubs with their real types whose body throws `new Error('not implemented: <name>')`; each test calls
    the code under test inside an `expect(...)` that a matcher completes (`expect(x).toBe(...)`; a bare
@@ -92,12 +92,12 @@ step of the brief (3-6 behaviours) goes through three agents, and the cli keeps 
    a refusal; a changed helper, fixture or snapshot is frozen only by a red of a file that depends on it
    (imports it - relative, tsconfig `paths` or vite alias, through barrels - names it, or owns the snapshot;
    an import that looks local and resolves nowhere refuses the file). Its report is the `tdd red` output.
-2. **Test review** (a different agent, `strong`, read-only; `dialecte-test-reviewer`). Reads only the tests
+2. **Test review** (a different agent, `strong`, read-only; station `test-reviewer`). Reads only the tests
    against the spec, before any code - the changed helpers, fixtures and snapshots too: does each pin a
    behaviour of the brief, would a plausible wrong implementation fail it, does every `expect(...)` have a
    matcher, is a behaviour of the step left without a test. Verdict: approve, or back to the test station
    with the findings (which runs `tdd red` again).
-3. **Implement station** (another agent: `dialecte-implementer`, or `-strong` by lot kind). Changes
+3. **Implement station** (another agent: station `implementer`, or `implementer-strong` by lot kind). Changes
    production code only, until `npx dialecte tdd green` passes: every case of the step with its red
    receipt, its test code as the last red run froze it, production changed since its red, and green. A
    test it finds wrong goes **back to the test station with the reason** (through the orchestrator): it
@@ -157,7 +157,8 @@ Then, within the step:
 - Only the lot's scope. A refactor outside it is a new lot, said out loud.
 
 A **skill text change** is code too: when the lot changes what a skill tells agents to do (a new command to
-run, a rule), load `anthropic-skills:skill-creator` with the Skill tool and follow it. A skill change judged
+run, a rule), load the skill-creator skill (`anthropic-skills:skill-creator`) and follow it; a host without it
+runs the same loop by hand, as below. A skill change judged
 by hand, or by the agent that wrote it, looks green on one run and its own reading; skill-creator's loop is
 what shows the change moves behaviour. As it applies here: the eval case under the skill's `evals/` first
 (it describes the behaviour the new text must produce; the text before the change fails it); runs with the
@@ -431,14 +432,15 @@ that is rewritten every retro never settles.
 - Write each brief from [references/briefs.md](references/briefs.md): the brief is the agent's whole
   context; synthesise, do not say "based on the findings". Every brief carries its lines for all stations
   (nothing under `.git` by hand, no workflow without the user's opt-in, no `rm` on a variable path).
-- Spawn the station's own agent when the host has it: Claude Code with `.claude/agents/dialecte-<station>.md`
-  (written by `npx @dialecte/cli skills sync --contributing`: `dialecte-test-writer`, `dialecte-test-reviewer`,
-  `dialecte-implementer`, `dialecte-implementer-strong`, `dialecte-reviewer`, `dialecte-fixer`,
-  `dialecte-eval-runner`, `dialecte-grader`, `dialecte-standard-reader`, `dialecte-searcher`). The test
-  writer edits tests and stubs; the test reviewer reads; the implementer keeps every edit tool, the freeze
-  of the tests is `tdd green`'s and the gate's. The file sets the model and the tools (the reviewer cannot
-  edit files), so the spawn names neither. Without the file, spawn a general sub-agent on the tier its brief
-  names ([references/model-tiers.md](references/model-tiers.md)). Note the tokens of each completion notice
+- Each station agent is defined once, for every host, in [references/stations.md](references/stations.md):
+  its tier, its access (`read`, `review`: runs commands but edits nothing, `edit`) and its role (`test-writer`,
+  `test-reviewer`, `implementer`, `implementer-strong`, `reviewer`, `fixer`, `eval-runner`, `grader`,
+  `standard-reader`, `searcher`). The test writer edits tests and stubs; the test reviewer reads; the
+  implementer keeps every edit tool, the freeze of the tests is `tdd green`'s and the gate's. A host with an
+  adapter spawns the station's own agent, whose file sets the model and the tools, so the spawn names neither
+  (Per host, below). Without one, spawn a general sub-agent on the station's tier
+  ([references/model-tiers.md](references/model-tiers.md)), restricted to its access, its prompt holding the
+  station's section before the brief. Note the tokens of each completion notice
   against its station as it lands: the ledger the retro and the hand-over message report. When a station
   runs well above the lot's other stations, tell the user then, not at the end.
 - Spawn the reviewer only after the implementer's report; give it the brief, not the implementer's
@@ -466,9 +468,9 @@ orchestrator launches in the background gets a **deadline** when it is launched:
 - **How long**: the station's deadline ([references/model-tiers.md](references/model-tiers.md)), or three
   times a duration measured on earlier runs of the same command (a commit hook, a gate, a bench: a hook that
   took 6 minutes gets 18). Write it in the run log.
-- **Armed at launch**: in Claude Code, arm the check in the same turn as the launch - a scheduled check or
-  a wake-up at the deadline, or a monitor on the run's log - so you are woken even if no notice comes. A host
-  without one polls at the deadline.
+- **Armed at launch**: arm the check in the same turn as the launch, with whatever the host has that wakes
+  you - a scheduled check or a wake-up at the deadline, or a monitor on the run's log - so you are woken even
+  if no notice comes. A host with none polls at the deadline.
 - **At the deadline, look at the run itself**: its process tree (`pgrep -P <pid>`, `ps -o pid,stat,time,command`:
   is its CPU time growing?), the agent's last activity or the log's last line and its time, and `dialecte runs`
   once the cli has it (the live runs of the machine, each with its state).
@@ -479,6 +481,20 @@ orchestrator launches in the background gets a **deadline** when it is launched:
   fail a run): report it to the user and go on watching; kill it only on silence.
   Under `dialecte handover run`, `gate` and `tdd`, the runner's own stall watchdog does the kill; your
   deadline is the backstop that notices a runner that did not.
+
+## Per host
+
+The stations, gates and hand-over are the same everywhere: they run through the `dialecte` cli and the git
+hooks. What differs is how a host starts a session, spawns an agent and wakes you:
+
+- **Every host**: the session starts with `npx --no-install @dialecte/cli doctor --brief` (the synced `AGENTS.md`
+  section says so; where a hook already ran it, its lines are in your context): nothing printed means the skills
+  are in sync, else fix each line first. Station agents come from references/stations.md.
+- **Claude Code**: a `SessionStart` hook runs that check for you (do not run it again); `.claude/agents/dialecte-<station>.md` are the
+  station adapters (the Agent tool spawns them by name); skills load with the Skill tool; the Workflow tool is
+  the multi-agent workflow that needs the user's opt-in; a scheduled wake-up or a monitor arms a deadline.
+- **Another host** (Codex, Cursor, Gemini CLI, Copilot): skills in `.agents/skills/` (or `.github/skills/`); a
+  general sub-agent per station, as above; its own scheduler or a timer arms a deadline, else poll at it.
 
 ## Never
 
@@ -494,8 +510,9 @@ orchestrator launches in the background gets a **deadline** when it is launched:
   lock or a broken config stops that step: read it (`ls`, `cat`), then hand it to the orchestrator - its path,
   what you believe wrote it, the refused command; the orchestrator (or an agent playing every station) takes it
   to the user. The same for the hand-over script a lock names. Every station, every agent.
-- Start a multi-agent workflow (Claude Code's Workflow tool) without the user's explicit opt-in: each sub-agent
-  has its own spawn (Claude Code: the Agent tool), several at once when they are independent, eval runs included.
+- Start a multi-agent workflow (a host tool that fans out many agents from one script) without the user's
+  explicit opt-in: each sub-agent has its own spawn, several at once when they are independent, eval runs
+  included.
 - `rm`, `mv` or `xargs` on a variable path: leave temporary files in the hand-over folder or the scratchpad.
 - Wait on a background run with no deadline, or on its completion notice alone.
 - Hand over a hand-written commit or merge script.
