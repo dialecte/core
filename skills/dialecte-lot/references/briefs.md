@@ -80,14 +80,14 @@ Tests: written by the test station, red (`npx dialecte tdd status`), approved by
   with the reason. Never edit test code (tests, helpers, fixtures, snapshots): an edit after red is refused
   at green; if you made one, undo it by hand first (no git command), then hand the case back. Exempt lot: <none | the
   reason, written in .dialecte/lot.json by the orchestrator>
-Skills: load dialecte, dialecte-contributing, dialecte-lot. A skill text change: load the
+Skills: load dialecte and dialecte-lot (and dialecte-contributing in a dialecte package). A skill text change: load the
   skill-creator skill (`anthropic-skills:skill-creator`; a host without it runs the loop below by hand) and
   follow it - eval case first, failing on the text
   before the change; runs with and before the change on the standard and strong tiers, several per
   configuration; graded blind by
   a separate agent, never by you; its benchmark and viewer paths in your report.
 Gates: fast gate per behaviour; full Definition of Done once at the end (<the package's commands>).
-Mutation: <off | changed | gate | audit, set in .dialecte/lot.json>; once green (a gate lot: again after the last
+Mutation (a dialecte package that declares a mutation scope; else no such line): <off | changed | gate | audit, set in .dialecte/lot.json>; once green (a gate lot: again after the last
   fix), `dialecte mutants run` in the background, survivors judged (`dialecte mutants judge --json`, then a
   test, `record` or `schedule`), `dialecte mutants status` before the report: no new survivor, no died run, a
   gate lot's run reported (dialecte-contributing, Mutation testing).
@@ -130,7 +130,7 @@ Later rounds - delta review of the fix diff and its blast radius only. Start fro
   One line naming what round 1 did not look at. Severity floor: a round before the last, blocking + should fix
   (nits optional); the last round, what the risk class acts on (blocking + should fix, or blocking only for
   guards and tooling). A wrong fix or a reopened row keeps the severity of the row it breaks.
-Rules: dialecte-contributing (code rules, Definition of Done), dialecte (reuse ladder).
+Rules: the repository's code rules and Definition of Done (dialecte-contributing in a dialecte package), dialecte (reuse ladder).
 Run (read-only): the tests of the lot, `skills check`, the type-check - report the real counts.
 Check: every time bound of a test reading the disk, spawning a process or measuring time holds under load;
   a hand-written commit or merge script in the hand-over is a finding (it goes through `dialecte handover`).

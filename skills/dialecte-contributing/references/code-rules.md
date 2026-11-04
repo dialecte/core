@@ -77,6 +77,13 @@ does not name.
   review comment. Write the rule itself ("a name stays unique among its siblings"). Citations
   live only in uncommitted plan notes. Naming the standard a library implements (site tagline, the
   XSD it is generated from, the namespace prefixes of the schema, the schema's version ids) is not a citation. Never quote the standard's text anywhere (copyright).
+- **No name of a tool that consumes the package** (an app, a pipeline or a product built on a dialecte) in
+  any committed file or commit message - code, comments, tests, skill text and its evals, docs, CHANGELOG. A
+  dialecte serves every app alike: say what the behaviour is, not who asked for it ("an app", "a consumer").
+  The names live on the machine only, `git config --global dialecte.consumerNames "<name>, <name>"`, never in a
+  repository; from cli 0.3.0, `dialecte rules` and `dialecte handover` refuse each as a whole word in a
+  contributor package (`consumer tool name`). A file your lot touches that already names one is refused too:
+  reword that line only, and list it in the hand-over.
 - Do not create documentation that was not asked for, beyond the docs + CHANGELOG the Definition
   of Done requires.
 

@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: consumer-app-gets-stations
+expected_outcome: |
+  In an app (no `dialecte.profile`, so a consumer), the lot runs the canon: test station and `dialecte tdd red`,
+  a test review before any code, `dialecte tdd green`, `dialecte gate --fast`, review rounds with a findings ledger,
+  `dialecte gate --full` once, then `dialecte handover`; none of a dialecte package's steps (`dialecte contrib`,
+  `dialecte rules`, a mutation switch, merge lots, a release); the lot ends at the hand-over and the app's own
+  pull-request flow takes over.

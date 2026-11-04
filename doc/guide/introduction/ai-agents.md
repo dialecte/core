@@ -30,12 +30,13 @@ npx @dialecte/cli skills sync
 This links the skills of your dependencies into `.claude/skills` (Claude Code) and `.agents/skills`
 (Codex, Cursor, Gemini CLI, GitHub Copilot). Add `--agent copilot` for `.github/skills`, `--copy` to
 copy instead of link. Links follow the versions you have installed; run it again after adding a
-Dialecte dependency. It installs the skills for using Dialecte; the skills for changing a Dialecte
-package (`dialecte-contributing`, `dialecte-lot`) come with `--contributing`, which later syncs
-remember until `--no-contributing`. Working on Dialecte itself, `--from <folder> --contributing` takes every skill from your
+Dialecte dependency. It installs the skills for using Dialecte, `dialecte-lot` among them (the stations a change to your
+Dialecte code - a local extension, the services that call Dialecte - runs through); the skill for changing a
+Dialecte package (`dialecte-contributing`) comes with `--contributing`, which later syncs remember until
+`--no-contributing`. Working on Dialecte itself, `--from <folder> --contributing` takes every skill from your
 local checkouts (needs `@dialecte/cli` 0.2.1 or later).
 
-From `@dialecte/cli` 0.2.2, a contributing sync also adds a short section to the project's `AGENTS.md`
+From `@dialecte/cli` 0.2.2, a sync that installs `dialecte-lot` also adds a short section to the project's `AGENTS.md`
 (read by Codex, Cursor, Gemini CLI, Copilot): run `npx --no-install @dialecte/cli doctor --brief` at the start
 of a session, so skills out of date are seen before any work. Claude Code gets the same check as a
 `SessionStart` hook; `--no-session-check` leaves both out. The agents of a lot's stations are defined in the

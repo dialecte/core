@@ -14,12 +14,12 @@ the lot: which step, which files, which worktree.
 
 **Spawning one.** A host with an adapter has the agent ready: its tier and access are set by the adapter's file,
 so the spawn names the station and hands the brief. Claude Code: `.claude/agents/dialecte-<station>.md`,
-written by `npx @dialecte/cli skills sync --contributing`. A host without one spawns a general sub-agent:
+written by `npx @dialecte/cli skills sync` whenever it installs `dialecte-lot`. A host without one spawns a general sub-agent:
 the model of the station's tier (`npx @dialecte/cli models`), the narrowest tool or sandbox setting the host has
 that still allows the access (a read-only sandbox for `read` and `review`, workspace edits for `edit`; a host
 that cannot restrict says the access in the prompt), and a prompt holding this station's section, then the
-brief. The lot stations (all but `eval-runner` and `grader`) load `dialecte-lot`, `dialecte-contributing` and
-`dialecte` first: they are the source of truth, the section only sets the envelope. The eval runner and the grader
+brief. The lot stations (all but `eval-runner` and `grader`) load `dialecte-lot` and `dialecte` first (and
+`dialecte-contributing` in a dialecte package): they are the source of truth, the section only sets the envelope. The eval runner and the grader
 load only what their brief names: a skill-eval run compares texts of a skill, so the runner reads the text its
 configuration names and the grader none, blind to which text produced a run.
 
@@ -98,7 +98,7 @@ it. It reads, never runs or changes anything: pass or fail per grader, with the 
 - Tier: standard
 - Access: read
 
-Reads the standard for one question ("Reading the standard" of `dialecte-contributing`): the standard markdown
+Reads the standard for one question ([standard-check.md](standard-check.md)): the standard markdown
 only, answering with line references, never relying on what another agent concluded.
 
 ### searcher

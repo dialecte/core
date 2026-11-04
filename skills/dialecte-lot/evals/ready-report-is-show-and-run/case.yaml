@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: ready-report-is-show-and-run
+expected_outcome: |
+  With cli 0.3.1 or later, the READY message points at the hand-over instead of carrying it: `READY`, the
+  command `cd <worktree> && npx dialecte handover show <name>` and the `dialecte handover run <name>` command,
+  then what was not verified; no card pasted or retyped (no box, no gate lines, no lots list copied into the
+  message).

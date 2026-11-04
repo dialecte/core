@@ -1,11 +1,11 @@
 ---
 name: dialecte-lot
-description: Deliver one lot of a Dialecte change (core, a dialecte package, create, cli) as a small pipeline of stations - orchestrate, implement red-first, gate, review independently, fix, hand over, retro - alone or with sub-agents. It gives the orchestrator's brief template, the implementer's and reviewer's report shapes, the review passes, the loop cap, when a skill change goes through skill-creator evals, and how findings become skill improvements. Use it whenever a Dialecte change is bigger than a one-file fix, when you split work between agents (implementer, reviewer), when the user asks for TDD with a review loop, a commit-by-lots hand-over, or a retro, even if they do not name the stations. Load dialecte-contributing (gates, code rules) and dialecte (the API) with it.
+description: Deliver one lot of Dialecte-scoped work as stations - test station red, test review, green, review rounds with a findings ledger, the gates, a hand-over a human runs - alone or with sub-agents, with the brief template, the report shapes and the loop cap. In a dialecte package (core, a dialecte, create, cli): whenever a change is bigger than a one-file fix, or the user asks for TDD with a review loop, a commit-by-lots hand-over or a retro. In an app built on a dialecte: whenever the task changes its Dialecte-scoped code - its local dialecte extension (a verb, a query, a hook), a service or composable that calls @dialecte/* APIs, an extension delivered for promotion - even when nobody asks for a lot, TDD or a review: run it yourself as a sub-loop over that part only, handing back to the app's process at the hand-over. Not for the rest of an app (UI, layout, styling, component renames, reviewing a UI change). Load dialecte with it, and in a dialecte package dialecte-contributing too.
 license: MIT
 metadata:
   author: dialecte
   version: '0.1.0'
-  audience: contributor
+  audience: consumer
 ---
 
 <!-- dialecte-skills workspace -->
@@ -21,20 +21,31 @@ compare runs.
 **Memory is the artifacts, not the chat.** The plan file, the station reports, the diff and the retro log
 are what the next station reads. A decision that is not in one of them was not a decision.
 
+**In a dialecte package** (`"dialecte": { "profile": "contributor" }` in its `package.json`), load
+`dialecte-contributing` too: its `references/lot-in-a-package.md` adds the package's own steps to these stations -
+the mutation switch, `dialecte rules`, `dialecte contrib` before the hand-over, the landing rules and merge lots.
+**In an app**, none of them. There a lot is a sub-loop the app's agent runs by itself for the Dialecte-scoped
+part of a task only - the local dialecte extension, the services and composables that call `@dialecte/*` APIs, an
+extension meant for promotion: the same stations, ending at the hand-over (Station 6), then back to the app's own
+pipeline, which carries on with its own steps and its pull request. The rest of the app's change (its UI, layout,
+styling) stays under the app's process and never enters the lot. An extension meant for promotion is delivered to
+the package's bar (node-tier tests, the JSDoc of every public function, its docs), so that promoting it moves the
+folder and rewrites nothing.
+
 ## The stations
 
-| #   | Station     | Who                         | Tier                                                        | Reads                                                                                                | Leaves                                                                                                       |
-| --- | ----------- | --------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 0   | Orchestrate | orchestrator                | strong                                                      | the plan, the user's decisions                                                                       | one brief per implementer (template in [references/briefs.md](references/briefs.md))                         |
-| 1a  | Test        | test station (own agent)    | standard                                                    | its brief step, the existing code                                                                    | tests + stubs, proven red by `dialecte tdd red` (its receipts)                                               |
-| 1b  | Test review | **a different agent**       | strong                                                      | the tests of the step, the brief                                                                     | a verdict on the tests, before any code                                                                      |
-| 1c  | Implement   | implementer (another agent) | standard or strong, by lot kind                             | its brief, the tests, the code it changes                                                            | production code until `dialecte tdd green`; an implement report                                              |
-| 2   | Fast gate   | implementer                 | no agent                                                    | -                                                                                                    | `dialecte gate --fast` + `dialecte rules`: type-check, lint, format, touched tests, skills check, code rules |
-| 3   | Review      | **a different agent**       | strong, both passes                                         | the brief, the diff, the previous version (`git show <base>:<file>`), the rules, the findings ledger | a review report: pass 1 correctness, pass 2 fit, verdict; proposed findings-ledger rows                      |
-| 4   | Fix         | the implementer, fix mode   | standard for wording or naming, else the implementer's tier | the findings                                                                                         | each finding fixed, disagreed (one line why) or escalated                                                    |
-| 5   | Full gate   | implementer                 | no agent                                                    | -                                                                                                    | `dialecte gate --full`: the package's full Definition of Done, once per lot                                  |
-| 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                                      | `dialecte handover`: a hand-over folder and its card; a human runs it; nothing committed, nothing pushed     |
-| 7   | Retro       | orchestrator                | strong                                                      | reports, loops, the user's corrections                                                               | retro entries; skill edits drafted, applied on approval                                                      |
+| #   | Station     | Who                         | Tier                                                        | Reads                                                                                                | Leaves                                                                                                   |
+| --- | ----------- | --------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 0   | Orchestrate | orchestrator                | strong                                                      | the plan, the user's decisions                                                                       | one brief per implementer (template in [references/briefs.md](references/briefs.md))                     |
+| 1a  | Test        | test station (own agent)    | standard                                                    | its brief step, the existing code                                                                    | tests + stubs, proven red by `dialecte tdd red` (its receipts)                                           |
+| 1b  | Test review | **a different agent**       | strong                                                      | the tests of the step, the brief                                                                     | a verdict on the tests, before any code                                                                  |
+| 1c  | Implement   | implementer (another agent) | standard or strong, by lot kind                             | its brief, the tests, the code it changes                                                            | production code until `dialecte tdd green`; an implement report                                          |
+| 2   | Fast gate   | implementer                 | no agent                                                    | -                                                                                                    | `dialecte gate --fast`: type-check, lint, format, touched tests, skills check                            |
+| 3   | Review      | **a different agent**       | strong, both passes                                         | the brief, the diff, the previous version (`git show <base>:<file>`), the rules, the findings ledger | a review report: pass 1 correctness, pass 2 fit, verdict; proposed findings-ledger rows                  |
+| 4   | Fix         | the implementer, fix mode   | standard for wording or naming, else the implementer's tier | the findings                                                                                         | each finding fixed, disagreed (one line why) or escalated                                                |
+| 5   | Full gate   | implementer                 | no agent                                                    | -                                                                                                    | `dialecte gate --full`: the package's full Definition of Done, once per lot                              |
+| 6   | Hand over   | implementer or orchestrator | no agent                                                    | the lot's files                                                                                      | `dialecte handover`: a hand-over folder and its card; a human runs it; nothing committed, nothing pushed |
+| 7   | Retro       | orchestrator                | strong                                                      | reports, loops, the user's corrections                                                               | retro entries; skill edits drafted, applied on approval                                                  |
 
 **After the hand-over, the pull request is the repository's own.** In a dialecte repository Station 7
 follows the hand-over, and the branch goes up by pull request through that repository's landing rules
@@ -60,17 +71,13 @@ wrong.
 
 Before the test station, the plan holds what the tests will pin; a gap found by a reviewer costs a round.
 
-- **Mutation switch** (a package that declares a mutation scope): the orchestrator sets it per lot in the worktree's
-  `.dialecte/lot.json` with `dialecte lot mutation <mode>` and names it in the brief - the default (`changed` when the
-  diff touches the scope, `off` otherwise) for most lots, `gate` only for a robustness lot (its hand-over waits for
-  a run reported on the tree it commits: it runs again after the last fix), `audit` on request. The implementer
-  starts `dialecte mutants run` in the background once green and judges the survivors as `dialecte-contributing`
-  (Mutation testing) says. Before a release, a full audit in the background;
-  its survivors become named follow-up lots (`dialecte mutants schedule <follow-up lot> <key>`).
+- **The standard** (a lot whose rules come from a standard the code implements):
+  [references/standard-check.md](references/standard-check.md) - how it is read, the cross-check for a
+  decision, and what the station records for the hand-over card (`dialecte record standard`).
 - **A tooling lot with shared state or an external tool**: the plan carries the store's transition table, its
   invariant and the interleavings, the test-station brief asks one forced-order test per interleaving, and the
   hand-over folder gets a `SMOKE.md` with the lot's one real run; how and where that run happens, and citing
-  third-party values: `dialecte-contributing` references/traps.md, Tools with shared state.
+  third-party values: in a dialecte package, `dialecte-contributing` references/traps.md, Tools with shared state.
 
 ## Station 1 - test, test review, implement (per brief step)
 
@@ -145,7 +152,7 @@ Before touching code (the implement station; the test station does the same befo
    can assume things that changed. A contradiction stops you: say it, do not reinterpret the plan.
 2. `git status -sb` in your worktree: right branch, clean (or dirty only with your own earlier work).
    Note the HEAD sha for your report.
-3. Load `dialecte` and `dialecte-contributing`; run the reuse ladder before writing anything.
+3. Load `dialecte` (and `dialecte-contributing` in a dialecte package); run the reuse ladder before writing anything.
 
 Then, within the step:
 
@@ -175,7 +182,7 @@ Base: <branch> @ <sha>
 Files: <list>
 Tests: <n> passing of <m> table cases - command: <the exact command, unfiltered>
 Red seen: <the `tdd red` line of each case: case, kind, failing message>   (one line per behaviour)
-Gates: <the lines `dialecte gate` printed, with their counts>; rules <n errors, m warnings>
+Gates: <the lines `dialecte gate` printed, with their counts>
 Skill evals: <case: pass rate with / before, runs per configuration; benchmark and viewer paths>   | n/a
 Deviations from the brief: <none | what and why>
 Open questions: <none | ...>
@@ -183,10 +190,12 @@ Open questions: <none | ...>
 
 ## Station 2 - fast gate (the counts decide, not the summary)
 
-Run `npx dialecte gate --fast --declare <new path>` and `npx dialecte rules` from the package root. The gate
+Run `npx dialecte gate --fast --declare <new path>` from the package root; in a dialecte package, run
+`npx dialecte rules` with it and fix its errors before the review (`dialecte-contributing`
+references/lot-in-a-package.md, Station 2). The gate
 starts with the worktree's hygiene (nothing staged, the stash as it was when the worktree was made, every new
 file declared: one `--declare` per new file or folder of the lot), then runs each step unfiltered and prints
-one line per step with the counts the step itself printed; paste those lines in the report. Fix every `rules` error before the review. The bullets below are what the gate checks for
+one line per step with the counts the step itself printed; paste those lines in the report. The bullets below are what the gate checks for
 you, and what you check by hand with a cli older than 0.2.0:
 
 - Run every command that decides a gate **unfiltered**: an output-compacting shell wrapper can print a green
@@ -206,7 +215,8 @@ listing them: the missing receipts go back to the test station (no red) or the i
 
 The reviewer did not write the code and does not take the implementer's report as truth. Read-only.
 Inputs: the brief (the spec), the diff of the lot's files, the previous version of each file, the rules
-(`dialecte-contributing` code rules and Definition of Done, `dialecte` reuse ladder).
+(the repository's code rules and Definition of Done - `dialecte-contributing` in a dialecte package -,
+`dialecte` reuse ladder).
 
 **Pass 1 - correctness** (always first): logic, edge cases, async and error handling, a behaviour changed
 without a test, a test that passes for the wrong reason (weak assertion, a matcher that ignores what the
@@ -371,10 +381,7 @@ it from a test-first red (it flags `red after green` only when the case already 
 
 ## Station 6 - hand over
 
-The `dialecte-contributing` landing rules apply. In a package with a mutation scope, run `dialecte mutants status`
-before every hand-over and every merge: a `new` survivor or a `died` run blocks the card and the guard until it is
-handled (`dialecte-contributing`, Mutation testing); the lot's own run still running blocks only a merge or a `gate`
-lot (on a plain hand-over it is a `!`). Write only the lots file and run `npx dialecte handover
+Write only the lots file and run `npx dialecte handover
 <lots.json>`: it writes the hand-over folder and prints its card. Never a hand-written script, nor a file per
 commit. When the repository has a commit hook (`core.hooksPath`), rehearse first with `npx dialecte handover
 run <folder> --rehearse`: a scratch clone holding your tree, the hooks folder and `node_modules`, so the hook
@@ -391,20 +398,18 @@ commit, merge rehearsal, merge commit). So:
   not the tree), then answers the rest from its record (`reused: gate --full green on this tree ...`). Run it when
   you want its lines; never `--no-reuse` "to be safe": an edit, a lock, a linked dependency already make a new key.
   `--no-reuse` is for when the person asks, or when something outside the key changed (a machine fault you suspect).
-- `handover run --rehearse` decides per lot and prints why (the rules: `dialecte-contributing`
-  references/landing-changes.md). Paste those lines with the card; never add `--full` to force a rehearsal the cli
+- `handover run --rehearse` decides per lot and prints why (in a dialecte package, its rules are in
+  `dialecte-contributing` references/landing-changes.md). Paste those lines with the card; never add `--full` to force a rehearsal the cli
   skipped, and start no load for it. A lot it does rehearse runs under load as above.
-- A merge onto a main that moved since the cut leaves a tree no check has seen: it is rehearsed. The branch's green
-  records say nothing about it - not its suite, nor a gate step the hook does not run (docs, skills check, the
-  browser suite). The rehearsal's hook runs the suite on the merged tree; run only the steps the hook does not run,
-  in the clone `--rehearse --keep` leaves, never a `gate --full` that would run the suite there again. A `reused`
-  line for such a merge is a cli bug to report, never a result to pass on.
 - The real commit's hook always runs, whatever the records say: it is the person's last net. Nothing passes
   `--no-verify`.
 
-The hand-over message to the user **is the card** `handover` printed - repository, worktree, branch, HEAD,
-gates, the lots with their files and messages, and the command with its absolute `cd` - pasted as printed,
-never retyped. After it: what was not verified, and one usage line (the lot's sub-agent tokens, in total
+**Reporting READY.** From cli 0.3.1 the message to the user points at the hand-over instead of carrying it:
+`READY`, then `cd <worktree> && npx dialecte handover show <name>` (the card recomputed read-only from the
+records, current whenever the person reads it) and `npx dialecte handover run <name>` (the command they run) -
+never a pasted or retyped card, which goes stale as soon as a record changes. With an older cli, the message
+**is the card** `handover` printed - repository, worktree, branch, HEAD, gates, the lots with their files and
+messages, and the command with its absolute `cd` - pasted as printed, never retyped. After it: what was not verified, and one usage line (the lot's sub-agent tokens, in total
 and by station: [references/retro.md](references/retro.md)). A refusal is a finding: fix the file or the
 message, do not loosen the lots. `npx dialecte handover list` shows every hand-over waiting on the machine.
 Never commit, push, stage, or touch a repository's index while a hand-over may be waiting.
@@ -451,7 +456,7 @@ that is rewritten every retro never settles.
   once, the same command with its `--project` flags, on its failing files with `--no-file-parallelism` (the gate
   does it on its test steps): a pass
   there is a flake, a finding fixed at its cause, never a reason to throttle; a failure there is real
-  (`dialecte-contributing`, Definition of Done).
+  (in a dialecte package, `dialecte-contributing`, Definition of Done).
 - After the user merged: `npx dialecte worktree prune` lists the merged worktrees and branches, the
   committed hand-over folders and the rehearsal clones, each with its command (a worktree just made, one
   holding ignored files, an unmerged branch are kept, with why). `--yes` asks for a confirmation on a

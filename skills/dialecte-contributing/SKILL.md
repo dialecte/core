@@ -80,28 +80,9 @@ rule that contradicts the standard stays out of the engine (consumer override).
 
 ## Reading the standard
 
-For a dialecte that implements a standard: the standard your dialecte implements is the truth its rules come
-from, and a long text read once by one model is not a reliable source.
-
-- **Markdown first.** Read the standard as markdown, citing `file:line`; never the PDF. A document not yet in
-  markdown is converted first: markitdown for PDF, DOCX or PPTX; docling or pymupdf4llm when its tables come
-  out broken.
-- **The converted text stays private**: kept next to the plans, outside every package repository; never
-  committed, never quoted or cited in committed text (code, doc, CHANGELOG, skill) or on GitHub. Committed text
-  states the behaviour.
-- **A confirmation** (a name, a type, a cardinality the code already follows): one reader, with line references.
-- **A decision that changes what the engine does or accepts** gets the cross-check, once per decision:
-  1. Two or three independent readers on the `standard` tier (at least one on another model or vendor when
-     one is available): the same question, no shared notes, a `file:line` for every claim.
-  2. One reader takes the whole relevant part, the others split it by section, so coverage does not rest on
-     one model's retrieval.
-  3. An adjudicator on the `strong` tier compares the answers: an agreed claim with matching lines passes; a
-     disagreement, or a claim without a line, becomes a question for the user or the domain expert. Runs of
-     one model share its biases, so agreement is evidence, not proof.
-  4. The result (question, claims, lines, verdict) goes in the plan's research folder, next to the plan: later
-     lots reuse it instead of reading the standard again.
-
-The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
+The standard check is part of every lot: `dialecte-lot` references/standard-check.md (markdown first, the
+converted text kept private, the cross-check for a decision that changes what the engine does or accepts, and
+what the station records for the hand-over card).
 
 ## The workflow
 
@@ -134,13 +115,18 @@ The tiers are those of the `dialecte-lot` skill (its model-tiers reference).
 3. **Implement under the code rules**: [references/code-rules.md](references/code-rules.md).
    Read it before writing the first line; most review comments come from it. `npx dialecte rules`
    checks them on the changed files.
-4. **Gates** (below), then docs + CHANGELOG if the surface changed.
+4. **Gates** (below): `gate --fast` and `npx dialecte rules` per step (fix every `rules` error before the
+   review), `gate --full` once per lot, then `dialecte contrib` (`@dialecte/cli` 0.3.0); docs + CHANGELOG if the
+   surface changed.
 5. **Independent review**: have a fresh reviewer (a sub-agent with only the spec, the diff and
    these rules, or a human) read the diff against the previous version before hand-over. Self-review
    re-reads your own intent and misses weakened assertions and unusable types.
 6. **Hand over** through `npx dialecte handover <lots.json>`: the agent writes only the lots file, the
    command writes the hand-over folder and prints the card the user gets
    ([references/landing-changes.md](references/landing-changes.md)). The agent never commits or pushes.
+
+Run as a `dialecte-lot` lot, each station gains the package's own steps: [references/lot-in-a-package.md](references/lot-in-a-package.md)
+(the mutation switch, `dialecte rules`, `dialecte contrib`, `mutants status`, merges onto a moved main).
 
 ## Test tiers
 
@@ -237,7 +223,10 @@ or the steps by hand:
    tier is a tier difference - a bug, never retried further, never hidden ([Test tiers](#test-tiers)). A package without a `node` project: `npx vitest run`
    (`npm run test` is watch mode in some packages; create uses `npm run test:ts` + `test:py`).
    One file while iterating: [Test tiers](#test-tiers).
-5. `npm run doc:build` - the VitePress docs build.
+5. `npm run doc:build` - the VitePress docs build. From cli 0.3.0 a dialecte package
+   (`"dialecte": { "profile": "contributor" }`) runs it, with the type bench, the code rules and the release
+   check, in `npx dialecte contrib` after a green `gate --full` and before the hand-over, whose `contrib`
+   guard refuses a tree without a green record of it.
 6. `npm run skills:generate`, then `npm run skills:check` - every change, not only one that touches a skill:
    the check fails on a name, path or script a skill cites that no longer exists, and on a public function
    without its JSDoc summary and `@intent` (below). The scripts run the package's pinned cli; with a pin
@@ -367,6 +356,7 @@ during import (import is in-memory two-pass by design, see the hooks rules in th
 - Add a domain rule to core because it was convenient.
 - Restate a registry or the definition by hand (see code-rules).
 - Commit, push, or touch a repo's git index while a hand-over script may be running.
+- Name a tool that consumes the package in a committed file or message ([code-rules](references/code-rules.md)).
 - Leave a known improvement as a "note for later" without doing it or explaining why you cannot.
 
 ## Retro gate - before you hand over

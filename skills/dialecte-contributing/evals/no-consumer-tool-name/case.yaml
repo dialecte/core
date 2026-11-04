@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: no-consumer-tool-name
+expected_outcome: |
+  No committed text of the lot names the app that asked for the change: the CHANGELOG entry, the doc lines and
+  the commit messages describe the behaviour ("an app", "a consumer"); the line of the touched page that already
+  named the app is reworded with the smallest change and listed in the hand-over; the name stays out of the
+  repository (it lives in the machine's git config, `dialecte.consumerNames`, which `dialecte rules` and
+  `dialecte handover` read to refuse it).

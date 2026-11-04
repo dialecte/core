@@ -8,7 +8,7 @@ Most changes to the Dialecte packages are written by coding agents. This page ex
 person who works with them, how a change goes from a plan to a published version: the steps, who acts
 at each one, which `dialecte` command runs, and where you come in.
 
-Everything on this page needs `@dialecte/cli` 0.2.0 or later.
+Everything on this page needs `@dialecte/cli` 0.2.0 or later; the commit hook's reuse of a green full gate needs 0.2.1, `dialecte contrib` 0.3.0.
 
 The rule behind every step: **agents prepare, the person commits.** No agent commits, stages, pushes
 or publishes. Every commit is yours, and you make it by running one command.
@@ -51,7 +51,7 @@ flowchart TD
   review["Review rounds<br/>a new agent each round, strong tier, read-only<br/>the orchestrator records them:<br/>dialecte record review · decision · snapshot<br/>dialecte review delta"]
   ledger[("findings ledger")]
   fix["Fix<br/>the implementer, in fix mode"]
-  full["Full gate<br/>no agent<br/>dialecte gate --full"]
+  full["Full gate<br/>no agent<br/>dialecte gate --full<br/>dialecte contrib in a dialecte package"]
   handover["Hand-over<br/>agent<br/>dialecte handover lots.json<br/>dialecte handover run --rehearse:<br/>the cli rehearses only what can find something new"]
   run["You run the hand-over<br/>dialecte handover run<br/>the commit hook is the last check"]
   merge["Merge hand-over<br/>agent writes merge lots<br/>you run it"]
@@ -80,7 +80,7 @@ The same steps in a table:
 | Implementation  | another agent, standard or strong tier by the kind of lot                                                    | `dialecte tdd green`                                                                                                                             | a green receipt per case                                                                                     | test code changed since its red; a case with no red; a green with no production change                                                                                        |
 | Fast gate       | no agent: the implementer runs it                                                                            | `dialecte gate --fast`, `dialecte rules`                                                                                                         | each step with its counts, in the worktree's git folder                                                      | a staged file or a new stash entry; a failing step; a test step that counts no test (unless the change touches no test); a missing receipt; a code-rule error                 |
 | Review rounds   | a new agent each round, strong tier, read-only; the orchestrator keeps the records; fixes by the implementer | `dialecte record snapshot`, `record review`, `record decision`, `review delta`                                                                   | the findings ledger and a copy of the tree each round reviewed, in the hand-over folder                      | a blocking or should-fix finding still open                                                                                                                                   |
-| Full gate       | no agent                                                                                                     | `dialecte gate --full`                                                                                                                           | the full gate's steps and counts, kept with the tree they ran on                                             | any step failing: build, the whole test suite, the documentation build, the type benchmark                                                                                    |
+| Full gate       | no agent                                                                                                     | `dialecte gate --full`                                                                                                                           | the full gate's steps and counts, kept with the tree they ran on                                             | any step failing: build, the whole test suite; in a dialecte package, a `dialecte contrib` row: the code rules, the documentation build, the type benchmark                   |
 | Hand-over       | an agent                                                                                                     | `dialecte handover <lots.json>`, then `dialecte handover run <folder> --rehearse` (the cli skips each lot whose tree already has a green record) | the hand-over folder: the lots, the file snapshot with hashes, `commit.sh`, the card; the rehearsal's result | a changed file in no lot or in two; something staged; the branch or HEAD moved; a plan tag in a file or a message                                                             |
 | You run it      | you                                                                                                          | `dialecte handover run <folder>` (or `bash commit.sh`)                                                                                           | the commits; the commit hook's result                                                                        | a file changed since the review; the commit hook failing (the lot is unstaged; the same command resumes after the fix)                                                        |
 | Merge hand-over | an agent writes it, you run it                                                                               | `dialecte handover <lots.json>` with merge lots, then `--rehearse`                                                                               | the merge's conflicts, resolutions and the tree the rehearsal recorded                                       | the branch moved since it was reviewed; a conflict without a resolution; no rehearsal yet ("tree not recorded: rehearse first")                                               |
@@ -139,8 +139,16 @@ committed.
 
 ### Full gate
 
-`dialecte gate --full` runs the package's whole Definition of Done once per lot: the build, the whole
-test suite, the documentation build and the type benchmark, on top of the fast gate's checks.
+`dialecte gate --full` runs the package's whole Definition of Done once per lot: the build and the whole
+test suite, on top of the fast gate's checks. In a package of the Dialecte family (`"dialecte": { "profile": "contributor" }`
+in its `package.json`), `dialecte contrib` follows it: the code rules on the changed files, the documentation
+build, the type benchmark and the release check (no dependency named by a local folder); a step the full gate
+already passed on the same tree is not run again. The hand-over refuses to run without a green `dialecte contrib`
+of the tree it commits.
+
+The commit hook runs the type-check, lint and format, then `dialecte gate --hook` - the tests, unless a green
+`gate --full` of the tree being committed answers them - then the build: a lot committed on the tree its full
+gate passed costs seconds, not a second run of the suite.
 
 ### Hand-over, and your run
 

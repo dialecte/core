@@ -28,14 +28,14 @@ gets 3x that duration instead.
 | 1a Test (test station)                    | standard                                                                        | 10 min                       | 20 min                                            |
 | 1b Test review                            | strong: the tests against the spec, before any code                             | 5 min                        | 15 min                                            |
 | 1c Implement                              | standard for a mechanical or fully specified lot; strong for a design-heavy one | 30 min / 45 min              | 60 min / 90 min                                   |
-| 2 Fast gate                               | no agent (`dialecte gate --fast`, `dialecte rules`)                             | 5 min                        | 10 min                                            |
+| 2 Fast gate                               | no agent (`dialecte gate --fast`; `dialecte rules` in a package)                | 5 min                        | 10 min                                            |
 | 3 Review                                  | strong: one reviewer runs pass 1 (correctness) and pass 2 (fit)                 | 10 min                       | 20 min                                            |
 | 4 Fix                                     | standard for wording or naming findings; otherwise the implementer's tier       | 15 min                       | 30 min                                            |
 | 5 Full gate                               | no agent (`dialecte gate --full`)                                               | -                            | 3x a duration measured on earlier runs            |
 | 6 Hand over                               | no agent (`dialecte handover`; `handover run --rehearse` runs the commit hook)  | 20 min, rehearsal with hooks | 45 min, or 3x a duration measured on earlier runs |
 | 7 Retro                                   | strong                                                                          | 15 min                       | 30 min                                            |
 | Skill-eval runs / their graders           | standard and strong (the stations' tiers) / strong, blind to the text           | 1 min / 3 min                | 5 min / 10 min                                    |
-| Reading a standard: readers / adjudicator | standard / strong (`dialecte-contributing`, "Reading the standard")             | -                            | 30 min / 30 min                                   |
+| Reading a standard: readers / adjudicator | standard / strong ([standard-check.md](standard-check.md))                      | -                            | 30 min / 30 min                                   |
 
 ## Rules
 

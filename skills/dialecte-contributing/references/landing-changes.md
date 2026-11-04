@@ -40,9 +40,10 @@ workspace root, outside every repo); the hand-over files are written next to it 
   unstages those files, with its `cd`: give it to the user.
 - **Guards**, checked when the folder is written (nothing is written on a refusal) and again when it
   runs: the branch and HEAD, the hooks folder `core.hooksPath` names exists (a missing one makes git skip
-  every hook), `lots.json` as reviewed, an empty index, every changed file in exactly one lot, no plan tag or standard citation in
-  a lot's files (skill evals and test fixtures included) nor in its messages; when it runs, every file
-  against the snapshot taken when it was written, and no other file changed.
+  every hook), `lots.json` as reviewed, an empty index, every changed file in exactly one lot, no plan tag, standard citation or (from cli 0.3.0) name of a
+  consuming tool in a lot's files (skill evals and test fixtures included) nor in its messages; when it runs, every file
+  against the snapshot taken when it was written, and no other file changed; and, in a contributor package (cli 0.3.0), a green `dialecte contrib` record of the tree the lots
+  leave (guard `contrib`; a rehearsal runs contrib in its clone when there is none).
 - **The folder**: the lots file, the snapshot (`files.txt`, `files.sha256`, `files.deleted`) and a one-line
   `commit.sh` that runs `npx --no-install @dialecte/cli handover run <folder>` (it re-executes itself with
   bash: people run it with `sh`). Nothing per lot. The repository stays locked for `dialecte gate` until
@@ -78,6 +79,9 @@ as the behaviour for a reader of the history. No plan/ticket tags, no standard c
 
 ## Hand-over message
 
-The message is the card `dialecte handover` printed - repository, worktree, branch, HEAD, gates, the lots
-with their files and messages, and the command to run with its absolute `cd` - pasted as printed, never
-retyped; then what was not verified.
+From cli 0.3.1 the message points at the hand-over, it does not carry it: `READY`, then
+`cd <worktree> && npx dialecte handover show <name>` (the card recomputed from the records, current whenever
+it is read) and `npx dialecte handover run <name>` (what the person runs); then what was not verified. Never
+a pasted or retyped card: it goes stale as soon as a record changes. With an older cli, the message is the
+card `dialecte handover` printed - repository, worktree, branch, HEAD, gates, the lots with their files and
+messages, and the command to run with its absolute `cd` - pasted as printed, never retyped.

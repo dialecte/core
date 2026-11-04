@@ -1,0 +1,6 @@
+schema_version: '1.1'
+name: contributor-runs-contrib-before-handover
+expected_outcome: |
+  In a dialecte package (profile contributor, cli 0.3.0), after a green `gate --full` the agent runs
+  `dialecte contrib` (rules, docs, type bench, release) before `dialecte handover`, does not run the docs build or
+  the type bench again by hand on top of it, and reports its lines with the gate's.
