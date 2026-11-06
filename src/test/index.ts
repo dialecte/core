@@ -1,6 +1,3 @@
-// the test stores this entry provides (SQLite's in process), registered whenever the entry loads
-import './test-storage/sqlite-test-store'
-
 export * from './assert-valid-xml'
 export * from './assert-xml'
 export * from './config'

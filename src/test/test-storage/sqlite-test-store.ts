@@ -1,5 +1,3 @@
-import { registerTestStoreProvider } from './test-store-providers'
-
 import { EngineStore } from '@/store/sqlite/served/engine-store'
 
 import type { StorageKindDialecte } from '@/store/storage-kinds.types'
@@ -29,6 +27,3 @@ export async function sqliteTestStoreOf(params: {
 	const connector = createInProcessConnector({ name, dialecteId: dialecte.id, runtime })
 	return new EngineStore({ name, connector })
 }
-
-// the test entry provides it whenever it loads: a runner on `sqlite` imports `@dialecte/core/sqlite` for the kind
-registerTestStoreProvider({ type: 'sqlite', testStoreOf: sqliteTestStoreOf })

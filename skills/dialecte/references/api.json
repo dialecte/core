@@ -736,7 +736,7 @@
 				"open a project in a test with a fixture imported",
 				"get documents to test against"
 			],
-			"declaredAt": "src/test/create-test-dialecte.ts:32"
+			"declaredAt": "src/test/create-test-dialecte.ts:33"
 		},
 		{
 			"path": "@dialecte/core/test.createTestRecordFactory",

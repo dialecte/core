@@ -27,6 +27,7 @@
 		"**/*.script.*.ts",
 		"**/*.fixtures.ts",
 		"**/*.fixtures.*.ts",
+		"src/test/**/*.worker.ts",
 		"**/__tests__/**",
 		"src/test/fixtures/scripts/**",
 		"src/store/contract/**",

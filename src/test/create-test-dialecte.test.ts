@@ -2,13 +2,20 @@ import { TEST_DIALECTE_CONFIG } from './config'
 import { closeTestContexts, createTestContext, createTestProject } from './create-test-dialecte'
 import { TEST_DIALECTE } from './test-dialecte'
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { defineDialecte } from '@/dialecte'
 import { toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
 import { findInMemoryState, inMemoryStateKeyOf } from '@/store/in-memory/in-memory-state'
 import { withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
+import { registerStorageKind, replaceStorageKind } from '@/store/storage-kinds'
+import {
+	fakeKindOf,
+	fakeStorageOf,
+	fakeStore,
+	uniqueFakeType,
+} from '@/store/storage-kinds.fixtures'
 
 import type { TestProjectResult } from './create-test-dialecte.types'
 import type { AnyRawRecord } from '@/types'
@@ -144,6 +151,45 @@ describe('createTestContext', () => {
 		expect(refused).toBe('PROJECT_OPEN_ELSEWHERE')
 		await closeTestContexts()
 		await project.destroy()
+	})
+
+	it('a context on a registered kind by its project’s name and dialecte → the store its testStoreOf answers, not the one its storeOf builds', async () => {
+		const type = uniqueFakeType()
+		// closeTestContexts closes every store a context opened by name: this one too
+		const testStore = Object.assign(fakeStore(), { close: vi.fn(async function closed() {}) })
+		const fake = fakeKindOf({ id: 'fake@1', testStore })
+		onTestFinished(replaceStorageKind({ type, kind: undefined }))
+		registerStorageKind({ type: type as 'sqlite', kind: fake.kind as never })
+
+		const context = await createTestContext({
+			databaseName: `kind-registered-${crypto.randomUUID()}`,
+			dialecteId: TEST_DIALECTE.id,
+			dialecteConfig: TEST_DIALECTE_CONFIG,
+			documentId: 'any',
+			storage: fakeStorageOf({ type }),
+		})
+
+		expect(context.store).toBe(testStore)
+		expect(fake.storeOf).not.toHaveBeenCalled()
+	})
+
+	it('a context on a registered kind with no test store, by its project’s name and no dialecte → the store its storeOf builds: nothing asks for the dialecte', async () => {
+		const type = uniqueFakeType()
+		// closeTestContexts closes every store a context opened by name: this one too
+		const built = Object.assign(fakeStore(), { close: vi.fn(async function closed() {}) })
+		const fake = fakeKindOf({ id: 'fake@1', built })
+		onTestFinished(replaceStorageKind({ type, kind: undefined }))
+		registerStorageKind({ type: type as 'sqlite', kind: fake.kind as never })
+
+		await expect(
+			createTestContext({
+				databaseName: `kind-no-test-store-${crypto.randomUUID()}`,
+				dialecteId: undefined,
+				dialecteConfig: TEST_DIALECTE_CONFIG,
+				documentId: 'any',
+				storage: fakeStorageOf({ type }),
+			}),
+		).resolves.toMatchObject({ store: built })
 	})
 
 	it('a context on sqlite by a name with no dialecte → ASSERTION_FAILED: the engine holds a dialecte’s project', async () => {

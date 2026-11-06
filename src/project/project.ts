@@ -762,7 +762,7 @@ export class Project<
 			this.stopListeningToStore()
 			this._channel?.close()
 			this._channel = undefined
-			// settled once the store counts no more (its hub, or another tab, told)
+			// settled once the store counts no more (whatever serves it, or another tab, told)
 			await this._store?.close()
 		} finally {
 			clearTimeout(report)

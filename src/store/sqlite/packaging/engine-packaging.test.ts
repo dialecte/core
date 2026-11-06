@@ -271,6 +271,9 @@ function diagnosticsOfConsumer(params: { name: string; source: string }): string
 /** The files of a build that only the package's own development uses: scripts, fixtures, tests, benches. */
 const DEV_ONLY_FILE = /\.(?:script|fixtures|test|bench)(?:[.-]|$)/
 
+/** A test-only worker, which the test entry does not import at run time: a `*.worker.*` file under `test/`. The hub's worker is runtime. */
+const TEST_ONLY_WORKER_FILE = /(?:^|\/)test\/(?:.*\/)?[^/]*\.worker\./
+
 beforeAll(async () => {
 	await rm(WORK, { recursive: true, force: true })
 	// a package of its own: the run is inside core's folder, whose package.json would otherwise resolve
@@ -721,11 +724,13 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		PACKAGING_TYPE_CHECK_TIMEOUT_MS,
 	)
 
-	it('core’s build → no file only the package’s development uses: no script, fixture, test or bench, in a chunk or a declaration', async () => {
+	it('core’s build → no file only the package’s development uses: no script, fixture, test, bench or test-only worker, in a chunk or a declaration', async () => {
 		const files = await filesUnder({ directory: CORE_DIST })
 		// a build that emitted nothing would prove nothing
 		expect(files).toContain('index.js')
-		const devOnly = files.filter((file) => DEV_ONLY_FILE.test(path.basename(file)))
+		const devOnly = files.filter(
+			(file) => DEV_ONLY_FILE.test(path.basename(file)) || TEST_ONLY_WORKER_FILE.test(file),
+		)
 		expect(devOnly).toEqual([])
 	})
 })

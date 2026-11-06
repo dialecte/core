@@ -1,6 +1,7 @@
 import { TEST_CONFIG_KEY } from './constant'
+import { OPENED_CONTEXT_STORES } from './create-test-dialecte.constants'
 import { openTestProject, resolveTestDialecte } from './test-dialecte-setup'
-import { resolveTestStorage, testStoreFor } from './test-storage'
+import { resolveTestStorage, testStoreFor, testStoreOfType } from './test-storage'
 
 import { createStagedOperations } from '@/document'
 import { createProgressReporter } from '@/document/progress'
@@ -63,9 +64,6 @@ export async function createTestProject(
 	})
 }
 
-/** The stores `createTestContext` opened by name: connections of their own, closed by `closeTestContexts`. */
-const OPENED_CONTEXT_STORES = new Set<Store>()
-
 /**
  * Create a Context directly for testing FP query functions: on `store` when given, else on the store
  * of the project named `databaseName` - of the kind `storage` names, else the test helpers' default
@@ -99,8 +97,8 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 }
 
 /**
- * The store of the project named, of the kind `storage` names (else the test helpers' default): on `sqlite`, the
- * SQLite engine in this realm, which needs the project's dialecte.
+ * The store of the project named, of the kind `storage` names (else the test helpers' default): the store its kind's
+ * test store answers in this realm, which needs the project's dialecte, else the one its `storeOf` builds.
  */
 async function storeByName<GenericConfig extends AnyDialecteConfig>(params: {
 	databaseName: string
@@ -114,11 +112,12 @@ async function storeByName<GenericConfig extends AnyDialecteConfig>(params: {
 		defaultConfigKey: TEST_CONFIG_KEY,
 	}
 	const kind = resolveTestStorage({ storage: params.storage })
-	if (kind.type !== 'sqlite')
+	// core's own kinds, and a kind with no test store, open as an app opens them (its `storeOf`, the dialecte optional)
+	if (!testStoreOfType({ name: databaseName, type: kind.type }))
 		return resolveStore({ name: databaseName, dialecteId, storage: kind, runtime })
 	if (dialecteId === undefined) {
 		throw createDialecteError('ASSERTION_FAILED', {
-			detail: `A test context on SQLite names its project's dialecte: "${databaseName}" has none`,
+			detail: `A test context on a registered storage kind ("${kind.type}") names its project's dialecte: "${databaseName}" has none`,
 			meta: { databaseName },
 		})
 	}

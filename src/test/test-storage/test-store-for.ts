@@ -2,7 +2,7 @@ import { testStoreProviderOf } from './test-store-providers'
 
 import { isBuiltInStorageType, registeredStorageKind } from '@/store/storage-kinds'
 
-import type { TestStoreDialecte } from './test-storage.types'
+import type { TestStoreDialecte, TestStoreProvider } from './test-storage.types'
 import type { StorageParam } from '@/project'
 import type { StorageKindDialecte } from '@/store/storage-kinds.types'
 import type { AnyDialecteConfig } from '@/types'
@@ -24,9 +24,7 @@ export async function testStoreFor<GenericConfig extends AnyDialecteConfig>(para
 	perf?: boolean
 }): Promise<StorageParam> {
 	const { storage, name, dialecte, perf } = params
-	if (isBuiltInStorageType({ type: storage.type })) return storage
-	const kind = registeredStorageKind({ project: name, type: storage.type })
-	const testStoreOf = kind.testStoreOf ?? testStoreProviderOf({ type: storage.type })
+	const testStoreOf = testStoreOfType({ name, type: storage.type })
 	if (!testStoreOf) return storage
 	const store = await testStoreOf({
 		name,
@@ -35,6 +33,23 @@ export async function testStoreFor<GenericConfig extends AnyDialecteConfig>(para
 		perf,
 	})
 	return { type: 'custom', store }
+}
+
+/**
+ * How a test project of `type` gets its store in this realm: the registered kind's `testStoreOf`, else the one the
+ * test entry provides for that type; none for core's own kinds and for a kind with neither (its `storeOf` serves the
+ * test as it serves an app). A type nobody registered is refused `PROJECT_STORAGE_NOT_REGISTERED` for `name`.
+ *
+ * @internal store selection when a test project opens
+ */
+export function testStoreOfType(params: {
+	name: string
+	type: string
+}): TestStoreProvider | undefined {
+	const { name, type } = params
+	if (isBuiltInStorageType({ type })) return undefined
+	const kind = registeredStorageKind({ project: name, type })
+	return kind.testStoreOf ?? testStoreProviderOf({ type })
 }
 
 /** The dialecte as a kind receives it: its id, configs and hooks, erased to the config-agnostic shape at this one boundary. */

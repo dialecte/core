@@ -3,19 +3,8 @@ import { TEST_STORE_PROVIDERS } from './test-store-providers.constants'
 import type { TestStoreProvider } from './test-storage.types'
 
 /**
- * The test store core's test entry provides for `type`, consulted when the type's kind carries no `testStoreOf`.
- *
- * @internal the test entry's own providers
- */
-export function registerTestStoreProvider(params: {
-	type: string
-	testStoreOf: TestStoreProvider
-}): void {
-	TEST_STORE_PROVIDERS.set(params.type, params.testStoreOf)
-}
-
-/**
- * The test store core's test entry provides for `type`, or none.
+ * The test store core's test entry provides for `type`, consulted when the type's kind carries no `testStoreOf`; none
+ * for another type.
  *
  * @internal store selection when a test project opens
  */
