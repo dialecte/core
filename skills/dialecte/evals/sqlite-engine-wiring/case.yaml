@@ -1,0 +1,13 @@
+schema_version: '1.1'
+name: sqlite-engine-wiring
+expected_outcome: |
+  The app assembles the SQLite engine itself: one engine worker file of its own under src/ that calls
+  `serveSqliteEngine({ dialectes: [SCL_DIALECTE, NSD_DIALECTE] })` from `@dialecte/core/sqlite`, and the page
+  calls `registerSqliteEngine({ url, dialectes })` from the same entry once, before the first project opens,
+  with `url` a `?worker&url` import of that file. The project factories take the declaration only (no engine URL,
+  no spawner handed to `connectHub`), and the projects open with `storage: { type: 'sqlite' }`. The answer says
+  the app ships the worker (no dialecte package does) and that a project opened on `sqlite` with no registration
+  is refused `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`. The skill documents all of it in one voice: the answer
+  calls no parameter shape a guess and finds no reference page contradicting another.
+context:
+  scaffold_script: place-files.sh

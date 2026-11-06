@@ -21,13 +21,13 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
 
 ## Entry points
 
-| Import                   | What is there                                                                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@dialecte/core`         | Project, Document, Query, Transaction, `defineDialecte`, `createProjectFactory`, stores, XML parse/build, errors, diagnostics, perf, all types   |
-| `@dialecte/core/helpers` | record converters, guards, `readAttribute(s)`, `standardizeRecord`, `mergeExtensions`, `stripAttributes`, write-path guards, namespace constants |
-| `@dialecte/core/utils`   | attribute rules, definition resolution, xsi:type, namespaces, ordering, `invariant`, `formatXml` / `formatEmbeddedXml`, `saveToDisk`             |
-| `@dialecte/core/test`    | `createTestHelpers`, `createTestRunner`, `createTestProject`, XML/XPath assertions, test dialecte, `normalizeUuids`                              |
-| `@dialecte/core/sqlite`  | opt-in SQLite storage: importing it registers `{ type: 'sqlite' }`; `connectHub`, `adoptHubPort`, `listProjects`                                 |
+| Import                   | What is there                                                                                                                                                                                                     |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@dialecte/core`         | Project, Document, Query, Transaction, `defineDialecte`, `createProjectFactory`, stores, XML parse/build, errors, diagnostics, perf, all types                                                                    |
+| `@dialecte/core/helpers` | record converters, guards, `readAttribute(s)`, `standardizeRecord`, `mergeExtensions`, `stripAttributes`, write-path guards, namespace constants                                                                  |
+| `@dialecte/core/utils`   | attribute rules, definition resolution, xsi:type, namespaces, ordering, `invariant`, `formatXml` / `formatEmbeddedXml`, `saveToDisk`                                                                              |
+| `@dialecte/core/test`    | `createTestHelpers`, `createTestRunner`, `createTestProject`, XML/XPath assertions, test dialecte, `normalizeUuids`                                                                                               |
+| `@dialecte/core/sqlite`  | opt-in SQLite storage: importing it registers `{ type: 'sqlite' }`; `serveSqliteEngine` (the app's one engine worker file), `registerSqliteEngine` (the page, once), `connectHub`, `adoptHubPort`, `listProjects` |
 
 ## Project (`project/project.ts`)
 
@@ -185,12 +185,22 @@ needs the parent's `updated` (children list) too.
 ## Stores (`store/`)
 
 - `storage` param: `{ type: 'local' }` (IndexedDB, the default), `{ type: 'sqlite' }` (the SQLite
-  engine in a worker, one per project shared by every tab through the hub; opt-in: the app imports
-  `@dialecte/core/sqlite` once, else `PROJECT_SQLITE_NOT_IMPORTED`; opened from a dialecte's project
-  factory, which names its engine worker),
+  engine in a worker, one per project shared by every tab through the hub; setup below),
   `{ type: 'inMemory', writable? }`,
   `{ type: 'custom', store }`. The store is a switch: results must be identical on every store,
   only speed changes. A difference is a store bug.
+- SQLite storage is opt-in and **the app assembles its engine**; a dialecte package ships its declaration
+  only, no worker. Everything comes from `@dialecte/core/sqlite`, which the app imports once:
+  - the app's one engine worker file (say `engine.worker.ts` in its sources) calls `serveSqliteEngine({ dialectes })`
+    with every dialecte the app opens on SQLite - one file for all of them, not one per dialecte;
+  - the page calls `registerSqliteEngine({ url, dialectes })` once, before the first project opens: `url` a
+    `?worker&url` import of that file, `dialectes` the same list (declarations fit);
+  - `createProjectFactory({ dialecte })` takes the declaration only, no engine URL; a project opens with
+    `storage: { type: 'sqlite' }`; `connectHub()` takes no parameter (optional: a project opening on
+    `sqlite` offers the registered engines too).
+- SQLite refusals: entry never imported → `PROJECT_SQLITE_NOT_IMPORTED`; no registration, or one that does not name
+  the project's dialecte → `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`, nothing started; a worker file that fails to
+  load, or cannot load the engine's chunk (a precache list that leaves it out) → `PROJECT_ENGINE_UNAVAILABLE`.
 - `Store` interface is public surface for custom stores. The patch merge every built-in store uses
   is internal to the stores (not exported): a custom store merges a `RecordPatch` itself.
 

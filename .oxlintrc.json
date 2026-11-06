@@ -28,17 +28,6 @@
 		"no-func-assign": "warn",
 		"no-global-assign": "warn",
 		"no-import-assign": "warn",
-		"no-restricted-imports": [
-			"error",
-			{
-				"patterns": [
-					{
-						"group": ["@dialecte/core", "@dialecte/core/*"],
-						"message": "Do not self-import the package by name inside src; use the '@/*' path alias instead. Self-imports resolve to the built dist types and silently drift from source."
-					}
-				]
-			}
-		],
 		"no-invalid-regexp": "warn",
 		"no-irregular-whitespace": "warn",
 		"no-loss-of-precision": "warn",
@@ -129,5 +118,23 @@
 		"builtin": true
 	},
 	"globals": {},
-	"ignorePatterns": []
+	"ignorePatterns": [],
+	"overrides": [
+		{
+			"files": ["src/**"],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": ["@dialecte/core", "@dialecte/core/*"],
+								"message": "Do not self-import the package by name inside src; use the '@/*' path alias instead. Self-imports resolve to the built dist types and silently drift from source."
+							}
+						]
+					}
+				]
+			}
+		}
+	]
 }
