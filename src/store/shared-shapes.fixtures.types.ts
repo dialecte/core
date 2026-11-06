@@ -1,4 +1,4 @@
-import type { ENGINE_WIRE_MEMBERS } from './engine/wire/wire.constants'
+import type { ENGINE_WIRE_MEMBERS } from './sqlite/served/wire/wire.constants'
 
 /** Named types a source file of the package declares or imports, the roots of a shared shape. */
 export type SharedShapeRoot = {

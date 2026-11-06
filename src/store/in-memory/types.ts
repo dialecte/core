@@ -1,4 +1,4 @@
-import type { DistributiveOmit } from '../engine/engine.types'
+import type { DistributiveOmit } from '../store.types'
 import type { ChangeLogEntry, StoreNotice } from '../store.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentRecord, ProjectChannelMessage } from '@/project/types'

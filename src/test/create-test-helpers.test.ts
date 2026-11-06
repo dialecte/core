@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineDialecte } from '@/dialecte'
 import { toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
-import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 
 import type { TestDialecteConfig } from './config'
 import type { BaseXmlTestCase } from './run-test-cases.type'

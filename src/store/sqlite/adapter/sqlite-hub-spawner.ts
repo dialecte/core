@@ -1,7 +1,7 @@
 import { sqliteEngineSettings } from './sqlite-engine-settings'
 
 import type { SqliteHubSpawnerParams, SqliteHubSpawnersOfParams } from './sqlite-hub-spawner.types'
-import type { RealmEngineSpawner } from '@/store/engine/hub/realm-host.types'
+import type { RealmEngineSpawner } from '@/store/sqlite/served/hub/realm-host.types'
 
 /**
  * A dialecte's SQLite engine as a page offers to start it for the hub: its engine worker

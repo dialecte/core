@@ -12,8 +12,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { HUB_PROTOCOL_VERSION } from './engine/hub/hub.constants'
-import { ENGINE_WIRE_PROTOCOL } from './engine/wire/wire.constants'
 import {
 	committedInGit,
 	posixPathOf,
@@ -22,7 +20,9 @@ import {
 	sharedShape,
 } from './shared-shapes.fixtures'
 import { GIT_LS_FILES_TIMEOUT_MS } from './shared-shapes.fixtures.constants'
-import { SQLITE_STORAGE_VERSION } from './sqlite-storage.constants'
+import { HUB_PROTOCOL_VERSION } from './sqlite/served/hub/hub.constants'
+import { ENGINE_WIRE_PROTOCOL } from './sqlite/served/wire/wire.constants'
+import { SQLITE_STORAGE_VERSION } from './sqlite/sqlite-storage.constants'
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
@@ -53,7 +53,9 @@ const SHARED_SHAPES: SharedShapeCase[] = [
 		versionName: 'SQLITE_STORAGE_VERSION',
 		version: SQLITE_STORAGE_VERSION,
 		recorded: 'sqlite-storage',
-		roots: [{ file: 'src/store/sqlite-storage.types.ts', names: ['SqliteStorage', 'Store'] }],
+		roots: [
+			{ file: 'src/store/sqlite/sqlite-storage.types.ts', names: ['SqliteStorage', 'Store'] },
+		],
 	},
 	{
 		// the realm's connection, kept on its global object for every copy, and the messages between realm and hub
@@ -61,9 +63,9 @@ const SHARED_SHAPES: SharedShapeCase[] = [
 		version: HUB_PROTOCOL_VERSION,
 		recorded: 'hub-protocol',
 		roots: [
-			{ file: 'src/store/engine/hub/hub-client.types.ts', names: ['HubRegistry'] },
+			{ file: 'src/store/sqlite/served/hub/hub-client.types.ts', names: ['HubRegistry'] },
 			{
-				file: 'src/store/engine/hub/hub-protocol.types.ts',
+				file: 'src/store/sqlite/served/hub/hub-protocol.types.ts',
 				names: ['HubToRealmMessage', 'RealmToHubMessage'],
 			},
 		],
@@ -76,17 +78,17 @@ const SHARED_SHAPES: SharedShapeCase[] = [
 		recorded: 'engine-wire',
 		roots: [
 			{
-				file: 'src/store/engine/wire/wire.types.ts',
+				file: 'src/store/sqlite/served/wire/wire.types.ts',
 				names: ['EngineWire', 'WireAnswer', 'WireRequest'],
 			},
 			// its table, a value: its type as the guard declares it
 			{ file: 'src/store/shared-shapes.fixtures.types.ts', names: ['EngineWireTable'] },
 			{
-				file: 'src/store/engine/engine.types.ts',
+				file: 'src/store/sqlite/served/engine.types.ts',
 				names: ['EngineApi', 'EngineControlAnswer', 'EngineControlRequest', 'EngineLifeSignal'],
 			},
 			{
-				file: 'src/store/engine/host/host.types.ts',
+				file: 'src/store/sqlite/served/host/host.types.ts',
 				names: ['EngineEventSignal', 'Heartbeat', 'ProgressSignal'],
 			},
 		],
@@ -226,7 +228,7 @@ describe('a recorded text', () => {
 			const askedGit = vi.fn(function trackedOrNot() {
 				return committed
 			})
-			const call = function record(): string {
+			function call(): string {
 				return recordedText({
 					file,
 					text: 'new shape',
@@ -331,7 +333,7 @@ describe('a file committed in git', () => {
 			const repository = repositoryOfTheCase()
 			const command =
 				git === 'dubious-ownership' ? dubiousOwnershipGit({ directory: repository }) : git
-			const asked = function askGit(): boolean {
+			function asked(): boolean {
 				return committedInGit({ file: file({ repository }), git: command })
 			}
 			if (refused) expect(asked).toThrow()

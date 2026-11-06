@@ -1,6 +1,7 @@
-import { refuseOtherCreation } from '../../engine/creation-refusal'
-import { engineLockNameOf, projectKeyOf } from '../../engine/project-key'
+import { projectKeyOf } from '../../project-key'
 import { refuseUnnamableProject } from '../../project-name'
+import { refuseOtherCreation } from '../served/creation-refusal'
+import { engineLockNameOf } from '../served/engine-lock'
 import { classifyPool } from './pool-header'
 import {
 	NEW_POOL_FREE_BYTES,
@@ -16,7 +17,7 @@ import {
 
 import { createDialecteError } from '@/errors'
 
-import type { EngineLockMode } from '../../engine/engine.types'
+import type { EngineLockMode } from '../served/engine.types'
 import type {
 	HeldEngineLock,
 	PoolContents,

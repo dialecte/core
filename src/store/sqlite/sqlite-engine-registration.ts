@@ -1,8 +1,8 @@
-import { realmSqliteStorage } from '../sqlite-storage'
+import { realmSqliteStorage } from './sqlite-storage'
 
 import { throwDialecteError } from '@/errors'
 
-import type { SqliteEngineRegistration, SqliteStorage } from '../sqlite-storage.types'
+import type { SqliteEngineRegistration, SqliteStorage } from './sqlite-storage.types'
 
 /**
  * Tell this page where the app's SQLite engine is: `url`, its one worker file (a `?worker&url` import of the file that

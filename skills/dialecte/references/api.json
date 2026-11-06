@@ -601,7 +601,7 @@
 				"open projects on SQLite storage in a child frame through its page's engine",
 				"bind a child frame again after its page rejoined the hub"
 			],
-			"declaredAt": "src/store/hub-public.ts:45"
+			"declaredAt": "src/store/sqlite/hub-public.ts:45"
 		},
 		{
 			"path": "@dialecte/core/sqlite.connectHub",
@@ -615,7 +615,7 @@
 				"offer the engines an app registered to the hub",
 				"get a port to hand a child frame of another origin"
 			],
-			"declaredAt": "src/store/hub-public.ts:25"
+			"declaredAt": "src/store/sqlite/hub-public.ts:25"
 		},
 		{
 			"path": "@dialecte/core/sqlite.listProjects",

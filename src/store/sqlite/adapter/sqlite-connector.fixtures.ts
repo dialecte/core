@@ -1,13 +1,13 @@
 import { sessionRecords } from '../../contract/store-contract.fixtures'
-import { runsDirectly } from '../../engine/client/worker-connector'
 import { fixtureFile, fixtureUrl } from '../runtime/runtime.fixtures'
+import { runsDirectly } from '../served/client/worker-connector'
 import { TWO_DIALECTES_PROJECTS } from './sqlite-connector.fixtures.constants'
 
 import { expect, onTestFinished } from 'vitest'
 
 import { createProjectFactory } from '@/dialecte'
 
-import type { SqliteEngineRegistration } from '../../sqlite-storage.types'
+import type { SqliteEngineRegistration } from '../sqlite-storage.types'
 import type { TwoDialectesProject, TwoDialectesWhich } from './sqlite-connector.fixtures.types'
 
 const FACTORIES = {

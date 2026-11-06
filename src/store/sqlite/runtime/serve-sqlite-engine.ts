@@ -1,13 +1,13 @@
-import { refuseAnotherDialecte } from '../../engine/dialecte-refusal'
-import { serveClient } from '../../engine/host/engine-wire'
-import { createHeartbeat, runToldBusy, withOpaquePhases } from '../../engine/host/heartbeat'
-import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
-import { createStoreEvents } from '../../engine/host/store-events'
-import { toThrownData } from '../../engine/wire/error-envelope'
-import { ENGINE_WIRE_PROTOCOL } from '../../engine/wire/wire.constants'
 import { refuseUnnamableProject } from '../../project-name'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
+import { refuseAnotherDialecte } from '../served/dialecte-refusal'
+import { serveClient } from '../served/host/engine-wire'
+import { createHeartbeat, runToldBusy, withOpaquePhases } from '../served/host/heartbeat'
+import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../served/host/host.constants'
+import { createStoreEvents } from '../served/host/store-events'
+import { toThrownData } from '../served/wire/error-envelope'
+import { ENGINE_WIRE_PROTOCOL } from '../served/wire/wire.constants'
 import { closeEngine, endEngineAndClients, releasePool } from './close-engine'
 import {
 	destroyPool,
@@ -22,8 +22,8 @@ import { POOL_FILE, PROGRESS_BEAT_OPS } from './runtime.constants'
 
 import { createDialecteError } from '@/errors'
 
-import type { EngineControlAnswer, EngineControlRequest } from '../../engine/engine.types'
-import type { EngineDialecte } from '../../engine/host/host.types'
+import type { EngineControlAnswer, EngineControlRequest } from '../served/engine.types'
+import type { EngineDialecte } from '../served/host/host.types'
 import type { EngineRuntimeState, SqliteEngineSettings } from './runtime.types'
 import type {
 	AnswerEngineControl,

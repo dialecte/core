@@ -1,4 +1,4 @@
-import type { SqliteConnectorParams, SqliteEngineRegistration } from '../../sqlite-storage.types'
+import type { SqliteConnectorParams, SqliteEngineRegistration } from '../sqlite-storage.types'
 
 /** A project on `sqlite` storage, and where its connector reads the engine the app registered. */
 export type CreateSqliteConnectorParams = SqliteConnectorParams & {

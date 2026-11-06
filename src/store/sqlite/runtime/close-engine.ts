@@ -1,8 +1,8 @@
-import { CLIENT_DRAIN_BUDGET_MS } from '../../engine/host/host.constants'
+import { CLIENT_DRAIN_BUDGET_MS } from '../served/host/host.constants'
 
 import { yieldToQueue } from '@/utils/yield-to-queue'
 
-import type { ServedClient } from '../../engine/host/host.types'
+import type { ServedClient } from '../served/host/host.types'
 import type { EngineRuntimeState } from './runtime.types'
 
 /** Every import and export aborted, the database closed, the pool paused (its files kept), the lock released. */

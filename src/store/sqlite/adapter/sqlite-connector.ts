@@ -1,15 +1,15 @@
-import { createHubConnector } from '../../engine/client/hub-connector'
-import { runsDirectly } from '../../engine/client/worker-connector'
-import { keptHubConnection, openHubConnection } from '../../engine/hub/hub-client'
+import { createHubConnector } from '../served/client/hub-connector'
+import { runsDirectly } from '../served/client/worker-connector'
+import { keptHubConnection, openHubConnection } from '../served/hub/hub-client'
 import { refuseWithoutStorage, storesHere } from './realm-storage'
 import { sqliteHubSpawnersOf } from './sqlite-hub-spawner'
 import { createSqliteWorkerConnector } from './sqlite-worker-connector'
 
 import { throwDialecteError } from '@/errors'
 
-import type { EngineConnector } from '../../engine/engine-store.types'
-import type { HubConnection } from '../../engine/hub/hub-client.types'
-import type { SqliteEngineRegistration } from '../../sqlite-storage.types'
+import type { EngineConnector } from '../served/engine-store.types'
+import type { HubConnection } from '../served/hub/hub-client.types'
+import type { SqliteEngineRegistration } from '../sqlite-storage.types'
 import type { CreateSqliteConnectorParams } from './sqlite-connector.types'
 
 /**

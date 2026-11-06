@@ -1,6 +1,6 @@
-import { EngineStore } from '../../engine/engine-store'
 import { createInProcessConnector } from '../adapter/in-process-link'
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
+import { EngineStore } from '../served/engine-store'
 import { commitWaitsOf, epochNow } from './bench-commit-waits'
 import { createBenchImportRuntime, stagesOf } from './bench-import-session'
 import { fetchFixtureFile, waitForQuietMachine } from './bench-page'

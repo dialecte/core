@@ -1,7 +1,7 @@
-import { EngineStore } from '../engine/engine-store'
 import { InMemoryStore } from '../in-memory'
 import { DexieStore } from '../local'
 import { createInProcessConnector, fillInProcessFile } from '../sqlite/adapter/in-process-link'
+import { EngineStore } from '../sqlite/served/engine-store'
 import {
 	CONTRACT_ENGINE_CHANNEL,
 	CONTRACT_ENGINE_URL,
@@ -12,26 +12,26 @@ import {
 	ENGINE_END_POLL_MS,
 	IN_PAGE_IMPORT_REASON,
 	IN_PROCESS_ENGINE_REASON,
+	REALM_PAGES,
 } from './store-contract.constants'
 import { makeDocument } from './store-contract.fixtures'
 import { createContractRuntime } from './store-contract.import-session'
 
-import { ENGINE_OPEN_BUDGET_MS } from '@/store/engine/client/client.constants'
-import { createHubConnector } from '@/store/engine/client/hub-connector'
-import { destroyFromFreshWorker } from '@/store/engine/client/worker-connector'
-import { startHubConnection } from '@/store/engine/hub/hub-client'
-import { serveHub } from '@/store/engine/hub/hub-shell'
-import { REALM_LOCK_PREFIX } from '@/store/engine/hub/hub.constants'
-import { fakePage } from '@/store/engine/hub/hub.fixtures'
 import { sqliteHubSpawner } from '@/store/sqlite/adapter/sqlite-hub-spawner'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 import { fixtureUrl, isEngineLockFree } from '@/store/sqlite/runtime/runtime.fixtures'
+import { ENGINE_OPEN_BUDGET_MS } from '@/store/sqlite/served/client/client.constants'
+import { createHubConnector } from '@/store/sqlite/served/client/hub-connector'
+import { destroyFromFreshWorker } from '@/store/sqlite/served/client/worker-connector'
+import { startHubConnection } from '@/store/sqlite/served/hub/hub-client'
+import { serveHub } from '@/store/sqlite/served/hub/hub-shell'
+import { REALM_LOCK_PREFIX } from '@/store/sqlite/served/hub/hub.constants'
+import { fakePage } from '@/store/sqlite/served/hub/hub.fixtures'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { ContractEngineOrder, StoreContractFactory } from './store-contract.types'
-import type { HubConnection } from '@/store/engine/hub/hub-client.types'
-import type { HubShell } from '@/store/engine/hub/hub-shell.types'
-import type { FakePage } from '@/store/engine/hub/hub.fixtures.types'
+import type { HubConnection } from '@/store/sqlite/served/hub/hub-client.types'
+import type { HubShell } from '@/store/sqlite/served/hub/hub-shell.types'
 import type { Store } from '@/store/store.types'
 
 function uniqueName(prefix: string): string {
@@ -53,7 +53,7 @@ async function openInMemoryStore(params: {
 	return store
 }
 
-const inMemoryStoreFactory: StoreContractFactory = {
+export const inMemoryStoreFactory: StoreContractFactory = {
 	name: 'InMemoryStore',
 	createNamed: async function createNamedInMemoryStore({ name }) {
 		const store = new InMemoryStore(name, { writable: true, runtime: createContractRuntime() })
@@ -77,7 +77,7 @@ const inMemoryStoreFactory: StoreContractFactory = {
 	differs: { 'engine-end': IN_PAGE_IMPORT_REASON, away: AWAY_UNREACHABLE_REASON },
 }
 
-const dexieStoreFactory: StoreContractFactory = {
+export const dexieStoreFactory: StoreContractFactory = {
 	differs: {
 		'engine-end': IN_PAGE_IMPORT_REASON,
 		'dialecte-key':
@@ -131,7 +131,7 @@ async function openSqliteStore(params: {
 	return store
 }
 
-const sqliteInProcessStoreFactory: StoreContractFactory = {
+export const sqliteInProcessStoreFactory: StoreContractFactory = {
 	name: 'EngineStore in-process',
 	createNamed: async function createNamedSqliteStore({ name }) {
 		return openSqliteStore({ name })
@@ -177,7 +177,7 @@ async function openWorkerStore(params: {
 	return store
 }
 
-const sqliteWorkerStoreFactory: StoreContractFactory = {
+export const sqliteWorkerStoreFactory: StoreContractFactory = {
 	// its engine ended with the view (a crash), another tab destroys the project through a worker of its own
 	destroyWhileAway: async function destroyWhileWorkerAway({ store, remake }) {
 		await endContractEngine({ project: store.name })
@@ -240,9 +240,6 @@ let contractHub: HubShell | undefined
 /** The realms the hub leg opened for the case running: closed once it is done. */
 const caseRealms: HubConnection[] = []
 
-/** The page each realm of the hub leg runs on. */
-const REALM_PAGES = new WeakMap<HubConnection, FakePage>()
-
 /**
  * A realm of its own on the contract's hub, starting the contract's engines and the other dialecte's, on a page
  * the case can freeze and resume (`REALM_PAGES`); closed after the case.
@@ -291,7 +288,8 @@ async function destroyWhileRealmAway(params: { store: Store; remake: boolean }):
 	const realmId = realm.realmId()
 	page.freeze()
 	await navigator.locks.request(`${REALM_LOCK_PREFIX}${realmId}`, function hubSawItGone() {})
-	const other = await openHubStore({ name: store.name, realm: await joinContractHub() })
+	const otherRealm = await joinContractHub()
+	const other = await openHubStore({ name: store.name, realm: otherRealm })
 	await other.destroy()
 	if (remake) {
 		await other.open()
@@ -358,7 +356,7 @@ function realmOf(store: Store): HubConnection {
  * an engine that died), then opens the store on a new realm: with no other view on the project, the next
  * engine starts, as a reopen starts one in direct mode. The case's realms are closed after it.
  */
-const sqliteHubStoreFactory: StoreContractFactory = {
+export const sqliteHubStoreFactory: StoreContractFactory = {
 	name: 'EngineStore hub',
 	createNamed: async function createNamedHubStore({ name }) {
 		const realm = await joinContractHub()
@@ -401,14 +399,6 @@ const sqliteHubStoreFactory: StoreContractFactory = {
 }
 
 /** Whether this realm can run an engine worker on the origin's private files (a browser, not node). */
-function canRunEngineWorker(): boolean {
+export function canRunEngineWorker(): boolean {
 	return typeof Worker === 'function' && typeof navigator.storage?.getDirectory === 'function'
 }
-
-/** The stores the contract runs over today; a new kind of store joins by adding its factory here. */
-export const STORE_CONTRACT_FACTORIES: StoreContractFactory[] = [
-	inMemoryStoreFactory,
-	dexieStoreFactory,
-	sqliteInProcessStoreFactory,
-	...(canRunEngineWorker() ? [sqliteWorkerStoreFactory, sqliteHubStoreFactory] : []),
-]

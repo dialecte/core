@@ -1,4 +1,4 @@
-import { connectHub } from '../../hub-public'
+import { connectHub } from '../hub-public'
 import { TEST_ENGINE_URL } from '../runtime/runtime.fixtures'
 import { SECOND_FIXTURE_DIALECTE } from '../runtime/runtime.fixtures.dialectes.constants'
 import { refuseRealmStorage, restoreRealmStorage } from './realm-storage.fixtures'
@@ -7,12 +7,12 @@ import { createSqliteConnector } from './sqlite-connector'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
-import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE } from '@/test'
 
-import type { HubConnectorParams } from '../../engine/client/hub-connector.types'
-import type { HubConnectionOptions } from '../../engine/hub/hub-client.types'
-import type { SqliteEngineRegistration } from '../../sqlite-storage.types'
+import type { HubConnectorParams } from '../served/client/hub-connector.types'
+import type { HubConnectionOptions } from '../served/hub/hub-client.types'
+import type { SqliteEngineRegistration } from '../sqlite-storage.types'
 
 /** What the realm asked of the hub: each connection opened (with the engines it named), and the one it kept. */
 const hub = vi.hoisted(function hubOfTheCase() {
@@ -24,7 +24,7 @@ const hub = vi.hoisted(function hubOfTheCase() {
 	}
 })
 
-vi.mock('../../engine/hub/hub-client', function mockHubClient() {
+vi.mock('../served/hub/hub-client', function mockHubClient() {
 	return {
 		openHubConnection: async function recordOpen(params: HubConnectionOptions) {
 			hub.opened.push(params)
@@ -39,7 +39,7 @@ vi.mock('../../engine/hub/hub-client', function mockHubClient() {
 	}
 })
 
-vi.mock('../../engine/client/hub-connector', function mockHubConnector() {
+vi.mock('../served/client/hub-connector', function mockHubConnector() {
 	return {
 		createHubConnector: function hubConnector(params: HubConnectorParams) {
 			hub.connectors.push(params)

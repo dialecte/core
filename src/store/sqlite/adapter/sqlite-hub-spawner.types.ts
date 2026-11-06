@@ -1,6 +1,6 @@
-import type { SqliteEngineRegistration } from '../../sqlite-storage.types'
 import type { SqliteEngineSettings } from '../runtime/runtime.types'
-import type { RealmEngineSpawner } from '@/store/engine/hub/realm-host.types'
+import type { SqliteEngineRegistration } from '../sqlite-storage.types'
+import type { RealmEngineSpawner } from '@/store/sqlite/served/hub/realm-host.types'
 
 /** A SQLite engine a page can start for the hub: the spawner's own fields, the engine's options beside. */
 export type SqliteHubSpawnerParams = Omit<RealmEngineSpawner, 'settings'> &

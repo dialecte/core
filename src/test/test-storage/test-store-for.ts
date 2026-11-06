@@ -1,5 +1,5 @@
-import { EngineStore } from '@/store/engine/engine-store'
-import { registeredSqliteStorage } from '@/store/sqlite-storage'
+import { EngineStore } from '@/store/sqlite/served/engine-store'
+import { registeredSqliteStorage } from '@/store/sqlite/sqlite-storage'
 
 import type { TestStoreDialecte } from './test-storage.types'
 import type { StorageParam } from '@/project'

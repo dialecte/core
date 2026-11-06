@@ -1,4 +1,4 @@
-import type { EngineControlRequest } from '../engine/engine.types'
+import type { EngineControlRequest } from '../sqlite/served/engine.types'
 import type { ImportFileOptions, Store } from '../store.types'
 import type {
 	STORE_CONTRACT_DIFFERENCES,

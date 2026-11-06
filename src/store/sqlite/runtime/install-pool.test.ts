@@ -1,4 +1,4 @@
-import { engineLockNameOf } from '../../engine/project-key'
+import { engineLockNameOf } from '../served/engine-lock'
 import { poolDirectoryOf, refuseShortSpace, takeEngineLock } from './install-pool'
 import { FIXTURE_DIALECTE } from './runtime.fixtures.constants'
 

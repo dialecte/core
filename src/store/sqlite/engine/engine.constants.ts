@@ -1,4 +1,4 @@
-import type { EngineMembers } from '../../engine/engine.types'
+import type { EngineMembers } from '../served/engine.types'
 import type { SqliteEngineOptions } from './engine.types'
 
 /** The layout of the project file this engine reads and writes, kept in the file's header (`user_version`). */

@@ -6,7 +6,7 @@ import { createProjectFactory } from '@/dialecte'
 import { createCountingDialecte } from '@/dialecte/create-project-factory.fixtures'
 import { toDialecteError } from '@/errors'
 import { resolveStore } from '@/store/resolve-store'
-import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { AnyDialecteConfig } from '@/types'

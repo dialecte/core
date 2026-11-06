@@ -8,7 +8,7 @@ import { defineDialecte } from '@/dialecte'
 import { toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
 import { findInMemoryState, inMemoryStateKeyOf } from '@/store/in-memory/in-memory-state'
-import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 
 import type { TestProjectResult } from './create-test-dialecte.types'
 import type { AnyRawRecord } from '@/types'

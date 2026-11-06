@@ -4,7 +4,7 @@ import {
 	makeDocument,
 	makeRecord,
 } from '../../contract/store-contract.fixtures'
-import { EngineStore } from '../../engine/engine-store'
+import { EngineStore } from '../served/engine-store'
 import { fixtureUrl, removePoolDirectory, uniqueProject } from './runtime.fixtures'
 import {
 	FIXTURE_DIALECTE,
@@ -157,7 +157,8 @@ describe('an engine alive or lost', () => {
 				await store.bulkWrite('doc-1', { creates: records })
 				await orderFixtures({ type: 'slow' })
 				const startedAt = performance.now()
-				expect(await outcomeOf(store.getByDocumentId('doc-1'))).toEqual(expected)
+				const readOutcome = await outcomeOf(store.getByDocumentId('doc-1'))
+				expect(readOutcome).toEqual(expected)
 				expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1_500)
 				logStatementTime({ description, ms: performance.now() - startedAt })
 			})
@@ -171,7 +172,8 @@ describe('an engine alive or lost', () => {
 			file: markedFile({ markers: Array.from({ length: 8 }, () => 'pause:400') }),
 			options: { chunkOptions: SMALL_BATCHES },
 		})
-		expect(await outcomeOf(importing)).toBe('resolved')
+		const importOutcome = await outcomeOf(importing)
+		expect(importOutcome).toBe('resolved')
 		expect(performance.now() - startedAt).toBeGreaterThanOrEqual(3_000)
 	})
 
@@ -193,23 +195,28 @@ describe('an engine alive or lost', () => {
 			deletes: [],
 			onProgress: () => {},
 		})
-		expect(await outcomeOf(importing)).toEqual({
+		const importOutcome = await outcomeOf(importing)
+		expect(importOutcome).toEqual({
 			key: 'STORE_ENGINE_LOST',
 			meta: { reason: 'no-heartbeat', writeId: 'w-paused' },
 		})
-		expect(await outcomeOf(committing)).toEqual({
+		const commitOutcome = await outcomeOf(committing)
+		expect(commitOutcome).toEqual({
 			key: 'STORE_ENGINE_LOST',
 			meta: { reason: 'no-heartbeat', writeId: 'w-commit' },
 		})
-		expect(await store.getWriteOutcome({ writeId: 'w-paused' })).toBe('running')
-		expect(await store.getWriteOutcome({ writeId: 'w-commit' })).toBe('running')
+		const pausedWriteOutcome = await store.getWriteOutcome({ writeId: 'w-paused' })
+		expect(pausedWriteOutcome).toBe('running')
+		const commitWriteOutcome = await store.getWriteOutcome({ writeId: 'w-commit' })
+		expect(commitWriteOutcome).toBe('running')
 		await expect
 			.poll(() => store.getWriteOutcome({ writeId: 'w-paused' }), {
 				timeout: 10_000,
 				interval: 200,
 			})
 			.toBe('applied')
-		expect(await store.getWriteOutcome({ writeId: 'w-commit' })).toBe('applied')
+		const commitWriteOutcomeOncePausedApplied = await store.getWriteOutcome({ writeId: 'w-commit' })
+		expect(commitWriteOutcomeOncePausedApplied).toBe('applied')
 	})
 
 	describe('two connections, timeout 2.5 s', () => {
@@ -224,7 +231,9 @@ describe('an engine alive or lost', () => {
 				options: { chunkOptions: SMALL_BATCHES },
 			})
 			const queued = second.importFile({ file: markedFile({ markers: ['plain'] }) })
-			expect([await outcomeOf(running), await outcomeOf(queued)]).toEqual(['resolved', 'resolved'])
+			const runningOutcome = await outcomeOf(running)
+			const queuedOutcome = await outcomeOf(queued)
+			expect([runningOutcome, queuedOutcome]).toEqual(['resolved', 'resolved'])
 		})
 
 		it('a read sent while the other’s afterImport runs 3 s of dialecte code → it resolves', async () => {
@@ -236,8 +245,10 @@ describe('an engine alive or lost', () => {
 			const pausing = noticeOf({ type: 'reached', marker: 'after-pause' })
 			const importing = first.importFile({ file: markedFile({ markers: ['after-pause:3000'] }) })
 			await pausing
-			expect(await outcomeOf(second.getDocuments())).toBe('resolved')
-			expect(await outcomeOf(importing)).toBe('resolved')
+			const readOutcome = await outcomeOf(second.getDocuments())
+			expect(readOutcome).toBe('resolved')
+			const importOutcome = await outcomeOf(importing)
+			expect(importOutcome).toBe('resolved')
 		})
 	})
 
@@ -258,16 +269,18 @@ describe('an engine alive or lost', () => {
 			deletes: [],
 			onProgress: () => {},
 		})
-		expect(await outcomeOf(importing)).toBe('resolved')
+		const importOutcome = await outcomeOf(importing)
+		expect(importOutcome).toBe('resolved')
 	})
 
 	describe('one long statement with no beat in it (an index built, a table dropped: one opcode)', () => {
 		it('an import whose index builds each run 3 s (timeout 2.5 s) → told busy around each, the import resolves', async () => {
 			const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
 			await orderFixtures({ type: 'slow-ddl' })
-			expect(await outcomeOf(store.importFile({ file: markedFile({ markers: ['plain'] }) }))).toBe(
-				'resolved',
+			const importOutcome = await outcomeOf(
+				store.importFile({ file: markedFile({ markers: ['plain'] }) }),
 			)
+			expect(importOutcome).toBe('resolved')
 		})
 
 		it('a second connection while the engine runs 3 s of statements told busy (timeout 2.5 s) → its adoption waits, then it reads: the engine never taken for lost', async () => {
@@ -279,8 +292,10 @@ describe('an engine alive or lost', () => {
 			const removing = store.removeDocument('doc-1')
 			await slowed
 			const second = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS, name })
-			expect(await outcomeOf(second.getDocuments())).toBe('resolved')
-			expect(await outcomeOf(removing)).toBe('resolved')
+			const readOutcome = await outcomeOf(second.getDocuments())
+			expect(readOutcome).toBe('resolved')
+			const removalOutcome = await outcomeOf(removing)
+			expect(removalOutcome).toBe('resolved')
 		})
 
 		it('a document removed, its tables dropped in 3 s each (timeout 2.5 s) → told busy, the removal resolves', async () => {
@@ -288,7 +303,8 @@ describe('an engine alive or lost', () => {
 			await store.registerDocument(makeDocument())
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 			await orderFixtures({ type: 'slow-ddl' })
-			expect(await outcomeOf(store.removeDocument('doc-1'))).toBe('resolved')
+			const removalOutcome = await outcomeOf(store.removeDocument('doc-1'))
+			expect(removalOutcome).toBe('resolved')
 		})
 	})
 
@@ -300,14 +316,17 @@ describe('an engine alive or lost', () => {
 		})
 		// read while the engine is busy in the importer's own afterImport
 		await yielding
-		expect(await outcomeOf(store.getDocuments())).toBe('resolved')
-		expect(await outcomeOf(importing)).toBe('resolved')
+		const readOutcome = await outcomeOf(store.getDocuments())
+		expect(readOutcome).toBe('resolved')
+		const importOutcome = await outcomeOf(importing)
+		expect(importOutcome).toBe('resolved')
 	})
 
 	it('an afterImport running 3 s of dialecte code (timeout 2.5 s) → told busy, the import resolves', async () => {
 		const store = await openStore({ heartbeatTimeoutMs: KEPT_ALIVE_TIMEOUT_MS })
-		expect(
-			await outcomeOf(store.importFile({ file: markedFile({ markers: ['after-pause:3000'] }) })),
-		).toBe('resolved')
+		const importOutcome = await outcomeOf(
+			store.importFile({ file: markedFile({ markers: ['after-pause:3000'] }) }),
+		)
+		expect(importOutcome).toBe('resolved')
 	})
 })

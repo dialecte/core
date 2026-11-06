@@ -1,4 +1,4 @@
-import { projectKeyOf } from '../engine/project-key'
+import { projectKeyOf } from '../project-key'
 import { LAYOUT_VERSION } from './engine/engine.constants'
 import {
 	LISTING_READ_ATTEMPTS,

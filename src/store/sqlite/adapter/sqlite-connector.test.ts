@@ -1,13 +1,13 @@
 // SQLite storage, as an app opts into it
 import '@/sqlite'
-import { runsDirectly } from '../../engine/client/worker-connector'
-import { HUB_REGISTRY_KEY } from '../../engine/hub/hub-client.constants'
 import { TEST_ENGINE_URL } from '../runtime/runtime.fixtures'
 import {
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	UNSERVED_DIALECTE_VERSION,
 } from '../runtime/runtime.fixtures.constants'
 import { SECOND_FIXTURE_DIALECTE } from '../runtime/runtime.fixtures.dialectes.constants'
+import { runsDirectly } from '../served/client/worker-connector'
+import { HUB_REGISTRY_KEY } from '../served/hub/hub-client.constants'
 import {
 	expectTwoDialectesThroughOneRegistration,
 	twoDialectesRegistration,
@@ -17,10 +17,10 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createProjectFactory } from '@/dialecte'
 import { toDialecteError } from '@/errors'
-import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 
-import type { HubConnection } from '../../engine/hub/hub-client.types'
+import type { HubConnection } from '../served/hub/hub-client.types'
 import type { Project } from '@/project'
 import type { TestDialecteConfig } from '@/test'
 

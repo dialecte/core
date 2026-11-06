@@ -1,4 +1,6 @@
 import type { DiagnosticCatalogue } from '@/diagnostics'
+import type { HubConnection } from '@/store/sqlite/served/hub/hub-client.types'
+import type { FakePage } from '@/store/sqlite/served/hub/hub.fixtures.types'
 
 /** The tag whose records the contract's import session asks for; every other record passes it by. */
 export const CONTRACT_SESSION_TAG = 'B'
@@ -163,3 +165,6 @@ export const ENGINE_END_BUDGET_MS = 5_000
 /** Why a leg's view is never away while its project is destroyed: every connection counts until closed. */
 export const AWAY_UNREACHABLE_REASON =
 	'its connections run in the page and each counts until closed: a destroy is refused while any is open, so none is ever away'
+
+/** The page each realm of the hub leg runs on. */
+export const REALM_PAGES = new WeakMap<HubConnection, FakePage>()

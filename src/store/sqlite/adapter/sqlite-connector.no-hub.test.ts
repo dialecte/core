@@ -14,10 +14,10 @@ import { afterAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createProjectFactory } from '@/dialecte'
 import { toDialecteError } from '@/errors'
-import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE } from '@/test'
 
-import type { SqliteEngineRegistration } from '../../sqlite-storage.types'
+import type { SqliteEngineRegistration } from '../sqlite-storage.types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 

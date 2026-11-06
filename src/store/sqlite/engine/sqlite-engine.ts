@@ -67,7 +67,7 @@ import type {
 	EngineChangeMember,
 	EngineChangeMembers,
 	EngineMembers,
-} from '../../engine/engine.types'
+} from '../served/engine.types'
 import type {
 	EncodedRows,
 	ExportReads,
@@ -185,7 +185,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		 */
 		addBlob: async function addBlob(entry, data) {
 			refuseClosed({ state, name })
-			const bytes = new Uint8Array(await data.arrayBuffer())
+			const arrayBuffer = await data.arrayBuffer()
+			const bytes = new Uint8Array(arrayBuffer)
 			refuseClosed({ state, name })
 			const owner = asReadFailure({
 				detail: `Document "${entry.documentId}"`,

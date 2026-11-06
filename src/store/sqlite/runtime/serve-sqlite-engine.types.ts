@@ -1,4 +1,4 @@
-import type { EngineControlRequest } from '../../engine/engine.types'
+import type { EngineControlRequest } from '../served/engine.types'
 import type { SqliteEngineSettings } from './runtime.types'
 import type { AnyDialecteConfig } from '@/types'
 

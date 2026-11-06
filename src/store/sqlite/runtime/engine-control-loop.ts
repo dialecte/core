@@ -1,8 +1,8 @@
-import { toThrownData } from '../../engine/wire/error-envelope'
+import { toThrownData } from '../served/wire/error-envelope'
 
 import { createDialecteError } from '@/errors'
 
-import type { EngineControlRequest } from '../../engine/engine.types'
+import type { EngineControlRequest } from '../served/engine.types'
 import type { SqliteEngineSettings } from './runtime.types'
 import type {
 	AnswerEngineControl,

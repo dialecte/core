@@ -478,3 +478,9 @@ export type StoreResync = { type: 'resync' }
 
 /** What a store that announces tells its connections. */
 export type StoreNotice = StoreChange | StoreResync
+
+/** `Omit` applied to each member of a union. */
+export type DistributiveOmit<
+	GenericUnion,
+	GenericKey extends PropertyKey,
+> = GenericUnion extends unknown ? Omit<GenericUnion, GenericKey> : never

@@ -1,30 +1,21 @@
-import { refuseOtherCreation } from '../../engine/creation-refusal'
-import { storeEventOf } from '../../engine/host/store-events'
-import { projectKeyOf } from '../../engine/project-key'
+import { projectKeyOf } from '../../project-key'
 import { refuseUnnamableProject } from '../../project-name'
 import { throwOpenElsewhere, throwStoreClosed } from '../../store-errors'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
+import { refuseOtherCreation } from '../served/creation-refusal'
+import { storeEventOf } from '../served/host/store-events'
 import { realmWasmUrl } from '../sqlite-wasm-url'
+import { CLIENTS, FILES, LISTENERS } from './in-process-link.constants'
 
 import { tellListeners } from '@/utils/tell-listener'
 import { TOLD_OF } from '@/utils/tell-listener.constants'
 
-import type { EngineConnector, EngineLink, LinkNotice } from '../../engine/engine-store.types'
-import type { EngineApi } from '../../engine/engine.types'
-import type { AnnouncedCall } from '../../engine/host/host.types'
 import type { SqliteEngine } from '../engine/engine.types'
-import type { InProcessConnectorParams, InProcessFile } from './in-process-link.types'
-
-/**
- * The in-memory project files of this realm, by project key (`projectKeyOf`: dialecte and name): one state
- * per project, as the origin's files are.
- */
-const FILES = new Map<string, InProcessFile>()
-/** The connections open on each project, by its key: a destroy of it is refused while one is. */
-const CLIENTS = new Map<string, Set<EngineLink>>()
-/** What each connection's store listens with: every change of its project, and each resync. */
-const LISTENERS = new WeakMap<EngineLink, Set<(notice: LinkNotice) => void>>()
+import type { EngineConnector, EngineLink, LinkNotice } from '../served/engine-store.types'
+import type { EngineApi } from '../served/engine.types'
+import type { AnnouncedCall } from '../served/host/host.types'
+import type { InProcessConnectorParams } from './in-process-link.types'
 
 /**
  * The engine of a project run in the calling realm, on an in-memory file of its own (`memdb`): a

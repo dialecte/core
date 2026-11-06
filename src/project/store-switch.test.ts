@@ -4,8 +4,8 @@ import { projectChannelName } from './project-channel'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
 import { CHANGE_TOLD_WITHIN_MS } from '@/store/sqlite/runtime/runtime.fixtures.constants'
+import { withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 import { testStoreFor } from '@/test/test-storage'
 import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
@@ -111,9 +111,10 @@ async function openProject(params: {
 		name = `store-switch-${crypto.randomUUID()}`,
 		dialecteId = DIALECTE_ID,
 	} = params
+	const projectStorage = await storage({ name, dialecteId, hooks })
 	const project = await new Project({
 		configs: { default: CONFIG },
-		storage: await storage({ name, dialecteId, hooks }),
+		storage: projectStorage,
 		hooks,
 		dialecteId,
 	}).open(name)
@@ -201,10 +202,11 @@ function changeHeard(params: { store: Store; name: string }): Promise<void> {
 /** A store of the project named on `storage` (another connection to it, not a project), not opened. */
 async function storeOf(params: { storage: StorageOf; name: string }): Promise<Store> {
 	const { storage, name } = params
+	const storeStorage = await storage({ name, dialecteId: DIALECTE_ID })
 	return resolveStore({
 		name,
 		dialecteId: DIALECTE_ID,
-		storage: await storage({ name, dialecteId: DIALECTE_ID }),
+		storage: storeStorage,
 		runtime: { configs: { default: CONFIG }, defaultConfigKey: 'default' },
 	})
 }
@@ -291,7 +293,8 @@ const CASES: Record<
 				await other.close()
 				await project.destroy()
 				const fresh = await openProject({ storage, name: project.name })
-				expect(await fresh.getDocuments()).toEqual([])
+				const freshDocuments = await fresh.getDocuments()
+				expect(freshDocuments).toEqual([])
 			},
 		},
 	'a commit by another project of the name → this project’s document takes it, its view woken; each project’s channel tells each change once':
@@ -388,7 +391,8 @@ const CASES: Record<
 			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
 
 			expect(heardThere).toEqual([])
-			expect(await other.getDocuments()).toEqual([])
+			const otherDocuments = await other.getDocuments()
+			expect(otherDocuments).toEqual([])
 		},
 	},
 	'a document renamed through another store of the project → the project’s record renamed, document-updated told':
@@ -399,10 +403,11 @@ const CASES: Record<
 				const { documentId } = await project.importFile(leafFile())
 				const heard = channelHeard({ project })
 				// a store of the project of its own (not a project): it writes, the project hears
+				const otherStorage = await storage({ name: project.name, dialecteId: DIALECTE_ID })
 				const other = resolveStore({
 					name: project.name,
 					dialecteId: DIALECTE_ID,
-					storage: await storage({ name: project.name, dialecteId: DIALECTE_ID }),
+					storage: otherStorage,
 					runtime: { configs: { default: CONFIG }, defaultConfigKey: 'default' },
 				})
 				await other.open()

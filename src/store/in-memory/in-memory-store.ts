@@ -23,14 +23,16 @@ import { writeOutcomeOf } from '../write-outcome'
 import {
 	announceInMemoryChange,
 	bumpVersion,
-	CLOSING_IN_MEMORY_CONNECTIONS,
 	dropInMemoryState,
 	ensureInMemoryState,
 	findInMemoryState,
 	inMemoryStateKeyOf,
 	listenToInMemoryProject,
-	OPEN_IN_MEMORY_CONNECTIONS,
 } from './in-memory-state'
+import {
+	CLOSING_IN_MEMORY_CONNECTIONS,
+	OPEN_IN_MEMORY_CONNECTIONS,
+} from './in-memory-state.constants'
 import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
 
 import { throwDialecteError } from '@/errors'

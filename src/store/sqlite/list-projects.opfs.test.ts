@@ -1,7 +1,6 @@
 // SQLite storage, as an app opts into it
 import '@/sqlite'
-import { ENGINE_IDLE_CLOSE_MS } from '../engine/hub/hub.constants'
-import { projectKeyOf } from '../engine/project-key'
+import { projectKeyOf } from '../project-key'
 import { listProjects } from './list-projects'
 import { namesDatabase } from './runtime/pool-header'
 import {
@@ -11,12 +10,13 @@ import {
 } from './runtime/runtime.constants'
 import { isEngineLockFree, TEST_ENGINE_URL } from './runtime/runtime.fixtures'
 import { ENGINE_WORKER_CASE_TIMEOUT_MS } from './runtime/runtime.fixtures.constants'
+import { ENGINE_IDLE_CLOSE_MS } from './served/hub/hub.constants'
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createProjectFactory } from '@/dialecte'
 import { toDialecteError } from '@/errors'
-import { withSqliteEngine } from '@/store/sqlite-storage.fixtures'
+import { withSqliteEngine } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE } from '@/test'
 
 import type { ProjectListing } from './list-projects.types'

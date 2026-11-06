@@ -1,7 +1,7 @@
-import { createEngineControl } from '../../engine/client/engine-control'
-import { EngineStore } from '../../engine/engine-store'
-import { engineLockNameOf } from '../../engine/project-key'
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
+import { createEngineControl } from '../served/client/engine-control'
+import { engineLockNameOf } from '../served/engine-lock'
+import { EngineStore } from '../served/engine-store'
 import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
 import { commitWaitsOf, epochNow } from './bench-commit-waits'
 import { stagesOf } from './bench-import-session'
@@ -259,8 +259,9 @@ describe('port bench (the engine served from a worker, over the store’s port)'
 		it.runIf(RUN && CELL_FILTER.test(cell))(
 			cell,
 			async () => {
+				const benchFixture = await commands.benchFixture({ name: fixture })
 				const file = await fetchFixtureFile({
-					fixture: await commands.benchFixture({ name: fixture }),
+					fixture: benchFixture,
 				})
 				const result = (await recordCell({
 					name: cell,

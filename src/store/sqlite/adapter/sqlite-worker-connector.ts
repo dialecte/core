@@ -1,9 +1,9 @@
 import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
 
-import { createWorkerConnector } from '@/store/engine/client/worker-connector'
+import { createWorkerConnector } from '@/store/sqlite/served/client/worker-connector'
 
 import type { SqliteWorkerConnectorParams } from './sqlite-worker-connector.types'
-import type { EngineConnector } from '@/store/engine/engine-store.types'
+import type { EngineConnector } from '@/store/sqlite/served/engine-store.types'
 
 /**
  * Direct mode on SQLite: the project's engine in the app's engine worker (`serveSqliteEngine`),

@@ -3,8 +3,8 @@ import { testStoreFor } from './test-store-for'
 import { describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
-import { EngineStore } from '@/store/engine/engine-store'
-import { withoutSqliteStorage, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { EngineStore } from '@/store/sqlite/served/engine-store'
+import { withoutSqliteStorage, withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 
 import type { StorageParam } from '@/project'
@@ -39,7 +39,8 @@ describe('the store a test project opens on, by its kind', () => {
 	for (const [description, { storage, expected }] of Object.entries(testCases)) {
 		it(description, async () => {
 			withSqliteStorage()
-			expected(await testStoreFor({ storage, name: 'kind-of', dialecte: TEST_DIALECTE }))
+			const store = await testStoreFor({ storage, name: 'kind-of', dialecte: TEST_DIALECTE })
+			expected(store)
 		})
 	}
 
@@ -74,7 +75,8 @@ describe('the store a test project opens on, by its kind', () => {
 			const { record } = await store.importFile({
 				file: new File([SOURCE_XML], 'source.xml', { type: 'text/xml' }),
 			})
-			expect(await store.count(record.id)).toBe(2)
+			const recordCount = await store.count(record.id)
+			expect(recordCount).toBe(2)
 		} finally {
 			await store.destroy()
 		}

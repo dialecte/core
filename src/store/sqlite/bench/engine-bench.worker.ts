@@ -1,11 +1,11 @@
-import { createHeartbeat, withOpaquePhases } from '../../engine/host/heartbeat'
-import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../../engine/host/host.constants'
 import { RECORD_COLUMN_LIST } from '../engine/engine.constants'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { inWriteTransaction } from '../engine/transaction'
 import { loadSqlite } from '../load-sqlite'
 import { installProgressBeat } from '../runtime/progress-beat'
 import { PROGRESS_BEAT_OPS } from '../runtime/runtime.constants'
+import { createHeartbeat, withOpaquePhases } from '../served/host/heartbeat'
+import { ENGINE_HEARTBEAT_INTERVAL_MS } from '../served/host/host.constants'
 import { createBenchImportRuntime, stagesOf } from './bench-import-session'
 import { installPool } from './bench-pool'
 import {
@@ -22,8 +22,8 @@ import * as Comlink from 'comlink'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 
-import type { Heartbeat } from '../../engine/host/host.types'
 import type { SqliteEngine, SqliteEngineOptions } from '../engine/engine.types'
+import type { Heartbeat } from '../served/host/host.types'
 import type {
 	EngineBenchWorkerApi,
 	EngineImportRun,

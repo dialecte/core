@@ -1,9 +1,9 @@
-import { EngineStore } from '../engine/engine-store'
 import { createSqliteConnector } from './adapter/sqlite-connector'
+import { EngineStore } from './served/engine-store'
 import { registeredSqliteEngine } from './sqlite-engine-registration'
 
-import type { SqliteConnectorParams } from '../sqlite-storage.types'
 import type { Store } from '../store.types'
+import type { SqliteConnectorParams } from './sqlite-storage.types'
 
 /**
  * The store of a project on `sqlite` storage: an EngineStore whose engine runs in a worker (hub or page), the worker

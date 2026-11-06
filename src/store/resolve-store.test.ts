@@ -1,7 +1,7 @@
-import { EngineStore } from './engine/engine-store'
 import { resolveStore, sqliteConnectorParamsOf } from './resolve-store'
-import { replaceSqliteStorage } from './sqlite-storage'
-import { withoutSqliteStorage, withSqliteStorage } from './sqlite-storage.fixtures'
+import { EngineStore } from './sqlite/served/engine-store'
+import { replaceSqliteStorage } from './sqlite/sqlite-storage'
+import { withoutSqliteStorage, withSqliteStorage } from './sqlite/sqlite-storage.fixtures'
 
 import { describe, it, expect, onTestFinished, vi } from 'vitest'
 

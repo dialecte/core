@@ -4,8 +4,8 @@ import {
 	makeDocument,
 } from '../../contract/store-contract.fixtures'
 import { createContractRuntime } from '../../contract/store-contract.import-session'
-import { EngineStore } from '../../engine/engine-store'
 import { loadSqlite } from '../load-sqlite'
+import { EngineStore } from '../served/engine-store'
 import { createInProcessConnector } from './in-process-link'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -65,8 +65,10 @@ describe('an in-process engine an import breaks', () => {
 				key: 'IMPORT_FAILED',
 			})
 			armed.failing = false
-			expect(await store.getDocuments()).toEqual([makeDocument({ id: 'kept' })])
-			expect(await store.getWriteOutcome({ writeId: 'w-stuck' })).toBe('not-applied')
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([makeDocument({ id: 'kept' })])
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w-stuck' })
+			expect(writeOutcome).toBe('not-applied')
 		} finally {
 			armed.failing = false
 			await store.destroy()

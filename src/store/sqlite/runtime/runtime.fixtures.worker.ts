@@ -1,6 +1,6 @@
 import { CONTRACT_DIALECTE } from '../../contract/store-contract.dialecte'
-import { createHeartbeat } from '../../engine/host/heartbeat'
 import { loadSqlite } from '../load-sqlite'
+import { createHeartbeat } from '../served/host/heartbeat'
 import { poolDirectoryOf } from './install-pool'
 import { installProgressBeat } from './progress-beat'
 import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'

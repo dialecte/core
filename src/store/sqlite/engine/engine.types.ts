@@ -3,7 +3,7 @@ import type {
 	EngineCommitParams,
 	EngineExportParams,
 	EngineImportParams,
-} from '../../engine/engine.types'
+} from '../served/engine.types'
 import type { HISTORY_ENTRY_STATE, HISTORY_PART, RECORD_INDEXES } from './engine.constants'
 import type { DialecteErrorKey } from '@/errors'
 import type { Perf } from '@/perf'

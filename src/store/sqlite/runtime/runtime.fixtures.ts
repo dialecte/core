@@ -1,13 +1,13 @@
-import { createEngineClient } from '../../engine/client/engine-client'
-import { createEngineControl } from '../../engine/client/engine-control'
-import { engineLockNameOf } from '../../engine/project-key'
+import { createEngineClient } from '../served/client/engine-client'
+import { createEngineControl } from '../served/client/engine-control'
+import { engineLockNameOf } from '../served/engine-lock'
 import { SQLITE_WASM_URL } from '../sqlite-wasm-url'
 import { poolDirectoryOf } from './install-pool'
 import { OPAQUE_DIRECTORY, POOL_FILE_HEADER } from './runtime.constants'
 import { FIXTURE_DIALECTE, RUNTIME_FIXTURE_CHANNEL } from './runtime.fixtures.constants'
 
-import type { EngineControl } from '../../engine/client/client.types'
-import type { EngineApi, EngineLockMode } from '../../engine/engine.types'
+import type { EngineControl } from '../served/client/client.types'
+import type { EngineApi, EngineLockMode } from '../served/engine.types'
 import type {
 	RuntimeFixtureNotice,
 	RuntimeFixtureOrder,

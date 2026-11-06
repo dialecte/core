@@ -4,14 +4,14 @@ import { describe, expect, it, onTestFinished } from 'vitest'
 
 import { createCountingDialecte } from '@/dialecte/create-project-factory.fixtures'
 import { toDialecteError } from '@/errors'
-import { replaceSqliteStorage } from '@/store/sqlite-storage'
-import { SQLITE_STORAGE_KEY } from '@/store/sqlite-storage.constants'
+import { replaceSqliteStorage } from '@/store/sqlite/sqlite-storage'
+import { SQLITE_STORAGE_KEY } from '@/store/sqlite/sqlite-storage.constants'
 
 import type {
 	SqliteEngineRegistration,
 	SqliteStorage,
 	SqliteStorageHolder,
-} from '@/store/sqlite-storage.types'
+} from '@/store/sqlite/sqlite-storage.types'
 
 const URL_A = 'https://dialecte.test/assets/engine-a.worker.js'
 const URL_B = 'https://dialecte.test/assets/engine-b.worker.js'

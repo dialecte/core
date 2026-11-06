@@ -1,11 +1,11 @@
 import { refuseUnnamableProject } from './project-name'
-import { registeredSqliteStorage } from './sqlite-storage'
+import { registeredSqliteStorage } from './sqlite/sqlite-storage'
 
 import { throwDialecteError } from '@/errors'
 import { DexieStore, InMemoryStore } from '@/store'
 
 import type { StorageParam } from '../project/types'
-import type { SqliteConnectorParams } from './sqlite-storage.types'
+import type { SqliteConnectorParams } from './sqlite/sqlite-storage.types'
 import type { Perf } from '@/perf'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { Store } from '@/store'

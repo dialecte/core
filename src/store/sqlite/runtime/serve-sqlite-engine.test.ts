@@ -9,7 +9,7 @@ import {
 	sessionRecords,
 } from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
-import { EngineStore } from '../../engine/engine-store'
+import { EngineStore } from '../served/engine-store'
 import { POOL_CAPACITY } from './runtime.constants'
 import {
 	TEST_ENGINE_URL,
@@ -57,7 +57,7 @@ import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worke
 import { TEST_DIALECTE_CONFIG } from '@/test'
 import { TEST_CONFIG_KEY } from '@/test/constant'
 
-import type { EngineApi } from '../../engine/engine.types'
+import type { EngineApi } from '../served/engine.types'
 import type {
 	FixtureDialecteRef,
 	RuntimeFixtureOrder,

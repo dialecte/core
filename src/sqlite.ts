@@ -1,3 +1,4 @@
+import { runEngineControlLoop } from './store/sqlite/runtime/engine-control-loop'
 /**
  * `@dialecte/core/sqlite` - SQLite storage, opt-in: importing this entry once (the app's entry, a test runner's setup
  * file) registers the `sqlite` storage kind, so projects open on `storage: { type: 'sqlite' }` - one engine per
@@ -9,20 +10,19 @@
  * carries its page side. An app that never imports it neither emits nor downloads the SQLite engine's side, its wasm or
  * the hub's worker; `{ type: 'sqlite' }` there is refused `PROJECT_SQLITE_NOT_IMPORTED`.
  */
-import { registerSqliteStorage } from './store/sqlite-storage'
-import { runEngineControlLoop } from './store/sqlite/runtime/engine-control-loop'
+import { registerSqliteStorage } from './store/sqlite/sqlite-storage'
 import { sqliteStoreOf } from './store/sqlite/sqlite-store-of'
 
 import type { ServeSqliteEngineParams } from './store/sqlite/runtime/serve-sqlite-engine.types'
 
 registerSqliteStorage({ storage: { storeOf: sqliteStoreOf } })
 
-export { adoptHubPort, connectHub } from './store/hub-public'
+export { adoptHubPort, connectHub } from './store/sqlite/hub-public'
 export { listProjects } from './store/sqlite/list-projects'
 export { registerSqliteEngine } from './store/sqlite/sqlite-engine-registration'
 export type { ProjectListing, ProjectListingState } from './store/sqlite/list-projects.types'
-export type { HubPortHandle, HubRealm } from './store/engine/hub/hub-client.types'
-export type { SqliteEngineRegistration } from './store/sqlite-storage.types'
+export type { HubPortHandle, HubRealm } from './store/sqlite/served/hub/hub-client.types'
+export type { SqliteEngineRegistration } from './store/sqlite/sqlite-storage.types'
 export type {
 	ServeSqliteEngineParams,
 	SqliteEngineDialecte,

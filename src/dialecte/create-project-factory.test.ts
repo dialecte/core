@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { Project } from '@/project'
-import { withoutSqliteStorage, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
+import { withoutSqliteStorage, withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { XMLNS_DEFAULT_NAMESPACE } from '@/test/constant'
 
 const SOURCE_XML = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="1"/><A aA="2"/></Root>`

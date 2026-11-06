@@ -13,7 +13,7 @@ import {
 import { inWriteTransaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
-import { refuseOtherCreation } from '@/store/engine/creation-refusal'
+import { refuseOtherCreation } from '@/store/sqlite/served/creation-refusal'
 import { TABLE_BLOBS, TABLE_CHANGELOG, TABLE_DOCUMENTS, TABLE_META } from '@/store/store.constants'
 
 import type { MetaRow, RecordIndex } from './engine.types'

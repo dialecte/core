@@ -1,4 +1,4 @@
-import type { Heartbeat } from '../../engine/host/host.types'
+import type { Heartbeat } from '../served/host/host.types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /**

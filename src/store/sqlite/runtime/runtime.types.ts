@@ -1,5 +1,5 @@
-import type { Heartbeat, ServedClient, StoreEvents } from '../../engine/host/host.types'
 import type { SqliteEngine, SqliteEngineOptions } from '../engine/engine.types'
+import type { Heartbeat, ServedClient, StoreEvents } from '../served/host/host.types'
 import type { SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
 /** What a SQLite engine opens with besides what every engine is told (`EngineOpenParams.settings`). */
