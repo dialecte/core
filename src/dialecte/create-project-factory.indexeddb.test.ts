@@ -1,5 +1,5 @@
 import { createProjectFactory } from './create-project-factory'
-import { createCountingDialecte, ENGINE_URL } from './create-project-factory.fixtures'
+import { createCountingDialecte } from './create-project-factory.fixtures'
 
 import Dexie from 'dexie'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -14,10 +14,7 @@ describe('createProjectFactory on IndexedDB', () => {
 	})
 
 	it('without a storage choice the project opens on the local store', async () => {
-		const factory = createProjectFactory({
-			dialecte: createCountingDialecte(),
-			engineUrl: ENGINE_URL,
-		})
+		const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 		const project = await factory().open(`factory-local-${crypto.randomUUID()}`)
 		projects.push(project)
 		const databaseExists = await Dexie.exists(project.name)

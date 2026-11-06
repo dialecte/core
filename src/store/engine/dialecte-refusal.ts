@@ -1,10 +1,11 @@
 import { createDialecteError } from '@/errors'
 
 /**
- * An engine asked for a project of another dialecte, or of another version of it - what a spawner's address
- * pointing at another worker gives: refused `PROJECT_DIALECTE_MISMATCH` or `PROJECT_DIALECTE_VERSION_MISMATCH`,
- * naming both. The engine refuses itself before it takes any lock or file; the realm refuses an engine that
- * answers otherwise than it asked (ending it, as a failed open). A destroy names no version.
+ * An engine asked for a project of another dialecte, or of another version of it - what an engine worker running
+ * another dialecte than the one a realm asks gives: refused `PROJECT_DIALECTE_MISMATCH` or
+ * `PROJECT_DIALECTE_VERSION_MISMATCH`, naming both. The engine refuses itself before it takes any lock or file; the realm refuses an engine that
+ * answers otherwise than it asked (ending it, as a failed open), and a view asking a project whose engine it runs at
+ * another version (never joined to it). A destroy names no version.
  */
 export function refuseAnotherDialecte(params: {
 	project: string

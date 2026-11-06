@@ -2,13 +2,13 @@ import type { EngineControl } from '../client/client.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
 
 /**
- * An engine a page can start for the hub: its dialecte, the version that dialecte runs, its worker. A dialecte's
- * project factory carries its own (`factory.spawner`), built from the declaration.
+ * An engine a page can start for the hub: its dialecte, the version that dialecte runs, its worker. Made from what the
+ * app registered (`registerSqliteEngine`), one per dialecte, all on the app's one worker file.
  */
 export type HubEngineSpawner = {
 	dialecteId: string
 	dialecteVersion: string
-	/** The address of the dialecte's engine worker (its `?worker&url` export). */
+	/** The address of the app's engine worker file. */
 	engineUrl: string
 }
 

@@ -16,17 +16,20 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createProjectFactory } from '@/dialecte'
 import { toDialecteError } from '@/errors'
+import { withSqliteEngine } from '@/store/sqlite-storage.fixtures'
 import { TEST_DIALECTE } from '@/test'
 
 import type { ProjectListing } from './list-projects.types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
-/** Core's test dialecte as a dialecte package exports it, its engine worker beside. */
-const createTestProject = createProjectFactory({
-	dialecte: TEST_DIALECTE,
-	engineUrl: TEST_ENGINE_URL,
-})
+/** Core's test dialecte as a dialecte package exports it. */
+const createTestProject = createProjectFactory({ dialecte: TEST_DIALECTE })
+
+/** The app's engine registered for the case: core's test dialecte served by its worker. */
+function withTestEngine(): void {
+	withSqliteEngine({ url: TEST_ENGINE_URL, dialectes: [TEST_DIALECTE] })
+}
 
 function uniqueName(): string {
 	return `listed-${crypto.randomUUID()}`
@@ -34,7 +37,10 @@ function uniqueName(): string {
 
 /** A project of the test dialecte made on SQLite storage, a document in it, closed; destroyed after the case. */
 async function madeProject(params: { name: string }): Promise<void> {
-	const project = await createTestProject({ storage: { type: 'sqlite' } }).open(params.name)
+	const opening = createTestProject({ storage: { type: 'sqlite' } }).open(params.name)
+	// an open the store refuses fails the case on this assertion
+	await expect(opening).resolves.toBeDefined()
+	const project = await opening
 	await project.initEmptyDocument()
 	await project.close()
 	destroyedAfter({ name: params.name })
@@ -89,7 +95,8 @@ async function overwriteDatabase(params: {
 	for await (const entry of pool.values()) {
 		if (entry.kind !== 'file') continue
 		const file = await entry.getFile()
-		const header = new Uint8Array(await file.slice(0, POOL_FILE_HEADER.headBytes).arrayBuffer())
+		const fileSliceBuffer = await file.slice(0, POOL_FILE_HEADER.headBytes).arrayBuffer()
+		const header = new Uint8Array(fileSliceBuffer)
 		if (!namesDatabase({ size: file.size, header })) continue
 		// a lock let go does not mean every handle closed yet: the write is tried until the file takes it
 		await expect
@@ -134,15 +141,19 @@ function bigEndian(params: { value: number }): Uint8Array {
 
 describe('the projects on SQLite storage, read from the private file system', () => {
 	it('two projects made → both listed current, of the dialecte', async () => {
+		withTestEngine()
 		const [first, second] = [uniqueName(), uniqueName()]
 		await madeProject({ name: first })
 		await madeProject({ name: second })
-		expect(await listedAs({ name: first })).toMatchObject({
+		const firstListed = await listedAs({ name: first })
+		expect(firstListed).toMatchObject({
 			dialecteId: TEST_DIALECTE.id,
 			state: 'current',
 		})
-		expect(await listedAs({ name: second })).toMatchObject({ state: 'current' })
-		expect((await listedAs({ name: first }))!.bytes).toBeGreaterThan(0)
+		const secondListed = await listedAs({ name: second })
+		expect(secondListed).toMatchObject({ state: 'current' })
+		const firstListedAgain = await listedAs({ name: first })
+		expect(firstListedAgain!.bytes).toBeGreaterThan(0)
 	})
 
 	type DestroyCase = { damage: (params: { name: string }) => Promise<void>; listedAs: string }
@@ -170,30 +181,39 @@ describe('the projects on SQLite storage, read from the private file system', ()
 	}
 	for (const [description, { damage, listedAs: state }] of Object.entries(destroyCases)) {
 		it(`${description}; destroyed by name → its directory gone, no longer listed`, async () => {
+			withTestEngine()
 			const name = uniqueName()
 			await madeProject({ name })
 			await damage({ name })
-			expect(await listedAs({ name })).toMatchObject({ state })
-			await createTestProject.destroyProject({ name })
-			expect(await listedAs({ name })).toBeUndefined()
+			const listedProject = await listedAs({ name })
+			expect(listedProject).toMatchObject({ state })
+			await expect(createTestProject.destroyProject({ name })).resolves.toBeUndefined()
+			const listedAfterDestroy = await listedAs({ name })
+			expect(listedAfterDestroy).toBeUndefined()
 		})
 	}
 
 	it('a pool made, its files blank → new; destroyed by name → no longer listed', async () => {
+		withTestEngine()
 		const name = uniqueName()
 		const pool = await poolOf({ name })
 		const file = await pool.getFileHandle('blank', { create: true })
 		const writable = await file.createWritable()
 		await writable.write(new Uint8Array(POOL_FILE_HEADER.bytes))
 		await writable.close()
-		expect(await listedAs({ name })).toMatchObject({ state: 'new' })
-		await createTestProject.destroyProject({ name })
-		expect(await listedAs({ name })).toBeUndefined()
+		const listedProject = await listedAs({ name })
+		expect(listedProject).toMatchObject({ state: 'new' })
+		await expect(createTestProject.destroyProject({ name })).resolves.toBeUndefined()
+		const listedAfterDestroy = await listedAs({ name })
+		expect(listedAfterDestroy).toBeUndefined()
 	})
 
 	it('a project open in a view → destroyed by name refused PROJECT_OPEN_ELSEWHERE, still listed', async () => {
+		withTestEngine()
 		const name = uniqueName()
-		const project = await createTestProject({ storage: { type: 'sqlite' } }).open(name)
+		const opening = createTestProject({ storage: { type: 'sqlite' } }).open(name)
+		await expect(opening).resolves.toBeDefined()
+		const project = await opening
 		await project.initEmptyDocument()
 		destroyedAfter({ name })
 		onTestFinished(function closeProject() {
@@ -208,6 +228,7 @@ describe('the projects on SQLite storage, read from the private file system', ()
 			},
 		)
 		expect(key).toBe('PROJECT_OPEN_ELSEWHERE')
-		expect(await listedAs({ name })).toMatchObject({ state: 'current' })
+		const listedProject = await listedAs({ name })
+		expect(listedProject).toMatchObject({ state: 'current' })
 	})
 })

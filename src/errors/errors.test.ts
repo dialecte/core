@@ -1,4 +1,4 @@
-import { ERROR_CATALOG } from './codes'
+import { ERROR_CATALOG } from './codes.constants'
 import { defineErrors, isKnownDialecteError, throwDialecteError, toDialecteError } from './errors'
 
 import { describe, expect, expectTypeOf, it } from 'vitest'

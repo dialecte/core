@@ -12,12 +12,14 @@ import {
 	NODE_ONLY_TEST_FILES,
 	NODE_STORE_CONTRACT_TEST_FILES,
 	UNIT_TEST_PATTERN,
+	WORKER_FILE_PATTERN,
 } from './vitest.config.constants'
 
 import { playwright } from '@vitest/browser-playwright'
 import { mergeConfig, defineConfig, configDefaults } from 'vitest/config'
 
 import type { TierOnlyTestFile } from './vitest.config.types'
+import type { Plugin } from 'vite'
 import type { BrowserConfigOptions } from 'vitest/node'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
@@ -110,6 +112,24 @@ const nodeStoreContractPaths = assertEachIncludeMatches({
 })
 
 /**
+ * A worker file started from its address (`new URL(file, import.meta.url)`) given what the browser runner gives one
+ * it knows from Vite's `?worker`: the runner wraps every dynamic import in a member of its page's global, which a
+ * worker does not have.
+ */
+function dynamicImportInWorkerFiles(): Plugin {
+	return {
+		name: 'core-test:dynamic-import-in-worker-files',
+		transform(code, id) {
+			if (!WORKER_FILE_PATTERN.test(id)) return
+			return {
+				code: `globalThis.__vitest_browser_runner__ ??= { wrapDynamicImport: (load) => load() };\n${code}`,
+				map: null,
+			}
+		},
+	}
+}
+
+/**
  * A browser test project, sqlite-wasm left to resolve its own wasm. Its `groupOrder` is its own: a bare `vitest run`
  * runs the browser projects one after the other, never two Chromiums at once.
  */
@@ -124,7 +144,7 @@ function browserTestProject(params: {
 		resolve: viteConfig.resolve,
 		// sqlite-wasm resolves its wasm itself: a pre-bundled copy loses the file next to it
 		optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
-		plugins: [],
+		plugins: [dynamicImportInWorkerFiles()],
 		test: {
 			name,
 			sequence: { groupOrder },

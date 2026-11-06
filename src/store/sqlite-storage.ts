@@ -25,12 +25,17 @@ export function replaceSqliteStorage(params: { storage: SqliteStorage | undefine
 	}
 }
 
+/** The `sqlite` storage kind on this realm, whichever copy of the library registered it; none until one did. */
+export function realmSqliteStorage(): SqliteStorage | undefined {
+	return (globalThis as SqliteStorageHolder)[SQLITE_STORAGE_KEY]
+}
+
 /**
  * The `sqlite` storage kind registered; none - the app never imported `@dialecte/core/sqlite`, or imported it from a
  * copy of the library of another storage version - refused `PROJECT_SQLITE_NOT_IMPORTED` for `project`.
  */
 export function registeredSqliteStorage(params: { project: string }): SqliteStorage {
-	const storage = (globalThis as SqliteStorageHolder)[SQLITE_STORAGE_KEY]
+	const storage = realmSqliteStorage()
 	if (!storage) {
 		throwDialecteError('PROJECT_SQLITE_NOT_IMPORTED', {
 			detail: `Project "${params.project}" asks for SQLite storage, but '@dialecte/core/sqlite' was never imported in this realm: add \`import '@dialecte/core/sqlite'\` to the app's entry (a test runner's setup file for a test on it). Imported already? Then it came from another copy of @dialecte/core whose SQLite storage is of another version than the one opening the project (a dialecte bringing its own core): align the core versions`,

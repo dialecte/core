@@ -56,6 +56,13 @@ export async function orderFixture(params: { order: RuntimeFixtureOrder }): Prom
 	listener.close()
 }
 
+/** An XML file of a fixture dialecte: `body` inside the root of its default namespace. */
+export function fixtureFile(params: { namespaceUri: string; body: string }): File {
+	return new File([`<Root xmlns="${params.namespaceUri}">${params.body}</Root>`], 'fixture.xml', {
+		type: 'text/xml',
+	})
+}
+
 /** A project name of its own. */
 export function uniqueProject(): string {
 	return `runtime-${crypto.randomUUID()}`
@@ -152,6 +159,7 @@ export async function poolState(params: {
  */
 export async function poolFileDigests(params: {
 	project: string
+	dialecteId?: string
 }): Promise<Record<string, string>> {
 	let directory = await navigator.storage.getDirectory()
 	for (const name of [...poolDirectoryOf(fixtureAddress(params)).split('/'), OPAQUE_DIRECTORY]) {
@@ -268,7 +276,7 @@ export async function holdPoolFile(params: {
 	project: string
 }): Promise<{ file: string; release: () => Promise<void> }> {
 	const worker = new Worker(fixtureUrl({ scenario: 'holder' }), { type: 'module' })
-	const answer = function nextAnswer(): Promise<{ type: string; file?: string }> {
+	function answer(): Promise<{ type: string; file?: string }> {
 		return new Promise(function waitForAnswer(resolve) {
 			worker.addEventListener('message', (event) => resolve(event.data), { once: true })
 		})

@@ -36,10 +36,6 @@
 			"types": "./dist/helpers.d.ts",
 			"default": "./dist/helpers.js"
 		},
-		"./engine": {
-			"types": "./dist/engine.d.ts",
-			"default": "./dist/engine.js"
-		},
 		"./sqlite": {
 			"types": "./dist/sqlite.d.ts",
 			"default": "./dist/sqlite.js"

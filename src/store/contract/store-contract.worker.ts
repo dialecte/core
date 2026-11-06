@@ -1,7 +1,7 @@
 import { CONTRACT_CLIENT_GONE_CHANNEL, CONTRACT_ENGINE_CHANNEL } from './store-contract.constants'
 import { CONTRACT_DIALECTE } from './store-contract.dialecte'
 
-import { serveDialecteEngine } from '@/engine'
+import { serveSqliteEngine } from '@/sqlite'
 
 import type {
 	ContractClientGoneNotice,
@@ -60,4 +60,4 @@ new BroadcastChannel(CONTRACT_ENGINE_CHANNEL).onmessage = function obey(
 	if (event.data.type === 'end' && event.data.project === servedProject) self.close()
 }
 
-serveDialecteEngine({ dialecte: CONTRACT_DIALECTE })
+serveSqliteEngine({ dialectes: [CONTRACT_DIALECTE] })

@@ -47,7 +47,7 @@ export type WorkerConnectorParams<GenericSettings> = {
 	 */
 	dialecteId: string
 	dialecteVersion: string
-	/** The address of the dialecte's engine worker (its `?worker&url` export). */
+	/** The address of the engine worker that serves the dialecte. */
 	engineUrl: string
 	/** Measure the import's and the export's stages in the engine (`dev.perf`). */
 	perf?: boolean
@@ -87,6 +87,8 @@ export type PendingControlRequest = {
 /** The engine worker a realm runs for one project in direct mode, and the connections it serves. */
 export type RealmEngine = {
 	worker: Worker
+	/** The dialecte's version it was started for: a connection of another version is refused, never joined. */
+	dialecteVersion: string
 	/** Counts the engines of the name in this realm: a connection adopted by another one adopts again. */
 	generation: number
 	/** Settles once the engine opened (or failed to). */

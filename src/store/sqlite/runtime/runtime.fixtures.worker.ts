@@ -5,6 +5,8 @@ import { poolDirectoryOf } from './install-pool'
 import { installProgressBeat } from './progress-beat'
 import { OPAQUE_DIRECTORY, PROGRESS_BEAT_OPS } from './runtime.constants'
 import {
+	ENGINE_CHUNK_FAILURE,
+	FREE_BYTES_OF_SCENARIO,
 	INSTALL_REFUSAL,
 	OPEN_FAILURE,
 	OTHER_FIXTURE_DIALECTE,
@@ -12,13 +14,19 @@ import {
 	SLOW_DDL_MS,
 	SLOW_DESTROY_MS,
 	SLOW_DDL_PATTERN,
+	SLOW_ENGINE_CHUNK_MS,
 	SLOW_STATEMENT_STEP_MS,
 	UNSAFE_POOL_SQLITE,
 	YIELDING_SLICE_MS,
 } from './runtime.fixtures.constants'
+import {
+	REPEATED_FIXTURE_DIALECTE,
+	SECOND_FIXTURE_DIALECTE,
+} from './runtime.fixtures.dialectes.constants'
 
 import { defineDialecte } from '@/dialecte'
-import { serveDialecteEngine } from '@/engine'
+import { serveSqliteEngine } from '@/sqlite'
+import { runEngineControlLoop } from '@/store/sqlite/runtime/engine-control-loop'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type {
@@ -31,6 +39,7 @@ import type {
 	RuntimeFixtureScenario,
 } from './runtime.fixtures.types'
 import type { SyncAccessFileHandle } from './runtime.types'
+import type { SqliteEngineChunk } from './serve-sqlite-engine.types'
 import type { AnyRawRecord } from '@/types'
 
 /**
@@ -45,11 +54,6 @@ import type { AnyRawRecord } from '@/types'
 const scenario = new URL(self.location.href).searchParams.get(
 	'scenario',
 ) as RuntimeFixtureScenario | null
-
-const FREE_BYTES_OF_SCENARIO: Partial<Record<RuntimeFixtureScenario, number>> = {
-	'small-quota': 1000,
-	'import-quota': 2 * 1024 * 1024,
-}
 
 if (scenario === 'broken') throw new Error('a worker module failing as it loads')
 
@@ -141,7 +145,27 @@ function serveEngine(): void {
 	if (scenario === 'mute-clients') muteClientsWhenOrdered()
 	if (scenario === 'other-wire') answerAnotherWire()
 	if (scenario === 'unchecked-open') openWhateverAsked()
-	serveDialecteEngine({ dialecte: RUNTIME_FIXTURE_DIALECTE })
+	if (scenario === 'slow-engine-chunk' || scenario === 'failing-engine-chunk') {
+		runEngineControlLoop({
+			dialectes: dialectesOfScenario(),
+			loadEngine: loadEngineChunkOfScenario,
+		})
+		return
+	}
+	serveSqliteEngine({ dialectes: dialectesOfScenario() })
+}
+
+/**
+ * The engine's chunk as the light side of the worker asks for it: held back (`slow-engine-chunk`) so control messages
+ * reach the worker while it loads, or failing to load (`failing-engine-chunk`).
+ */
+function loadEngineChunkOfScenario(): Promise<SqliteEngineChunk> {
+	if (scenario === 'failing-engine-chunk') return Promise.reject(new Error(ENGINE_CHUNK_FAILURE))
+	return new Promise<void>(function holdBack(resolve) {
+		setTimeout(resolve, SLOW_ENGINE_CHUNK_MS)
+	}).then(function loadChunk() {
+		return import('@/sqlite-engine')
+	})
 }
 
 /**
@@ -358,7 +382,7 @@ function openWhateverAsked(): void {
 		'message',
 		function askAsOwn(event: MessageEvent<{ type?: string; dialecteId?: string }>) {
 			if (event.data?.type !== 'open') return
-			event.data.dialecteId = RUNTIME_FIXTURE_DIALECTE.id
+			event.data.dialecteId = runtimeFixtureDialecte.id
 		},
 	)
 }
@@ -396,7 +420,7 @@ function busyWait(params: { ms: number }): void {
  * `after-pause:<ms>` holds `afterImport` that long (dialecte code the engine tells as busy),
  * `after-yield-pause:<ms>` holds it that long in slices with a message turn between them.
  */
-const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
+const runtimeFixtureDialecte = defineDialecte({
 	// another dialecte's engine on a project of a name the test dialecte has too
 	id: scenario === 'other-dialecte' ? OTHER_FIXTURE_DIALECTE.dialecteId : CONTRACT_DIALECTE.id,
 	version: CONTRACT_DIALECTE.version,
@@ -442,6 +466,16 @@ const RUNTIME_FIXTURE_DIALECTE = defineDialecte({
 		}
 	},
 })
+
+/** The dialectes a scenario's worker is given. */
+function dialectesOfScenario() {
+	if (scenario === 'two-dialectes') return [runtimeFixtureDialecte, SECOND_FIXTURE_DIALECTE]
+	// the repeated id sits between the two others: the second declaration of the id is not the last
+	if (scenario === 'same-id-twice') {
+		return [runtimeFixtureDialecte, SECOND_FIXTURE_DIALECTE, REPEATED_FIXTURE_DIALECTE]
+	}
+	return [runtimeFixtureDialecte]
+}
 
 /** A pause marker a record carries in `bB`. */
 function markerOf(params: {
@@ -515,7 +549,7 @@ function serveHolder(): void {
 				let directory = await navigator.storage.getDirectory()
 				for (const name of [
 					...poolDirectoryOf({
-						dialecteId: RUNTIME_FIXTURE_DIALECTE.id,
+						dialecteId: runtimeFixtureDialecte.id,
 						project: event.data.project,
 					}).split('/'),
 					OPAQUE_DIRECTORY,

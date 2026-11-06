@@ -1,6 +1,5 @@
 import type { ExtensionModules } from '@/document'
 import type { Project, StorageParam } from '@/project'
-import type { HubEngineSpawner } from '@/store'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
 /** What a dialecte gives `defineDialecte`: everything core derives a Project, a test runner and an engine from. */
@@ -46,12 +45,6 @@ export type CreateProjectFactoryParams<
 	GenericConfigKey extends string = string,
 > = {
 	dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>
-	/**
-	 * The address of the dialecte's engine worker: the URL its module exports from a `?worker&url`
-	 * import of its worker entry. The store that runs the engine spawns
-	 * `new Worker(engineUrl, { type: 'module' })` on it.
-	 */
-	engineUrl: string
 }
 
 /** What a consumer chooses per project; everything else comes from the declaration. */
@@ -63,10 +56,7 @@ export type CreateProjectParams<CustomModules extends ExtensionModules = Record<
 	dev?: { perf?: boolean }
 }
 
-/**
- * Makes a Project of the dialecte: call it, then `open(name)`. Carries the declaration and the
- * engine address it was made with.
- */
+/** Makes a Project of the dialecte: call it, then `open(name)`. Carries the declaration it was made with. */
 export type ProjectFactory<
 	GenericConfig extends AnyDialecteConfig,
 	GenericModules extends ExtensionModules = Record<never, never>,
@@ -76,9 +66,6 @@ export type ProjectFactory<
 		params?: CreateProjectParams<CustomModules>,
 	): Project<GenericConfig, GenericModules & CustomModules>
 	readonly dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>
-	readonly engineUrl: string
-	/** The dialecte's engine as a page registers it with the hub: `connectHub({ spawners: [factory.spawner] })`. */
-	readonly spawner: HubEngineSpawner
 	/**
 	 * Delete the dialecte's project of that name on SQLite storage without opening it (an `outdated` or `lost` one of
 	 * `listProjects` too); refused `PROJECT_OPEN_ELSEWHERE` while a view has it open.
@@ -93,6 +80,4 @@ export type CreateDialecteProjectParams<
 	CustomModules extends ExtensionModules = Record<never, never>,
 > = CreateProjectParams<CustomModules> & {
 	dialecte: DialecteDeclaration<GenericConfig, GenericModules, string>
-	/** The address of the dialecte's engine worker, from its project factory: `sqlite` storage needs it. */
-	engineUrl?: string
 }

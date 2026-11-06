@@ -24,6 +24,7 @@ import {
 	CHANGE_TOLD_WITHIN_MS,
 	DEAF_DESTROY_BUDGET_MS,
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	FRESH_WORKER_NOTICE_TIMEOUT_MS,
 	SILENT_ENGINE_WAIT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DESTROY_MS,
@@ -465,12 +466,14 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				liveness: { heartbeatTimeoutMs: SILENT_ENGINE_WAIT_MS },
 			})
 			const link = await connector.connect()
-			expect(await errorOfRejection(link.engine())).toMatchObject({
+			const engineRejectionError = await errorOfRejection(link.engine())
+			expect(engineRejectionError).toMatchObject({
 				key: 'PROJECT_ENGINE_UNAVAILABLE',
 			})
 			await link.close()
 			// no wait: the close is settled on the ended engine's lock
-			expect(await isEngineLockFree({ project: name })).toBe(true)
+			const lockFree = await isEngineLockFree({ project: name })
+			expect(lockFree).toBe(true)
 			await createSqliteWorkerConnector({
 				...FIXTURE_DIALECTE,
 				name,
@@ -487,16 +490,15 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 					engineUrl: fixtureUrl({ scenario: 'other-dialecte' }),
 				}).connect(),
 			)
-			expect(otherAddress).toMatchObject({
-				key: 'PROJECT_DIALECTE_MISMATCH',
-				meta: {
-					project: name,
-					projectDialecteId: OTHER_FIXTURE_DIALECTE.dialecteId,
-					realmDialecteId: FIXTURE_DIALECTE.dialecteId,
-				},
+			expect(otherAddress).toMatchObject({ key: 'PROJECT_DIALECTE_MISMATCH' })
+			expect(otherAddress).toHaveProperty('meta', {
+				project: name,
+				realmDialecteId: FIXTURE_DIALECTE.dialecteId,
+				engineDialecteIds: [OTHER_FIXTURE_DIALECTE.dialecteId],
 			})
 			for (const dialecteId of [FIXTURE_DIALECTE.dialecteId, OTHER_FIXTURE_DIALECTE.dialecteId]) {
-				expect(await poolState({ project: name, dialecteId }), dialecteId).toEqual({
+				const poolStatus = await poolState({ project: name, dialecteId })
+				expect(poolStatus, dialecteId).toEqual({
 					exists: false,
 					files: 0,
 				})
@@ -510,12 +512,11 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			// asked again at once: the next engine waits until the one refused let its own lock go
 			for (const attempt of [1, 2]) {
 				const refused = await errorOfRejection(unchecked.connect())
-				expect(refused, `attempt ${attempt}`).toMatchObject({
-					key: 'PROJECT_DIALECTE_MISMATCH',
-					meta: {
-						projectDialecteId: FIXTURE_DIALECTE.dialecteId,
-						realmDialecteId: 'core/elsewhere',
-					},
+				expect(refused, `attempt ${attempt}`).toMatchObject({ key: 'PROJECT_DIALECTE_MISMATCH' })
+				expect(refused, `attempt ${attempt}`).toHaveProperty('meta', {
+					project: name,
+					projectDialecteId: FIXTURE_DIALECTE.dialecteId,
+					realmDialecteId: 'core/elsewhere',
 				})
 			}
 			// the engine that opened anyway is ended: its lock let go
@@ -665,7 +666,8 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 						)
 						.toBe(true)
 					await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
-					expect(await isEngineLockFree({ project: name })).toBe(true)
+					const lockFree = await isEngineLockFree({ project: name })
+					expect(lockFree).toBe(true)
 					expect(heard).toEqual([{ type: 'resync' }])
 					return
 				}
@@ -718,7 +720,8 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			// the away connection starts an engine expecting its project; a new one joins it as it opens
 			const refused = keyOfRejection(away.engine())
 			const fresh = await connector.connect()
-			expect(await refused).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+			const refusedOutcome = await refused
+			expect(refusedOutcome).toBe('PROJECT_DESTROYED_WHILE_AWAY')
 			const freshEngine = await fresh.engine()
 			const documents = await freshEngine.getDocuments()
 			expect(documents).toEqual([])
@@ -739,7 +742,8 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			const link = await connector.connect()
 			await link.engine()
 			await link.close()
-			expect(await isEngineLockFree({ project: name })).toBe(true)
+			const lockFree = await isEngineLockFree({ project: name })
+			expect(lockFree).toBe(true)
 			await connector.destroy()
 		})
 
@@ -885,7 +889,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			link.close()
 			const asked = countDestroysAsked({ project: name })
 			const destroying = connector.destroy()
-			await expect.poll(asked.count).toBe(1)
+			await expect.poll(asked.count, { timeout: FRESH_WORKER_NOTICE_TIMEOUT_MS }).toBe(1)
 			const again = await connector.connect()
 			await destroying
 			const documents = await documentsOf({ link: again })
@@ -907,7 +911,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			link.close()
 			await connector.destroy()
 			// the fresh worker's notice may come after its answer
-			await expect.poll(asked.count).toBe(1)
+			await expect.poll(asked.count, { timeout: FRESH_WORKER_NOTICE_TIMEOUT_MS }).toBe(1)
 			const again = await connector.connect()
 			const documents = await documentsOf({ link: again })
 			expect(documents).toEqual([])
@@ -999,9 +1003,11 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				)
 			})
 			try {
-				expect(await keyOfRejection(connector.destroy())).toBe('PROJECT_OPEN_ELSEWHERE')
+				const connectorDestroyRefusalKey = await keyOfRejection(connector.destroy())
+				expect(connectorDestroyRefusalKey).toBe('PROJECT_OPEN_ELSEWHERE')
 				const startedAt = performance.now()
-				expect(await keyOfRejection(connector.connect())).toBe('PROJECT_OPEN_ELSEWHERE')
+				const connectorConnectRefusalKey = await keyOfRejection(connector.connect())
+				expect(connectorConnectRefusalKey).toBe('PROJECT_OPEN_ELSEWHERE')
 				// refused at once, not once the open budget ran out
 				expect(performance.now() - startedAt).toBeLessThan(openBudgetMs)
 			} finally {

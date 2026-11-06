@@ -5,7 +5,7 @@
  * `shared-shapes.test.ts` fails until it is: the shape (their members, and every type of the package they reach) is
  * recorded per version in `__shapes__/sqlite-storage-v<version>.txt`, written at the first local run of a new version.
  */
-export const SQLITE_STORAGE_VERSION = 1
+export const SQLITE_STORAGE_VERSION = 2
 
 /**
  * Where the `sqlite` storage kind is registered: on `globalThis`, so every copy of the library of the same storage

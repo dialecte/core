@@ -1,11 +1,15 @@
 import { makeDocument, outcomeOf } from '../../contract/store-contract.fixtures'
 import { connectHub } from '../../hub-public'
+import { storesHere } from '../../sqlite/adapter/realm-storage'
 import {
 	refuseRealmStorage,
 	restoreRealmStorage,
 } from '../../sqlite/adapter/realm-storage.fixtures'
 import { isEngineLockFree, TEST_ENGINE_URL } from '../../sqlite/runtime/runtime.fixtures'
-import { ENGINE_WORKER_CASE_TIMEOUT_MS } from '../../sqlite/runtime/runtime.fixtures.constants'
+import {
+	ENGINE_WORKER_CASE_TIMEOUT_MS,
+	REJOIN_TIMEOUT_MS,
+} from '../../sqlite/runtime/runtime.fixtures.constants'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
 	adoptHubConnection,
@@ -32,6 +36,7 @@ import {
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createDialecteError, toDialecteError } from '@/errors'
+import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite-storage.fixtures'
 import { TEST_DIALECTE } from '@/test'
 
 import type { ThrownData } from '../wire/wire.types'
@@ -49,6 +54,14 @@ import type { RealmEngineSpawner } from './realm-host.types'
 import type { DialecteErrorKey } from '@/errors'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
+
+/** What a project's open asks of the hub, once the realm knows it can store: a refusal is a rejection like any other. */
+async function openHubAfterStoresCheck(
+	params: Parameters<typeof openHubConnection>[0],
+): Promise<Awaited<ReturnType<typeof openHubConnection>>> {
+	await storesHere()
+	return openHubConnection(params)
+}
 
 const SPAWNER: RealmEngineSpawner = {
 	dialecteId: TEST_DIALECTE.id,
@@ -403,18 +416,40 @@ describe('a realm connected to the hub', () => {
 		expect(realm).toBeUndefined()
 	})
 
+	it('connectHub given engines → a type error, the argument ignored: the engines come from the registration, none registered here so its hello names none', async () => {
+		withEmptyRegistry()
+		const hub = fakeHub()
+		vi.stubGlobal(
+			'SharedWorker',
+			class AnsweredSharedWorker extends EventTarget {
+				readonly port = hub.openPort()
+			},
+		)
+		onTestFinished(function restoreGlobals() {
+			vi.unstubAllGlobals()
+		})
+		// @ts-expect-error connectHub takes no parameter
+		const realm = await connectHub({ spawners: [SPAWNER] })
+		expect(realm).toBeDefined()
+		const connection = await openHubConnection()
+		onTestFinished(connection!.close)
+		expect(hub.hellos[0]?.message).toMatchObject({ type: 'hello', spawners: [] })
+	})
+
 	type HelloCase = { storageRefused: boolean; named: HubSpawner[] }
 	const helloCases: Record<string, HelloCase> = {
-		'connectHub given the engines the page can start → its hello names them to the hub': {
-			storageRefused: false,
-			named: [{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version }],
-		},
-		'connectHub in a page whose private file system is refused → its hello names none; a later one adds none':
+		'connectHub() with the engine registered for the page’s dialecte → its hello names that engine to the hub':
+			{
+				storageRefused: false,
+				named: [{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version }],
+			},
+		'connectHub() in a page whose private file system is refused, an engine registered → its hello names none; a call after another registration adds none':
 			{ storageRefused: true, named: [] },
 	}
 	for (const [description, { storageRefused, named }] of Object.entries(helloCases)) {
 		it(description, async () => {
 			withEmptyRegistry()
+			withSqliteEngine({ url: TEST_ENGINE_URL, dialectes: [TEST_DIALECTE] })
 			if (storageRefused) refuseRealmStorage()
 			onTestFinished(restoreRealmStorage)
 			const hub = fakeHub()
@@ -427,13 +462,18 @@ describe('a realm connected to the hub', () => {
 			onTestFinished(function restoreGlobals() {
 				vi.unstubAllGlobals()
 			})
-			const realm = await connectHub({ spawners: [SPAWNER] })
+			const realm = await connectHub()
 			expect(realm).toBeDefined()
 			const connection = await openHubConnection()
 			onTestFinished(connection!.close)
 			expect(hub.hellos[0]?.message).toMatchObject({ type: 'hello', spawners: named })
 			if (!storageRefused) return
-			await connectHub({ spawners: [{ ...SPAWNER, dialecteId: 'other' }] })
+			// another engine registered since: a page that cannot store still adds none
+			withSqliteEngine({
+				url: TEST_ENGINE_URL,
+				dialectes: [TEST_DIALECTE, { id: 'other', version: TEST_DIALECTE.version }],
+			})
+			await connectHub()
 			// an open asked after it: a spawners message said would come before it
 			askEngine({
 				link: openLink({ connection: connection!, project: `barrier-${crypto.randomUUID()}` }),
@@ -482,7 +522,7 @@ describe('a realm connected to the hub', () => {
 		}
 	})
 
-	describe('connected again, naming spawners', () => {
+	describe('connected again, a project’s open naming spawners', () => {
 		type TestCase = {
 			spawners: RealmEngineSpawner[]
 			/** The key it is refused with; none: it gets the page's connection. */
@@ -534,13 +574,20 @@ describe('a realm connected to the hub', () => {
 				onTestFinished(function restoreGlobals() {
 					vi.unstubAllGlobals()
 				})
-				const first = await connectHub({ spawners: [SPAWNER] })
+				withSqliteEngine({ url: TEST_ENGINE_URL, dialectes: [TEST_DIALECTE] })
+				const first = await connectHub()
 				const connection = await openHubConnection()
 				onTestFinished(connection!.close)
-				const again = connectHub({ spawners })
-				expect(await refusalKeyOf({ action: again })).toBe(refusedWith)
-				if (!refusedWith) expect((await again)?.realmId()).toBe(first?.realmId())
-				expect(await openHubConnection()).toBe(connection)
+				// a project's open offers its engines to the hub as it connects
+				const again = openHubAfterStoresCheck({ spawners })
+				const againRefusalKey = await refusalKeyOf({ action: again })
+				expect(againRefusalKey).toBe(refusedWith)
+				if (!refusedWith) {
+					const againRealm = await again
+					expect(againRealm?.realmId()).toBe(first?.realmId())
+				}
+				const hubConnection = await openHubConnection()
+				expect(hubConnection).toBe(connection)
 				expect(hub.hellos).toHaveLength(1)
 				// what was said before an open reached the hub before it: the open is the barrier
 				askEngine({
@@ -556,7 +603,7 @@ describe('a realm connected to the hub', () => {
 		}
 	})
 
-	it('connected again naming another engine while the first call is still under way → added once it has connected', async () => {
+	it('a project’s open naming another engine while connectHub() is still under way → added once it has connected', async () => {
 		withEmptyRegistry()
 		const hub = fakeHub()
 		vi.stubGlobal(
@@ -568,25 +615,70 @@ describe('a realm connected to the hub', () => {
 		onTestFinished(function restoreGlobals() {
 			vi.unstubAllGlobals()
 		})
-		const first = connectHub({ spawners: [SPAWNER] })
-		const again = connectHub({ spawners: [{ ...SPAWNER, dialecteId: 'other' }] })
+		withSqliteEngine({ url: TEST_ENGINE_URL, dialectes: [TEST_DIALECTE] })
+		const first = connectHub()
+		const again = openHubAfterStoresCheck({ spawners: [{ ...SPAWNER, dialecteId: 'other' }] })
 		const realm = await first
-		onTestFinished((await openHubConnection())!.close)
+		const hubConnection = await openHubConnection()
+		onTestFinished(hubConnection!.close)
 		expect(realm).toBeDefined()
-		expect((await again)?.realmId()).toBe(realm?.realmId())
-		expect(await hub.next('spawners')).toEqual({
+		expect(hub.hellos[0]?.message).toMatchObject({
+			type: 'hello',
+			spawners: [{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version }],
+		})
+		const againRealm = await again
+		expect(againRealm?.realmId()).toBe(realm?.realmId())
+		const hubNextMessage = await hub.next('spawners')
+		expect(hubNextMessage).toEqual({
 			type: 'spawners',
 			spawners: [{ dialecteId: 'other', dialecteVersion: TEST_DIALECTE.version }],
 		})
 	})
 
-	it('a document joined through a handed port, then connectHub naming an engine → its connection, nothing registered: a bound child hosts none', async () => {
+	it('connectHub() with no engine registered, then an engine registered, then connectHub() again → the same connection, one hello, the engine added once the hub has the page', async () => {
 		withEmptyRegistry()
+		const hub = fakeHub()
+		vi.stubGlobal(
+			'SharedWorker',
+			class AnsweredSharedWorker extends EventTarget {
+				readonly port = hub.openPort()
+			},
+		)
+		onTestFinished(function restoreGlobals() {
+			vi.unstubAllGlobals()
+		})
+		withSqliteStorage()
+		const first = await connectHub()
+		const connection = await openHubConnection()
+		onTestFinished(connection!.close)
+		withSqliteEngine({ url: TEST_ENGINE_URL, dialectes: [TEST_DIALECTE] })
+		const again = await connectHub()
+		expect(again?.realmId()).toBe(first?.realmId())
+		expect(hub.hellos).toHaveLength(1)
+		// what was said before an open reached the hub before it: the open is the barrier
+		askEngine({
+			link: openLink({ connection: connection!, project: `barrier-${crypto.randomUUID()}` }),
+		})
+		await hub.next('open')
+		const said = hub.received.filter(function isSpawners(message) {
+			return message.type === 'spawners'
+		})
+		expect(said).toEqual([
+			{
+				type: 'spawners',
+				spawners: [{ dialecteId: TEST_DIALECTE.id, dialecteVersion: TEST_DIALECTE.version }],
+			},
+		])
+	})
+
+	it('a document joined through a handed port, then connectHub() with an engine registered → its connection, nothing registered: a bound child hosts none', async () => {
+		withEmptyRegistry()
+		withSqliteEngine({ url: TEST_ENGINE_URL, dialectes: [TEST_DIALECTE] })
 		const hub = fakeHub()
 		const adopted = await adoptHubConnection({ port: hub.openPort() })
 		expect(adopted).toBeDefined()
 		onTestFinished(adopted!.close)
-		const realm = await connectHub({ spawners: [SPAWNER] })
+		const realm = await connectHub()
 		expect(realm?.realmId()).toBe(adopted!.realmId())
 		askEngine({
 			link: openLink({ connection: adopted!, project: `barrier-${crypto.randomUUID()}` }),
@@ -638,13 +730,13 @@ describe('a realm connected to the hub', () => {
 	})
 
 	const twoVersionsCases: Record<string, { storageRefused: boolean }> = {
-		'in a page that can store': { storageRefused: false },
-		'in a page whose private file system is refused (it offers no engine)': {
+		'as a page that can store asks': { storageRefused: false },
+		'as a page whose private file system is refused asks (hostsNoEngine: it offers no engine)': {
 			storageRefused: true,
 		},
 	}
 	for (const [description, { storageRefused }] of Object.entries(twoVersionsCases)) {
-		it(`connectHub naming two versions of one dialecte ${description} → STORE_HUB_SPAWNERS_FIXED, no connection made`, async () => {
+		it(`openHubConnection naming two versions of one dialecte ${description} → STORE_HUB_SPAWNERS_FIXED, no connection made`, async () => {
 			withEmptyRegistry()
 			if (storageRefused) refuseRealmStorage()
 			onTestFinished(restoreRealmStorage)
@@ -658,8 +750,12 @@ describe('a realm connected to the hub', () => {
 			onTestFinished(function restoreGlobals() {
 				vi.unstubAllGlobals()
 			})
-			const asked = connectHub({ spawners: [SPAWNER, { ...SPAWNER, dialecteVersion: '99.0.0' }] })
-			expect(await refusalKeyOf({ action: asked })).toBe('STORE_HUB_SPAWNERS_FIXED')
+			const asked = openHubAfterStoresCheck({
+				spawners: [SPAWNER, { ...SPAWNER, dialecteVersion: '99.0.0' }],
+				hostsNoEngine: storageRefused,
+			})
+			const askedRefusalKey = await refusalKeyOf({ action: asked })
+			expect(askedRefusalKey).toBe('STORE_HUB_SPAWNERS_FIXED')
 			expect(hub.ports()).toBe(0)
 		})
 	}
@@ -1144,8 +1240,10 @@ describe('a realm connected to the hub', () => {
 		})
 		await hub.next('open')
 		hub.reply({ type: 'dropped' })
-		expect(await inFlight).toBe('realm-dropped')
-		expect(await waiting).toBe('realm-dropped')
+		const inFlightOutcome = await inFlight
+		expect(inFlightOutcome).toBe('realm-dropped')
+		const waitingOutcome = await waiting
+		expect(waitingOutcome).toBe('realm-dropped')
 		const later = await lostReasonOf({ promise: link.engine() })
 		expect(later).toBe('realm-dropped')
 	})
@@ -1160,7 +1258,8 @@ describe('a realm connected to the hub', () => {
 		await connectEngine({ hub, link, project })
 		hub.reply({ type: 'dropped' })
 		await vi.waitFor(async function dropped() {
-			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+			const engineLostReason = await lostReasonOf({ promise: link.engine() })
+			expect(engineLostReason).toBe('realm-dropped')
 		})
 		const again = await adoptHubConnection({ port: hub.openPort() })
 		expect(again).toBe(adopted)
@@ -1198,14 +1297,16 @@ describe('a realm connected to the hub', () => {
 		await connectEngine({ hub, link, project })
 		hub.reply({ type: 'dropped' })
 		await vi.waitFor(async function dropped() {
-			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+			const engineLostReason = await lostReasonOf({ promise: link.engine() })
+			expect(engineLostReason).toBe('realm-dropped')
 		})
 		child.adoptPort({ port: hub.openPort() })
 		await vi.waitFor(function secondHelloSaid() {
 			expect(hub.hellos).toHaveLength(2)
 		})
 		await vi.waitFor(async function droppedStill() {
-			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+			const engineLostReason = await lostReasonOf({ promise: link.engine() })
+			expect(engineLostReason).toBe('realm-dropped')
 		})
 		// the hub's refusal kept as why
 		const refused = await link.engine().catch(function keepThrown(thrown: unknown) {
@@ -1257,7 +1358,8 @@ describe('a realm connected to the hub', () => {
 		await connectEngine({ hub, link, project })
 		hub.reply({ type: 'dropped' })
 		await vi.waitFor(async function dropped() {
-			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+			const engineLostReason = await lostReasonOf({ promise: link.engine() })
+			expect(engineLostReason).toBe('realm-dropped')
 		})
 		child.adoptPort({ port: hub.openPort() })
 		await vi.waitFor(function silentHelloSaid() {
@@ -1303,11 +1405,13 @@ describe('a realm connected to the hub', () => {
 		await connectEngine({ hub, link, project })
 		hub.reply({ type: 'dropped' })
 		await vi.waitFor(async function dropped() {
-			expect(await lostReasonOf({ promise: link.engine() })).toBe('realm-dropped')
+			const engineLostReason = await lostReasonOf({ promise: link.engine() })
+			expect(engineLostReason).toBe('realm-dropped')
 		})
 		child.adoptPort({ port: hub.openPort() })
 		const waiting = lostReasonOf({ promise: link.engine() })
-		expect(await waiting).toBe('realm-dropped')
+		const waitingOutcome = await waiting
+		expect(waitingOutcome).toBe('realm-dropped')
 		await pause({ ms: 1_500 })
 		expect(hub.hellos).toHaveLength(2)
 	})
@@ -1327,7 +1431,8 @@ describe('a realm connected to the hub', () => {
 		})
 		await hub.next('destroy')
 		hub.reply({ type: 'dropped' })
-		expect(await destroying).toBe('realm-dropped')
+		const destroyingOutcome = await destroying
+		expect(destroyingOutcome).toBe('realm-dropped')
 	})
 
 	it('a port handed while the realm’s first attempt fails → the next attempt joins on that port', async () => {
@@ -1335,7 +1440,8 @@ describe('a realm connected to the hub', () => {
 		const hub = fakeHub({ refuses: refuseFirst })
 		const first = adoptHubConnection({ port: hub.openPort() })
 		const second = adoptHubConnection({ port: hub.openPort() })
-		expect(await outcomeOf({ promise: first })).toBe('STORE_PROTOCOL_MISMATCH')
+		const firstOutcome = await outcomeOf({ promise: first })
+		expect(firstOutcome).toBe('STORE_PROTOCOL_MISMATCH')
 		const connection = await second
 		onTestFinished(connection!.close)
 		expect(hub.hellos).toHaveLength(2)
@@ -1643,9 +1749,11 @@ describe('a realm connected to the hub', () => {
 			dialecteId: TEST_DIALECTE.id,
 			error: refusalData({ key: 'PROJECT_NAME_INVALID' }),
 		})
-		expect(await outcomeOf({ promise: waiting })).toBe('PROJECT_NAME_INVALID')
+		const waitingOutcome = await outcomeOf({ promise: waiting })
+		expect(waitingOutcome).toBe('PROJECT_NAME_INVALID')
 		const opens = hub.received.filter(isOpen).length
-		expect(await outcomeOf({ promise: link.engine() })).toBe('PROJECT_NAME_INVALID')
+		const engineOutcome = await outcomeOf({ promise: link.engine() })
+		expect(engineOutcome).toBe('PROJECT_NAME_INVALID')
 		await pause({ ms: 50 })
 		expect(hub.received.filter(isOpen)).toHaveLength(opens)
 	})
@@ -1669,7 +1777,8 @@ describe('a realm connected to the hub', () => {
 		expect(hub.hellos[1]!.realmId).not.toBe(hub.hellos[0]!.realmId)
 		// waiting, not refused, while the realm joins the next hub
 		await connectEngine({ hub, link, project })
-		expect(await outcomeOf({ promise: link.engine() })).toBe('settled')
+		const engineOutcome = await outcomeOf({ promise: link.engine() })
+		expect(engineOutcome).toBe('settled')
 	})
 
 	it('the hub gone, the next one never welcoming → the link waiting refused STORE_CONNECTION_FAILED once the welcome budget has passed', async () => {
@@ -1697,7 +1806,8 @@ describe('a realm connected to the hub', () => {
 		await vi.waitFor(function saysHelloAgain() {
 			expect(hub.hellos).toHaveLength(2)
 		})
-		expect(await outcomeOf({ promise: link.engine() })).toBe('STORE_CONNECTION_FAILED')
+		const engineOutcome = await outcomeOf({ promise: link.engine() })
+		expect(engineOutcome).toBe('STORE_CONNECTION_FAILED')
 	})
 
 	it('a bound child handed a port while welcomed, no `dropped` coming (its hub gone: a child watches no hub lock) → it joins on that port once the welcome budget has passed, its link answered by the next hub’s engine', async () => {
@@ -1714,7 +1824,8 @@ describe('a realm connected to the hub', () => {
 		})
 		// the engine of the hub gone let go: the link waits for the next hub's
 		await connectEngine({ hub, link, project })
-		expect(await outcomeOf({ promise: link.engine() })).toBe('settled')
+		const engineOutcome = await outcomeOf({ promise: link.engine() })
+		expect(engineOutcome).toBe('settled')
 	})
 
 	it('a bound child handed a port again while its hub lives (it answers the probe, no `dropped`) → it stays on its port, its link kept', async () => {
@@ -1730,7 +1841,8 @@ describe('a realm connected to the hub', () => {
 		await pause({ ms: 600 })
 		expect(hub.hellos).toHaveLength(1)
 		expect(hub.received.map(typeOfMessage)).not.toContain('leave')
-		expect(await outcomeOf({ promise: link.engine() })).toBe('settled')
+		const engineOutcome = await outcomeOf({ promise: link.engine() })
+		expect(engineOutcome).toBe('settled')
 	})
 
 	it('a bound child switching to a handed port, its hub answering neither the probe nor with `dropped` → it leaves its projects on the old port first: a hub still alive counts it no more', async () => {
@@ -1769,9 +1881,8 @@ describe('a realm connected to the hub', () => {
 		await pause({ ms: HUB_REJOIN_FIRST_DELAY_MS + 100 })
 		hub.end()
 		await vi.waitFor(async function refusedMeanwhile() {
-			expect(await outcomeOf({ promise: link.engine(), withinMs: 100 })).toBe(
-				'STORE_CONNECTION_FAILED',
-			)
+			const engineOutcome = await outcomeOf({ promise: link.engine(), withinMs: 100 })
+			expect(engineOutcome).toBe('STORE_CONNECTION_FAILED')
 		})
 		expect(hub.hellos).toHaveLength(HUB_REJOIN_AT_ONCE_MAX + 1)
 	})
@@ -1837,7 +1948,8 @@ describe('a realm connected to the hub', () => {
 		// the next hub lost too, at once: not joined again and again
 		hub.end()
 		await vi.waitFor(async function refusedMeanwhile() {
-			expect(await outcomeOf({ promise: link.engine() })).toBe('STORE_CONNECTION_FAILED')
+			const engineOutcome = await outcomeOf({ promise: link.engine() })
+			expect(engineOutcome).toBe('STORE_CONNECTION_FAILED')
 		})
 		expect(hub.hellos).toHaveLength(2)
 		await vi.waitFor(
@@ -1872,7 +1984,8 @@ describe('a realm connected to the hub', () => {
 				lifecycle: undefined,
 				welcomeBudgetMs: 200,
 			})
-			expect(await outcomeOf({ promise: joining }), shape).toBe('STORE_CONNECTION_FAILED')
+			const joiningOutcome = await outcomeOf({ promise: joining })
+			expect(joiningOutcome, shape).toBe('STORE_CONNECTION_FAILED')
 			spy.mockRestore()
 		}
 	})
@@ -1930,9 +2043,12 @@ describe('a realm connected to the hub', () => {
 		const connection = await connecting
 		onTestFinished(connection.close)
 		page.resume()
-		await vi.waitFor(function joinedBack() {
-			expect(hub.hellos).toHaveLength(1)
-		})
+		await vi.waitFor(
+			function joinedBack() {
+				expect(hub.hellos).toHaveLength(1)
+			},
+			{ timeout: REJOIN_TIMEOUT_MS },
+		)
 		expect(withheld.has(`${REALM_LOCK_PREFIX}${hub.hellos[0]!.realmId}`)).toBe(false)
 	})
 
@@ -1973,10 +2089,12 @@ describe('a realm connected to the hub', () => {
 			},
 			[channel.port1],
 		)
-		expect(await outcomeOf({ promise: waiting })).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		const waitingOutcome = await outcomeOf({ promise: waiting })
+		expect(waitingOutcome).toBe('PROJECT_DESTROYED_WHILE_AWAY')
 		const left = await hub.next('leave')
 		expect(left).toMatchObject({ project, dialecteId: TEST_DIALECTE.id })
-		expect(await outcomeOf({ promise: link.engine() })).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		const engineOutcome = await outcomeOf({ promise: link.engine() })
+		expect(engineOutcome).toBe('PROJECT_DESTROYED_WHILE_AWAY')
 		channel.port2.close()
 	})
 
@@ -2002,7 +2120,8 @@ describe('a realm connected to the hub', () => {
 			},
 			[away.port1],
 		)
-		expect(await outcomeOf({ promise: waiting })).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		const waitingOutcome = await outcomeOf({ promise: waiting })
+		expect(waitingOutcome).toBe('PROJECT_DESTROYED_WHILE_AWAY')
 		away.port2.close()
 		// the refused link not released: a second Project of the page opens the project
 		const fresh = openLink({ connection, project })
@@ -2025,13 +2144,16 @@ describe('a realm connected to the hub', () => {
 			},
 			[channel.port1],
 		)
-		expect(await outcomeOf({ promise: reaching })).toBe('settled')
-		expect(await outcomeOf({ promise: link.engine() })).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		const reachingOutcome = await outcomeOf({ promise: reaching })
+		expect(reachingOutcome).toBe('settled')
+		const engineOutcome = await outcomeOf({ promise: link.engine() })
+		expect(engineOutcome).toBe('PROJECT_DESTROYED_WHILE_AWAY')
 	})
 
 	it('a bound child’s link released, its hub saying nothing more (gone, no new port) → the release settles within the welcome budget', async () => {
 		const { releasing } = await releasedChildLink({ hub: fakeHub() })
-		expect(await outcomeOf({ promise: releasing, withinMs: 1_000 })).toBe('settled')
+		const releasingOutcome = await outcomeOf({ promise: releasing, withinMs: 1_000 })
+		expect(releasingOutcome).toBe('settled')
 	})
 
 	it('a connected link whose engine is lost, its next engine refused for now (no host) → the waiting call refused, the next call asks the hub again', async () => {
@@ -2203,7 +2325,8 @@ describe('a realm connected to the hub', () => {
 				dialecteVersion: TEST_DIALECTE.version,
 			})
 			hub.reply({ ...answer, project, dialecteId: TEST_DIALECTE.id } as HubToRealmMessage)
-			expect(await destroying).toBe(outcome)
+			const destroyingOutcome = await destroying
+			expect(destroyingOutcome).toBe(outcome)
 			expect(letGo).toBe(outcome === 'settled' ? 1 : 0)
 			// no file deleted here, nothing said done: the hub's hold is the deleting view's
 			await pause({ ms: 50 })
@@ -2275,7 +2398,8 @@ describe('a realm connected to the hub', () => {
 			await pause({ ms: 50 })
 			expect(hub.received.map(typeOfMessage)).not.toContain('open')
 			hub.reply(answer({ project }))
-			expect(await destroying).toBe(outcome)
+			const destroyingOutcome = await destroying
+			expect(destroyingOutcome).toBe(outcome)
 			// asked again once answered: the creation it expects the one of before, unless the project was deleted
 			const asked = await hub.next('open')
 			expect(asked.expectedCreationId).toBe(outcome === 'settled' ? undefined : 'creation-1')
@@ -2294,7 +2418,8 @@ describe('a realm connected to the hub', () => {
 				},
 				[channel.port1],
 			)
-			expect(await outcomeOf({ promise: reaching })).toBe('settled')
+			const reachingOutcome = await outcomeOf({ promise: reaching })
+			expect(reachingOutcome).toBe('settled')
 		})
 	}
 
@@ -2312,7 +2437,8 @@ describe('a realm connected to the hub', () => {
 		})
 		await hub.next('destroy-elsewhere')
 		hub.end()
-		expect(await destroying).toBe('STORE_ENGINE_LOST')
+		const destroyingOutcome = await destroying
+		expect(destroyingOutcome).toBe('STORE_ENGINE_LOST')
 	})
 
 	it('a destroy elsewhere refused before the hub held anything (another view uses the project) → its own link keeps its engine: nothing asked again', async () => {
@@ -2339,8 +2465,10 @@ describe('a realm connected to the hub', () => {
 				thrown: createDialecteError('PROJECT_OPEN_ELSEWHERE', { detail: 'open in another view' }),
 			}),
 		})
-		expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
-		expect(await outcomeOf({ promise: own.engine() })).toBe('settled')
+		const destroyingOutcome = await destroying
+		expect(destroyingOutcome).toBe('PROJECT_OPEN_ELSEWHERE')
+		const ownEngineOutcome = await outcomeOf({ promise: own.engine() })
+		expect(ownEngineOutcome).toBe('settled')
 		await pause({ ms: 50 })
 		expect(hub.received.map(typeOfMessage)).not.toContain('open')
 	})
@@ -2418,7 +2546,8 @@ describe('a realm connected to the hub', () => {
 		hub.reply({ type: 'engine-lost', project, dialecteId: TEST_DIALECTE.id, generation: 1 })
 		hub.reply({ type: 'destroy-granted', project, dialecteId: TEST_DIALECTE.id })
 
-		expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
+		const destroyingOutcome = await destroying
+		expect(destroyingOutcome).toBe('PROJECT_OPEN_ELSEWHERE')
 		expect(destroyed).toBe(false)
 		await hub.next('destroyed')
 		const reaching = own.engine()
@@ -2437,7 +2566,8 @@ describe('a realm connected to the hub', () => {
 			},
 			[channel.port1],
 		)
-		expect(await outcomeOf({ promise: reaching })).toBe('settled')
+		const reachingOutcome = await outcomeOf({ promise: reaching })
+		expect(reachingOutcome).toBe('settled')
 		other.release()
 		await pause({ ms: 50 })
 		expect(hub.received.map(typeOfMessage)).not.toContain('leave')
@@ -2466,7 +2596,8 @@ describe('a realm connected to the hub', () => {
 		openLink({ connection, project })
 		hub.reply({ type: 'destroy-granted', project, dialecteId: TEST_DIALECTE.id })
 
-		expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
+		const destroyingOutcome = await destroying
+		expect(destroyingOutcome).toBe('PROJECT_OPEN_ELSEWHERE')
 		expect(destroyed).toBe(false)
 	})
 

@@ -153,8 +153,6 @@ export type ProjectParams<
 	dialecteId?: string
 	/** The version of the dialecte (its factory gives it): the SQLite engine a view reaches runs that version. */
 	dialecteVersion?: string
-	/** The address of the dialecte's engine worker (its factory gives it): what `sqlite` starts the engine from. */
-	engineUrl?: string
 }
 
 // ── resolveConfig ────────────────────────────────────────────────────────────────

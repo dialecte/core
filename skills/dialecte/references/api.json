@@ -78,7 +78,7 @@
 				"report a caught error as a dialecte error without throwing",
 				"build the Error throwDialecteError would throw"
 			],
-			"declaredAt": "src/errors/errors.ts:41"
+			"declaredAt": "src/errors/errors.ts:43"
 		},
 		{
 			"path": "@dialecte/core.createPerf",
@@ -99,16 +99,15 @@
 			"entry": "@dialecte/core",
 			"otherRoutes": [],
 			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules = Record<never, never>, GenericConfigKey extends string = string>(params: CreateProjectFactoryParams<GenericConfig, GenericModules, GenericConfigKey>) => ProjectFactory<GenericConfig, GenericModules, GenericConfigKey>",
-			"summary": "The project factory of a dialecte: every config, the default key, the dialecte's extensions merged under the consumer's, and a fresh hooks instance per Project. It carries the declaration, `engineUrl`, the address of the dialecte's engine worker, for the store that spawns it, and `spawner`, the engine as a page registers it with the hub (`connectHub({ spawners })`). `destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (an outdated or lost one too).",
+			"summary": "The project factory of a dialecte: every config, the default key, the dialecte's extensions merged under the consumer's, and a fresh hooks instance per Project. It carries the declaration and names no store and no engine: an app on SQLite storage writes its one worker file and tells the page once (`registerSqliteEngine({ url, dialectes })` from `@dialecte/core/sqlite`). `destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (an outdated or lost one too).",
 			"intents": [
 				"open projects of a dialecte from an app",
 				"get the factory that creates a dialecte's projects",
 				"delete a dialecte's project without opening it",
-				"register a dialecte's engine with the hub",
-				"use SQLite storage in an app (import `@dialecte/core/sqlite` once and open with `storage: { type: 'sqlite' }`)",
+				"use SQLite storage in an app (register the app's engine with `registerSqliteEngine` from `@dialecte/core/sqlite` and open with `storage: { type: 'sqlite' }`)",
 				"share one SQLite engine per project between the tabs of an app"
 			],
-			"declaredAt": "src/dialecte/create-project-factory.ts:24"
+			"declaredAt": "src/dialecte/create-project-factory.ts:23"
 		},
 		{
 			"path": "@dialecte/core.defineDialecte",
@@ -135,7 +134,7 @@
 				"declare a dialecte's own error catalogue",
 				"add error keys usable with invariant and throwDialecteError"
 			],
-			"declaredAt": "src/errors/errors.ts:71"
+			"declaredAt": "src/errors/errors.ts:73"
 		},
 		{
 			"path": "@dialecte/core.importOutcomeOf",
@@ -312,7 +311,7 @@
 				"fail with a core or dialecte error key",
 				"raise an error a consumer can read by key"
 			],
-			"declaredAt": "src/errors/errors.ts:28",
+			"declaredAt": "src/errors/errors.ts:30",
 			"example": "throwDialecteError('ELEMENT_NOT_FOUND', { detail: 'parent not found' })"
 		},
 		{
@@ -340,20 +339,6 @@
 				"recover after a connection lost during a write"
 			],
 			"declaredAt": "src/store/write-outcome.ts:32"
-		},
-		{
-			"path": "@dialecte/core/engine.serveDialecteEngine",
-			"root": "export",
-			"entry": "@dialecte/core/engine",
-			"otherRoutes": [],
-			"signature": "<GenericConfig extends AnyDialecteConfig, GenericModules extends ExtensionModules, GenericConfigKey extends string>(params: { dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>; }) => void",
-			"summary": "Serve the dialecte's project engine from this worker, the one call of a dialecte package's engine worker file - today the SQLite engine on the origin's private file system (opfs-sahpool). The realm that spawned it (or the hub, through it) sends control messages - open the project, adopt a client's port, a client gone, close, destroy - handled one at a time and each answered once; every adopted port is served the engine's members. One project per worker.",
-			"intents": [
-				"serve a dialecte's engine from a worker",
-				"write a dialecte package's engine worker file",
-				"ship a dialecte's SQLite engine in its package"
-			],
-			"declaredAt": "src/store/sqlite/runtime/serve-dialecte-engine.ts:42"
 		},
 		{
 			"path": "@dialecte/core/helpers.evaluateExpectations",
@@ -616,19 +601,18 @@
 				"open projects on SQLite storage in a child frame through its page's engine",
 				"bind a child frame again after its page rejoined the hub"
 			],
-			"declaredAt": "src/store/hub-public.ts:55"
+			"declaredAt": "src/store/hub-public.ts:45"
 		},
 		{
 			"path": "@dialecte/core/sqlite.connectHub",
 			"root": "export",
 			"entry": "@dialecte/core/sqlite",
 			"otherRoutes": [],
-			"signature": "(params?: ConnectHubParams) => Promise<HubRealm | undefined>",
-			"summary": "Connect this page to the origin's hub, once, and get its connection (`HubRealm`: `realmId`, `createHubPort` to bind a child frame, `onRejoined`, the moment to bind child frames again after a freeze or a drop): a second call - from this copy of the library or another one of the same protocol - gets the same connection. Answers `undefined` where the browser has no SharedWorker, or the hub never welcomed the page (its script failed to load or was blocked, or it stayed silent): a later call tries again. A hub of another protocol refuses the page: `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub, any other error thrown making it is thrown. The page registers the engines it can start whose worker is of its own origin (each dialecte's `factory.spawner`); a later call adds those it does not run yet - a project opened on `sqlite` adds its own as it opens - and one naming a dialecte the page runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept. A document that joined through `adoptHubPort` hosts no engine: the spawners it names are not registered; neither are those of a page that cannot store (no private file system; two versions of one dialecte refused all the same): its own projects on `sqlite` are refused `STORE_UNAVAILABLE` unless its page bound it, its connection serving to hand ports to its children. An engine's files (the SQLite wasm) are fetched when the page first starts one.",
+			"signature": "() => Promise<HubRealm | undefined>",
+			"summary": "Connect this page to the origin's hub, once, and get its connection (`HubRealm`: `realmId`, `createHubPort` to bind a child frame, `onRejoined`, the moment to bind child frames again after a freeze or a drop): a second call - from this copy of the library or another one of the same protocol - gets the same connection. Answers `undefined` where the browser has no SharedWorker, or the hub never welcomed the page (its script failed to load or was blocked, or it stayed silent): a later call tries again. A hub of another protocol refuses the page: `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub, any other error thrown making it is thrown. The page offers the hub the engines the app registered (`registerSqliteEngine`), one per dialecte on the one worker file, when that file is of its own origin; connecting before registering is allowed and offers nothing - a later call adds those registered since, as a project opened on `sqlite` does - so register first. A document that joined through `adoptHubPort` hosts no engine and offers none; neither does a page that cannot store (no private file system): its own projects on `sqlite` are refused `STORE_UNAVAILABLE` unless its page bound it, its connection serving to hand ports to its children. An engine's files (the SQLite wasm) are fetched when the page first starts one.",
 			"intents": [
-				"register this page's dialecte engines with the hub before any project opens",
-				"connect a page to the origin's hub",
-				"offer a dialecte's engine to the hub (`factory.spawner`)",
+				"connect a page to the origin's hub before any project opens",
+				"offer the engines an app registered to the hub",
 				"get a port to hand a child frame of another origin"
 			],
 			"declaredAt": "src/store/hub-public.ts:25"
@@ -647,6 +631,35 @@
 				"check whether a project exists on SQLite storage without opening it"
 			],
 			"declaredAt": "src/store/sqlite/list-projects.ts:33"
+		},
+		{
+			"path": "@dialecte/core/sqlite.registerSqliteEngine",
+			"root": "export",
+			"entry": "@dialecte/core/sqlite",
+			"otherRoutes": [],
+			"signature": "(params: SqliteEngineRegistration) => void",
+			"summary": "Tell this page where the app's SQLite engine is: `url`, its one worker file (a `?worker&url` import of the file that calls `serveSqliteEngine`), and `dialectes`, the dialectes that file serves (their declarations fit; only each id and version are kept, as plain data on the realm's `sqlite` storage kind, so every copy of the library finds them). Call it once, before the first project opens on `sqlite`; a project of a dialecte it does not name is refused `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`. The same URL and the same dialectes again, in any order, do nothing (a module evaluated twice). Anything else is refused `STORE_SQLITE_ENGINE_FIXED`, the first kept: there is no additive call, the app names all its dialectes at once. Two versions of one dialecte are refused `STORE_HUB_SPAWNERS_FIXED`, nothing kept. A child frame of another origin does not register: its shell does, and it joins through `adoptHubPort`.",
+			"intents": [
+				"use SQLite storage in an app",
+				"tell the page where an app's SQLite engine worker is",
+				"register the dialectes an app's engine worker serves",
+				"open projects of several dialectes on one SQLite engine worker"
+			],
+			"declaredAt": "src/store/sqlite/sqlite-engine-registration.ts:19"
+		},
+		{
+			"path": "@dialecte/core/sqlite.serveSqliteEngine",
+			"root": "export",
+			"entry": "@dialecte/core/sqlite",
+			"otherRoutes": [],
+			"signature": "(params: ServeSqliteEngineParams) => void",
+			"summary": "This worker serves the engine of a project of any of the dialectes given, the one call of an app's engine worker file: the realm that spawned it (or the hub, through it) opens a project of the dialecte it names, adopts clients, closes and destroys it, each message answered once. A dialecte not given, or given at another version, is refused as data with nothing touched. One worker file for all the app's dialectes, one project per worker instance; the engine and its wasm stay out of the page's bundle.",
+			"intents": [
+				"serve the engines of an app's dialectes from one worker",
+				"write an app's engine worker file",
+				"keep sqlite-wasm out of the page's bundle"
+			],
+			"declaredAt": "src/sqlite.ts:40"
 		},
 		{
 			"path": "@dialecte/core/test.assertExpectedElementQueries",
@@ -1459,7 +1472,7 @@
 			"signature": "(documentId: string, file: File, attachedTo?: BlobAttachment[]) => Promise<string>",
 			"summary": "Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`. Returns the generated blob id.",
 			"intents": ["store a binary file in the project", "add an attachment owned by a document"],
-			"declaredAt": "src/project/project.ts:1233"
+			"declaredAt": "src/project/project.ts:1232"
 		},
 		{
 			"path": "project.attachBlob",
@@ -1468,7 +1481,7 @@
 			"signature": "(blobId: string, ref: BlobAttachment) => Promise<void>",
 			"summary": "Reference an existing blob from an element of a document (optionally from one of its attributes) and tell other tabs.",
 			"intents": ["link a stored file to an element", "attach a blob to a record"],
-			"declaredAt": "src/project/project.ts:1305"
+			"declaredAt": "src/project/project.ts:1304"
 		},
 		{
 			"path": "project.close",
@@ -1477,7 +1490,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Close the store and release resources, once the imports in flight (running and queued), the project's writes running (a Document's transaction or prepared commit included) and the work other realms' messages started have settled. Then the channel and the store are closed, `state.documents` is emptied and the Documents' subscriptions are dropped. From the call on, the project is closed: a new call throws `PROJECT_NOT_OPENED`, a Document opened before answers `STORE_CLOSED` (on a `custom` store opened again it writes but tells nothing: open it again). The stored documents stay. Runs in turn with the Project's other `open`, `close` and `destroy` calls.",
 			"intents": ["close a project", "release the database connection when leaving a page"],
-			"declaredAt": "src/project/project.ts:747"
+			"declaredAt": "src/project/project.ts:744"
 		},
 		{
 			"path": "project.createChannel",
@@ -1486,7 +1499,7 @@
 			"signature": "() => BroadcastChannel",
 			"summary": "Convenience: a fresh BroadcastChannel on this project's channel. The caller owns it — call channel.close() when done listening.",
 			"intents": ["listen to project events", "receive commits and imports made in other tabs"],
-			"declaredAt": "src/project/project.ts:254"
+			"declaredAt": "src/project/project.ts:253"
 		},
 		{
 			"path": "project.destroy",
@@ -1495,7 +1508,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Destroy the project - deletes the database entirely, every document with its history and blobs, once the imports in flight have landed; refused `PROJECT_OPEN_ELSEWHERE`, nothing removed, while another connection - a project or store of the name, in this page or another tab - has it open. To delete one document, use `removeDocument`.",
 			"intents": ["delete a whole project", "wipe the project database with every document"],
-			"declaredAt": "src/project/project.ts:811"
+			"declaredAt": "src/project/project.ts:808"
 		},
 		{
 			"path": "project.detachBlob",
@@ -1504,7 +1517,7 @@
 			"signature": "(blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>",
 			"summary": "Drop the reference from an element of a document to a blob; the blob itself stays stored.",
 			"intents": ["unlink a file from an element", "detach a blob from a record"],
-			"declaredAt": "src/project/project.ts:1317"
+			"declaredAt": "src/project/project.ts:1316"
 		},
 		{
 			"path": "project.export",
@@ -1519,7 +1532,7 @@
 				"save a document as XML",
 				"read the exported XML as a DOM"
 			],
-			"declaredAt": "src/project/project.ts:1051"
+			"declaredAt": "src/project/project.ts:1049"
 		},
 		{
 			"path": "project.exportBlob",
@@ -1532,7 +1545,7 @@
 				"save a blob to disk",
 				"read a blob with its file name"
 			],
-			"declaredAt": "src/project/project.ts:1269"
+			"declaredAt": "src/project/project.ts:1268"
 		},
 		{
 			"path": "project.getBlob",
@@ -1541,7 +1554,7 @@
 			"signature": "(blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>",
 			"summary": "Read a stored blob: its metadata entry and its binary data, or `undefined` when the id is unknown.",
 			"intents": ["read an attached file's content", "load a blob by id"],
-			"declaredAt": "src/project/project.ts:1259"
+			"declaredAt": "src/project/project.ts:1258"
 		},
 		{
 			"path": "project.getBlobsByDocument",
@@ -1550,7 +1563,7 @@
 			"signature": "(documentId: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from a document (any of their attachments points into it).",
 			"intents": ["list the files attached to a document"],
-			"declaredAt": "src/project/project.ts:1278"
+			"declaredAt": "src/project/project.ts:1277"
 		},
 		{
 			"path": "project.getBlobsByRecord",
@@ -1559,7 +1572,7 @@
 			"signature": "(documentId: string, recordRef: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from one element of a document.",
 			"intents": ["list the files attached to one element"],
-			"declaredAt": "src/project/project.ts:1287"
+			"declaredAt": "src/project/project.ts:1286"
 		},
 		{
 			"path": "project.getDatabaseInstance",
@@ -1577,7 +1590,7 @@
 			"signature": "(documentId: string) => Promise<DocumentRecord | undefined>",
 			"summary": "The metadata record of one document of the project, or `undefined` when it is unknown or still importing.",
 			"intents": ["check a document exists", "read a document's name or config key by id"],
-			"declaredAt": "src/project/project.ts:1082"
+			"declaredAt": "src/project/project.ts:1081"
 		},
 		{
 			"path": "project.getDocumentConfig",
@@ -1586,7 +1599,7 @@
 			"signature": "(documentId: string) => GenericConfig | undefined",
 			"summary": "Get the dialecte config a document uses, or `undefined` for a document the project does not know.",
 			"intents": ["get the dialecte config of a document", "know which schema a document uses"],
-			"declaredAt": "src/project/project.ts:1167"
+			"declaredAt": "src/project/project.ts:1166"
 		},
 		{
 			"path": "project.getDocuments",
@@ -1595,7 +1608,7 @@
 			"signature": "() => Promise<DocumentRecord[]>",
 			"summary": "The documents of the project; one still importing - here or in another realm - is not among them.",
 			"intents": ["list the documents of a project", "show the files a project holds"],
-			"declaredAt": "src/project/project.ts:1073"
+			"declaredAt": "src/project/project.ts:1071"
 		},
 		{
 			"path": "project.getDocumentStatus",
@@ -1607,7 +1620,7 @@
 				"check that a document imported in another tab can be opened",
 				"wait for a document from another realm"
 			],
-			"declaredAt": "src/project/project.ts:1154"
+			"declaredAt": "src/project/project.ts:1153"
 		},
 		{
 			"path": "project.getStandaloneBlobs",
@@ -1616,7 +1629,7 @@
 			"signature": "() => Promise<BlobRecord[]>",
 			"summary": "The blobs of the project that no document references (no attachment).",
 			"intents": ["list unattached files", "find orphan blobs to clean up"],
-			"declaredAt": "src/project/project.ts:1296"
+			"declaredAt": "src/project/project.ts:1295"
 		},
 		{
 			"path": "project.import",
@@ -1628,7 +1641,7 @@
 				"import several XML files at once",
 				"get one result per file without a throw for a failed file"
 			],
-			"declaredAt": "src/project/project.ts:898"
+			"declaredAt": "src/project/project.ts:895"
 		},
 		{
 			"path": "project.importFile",
@@ -1637,7 +1650,7 @@
 			"signature": "(file: File, options?: ImportDocumentOptions) => Promise<ImportedDocument>",
 			"summary": "Import one File into the project: the store registers, parses and stores it next to the data. The document is in the project state and broadcast once the store answers it `ready`; whatever fails before that, or an abort through `options.signal`, leaves nothing and is thrown (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign error). One refusal leaves its document: an import whose engine was lost after it landed is refused `STORE_ENGINE_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told after each stored batch, never awaited. One file is in flight per project: a call made while another import runs waits for it.",
 			"intents": ["import an XML file", "load a file into the project", "parse XML into records"],
-			"declaredAt": "src/project/project.ts:939"
+			"declaredAt": "src/project/project.ts:937"
 		},
 		{
 			"path": "project.initEmptyDocument",
@@ -1646,7 +1659,7 @@
 			"signature": "(options?: InitEmptyDocumentOptions) => Promise<string>",
 			"summary": "Register a new empty document in the project. Returns the new documentId. Records are added later via import or transactions.",
 			"intents": ["create a new empty document", "start a document from scratch without a file"],
-			"declaredAt": "src/project/project.ts:834"
+			"declaredAt": "src/project/project.ts:831"
 		},
 		{
 			"path": "project.open",
@@ -1659,7 +1672,7 @@
 				"start working on a project",
 				"reopen a project after close"
 			],
-			"declaredAt": "src/project/project.ts:510"
+			"declaredAt": "src/project/project.ts:507"
 		},
 		{
 			"path": "project.openDocument",
@@ -1668,7 +1681,7 @@
 			"signature": "(documentId: string) => Document<GenericConfig, MergedExtensions<GenericModules>>",
 			"summary": "Open a file-scoped Document for querying and mutating a specific file.",
 			"intents": ["open a document to read or write it", "get the Document of an id"],
-			"declaredAt": "src/project/project.ts:1094"
+			"declaredAt": "src/project/project.ts:1093"
 		},
 		{
 			"path": "project.queryAll",
@@ -1677,7 +1690,7 @@
 			"signature": "<Result>(queryFunction: (query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>) => Promise<Result[]>) => Promise<Result[]>",
 			"summary": "Run a query function across all documents, collect and flatten results. Iterates documents sequentially; merges all non-empty arrays.",
 			"intents": ["collect results from every document", "run one query over all documents"],
-			"declaredAt": "src/project/project.ts:1365"
+			"declaredAt": "src/project/project.ts:1364"
 		},
 		{
 			"path": "project.queryFirst",
@@ -1689,7 +1702,7 @@
 				"find the first match across every document",
 				"search all documents of a project"
 			],
-			"declaredAt": "src/project/project.ts:1344"
+			"declaredAt": "src/project/project.ts:1343"
 		},
 		{
 			"path": "project.redo",
@@ -1698,7 +1711,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Re-apply the last undone transaction of a document and tell other tabs. Does nothing when there is nothing to redo.",
 			"intents": ["redo an undone change to a document"],
-			"declaredAt": "src/project/project.ts:1206"
+			"declaredAt": "src/project/project.ts:1205"
 		},
 		{
 			"path": "project.removeBlob",
@@ -1707,7 +1720,7 @@
 			"signature": "(blobId: string) => Promise<void>",
 			"summary": "Delete a blob and its binary data from the project and tell other tabs. Does nothing when the id is unknown.",
 			"intents": ["delete a stored file", "remove a blob for good"],
-			"declaredAt": "src/project/project.ts:1329"
+			"declaredAt": "src/project/project.ts:1328"
 		},
 		{
 			"path": "project.removeDocument",
@@ -1716,7 +1729,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Remove one document from the project - its records, history and blobs - and tell other tabs. The other documents stay.",
 			"intents": ["delete a document from the project", "remove one file and its records"],
-			"declaredAt": "src/project/project.ts:863"
+			"declaredAt": "src/project/project.ts:860"
 		},
 		{
 			"path": "project.undo",
@@ -1725,7 +1738,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Revert the last committed transaction of a document and tell other tabs. Does nothing when there is nothing to undo.",
 			"intents": ["undo the last change to a document", "roll back a commit"],
-			"declaredAt": "src/project/project.ts:1180"
+			"declaredAt": "src/project/project.ts:1179"
 		},
 		{
 			"path": "tx.addChild",

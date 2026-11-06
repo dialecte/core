@@ -37,11 +37,19 @@ const RUNTIME = {
 	},
 }
 
-/** The runtime of a dialecte's project factory: its engine's version and address besides. */
+/** The runtime of a dialecte's project factory: its version besides. */
 const SQLITE_RUNTIME = {
 	...RUNTIME,
 	dialecteVersion: '0.0.0',
-	engineUrl: 'https://dialecte.test/assets/engine.worker.js',
+}
+
+/** The store resolveStore builds, or the error it refuses with: a refusal then fails the case on its assertion. */
+function resolvedOrRefused(params: Parameters<typeof resolveStore>[0]): unknown {
+	try {
+		return resolveStore(params)
+	} catch (thrown) {
+		return thrown
+	}
 }
 
 describe('resolveStore', () => {
@@ -60,7 +68,7 @@ describe('resolveStore', () => {
 			storage: { type: 'inMemory', writable: false },
 			expected: (store) => expect(store).toBeInstanceOf(InMemoryStore),
 		},
-		'sqlite storage, with the dialecte’s engine → an EngineStore': {
+		'sqlite storage, made by a dialecte’s factory → an EngineStore': {
 			storage: { type: 'sqlite' },
 			expected: (store) => expect(store).toBeInstanceOf(EngineStore),
 		},
@@ -74,12 +82,12 @@ describe('resolveStore', () => {
 		it(description, () => {
 			withSqliteStorage()
 			testCase.expected(
-				resolveStore({
+				resolvedOrRefused({
 					name: 'resolve-store',
 					storage: testCase.storage,
 					runtime: SQLITE_RUNTIME,
 					dialecteId: 'core/test',
-				}),
+				}) as Store,
 			)
 		})
 	}
@@ -101,7 +109,7 @@ describe('resolveStore', () => {
 
 	describe('sqlite storage', () => {
 		type RefusalCase = {
-			runtime: typeof RUNTIME & { dialecteVersion?: string; engineUrl?: string }
+			runtime: typeof RUNTIME & { dialecteVersion?: string }
 			dialecteId: string | undefined
 		}
 		const refusals: Record<string, RefusalCase> = {
@@ -109,12 +117,8 @@ describe('resolveStore', () => {
 				runtime: RUNTIME,
 				dialecteId: undefined,
 			},
-			'a dialecte with no engine address → PROJECT_ENGINE_NOT_DECLARED': {
-				runtime: { ...RUNTIME, dialecteVersion: '0.0.0' },
-				dialecteId: 'core/test',
-			},
 			'a dialecte with no version → PROJECT_ENGINE_NOT_DECLARED': {
-				runtime: { ...RUNTIME, engineUrl: SQLITE_RUNTIME.engineUrl },
+				runtime: RUNTIME,
 				dialecteId: 'core/test',
 			},
 		}
@@ -170,7 +174,7 @@ describe('resolveStore', () => {
 				return built
 			})
 			onTestFinished(replaceSqliteStorage({ storage: { storeOf } }))
-			const store = resolveStore({
+			const store = resolvedOrRefused({
 				name: 'resolve-store',
 				storage: { type: 'sqlite' },
 				runtime: SQLITE_RUNTIME,
@@ -182,7 +186,6 @@ describe('resolveStore', () => {
 					name: 'resolve-store',
 					dialecteId: 'core/test',
 					dialecteVersion: SQLITE_RUNTIME.dialecteVersion,
-					engineUrl: SQLITE_RUNTIME.engineUrl,
 					perf: undefined,
 				},
 			})
@@ -197,7 +200,7 @@ describe('resolveStore', () => {
 			expected: { refusedWith: string } | { params: unknown }
 		}
 		const testCases: Record<string, TestCase> = {
-			'a factory’s project, measured → its name, dialecte, version, engine and perf': {
+			'a factory’s project, measured → its name, dialecte, version and perf': {
 				name: 'measured',
 				dialecteId: 'core/test',
 				perf: true,
@@ -206,7 +209,6 @@ describe('resolveStore', () => {
 						name: 'measured',
 						dialecteId: 'core/test',
 						dialecteVersion: SQLITE_RUNTIME.dialecteVersion,
-						engineUrl: SQLITE_RUNTIME.engineUrl,
 						perf: true,
 					},
 				},

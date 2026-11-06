@@ -2,6 +2,8 @@ import { copyFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
+import { sqliteEngineExternal } from './build/sqlite-engine-external.plugin'
+
 // VITE
 import { defineConfig } from 'vite'
 // VITE PLUGINS
@@ -37,6 +39,7 @@ export default defineConfig({
 			insertTypesEntry: true,
 		}),
 		shipTestSchemas(),
+		sqliteEngineExternal(),
 	],
 	resolve: {
 		alias: {

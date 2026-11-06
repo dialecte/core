@@ -2,7 +2,10 @@
 export type BootRealmParams = {
 	/** Whether the realm can start the project's engine for the hub. */
 	canStartEngines: boolean
-	/** The engine worker it starts (the test dialecte's when absent). */
+	/**
+	 * The engine worker it starts for the hub and registers for its projects on `sqlite` (the test dialecte's when
+	 * absent); a realm bound through a port registers none.
+	 */
 	engineUrl?: string
 	/** The dialecte version its stores ask for (the test dialecte's when absent). */
 	dialecteVersion?: string

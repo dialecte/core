@@ -11,9 +11,11 @@ export type SqliteEngineSettings = {
 	progressBeatOps?: number
 }
 
-/** An engine worker's state: the project it serves, its pool, its lock, the engine, the client ports. */
+/** An engine worker's state: the project it serves and its dialecte, its pool, its lock, the engine, the client ports. */
 export type EngineRuntimeState = {
 	project: string | undefined
+	/** The dialecte of `project`: set and cleared with it, the same name under another dialecte being another project. */
+	dialecteId: string | undefined
 	pool: SAHPoolUtil | undefined
 	/** Releases the engine lock (held from the open until `close` or `destroy`). */
 	releaseLock: (() => void) | undefined

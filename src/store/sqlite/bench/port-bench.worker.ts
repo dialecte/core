@@ -2,28 +2,8 @@
  * The engine the port bench talks to: the bench's verbatim config and its write-back session, served as
  * a dialecte's worker entry serves its engine (the page reaches it through the store's port).
  */
-import { benchConfig, createWriteBackSession } from './bench-import-session'
-import { AFTER_IMPORT_RATIOS, FIXTURE_ROOTS, PORT_BENCH_DIALECTE } from './bench.constants'
+import { PORT_BENCH_ENGINE_DIALECTE } from './port-bench.worker.constants'
 
-import { defineDialecte } from '@/dialecte'
-import { serveDialecteEngine } from '@/engine'
+import { serveSqliteEngine } from '@/sqlite'
 
-const PORT_BENCH_ENGINE_DIALECTE = defineDialecte({
-	id: PORT_BENCH_DIALECTE.dialecteId,
-	version: PORT_BENCH_DIALECTE.dialecteVersion,
-	configs: { default: benchConfig(FIXTURE_ROOTS.composed) },
-	defaultConfigKey: 'default',
-	createHooks: function createBenchHooks() {
-		return {
-			createImportSession: function createBenchSession() {
-				return createWriteBackSession({
-					ratio: AFTER_IMPORT_RATIOS.pathNamed,
-					onRoot: function ignoreRoot() {},
-					timings: { afterImportBuildMs: 0 },
-				})
-			},
-		}
-	},
-})
-
-serveDialecteEngine({ dialecte: PORT_BENCH_ENGINE_DIALECTE })
+serveSqliteEngine({ dialectes: [PORT_BENCH_ENGINE_DIALECTE] })

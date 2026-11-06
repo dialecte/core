@@ -1,15 +1,7 @@
 import type { EngineClient } from '../client/client.types'
 import type { LinkNotice } from '../engine-store.types'
 import type { RealmToHubMessage } from './hub-protocol.types'
-import type { HubEngineSpawner, RealmEngineSpawner } from './realm-host.types'
-
-export type ConnectHubParams = {
-	/**
-	 * The engines this page can start for the hub: each dialecte's `factory.spawner` (a spawner whose worker is of
-	 * another origin is left out). A later call adds the engines the page does not run yet.
-	 */
-	spawners?: HubEngineSpawner[]
-}
+import type { RealmEngineSpawner } from './realm-host.types'
 
 /** How the realm connects: the engines it can start, with what each opens with. */
 export type HubConnectionOptions = {

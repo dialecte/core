@@ -1,4 +1,6 @@
-import { ERROR_CATALOG } from './codes'
+import { ERROR_CATALOG } from './codes.constants'
+import { CORE_CODES } from './core-codes.constants'
+import { RAISING_FUNCTIONS } from './errors.constants'
 
 import type {
 	CoreCatalogueCollisions,
@@ -98,8 +100,6 @@ export function defineErrors<const GenericCatalog extends DialecteErrorCatalogIn
 	return definitions as DialecteErrorDefinitions<GenericCatalog>
 }
 
-const CORE_CODES = new Set<string>(Object.values(ERROR_CATALOG).map((entry) => entry.code))
-
 /**
  * The structured error a caught value carries — thrown by `throwDialecteError` or `invariant` —
  * or nothing when it is any other error or value.
@@ -137,17 +137,6 @@ export function isKnownDialecteError<
 		(catalogue) => Object.hasOwn(catalogue, error.key) && catalogue[error.key]?.code === error.code,
 	)
 }
-
-/**
- * The functions that only raise or report an error: the method is the first frame that is none of
- * them. Matched on the function name only — a frame's file path may well contain one of these words.
- */
-const RAISING_FUNCTIONS = new Set([
-	'throwDialecteError',
-	'createDialecteError',
-	'invariant',
-	'reportFailure',
-])
 
 function resolveCallerFromStack(stack: string | undefined): string {
 	if (!stack) return 'unknown'

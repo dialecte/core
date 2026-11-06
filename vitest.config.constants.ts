@@ -1,5 +1,8 @@
 import type { TierOnlyTestFile } from './vitest.config.types'
 
+/** The files core's browser tests start as workers, with or without a query. */
+export const WORKER_FILE_PATTERN = /\.worker\.ts(?:\?|$)/
+
 /**
  * The test files that need a browser: the `browser` project runs them, the `node` project leaves them
  * out. Every other test file runs in node, on the in-memory store.
@@ -39,8 +42,12 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'the local store as a case of the storage precedence: a database in IndexedDB',
 	},
 	{
-		path: 'src/store/sqlite/runtime/serve-dialecte-engine.test.ts',
+		path: 'src/store/sqlite/runtime/serve-sqlite-engine.test.ts',
 		why: 'the SQLite engine served from a worker, its files in OPFS',
+	},
+	{
+		path: 'src/store/sqlite/runtime/engine-control-loop.test.ts',
+		why: 'engine workers: the control loop of the worker file answering messages posted in its first turn',
 	},
 	{
 		path: 'src/store/sqlite/runtime/install-pool.test.ts',

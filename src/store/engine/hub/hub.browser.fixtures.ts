@@ -10,6 +10,7 @@ import { adoptHubConnection, openHubConnection } from './hub-client'
 import { toDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test'
 
+import type { SqliteEngineRegistration } from '../../sqlite-storage.types'
 import type { StoreNotice } from '../../store.types'
 import type { HubConnection } from './hub-client.types'
 import type { BootRealmParams, BrowserRealm, HubPortMessage } from './hub.browser.fixtures.types'
@@ -29,7 +30,7 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 	} = params
 	if (storageRefused) refuseRealmStorage()
 	const joined = bound
-		? await adoptHubConnection({ port: await handedPorts() })
+		? await adoptHandedConnection()
 		: await openHubConnection({
 				spawners: canStartEngines
 					? [
@@ -43,6 +44,15 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 			})
 	if (!joined) throw new Error('the realm found no hub')
 	const connection: HubConnection = joined
+	/**
+	 * The engine this realm registered, as an app's shell does; a child its page bound registers none (the engines it
+	 * reaches are its page's).
+	 */
+	function registeredEngine(): SqliteEngineRegistration | undefined {
+		return bound
+			? undefined
+			: { url: engineUrl, dialectes: [{ id: TEST_DIALECTE.id, version: dialecteVersion }] }
+	}
 	const stores = new Map<string, Promise<EngineStore>>()
 	/** What each project's store told since the case listened to it. */
 	const heard = new Map<string, string[]>()
@@ -165,7 +175,7 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 			await store.destroy()
 		},
 		registerThroughSqlite: async function registerThroughSqlite({ project, id }) {
-			const store = sqliteStoreOf({ project, engineUrl, dialecteVersion })
+			const store = sqliteStoreOf({ project, engine: registeredEngine, dialecteVersion })
 			try {
 				await store.open()
 				await store.registerDocument(makeDocument({ id }))
@@ -180,7 +190,7 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 			}
 		},
 		destroyThroughSqlite: async function destroyThroughSqlite({ project }) {
-			const store = sqliteStoreOf({ project, engineUrl, dialecteVersion })
+			const store = sqliteStoreOf({ project, engine: registeredEngine, dialecteVersion })
 			return store.destroy().then(
 				function destroyed() {
 					return 'destroyed'
@@ -196,17 +206,17 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 /** The project's store on the SQLite connector, as a project on `sqlite` storage makes it (not opened). */
 function sqliteStoreOf(params: {
 	project: string
-	engineUrl: string
+	engine: () => SqliteEngineRegistration | undefined
 	dialecteVersion: string
 }): EngineStore {
-	const { project, engineUrl, dialecteVersion } = params
+	const { project, engine, dialecteVersion } = params
 	return new EngineStore({
 		name: project,
 		connector: createSqliteConnector({
 			name: project,
 			dialecteId: TEST_DIALECTE.id,
 			dialecteVersion,
-			engineUrl,
+			engine,
 		}),
 	})
 }
@@ -231,6 +241,12 @@ async function openStore(params: {
 	})
 	await store.open()
 	return store
+}
+
+/** The hub a child realm joins through the port its parent hands it. */
+async function adoptHandedConnection(): Promise<HubConnection | undefined> {
+	const port = await handedPorts()
+	return adoptHubConnection({ port })
 }
 
 /**

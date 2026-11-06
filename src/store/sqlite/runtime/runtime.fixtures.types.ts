@@ -27,9 +27,13 @@ export type RuntimeFixtureScenario =
 	| 'silent-open'
 	| 'silent-adopt'
 	| 'other-dialecte'
+	| 'two-dialectes'
+	| 'same-id-twice'
 	| 'unchecked-open'
 	| 'stranded-window'
 	| 'mute-clients'
+	| 'slow-engine-chunk'
+	| 'failing-engine-chunk'
 
 /** What a runtime test orders its engine worker on the fixture channel. */
 export type RuntimeFixtureOrder =
@@ -69,3 +73,6 @@ export type ProgressBeatOrder = { port: MessagePort; intervalMs: number; rows: n
  * file or on the first file probed only (the others acquired), every time or once.
  */
 export type PoolInstallFailure = { files: 'every' | 'first'; once: boolean }
+
+/** A dialecte as a realm names it to an engine worker: its id and its version. */
+export type FixtureDialecteRef = { dialecteId: string; dialecteVersion: string }

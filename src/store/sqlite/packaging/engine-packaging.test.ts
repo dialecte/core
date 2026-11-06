@@ -2,8 +2,16 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { build, createServer } from 'vite'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import {
+	ENGINE_CHUNK,
+	ENGINE_ONLY_MARKER,
+	PACKAGING_CASE_TIMEOUT_MS,
+} from './engine-packaging.constants'
+
+import { build, createServer, optimizeDeps, resolveConfig } from 'vite'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+
+vi.setConfig({ testTimeout: PACKAGING_CASE_TIMEOUT_MS })
 
 /** The package's root: core's own build configs are read from there. */
 const CORE_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
@@ -17,8 +25,10 @@ const WORK = path.join(CORE_ROOT, '.tmp', `packaging-${process.pid}`)
 const CORE_PACKAGE = path.join(WORK, 'node_modules', '@dialecte', 'core')
 const CORE_DIST = path.join(CORE_PACKAGE, 'dist')
 const DIALECTE = path.join(WORK, 'dialecte')
-/** A consumer on SQLite storage: it imports `@dialecte/core/sqlite` and a dialecte's engines. */
+/** A consumer on SQLite storage: one engine worker file for its dialectes, and the page that registers it. */
 const APP = path.join(WORK, 'app')
+/** A consumer on SQLite storage that names no engine worker: it imports `@dialecte/core/sqlite` for what it registers. */
+const REGISTER_ONLY_APP = path.join(WORK, 'app-register-only')
 /** A consumer that never imports `@dialecte/core/sqlite`. */
 const MAIN_ONLY_APP = path.join(WORK, 'app-main-only')
 
@@ -28,29 +38,49 @@ type PackageExport = { default: string; types: string }
 /** core's package.json, as the run installs it. */
 const PACKAGE_JSON = path.join(CORE_ROOT, 'package.json')
 
-/** A dialecte package, as nsd ships one: two engine workers (two dialectes) exported by URL, core kept external. */
+/**
+ * A dialecte package, as a dialecte ships one: its declarations, core kept external, no worker: the app that opens its
+ * projects bundles the one engine worker for all the dialectes it uses.
+ */
 const DIALECTE_FILES: Record<string, string> = {
 	'dialecte.ts': [
 		"import { defineDialecte } from '@dialecte/core'",
 		"export const DIALECTE = defineDialecte({ id: 'fixture', version: '0.0.0', configs: { default: {} as never }, defaultConfigKey: 'default' })",
 		"export const OTHER_DIALECTE = defineDialecte({ id: 'fixture-other', version: '0.0.0', configs: { default: {} as never }, defaultConfigKey: 'default' })",
 	].join('\n'),
-	'engine-a.worker.ts': [
-		"import { serveDialecteEngine } from '@dialecte/core/engine'",
-		"import { DIALECTE } from './dialecte'",
-		'serveDialecteEngine({ dialecte: DIALECTE })',
-	].join('\n'),
-	'engine-b.worker.ts': [
-		"import { serveDialecteEngine } from '@dialecte/core/engine'",
-		"import { OTHER_DIALECTE } from './dialecte'",
-		'serveDialecteEngine({ dialecte: OTHER_DIALECTE })',
-	].join('\n'),
-	'index.ts': [
-		"import engineA from './engine-a.worker.ts?worker&url'",
-		"import engineB from './engine-b.worker.ts?worker&url'",
-		'export const ENGINE_URLS = [engineA, engineB]',
-	].join('\n'),
+	'index.ts': "export { DIALECTE, OTHER_DIALECTE } from './dialecte'",
 }
+
+/** Where an app finds the dialecte package's build. */
+const DIALECTE_BUILD = path.join(DIALECTE, 'dist', 'index.js')
+
+/**
+ * The app's one engine worker file: every dialecte it uses, served from `@dialecte/core/sqlite`, built by the app's
+ * bundler as it builds any worker - no setting.
+ */
+const ENGINE_WORKER_SOURCE = [
+	"import { serveSqliteEngine } from '@dialecte/core/sqlite'",
+	`import { DIALECTE, OTHER_DIALECTE } from '${DIALECTE_BUILD}'`,
+	'serveSqliteEngine({ dialectes: [DIALECTE, OTHER_DIALECTE] })',
+].join('\n')
+
+/** The app's page: the worker file's URL, registered once with the dialectes it serves. */
+const APP_PAGE_SOURCE = [
+	"import engineUrl from './engine.worker.js?worker&url'",
+	"import { registerSqliteEngine } from '@dialecte/core/sqlite'",
+	"import { createProjectFactory } from '@dialecte/core'",
+	`import { DIALECTE, OTHER_DIALECTE } from '${DIALECTE_BUILD}'`,
+	'registerSqliteEngine({ url: engineUrl, dialectes: [DIALECTE, OTHER_DIALECTE] })',
+	'console.log(createProjectFactory({ dialecte: DIALECTE }))',
+].join('\n')
+
+/** A page that imports `@dialecte/core/sqlite` for what it registers and names no engine worker. */
+const REGISTER_ONLY_PAGE_SOURCE = [
+	// the import the docs give: nothing named, the entry kept for what it registers
+	"import '@dialecte/core/sqlite'",
+	"import { createProjectFactory } from '@dialecte/core'",
+	'console.log(createProjectFactory)',
+].join('\n')
 
 /** Every file under `directory`, with its path relative to it. */
 async function filesUnder(params: { directory: string }): Promise<string[]> {
@@ -134,18 +164,21 @@ const ANY_CHUNK_IMPORT = /(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+\.js)["']/
 
 /**
  * The entry's chunk and every chunk it imports in core's build: statically only (what loads with the entry), or
- * through `import()` too (what the entry may load later).
+ * through `import()` too (what the entry may load later), the `except` chunks left out with what only they reach.
  */
 async function chunksReachedFrom(params: {
 	entry: string
 	staticOnly?: boolean
+	/** Chunks not entered (the one the entry loads on demand and that this reading does not follow). */
+	except?: string[]
 }): Promise<Map<string, string>> {
+	const { except = [] } = params
 	const imports = params.staticOnly ? STATIC_CHUNK_IMPORT : ANY_CHUNK_IMPORT
 	const reached = new Map<string, string>()
 	const pending = [params.entry]
 	while (pending.length > 0) {
 		const file = pending.pop()!
-		if (reached.has(file)) continue
+		if (reached.has(file) || except.includes(file)) continue
 		const text = await textOf({ file: path.join(CORE_DIST, file) })
 		reached.set(file, text)
 		for (const match of text.matchAll(imports)) {
@@ -173,6 +206,36 @@ function chunksHolding(params: { chunks: Map<string, string>; fragment: string }
 		})
 }
 
+/** Every file of `files` (relative to `directory`) whose text holds `fragment`. */
+async function filesHolding(params: {
+	directory: string
+	files: string[]
+	fragment: string
+}): Promise<string[]> {
+	const holding: string[] = []
+	for (const file of params.files) {
+		const text = await textOf({ file: path.join(params.directory, file) })
+		if (text.includes(params.fragment)) holding.push(file)
+	}
+	return holding
+}
+
+/** The documentation comment above a function core's declarations export, wherever the entry's declarations place it. */
+async function docblockOf(params: { name: string }): Promise<string> {
+	const declared = new RegExp(
+		`/\\*\\*(?:(?!\\*/)[\\s\\S])*\\*/\\s*export declare function ${params.name}\\b`,
+	)
+	const declarations = (await filesUnder({ directory: CORE_DIST })).filter((file) =>
+		file.endsWith('.d.ts'),
+	)
+	for (const file of declarations) {
+		const text = await textOf({ file: path.join(CORE_DIST, file) })
+		const found = declared.exec(text)
+		if (found) return found[0]
+	}
+	return ''
+}
+
 beforeAll(async () => {
 	await rm(WORK, { recursive: true, force: true })
 	// a package of its own: the run is inside core's folder, whose package.json would otherwise resolve
@@ -195,7 +258,8 @@ beforeAll(async () => {
 		logLevel: 'silent',
 		build: { outDir: CORE_DIST },
 	})
-	await writeFile(path.join(CORE_PACKAGE, 'package.json'), await readFile(PACKAGE_JSON, 'utf8'))
+	const packageJson = await readFile(PACKAGE_JSON, 'utf8')
+	await writeFile(path.join(CORE_PACKAGE, 'package.json'), packageJson)
 	await mkdir(DIALECTE, { recursive: true })
 	for (const [name, source] of Object.entries(DIALECTE_FILES)) {
 		await writeFile(path.join(DIALECTE, name), source)
@@ -205,30 +269,34 @@ beforeAll(async () => {
 		root: DIALECTE,
 		base: './',
 		logLevel: 'silent',
-		worker: { format: 'es' },
 		build: {
 			outDir: path.join(DIALECTE, 'dist'),
 			lib: { entry: { index: path.join(DIALECTE, 'index.ts') }, formats: ['es'] },
 			rollupOptions: { external: [/^@dialecte\/core/] },
 		},
 	})
+	// the app bundles the one engine worker itself, with no bundler setting of its own
 	await mkdir(APP, { recursive: true })
-	await writeFile(
-		path.join(APP, 'main.js'),
-		[
-			`import { ENGINE_URLS } from '${path.join(DIALECTE, 'dist', 'index.js')}'`,
-			// the import the docs give: nothing named, the entry kept for what it registers
-			"import '@dialecte/core/sqlite'",
-			"import { createProjectFactory } from '@dialecte/core'",
-			'console.log(ENGINE_URLS, createProjectFactory)',
-		].join('\n'),
-	)
+	await writeFile(path.join(APP, 'engine.worker.js'), ENGINE_WORKER_SOURCE)
+	await writeFile(path.join(APP, 'main.js'), APP_PAGE_SOURCE)
 	await writeFile(path.join(APP, 'index.html'), '<script type="module" src="./main.js"></script>')
 	await build({
 		configFile: false,
 		root: APP,
 		logLevel: 'silent',
 		build: { outDir: path.join(APP, 'dist') },
+	})
+	await mkdir(REGISTER_ONLY_APP, { recursive: true })
+	await writeFile(path.join(REGISTER_ONLY_APP, 'main.js'), REGISTER_ONLY_PAGE_SOURCE)
+	await writeFile(
+		path.join(REGISTER_ONLY_APP, 'index.html'),
+		'<script type="module" src="./main.js"></script>',
+	)
+	await build({
+		configFile: false,
+		root: REGISTER_ONLY_APP,
+		logLevel: 'silent',
+		build: { outDir: path.join(REGISTER_ONLY_APP, 'dist') },
 	})
 	await mkdir(MAIN_ONLY_APP, { recursive: true })
 	await writeFile(
@@ -251,34 +319,51 @@ beforeAll(async () => {
 }, 120_000)
 
 afterAll(async () => {
-	await rm(WORK, { recursive: true, force: true })
+	// a dev server's dependency optimizer may still be writing its cache as the folder goes
+	await rm(WORK, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
 })
 
 describe('the engine as a dialecte and a consumer bundle it', () => {
-	it('core’s package.json exports → each sub-path’s file and types in the installed package', async () => {
-		const { exports } = JSON.parse(await textOf({ file: PACKAGE_JSON })) as {
+	it('core’s package.json exports → `.` and `./sqlite` each with its file and types in the installed package; `./engine` and `./sqlite/engine` are gone', async () => {
+		const fileText = await textOf({ file: PACKAGE_JSON })
+		const { exports } = JSON.parse(fileText) as {
 			exports: Record<string, PackageExport | string>
 		}
 		const installed = await filesUnder({ directory: CORE_PACKAGE })
-		for (const subPath of ['.', './engine', './sqlite']) {
+		for (const subPath of ['.', './sqlite']) {
 			const entry = exports[subPath] as PackageExport
 			for (const field of ['default', 'types'] as const) {
 				expect(installed, `${subPath} ${field}`).toContain(path.normalize(entry[field]))
 			}
 		}
+		expect(Object.keys(exports)).not.toContain('./engine')
+		expect(Object.keys(exports)).not.toContain('./sqlite/engine')
 	})
 
-	it('core’s two builds → the engine entry beside the main ones, no asset of sqlite-wasm in it', async () => {
+	it('core’s sqlite entry types → serveSqliteEngine and registerSqliteEngine both declared, each documented with its @intent', async () => {
+		const entry = await textOf({ file: path.join(CORE_DIST, 'sqlite.d.ts') })
+		for (const name of ['serveSqliteEngine', 'registerSqliteEngine']) {
+			// declared by the entry or re-exported by it; the declaration a consumer's editor shows holds the intent
+			expect(entry, name).toMatch(new RegExp(`\\b${name}\\b`))
+			const docblock = await docblockOf({ name })
+			expect(docblock, name).toContain('@intent')
+		}
+	})
+
+	it('core’s two builds → the engine’s chunk beside the entries, named in no export, no asset of sqlite-wasm in it', async () => {
 		const files = await filesUnder({ directory: CORE_DIST })
-		expect(files).toEqual(expect.arrayContaining(['index.js', 'engine.js', 'engine.d.ts']))
+		expect(files).toEqual(expect.arrayContaining(['index.js', 'sqlite.js', ENGINE_CHUNK]))
+		expect(files).not.toContain('engine.js')
 		expect(files.filter((file) => file.includes('worker1'))).toEqual([])
-		const engine = await textOf({ file: path.join(CORE_DIST, 'engine.js') })
+		const engine = await textOf({ file: path.join(CORE_DIST, ENGINE_CHUNK) })
 		for (const forbidden of NO_ASSET_OF_SQLITE) expect(engine, forbidden).not.toContain(forbidden)
 	})
 
 	it('core’s main and SQLite entries → no chunk they reach imports sqlite-wasm or holds it: an engine in the page is not on the main side', async () => {
-		for (const entry of ['index.js', 'sqlite.js']) {
-			const chunks = await chunksReachedFrom({ entry })
+		// the SQLite entry loads the engine's chunk on demand: that chunk is the engine, which holds sqlite-wasm by design
+		const engineIsLoadedOnDemand = { 'index.js': [], 'sqlite.js': [ENGINE_CHUNK] }
+		for (const [entry, except] of Object.entries(engineIsLoadedOnDemand)) {
+			const chunks = await chunksReachedFrom({ entry, except })
 			const reachingSqlite = [...chunks]
 				.filter(function importsSqliteWasm([, text]) {
 					return SQLITE_MODULE_IMPORT.test(text) || text.includes('sqlite3ApiBootstrap')
@@ -302,7 +387,8 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 	})
 
 	it('core’s main entry → neither the SQLite connector nor the wasm’s URL in any chunk it reaches, through import() or not', async () => {
-		expect(await filesUnder({ directory: CORE_DIST })).toContain('sqlite3.wasm')
+		const distributedFiles = await filesUnder({ directory: CORE_DIST })
+		expect(distributedFiles).toContain('sqlite3.wasm')
 		const loadedWithEntry = await chunksReachedFrom({ entry: 'index.js', staticOnly: true })
 		// the main entry loads chunks of its own: a reading that found none would prove nothing
 		expect(loadedWithEntry.size).toBeGreaterThan(1)
@@ -319,6 +405,17 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		}
 	})
 
+	it('core’s SQLite entry → the engine’s chunk reached by import() only, never by a static import: it loads when an engine worker asks for it, not with the entry', async () => {
+		const loadedWithEntry = await chunksReachedFrom({ entry: 'sqlite.js', staticOnly: true })
+		expect([...loadedWithEntry.keys()]).not.toContain(ENGINE_CHUNK)
+		const reachable = await chunksReachedFrom({ entry: 'sqlite.js' })
+		expect([...reachable.keys()]).toContain(ENGINE_CHUNK)
+		const entry = await textOf({ file: path.join(CORE_DIST, 'sqlite.js') })
+		expect(entry).toMatch(/import\(\s*["']\.\/sqlite-engine\.js["']\s*\)/)
+		const reachableFromMain = await chunksReachedFrom({ entry: 'index.js' })
+		expect(reachableFromMain.has(ENGINE_CHUNK)).toBe(false)
+	})
+
 	it('a consumer importing only core’s main entry → no wasm, no hub worker, no SQLite code emitted', async () => {
 		const directory = path.join(MAIN_ONLY_APP, 'dist')
 		const files = await filesUnder({ directory })
@@ -332,34 +429,105 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		}
 	})
 
-	it('a dialecte with two engine workers → neither worker chunk holds a wasm or a URL to one', async () => {
-		const assets = (await filesUnder({ directory: path.join(DIALECTE, 'dist') })).filter((file) =>
-			file.includes('.worker'),
-		)
-		expect(assets).toHaveLength(2)
-		for (const asset of assets) {
-			const chunk = await textOf({ file: path.join(DIALECTE, 'dist', asset) })
-			for (const forbidden of NO_ASSET_OF_SQLITE)
-				expect(chunk, `${asset}: ${forbidden}`).not.toContain(forbidden)
-			expect(chunk, asset).not.toMatch(/from\s*["']@dialecte\/core/)
+	it('a dialecte package’s build, two declarations → no worker file, and nothing of SQLite in any of its files', async () => {
+		const directory = path.join(DIALECTE, 'dist')
+		const files = await filesUnder({ directory })
+		// the package’s own script: a build that emitted nothing would prove nothing
+		expect(files.filter((file) => file.endsWith('.js')).length).toBeGreaterThan(0)
+		expect(files.filter((file) => file.includes('.worker'))).toEqual([])
+		for (const fragment of [
+			'sqlite3',
+			SQLITE_CONNECTOR_MARKER,
+			'new SharedWorker(',
+			'@dialecte/core/sqlite',
+		]) {
+			const holding = await fileHolding({ directory, files, fragment })
+			expect(holding, fragment).toBeUndefined()
 		}
 	})
 
-	it('a consumer’s app build, importing @dialecte/core/sqlite for what it registers → exactly one wasm file, content-hashed, for every engine', async () => {
-		const files = await filesUnder({ directory: path.join(APP, 'dist') })
-		expect(files.filter((file) => file.endsWith('.wasm'))).toEqual([
+	it('an app’s build, one engine worker file for two dialectes and no bundler setting → exactly one engine worker, one content-hashed wasm for it, the hub’s worker once, sqlite-wasm’s code in the worker file only', async () => {
+		const directory = path.join(APP, 'dist')
+		const files = await filesUnder({ directory })
+		const workers = files.filter(isEngineWorker)
+		expect(workers).toHaveLength(1)
+		expect(files.filter(isWasmFile)).toEqual([
 			expect.stringMatching(/^assets\/sqlite3-[\w-]+\.wasm$/),
 		])
-		// the two engines (the hub is a worker too, of core's main side)
-		expect(files.filter(isEngineWorker)).toHaveLength(2)
-		const [wasm] = files.filter((file) => file.endsWith('.wasm'))
-		const mainChunks = files.filter((file) => file.endsWith('.js') && !file.includes('.worker'))
-		const holding = await Promise.all(
-			mainChunks.map(async (file) =>
-				(await textOf({ file: path.join(APP, 'dist', file) })).includes(path.basename(wasm!)),
-			),
+		expect(files.filter(isHubWorker)).toHaveLength(1)
+		const holdingBootstrap = await filesHolding({
+			directory,
+			files,
+			fragment: 'sqlite3ApiBootstrap',
+		})
+		expect(holdingBootstrap).toEqual(workers)
+		// the page’s own chunks reach the wasm by its URL, to hand it to the engines
+		const [wasm] = files.filter(isWasmFile)
+		const holdingWasmUrl = await filesHolding({
+			directory,
+			files: files.filter(isAppMainScript),
+			fragment: path.basename(wasm!),
+		})
+		expect(holdingWasmUrl.length).toBeGreaterThan(0)
+	})
+
+	it('an app’s build → its page chunks hold no sqlite-wasm code and no engine code: the engine is in its worker file, which the page reaches by URL only', async () => {
+		const directory = path.join(APP, 'dist')
+		const files = await filesUnder({ directory })
+		const [worker] = files.filter(isEngineWorker)
+		// the markers mean something only if the worker file holds them
+		const workerText = await textOf({ file: path.join(directory, worker!) })
+		expect(workerText).toContain('sqlite3ApiBootstrap')
+		expect(workerText).toContain(ENGINE_ONLY_MARKER)
+		// the engine is bundled into the app's worker with no asset of sqlite-wasm: the wasm stays the one file the page names
+		for (const forbidden of NO_ASSET_OF_SQLITE) {
+			expect(workerText, forbidden).not.toContain(forbidden)
+		}
+		const pageChunks = files.filter(isAppMainScript)
+		expect(pageChunks.length).toBeGreaterThan(0)
+		for (const fragment of ['sqlite3ApiBootstrap', ENGINE_ONLY_MARKER, 'sqlite-engine']) {
+			const holding = await filesHolding({ directory, files: pageChunks, fragment })
+			expect(holding, fragment).toEqual([])
+		}
+	})
+
+	it('an app’s build whose page imports only core’s SQLite entry, no worker file → no engine emitted, exactly one wasm file, the hub’s worker once', async () => {
+		const directory = path.join(REGISTER_ONLY_APP, 'dist')
+		const files = await filesUnder({ directory })
+		expect(files.filter(isAppMainScript).length).toBeGreaterThan(0)
+		expect(files.filter(isEngineWorker)).toEqual([])
+		expect(files.filter(isWasmFile)).toEqual([
+			expect.stringMatching(/^assets\/sqlite3-[\w-]+\.wasm$/),
+		])
+		expect(files.filter(isHubWorker)).toHaveLength(1)
+		for (const fragment of ['sqlite3ApiBootstrap', ENGINE_ONLY_MARKER, 'sqlite-engine']) {
+			const holding = await filesHolding({ directory, files, fragment })
+			expect(holding, fragment).toEqual([])
+		}
+	})
+
+	it('an app’s dev server, the optimizer left to its default → the pre-bundled copy of core’s SQLite entry the page loads reaches the engine’s chunk by import() only, and no other optimized file holds the engine', async () => {
+		const config = await resolveConfig(
+			{
+				configFile: false,
+				root: APP,
+				logLevel: 'silent',
+				cacheDir: path.join(WORK, 'optimizer-cache'),
+			},
+			'serve',
 		)
-		expect(holding.some(Boolean)).toBe(true)
+		const metadata = await optimizeDeps(config, true)
+		const entry = metadata.optimized['@dialecte/core/sqlite']
+		expect(entry, 'the optimizer pre-bundled @dialecte/core/sqlite').toBeDefined()
+		const code = await textOf({ file: entry!.file })
+		expect(code).toMatch(/import\(\s*["'][^"']*sqlite-engine[^"']*\.js[^"']*["']\s*\)/)
+		expect(code).not.toMatch(/(?:from|import)\s*["'][^"']*sqlite-engine[^"']*\.js/)
+		const directory = path.dirname(entry!.file)
+		const files = (await filesUnder({ directory })).filter((file) => file.endsWith('.js'))
+		const holdingEngine = await filesHolding({ directory, files, fragment: 'sqlite3ApiBootstrap' })
+		expect(holdingEngine.length).toBeGreaterThan(0)
+		expect(holdingEngine.every((file) => file.startsWith('sqlite-engine'))).toBe(true)
+		expect(code).not.toContain('sqlite3ApiBootstrap')
 	})
 
 	it('a consumer’s dev server → the wasm URL of core’s SQLite entry answers the wasm', async () => {
@@ -381,7 +549,8 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 			const address = server.resolvedUrls?.local[0]
 			const response = await fetch(new URL(wasmPath!, address))
 			expect(response.status).toBe(200)
-			const head = new Uint8Array(await response.arrayBuffer()).slice(0, 4)
+			const responseBuffer = await response.arrayBuffer()
+			const head = new Uint8Array(responseBuffer).slice(0, 4)
 			expect([...head]).toEqual([0x00, 0x61, 0x73, 0x6d])
 		} finally {
 			await server.close()
@@ -403,10 +572,13 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		expect(referring).toBeDefined()
 		const main = await textOf({ file: path.join(CORE_DIST, referring!) })
 		expect(main).toContain('new SharedWorker(')
-		expect(
-			(await chunksReachedFrom({ entry: 'sqlite.js', staticOnly: true })).has(referring!),
-		).toBe(true)
-		expect((await chunksReachedFrom({ entry: 'index.js' })).has(referring!)).toBe(false)
+		const staticallyReachedChunks = await chunksReachedFrom({
+			entry: 'sqlite.js',
+			staticOnly: true,
+		})
+		expect(staticallyReachedChunks.has(referring!)).toBe(true)
+		const reachedChunks = await chunksReachedFrom({ entry: 'index.js' })
+		expect(reachedChunks.has(referring!)).toBe(false)
 	})
 
 	it('a consumer’s app build, importing @dialecte/core/sqlite for what it registers → the hub’s worker emitted once, reached from its main side', async () => {

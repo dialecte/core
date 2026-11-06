@@ -13,6 +13,4 @@ export type StoreRuntime = {
 	perf?: boolean
 	/** The version of the dialecte: the engine a store starts or reaches runs that version (SQLite). */
 	dialecteVersion?: string
-	/** The address of the dialecte's engine worker, which a store running the engine apart starts (SQLite). */
-	engineUrl?: string
 }

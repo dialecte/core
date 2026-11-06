@@ -17,28 +17,25 @@ describe('createProjectFactory', () => {
 		projects.length = 0
 	})
 
-	it('carries the declaration and the engine address', () => {
+	it('carries the declaration, and its destroyProject: no engine address, no spawner', () => {
 		const dialecte = createCountingDialecte()
-		const factory = createProjectFactory({ dialecte, engineUrl: ENGINE_URL })
+		const factory = createProjectFactory({ dialecte })
 		expect(factory.dialecte).toBe(dialecte)
-		expect(factory.engineUrl).toBe(ENGINE_URL)
+		expect(factory.destroyProject).toBeTypeOf('function')
+		expect(factory).not.toHaveProperty('engineUrl')
+		expect(factory).not.toHaveProperty('spawner')
+		expect(Object.keys(factory).sort()).toEqual(['destroyProject', 'dialecte'])
 	})
 
-	it('carries the spawner a page registers with the hub: the dialecte, its version and its engine address, nothing else', () => {
+	it('an engine address passed to the factory → a type error: the app registers its engine with registerSqliteEngine', () => {
 		const dialecte = createCountingDialecte()
+		// @ts-expect-error the factory takes the declaration only
 		const factory = createProjectFactory({ dialecte, engineUrl: ENGINE_URL })
-		expect(factory.spawner).toStrictEqual({
-			dialecteId: dialecte.id,
-			dialecteVersion: dialecte.version,
-			engineUrl: ENGINE_URL,
-		})
+		expect(factory).not.toHaveProperty('engineUrl')
 	})
 
 	it('a project opens with every config and the declared default key', async () => {
-		const factory = createProjectFactory({
-			dialecte: createCountingDialecte(),
-			engineUrl: ENGINE_URL,
-		})
+		const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 		const project = await factory({ storage: { type: 'inMemory' } }).open('factory-configs')
 		projects.push(project)
 
@@ -53,10 +50,7 @@ describe('createProjectFactory', () => {
 	})
 
 	it('merges the declared extensions with the ones given per project', async () => {
-		const factory = createProjectFactory({
-			dialecte: createCountingDialecte(),
-			engineUrl: ENGINE_URL,
-		})
+		const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 		const custom = { greeting: { query: { hello: () => 'hello' } } }
 		const project = await factory({ storage: { type: 'inMemory' }, extensions: custom }).open(
 			'factory-extensions',
@@ -85,7 +79,6 @@ describe('createProjectFactory', () => {
 					}
 				},
 			}),
-			engineUrl: ENGINE_URL,
 		})
 		expect(created).toBe(0)
 
@@ -117,10 +110,7 @@ describe('createProjectFactory', () => {
 			'made by the factory, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED at open':
 				{
 					open: function openFromFactory() {
-						const factory = createProjectFactory({
-							dialecte: createCountingDialecte(),
-							engineUrl: ENGINE_URL,
-						})
+						const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 						return factory({ storage: { type: 'sqlite' } }).open(`sqlite-${crypto.randomUUID()}`)
 					},
 					refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',
@@ -128,10 +118,7 @@ describe('createProjectFactory', () => {
 				},
 			'destroyed by name, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED': {
 				open: function destroyByName() {
-					const factory = createProjectFactory({
-						dialecte: createCountingDialecte(),
-						engineUrl: ENGINE_URL,
-					})
+					const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 					return factory.destroyProject({ name: `sqlite-${crypto.randomUUID()}` })
 				},
 				refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',

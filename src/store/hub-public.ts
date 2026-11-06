@@ -1,9 +1,9 @@
 import { adoptHubConnection, openHubConnection } from './engine/hub/hub-client'
 import { storesHere } from './sqlite/adapter/realm-storage'
-import { sqliteEngineSettings } from './sqlite/adapter/sqlite-engine-settings'
+import { sqliteHubSpawnersOf } from './sqlite/adapter/sqlite-hub-spawner'
+import { registeredSqliteEngine } from './sqlite/sqlite-engine-registration'
 
-import type { ConnectHubParams, HubConnection, HubRealm } from './engine/hub/hub-client.types'
-import type { HubEngineSpawner, RealmEngineSpawner } from './engine/hub/realm-host.types'
+import type { HubConnection, HubRealm } from './engine/hub/hub-client.types'
 
 /**
  * Connect this page to the origin's hub, once, and get its connection (`HubRealm`: `realmId`, `createHubPort` to bind a
@@ -12,34 +12,24 @@ import type { HubEngineSpawner, RealmEngineSpawner } from './engine/hub/realm-ho
  * has no SharedWorker, or the hub never welcomed the page (its script failed to load or was blocked, or
  * it stayed silent): a later call tries again. A hub of another protocol refuses the page:
  * `STORE_PROTOCOL_MISMATCH`; the browser refusing to make the hub's worker (a `DOMException`) is no hub,
- * any other error thrown making it is thrown. The page registers the engines it can start whose worker is of
- * its own origin (each dialecte's `factory.spawner`); a later call adds those it does not run yet - a project opened on `sqlite` adds its own as it opens - and one naming a dialecte the page runs at another version is
- * refused `STORE_HUB_SPAWNERS_FIXED`, the connection kept. A document that joined through `adoptHubPort` hosts no
- * engine: the spawners it names are not registered; neither are those of a page that cannot store (no private file
- * system; two versions of one dialecte refused all the same): its own projects on `sqlite` are refused
+ * any other error thrown making it is thrown. The page offers the hub the engines the app registered
+ * (`registerSqliteEngine`), one per dialecte on the one worker file, when that file is of its own origin; connecting
+ * before registering is allowed and offers nothing - a later call adds those registered since, as a project opened on
+ * `sqlite` does - so register first. A document that joined through `adoptHubPort` hosts no engine and offers none;
+ * neither does a page that cannot store (no private file system): its own projects on `sqlite` are refused
  * `STORE_UNAVAILABLE` unless its page bound it, its connection serving to hand ports to its children. An engine's
  * files (the SQLite wasm) are fetched when the page first starts one.
  *
- * @intent register this page's dialecte engines with the hub before any project opens, connect a page to the origin's hub, offer a dialecte's engine to the hub (`factory.spawner`), get a port to hand a child frame of another origin
+ * @intent connect a page to the origin's hub before any project opens, offer the engines an app registered to the hub, get a port to hand a child frame of another origin
  */
-export async function connectHub(params: ConnectHubParams = {}): Promise<HubRealm | undefined> {
+export async function connectHub(): Promise<HubRealm | undefined> {
 	const stores = await storesHere()
 	const connection = await openHubConnection({
-		spawners: params.spawners?.map(withDefaultSettings),
+		spawners: sqliteHubSpawnersOf({ registration: registeredSqliteEngine() }),
 		// a page that cannot store offers no engine: elected to host one, it could not open it
 		hostsNoEngine: !stores,
 	})
 	return connection && toHubRealm({ connection })
-}
-
-/** A dialecte's spawner as the page runs it: the SQLite engine opened on the consumer's wasm. */
-function withDefaultSettings(spawner: HubEngineSpawner): RealmEngineSpawner {
-	const { dialecteId, dialecteVersion, engineUrl } = spawner
-	return { dialecteId, dialecteVersion, engineUrl, settings: loadDefaultSettings }
-}
-
-async function loadDefaultSettings(): Promise<unknown> {
-	return sqliteEngineSettings()
 }
 
 /**

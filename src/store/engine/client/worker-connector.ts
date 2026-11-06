@@ -36,15 +36,15 @@ import type {
 } from './client.types'
 
 /** The engine worker this realm runs for each project, by its key (`projectKeyOf`: direct mode, one per project). */
-const ENGINES = new Map<string, RealmEngine>()
+const realmEngines = new Map<string, RealmEngine>()
 /** The engines of a project still closing or being destroyed, by its key: the next one of the project waits for them. */
-const ENDING = new Map<string, Promise<void>>()
+const endingEngines = new Map<string, Promise<void>>()
 /** Numbers every engine the realm starts: a connection adopted by an engine since gone adopts again. */
 const generations = { next: 0 }
 /** The connections of this realm to each project, by its key, from their connect until closed: a destroy is refused while one is. */
-const OPEN_LINKS = createOpenConnections()
+const openLinks = createOpenConnections()
 /** The connection each link a store holds is counted as: its own destroy counts the others without it. */
-const LINK_STATES = new WeakMap<EngineLink, WorkerLinkState>()
+const linkStates = new WeakMap<EngineLink, WorkerLinkState>()
 
 /**
  * Direct mode: the project's engine runs in a dedicated worker this realm spawns (from the dialecte's
@@ -82,11 +82,11 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		releasing: undefined,
 	}
 	const key = keyOf(params)
-	OPEN_LINKS.markOpen({ name: key, connection: state })
+	openLinks.markOpen({ name: key, connection: state })
 	await runningEngine({ connector: params, link: state }).catch(function forgetFailedLink(
 		thrown: unknown,
 	) {
-		OPEN_LINKS.markClosed({ name: key, connection: state })
+		openLinks.markClosed({ name: key, connection: state })
 		throw thrown
 	})
 	/** The engine the connection reaches now, adopted when it is another one than the one it had. */
@@ -162,20 +162,20 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 	async function releaseConnection(): Promise<void> {
 		state.released = true
 		state.listeners.clear()
-		OPEN_LINKS.markClosed({ name: key, connection: state })
-		const engine = ENGINES.get(key)
+		openLinks.markClosed({ name: key, connection: state })
+		const engine = realmEngines.get(key)
 		releaseClient({ engine, state, storeName: params.name })
 		if (!engine?.links.delete(state)) {
 			// not counted on a running engine: the realm ended the one it had (an adoption never answered, its project
 			// destroyed while it was away) - settled once that engine let the project's lock go
-			await ENDING.get(key)
+			await endingEngines.get(key)
 			return
 		}
 		if (engine.links.size > 0) return
 		// the last connection: settled once its engine let the project's lock go (another tab may destroy it)
 		await closeEngine({ name: params.name, dialecteId: params.dialecteId, engine, openBudgetMs })
 	}
-	LINK_STATES.set(link, state)
+	linkStates.set(link, state)
 	return link
 }
 
@@ -191,22 +191,28 @@ async function runningEngine(params: {
 	const { connector, link } = params
 	const { name } = connector
 	const key = keyOf(connector)
-	await ENDING.get(key)
+	await endingEngines.get(key)
 	if (link.released) throwStoreClosed({ storeName: name })
 	// its project destroyed while it was away: every later call refused so, no engine started for it
 	if (link.refusal !== undefined) throw link.refusal
-	let engine = ENGINES.get(key)
+	let engine = realmEngines.get(key)
 	if (!engine) {
 		// a connection coming back to its project tells the engine which one it had: none made in its place
 		engine = spawnEngine({ connector, expectedCreationId: link.creationId })
-		ENGINES.set(key, engine)
+		realmEngines.set(key, engine)
 	}
+	// a page runs one version of each dialecte: the engine of the project runs another one, which it is not joined to
+	refuseAnotherDialecte({
+		project: name,
+		engine: { dialecteId: connector.dialecteId, dialecteVersion: engine.dialecteVersion },
+		asked: { dialecteId: connector.dialecteId, dialecteVersion: connector.dialecteVersion },
+	})
 	engine.links.add(link)
 	try {
 		await engine.opened
 	} catch (thrown) {
 		engine.links.delete(link)
-		if (ENGINES.get(key) === engine) ENGINES.delete(key)
+		if (realmEngines.get(key) === engine) realmEngines.delete(key)
 		// an engine another connection started expecting its project refused it: this one expects none
 		const destroyedWhileAway = toDialecteError(thrown)?.key === 'PROJECT_DESTROYED_WHILE_AWAY'
 		if (destroyedWhileAway && link.creationId === undefined) return runningEngine(params)
@@ -268,6 +274,7 @@ function spawnEngine(params: {
 	generations.next += 1
 	const engine: RealmEngine = {
 		worker,
+		dialecteVersion,
 		generation: generations.next,
 		opened: Promise.resolve(),
 		control,
@@ -378,7 +385,7 @@ function endLostEngine(params: { name: string; dialecteId: string; engine: Realm
 	if (engine.ended) return
 	engine.ended = true
 	const key = keyOf({ name, dialecteId })
-	if (ENGINES.get(key) === engine) ENGINES.delete(key)
+	if (realmEngines.get(key) === engine) realmEngines.delete(key)
 	engine.control.end({ error: lostEngine() })
 	// the next engine of the name starts once the page has let the lock go
 	if (engine.watch) holdNextEngine({ key, until: engine.watch.settled })
@@ -511,10 +518,10 @@ async function destroyProject(params: {
 	const { connector, own } = params
 	const { name, dialecteId, engineUrl, openBudgetMs = ENGINE_OPEN_BUDGET_MS } = connector
 	const key = keyOf(connector)
-	refuseWhileOpen({ name, key, own: own === undefined ? undefined : LINK_STATES.get(own.link) })
+	refuseWhileOpen({ name, key, own: own === undefined ? undefined : linkStates.get(own.link) })
 	// its engine closed with it when it was the last connection: waited for below, as any still ending
 	void own?.letGo()
-	const ending = ENDING.get(key)
+	const ending = endingEngines.get(key)
 	let destroyEnded: () => void = settleNothing
 	holdNextEngine({
 		key,
@@ -547,12 +554,12 @@ async function destroyProject(params: {
  * of the realm joins that engine, whatever the hub says by then.
  */
 export function runsDirectly(params: { name: string; dialecteId: string }): boolean {
-	return OPEN_LINKS.others({ name: keyOf(params) }) > 0
+	return openLinks.others({ name: keyOf(params) }) > 0
 }
 
 /** Refused `PROJECT_OPEN_ELSEWHERE` while a connection of this realm but `own` has the project open. */
 function refuseWhileOpen(params: { name: string; key: string; own?: WorkerLinkState }): void {
-	const open = OPEN_LINKS.others({ name: params.key, connection: params.own })
+	const open = openLinks.others({ name: params.key, connection: params.own })
 	if (open > 0) throwOpenElsewhere({ storeName: params.name, connections: open })
 }
 
@@ -562,7 +569,7 @@ function refuseWhileOpen(params: { name: string; key: string; own?: WorkerLinkSt
  * one starts none, and each is closed with its last connection, one still opening too.
  */
 function assertNoEngine(params: { name: string; key: string }): void {
-	if (!ENGINES.has(params.key)) return
+	if (!realmEngines.has(params.key)) return
 	throw createDialecteError('ASSERTION_FAILED', {
 		detail: `Project "${params.name}" has an engine in this realm with no connection open on it`,
 		meta: { project: params.name },
@@ -686,7 +693,7 @@ function endEngine(params: {
 	const key = keyOf({ name, dialecteId })
 	if (engine) {
 		engine.ended = true
-		if (ENGINES.get(key) === engine) ENGINES.delete(key)
+		if (realmEngines.get(key) === engine) realmEngines.delete(key)
 		engine.watch?.controller.abort()
 	}
 	let deaf = false
@@ -746,10 +753,10 @@ function lockNotGranted(): boolean {
 /** The next engine of the project (its key) waits until `until` has settled (and whatever it waited for before). */
 function holdNextEngine(params: { key: string; until: Promise<void> }): void {
 	const { key, until } = params
-	const settled = Promise.all([ENDING.get(key), until]).then(settleNothing)
-	ENDING.set(key, settled)
+	const settled = Promise.all([endingEngines.get(key), until]).then(settleNothing)
+	endingEngines.set(key, settled)
 	void settled.then(function forgetEnding() {
-		if (ENDING.get(key) === settled) ENDING.delete(key)
+		if (endingEngines.get(key) === settled) endingEngines.delete(key)
 	})
 }
 

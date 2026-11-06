@@ -1,5 +1,5 @@
 import { TEST_DIALECTE } from './test-dialecte'
 
-import { serveDialecteEngine } from '@/engine'
+import { serveSqliteEngine } from '@/sqlite'
 
-serveDialecteEngine({ dialecte: TEST_DIALECTE })
+serveSqliteEngine({ dialectes: [TEST_DIALECTE] })

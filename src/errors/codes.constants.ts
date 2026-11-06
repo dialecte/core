@@ -188,9 +188,18 @@ export const ERROR_CATALOG = {
 		code: 'D1019',
 		message: "The page's hub connection runs another version of this dialecte's engine",
 		explanation: {
-			when: "`connectHub({ spawners })` named a dialecte whose engine the page's connection already runs at another version, or a project was opened (or destroyed by name) on `sqlite` from a factory of such a version (the project offers its engine to the hub as it opens): a page runs one version of each dialecte's engine (two would split a project's views between two engines). A later call adds the engines of dialectes the page does not run yet. `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added, nothing opened.",
-			fix: "Ship one version of each dialecte in the app: register each dialecte's `factory.spawner` from the copy the app opens its projects with.",
+			when: "`registerSqliteEngine({ url, dialectes })` named two versions of one dialecte (nothing kept), or the engines the app registered name a dialecte the page's connection already runs at another version, as `connectHub()` or a project opening on `sqlite` offers them to the hub: a page runs one version of each dialecte's engine (two would split a project's views between two engines). `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added, nothing opened.",
+			fix: 'Ship one version of each dialecte in the app, and name it once in `registerSqliteEngine({ url, dialectes })` and in `serveSqliteEngine({ dialectes })`, from the copy the app opens its projects with.',
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
+		},
+	},
+	STORE_SQLITE_ENGINE_FIXED: {
+		code: 'D1020',
+		message: "This page's SQLite engine is registered already",
+		explanation: {
+			when: 'A second `registerSqliteEngine({ url, dialectes })` named another URL or other dialectes than the first (the same URL and the same dialectes, in any order, do nothing: a module evaluated twice). There is no additive call. `meta`: `registered` (kept), `asked` (refused), each `{ url, dialectes }`.',
+			fix: 'Name all the dialectes of the app in one call, once, before the first project opens; the worker file serves them all (`serveSqliteEngine({ dialectes })`).',
+			docs: `${CORE_DOCS_URL}/api/dialecte#the-engine-worker-and-its-packaging`,
 		},
 	},
 
@@ -509,8 +518,8 @@ export const ERROR_CATALOG = {
 		code: 'D7006',
 		message: 'No view can start the project engine',
 		explanation: {
-			when: "The project's engine could not be started or reached: its worker failed to load or never answered its open within the open budget; through the origin's hub, no open view offers an engine for the project's dialecte, or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it.",
-			fix: "Keep one tab of the app open and reload; check the dialecte's `engineUrl` points at its worker and that it loads (the console names a script that fails); a destroy refused so is asked again once the project is closed elsewhere.",
+			when: "The project's engine could not be started or reached: its worker failed to load, could not load the engine's chunk (a build or a precache list that leaves it out), or never answered its open within the open budget; through the origin's hub, no open view offers an engine for the project's dialecte, or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it.",
+			fix: "Keep one tab of the app open and reload; check the `url` given to `registerSqliteEngine` points at the app's engine worker file and that it loads (the console names a script that fails); a destroy refused so is asked again once the project is closed elsewhere.",
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
@@ -527,8 +536,8 @@ export const ERROR_CATALOG = {
 		code: 'D7008',
 		message: "The project's engine or file is of another dialecte",
 		explanation: {
-			when: "A project file stored by another dialecte was opened (nothing of it written); or an engine was asked for a project of another dialecte than its own - the dialecte's `engineUrl` (its project factory's, or a hub spawner's) pointing at another dialecte's worker. Two dialectes' projects of one name are two projects: opening one never meets the other. `meta`: `project`, `projectDialecteId` (the engine's or the file's), `realmDialecteId` (the one asked).",
-			fix: "Open the project with the dialecte it was created with; point the dialecte's `engineUrl` at its own worker.",
+			when: "A project file stored by another dialecte was opened (nothing of it written); or an engine worker was asked for a project of a dialecte it does not serve - `registerSqliteEngine({ url, dialectes })` names one that `serveSqliteEngine({ dialectes })` was not given. Two dialectes' projects of one name are two projects: opening one never meets the other. `meta`: `project`, `realmDialecteId` (the one asked), and `projectDialecteId` (the engine's or the file's) or, refused by a worker that does not serve it, `engineDialecteIds` (the ones it was given).",
+			fix: 'Open the project with the dialecte it was created with; give `serveSqliteEngine({ dialectes })` every dialecte `registerSqliteEngine({ url, dialectes })` names.',
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
@@ -536,7 +545,7 @@ export const ERROR_CATALOG = {
 		code: 'D7009',
 		message: 'The project engine runs another version of the dialecte',
 		explanation: {
-			when: "The project's engine runs another version of the dialecte than this view.",
+			when: "The project's engine runs another version of the dialecte than this view: another tab's, or one this page runs already for the project (a page runs one version of each dialecte).",
 			fix: 'Reload every tab of the app so they run the same version.',
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
@@ -590,8 +599,8 @@ export const ERROR_CATALOG = {
 		code: 'D7015',
 		message: 'This project has no engine to open it on SQLite',
 		explanation: {
-			when: "A project was opened on `storage: { type: 'sqlite' }` but made by no dialecte's project factory: its engine (the dialecte's id, its version and its engine worker's URL) is known to no one, so nothing can start it. Nothing was opened.",
-			fix: "Make the project with the dialecte's project factory (`createProjectFactory({ dialecte, engineUrl })`, as a dialecte package exports it), or open it on another storage.",
+			when: "A project was opened on `storage: { type: 'sqlite' }` but made by no dialecte's project factory: its dialecte's id or version is known to no one, so no engine can be asked for it. Nothing was opened.",
+			fix: "Make the project with the dialecte's project factory (`createProjectFactory({ dialecte })`, as a dialecte package exports it), or open it on another storage.",
 			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
 		},
 	},
@@ -602,6 +611,15 @@ export const ERROR_CATALOG = {
 			when: "A project was opened (or destroyed by name) on `storage: { type: 'sqlite' }`, or a test asked for the `sqlite` test store, but the app never imported `@dialecte/core/sqlite`: the SQLite storage kind lives behind that entry, so an app that never imports it neither emits nor downloads the SQLite engine, its wasm or the hub. Nothing was opened.",
 			fix: "Add `import '@dialecte/core/sqlite'` once to the app's entry (for tests, to the test runner's setup file), before the first project is opened on SQLite; or open the project on another storage. Imported already? The import registers the kind for every copy of @dialecte/core of the same SQLite storage version in the realm: a copy of another one (a dialecte bringing its own core) does not see it - align the core versions.",
 			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
+		},
+	},
+	PROJECT_SQLITE_ENGINE_NOT_REGISTERED: {
+		code: 'D7017',
+		message: 'SQLite storage needs the engine registered for this dialecte',
+		explanation: {
+			when: "A project was opened (or destroyed by name) on `storage: { type: 'sqlite' }` in a realm that can store, but the app told the page of no engine for its dialecte: no `registerSqliteEngine` call, or one that does not name it. Nothing was started. A child its page bound through `adoptHubPort` is not refused: it goes through its page's engine. `meta`: `project`, `dialecteId`.",
+			fix: "Write the app's one worker file (`serveSqliteEngine({ dialectes })`) and call `registerSqliteEngine({ url, dialectes })` from `@dialecte/core/sqlite` once, before the first project opens, naming every dialecte of the app; `url` is a `?worker&url` import of that file. The registration is the page's: a frame of the same origin joining the hub on its own registers too (or is bound by its page); a frame of another origin never registers - it joins through `adoptHubPort` before it opens a project.",
+			docs: `${CORE_DOCS_URL}/api/dialecte#the-engine-worker-and-its-packaging`,
 		},
 	},
 	DOCUMENT_PATH_INVALID: {

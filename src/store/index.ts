@@ -37,7 +37,6 @@ export {
 	DOCUMENT_UPDATE_FIELDS,
 } from './document-path.constants'
 export { removeUnfinishedImports } from './unfinished-imports'
-export type { HubEngineSpawner } from './engine/hub/realm-host.types'
 export * from './local'
 export * from './in-memory'
 export {

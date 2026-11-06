@@ -1,5 +1,13 @@
-import { CONTRACT_ENGINE_URL } from '../../contract/store-contract.constants'
-import { contractFile, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
+import {
+	CONTRACT_ENGINE_URL,
+	CONTRACT_SESSION_DIAGNOSTICS,
+} from '../../contract/store-contract.constants'
+import {
+	contractFile,
+	makeDocument,
+	makeRecord,
+	sessionRecords,
+} from '../../contract/store-contract.fixtures'
 import { holdContractImport, untilHeld } from '../../contract/store-contract.import-session'
 import { EngineStore } from '../../engine/engine-store'
 import { POOL_CAPACITY } from './runtime.constants'
@@ -8,6 +16,7 @@ import {
 	clientOf,
 	damageDatabaseHeader,
 	engineLockQueue,
+	fixtureFile,
 	fixtureUrl,
 	holdEngineLock,
 	holdPoolFile,
@@ -30,7 +39,13 @@ import {
 	LOCK_RACE_BUDGET_MS,
 	ONE_BUDGET_SLACK_MS,
 	OPEN_FAILURE,
+	REPEATED_FIXTURE,
+	SECOND_FIXTURE_CONFIG,
+	SECOND_FIXTURE_DIAGNOSTICS,
+	TWO_DIALECTES_FIXTURE,
+	UNGIVEN_FIXTURE_DIALECTE_ID,
 	UNSAFE_POOL_SQLITE,
+	UNSERVED_DIALECTE_VERSION,
 } from './runtime.fixtures.constants'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -40,8 +55,14 @@ import { rejectionKey } from '@/errors/errors.fixtures'
 import { Project } from '@/project/project'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 import { TEST_DIALECTE_CONFIG } from '@/test'
+import { TEST_CONFIG_KEY } from '@/test/constant'
 
-import type { RuntimeFixtureOrder, RuntimeFixtureScenario } from './runtime.fixtures.types'
+import type { EngineApi } from '../../engine/engine.types'
+import type {
+	FixtureDialecteRef,
+	RuntimeFixtureOrder,
+	RuntimeFixtureScenario,
+} from './runtime.fixtures.types'
 import type { AnyDialecteConfig } from '@/types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
@@ -77,12 +98,12 @@ describe('an engine worker opening its project', () => {
 	it('no private file system → STORE_UNAVAILABLE, nothing created', async () => {
 		const project = uniqueProject()
 		const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'no-opfs' }) })
-		expect(
-			await rejectionKey({
-				action: control.request({ message: openMessage({ project }), expect: 'opened' }),
-			}),
-		).toBe('STORE_UNAVAILABLE')
-		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		const controlRequestRefusalKey = await rejectionKey({
+			action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+		})
+		expect(controlRequestRefusalKey).toBe('STORE_UNAVAILABLE')
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
 	})
 
 	describe('the project’s engine lock held elsewhere', () => {
@@ -93,17 +114,17 @@ describe('an engine worker opening its project', () => {
 			const { control } = engineWorker({ project })
 			const budgetMs = 10_000
 			const startedAt = performance.now()
-			expect(
-				await rejectionKey({
-					action: control.request({
-						message: openMessage({ project, budgetMs }),
-						expect: 'opened',
-					}),
+			const controlRequestRefusalKey = await rejectionKey({
+				action: control.request({
+					message: openMessage({ project, budgetMs }),
+					expect: 'opened',
 				}),
-			).toBe('PROJECT_OPEN_ELSEWHERE')
+			})
+			expect(controlRequestRefusalKey).toBe('PROJECT_OPEN_ELSEWHERE')
 			// a wait for the lock would last the whole budget; the worker's own start (its SQLite load) counts here too
 			expect(performance.now() - startedAt).toBeLessThan(budgetMs)
-			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+			const poolStatus = await poolState({ project })
+			expect(poolStatus).toEqual({ exists: false, files: 0 })
 		})
 
 		it('waited for within 300 ms → PROJECT_ENGINE_BUSY once they have passed', async () => {
@@ -112,14 +133,13 @@ describe('an engine worker opening its project', () => {
 			cleanups.push(release)
 			const { control } = engineWorker({ project })
 			const startedAt = performance.now()
-			expect(
-				await rejectionKey({
-					action: control.request({
-						message: openMessage({ project, lock: 'wait', budgetMs: 300 }),
-						expect: 'opened',
-					}),
+			const controlRequestRefusalKey = await rejectionKey({
+				action: control.request({
+					message: openMessage({ project, lock: 'wait', budgetMs: 300 }),
+					expect: 'opened',
 				}),
-			).toBe('PROJECT_ENGINE_BUSY')
+			})
+			expect(controlRequestRefusalKey).toBe('PROJECT_ENGINE_BUSY')
 			expect(performance.now() - startedAt).toBeGreaterThanOrEqual(290)
 		})
 
@@ -128,13 +148,13 @@ describe('an engine worker opening its project', () => {
 			const first = engineWorker({ project })
 			await first.control.request({ message: openMessage({ project }), expect: 'opened' })
 			const second = engineWorker({ project })
-			expect(
-				await rejectionKey({
-					action: second.control.request({ message: openMessage({ project }), expect: 'opened' }),
-				}),
-			).toBe('PROJECT_OPEN_ELSEWHERE')
+			const secondControlRequestRefusalKey = await rejectionKey({
+				action: second.control.request({ message: openMessage({ project }), expect: 'opened' }),
+			})
+			expect(secondControlRequestRefusalKey).toBe('PROJECT_OPEN_ELSEWHERE')
 			const engine = await clientOf({ control: first.control, clientId: 'c-1' })
-			expect(await engine.getDocuments()).toEqual([])
+			const engineDocuments = await engine.getDocuments()
+			expect(engineDocuments).toEqual([])
 		})
 	})
 
@@ -151,12 +171,14 @@ describe('an engine worker opening its project', () => {
 			key: 'PROJECT_ENGINE_BUSY',
 			meta: { project, retriedOn: [holder.file] },
 		})
-		expect(await poolState({ project })).toEqual({ exists: true, files: POOL_CAPACITY })
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: true, files: POOL_CAPACITY })
 		await holder.release()
 		const next = engineWorker({ project })
 		await next.control.request({ message: openMessage({ project }), expect: 'opened' })
 		const engine = await clientOf({ control: next.control, clientId: 'reader' })
-		expect(await engine.getDocuments()).toEqual([makeDocument()])
+		const engineDocuments = await engine.getDocuments()
+		expect(engineDocuments).toEqual([makeDocument()])
 	})
 
 	it.each(['', '.', '..'])(
@@ -168,7 +190,8 @@ describe('an engine worker opening its project', () => {
 				action: started.control.request({ message: openMessage({ project }), expect: 'opened' }),
 			})
 			expect(refused).toBe('PROJECT_NAME_INVALID')
-			expect(await isEngineLockFree({ project })).toBe(true)
+			const lockFree = await isEngineLockFree({ project })
+			expect(lockFree).toBe(true)
 		},
 	)
 
@@ -196,7 +219,8 @@ describe('an engine worker opening its project', () => {
 			key: 'STORE_QUOTA_EXCEEDED',
 			meta: { project, available: 1000 },
 		})
-		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
 	})
 
 	it('an import needing more space than is left → STORE_QUOTA_EXCEEDED, nothing registered, not applied', async () => {
@@ -208,16 +232,17 @@ describe('an engine worker opening its project', () => {
 			{ length: 15_000 },
 			(_, index) => `<A aA="${'x'.repeat(100)}${index}"/>`,
 		)
-		expect(
-			await rejectionKey({
-				action: engine.importFile({
-					file: contractFile({ body: body.join('') }),
-					writeId: 'w-big',
-				}),
+		const engineImportFileRefusalKey = await rejectionKey({
+			action: engine.importFile({
+				file: contractFile({ body: body.join('') }),
+				writeId: 'w-big',
 			}),
-		).toBe('STORE_QUOTA_EXCEEDED')
-		expect(await engine.getDocuments()).toEqual([])
-		expect(await engine.getWriteOutcome({ writeId: 'w-big' })).toBe('not-applied')
+		})
+		expect(engineImportFileRefusalKey).toBe('STORE_QUOTA_EXCEEDED')
+		const engineDocuments = await engine.getDocuments()
+		expect(engineDocuments).toEqual([])
+		const engineWriteOutcome = await engine.getWriteOutcome({ writeId: 'w-big' })
+		expect(engineWriteOutcome).toBe('not-applied')
 	})
 
 	describe('the origin out of storage while it writes (the file system refuses the writes)', () => {
@@ -254,18 +279,18 @@ describe('an engine worker opening its project', () => {
 		it('a commit → STORE_QUOTA_EXCEEDED, nothing of it applied', async () => {
 			const engine = await engineOnFullDisk()
 			const creates = Array.from({ length: 2_000 }, (_, index) => makeRecord({ id: `r${index}` }))
-			expect(
-				await rejectionKey({
-					action: engine.commit({
-						documentId: 'doc-1',
-						writeId: 'w-1',
-						creates,
-						updates: [],
-						deletes: [],
-					}),
+			const engineCommitRefusalKey = await rejectionKey({
+				action: engine.commit({
+					documentId: 'doc-1',
+					writeId: 'w-1',
+					creates,
+					updates: [],
+					deletes: [],
 				}),
-			).toBe('STORE_QUOTA_EXCEEDED')
-			expect(await engine.count('doc-1')).toBe(0)
+			})
+			expect(engineCommitRefusalKey).toBe('STORE_QUOTA_EXCEEDED')
+			const engineRecordCount = await engine.count('doc-1')
+			expect(engineRecordCount).toBe(0)
 		})
 
 		type RefusedWrite = {
@@ -315,16 +340,18 @@ describe('an engine worker opening its project', () => {
 			engine: Awaited<ReturnType<typeof engineOnFullDisk>>
 		}): Promise<void> {
 			const { engine } = params
-			const commitOf = (writeId: string, value: string, created: boolean) =>
-				engine.commit({
+			function commitOf(commitParams: { writeId: string; value: string; created: boolean }) {
+				const { writeId, value, created } = commitParams
+				return engine.commit({
 					documentId: 'doc-1',
 					writeId,
 					creates: created ? [makeRecord({ id: 'r1', value })] : [],
 					updates: created ? [] : [makeRecord({ id: 'r1', value })],
 					deletes: [],
 				})
-			await commitOf('w-first', 'first', true)
-			await commitOf('w-second', 'second', false)
+			}
+			await commitOf({ writeId: 'w-first', value: 'first', created: true })
+			await commitOf({ writeId: 'w-second', value: 'second', created: false })
 		}
 
 		/** The document's history and the value of `r1`. */
@@ -343,39 +370,41 @@ describe('an engine worker opening its project', () => {
 		)) {
 			it(description, async () => {
 				const engine = await engineOnFullDisk({ prepare })
-				expect(await rejectionKey({ action: write(engine) })).toBe('STORE_QUOTA_EXCEEDED')
-				expect(await readAfter(engine)).toEqual(expectedAfter)
+				const writeRefusalKey = await rejectionKey({ action: write(engine) })
+				expect(writeRefusalKey).toBe('STORE_QUOTA_EXCEEDED')
+				const stateAfterRefusal = await readAfter(engine)
+				expect(stateAfterRefusal).toEqual(expectedAfter)
 			})
 		}
 
 		it('a commit refused by the file system for another reason while room is left → its own key, STORE_COMMIT_FAILED', async () => {
 			const engine = await engineOnFullDisk({ failing: true })
 			const creates = Array.from({ length: 2_000 }, (_, index) => makeRecord({ id: `r${index}` }))
-			expect(
-				await rejectionKey({
-					action: engine.commit({
-						documentId: 'doc-1',
-						writeId: 'w-1',
-						creates,
-						updates: [],
-						deletes: [],
-					}),
+			const engineCommitRefusalKey = await rejectionKey({
+				action: engine.commit({
+					documentId: 'doc-1',
+					writeId: 'w-1',
+					creates,
+					updates: [],
+					deletes: [],
 				}),
-			).toBe('STORE_COMMIT_FAILED')
+			})
+			expect(engineCommitRefusalKey).toBe('STORE_COMMIT_FAILED')
 		})
 
 		it('an import, the disk filling once it has started writing → STORE_QUOTA_EXCEEDED, nothing registered', async () => {
 			const engine = await engineOnFullDisk({ afterWrites: 20 })
 			const body = Array.from({ length: 5_000 }, (_, index) => `<A aA="${index}"/>`).join('')
-			expect(
-				await rejectionKey({
-					action: engine.importFile({ file: contractFile({ body }), writeId: 'w-import' }),
-				}),
-			).toBe('STORE_QUOTA_EXCEEDED')
+			const engineImportFileRefusalKey = await rejectionKey({
+				action: engine.importFile({ file: contractFile({ body }), writeId: 'w-import' }),
+			})
+			expect(engineImportFileRefusalKey).toBe('STORE_QUOTA_EXCEEDED')
 			// the disk full, SQLite cannot even roll back what it began: the aftermath is read once there is room
 			await orderDisk({ type: 'disk-free' })
-			expect(await engine.getWriteOutcome({ writeId: 'w-import' })).toBe('not-applied')
-			expect(await engine.getDocument('doc-1')).toEqual(makeDocument())
+			const engineWriteOutcome = await engine.getWriteOutcome({ writeId: 'w-import' })
+			expect(engineWriteOutcome).toBe('not-applied')
+			const engineDocument = await engine.getDocument('doc-1')
+			expect(engineDocument).toEqual(makeDocument())
 		})
 	})
 
@@ -394,17 +423,18 @@ describe('an engine worker opening its project', () => {
 				const written = await poolFileDigests({ project })
 				expect(Object.keys(written)).toHaveLength(POOL_CAPACITY)
 				const broken = engineWorker({ project, url: fixtureUrl({ scenario }) })
-				expect(
-					await rejectionKey({
-						action: broken.control.request({ message: openMessage({ project }), expect: 'opened' }),
-					}),
-				).toBe(INSTALL_REFUSAL.text)
-				expect(await poolFileDigests({ project })).toEqual(written)
+				const brokenControlRequestRefusalKey = await rejectionKey({
+					action: broken.control.request({ message: openMessage({ project }), expect: 'opened' }),
+				})
+				expect(brokenControlRequestRefusalKey).toBe(INSTALL_REFUSAL.text)
+				const fileDigests = await poolFileDigests({ project })
+				expect(fileDigests).toEqual(written)
 				broken.end()
 				const { control } = engineWorker({ project })
 				await control.request({ message: openMessage({ project }), expect: 'opened' })
 				const engine = await clientOf({ control, clientId: 'reader' })
-				expect(await engine.getDocuments()).toEqual([makeDocument()])
+				const engineDocuments = await engine.getDocuments()
+				expect(engineDocuments).toEqual([makeDocument()])
 			},
 		)
 
@@ -434,10 +464,13 @@ describe('an engine worker opening its project', () => {
 					.poll(() => engineLockQueue({ project }), { timeout: LOCK_QUEUE_TIMEOUT_MS })
 					.toEqual({ held: 1, pending: 2 })
 				release()
-				expect(await refused).toBe(INSTALL_REFUSAL.text)
-				expect(await opened).toBe('opened')
+				const refusedOutcome = await refused
+				expect(refusedOutcome).toBe(INSTALL_REFUSAL.text)
+				const openedOutcome = await opened
+				expect(openedOutcome).toBe('opened')
 				const engine = await clientOf({ control: reader.control, clientId: 'reader' })
-				expect(await engine.getDocuments()).toEqual([makeDocument()])
+				const engineDocuments = await engine.getDocuments()
+				expect(engineDocuments).toEqual([makeDocument()])
 			},
 		)
 	})
@@ -451,15 +484,16 @@ describe('an engine worker opening its project', () => {
 			project,
 			url: fixtureUrl({ scenario: 'install-fails-once' }),
 		})
-		expect(
-			await rejectionKey({
-				action: control.request({ message: openMessage({ project }), expect: 'opened' }),
-			}),
-		).toBe(INSTALL_REFUSAL.text)
-		expect(await poolFileDigests({ project })).toEqual(written)
+		const controlRequestRefusalKey = await rejectionKey({
+			action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+		})
+		expect(controlRequestRefusalKey).toBe(INSTALL_REFUSAL.text)
+		const fileDigests = await poolFileDigests({ project })
+		expect(fileDigests).toEqual(written)
 		await control.request({ message: openMessage({ project }), expect: 'opened' })
 		const engine = await clientOf({ control, clientId: 'reader' })
-		expect(await engine.getDocuments()).toEqual([makeDocument()])
+		const engineDocuments = await engine.getDocuments()
+		expect(engineDocuments).toEqual([makeDocument()])
 	})
 
 	describe('an sqlite-wasm older than 3.54.1 (it removes the whole pool when an install fails)', () => {
@@ -476,11 +510,13 @@ describe('an engine worker opening its project', () => {
 				key: 'ASSERTION_FAILED',
 				meta: { project, sqliteVersion: UNSAFE_POOL_SQLITE.libVersion },
 			})
-			expect(await poolFileDigests({ project })).toEqual(written)
+			const fileDigests = await poolFileDigests({ project })
+			expect(fileDigests).toEqual(written)
 			const next = engineWorker({ project })
 			await next.control.request({ message: openMessage({ project }), expect: 'opened' })
 			const engine = await clientOf({ control: next.control, clientId: 'reader' })
-			expect(await engine.getDocuments()).toEqual([makeDocument()])
+			const engineDocuments = await engine.getDocuments()
+			expect(engineDocuments).toEqual([makeDocument()])
 		})
 
 		it('its engine lock held elsewhere → ASSERTION_FAILED, not PROJECT_OPEN_ELSEWHERE: refused before the lock is asked', async () => {
@@ -488,25 +524,24 @@ describe('an engine worker opening its project', () => {
 			const release = await holdEngineLock({ project })
 			cleanups.push(release)
 			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'sqlite-3-53' }) })
-			expect(
-				await rejectionKey({
-					action: control.request({
-						message: openMessage({ project, lock: 'if-available' }),
-						expect: 'opened',
-					}),
+			const controlRequestRefusalKey = await rejectionKey({
+				action: control.request({
+					message: openMessage({ project, lock: 'if-available' }),
+					expect: 'opened',
 				}),
-			).toBe('ASSERTION_FAILED')
+			})
+			expect(controlRequestRefusalKey).toBe('ASSERTION_FAILED')
 		})
 
 		it('a new project → ASSERTION_FAILED, nothing created', async () => {
 			const project = uniqueProject()
 			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'sqlite-3-53' }) })
-			expect(
-				await rejectionKey({
-					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
-				}),
-			).toBe('ASSERTION_FAILED')
-			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+			const controlRequestRefusalKey = await rejectionKey({
+				action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+			})
+			expect(controlRequestRefusalKey).toBe('ASSERTION_FAILED')
+			const poolStatus = await poolState({ project })
+			expect(poolStatus).toEqual({ exists: false, files: 0 })
 		})
 	})
 
@@ -531,13 +566,13 @@ describe('an engine worker opening its project', () => {
 					key: 'PROJECT_DATABASE_LOST',
 					meta: { project },
 				})
-				expect(await poolFileDigests({ project })).toEqual(damaged)
+				const fileDigests = await poolFileDigests({ project })
+				expect(fileDigests).toEqual(damaged)
 				const next = engineWorker({ project })
-				expect(
-					await rejectionKey({
-						action: next.control.request({ message: openMessage({ project }), expect: 'opened' }),
-					}),
-				).toBe('PROJECT_DATABASE_LOST')
+				const nextControlRequestRefusalKey = await rejectionKey({
+					action: next.control.request({ message: openMessage({ project }), expect: 'opened' }),
+				})
+				expect(nextControlRequestRefusalKey).toBe('PROJECT_DATABASE_LOST')
 			},
 		)
 
@@ -555,8 +590,10 @@ describe('an engine worker opening its project', () => {
 					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
 				})
 			}
-			expect(await open()).toBe('PROJECT_DATABASE_LOST')
-			expect(await poolFileDigests({ project })).toEqual(damaged)
+			const keyOfOpen = await open()
+			expect(keyOfOpen).toBe('PROJECT_DATABASE_LOST')
+			const fileDigests = await poolFileDigests({ project })
+			expect(fileDigests).toEqual(damaged)
 			// the pool the worker keeps paused removed there
 			await control.request({
 				message: {
@@ -568,10 +605,13 @@ describe('an engine worker opening its project', () => {
 				},
 				expect: 'destroyed',
 			})
-			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
-			expect(await open()).toBe('resolved')
+			const poolStatus = await poolState({ project })
+			expect(poolStatus).toEqual({ exists: false, files: 0 })
+			const keyOfOpenAfterDestroy = await open()
+			expect(keyOfOpenAfterDestroy).toBe('resolved')
 			const reader = await clientOf({ control, clientId: 'reader' })
-			expect(await reader.getDocuments()).toEqual([])
+			const readerDocuments = await reader.getDocuments()
+			expect(readerDocuments).toEqual([])
 		})
 
 		it('refused through a Project, which then destroys the project → the pool gone; opened again → an empty project', async () => {
@@ -591,11 +631,14 @@ describe('an engine worker opening its project', () => {
 				configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
 				storage: { type: 'custom', store },
 			})
-			expect(await rejectionKey({ action: project.open(name) })).toBe('PROJECT_DATABASE_LOST')
+			const projectOpenRefusalKey = await rejectionKey({ action: project.open(name) })
+			expect(projectOpenRefusalKey).toBe('PROJECT_DATABASE_LOST')
 			await project.destroy()
-			expect(await poolState({ project: name })).toEqual({ exists: false, files: 0 })
+			const poolStatus = await poolState({ project: name })
+			expect(poolStatus).toEqual({ exists: false, files: 0 })
 			await project.open(name)
-			expect(await project.getDocuments()).toEqual([])
+			const projectDocuments = await project.getDocuments()
+			expect(projectDocuments).toEqual([])
 			await project.destroy()
 		})
 
@@ -616,7 +659,8 @@ describe('an engine worker opening its project', () => {
 			// the lock let go three quarters into the budget: the probe has the rest of it, not a budget of its own
 			setTimeout(release, (budgetMs * 3) / 4)
 			// refused by the probe (the file it retried on), not by the wait for the lock
-			expect(toDialecteError(await reopening)).toMatchObject({
+			const reopeningOutcome = await reopening
+			expect(toDialecteError(reopeningOutcome)).toMatchObject({
 				key: 'PROJECT_ENGINE_BUSY',
 				meta: { project, retriedOn: [holder.file] },
 			})
@@ -633,8 +677,10 @@ describe('an engine worker opening its project', () => {
 					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
 				})
 			}
-			expect(await open()).toBe('PROJECT_DATABASE_LOST')
-			expect(await open()).toBe('PROJECT_DATABASE_LOST')
+			const keyOfFirstOpen = await open()
+			expect(keyOfFirstOpen).toBe('PROJECT_DATABASE_LOST')
+			const keyOfSecondOpen = await open()
+			expect(keyOfSecondOpen).toBe('PROJECT_DATABASE_LOST')
 			await control.request({
 				message: {
 					type: 'destroy',
@@ -645,10 +691,13 @@ describe('an engine worker opening its project', () => {
 				},
 				expect: 'destroyed',
 			})
-			expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
-			expect(await open()).toBe('resolved')
+			const poolStatus = await poolState({ project })
+			expect(poolStatus).toEqual({ exists: false, files: 0 })
+			const keyOfOpenAfterDestroy = await open()
+			expect(keyOfOpenAfterDestroy).toBe('resolved')
 			const engine = await clientOf({ control, clientId: 'reader' })
-			expect(await engine.getDocuments()).toEqual([])
+			const engineDocuments = await engine.getDocuments()
+			expect(engineDocuments).toEqual([])
 		})
 	})
 
@@ -663,12 +712,12 @@ describe('an engine worker opening its project', () => {
 			await makeBlankPool({ project, sizes: [4096, 0] })
 			const blank = await poolFileDigests({ project })
 			const { control } = engineWorker({ project, url: fixtureUrl({ scenario: 'small-quota' }) })
-			expect(
-				await rejectionKey({
-					action: control.request({ message: openMessage({ project }), expect: 'opened' }),
-				}),
-			).toBe('STORE_QUOTA_EXCEEDED')
-			expect(await poolFileDigests({ project })).toEqual(blank)
+			const controlRequestRefusalKey = await rejectionKey({
+				action: control.request({ message: openMessage({ project }), expect: 'opened' }),
+			})
+			expect(controlRequestRefusalKey).toBe('STORE_QUOTA_EXCEEDED')
+			const fileDigests = await poolFileDigests({ project })
+			expect(fileDigests).toEqual(blank)
 		})
 
 		it.each(Object.entries(pools))('%s', async (_label, { sizes }) => {
@@ -677,9 +726,11 @@ describe('an engine worker opening its project', () => {
 			const { control } = engineWorker({ project })
 			await control.request({ message: openMessage({ project }), expect: 'opened' })
 			const engine = await clientOf({ control, clientId: 'writer' })
-			expect(await engine.getDocuments()).toEqual([])
+			const engineDocuments = await engine.getDocuments()
+			expect(engineDocuments).toEqual([])
 			await engine.registerDocument(makeDocument())
-			expect(await engine.getDocuments()).toEqual([makeDocument()])
+			const documents = await engine.getDocuments()
+			expect(documents).toEqual([makeDocument()])
 		})
 	})
 
@@ -700,19 +751,19 @@ describe('an engine worker opening its project', () => {
 			async (_label, { scenario, refusal }) => {
 				const project = uniqueProject()
 				const failing = engineWorker({ project, url: fixtureUrl({ scenario }) })
-				expect(
-					await rejectionKey({
-						action: failing.control.request({
-							message: openMessage({ project }),
-							expect: 'opened',
-						}),
+				const failingControlRequestRefusalKey = await rejectionKey({
+					action: failing.control.request({
+						message: openMessage({ project }),
+						expect: 'opened',
 					}),
-				).toBe(refusal)
+				})
+				expect(failingControlRequestRefusalKey).toBe(refusal)
 				failing.end()
 				const { control } = engineWorker({ project })
 				await control.request({ message: openMessage({ project }), expect: 'opened' })
 				const engine = await clientOf({ control, clientId: 'reader' })
-				expect(await engine.getDocuments()).toEqual([])
+				const engineDocuments = await engine.getDocuments()
+				expect(engineDocuments).toEqual([])
 			},
 		)
 
@@ -722,17 +773,18 @@ describe('an engine worker opening its project', () => {
 			const written = await poolFileDigests({ project })
 			expect(Object.keys(written)).toHaveLength(POOL_CAPACITY)
 			const failing = engineWorker({ project, url: fixtureUrl({ scenario: 'database-fails' }) })
-			expect(
-				await rejectionKey({
-					action: failing.control.request({ message: openMessage({ project }), expect: 'opened' }),
-				}),
-			).toBe(`Error: ${OPEN_FAILURE.database}`)
-			expect(await poolFileDigests({ project })).toEqual(written)
+			const failingControlRequestRefusalKey = await rejectionKey({
+				action: failing.control.request({ message: openMessage({ project }), expect: 'opened' }),
+			})
+			expect(failingControlRequestRefusalKey).toBe(`Error: ${OPEN_FAILURE.database}`)
+			const fileDigests = await poolFileDigests({ project })
+			expect(fileDigests).toEqual(written)
 			failing.end()
 			const { control } = engineWorker({ project })
 			await control.request({ message: openMessage({ project }), expect: 'opened' })
 			const engine = await clientOf({ control, clientId: 'reader' })
-			expect(await engine.getDocuments()).toEqual([makeDocument()])
+			const engineDocuments = await engine.getDocuments()
+			expect(engineDocuments).toEqual([makeDocument()])
 		})
 	})
 
@@ -749,10 +801,12 @@ describe('an engine worker opening its project', () => {
 		const freeBytes = 2 * 1024 * 1024
 		expect(2 * file.size).toBeLessThan(freeBytes)
 		expect(8 * file.size).toBeGreaterThan(freeBytes)
-		expect(await rejectionKey({ action: engine.importFile({ file, writeId: 'w-between' }) })).toBe(
-			'STORE_QUOTA_EXCEEDED',
-		)
-		expect(await engine.getDocuments()).toEqual([])
+		const engineImportFileRefusalKey = await rejectionKey({
+			action: engine.importFile({ file, writeId: 'w-between' }),
+		})
+		expect(engineImportFileRefusalKey).toBe('STORE_QUOTA_EXCEEDED')
+		const engineDocuments = await engine.getDocuments()
+		expect(engineDocuments).toEqual([])
 	})
 
 	it('closed, then opened again in the same worker → the pool resumed, not installed, its data there', async () => {
@@ -764,9 +818,9 @@ describe('an engine worker opening its project', () => {
 		await control.request({ message: { type: 'close' }, expect: 'closed' })
 		const reopened = await control.request({ message: openMessage({ project }), expect: 'opened' })
 		expect(reopened.resumed).toBe(true)
-		expect(await (await clientOf({ control, clientId: 'reader' })).getDocuments()).toEqual([
-			makeDocument(),
-		])
+		const client = await clientOf({ control, clientId: 'reader' })
+		const documents = await client.getDocuments()
+		expect(documents).toEqual([makeDocument()])
 	})
 })
 
@@ -788,15 +842,18 @@ describe('an engine worker whose import leaves its connection inside a transacti
 		expect(refused).toBe('STORE_COMMIT_FAILED')
 		await vi.waitFor(
 			async function lockLetGo() {
-				expect(await isEngineLockFree({ project })).toBe(true)
+				const lockFree = await isEngineLockFree({ project })
+				expect(lockFree).toBe(true)
 			},
 			{ timeout: 10_000 },
 		)
 		const next = engineWorker({ project })
 		await next.control.request({ message: openMessage({ project }), expect: 'opened' })
 		const reader = await clientOf({ control: next.control, clientId: 'c-2' })
-		expect(await reader.getDocuments()).toEqual([makeDocument()])
-		expect(await reader.getWriteOutcome({ writeId: 'w-stranded' })).toBe('not-applied')
+		const readerDocuments = await reader.getDocuments()
+		expect(readerDocuments).toEqual([makeDocument()])
+		const readerWriteOutcome = await reader.getWriteOutcome({ writeId: 'w-stranded' })
+		expect(readerWriteOutcome).toBe('not-applied')
 	})
 })
 
@@ -895,29 +952,30 @@ describe('a view coming back to its project (the creation id it knows)', () => {
 			expect: 'destroyed',
 		})
 		const away = engineWorker({ project })
-		expect(
-			await rejectionKey({
-				action: away.control.request({
-					message: { ...openMessage({ project }), expectedCreationId: opened.creationId },
-					expect: 'opened',
-				}),
+		const awayControlRequestRefusalKey = await rejectionKey({
+			action: away.control.request({
+				message: { ...openMessage({ project }), expectedCreationId: opened.creationId },
+				expect: 'opened',
 			}),
-		).toBe('PROJECT_DESTROYED_WHILE_AWAY')
-		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		})
+		expect(awayControlRequestRefusalKey).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
 		// another tab makes the project again under its name
 		await closedPoolWithDocument({ project })
 		const madeAgain = await poolFileDigests({ project })
 		const back = engineWorker({ project })
-		expect(
-			await rejectionKey({
-				action: back.control.request({
-					message: { ...openMessage({ project }), expectedCreationId: opened.creationId },
-					expect: 'opened',
-				}),
+		const backControlRequestRefusalKey = await rejectionKey({
+			action: back.control.request({
+				message: { ...openMessage({ project }), expectedCreationId: opened.creationId },
+				expect: 'opened',
 			}),
-		).toBe('PROJECT_DESTROYED_WHILE_AWAY')
-		expect(await poolFileDigests({ project })).toEqual(madeAgain)
-		expect(await isEngineLockFree({ project })).toBe(true)
+		})
+		expect(backControlRequestRefusalKey).toBe('PROJECT_DESTROYED_WHILE_AWAY')
+		const fileDigests = await poolFileDigests({ project })
+		expect(fileDigests).toEqual(madeAgain)
+		const lockFree = await isEngineLockFree({ project })
+		expect(lockFree).toBe(true)
 	})
 })
 
@@ -948,10 +1006,13 @@ describe('two dialectes, one project name', () => {
 		await ourEngine.registerDocument(makeDocument({ id: 'ours' }))
 		const theirDocuments = await theirEngine.getDocuments()
 		expect(theirDocuments).toEqual([])
-		expect(await poolState({ project })).toMatchObject({ exists: true })
-		expect(
-			await poolState({ project, dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId }),
-		).toMatchObject({ exists: true })
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toMatchObject({ exists: true })
+		const otherDialectePoolStatus = await poolState({
+			project,
+			dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId,
+		})
+		expect(otherDialectePoolStatus).toMatchObject({ exists: true })
 	})
 
 	it('an open asking another dialecte than the engine’s → PROJECT_DIALECTE_MISMATCH naming both, no lock taken, nothing created', async () => {
@@ -962,20 +1023,26 @@ describe('two dialectes, one project name', () => {
 			.catch(function refusedWith(thrown: unknown) {
 				return toDialecteError(thrown)
 			})
-		expect(refused).toMatchObject({
-			key: 'PROJECT_DIALECTE_MISMATCH',
-			meta: {
-				project,
-				projectDialecteId: OTHER_FIXTURE_DIALECTE.dialecteId,
-				realmDialecteId: FIXTURE_DIALECTE.dialecteId,
-			},
+		expect(refused).toMatchObject({ key: 'PROJECT_DIALECTE_MISMATCH' })
+		expect(refused).toHaveProperty('meta', {
+			project,
+			realmDialecteId: FIXTURE_DIALECTE.dialecteId,
+			engineDialecteIds: [OTHER_FIXTURE_DIALECTE.dialecteId],
 		})
-		expect(await isEngineLockFree({ project, dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId })).toBe(
-			true,
-		)
-		expect(await isEngineLockFree({ project })).toBe(true)
-		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
-		expect(await poolState({ project, dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId })).toEqual({
+		const otherDialecteLockFree = await isEngineLockFree({
+			project,
+			dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId,
+		})
+		expect(otherDialecteLockFree).toBe(true)
+		const lockFree = await isEngineLockFree({ project })
+		expect(lockFree).toBe(true)
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
+		const otherDialectePoolStatus = await poolState({
+			project,
+			dialecteId: OTHER_FIXTURE_DIALECTE.dialecteId,
+		})
+		expect(otherDialectePoolStatus).toEqual({
 			exists: false,
 			files: 0,
 		})
@@ -993,28 +1060,480 @@ describe('two dialectes, one project name', () => {
 			key: 'PROJECT_DIALECTE_VERSION_MISMATCH',
 			meta: { engineVersion: FIXTURE_DIALECTE.dialecteVersion, realmVersion: '9.9.9' },
 		})
-		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
 	})
 
 	it('a destroy asking another dialecte → PROJECT_DIALECTE_MISMATCH, the project of that name kept', async () => {
 		const project = uniqueProject()
 		await closedPoolWithDocument({ project })
 		const { control } = otherEngineWorker({ project })
-		expect(
-			await rejectionKey({
-				action: control.request({
-					message: {
-						type: 'destroy',
-						project,
-						dialecteId: FIXTURE_DIALECTE.dialecteId,
-						lock: 'if-available',
-						budgetMs: 5_000,
-					},
-					expect: 'destroyed',
-				}),
+		const controlRequestRefusalKey = await rejectionKey({
+			action: control.request({
+				message: {
+					type: 'destroy',
+					project,
+					dialecteId: FIXTURE_DIALECTE.dialecteId,
+					lock: 'if-available',
+					budgetMs: 5_000,
+				},
+				expect: 'destroyed',
 			}),
-		).toBe('PROJECT_DIALECTE_MISMATCH')
-		expect(await poolState({ project })).toMatchObject({ exists: true })
+		})
+		expect(controlRequestRefusalKey).toBe('PROJECT_DIALECTE_MISMATCH')
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toMatchObject({ exists: true })
+	})
+})
+
+describe('an engine worker given two dialectes', () => {
+	const { first, second } = TWO_DIALECTES_FIXTURE
+	/** A dialecte of the worker: the source its own hooks say their diagnostics under, its config key and namespace. */
+	const FIRST = {
+		ref: first,
+		source: CONTRACT_SESSION_DIAGNOSTICS.source,
+		configKey: TEST_CONFIG_KEY,
+		namespaceUri: TEST_DIALECTE_CONFIG.namespaces.default.uri,
+	}
+	const SECOND = {
+		ref: second,
+		source: SECOND_FIXTURE_DIAGNOSTICS.source,
+		configKey: SECOND_FIXTURE_CONFIG.key,
+		namespaceUri: SECOND_FIXTURE_CONFIG.namespaceUri,
+	}
+	const ungiven: FixtureDialecteRef = {
+		dialecteId: UNGIVEN_FIXTURE_DIALECTE_ID,
+		dialecteVersion: first.dialecteVersion,
+	}
+	/** Both orders, so a worker that serves one of them first only is told apart from one that serves both. */
+	const IN_BOTH_ORDERS = {
+		'the first dialecte, then the second': [FIRST, SECOND],
+		'the second dialecte, then the first': [SECOND, FIRST],
+	}
+	/** A: the dialecte a worker served, B: another one given to it - in both directions. */
+	const SERVED_THEN_OTHER = {
+		'A is the first dialecte, B the second': { served: first, other: second },
+		'A is the second dialecte, B the first': { served: second, other: first },
+	}
+
+	type Worker = ReturnType<typeof startEngineWorker>
+
+	/** An instance of the worker file given both; ended after the case, the pools of `project` under both removed. */
+	function twoDialectesWorker(params: {
+		project: string
+		scenario?: RuntimeFixtureScenario
+	}): Worker {
+		const started = startEngineWorker({
+			url: fixtureUrl({ scenario: params.scenario ?? 'two-dialectes' }),
+		})
+		cleanups.push(started.end)
+		for (const { dialecteId } of [first, second]) {
+			cleanups.push(() => removePoolDirectory({ project: params.project, dialecteId }))
+		}
+		return started
+	}
+
+	function refusedWith(thrown: unknown): ReturnType<typeof toDialecteError> {
+		return toDialecteError(thrown)
+	}
+
+	/** The answer to an open of `project` as `asked`, or the error that refused it. */
+	function openAs(params: {
+		control: Worker['control']
+		project: string
+		asked: FixtureDialecteRef
+	}) {
+		const { control, project, asked } = params
+		return control
+			.request({ message: openMessage({ project, ...asked }), expect: 'opened' })
+			.catch(refusedWith)
+	}
+
+	/** The answer to a destroy of `project` as `asked`, or the error that refused it. */
+	function destroyAs(params: {
+		control: Worker['control']
+		project: string
+		asked: FixtureDialecteRef
+	}) {
+		const { control, project, asked } = params
+		return control
+			.request({
+				message: {
+					type: 'destroy',
+					project,
+					dialecteId: asked.dialecteId,
+					lock: 'if-available',
+					budgetMs: 5_000,
+				},
+				expect: 'destroyed',
+			})
+			.catch(refusedWith)
+	}
+
+	/** The project's engine lock under that dialecte held by the page until the returned release (or the case's end). */
+	async function holdLockOf(params: { project: string; dialecteId: string }): Promise<() => void> {
+		const release = await holdEngineLock(params)
+		cleanups.push(release)
+		return release
+	}
+
+	/** A worker opened `project` as `served` and stored a document in it, its engine left open. */
+	async function openAsServed(params: {
+		project: string
+		served: FixtureDialecteRef
+	}): Promise<{ started: Worker; engine: EngineApi }> {
+		const { project, served } = params
+		const started = twoDialectesWorker({ project })
+		const opened = await openAs({ control: started.control, project, asked: served })
+		expect(opened).toMatchObject({ type: 'opened', dialecteId: served.dialecteId })
+		const engine = await clientOf({ control: started.control, clientId: 'writer' })
+		await engine.registerDocument(makeDocument({ id: served.dialecteId }))
+		return { started, engine }
+	}
+
+	/** A worker opened `project` as `served`, stored a document in it and closed: its pool paused in that worker. */
+	async function closedAsServed(params: {
+		project: string
+		served: FixtureDialecteRef
+	}): Promise<Worker> {
+		const { started } = await openAsServed(params)
+		await started.control.request({ message: { type: 'close' }, expect: 'closed' })
+		return started
+	}
+
+	/** No lock taken and no file made for the project under that dialecte. */
+	async function expectNothingMade(params: { project: string; dialecteId: string }): Promise<void> {
+		await vi.waitFor(
+			async function lockFree() {
+				const lockFree = await isEngineLockFree(params)
+				expect(lockFree).toBe(true)
+			},
+			{ timeout: LOCK_QUEUE_TIMEOUT_MS },
+		)
+		const poolStatus = await poolState(params)
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
+	}
+
+	/** `served`'s project in the worker read again: opened again from its paused pool, its document there. */
+	async function expectServedKept(params: {
+		started: Worker
+		project: string
+		served: FixtureDialecteRef
+	}): Promise<void> {
+		const { started, project, served } = params
+		const openReply = await openAs({ control: started.control, project, asked: served })
+		expect(openReply).toMatchObject({
+			type: 'opened',
+			resumed: true,
+		})
+		const reader = await clientOf({ control: started.control, clientId: 'reader' })
+		const readerDocuments = await reader.getDocuments()
+		expect(readerDocuments).toEqual([makeDocument({ id: served.dialecteId })])
+	}
+
+	it.each(Object.entries(IN_BOTH_ORDERS))(
+		'a worker each, asked for %s → a project of each opened, each answer naming the dialecte asked, each running its own hooks and config',
+		async (_order, asks) => {
+			const project = uniqueProject()
+			for (const { ref, source, configKey, namespaceUri } of asks) {
+				const { control } = twoDialectesWorker({ project })
+				const openReply = await openAs({ control, project, asked: ref })
+				expect(openReply).toMatchObject({
+					type: 'opened',
+					dialecteId: ref.dialecteId,
+					dialecteVersion: ref.dialecteVersion,
+				})
+				const engine = await clientOf({ control, clientId: 'importer' })
+				const imported = await engine.importFile({
+					file: fixtureFile({ namespaceUri, body: sessionRecords(1) }),
+					writeId: 'w-hooks',
+				})
+				// its hooks, its default config key, then its namespace written back by an export
+				expect(imported.diagnostics.map((diagnostic) => diagnostic.source)).toEqual([source])
+				expect(imported.record.configKey).toBe(configKey)
+				const exported = await engine.exportFile({
+					documentId: imported.record.id,
+					exportId: 'e-config',
+				})
+				const exportedFileText = await exported.file.text()
+				expect(exportedFileText).toContain(`xmlns="${namespaceUri}"`)
+			}
+			for (const { ref } of asks) {
+				const poolStatus = await poolState({ project, dialecteId: ref.dialecteId })
+				expect(poolStatus).toMatchObject({
+					exists: true,
+				})
+			}
+		},
+	)
+
+	it.each(['open', 'destroy'] as const)(
+		'a dialecte it was not given, asked to %s while its lock is held elsewhere → failed PROJECT_DIALECTE_MISMATCH naming the ids given, not PROJECT_OPEN_ELSEWHERE; no file; the next message answered',
+		async (verb) => {
+			const project = uniqueProject()
+			const { control } = twoDialectesWorker({ project })
+			const release = await holdLockOf({ project, dialecteId: ungiven.dialecteId })
+			const refused =
+				verb === 'open'
+					? await openAs({ control, project, asked: ungiven })
+					: await destroyAs({ control, project, asked: ungiven })
+			expect(refused).toMatchObject({
+				key: 'PROJECT_DIALECTE_MISMATCH',
+				detail: expect.stringContaining(ungiven.dialecteId),
+			})
+			expect(refused).toMatchObject({ detail: expect.stringContaining(first.dialecteId) })
+			expect(refused).toMatchObject({ detail: expect.stringContaining(second.dialecteId) })
+			expect(refused).toHaveProperty('meta', {
+				project,
+				realmDialecteId: ungiven.dialecteId,
+				engineDialecteIds: [first.dialecteId, second.dialecteId],
+			})
+			release()
+			await expectNothingMade({ project, dialecteId: ungiven.dialecteId })
+			const openReply = await openAs({ control, project, asked: second })
+			expect(openReply).toMatchObject({
+				type: 'opened',
+				dialecteId: second.dialecteId,
+			})
+		},
+	)
+
+	it.each(Object.entries(IN_BOTH_ORDERS))(
+		'a given dialecte asked at another version, %s → PROJECT_DIALECTE_VERSION_MISMATCH for each, nothing created',
+		async (_order, asks) => {
+			const project = uniqueProject()
+			const { control } = twoDialectesWorker({ project })
+			for (const { ref } of asks) {
+				const asked = { dialecteId: ref.dialecteId, dialecteVersion: UNSERVED_DIALECTE_VERSION }
+				const openReply = await openAs({ control, project, asked })
+				expect(openReply).toMatchObject({
+					key: 'PROJECT_DIALECTE_VERSION_MISMATCH',
+					meta: {
+						project,
+						dialecteId: ref.dialecteId,
+						engineVersion: ref.dialecteVersion,
+						realmVersion: UNSERVED_DIALECTE_VERSION,
+					},
+				})
+				await expectNothingMade({ project, dialecteId: ref.dialecteId })
+			}
+		},
+	)
+
+	it.each(Object.entries(SERVED_THEN_OTHER))(
+		'a worker that served (A, x), closed, asked to open (B, x) (%s), (B, x)’s lock held elsewhere → refused ASSERTION_FAILED, not PROJECT_OPEN_ELSEWHERE; A’s pool kept, (A, x) opens again with its data',
+		async (_case, { served, other }) => {
+			const project = uniqueProject()
+			const started = await closedAsServed({ project, served })
+			const digests = await poolFileDigests({ project, dialecteId: served.dialecteId })
+			const release = await holdLockOf({ project, dialecteId: other.dialecteId })
+			const openReply = await openAs({ control: started.control, project, asked: other })
+			expect(openReply).toMatchObject({
+				key: 'ASSERTION_FAILED',
+			})
+			release()
+			await expectNothingMade({ project, dialecteId: other.dialecteId })
+			const fileDigests = await poolFileDigests({ project, dialecteId: served.dialecteId })
+			expect(fileDigests).toEqual(digests)
+			await expectServedKept({ started, project, served })
+		},
+	)
+
+	it.each(Object.entries(SERVED_THEN_OTHER))(
+		'a worker that served (A, x), closed, asked to destroy (B, x) (%s), (B, x)’s lock held elsewhere → refused ASSERTION_FAILED, not PROJECT_OPEN_ELSEWHERE; nothing of B, A’s project kept: reopened (resumed), its data read',
+		async (_case, { served, other }) => {
+			const project = uniqueProject()
+			const started = await closedAsServed({ project, served })
+			const digests = await poolFileDigests({ project, dialecteId: served.dialecteId })
+			const release = await holdLockOf({ project, dialecteId: other.dialecteId })
+			const destroyReply = await destroyAs({ control: started.control, project, asked: other })
+			expect(destroyReply).toMatchObject({
+				key: 'ASSERTION_FAILED',
+			})
+			release()
+			await expectNothingMade({ project, dialecteId: other.dialecteId })
+			const fileDigests = await poolFileDigests({ project, dialecteId: served.dialecteId })
+			expect(fileDigests).toEqual(digests)
+			await expectServedKept({ started, project, served })
+		},
+	)
+
+	it.each(Object.entries(SERVED_THEN_OTHER))(
+		'a worker holding (A, x) paused, asked to destroy (A, y), destroy (B, y) and open (A, y) (%s) → each refused ASSERTION_FAILED, x’s data read back',
+		async (_case, { served, other }) => {
+			const project = uniqueProject()
+			const otherProject = uniqueProject()
+			cleanups.push(() =>
+				removePoolDirectory({ project: otherProject, dialecteId: served.dialecteId }),
+			)
+			const started = await closedAsServed({ project, served })
+			const { control } = started
+			const servedDestroyReply = await destroyAs({ control, project: otherProject, asked: served })
+			expect(servedDestroyReply).toMatchObject({
+				key: 'ASSERTION_FAILED',
+			})
+			const otherDestroyReply = await destroyAs({ control, project: otherProject, asked: other })
+			expect(otherDestroyReply).toMatchObject({
+				key: 'ASSERTION_FAILED',
+			})
+			const openReply = await openAs({ control, project: otherProject, asked: served })
+			expect(openReply).toMatchObject({
+				key: 'ASSERTION_FAILED',
+			})
+			await expectServedKept({ started, project, served })
+		},
+	)
+
+	it.each([
+		['destroy (B, x), A the first dialecte', { served: first, asked: second, sameProject: true }],
+		['destroy (B, x), A the second dialecte', { served: second, asked: first, sameProject: true }],
+		['destroy (A, y), A the first dialecte', { served: first, asked: first, sameProject: false }],
+		[
+			'destroy (A, y), A the second dialecte',
+			{ served: second, asked: second, sameProject: false },
+		],
+	] as const)(
+		'a worker whose engine for (A, x) is still open, asked to %s → refused ASSERTION_FAILED, A’s client still reads its document',
+		async (_case, { served, asked, sameProject }) => {
+			const project = uniqueProject()
+			const askedProject = sameProject ? project : uniqueProject()
+			cleanups.push(() =>
+				removePoolDirectory({ project: askedProject, dialecteId: asked.dialecteId }),
+			)
+			const { started, engine } = await openAsServed({ project, served })
+			const destroyReply = await destroyAs({
+				control: started.control,
+				project: askedProject,
+				asked,
+			})
+			expect(destroyReply).toMatchObject({ key: 'ASSERTION_FAILED' })
+			const engineDocuments = await engine.getDocuments()
+			expect(engineDocuments).toEqual([makeDocument({ id: served.dialecteId })])
+		},
+	)
+
+	it.each(Object.entries(SERVED_THEN_OTHER))(
+		'a worker that served (A, x) and destroyed it, asked to open (B, x) (%s) → opened: the project served is forgotten',
+		async (_case, { served, other }) => {
+			const project = uniqueProject()
+			const { control } = await closedAsServed({ project, served })
+			const destroyReply = await destroyAs({ control, project, asked: served })
+			expect(destroyReply).toMatchObject({
+				type: 'destroyed',
+			})
+			const openReply = await openAs({ control, project, asked: other })
+			expect(openReply).toMatchObject({
+				type: 'opened',
+				dialecteId: other.dialecteId,
+			})
+		},
+	)
+
+	it.each(Object.entries(SERVED_THEN_OTHER))(
+		'a fresh worker whose open of (A, x) was refused for its lock held elsewhere (%s), asked to open (B, x) → opened: a refused open serves nothing',
+		async (_case, { served, other }) => {
+			const project = uniqueProject()
+			const { control } = twoDialectesWorker({ project })
+			const release = await holdLockOf({ project, dialecteId: served.dialecteId })
+			const refusedOpenReply = await openAs({ control, project, asked: served })
+			expect(refusedOpenReply).toMatchObject({
+				key: 'PROJECT_OPEN_ELSEWHERE',
+			})
+			release()
+			const otherOpenReply = await openAs({ control, project, asked: other })
+			expect(otherOpenReply).toMatchObject({
+				type: 'opened',
+				dialecteId: other.dialecteId,
+			})
+		},
+	)
+
+	it.each(Object.entries(SERVED_THEN_OTHER))(
+		'a fresh worker that destroyed (B, x), asked to open (A, x) in the same instance (%s) → opened: a destroy serves nothing',
+		async (_case, { served, other }) => {
+			const project = uniqueProject()
+			const holder = await closedAsServed({ project, served: other })
+			holder.end()
+			const { control } = twoDialectesWorker({ project })
+			const destroyReply = await destroyAs({ control, project, asked: other })
+			expect(destroyReply).toMatchObject({
+				type: 'destroyed',
+			})
+			const openReply = await openAs({ control, project, asked: served })
+			expect(openReply).toMatchObject({
+				type: 'opened',
+				dialecteId: served.dialecteId,
+			})
+		},
+	)
+
+	it.each([
+		['A is the first dialecte, B the second', { destroyed: second, kept: first }],
+		['A is the second dialecte, B the first', { destroyed: first, kept: second }],
+	] as const)(
+		'a fresh worker asked to destroy (B, x), A and B each holding a project x (%s) → B’s files removed, A’s project kept',
+		async (_case, { destroyed, kept }) => {
+			const project = uniqueProject()
+			for (const served of [first, second]) {
+				const holder = await closedAsServed({ project, served })
+				holder.end()
+			}
+			const fresh = twoDialectesWorker({ project })
+			const destroyReply = await destroyAs({ control: fresh.control, project, asked: destroyed })
+			expect(destroyReply).toMatchObject({
+				type: 'destroyed',
+			})
+			const destroyedPoolStatus = await poolState({ project, dialecteId: destroyed.dialecteId })
+			expect(destroyedPoolStatus).toEqual({
+				exists: false,
+				files: 0,
+			})
+			const keptPoolStatus = await poolState({ project, dialecteId: kept.dialecteId })
+			expect(keptPoolStatus).toMatchObject({
+				exists: true,
+			})
+			const reader = twoDialectesWorker({ project })
+			const openReply = await openAs({ control: reader.control, project, asked: kept })
+			expect(openReply).toMatchObject({
+				type: 'opened',
+			})
+			const engine = await clientOf({ control: reader.control, clientId: 'reader' })
+			const engineDocuments = await engine.getDocuments()
+			expect(engineDocuments).toEqual([makeDocument({ id: kept.dialecteId })])
+		},
+	)
+
+	it('a list holding one id twice, with another dialecte between → the first declaration of the id served: its hooks, its version accepted, the other version refused PROJECT_DIALECTE_VERSION_MISMATCH; the other dialecte served too', async () => {
+		const project = uniqueProject()
+		const scenario = 'same-id-twice'
+		const { control } = twoDialectesWorker({ project, scenario })
+		const firstOpenReply = await openAs({ control, project, asked: first })
+		expect(firstOpenReply).toMatchObject({
+			type: 'opened',
+			dialecteVersion: first.dialecteVersion,
+		})
+		const engine = await clientOf({ control, clientId: 'importer' })
+		const imported = await engine.importFile({
+			file: fixtureFile({ namespaceUri: FIRST.namespaceUri, body: sessionRecords(1) }),
+			writeId: 'w-first-found',
+		})
+		expect(imported.diagnostics.map((diagnostic) => diagnostic.source)).toEqual([FIRST.source])
+		const repeated = {
+			dialecteId: first.dialecteId,
+			dialecteVersion: REPEATED_FIXTURE.dialecteVersion,
+		}
+		const refusing = twoDialectesWorker({ project, scenario })
+		const repeatedOpenReply = await openAs({ control: refusing.control, project, asked: repeated })
+		expect(repeatedOpenReply).toMatchObject({
+			key: 'PROJECT_DIALECTE_VERSION_MISMATCH',
+			meta: { dialecteId: first.dialecteId, engineVersion: first.dialecteVersion },
+		})
+		const besides = twoDialectesWorker({ project, scenario })
+		const secondOpenReply = await openAs({ control: besides.control, project, asked: second })
+		expect(secondOpenReply).toMatchObject({
+			type: 'opened',
+			dialecteId: second.dialecteId,
+		})
 	})
 })
 
@@ -1022,7 +1541,7 @@ describe('an engine worker destroying its project', () => {
 	it('through a store → the pool directory gone; a new connection reads empty', async () => {
 		const name = uniqueProject()
 		cleanups.push(() => removePoolDirectory({ project: name }))
-		const open = async () => {
+		async function open() {
 			const store = new EngineStore({
 				name,
 				connector: createSqliteWorkerConnector({
@@ -1037,9 +1556,11 @@ describe('an engine worker destroying its project', () => {
 		const store = await open()
 		await store.registerDocument(makeDocument())
 		await store.destroy()
-		expect(await poolState({ project: name })).toEqual({ exists: false, files: 0 })
+		const poolStatus = await poolState({ project: name })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
 		const next = await open()
-		expect(await next.getDocuments()).toEqual([])
+		const nextDocuments = await next.getDocuments()
+		expect(nextDocuments).toEqual([])
 		await next.destroy()
 	})
 
@@ -1057,7 +1578,8 @@ describe('an engine worker destroying its project', () => {
 			},
 			expect: 'destroyed',
 		})
-		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
 	})
 
 	it.each(['', '.', '..'])(
@@ -1103,7 +1625,8 @@ describe('an engine worker destroying its project', () => {
 			void holder.release()
 		}, 300)
 		await destroying
-		expect(await poolState({ project })).toEqual({ exists: false, files: 0 })
+		const poolStatus = await poolState({ project })
+		expect(poolStatus).toEqual({ exists: false, files: 0 })
 	})
 
 	it('a pool file another worker holds → PROJECT_DESTROY_FAILED, the directory still there', async () => {
@@ -1112,21 +1635,21 @@ describe('an engine worker destroying its project', () => {
 		const holder = await holdPoolFile({ project })
 		cleanups.push(holder.release)
 		const { control } = engineWorker({ project })
-		expect(
-			await rejectionKey({
-				action: control.request({
-					message: {
-						type: 'destroy',
-						project,
-						dialecteId: FIXTURE_DIALECTE.dialecteId,
-						lock: 'if-available',
-						budgetMs: 1_000,
-					},
-					expect: 'destroyed',
-				}),
+		const controlRequestRefusalKey = await rejectionKey({
+			action: control.request({
+				message: {
+					type: 'destroy',
+					project,
+					dialecteId: FIXTURE_DIALECTE.dialecteId,
+					lock: 'if-available',
+					budgetMs: 1_000,
+				},
+				expect: 'destroyed',
 			}),
-		).toBe('PROJECT_DESTROY_FAILED')
-		expect((await poolState({ project })).exists).toBe(true)
+		})
+		expect(controlRequestRefusalKey).toBe('PROJECT_DESTROY_FAILED')
+		const poolStatus = await poolState({ project })
+		expect(poolStatus.exists).toBe(true)
 	})
 })
 
@@ -1150,12 +1673,14 @@ describe('a client of an engine worker', () => {
 		await reader.registerDocument(makeDocument({ id: 'kept' }))
 		link.close()
 		// the released connection's own call ends: refused, never left waiting
-		expect(await rejectionKey({ action: importing })).toBe('STORE_CLOSED')
+		const importingRefusalKey = await rejectionKey({ action: importing })
+		expect(importingRefusalKey).toBe('STORE_CLOSED')
 		hold.release()
 		await expect
 			.poll(() => reader.getWriteOutcome({ writeId: 'w-held' }), { timeout: 5_000 })
 			.toBe('not-applied')
-		expect(await reader.getDocuments()).toEqual([makeDocument({ id: 'kept' })])
+		const readerDocuments = await reader.getDocuments()
+		expect(readerDocuments).toEqual([makeDocument({ id: 'kept' })])
 		other.close()
 	})
 })

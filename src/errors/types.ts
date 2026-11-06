@@ -1,4 +1,4 @@
-import type { ERROR_CATALOG } from './codes'
+import type { ERROR_CATALOG } from './codes.constants'
 
 export type DialecteErrorKey = keyof typeof ERROR_CATALOG
 export type DialecteErrorCode = (typeof ERROR_CATALOG)[DialecteErrorKey]['code']

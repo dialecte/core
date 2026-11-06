@@ -199,8 +199,10 @@ describe('the hub across realms of the page', () => {
 		await host.realm.commitRecord({ project, documentId: 'doc-1', id: 'r1' })
 		await vi.waitFor(
 			async function seenByBoth() {
-				expect(await second.realm.recordIds({ project, documentId: 'doc-1' })).toEqual(['r1'])
-				expect(await third.realm.recordIds({ project, documentId: 'doc-1' })).toEqual(['r1'])
+				const secondRealmRecordIds = await second.realm.recordIds({ project, documentId: 'doc-1' })
+				expect(secondRealmRecordIds).toEqual(['r1'])
+				const thirdRealmRecordIds = await third.realm.recordIds({ project, documentId: 'doc-1' })
+				expect(thirdRealmRecordIds).toEqual(['r1'])
 			},
 			{ timeout: 2_000, interval: 50 },
 		)
@@ -213,18 +215,21 @@ describe('the hub across realms of the page', () => {
 		const other = await realmFrame({ canStartEngines: true })
 		const third = await realmFrame({ canStartEngines: false })
 		await host.realm.registerDocument({ project, id: 'doc-1' })
-		expect(await other.realm.documentIds({ project })).toEqual(['doc-1'])
+		const otherRealmDocumentIds = await other.realm.documentIds({ project })
+		expect(otherRealmDocumentIds).toEqual(['doc-1'])
 		host.frame.remove()
 		await vi.waitFor(
 			async function servedAgain() {
-				expect(await other.realm.documentIds({ project })).toEqual(['doc-1'])
+				const documentIds = await other.realm.documentIds({ project })
+				expect(documentIds).toEqual(['doc-1'])
 			},
 			{ timeout: 10_000, interval: 100 },
 		)
 		await other.realm.registerDocument({ project, id: 'doc-2' })
 		await vi.waitFor(
 			async function seenByTheThird() {
-				expect(await third.realm.documentIds({ project })).toEqual(['doc-1', 'doc-2'])
+				const thirdRealmDocumentIds = await third.realm.documentIds({ project })
+				expect(thirdRealmDocumentIds).toEqual(['doc-1', 'doc-2'])
 			},
 			{ timeout: 10_000, interval: 100 },
 		)
@@ -278,25 +283,52 @@ describe('the hub across realms of the page', () => {
 		const { realm: page } = await realmFrame({ canStartEngines: true })
 		const { realm: child } = await boundChildFrame({ parent: page, storageRefused: true })
 		const project = uniqueProject()
-		expect(await child.registerThroughSqlite({ project, id: 'doc-1' })).toEqual(['doc-1'])
-		expect(await page.documentIds({ project })).toEqual(['doc-1'])
+		const childRegisteredIds = await child.registerThroughSqlite({ project, id: 'doc-1' })
+		expect(childRegisteredIds).toEqual(['doc-1'])
+		const pageDocumentIds = await page.documentIds({ project })
+		expect(pageDocumentIds).toEqual(['doc-1'])
 		page.closeStore({ project })
 		await vi.waitFor(
 			async function destroyedOnceClosed() {
-				expect(await child.destroyThroughSqlite({ project })).toBe('destroyed')
+				const childDestroyOutcome = await child.destroyThroughSqlite({ project })
+				expect(childDestroyOutcome).toBe('destroyed')
 			},
 			{ timeout: 10_000, interval: 200 },
 		)
 		// the project made again, empty: the document of before is gone
-		expect(await child.registerThroughSqlite({ project, id: 'doc-2' })).toEqual(['doc-2'])
+		const registeredIds = await child.registerThroughSqlite({ project, id: 'doc-2' })
+		expect(registeredIds).toEqual(['doc-2'])
+	})
+
+	it('a child bound through a port, able to store but with no engine registered in it → a project on sqlite opened through the page’s engine, and its files deleted by a view that can store', async () => {
+		const { realm: page } = await realmFrame({ canStartEngines: true })
+		const { realm: child } = await boundChildFrame({ parent: page })
+		const project = uniqueProject()
+		const registered = await child.registerThroughSqlite({ project, id: 'doc-1' })
+		expect(registered).toEqual(['doc-1'])
+		const hosted = await page.documentIds({ project })
+		expect(hosted).toEqual(['doc-1'])
+		page.closeStore({ project })
+		await vi.waitFor(
+			async function destroyedOnceClosed() {
+				const destroyed = await child.destroyThroughSqlite({ project })
+				expect(destroyed).toBe('destroyed')
+			},
+			{ timeout: 10_000, interval: 200 },
+		)
+		// the project made again, empty: the document of before is gone
+		const madeAgain = await child.registerThroughSqlite({ project, id: 'doc-2' })
+		expect(madeAgain).toEqual(['doc-2'])
 	})
 
 	it('a realm joined on its own whose private file system is refused → a project on sqlite refused STORE_UNAVAILABLE, though another realm could host it', async () => {
 		await realmFrame({ canStartEngines: true })
 		const { realm } = await realmFrame({ canStartEngines: false, storageRefused: true })
-		expect(await realm.registerThroughSqlite({ project: uniqueProject(), id: 'doc-1' })).toBe(
-			'STORE_UNAVAILABLE',
-		)
+		const realmRegisteredIds = await realm.registerThroughSqlite({
+			project: uniqueProject(),
+			id: 'doc-1',
+		})
+		expect(realmRegisteredIds).toBe('STORE_UNAVAILABLE')
 	})
 
 	it('a realm iframe reloaded → it joins again under a new realm id', async () => {
@@ -338,11 +370,13 @@ describe('the hub across realms of the page', () => {
 		hold.release()
 		await vi.waitFor(
 			async function importGone() {
-				expect(await host.realm.documentIds({ project })).toEqual(['doc-1'])
+				const hostRealmDocumentIds = await host.realm.documentIds({ project })
+				expect(hostRealmDocumentIds).toEqual(['doc-1'])
 			},
 			{ timeout: 10_000, interval: 100 },
 		)
-		expect(await host.realm.writeOutcome({ project, writeId: 'w-gone' })).toBe('not-applied')
+		const hostRealmWriteOutcome = await host.realm.writeOutcome({ project, writeId: 'w-gone' })
+		expect(hostRealmWriteOutcome).toBe('not-applied')
 	})
 
 	it('a child bound by its page through a port, unbound during its import → the import aborted: its document gone in every realm', async () => {
@@ -364,11 +398,13 @@ describe('the hub across realms of the page', () => {
 		hold.release()
 		await vi.waitFor(
 			async function importGone() {
-				expect(await host.realm.documentIds({ project })).toEqual(['doc-1'])
+				const hostRealmDocumentIds = await host.realm.documentIds({ project })
+				expect(hostRealmDocumentIds).toEqual(['doc-1'])
 			},
 			{ timeout: 10_000, interval: 100 },
 		)
-		expect(await host.realm.writeOutcome({ project, writeId: 'w-unbound' })).toBe('not-applied')
+		const hostRealmWriteOutcome = await host.realm.writeOutcome({ project, writeId: 'w-unbound' })
+		expect(hostRealmWriteOutcome).toBe('not-applied')
 	})
 
 	it('a realm whose only engine worker is of another origin → it hosts nothing: PROJECT_ENGINE_UNAVAILABLE; a srcdoc realm with a same-origin one hosts the project', async () => {
@@ -377,13 +413,15 @@ describe('the hub across realms of the page', () => {
 			canStartEngines: true,
 			engineUrl: 'https://engine.invalid/dialecte.worker.js',
 		})
-		expect(await keyOf({ promise: foreign.realm.documentIds({ project }) })).toBe(
-			'PROJECT_ENGINE_UNAVAILABLE',
-		)
+		const foreignRealmDocumentIdsRefusalKey = await keyOf({
+			promise: foreign.realm.documentIds({ project }),
+		})
+		expect(foreignRealmDocumentIdsRefusalKey).toBe('PROJECT_ENGINE_UNAVAILABLE')
 		const local = await realmFrame({ canStartEngines: true })
 		await vi.waitFor(
 			async function hostedNow() {
-				expect(await local.realm.documentIds({ project })).toEqual([])
+				const localRealmDocumentIds = await local.realm.documentIds({ project })
+				expect(localRealmDocumentIds).toEqual([])
 			},
 			{ timeout: 10_000, interval: 100 },
 		)
@@ -399,7 +437,8 @@ describe('the hub across realms of the page', () => {
 		host.realm.closeStore({ project })
 		await vi.waitFor(
 			async function engineEnded() {
-				expect(await isEngineLockFree({ project })).toBe(true)
+				const lockFree = await isEngineLockFree({ project })
+				expect(lockFree).toBe(true)
 			},
 			{ timeout: ENGINE_IDLE_CLOSE_MS + 10_000, interval: 200 },
 		)
@@ -417,12 +456,19 @@ describe('the hub across realms of the page', () => {
 		const lost = lostReasonOf({ promise: importing })
 		await untilHeld({ hold, importing })
 		host.realm.lifecycle({ type: 'pagehide', persisted: false })
-		expect(await lost).toBe('host-gone')
+		const lostReason = await lost
+		expect(lostReason).toBe('host-gone')
 		hold.release()
-		expect(await importer.realm.writeOutcome({ project, writeId: 'w-hidden' })).toBe('not-applied')
-		expect(await importer.realm.documentIds({ project })).toEqual([])
+		const importerRealmWriteOutcome = await importer.realm.writeOutcome({
+			project,
+			writeId: 'w-hidden',
+		})
+		expect(importerRealmWriteOutcome).toBe('not-applied')
+		const importerRealmDocumentIds = await importer.realm.documentIds({ project })
+		expect(importerRealmDocumentIds).toEqual([])
 		const again = await importer.realm.importHeld({ project, writeId: 'w-again', file })
-		expect(await importer.realm.documentIds({ project })).toEqual([again.documentId])
+		const documentIds = await importer.realm.documentIds({ project })
+		expect(documentIds).toEqual([again.documentId])
 	})
 
 	for (const [away, back] of [
@@ -434,7 +480,8 @@ describe('the hub across realms of the page', () => {
 			const host = await realmFrame({ canStartEngines: true })
 			const other = await realmFrame({ canStartEngines: true })
 			await host.realm.registerDocument({ project, id: 'doc-1' })
-			expect(await other.realm.documentIds({ project })).toEqual(['doc-1'])
+			const otherRealmDocumentIds = await other.realm.documentIds({ project })
+			expect(otherRealmDocumentIds).toEqual(['doc-1'])
 			const before = host.realm.realmId()
 			const firstEngine = await engineLockHolder({ project })
 			expect(firstEngine).toBeDefined()
@@ -445,14 +492,16 @@ describe('the hub across realms of the page', () => {
 					const holder = await engineLockHolder({ project })
 					expect(holder).toBeDefined()
 					expect(holder).not.toBe(firstEngine)
-					expect(await other.realm.documentIds({ project })).toEqual(['doc-1'])
+					const documentIds = await other.realm.documentIds({ project })
+					expect(documentIds).toEqual(['doc-1'])
 				},
 				{ timeout: 10_000, interval: 100 },
 			)
 			host.realm.lifecycle({ type: back, persisted: true })
 			await vi.waitFor(
 				async function backOnTheProject() {
-					expect(await host.realm.documentIds({ project })).toEqual(['doc-1'])
+					const hostRealmDocumentIds = await host.realm.documentIds({ project })
+					expect(hostRealmDocumentIds).toEqual(['doc-1'])
 				},
 				{ timeout: 10_000, interval: 100 },
 			)
@@ -465,21 +514,24 @@ describe('the hub across realms of the page', () => {
 		const page = await realmFrame({ canStartEngines: true })
 		const child = await boundChildFrame({ parent: page.realm })
 		await page.realm.registerDocument({ project, id: 'doc-1' })
-		expect(await child.realm.documentIds({ project })).toEqual(['doc-1'])
+		const childRealmDocumentIds = await child.realm.documentIds({ project })
+		expect(childRealmDocumentIds).toEqual(['doc-1'])
 		page.realm.rebindOnRejoin({ child: child.frame.contentWindow! })
 		page.realm.lifecycle({ type: 'freeze' })
 		await vi.waitFor(
 			async function childDropped() {
-				expect(await lostReasonOf({ promise: child.realm.documentIds({ project }) })).toBe(
-					'realm-dropped',
-				)
+				const childRealmDocumentIdsLostReason = await lostReasonOf({
+					promise: child.realm.documentIds({ project }),
+				})
+				expect(childRealmDocumentIdsLostReason).toBe('realm-dropped')
 			},
 			{ timeout: 10_000, interval: 100 },
 		)
 		page.realm.lifecycle({ type: 'resume' })
 		await vi.waitFor(
 			async function boundAgain() {
-				expect(await child.realm.documentIds({ project })).toEqual(['doc-1'])
+				const documentIds = await child.realm.documentIds({ project })
+				expect(documentIds).toEqual(['doc-1'])
 			},
 			{ timeout: 10_000, interval: 100 },
 		)
@@ -530,11 +582,13 @@ describe('the hub across realms of the page', () => {
 		})
 		const reader = await realmFrame({ canStartEngines: true })
 		await host.realm.registerDocument({ project, id: 'doc-1' })
-		expect(await reader.realm.documentIds({ project })).toEqual(['doc-1'])
+		const readerRealmDocumentIds = await reader.realm.documentIds({ project })
+		expect(readerRealmDocumentIds).toEqual(['doc-1'])
 		await orderFixture({ order: { type: 'mute-clients' } })
 		// never answered by the host's engine: only the next one, the read made again, answers it
 		const reading = reader.realm.documentIds({ project })
 		host.frame.remove()
-		expect(await reading).toEqual(['doc-1'])
+		const readDocumentIds = await reading
+		expect(readDocumentIds).toEqual(['doc-1'])
 	})
 })

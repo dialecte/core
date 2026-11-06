@@ -6,7 +6,7 @@ import type { SqliteWorkerConnectorParams } from './sqlite-worker-connector.type
 import type { EngineConnector } from '@/store/engine/engine-store.types'
 
 /**
- * Direct mode on SQLite: the project's engine in the dialecte's engine worker (`serveDialecteEngine`),
+ * Direct mode on SQLite: the project's engine in the app's engine worker (`serveSqliteEngine`),
  * opened on the consumer's one SQLite wasm file.
  */
 export function createSqliteWorkerConnector(params: SqliteWorkerConnectorParams): EngineConnector {

@@ -2,6 +2,9 @@ import { CONTRACT_OTHER_DIALECTE_ID } from '../../contract/store-contract.consta
 
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
+import type { RuntimeFixtureScenario } from './runtime.fixtures.types'
+import type { DiagnosticCatalogue } from '@/diagnostics'
+
 /** The channel a runtime test orders its fixture engine workers on. */
 export const RUNTIME_FIXTURE_CHANNEL = 'dialecte::runtime-fixture'
 
@@ -106,3 +109,82 @@ export const CHANGE_TOLD_WITHIN_MS = 5_000
  * so only its beats keep a call alive, and wide enough that a beat a loaded machine posts late is not taken for a loss.
  */
 export const KEPT_ALIVE_TIMEOUT_MS = 2_500
+
+/**
+ * The two dialectes the `two-dialectes` fixture worker is given: core's test dialecte and another of its own id,
+ * version, config key and namespace, whose hooks say their diagnostics under a source of their own
+ * (`SECOND_FIXTURE_DIAGNOSTICS`). Neither id holds the other, nor `UNGIVEN_FIXTURE_DIALECTE_ID`.
+ */
+export const TWO_DIALECTES_FIXTURE = {
+	first: FIXTURE_DIALECTE,
+	second: { dialecteId: 'second/fixture', dialecteVersion: '1.2.3' },
+} as const
+
+/** The key of the second fixture dialecte's one config, and the default namespace that config reads and writes. */
+export const SECOND_FIXTURE_CONFIG = {
+	key: 'second',
+	namespaceUri: 'http://dialecte.dev/XML/SECOND',
+} as const
+
+/** What the second dialecte of the `two-dialectes` fixture says on an import: one diagnostic per record of the session's tag. */
+export const SECOND_FIXTURE_DIAGNOSTICS = {
+	source: 'runtime-fixture-second',
+	codes: {
+		seen: {
+			severity: 'information',
+			family: 'import',
+			message: 'Record handed to the second dialecte',
+		},
+	},
+} as const satisfies DiagnosticCatalogue
+
+/**
+ * The `same-id-twice` fixture worker repeats the first dialecte's id at another version, with hooks that say their
+ * diagnostics under a source of their own: the declaration found first is the one served.
+ */
+export const REPEATED_FIXTURE = {
+	dialecteVersion: '2.0.0',
+	diagnostics: {
+		source: 'runtime-fixture-repeated',
+		codes: {
+			seen: {
+				severity: 'information',
+				family: 'import',
+				message: 'Record handed to the repeated dialecte',
+			},
+		},
+	},
+} as const satisfies { dialecteVersion: string; diagnostics: DiagnosticCatalogue }
+
+/** A dialecte id no fixture worker is given, held by none of the ids that are. */
+export const UNGIVEN_FIXTURE_DIALECTE_ID = 'elsewhere/not-given'
+
+/** A version no fixture dialecte runs. */
+export const UNSERVED_DIALECTE_VERSION = '9.9.9'
+
+/**
+ * How long the `slow-engine-chunk` fixture holds the engine's chunk back: past the moment control messages a case
+ * posts at once have reached the worker, so they arrive while the chunk is still loading.
+ */
+export const SLOW_ENGINE_CHUNK_MS = 1_000
+
+/** What the `failing-engine-chunk` fixture's chunk fails to load with: an answer carrying it came from that failure. */
+export const ENGINE_CHUNK_FAILURE = 'the engine chunk could not be loaded'
+
+/** The free bytes the quota scenarios leave the private file system: a pool fits, a large import does not. */
+export const FREE_BYTES_OF_SCENARIO: Partial<Record<RuntimeFixtureScenario, number>> = {
+	'small-quota': 1000,
+	'import-quota': 2 * 1024 * 1024,
+}
+
+/**
+ * How long a case waits for a fresh engine worker to say a control message reached it (`destroy-asked`): a worker's start
+ * included, which a loaded machine can stretch past a second; several times what it takes on a quiet one.
+ */
+export const FRESH_WORKER_NOTICE_TIMEOUT_MS = 15_000
+
+/**
+ * How long a case waits for a realm to join the hub again once its page comes back (its lock asked anew, its hello
+ * said): a loaded machine can stretch it past a second; several times what it takes on a quiet one.
+ */
+export const REJOIN_TIMEOUT_MS = 10_000

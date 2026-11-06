@@ -102,9 +102,8 @@ export class Project<
 	 * project a store holds. `undefined` for a Project made with no dialecte.
 	 */
 	readonly dialecteId: string | undefined
-	/** The dialecte's version and its engine worker's address, from its factory: what `sqlite` storage runs. */
+	/** The dialecte's version, from its factory: what `sqlite` storage runs. */
 	private readonly dialecteVersion: string | undefined
-	private readonly engineUrl: string | undefined
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
 	private mergedExtensions?: MergedExtensions<GenericModules>
@@ -151,7 +150,7 @@ export class Project<
 		const inFlight = { fileName }
 		this.importsInFlight.add(inFlight)
 		const importsInFlight = this.importsInFlight
-		const drainWhenIdle = () => this.drainWhenIdle()
+		const drainWhenIdle = this.drainWhenIdle.bind(this)
 		function settleImportInFlight(): void {
 			importsInFlight.delete(inFlight)
 			drainWhenIdle()
@@ -196,7 +195,7 @@ export class Project<
 	/** A write of the open project counted in `writes` until the function answered is called (once). */
 	private startCountedWrite(): () => void {
 		const writes = this.writes
-		const drainWhenIdle = () => this.drainWhenIdle()
+		const drainWhenIdle = this.drainWhenIdle.bind(this)
 		writes.start()
 		let ended = false
 		return function endCountedWrite() {
@@ -220,7 +219,7 @@ export class Project<
 
 	/** Resolved once every import queued so far has settled, however it settled. */
 	private settledImports(): Promise<void> {
-		const settled = () => {}
+		function settled(): void {}
 		return this.importChain.then(settled, settled)
 	}
 
@@ -467,12 +466,10 @@ export class Project<
 		dev?: { perf?: boolean }
 		dialecteId?: ProjectParams<GenericConfig>['dialecteId']
 		dialecteVersion?: ProjectParams<GenericConfig>['dialecteVersion']
-		engineUrl?: ProjectParams<GenericConfig>['engineUrl']
 	}) {
 		const configKeys = Object.keys(params.configs)
 		this.dialecteId = params.dialecteId
 		this.dialecteVersion = params.dialecteVersion
-		this.engineUrl = params.engineUrl
 
 		this.storage = params.storage
 		this.configs = params.configs
@@ -561,7 +558,8 @@ export class Project<
 
 		try {
 			// A document still `importing` is an import in progress elsewhere: not opened.
-			const files = openableDocuments(await store.getDocuments())
+			const documents = await store.getDocuments()
+			const files = openableDocuments(documents)
 			for (const file of files) {
 				this.state.documents.set(file.id, buildDocumentState(file))
 			}
@@ -606,7 +604,6 @@ export class Project<
 				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
 				perf: this.perfEnabled,
 				dialecteVersion: this.dialecteVersion,
-				engineUrl: this.engineUrl,
 			},
 			perf: this.perf,
 		})
@@ -906,7 +903,8 @@ export class Project<
 		for (const file of files) {
 			try {
 				this.refuseClosedOpen({ opened })
-				entries.push({ status: 'imported', ...(await this.importFile(file, options)) })
+				const imported = await this.importFile(file, options)
+				entries.push({ status: 'imported', ...imported })
 			} catch (thrown) {
 				// the structured error thrown - `PARSE_ERROR`, a dialecte's own from a hook - or
 				// `IMPORT_FAILED` wrapping anything else: `createDialecteError` sets the structured error
@@ -1071,7 +1069,8 @@ export class Project<
 	 * @intent list the documents of a project, show the files a project holds
 	 */
 	async getDocuments(): Promise<DocumentRecord[]> {
-		return openableDocuments(await this.store.getDocuments())
+		const documents = await this.store.getDocuments()
+		return openableDocuments(documents)
 	}
 
 	/**
@@ -1370,7 +1369,8 @@ export class Project<
 		const results: Result[] = []
 		await this.visitOpenDocuments({
 			visit: async (doc) => {
-				results.push(...(await queryFunction(doc.query)))
+				const found = await queryFunction(doc.query)
+				results.push(...found)
 				return false
 			},
 		})

@@ -3,7 +3,7 @@ import { listProjects } from './list-projects'
 import { describe, expect, it } from 'vitest'
 
 import { createProjectFactory } from '@/dialecte'
-import { createCountingDialecte, ENGINE_URL } from '@/dialecte/create-project-factory.fixtures'
+import { createCountingDialecte } from '@/dialecte/create-project-factory.fixtures'
 import { toDialecteError } from '@/errors'
 import { resolveStore } from '@/store/resolve-store'
 import { withSqliteStorage } from '@/store/sqlite-storage.fixtures'
@@ -11,16 +11,20 @@ import { TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { AnyDialecteConfig } from '@/types'
 
-/** A dialecte's runtime as its factory gives it to the store: its configs, its version and its engine's address. */
+/** A dialecte's runtime as its factory gives it to the store: its configs and its version. */
 const SQLITE_RUNTIME = {
 	configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
 	defaultConfigKey: 'default',
 	dialecteVersion: '0.0.0',
-	engineUrl: ENGINE_URL,
 }
 
 function uniqueName(): string {
 	return `sqlite-${crypto.randomUUID()}`
+}
+
+/** The call, its synchronous throw a rejection like any other refusal. */
+async function attempt(call: () => Promise<unknown>): Promise<unknown> {
+	return call()
 }
 
 /**
@@ -33,19 +37,13 @@ describe('SQLite storage where the realm can run no engine (node)', () => {
 	const testCases: Record<string, TestCase> = {
 		'a project made by the factory, opened → STORE_UNAVAILABLE': {
 			call: function openFromFactory() {
-				const factory = createProjectFactory({
-					dialecte: createCountingDialecte(),
-					engineUrl: ENGINE_URL,
-				})
+				const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 				return factory({ storage: { type: 'sqlite' } }).open(uniqueName())
 			},
 		},
 		'a project destroyed by name through the factory → STORE_UNAVAILABLE': {
 			call: function destroyByName() {
-				const factory = createProjectFactory({
-					dialecte: createCountingDialecte(),
-					engineUrl: ENGINE_URL,
-				})
+				const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 				return factory.destroyProject({ name: uniqueName() })
 			},
 		},
@@ -68,7 +66,7 @@ describe('SQLite storage where the realm can run no engine (node)', () => {
 	for (const [description, { call }] of Object.entries(testCases)) {
 		it(description, async () => {
 			withSqliteStorage()
-			const key = await call().then(
+			const key = await attempt(call).then(
 				function answered() {
 					return 'answered'
 				},

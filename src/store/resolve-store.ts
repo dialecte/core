@@ -13,9 +13,9 @@ import type { Store } from '@/store'
 /**
  * Resolve the Store instance from open params.
  * 'local' creates a DexieStore; 'inMemory' creates an InMemoryStore - both import and export with `runtime`;
- * 'sqlite' the store of the kind `@dialecte/core/sqlite` registers - an EngineStore on the dialecte's SQLite engine,
- * which imports and exports with its own (`PROJECT_SQLITE_NOT_IMPORTED` when the app never imported that entry; a
- * project made by no dialecte's factory is refused `PROJECT_ENGINE_NOT_DECLARED`);
+ * 'sqlite' the store of the kind `@dialecte/core/sqlite` registers - an EngineStore on the app's SQLite engine, which
+ * imports and exports with its own (`PROJECT_SQLITE_NOT_IMPORTED` when the app never imported that entry; a project
+ * made by no dialecte's factory is refused `PROJECT_ENGINE_NOT_DECLARED`);
  * 'custom' passes through the user-provided store, which imports and exports with its own.
  *
  * @internal store selection when a project opens; callers pass `storage` to the project factory
@@ -49,9 +49,9 @@ export function resolveStore(params: {
 }
 
 /**
- * What a project on SQLite storage connects with: its name, its dialecte, and the engine its factory gives - a name
- * or dialecte id no store can hold refused `PROJECT_NAME_INVALID`, a project made by no factory
- * `PROJECT_ENGINE_NOT_DECLARED`.
+ * What a project on SQLite storage connects with: its name and its dialecte - a name or dialecte id no store can hold
+ * refused `PROJECT_NAME_INVALID`, a project made by no factory (no dialecte id or version)
+ * `PROJECT_ENGINE_NOT_DECLARED`. The engine it reaches is the one the app registered, read as it connects.
  */
 export function sqliteConnectorParamsOf(params: {
 	name: string
@@ -59,13 +59,13 @@ export function sqliteConnectorParamsOf(params: {
 	dialecteId: string | undefined
 }): SqliteConnectorParams {
 	const { name, runtime, dialecteId } = params
-	const { dialecteVersion, engineUrl, perf } = runtime
+	const { dialecteVersion, perf } = runtime
 	refuseUnnamableProject({ project: name, dialecteId })
-	if (dialecteId === undefined || dialecteVersion === undefined || engineUrl === undefined) {
+	if (dialecteId === undefined || dialecteVersion === undefined) {
 		throwDialecteError('PROJECT_ENGINE_NOT_DECLARED', {
-			detail: `Project "${name}" asks for SQLite storage, but no dialecte's factory made it: no engine is known to start (dialecte ${dialecteId ?? 'none'}, version ${dialecteVersion ?? 'none'}, engine ${engineUrl ?? 'none'})`,
-			meta: { project: name, dialecteId, dialecteVersion, engineUrl },
+			detail: `Project "${name}" asks for SQLite storage, but no dialecte's factory made it: no engine is known to start (dialecte ${dialecteId ?? 'none'}, version ${dialecteVersion ?? 'none'})`,
+			meta: { project: name, dialecteId, dialecteVersion },
 		})
 	}
-	return { name, dialecteId, dialecteVersion, engineUrl, perf }
+	return { name, dialecteId, dialecteVersion, perf }
 }

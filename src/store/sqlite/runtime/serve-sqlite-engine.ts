@@ -25,30 +25,67 @@ import { createDialecteError } from '@/errors'
 import type { EngineControlAnswer, EngineControlRequest } from '../../engine/engine.types'
 import type { EngineDialecte } from '../../engine/host/host.types'
 import type { EngineRuntimeState, SqliteEngineSettings } from './runtime.types'
-import type { DialecteDeclaration } from '@/dialecte'
-import type { ExtensionModules } from '@/document'
+import type {
+	AnswerEngineControl,
+	ServeSqliteEngineParams,
+	SqliteEngineDialecte,
+} from './serve-sqlite-engine.types'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /**
- * Serve the dialecte's project engine from this worker, the one call of a dialecte package's engine worker file -
- * today the SQLite engine on the origin's private file system (opfs-sahpool). The realm that spawned it (or
- * the hub, through it) sends control messages - open the project, adopt a client's port, a client gone, close, destroy -
- * handled one at a time and each answered once; every adopted port is served the engine's members.
- * One project per worker.
- *
- * @intent serve a dialecte's engine from a worker, write a dialecte package's engine worker file, ship a dialecte's SQLite engine in its package
+ * What answers an engine worker's control messages: the SQLite engine on the origin's private file system
+ * (opfs-sahpool), and the state of the one project this worker serves. The realm that spawned it (or the hub,
+ * through it) sends them - open the project, adopt a client's port, a client gone, close, destroy -, each answered
+ * once; every adopted port is served the engine's members. `runEngineControlLoop` hands them one at a time.
  */
-export function serveDialecteEngine<
-	GenericConfig extends AnyDialecteConfig,
-	GenericModules extends ExtensionModules,
-	GenericConfigKey extends string,
->(params: {
-	dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>
-}): void {
-	const { dialecte: declaration } = params
-	// erased to the config-agnostic shape the engine imports with, at this one boundary
-	const dialecte: EngineDialecte = {
+export function createSqliteEngineControl(params: ServeSqliteEngineParams): AnswerEngineControl {
+	const { dialectes } = params
+	const state: EngineRuntimeState = {
+		project: undefined,
+		dialecteId: undefined,
+		pool: undefined,
+		releaseLock: undefined,
+		engine: undefined,
+		events: undefined,
+		heartbeat: undefined,
+		clients: new Map(),
+	}
+	return function answerInState(request) {
+		return answerControl({ dialectes, state, request })
+	}
+}
+
+/**
+ * The dialecte a control message names, as the engine runs it: the first declaration of that id. An id not given,
+ * or a given one at another version, is refused here: no lock taken, no file touched.
+ */
+function dialecteAsked(params: {
+	dialectes: readonly SqliteEngineDialecte[]
+	project: string
+	asked: { dialecteId: string; dialecteVersion?: string }
+}): EngineDialecte {
+	const { dialectes, project, asked } = params
+	const declaration = dialectes.find((given) => given.id === asked.dialecteId)
+	if (!declaration) {
+		const engineDialecteIds = dialectes.map((given) => given.id)
+		throw createDialecteError('PROJECT_DIALECTE_MISMATCH', {
+			detail: `"${project}" was asked as ${asked.dialecteId} of an engine worker given ${engineDialecteIds.join(', ')}: nothing was opened or removed`,
+			meta: { project, realmDialecteId: asked.dialecteId, engineDialecteIds },
+		})
+	}
+	refuseAnotherDialecte({
+		project,
+		engine: { dialecteId: declaration.id, dialecteVersion: declaration.version },
+		asked,
+	})
+	return engineDialecteOf({ declaration })
+}
+
+/** A declaration erased to the config-agnostic shape the engine imports with, at this one boundary. */
+function engineDialecteOf(params: { declaration: SqliteEngineDialecte }): EngineDialecte {
+	const { declaration } = params
+	return {
 		id: declaration.id,
 		version: declaration.version,
 		createRuntime: function createRuntime({ perf }) {
@@ -60,48 +97,37 @@ export function serveDialecteEngine<
 			}
 		},
 	}
-	const state: EngineRuntimeState = {
-		project: undefined,
-		pool: undefined,
-		releaseLock: undefined,
-		engine: undefined,
-		events: undefined,
-		heartbeat: undefined,
-		clients: new Map(),
-	}
-	// an uncaught error of the dialecte's code (a hook's timer) is told on this worker's console only:
-	// the engine goes on, and the realm that spawned it never takes it for the engine's end
-	self.addEventListener('error', function keepUncaughtError(event: ErrorEvent) {
-		console.error('Uncaught in the project engine:', event.error ?? event.message)
-		event.preventDefault()
-	})
-	let turn: Promise<void> = Promise.resolve()
-	self.addEventListener('message', function takeControl(event: MessageEvent<unknown>) {
-		const request = event.data
-		// not a control message (no object, no request id): another listener's, or nothing
-		if (!isControlRequest(request)) return
-		// one control message at a time, in the order sent: an open is done before a client is adopted
-		turn = turn
-			.then(function handleInTurn() {
-				return answerControl({ dialecte, state, request })
-			})
-			.catch(function keepServing(thrown: unknown) {
-				console.error('The project engine could not answer a control message:', thrown)
-			})
+}
+
+/**
+ * One project per worker, a project being a dialecte and a name: a worker holding one, its engine open or its pool
+ * paused, refuses any other before its engine or its files are touched, and before any lock is asked.
+ */
+function refuseAnotherProject(params: {
+	state: EngineRuntimeState
+	dialecte: EngineDialecte
+	project: string
+}): void {
+	const { state, dialecte, project } = params
+	if (state.project === undefined) return
+	if (state.project === project && state.dialecteId === dialecte.id) return
+	throw createDialecteError('ASSERTION_FAILED', {
+		detail: `This engine worker serves project "${state.project}" of ${state.dialecteId}, not "${project}" of ${dialecte.id}: one project per worker`,
 	})
 }
 
 async function answerControl(params: {
-	dialecte: EngineDialecte
+	dialectes: readonly SqliteEngineDialecte[]
 	state: EngineRuntimeState
 	request: EngineControlRequest<SqliteEngineSettings>
 }): Promise<void> {
-	const { dialecte, state, request } = params
+	const { dialectes, state, request } = params
 	const { requestId } = request
 	let answer: EngineControlAnswer
 	try {
 		switch (request.type) {
 			case 'open': {
+				const dialecte = dialecteAsked({ dialectes, project: request.project, asked: request })
 				const { resumed } = await openEngine({ dialecte, state, request })
 				answer = {
 					type: 'opened',
@@ -144,6 +170,7 @@ async function answerControl(params: {
 				break
 			}
 			case 'destroy': {
+				const dialecte = dialecteAsked({ dialectes, project: request.project, asked: request })
 				await destroyProject({ dialecte, state, request })
 				answer = { type: 'destroyed', requestId }
 				break
@@ -178,22 +205,12 @@ async function openEngine(params: {
 		heartbeatIntervalMs = ENGINE_HEARTBEAT_INTERVAL_MS,
 		settings: { wasmUrl, options, progressBeatOps = PROGRESS_BEAT_OPS },
 	} = request
-	// an engine of another dialecte (a spawner's address pointing at another worker) takes no lock and no file
-	refuseAnotherDialecte({
-		project,
-		engine: { dialecteId: dialecte.id, dialecteVersion: dialecte.version },
-		asked: request,
-	})
 	// a name no directory can be named after is refused before the lock is asked: a refusal holds nothing
 	refuseUnnamableProject({ project, dialecteId: dialecte.id })
+	refuseAnotherProject({ state, dialecte, project })
 	if (state.engine) {
 		throw createDialecteError('ASSERTION_FAILED', {
 			detail: `The engine of project "${state.project}" is open already`,
-		})
-	}
-	if (state.project !== undefined && state.project !== project) {
-		throw createDialecteError('ASSERTION_FAILED', {
-			detail: `This engine worker serves project "${state.project}", not "${project}": one project per worker`,
 		})
 	}
 	const sqlite3 = await loadSqlite({ wasmUrl })
@@ -229,6 +246,7 @@ async function openEngine(params: {
 		state.releaseLock = opened.lock.release
 	}
 	state.project = project
+	state.dialecteId = dialecte.id
 	let db: Database | undefined
 	try {
 		// made before the database opens: a dialecte failing to make its hooks leaves no file open
@@ -313,14 +331,9 @@ async function destroyProject(params: {
 }): Promise<void> {
 	const { dialecte, state, request } = params
 	const { project, lock, budgetMs } = request
-	// another dialecte's project of that name is never this engine's to remove
-	refuseAnotherDialecte({
-		project,
-		engine: { dialecteId: dialecte.id, dialecteVersion: dialecte.version },
-		asked: { dialecteId: request.dialecteId },
-	})
 	// a name no directory can be named after is refused before the lock is asked: a refusal holds nothing
 	refuseUnnamableProject({ project, dialecteId: dialecte.id })
+	refuseAnotherProject({ state, dialecte, project })
 	const deadline = performance.now() + budgetMs
 	let removing = false
 	try {
@@ -341,20 +354,11 @@ async function destroyProject(params: {
 		if (removing) {
 			state.pool = undefined
 			state.project = undefined
+			state.dialecteId = undefined
 		}
 		// the lock let go whatever the destroy did: a hub keeps this worker alive for the next engine
 		releasePool({ state })
 	}
-}
-
-/** A control message of the engine's: an object with a type and a request id (a type guard: one value). */
-function isControlRequest(request: unknown): request is EngineControlRequest<SqliteEngineSettings> {
-	return (
-		typeof request === 'object' &&
-		request !== null &&
-		typeof (request as { type?: unknown }).type === 'string' &&
-		typeof (request as { requestId?: unknown }).requestId === 'number'
-	)
 }
 
 /** The ports of the clients the engine serves now: each change is told on every one. */

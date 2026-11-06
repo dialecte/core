@@ -1,0 +1,240 @@
+AnyAttribute {
+  name: string
+  namespace?: Namespace | undefined
+  value: string
+}
+
+AnyRawRecord {
+  attributes: AnyAttribute[]
+  children: AnyRelationship[]
+  id: string
+  namespace: Namespace
+  parent: AnyRelationship | null
+  tagName: string
+  value: string
+}
+
+AnyRelationship {
+  id: string
+  tagName: string
+}
+
+BlobAttachment {
+  attribute?: string | undefined
+  documentId: string
+  recordRef: string
+}
+
+BlobRecord {
+  attachedTo: BlobAttachment[]
+  createdAt: number
+  documentId: string
+  id: string
+  mimeType?: string | undefined
+  name: string
+  size?: number | undefined
+}
+
+ChangeLogEntry {
+  documentId: string
+  id: number
+  operations: { creates: AnyRawRecord[]; updates: { before: AnyRawRecord; after: AnyRawRecord; }[]; deletes: AnyRawRecord[]; }
+  sequenceNumber: number
+  timestamp: number
+  writeId: string
+}
+
+ChunkOptions {
+  batchSize: number
+  chunkSize: number
+}
+
+Diagnostic<GenericCode extends string = string> {
+  code: GenericCode
+  message: string
+  meta?: Record<string, unknown> | undefined
+  ref: DiagnosticRef
+  related?: undefined | { ref: DiagnosticRef; message: string; }[]
+  severity: DiagnosticSeverity
+  source: string
+}
+
+DiagnosticRef {
+  attribute?: string | undefined
+  id: string
+  tagName: string
+}
+
+DiagnosticSeverity = "error" | "hint" | "information" | "warning"
+
+DocumentRecord {
+  configKey: string
+  createdAt: number
+  extension: string
+  id: string
+  metadata?: Record<string, unknown> | undefined
+  name: string
+  path?: string | undefined
+  status: DocumentStatus
+  writeId?: string | undefined
+}
+
+DocumentStatus = "importing" | "ready"
+
+ExportFileOptions {
+  batchSize?: number | undefined
+  indent?: false | true | undefined
+  withDatabaseIds?: false | true | undefined
+}
+
+ExportFileParams {
+  documentId: string
+  onProgress?: (progress: ExportProgress) => void | undefined
+  options?: ExportFileOptions | undefined
+  signal?: AbortSignal | undefined
+}
+
+ExportFileResult {
+  file: Blob
+  filename: string
+  perf?: PerfSnapshot | undefined
+}
+
+ExportProgress {
+  recordsWritten: number
+  totalRecords: number
+}
+
+ImportFileOptions {
+  chunkOptions?: Partial<ChunkOptions> | undefined
+  configKey?: string | undefined
+  metadata?: Record<string, unknown> | undefined
+  path?: string | undefined
+  useCustomRecordsIds?: false | true | undefined
+}
+
+ImportFileParams {
+  file: File
+  onProgress?: (progress: ImportProgress) => void | undefined
+  options?: ImportFileOptions | undefined
+  signal?: AbortSignal | undefined
+  writeId?: string | undefined
+}
+
+ImportFileResult {
+  diagnostics: Diagnostic[]
+  perf?: PerfSnapshot | undefined
+  record: DocumentRecord
+  recordCount: number
+}
+
+ImportPhase = "indexing" | "storing"
+
+ImportProgress {
+  bytesRead: number
+  phase: ImportPhase
+  totalBytes: number
+}
+
+Namespace {
+  prefix: string
+  uri: string
+}
+
+PerfReport {
+  [key: string]: { calls: number; totalMs: number; avgMs: number; count?: number | undefined; }
+}
+
+PerfSnapshot {
+  spans: PerfSpan[]
+  timeOrigin: number
+  totals: PerfReport
+}
+
+PerfSpan {
+  duration: number
+  name: string
+  startTime: number
+}
+
+ProjectChannelMessage = { type: "blob-added"; blobId: string; documentId: string; timestamp: number; } | { type: "blob-attached"; blobId: string; ref: BlobAttachment; timestamp: number; } | { type: "blob-detached"; blobId: string; ref: { documentId: string; recordRef: string; }; timestamp: number; } | { type: "blob-removed"; blobId: string; timestamp: number; } | { type: "commit"; documentId: string; timestamp: number; } | { type: "document-imported"; documentId: string; timestamp: number; } | { type: "document-removed"; documentId: string; timestamp: number; } | { type: "document-updated"; documentId: string; timestamp: number; } | { type: "init-empty-document"; documentId: string; timestamp: number; }
+
+RecordPatch {
+  attributes?: AnyAttribute[] | undefined
+  children?: AnyRelationship[] | undefined
+  namespace?: Namespace | undefined
+  parent?: AnyRelationship | null | undefined
+  recordId: string
+  removeAttributes?: readonly string[] | undefined
+  tagName?: string | undefined
+  value?: string | undefined
+}
+
+SqliteConnectorParams {
+  dialecteId: string
+  dialecteVersion: string
+  name: string
+  perf?: false | true | undefined
+}
+
+SqliteEngineRegistration {
+  dialectes: readonly { id: string; version: string; }[]
+  url: string
+}
+
+SqliteStorage {
+  engine?: SqliteEngineRegistration | undefined
+  storeOf: (params: { connector: SqliteConnectorParams; }) => Store
+}
+
+Store {
+  addBlob: (entry: BlobRecord, data: Blob) => Promise<void>
+  attachBlob: (blobId: string, ref: BlobAttachment) => Promise<void>
+  bulkWrite: (documentId: string, ops: { creates?: AnyRawRecord[] | undefined; updates?: RecordPatch[] | undefined; deletes?: string[] | undefined; }) => Promise<void>
+  close: () => Promise<void>
+  commit: (params: { documentId: string; writeId?: string | undefined; creates: AnyRawRecord[]; updates: AnyRawRecord[]; deletes: string[]; onProgress: (current: number, total: number) => void; }) => Promise<void>
+  count: (documentId: string) => Promise<number>
+  destroy: () => Promise<void>
+  detachBlob: (blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>
+  exportFile: (params: ExportFileParams) => Promise<ExportFileResult>
+  get: (id: string, documentId: string) => Promise<AnyRawRecord | undefined>
+  getBlob: (blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>
+  getBlobsByDocument: (documentId: string) => Promise<BlobRecord[]>
+  getBlobsByRecord: (documentId: string, recordRef: string) => Promise<BlobRecord[]>
+  getByDocumentId: (documentId: string) => Promise<AnyRawRecord[]>
+  getByTagNameInDocument: (tagName: string, documentId: string) => Promise<AnyRawRecord[]>
+  getChangeLog: (documentId: string) => Promise<ChangeLogEntry[]>
+  getDatabaseInstance: () => unknown
+  getDocument: (documentId: string) => Promise<DocumentRecord | undefined>
+  getDocuments: () => Promise<DocumentRecord[]>
+  getHistoryStatus: (documentId: string) => Promise<{ canUndo: boolean; canRedo: boolean; }>
+  getMany: (ids: string[], documentId: string) => Promise<(AnyRawRecord | undefined)[]>
+  getStandaloneBlobs: () => Promise<BlobRecord[]>
+  getWriteOutcome: (params: { writeId: string; }) => Promise<WriteOutcome>
+  importFile: (params: ImportFileParams) => Promise<ImportFileResult>
+  isDocumentReadable: (documentId: string) => Promise<boolean>
+  name: string
+  open: () => Promise<void>
+  reconcile: (documentId?: string | undefined) => Promise<void>
+  redo: (documentId: string) => Promise<void>
+  registerDocument: (file: DocumentRecord) => Promise<void>
+  removeBlob: (blobId: string) => Promise<void>
+  removeDocument: (documentId: string) => Promise<void>
+  subscribe?: (listener: (notice: StoreNotice) => void) => () => void | undefined
+  undo: (documentId: string) => Promise<void>
+  updateDocument: (documentId: string, updates: Partial<Pick<DocumentRecord, "name" | "path" | "metadata">>) => Promise<void>
+}
+
+StoreChange {
+  message: ProjectChannelMessage
+  own: false | true
+  type: "change"
+}
+
+StoreNotice = { type: "change"; message: ProjectChannelMessage; own: boolean; } | { type: "resync"; }
+
+StoreResync {
+  type: "resync"
+}
+
+WriteOutcome = "applied" | "not-applied" | "running"
