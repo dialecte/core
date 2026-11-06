@@ -1,4 +1,4 @@
-import type { BenchFixtureName } from '@/store/sqlite/bench/bench.types'
+import type { ExportBenchFixtureName } from './export-bench.types'
 
 /** The export budget per document size: 50 MB within 10 s, 500 MB within 2 min (half the import's: no hooks). */
 export const EXPORT_BUDGET_MS = { 50: 10_000, 500: 120_000 } as const
@@ -15,7 +15,7 @@ export const EXPORT_BENCH_TIMEOUT_MS = 60 * 60_000
 
 /** The 50 MB fixtures, read through the perf project's fixture command (record counts checked there). */
 export const EXPORT_BENCH_FIXTURES: {
-	name: BenchFixtureName
+	name: ExportBenchFixtureName
 	family: 'structural' | 'composed'
 }[] = [
 	{ name: 'structural-50', family: 'structural' },

@@ -12,6 +12,7 @@ import { openSqliteEngine } from './sqlite-engine'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { SQLITE_ERRORS } from '@/store/sqlite/sqlite-errors.constants'
 import { TABLE_DOCUMENTS } from '@/store/store.constants'
 
 import type { SqliteEngine, SqliteEngineOptions } from './engine.types'
@@ -173,13 +174,17 @@ describe('openSqliteEngine', () => {
 				testCase.prepare(file.keeper)
 				const before = sqlite3.capi.sqlite3_js_db_export(file.keeper)
 				const db = file.connect()
-				await expectRejectsWith({
-					action: startEngine({ db }),
-					key: 'PROJECT_LAYOUT_OUTDATED',
-					meta: {
-						layoutVersion: testCase.expectedLayoutVersion,
-						expectedLayoutVersion: LAYOUT_VERSION,
-					},
+				const thrown = await startEngine({ db }).then(
+					() => undefined,
+					(error: unknown) => error,
+				)
+				const error = toDialecteError(thrown)
+				expect(error?.key, `expected ${SQLITE_ERRORS.PROJECT_LAYOUT_OUTDATED.key}`).toBe(
+					SQLITE_ERRORS.PROJECT_LAYOUT_OUTDATED.key,
+				)
+				expect(error?.meta).toEqual({
+					layoutVersion: testCase.expectedLayoutVersion,
+					expectedLayoutVersion: LAYOUT_VERSION,
 				})
 				expect(sqlite3.capi.sqlite3_js_db_export(file.keeper)).toEqual(before)
 				// the refused engine let go of its connection: deleting the project stays possible
@@ -320,10 +325,12 @@ describe('openSqliteEngine', () => {
 					action: engine.bulkWrite('doc-1', testCase.ops),
 					key: testCase.expectedKey,
 				})
-				expect(await engine.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+				const recordsDoc1 = await engine.getByDocumentId('doc-1')
+				expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
 				// no transaction left open: the next write lands
 				await engine.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r2' })] })
-				expect(await engine.count('doc-1')).toBe(2)
+				const countDoc1 = await engine.count('doc-1')
+				expect(countDoc1).toBe(2)
 			})
 		}
 	})
@@ -355,8 +362,10 @@ describe('openSqliteEngine', () => {
 		first.close()
 		const db = file.connect()
 		const second = await startEngine({ db })
-		expect((await second.getDocuments()).map((document) => document.id)).toEqual(['kept'])
-		expect(await second.getWriteOutcome({ writeId: 'w-left' })).toBe('not-applied')
+		const documentsMapped = await second.getDocuments()
+		expect(documentsMapped.map((document) => document.id)).toEqual(['kept'])
+		const writeOutcomeWLeft = await second.getWriteOutcome({ writeId: 'w-left' })
+		expect(writeOutcomeWLeft).toBe('not-applied')
 		const recordTables = db.selectValue(
 			"SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name LIKE 'xel_%'",
 		)
@@ -368,38 +377,42 @@ describe('openSqliteEngine', () => {
 		/** What the file holds of the document `doc-1` and of the one kept: entries, history-rows tables, blobs, bytes. */
 		function holdingsOf(params: { db: Database }): Record<string, unknown> {
 			const { db } = params
-			const count = (sql: string) => Number(db.selectValue(sql))
+			function count({ sql }: { sql: string }): number {
+				return Number(db.selectValue(sql))
+			}
 			return {
-				entries: count("SELECT count(*) FROM _changeLog WHERE documentId = 'doc-1'"),
-				keptEntries: count("SELECT count(*) FROM _changeLog WHERE documentId = 'kept'"),
-				historyTables: count(
-					"SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name LIKE 'xch_%'",
-				),
-				blobs: count("SELECT count(*) FROM _blobs WHERE documentId = 'doc-1'"),
-				bytes: count('SELECT count(*) FROM _blobData'),
-				freePages: count('PRAGMA freelist_count'),
+				entries: count({ sql: "SELECT count(*) FROM _changeLog WHERE documentId = 'doc-1'" }),
+				keptEntries: count({ sql: "SELECT count(*) FROM _changeLog WHERE documentId = 'kept'" }),
+				historyTables: count({
+					sql: "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name LIKE 'xch_%'",
+				}),
+				blobs: count({ sql: "SELECT count(*) FROM _blobs WHERE documentId = 'doc-1'" }),
+				bytes: count({ sql: 'SELECT count(*) FROM _blobData' }),
+				freePages: count({ sql: 'PRAGMA freelist_count' }),
 			}
 		}
 
 		/** `doc-1` with a commit, an undone commit discarded by another, a blob of its own; `kept` with a commit and a blob. */
 		async function seedHoldings(params: { engine: SqliteEngine }): Promise<void> {
 			const { engine } = params
-			const commitOf = (documentId: string, id: string) =>
-				engine.commit({
+			function commitOf(params: { documentId: string; id: string }) {
+				const { documentId, id } = params
+				return engine.commit({
 					documentId,
 					writeId: `w-${documentId}-${id}`,
 					creates: [makeRecord({ id, value: 'x'.repeat(200) })],
 					updates: [],
 					deletes: [],
 				})
+			}
 			await engine.registerDocument(makeDocument({ id: 'kept' }))
-			await commitOf('kept', 'k1')
+			await commitOf({ documentId: 'kept', id: 'k1' })
 			await engine.addBlob(makeBlobEntry({ id: 'b-kept', documentId: 'kept' }), new Blob(['k']))
 			await engine.registerDocument(makeDocument())
-			await commitOf('doc-1', 'r1')
-			await commitOf('doc-1', 'r2')
+			await commitOf({ documentId: 'doc-1', id: 'r1' })
+			await commitOf({ documentId: 'doc-1', id: 'r2' })
 			await engine.undo('doc-1')
-			await commitOf('doc-1', 'r3')
+			await commitOf({ documentId: 'doc-1', id: 'r3' })
 			await engine.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['x'.repeat(5000)]))
 		}
 
@@ -412,7 +425,8 @@ describe('openSqliteEngine', () => {
 			await seedHoldings({ engine })
 			await engine.removeDocument('doc-1')
 			expect(holdingsOf({ db })).toEqual(GONE)
-			expect(await engine.getWriteOutcome({ writeId: 'w-doc-1-r2' })).toBe('not-applied')
+			const writeOutcomeWDoc1R2 = await engine.getWriteOutcome({ writeId: 'w-doc-1-r2' })
+			expect(writeOutcomeWDoc1R2).toBe('not-applied')
 		})
 
 		it('a file holding a document left importing with history and a blob → the engine start takes them all with it', async () => {
@@ -422,7 +436,7 @@ describe('openSqliteEngine', () => {
 			await seedHoldings({ engine: first })
 			// a state no store call makes (only its import marks a document ready, a commit on one importing is
 			// refused): written in the file, as a crash or an older version may have left it
-			firstDb.exec(`UPDATE ${TABLE_DOCUMENTS} SET status = 'importing' WHERE id = 'doc-1'`)
+			firstDb.exec(`UPDATE ${TABLE_DOCUMENTS} set status = 'importing' WHERE id = 'doc-1'`)
 			first.close()
 			const db = file.connect()
 			await startEngine({ db })
@@ -548,7 +562,8 @@ describe('openSqliteEngine', () => {
 				action: engine.registerDocument(makeDocument({ metadata: { hook: () => undefined } })),
 				key: 'STORE_VALUE_NOT_JSON',
 			})
-			expect(await engine.getDocuments()).toEqual([])
+			const documents = await engine.getDocuments()
+			expect(documents).toEqual([])
 		})
 	})
 })

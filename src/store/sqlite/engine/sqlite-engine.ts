@@ -983,12 +983,12 @@ function finalizeReads(params: { reads: ExportReads }): void {
 
 /**
  * A call on a closed engine: `STORE_CLOSED`, never a failure of the closed database; on a broken one, its host
- * gone (`STORE_ENGINE_LOST`, `host-gone`): the caller's store never closed, a read is made again on the next engine.
+ * gone (`STORE_CONNECTION_LOST`, `host-gone`): the caller's store never closed, a read is made again on the next engine.
  */
 function refuseClosed(params: { state: { closed: boolean; broken: boolean }; name: string }): void {
 	const { state, name } = params
 	if (state.broken) {
-		throwDialecteError('STORE_ENGINE_LOST', {
+		throwDialecteError('STORE_CONNECTION_LOST', {
 			detail: `The project engine of "${name}" broke (an import left its connection inside a transaction): the next call starts the next one`,
 			meta: { reason: 'host-gone' },
 		})

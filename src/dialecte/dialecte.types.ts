@@ -2,15 +2,15 @@ import type { ExtensionModules } from '@/document'
 import type { Project, StorageParam } from '@/project'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 
-/** What a dialecte gives `defineDialecte`: everything core derives a Project, a test runner and an engine from. */
+/** What a dialecte gives `defineDialecte`: everything core derives a Project, a test runner and a store's runtime from. */
 export type DefineDialecteParams<
 	GenericConfig extends AnyDialecteConfig,
 	GenericModules extends ExtensionModules = Record<never, never>,
 	GenericConfigKey extends string = string,
 > = {
-	/** The dialecte's identity: the engine stores it with each project it opens. */
+	/** The dialecte's identity: a store keeps it with each project, so two dialectes' projects of one name stay apart. */
 	id: string
-	/** The dialecte package's version: a client and the engine it talks to must run the same one. */
+	/** The dialecte package's version: a view and a store that runs the dialecte elsewhere must run the same one. */
 	version: string
 	/** Every config of the dialecte, under the keys `configKey` names them by. */
 	configs: Record<GenericConfigKey, GenericConfig>
@@ -19,8 +19,8 @@ export type DefineDialecteParams<
 	/** The dialecte's own extension modules, merged under the ones a consumer adds per project. */
 	extensions?: GenericModules
 	/**
-	 * Makes the dialecte's hooks (IO and transaction). Called once per Project and once per engine:
-	 * the state a hook keeps belongs to that one owner, never shared across realms.
+	 * Makes the dialecte's hooks (IO and transaction). Called once per Project and once per store that runs the dialecte
+	 * elsewhere: the state a hook keeps belongs to that one owner, never shared across realms.
 	 */
 	createHooks?: () => DialecteHooks<GenericConfig>
 }
@@ -67,10 +67,12 @@ export type ProjectFactory<
 	): Project<GenericConfig, GenericModules & CustomModules>
 	readonly dialecte: DialecteDeclaration<GenericConfig, GenericModules, GenericConfigKey>
 	/**
-	 * Delete the dialecte's project of that name on SQLite storage without opening it (an `outdated` or `lost` one of
-	 * `listProjects` too); refused `PROJECT_OPEN_ELSEWHERE` while a view has it open.
+	 * Delete the dialecte's project of that name on `storage` without opening it - any kind, core's own or a
+	 * registered one (on SQLite, an `outdated` or `lost` project of `listProjects` too); refused
+	 * `PROJECT_OPEN_ELSEWHERE` while another connection has it open, `PROJECT_STORAGE_NOT_REGISTERED` on a type no
+	 * kind is registered for.
 	 */
-	readonly destroyProject: (params: { name: string }) => Promise<void>
+	readonly destroyProject: (params: { name: string; storage: StorageParam }) => Promise<void>
 }
 
 /** What every Project of a dialecte is made from: the declaration and what one consumer chooses. */

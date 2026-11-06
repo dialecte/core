@@ -1,7 +1,7 @@
 import { mergeOperations } from './merge-operations'
 
 import { NOOP_PERF } from '@/perf'
-import { isEngineLost, lostWriteError, outcomeAfterLoss } from '@/store/lost-write'
+import { isConnectionLost, lostWriteError, outcomeAfterLoss } from '@/store/lost-write'
 
 import type { ProgressReporter } from '@/document/progress'
 import type { DocumentState } from '@/document/types'
@@ -39,7 +39,7 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 		}
 	}
 
-	// the commit's id: asked after a lost engine, never committed again
+	// the commit's id: asked after a lost connection, never committed again
 	const writeId = crypto.randomUUID()
 	try {
 		perf.count('core::store::commit')
@@ -56,8 +56,8 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 				},
 			})
 		} catch (error) {
-			if (!isEngineLost({ thrown: error })) throw error
-			// lost with its engine: it may have landed - asked once; applied, it stands
+			if (!isConnectionLost({ thrown: error })) throw error
+			// lost with its connection: it may have landed - asked once; applied, it stands
 			const outcome = await outcomeAfterLoss({ store, writeId })
 			if (outcome !== 'applied') throw lostWriteError({ thrown: error, writeId, outcome })
 		}

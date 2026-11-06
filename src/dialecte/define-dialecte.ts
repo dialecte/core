@@ -12,8 +12,8 @@ function createNoHooks(): Record<never, never> {
 
 /**
  * Declare a dialecte once: its identity, its configs, its extensions and how its hooks are made.
- * Core derives the rest: `createProjectFactory`, `createTestRunner`, `createTestProject` and,
- * in a worker, the engine. The declaration is frozen.
+ * Core derives the rest: `createProjectFactory`, `createTestRunner`, `createTestProject` and
+ * what a store serving it elsewhere runs (SQLite's engine worker). The declaration is frozen.
  *
  * @intent declare a dialecte package, register a dialecte's configs and extensions and hooks once, set up a new dialecte
  */

@@ -339,9 +339,8 @@ function getElementNamespace(
 function getElementAttributes(
 	attributes: sax.QualifiedAttribute[],
 ): (AnyAttribute | AnyQualifiedAttribute)[] {
-	// TODO: see https://github.com/SeptKit/set/issues/789
-	// xmlns attributes NOT filtered here - some extensions may need them during import
-	// Export filters them defensively to prevent issues with malformed data
+	// namespace declarations (xmlns attributes) are kept on import: an extension may need them while it imports;
+	// the export filters them out and declares the namespaces the written elements use itself
 
 	return attributes.map((attribute) => {
 		const namespace =

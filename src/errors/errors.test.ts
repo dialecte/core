@@ -201,7 +201,7 @@ describe('ERROR_CATALOG — the codes of a store served from another realm', () 
 	const testCases: Record<string, TestCase> = {
 		'STORE_UNAVAILABLE → D1016': { key: 'STORE_UNAVAILABLE', code: 'D1016' },
 		'STORE_QUOTA_EXCEEDED → D1017': { key: 'STORE_QUOTA_EXCEEDED', code: 'D1017' },
-		'STORE_ENGINE_LOST → D1018': { key: 'STORE_ENGINE_LOST', code: 'D1018' },
+		'STORE_CONNECTION_LOST → D1018': { key: 'STORE_CONNECTION_LOST', code: 'D1018' },
 		'PROJECT_DESTROY_FAILED → D7010': { key: 'PROJECT_DESTROY_FAILED', code: 'D7010' },
 		'PROJECT_OPEN_ELSEWHERE → D7011': { key: 'PROJECT_OPEN_ELSEWHERE', code: 'D7011' },
 	}

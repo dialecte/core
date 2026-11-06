@@ -22,6 +22,8 @@ export type {
 	WriteOutcome,
 } from './store.types'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'
+export { registerStorageKind } from './storage-kinds'
+export type { StorageKind, StorageKindDialecte } from './storage-kinds.types'
 export {
 	applyDocumentUpdates,
 	assertDocumentPlace,

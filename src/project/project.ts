@@ -12,7 +12,7 @@ import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
 import {
 	ignoreReadFailure,
-	isEngineLost,
+	isConnectionLost,
 	lostWriteError,
 	outcomeAfterLoss,
 } from '@/store/lost-write'
@@ -102,7 +102,7 @@ export class Project<
 	 * project a store holds. `undefined` for a Project made with no dialecte.
 	 */
 	readonly dialecteId: string | undefined
-	/** The dialecte's version, from its factory: what `sqlite` storage runs. */
+	/** The dialecte's version, from its factory: what a store that runs the dialecte elsewhere checks it runs. */
 	private readonly dialecteVersion: string | undefined
 	private configs: Record<string, GenericConfig>
 	private defaultConfigKey: string
@@ -270,7 +270,7 @@ export class Project<
 	/**
 	 * Post the changes of this Project's own the store told, each once: `own` (the call's change, its state already
 	 * updated) posted as the call made it when told; every other folded into the state, then posted. Without `own`, as
-	 * after a write refused with its engine lost: only what the store told is posted, nothing guessed.
+	 * after a write refused with its connection lost: only what the store told is posted, nothing guessed.
 	 */
 	private postToldChanges(params: { own?: ProjectChannelMessage }): void {
 		const { own } = params
@@ -494,10 +494,10 @@ export class Project<
 	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls. On a Project already open -
 	 * on another project or on the same one - it first closes it as `close()` does, and a call made from the
 	 * `open` call on is refused until the last `open`, `close` or `destroy` called has settled; a Document of that
-	 * open answers `STORE_CLOSED` when the store is made for each open (`local`, `sqlite`, `inMemory`) - a `custom` store is
+	 * open answers `STORE_CLOSED` when the store is made for each open (`local`, `inMemory`, a registered kind's) - a `custom` store is
 	 * the same one opened again: open the Documents again. An open whose store refuses, or whose documents cannot
-	 * be read, leaves the Project closed; `destroy()` on it still removes that project (the reset of
-	 * `PROJECT_DATABASE_LOST`), then `open` makes it again, empty.
+	 * be read, leaves the Project closed; `destroy()` on it still removes that project (the reset of a
+	 * database the store found lost), then `open` makes it again, empty.
 	 *
 	 * Never await `open`, `close` or `destroy` inside a hook or a transaction callback: the close waits for that
 	 * work, which waits for the close (after 10 seconds the console says what it waits for).
@@ -675,9 +675,9 @@ export class Project<
 		const { work, told } = params
 		const tracked = work
 			.catch((thrown: unknown) => {
-				// as it closes, the store refuses what the work reads: nothing is lost; its engine lost, the resync
+				// as it closes, the store refuses what the work reads: nothing is lost; its connection lost, the resync
 				// that follows reads it all again
-				if (this.closing || toDialecteError(thrown)?.key === 'STORE_ENGINE_LOST') return
+				if (this.closing || isConnectionLost({ thrown })) return
 				this.reportFoldFailure({ told, thrown })
 			})
 			.finally(() => {
@@ -796,7 +796,7 @@ export class Project<
 	 * document, use `removeDocument`.
 	 *
 	 * The project destroyed is the one this Project last opened, or the one whose `open` its store refused
-	 * (`PROJECT_DATABASE_LOST`): that store is not opened again, and `open` then makes the project again, empty.
+	 * (a database it found lost): that store is not opened again, and `open` then makes the project again, empty.
 	 * Refused, the project is closed all the same, as by `close()`: a `destroy()` called again once the other
 	 * connection closed removes it.
 	 * Runs in turn with the Project's other `open`, `close` and `destroy` calls.
@@ -886,7 +886,7 @@ export class Project<
 	 * Import Files into the project: one entry per file, in the order given. The files are imported
 	 * one after the other - memory is bounded by one file's batches, the registry sees one import -
 	 * and a file that fails is its own `failed` entry, the next file still attempted: nothing of a
-	 * failed file lands (but an import whose engine was lost after it landed: see `importFile`). The call itself rejects only for what is about the call: an unknown
+	 * failed file lands (but an import whose connection was lost after it landed: see `importFile`). The call itself rejects only for what is about the call: an unknown
 	 * `configKey`, a project not open, a `path` (`DOCUMENT_PATH_INVALID`: a path names one file,
 	 * `importFile` takes it).
 	 *
@@ -928,8 +928,8 @@ export class Project<
 	 * The document is in the project state and broadcast once the store answers it `ready`; whatever
 	 * fails before that, or an abort through `options.signal`, leaves nothing and is thrown
 	 * (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign
-	 * error). One refusal leaves its document: an import whose engine was lost after it landed is
-	 * refused `STORE_ENGINE_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told after each stored batch, never awaited. One file is in
+	 * error). One refusal leaves its document: an import whose connection was lost after it landed is
+	 * refused `STORE_CONNECTION_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told after each stored batch, never awaited. One file is in
 	 * flight per project: a call made while another import runs waits for it.
 	 *
 	 * @intent import an XML file, load a file into the project, parse XML into records
@@ -949,13 +949,13 @@ export class Project<
 	}): Promise<ImportedDocument> {
 		const { file, options = {}, store } = params
 		const { onProgress, signal, ...fileOptions } = options
-		// the import's id: asked after a lost engine, never imported again
+		// the import's id: asked after a lost connection, never imported again
 		const writeId = crypto.randomUUID()
 		let result: ImportFileResult
 		try {
 			result = await store.importFile({ file, options: fileOptions, writeId, onProgress, signal })
 		} catch (thrown) {
-			if (!isEngineLost({ thrown })) throw thrown
+			if (!isConnectionLost({ thrown })) throw thrown
 			throw await this.lostImportError({ store, thrown, writeId })
 		}
 		if (result.perf) this.perf.merge({ report: result.perf, prefix: 'store' })
@@ -974,9 +974,9 @@ export class Project<
 	}
 
 	/**
-	 * A write of the project with no id to ask its outcome by (an undo, a redo, a removal): refused `STORE_ENGINE_LOST`
+	 * A write of the project with no id to ask its outcome by (an undo, a redo, a removal): refused `STORE_CONNECTION_LOST`
 	 * it may have landed, so the project's documents (and the document's history) are read again before the refusal is
-	 * thrown - never made again. The change the store told before its engine went is posted to the listeners.
+	 * thrown - never made again. The change the store told before its connection went is posted to the listeners.
 	 */
 	private async writeOrReadAgain(params: {
 		write: () => Promise<void>
@@ -986,7 +986,7 @@ export class Project<
 		try {
 			await write()
 		} catch (thrown) {
-			if (!isEngineLost({ thrown })) throw thrown
+			if (!isConnectionLost({ thrown })) throw thrown
 			await this.refreshState().catch(ignoreReadFailure)
 			if (this.announcing) this.postToldChanges({})
 			if (documentId !== undefined) {
@@ -994,7 +994,7 @@ export class Project<
 				try {
 					this.signalStateChange(documentId, true)
 				} catch (failure) {
-					// the lost engine is what the call is refused for; its subscriber's failure told beside it
+					// the lost connection is what the call is refused for; its subscriber's failure told beside it
 					this.reportFoldFailure({ told: 'resync', thrown: failure })
 				}
 			}
@@ -1003,7 +1003,7 @@ export class Project<
 	}
 
 	/**
-	 * An import refused `STORE_ENGINE_LOST`: its outcome asked once by its id; landed, its document read into the
+	 * An import refused `STORE_CONNECTION_LOST`: its outcome asked once by its id; landed, its document read into the
 	 * project's state (its diagnostics went with the lost answer, so it is no entry) and posted to the listeners - the
 	 * refusal says which outcome, and the document it made (none when the documents could not be read again).
 	 */
@@ -1415,7 +1415,7 @@ export class Project<
 
 	/**
 	 * Expose the store's own database object, for debugging: the Dexie instance on `local` (cast it: the type is the
-	 * store's, `unknown` unless the Project's store type is given), `null` on `sqlite` and `inMemory`.
+	 * store's, `unknown` unless the Project's store type is given), `null` on `inMemory` and on a store with no such object.
 	 *
 	 * @intent inspect the underlying database, debug what the store holds
 	 */

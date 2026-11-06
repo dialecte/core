@@ -107,7 +107,7 @@ function heldFile(params: { holdValue: string }): File {
 	return contractFile({ body: `<B aB="B0" bB="${params.holdValue}"/>` })
 }
 
-/** Why a call of a realm iframe lost its engine (`STORE_ENGINE_LOST`'s `meta.reason`), or its key otherwise. */
+/** Why a call of a realm iframe lost its engine (`STORE_CONNECTION_LOST`'s `meta.reason`), or its key otherwise. */
 async function lostReasonOf(params: { promise: Promise<unknown> }): Promise<unknown> {
 	try {
 		await params.promise
@@ -116,7 +116,7 @@ async function lostReasonOf(params: { promise: Promise<unknown> }): Promise<unkn
 		const carried = (
 			thrown as { cause?: { key?: unknown; meta?: { reason?: unknown } } } | undefined
 		)?.cause
-		return carried?.key === 'STORE_ENGINE_LOST' ? carried.meta?.reason : carried?.key
+		return carried?.key === 'STORE_CONNECTION_LOST' ? carried.meta?.reason : carried?.key
 	}
 }
 
@@ -445,7 +445,7 @@ describe('the hub across realms of the page', () => {
 		expect(performance.now() - releasedAt).toBeGreaterThanOrEqual(ENGINE_IDLE_CLOSE_MS - 200)
 	})
 
-	it('the host’s pagehide during an import another realm started → that realm refused STORE_ENGINE_LOST host-gone, the outcome not-applied, nothing of the file left, its File still usable', async () => {
+	it('the host’s pagehide during an import another realm started → that realm refused STORE_CONNECTION_LOST host-gone, the outcome not-applied, nothing of the file left, its File still usable', async () => {
 		const project = uniqueProject()
 		const host = await realmFrame({ canStartEngines: true, engineUrl: CONTRACT_ENGINE_URL })
 		const importer = await realmFrame({ canStartEngines: true, engineUrl: CONTRACT_ENGINE_URL })
@@ -509,7 +509,7 @@ describe('the hub across realms of the page', () => {
 		})
 	}
 
-	it('a child bound to a page that freezes → its call refused STORE_ENGINE_LOST realm-dropped; the page resumed binds it again: it reads the project', async () => {
+	it('a child bound to a page that freezes → its call refused STORE_CONNECTION_LOST realm-dropped; the page resumed binds it again: it reads the project', async () => {
 		const project = uniqueProject()
 		const page = await realmFrame({ canStartEngines: true })
 		const child = await boundChildFrame({ parent: page.realm })

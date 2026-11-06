@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDialecteError } from '@/errors'
 import { rejectionKey } from '@/errors/errors.fixtures'
 import { InMemoryStore } from '@/store/in-memory/in-memory-store'
+import { SQLITE_ERRORS } from '@/store/sqlite/sqlite-errors.constants'
 import { TEST_DIALECTE_CONFIG } from '@/test'
 
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord } from '@/types'
@@ -28,7 +29,7 @@ class CountingStore extends InMemoryStore {
 
 	override async open(): Promise<void> {
 		if (this.refusing) {
-			throw createDialecteError('PROJECT_DATABASE_LOST', {
+			throw createDialecteError(SQLITE_ERRORS.PROJECT_DATABASE_LOST, {
 				detail: `Project "${this.name}" holds data but its database is gone`,
 				meta: { project: this.name },
 			})
@@ -261,16 +262,19 @@ describe('Project - an open its store refuses, then destroy() on that Project', 
 			const project = projectOver({ [otherName]: other, [lostName]: lost })
 			if (otherState !== 'none') await project.open(otherName)
 			if (otherState === 'closed') await project.close()
-			expect(await rejectionKey({ action: project.open(lostName) })).toBe('PROJECT_DATABASE_LOST')
+			const openRejection = await rejectionKey({ action: project.open(lostName) })
+			expect(openRejection).toBe('PROJECT_DATABASE_LOST')
 			// what that open opened is closed again: nothing of it is left open
 			expect(lost.closeCalls).toBe(1)
 			if (otherState !== 'none') expect(other.closeCalls).toBe(1)
 			await project.destroy()
 			expect({ destroyed: lost.destroys, opened: lost.opens }).toEqual({ destroyed: 1, opened: 0 })
 			expect(other.destroys).toBe(0)
-			expect(await documentIdsOf(other)).toEqual([otherName])
+			const documentIds = await documentIdsOf(other)
+			expect(documentIds).toEqual([otherName])
 			await project.open(lostName)
-			expect(await project.getDocuments()).toEqual([])
+			const documents = await project.getDocuments()
+			expect(documents).toEqual([])
 			await project.destroy()
 		},
 	)
@@ -279,10 +283,12 @@ describe('Project - an open its store refuses, then destroy() on that Project', 
 		const lostName = uniqueName({ prefix: 'refused-close' })
 		const lost = await storeWithDocument({ name: lostName, refusing: true })
 		const project = projectOver({ [lostName]: lost })
-		expect(await rejectionKey({ action: project.open(lostName) })).toBe('PROJECT_DATABASE_LOST')
+		const openRejection = await rejectionKey({ action: project.open(lostName) })
+		expect(openRejection).toBe('PROJECT_DATABASE_LOST')
 		await project.close()
 		expect(lost.closeCalls).toBe(1)
-		expect(await rejectionKey({ action: project.open(lostName) })).toBe('PROJECT_DATABASE_LOST')
+		const reopenRejection = await rejectionKey({ action: project.open(lostName) })
+		expect(reopenRejection).toBe('PROJECT_DATABASE_LOST')
 		await project.destroy()
 	})
 })
@@ -291,28 +297,29 @@ describe('Project - an open its store refuses, then destroy() on that Project', 
 type OrderNames = { a: string; b: string; c: string }
 
 /** The calls a case makes without waiting, on a Project open on `a`. */
-type OrderCalls = (params: {
+type OrderCallsParams = {
 	project: Project<AnyDialecteConfig>
 	names: OrderNames
-}) => Promise<unknown>[]
+}
+type OrderCalls = (params: OrderCallsParams) => Promise<unknown>[]
 
-const destroyThenOpen: OrderCalls = function destroyThenOpen({ project, names }) {
+function destroyThenOpen({ project, names }: OrderCallsParams): Promise<unknown>[] {
 	return [project.destroy(), project.open(names.c)]
 }
 
-const openThenDestroy: OrderCalls = function openThenDestroy({ project, names }) {
+function openThenDestroy({ project, names }: OrderCallsParams): Promise<unknown>[] {
 	return [project.open(names.c), project.destroy()]
 }
 
-const openTwice: OrderCalls = function openTwice({ project, names }) {
+function openTwice({ project, names }: OrderCallsParams): Promise<unknown>[] {
 	return [project.open(names.b), project.open(names.c)]
 }
 
-const closeThenOpen: OrderCalls = function closeThenOpen({ project, names }) {
+function closeThenOpen({ project, names }: OrderCallsParams): Promise<unknown>[] {
 	return [project.close(), project.open(names.c)]
 }
 
-const openThenClose: OrderCalls = function openThenClose({ project, names }) {
+function openThenClose({ project, names }: OrderCallsParams): Promise<unknown>[] {
 	return [project.open(names.c), project.close()]
 }
 
@@ -399,15 +406,15 @@ describe('Project - open() on a Project already open closes it wholly first', ()
 			const previous = project.openDocument(previousId)
 			await project.open(next)
 			expect([...project.state.documents.keys()]).toEqual(same ? [previousId] : [])
-			expect(await rejectionKey({ action: previous.query.getRoot() })).toBe('STORE_CLOSED')
+			const rootRejection = await rejectionKey({ action: previous.query.getRoot() })
+			expect(rootRejection).toBe('STORE_CLOSED')
 			if (!same) {
-				expect(
-					await rejectionKey({
-						action: Promise.resolve().then(function openPrevious() {
-							return project.openDocument(previousId)
-						}),
+				const reopened = await rejectionKey({
+					action: Promise.resolve().then(function openPrevious() {
+						return project.openDocument(previousId)
 					}),
-				).toBe('DOCUMENT_NOT_REGISTERED')
+				})
+				expect(reopened).toBe('DOCUMENT_NOT_REGISTERED')
 			}
 			await project.destroy()
 			if (!same) {
@@ -424,7 +431,8 @@ describe('Project - open() on a Project already open closes it wholly first', ()
 		await project.open(a)
 		const switching = project.open(b)
 		const importing = project.importFile(xmlFile({ body: '<A/>', name: 'late.xml' }))
-		expect(await rejectionKey({ action: importing })).toBe('PROJECT_NOT_OPENED')
+		const rejection = await rejectionKey({ action: importing })
+		expect(rejection).toBe('PROJECT_NOT_OPENED')
 		await switching
 		await project.destroy()
 		await project.open(a)
@@ -453,7 +461,8 @@ describe('Project - open() on a Project already open closes it wholly first', ()
 		const importing = project.importFile(xmlFile({ body: '<A/>', name: 'between.xml' }))
 		release()
 		await opening
-		expect(await rejectionKey({ action: importing })).toBe('PROJECT_NOT_OPENED')
+		const rejection = await rejectionKey({ action: importing })
+		expect(rejection).toBe('PROJECT_NOT_OPENED')
 		await closing
 		await project.destroy()
 	})
@@ -668,7 +677,8 @@ describe('Project - a close waits for the writes running', () => {
 			await flush()
 			expect(store.closeCalls).toBe(0)
 			release()
-			expect(await rejectionKey({ action: writing })).toBe('resolved')
+			const rejection = await rejectionKey({ action: writing })
+			expect(rejection).toBe('resolved')
 			await closing
 			expect(store.closeCalls).toBe(1)
 			await project.destroy()
@@ -708,7 +718,8 @@ describe('Project - a close waits for the writes running', () => {
 			await reached
 			const closing = project.close()
 			// the hold kept until the refusal: the close cannot finish first
-			expect(await rejectionKey({ action: write(doc) })).toBe('PROJECT_NOT_OPENED')
+			const writeRejection = await rejectionKey({ action: write(doc) })
+			expect(writeRejection).toBe('PROJECT_NOT_OPENED')
 			release()
 			await making
 			await closing
@@ -741,13 +752,15 @@ describe('Project - a close waits for the writes running', () => {
 			})
 			// a failure inside the transaction reports as any non-structured one does; the last signal's throw is its own
 			const expected = failingAt ? 'Error: a subscriber failing' : 'UNKNOWN'
-			expect(await rejectionKey({ action: doc.transaction(async function nothing() {}) })).toBe(
-				expected,
-			)
+			const firstTransaction = await rejectionKey({
+				action: doc.transaction(async function nothing() {}),
+			})
+			expect(firstTransaction).toBe(expected)
 			// the Document is not left holding a transaction: the next one runs, failing the same way
-			expect(await rejectionKey({ action: doc.transaction(async function nothing() {}) })).toBe(
-				expected,
-			)
+			const nextTransaction = await rejectionKey({
+				action: doc.transaction(async function nothing() {}),
+			})
+			expect(nextTransaction).toBe(expected)
 			const closed = await Promise.race([
 				project.close().then(() => 'closed'),
 				new Promise<string>(function giveUp(resolve) {
@@ -901,7 +914,8 @@ describe('Project - a query over every document across a close or an open', () =
 			await reached
 			await (event === 'close' ? project.close() : project.open(b))
 			release()
-			expect(await rejectionKey({ action: querying })).toBe('PROJECT_NOT_OPENED')
+			const rejection = await rejectionKey({ action: querying })
+			expect(rejection).toBe('PROJECT_NOT_OPENED')
 			await project.destroy()
 			await project.open(a)
 			await project.destroy()
@@ -921,7 +935,8 @@ describe('Project - a query over every document of a project not open', () => {
 			const project = new Project({ configs: { default: CONFIG }, storage: { type: 'inMemory' } })
 			await project.open(uniqueName({ prefix: 'closed-query' }))
 			await project.close()
-			expect(await rejectionKey({ action: query(project) })).toBe('PROJECT_NOT_OPENED')
+			const queryRejection = await rejectionKey({ action: query(project) })
+			expect(queryRejection).toBe('PROJECT_NOT_OPENED')
 			await project.destroy()
 		},
 	)
@@ -934,9 +949,11 @@ describe('Project - the order of calls a double open leaves', () => {
 		const first = project.open(name)
 		const second = project.open(name)
 		await first
-		expect(await rejectionKey({ action: project.getDocuments() })).toBe('PROJECT_NOT_OPENED')
+		const documentsRejection = await rejectionKey({ action: project.getDocuments() })
+		expect(documentsRejection).toBe('PROJECT_NOT_OPENED')
 		await second
-		expect(await project.getDocuments()).toEqual([])
+		const documents = await project.getDocuments()
+		expect(documents).toEqual([])
 		await project.destroy()
 	})
 })
@@ -947,11 +964,11 @@ describe('Project - an open whose hydration fails', () => {
 		const store = await storeWithDocument({ name, refusing: false })
 		store.hydrationFailure = new Error('the documents could not be read')
 		const project = projectOver({ [name]: store })
-		expect(await rejectionKey({ action: project.open(name) })).toBe(
-			'Error: the documents could not be read',
-		)
+		const openRejection = await rejectionKey({ action: project.open(name) })
+		expect(openRejection).toBe('Error: the documents could not be read')
 		expect(store.closeCalls).toBe(1)
-		expect(await rejectionKey({ action: project.getDocuments() })).toBe('PROJECT_NOT_OPENED')
+		const documentsRejection = await rejectionKey({ action: project.getDocuments() })
+		expect(documentsRejection).toBe('PROJECT_NOT_OPENED')
 		await project.destroy()
 		expect(store.destroys).toBe(1)
 	})

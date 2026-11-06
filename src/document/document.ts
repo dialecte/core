@@ -4,7 +4,7 @@ import { Transaction } from './transaction'
 import { summarizeOperations } from './transaction/commit/summarize-operations'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
-import { ignoreReadFailure, isEngineLost, wasNotApplied } from '@/store/lost-write'
+import { ignoreReadFailure, isConnectionLost, wasNotApplied } from '@/store/lost-write'
 
 import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
@@ -244,11 +244,11 @@ export class Document<
 	}
 
 	/**
-	 * A commit refused with its engine lost may have landed (its outcome `running` or `unknown`): the document's
+	 * A commit refused with its connection lost may have landed (its outcome `running` or `unknown`): the document's
 	 * history is read again and the change the store told of it posted. One known not to have landed changed nothing.
 	 */
 	private async readAgainAfterLoss(params: { thrown: unknown }): Promise<void> {
-		if (!isEngineLost(params) || wasNotApplied(params)) return
+		if (!isConnectionLost(params) || wasNotApplied(params)) return
 		await this.refreshHistoryStatus().catch(ignoreReadFailure)
 		this.broadcast({ type: 'commit', documentId: this.documentId, timestamp: Date.now() })
 	}

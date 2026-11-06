@@ -35,3 +35,9 @@ export type OpenUnionCase = {
 	mixed: 'FIRST' | (string & {}) | { kind: 'object' } | 0
 	branded: 'FIRST' | (string & { readonly brand: 'Id' })
 }
+
+/** A type of the walk's own cases: a member keyed by a well-known symbol. */
+export type IterableCase = {
+	[Symbol.iterator](): Iterator<string>
+	key: string
+}

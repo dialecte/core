@@ -17,6 +17,7 @@ export type {
 	ProjectExportResultWithDocument,
 	ProjectExportBlobParams,
 	StorageParam,
+	StorageKinds,
 	DocumentRecord,
 	DocumentStatus,
 	DocumentUpdates,

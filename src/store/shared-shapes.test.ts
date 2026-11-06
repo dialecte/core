@@ -23,6 +23,7 @@ import { GIT_LS_FILES_TIMEOUT_MS } from './shared-shapes.fixtures.constants'
 import { HUB_PROTOCOL_VERSION } from './sqlite/served/hub/hub.constants'
 import { ENGINE_WIRE_PROTOCOL } from './sqlite/served/wire/wire.constants'
 import { SQLITE_STORAGE_VERSION } from './sqlite/sqlite-storage.constants'
+import { STORAGE_KINDS_VERSION } from './storage-kinds.constants'
 
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
@@ -44,17 +45,28 @@ const WATCHED = import.meta.glob([
 	'../types/*.ts',
 	// the values a shared type is computed from (`typeof`)
 	'../**/*.constants.ts',
+	// the types of the document queries the dialecte's hooks and configs reach, declared beside their code
+	'../document/query/any/any-query.ts',
+	'../document/query/main.ts',
+	'../document/types.ref.ts',
 ])
 
 /** What copies of the library share, each guarded by its version: a changed shape fails until the version is bumped. */
 const SHARED_SHAPES: SharedShapeCase[] = [
 	{
-		// a copy's Project calls another copy's store, built from the registration
+		// a copy's Project calls a store another copy's kind built: the kind's shape and the Store contract
+		versionName: 'STORAGE_KINDS_VERSION',
+		version: STORAGE_KINDS_VERSION,
+		recorded: 'storage-kinds',
+		roots: [{ file: 'src/store/storage-kinds.types.ts', names: ['StorageKind', 'Store'] }],
+	},
+	{
+		// the engine the app registered, kept on the realm's global object for every copy
 		versionName: 'SQLITE_STORAGE_VERSION',
 		version: SQLITE_STORAGE_VERSION,
 		recorded: 'sqlite-storage',
 		roots: [
-			{ file: 'src/store/sqlite/sqlite-storage.types.ts', names: ['SqliteStorage', 'Store'] },
+			{ file: 'src/store/sqlite/sqlite-storage.types.ts', names: ['SqliteEngineRegistration'] },
 		],
 	},
 	{
@@ -159,6 +171,21 @@ describe('the shape written', () => {
 					'',
 				].join('\n'),
 			)
+		},
+		TEST_ENTRY_COMPILE_TIMEOUT_MS,
+	)
+})
+
+describe('a member keyed by a well-known symbol', () => {
+	it(
+		'a `[Symbol.iterator]` member → written `[Symbol.iterator]`, never with the checker’s `__@` id',
+		() => {
+			const { text } = sharedShape({
+				packageRoot: PACKAGE_ROOT,
+				roots: [{ file: 'src/store/shared-shapes.fixtures.types.ts', names: ['IterableCase'] }],
+			})
+			expect(text).toContain('  [Symbol.iterator]: ')
+			expect(text).not.toContain('__@')
 		},
 		TEST_ENTRY_COMPILE_TIMEOUT_MS,
 	)

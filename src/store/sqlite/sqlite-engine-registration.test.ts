@@ -1,17 +1,23 @@
-import { registerSqliteEngine, registeredSqliteEngine } from './sqlite-engine-registration'
+import {
+	registerSqliteEngine,
+	registeredSqliteEngine,
+	replaceSqliteEngine,
+} from './sqlite-engine-registration'
 
 import { describe, expect, it, onTestFinished } from 'vitest'
 
 import { createCountingDialecte } from '@/dialecte/create-project-factory.fixtures'
 import { toDialecteError } from '@/errors'
-import { replaceSqliteStorage } from '@/store/sqlite/sqlite-storage'
-import { SQLITE_STORAGE_KEY } from '@/store/sqlite/sqlite-storage.constants'
 
-import type {
-	SqliteEngineRegistration,
-	SqliteStorage,
-	SqliteStorageHolder,
-} from '@/store/sqlite/sqlite-storage.types'
+import type { SqliteEngineRegistration } from '@/store/sqlite/sqlite-storage.types'
+
+/** Where the registered engine is kept, written out: a key that changed would strand every copy of the library of another version. */
+const ENGINE_KEY = Symbol.for('@dialecte/core/sqlite/engine-registration/v3')
+
+/** The realm's globalThis, read through the engine's key. */
+function realm(): Record<symbol, SqliteEngineRegistration | undefined> {
+	return globalThis as unknown as Record<symbol, SqliteEngineRegistration | undefined>
+}
 
 const URL_A = 'https://dialecte.test/assets/engine-a.worker.js'
 const URL_B = 'https://dialecte.test/assets/engine-b.worker.js'
@@ -20,15 +26,9 @@ const NORTH = { id: 'north/dialecte', version: '1.0.0' }
 const SOUTH = { id: 'south/dialecte', version: '2.0.0' }
 const NORTH_NEXT = { id: NORTH.id, version: '1.1.0' }
 
-/** A kind with no engine registered on it, in place for the case; the one before is put back after it. */
-function withBareKind(): SqliteStorage {
-	const kind: SqliteStorage = {
-		storeOf: function notBuilt() {
-			throw new Error('not built in this case')
-		},
-	}
-	onTestFinished(replaceSqliteStorage({ storage: kind }))
-	return kind
+/** No engine registered for the case; the one before is put back after it. */
+function withBareEngine(): void {
+	onTestFinished(replaceSqliteEngine({ engine: undefined }))
 }
 
 /** What a registration answered: `registered` (it returned), or the key it was refused with. */
@@ -115,7 +115,7 @@ describe('registering the SQLite engine of an app', () => {
 	}
 	for (const [description, { registers, outcomes, kept }] of Object.entries(testCases)) {
 		it(description, () => {
-			withBareKind()
+			withBareEngine()
 			const answered = registers.map(function register(registration) {
 				return outcomeOf({
 					call: function registerIt() {
@@ -129,12 +129,12 @@ describe('registering the SQLite engine of an app', () => {
 	}
 
 	it('a registration → answers nothing', () => {
-		withBareKind()
+		withBareEngine()
 		expect(registerSqliteEngine({ url: URL_A, dialectes: [NORTH] })).toBeUndefined()
 	})
 
 	it('another address → the refusal names the registered engine and the asked one', () => {
-		withBareKind()
+		withBareEngine()
 		const refused = refusalOf({
 			call: function registerThenElsewhere() {
 				registerSqliteEngine({ url: URL_A, dialectes: [NORTH, SOUTH] })
@@ -151,7 +151,7 @@ describe('registering the SQLite engine of an app', () => {
 	})
 
 	it('full declarations handed in → only each id and version kept: no hook, no config on the realm', () => {
-		const kind = withBareKind()
+		withBareEngine()
 		const declared = createCountingDialecte()
 		const outcome = outcomeOf({
 			call: function registerFull() {
@@ -164,31 +164,32 @@ describe('registering the SQLite engine of an app', () => {
 			dialectes: [{ id: declared.id, version: declared.version }],
 		}
 		expect(registeredSqliteEngine()).toStrictEqual(expected)
-		expect(kind.engine).toStrictEqual(expected)
+		expect(realm()[ENGINE_KEY]).toStrictEqual(expected)
 	})
 
-	it('a registration the kind holds on the realm, written by another copy of the library → found: read through the kind on globalThis, not a module variable', () => {
+	it('a registration written by another copy of the library of the same version → found: read from the realm’s key on globalThis, not a module variable', () => {
 		const written: SqliteEngineRegistration = { url: URL_B, dialectes: [SOUTH] }
-		const kind: SqliteStorage = {
-			storeOf: function notBuilt() {
-				throw new Error('not built in this case')
-			},
-			engine: written,
-		}
-		onTestFinished(replaceSqliteStorage({ storage: undefined }))
-		;(globalThis as SqliteStorageHolder)[SQLITE_STORAGE_KEY] = kind
+		const holder = realm()
+		const before = holder[ENGINE_KEY]
+		onTestFinished(function leaveRealm() {
+			if (before) holder[ENGINE_KEY] = before
+			else delete holder[ENGINE_KEY]
+		})
+		holder[ENGINE_KEY] = written
 		expect(registeredSqliteEngine()).toEqual(written)
 	})
 
-	it('a registration made through this copy → on the kind of the realm, where another copy reads it', () => {
-		const kind = withBareKind()
+	it('a registration made through this copy → on the realm’s key, where another copy reads it', () => {
+		withBareEngine()
 		const outcome = outcomeOf({
 			call: function registerHere() {
 				registerSqliteEngine({ url: URL_A, dialectes: [NORTH] })
 			},
 		})
 		expect(outcome).toBe('registered')
-		expect((globalThis as SqliteStorageHolder)[SQLITE_STORAGE_KEY]).toBe(kind)
-		expect(kind.engine).toEqual({ url: URL_A, dialectes: [NORTH] })
+		expect(realm()[ENGINE_KEY]).toEqual({
+			url: URL_A,
+			dialectes: [NORTH],
+		})
 	})
 })

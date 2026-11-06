@@ -1,4 +1,5 @@
 import { projectKeyOf } from '../../../project-key'
+import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
 import { ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import {
 	ENGINE_IDLE_CLOSE_MS,
@@ -90,7 +91,7 @@ function registerRealm(params: {
 			realmId: hello.realmId,
 			refusal: {
 				origin: 'hub',
-				key: 'STORE_PROTOCOL_MISMATCH',
+				key: SQLITE_ERRORS.STORE_PROTOCOL_MISMATCH.key,
 				detail: `the hub speaks protocol ${HUB_PROTOCOL_VERSION}, the view ${hello.protocol}`,
 				meta: { hubProtocol: HUB_PROTOCOL_VERSION, realmProtocol: hello.protocol },
 			},
@@ -103,7 +104,7 @@ function registerRealm(params: {
 			realmId: hello.realmId,
 			refusal: {
 				origin: 'hub',
-				key: 'STORE_REALM_ID_TAKEN',
+				key: SQLITE_ERRORS.STORE_REALM_ID_TAKEN.key,
 				detail: `a view "${hello.realmId}" is already connected`,
 				meta: { realmId: hello.realmId },
 			},
@@ -117,7 +118,7 @@ function registerRealm(params: {
 			realmId: hello.realmId,
 			refusal: {
 				origin: 'hub',
-				key: 'STORE_REALM_UNKNOWN',
+				key: SQLITE_ERRORS.STORE_REALM_UNKNOWN.key,
 				detail: `the hub knows no view "${hello.parentRealmId}", the parent of "${hello.realmId}"`,
 				meta: { realmId: hello.realmId, parentRealmId: hello.parentRealmId },
 			},
@@ -173,7 +174,7 @@ function openProject(params: { step: HubStep; open: Extract<HubEvent, { type: 'o
 			dialecteId: open.dialecteId,
 			refusal: {
 				origin: 'hub',
-				key: 'STORE_REALM_UNKNOWN',
+				key: SQLITE_ERRORS.STORE_REALM_UNKNOWN.key,
 				detail: `the hub knows no view "${open.realmId}"`,
 				meta: { realmId: open.realmId },
 			},
@@ -541,7 +542,7 @@ function destroyRefusal(params: {
 	if (!state.realms.has(realmId)) {
 		return {
 			origin: 'hub',
-			key: 'STORE_REALM_UNKNOWN',
+			key: SQLITE_ERRORS.STORE_REALM_UNKNOWN.key,
 			detail: `the hub knows no view "${realmId}"`,
 			meta: { realmId },
 		}
@@ -623,7 +624,7 @@ function removeRealm(params: { step: HubStep; realmId: string }): void {
 					destroy: hold,
 					refusal: {
 						origin: 'hub',
-						key: 'STORE_ENGINE_LOST',
+						key: 'STORE_CONNECTION_LOST',
 						detail: `the view deleting "${hold.project}" is gone: its files may be partly deleted`,
 						meta: { project: hold.project, reason: 'host-gone' },
 					},
@@ -717,7 +718,7 @@ function closeOpenWindow(params: { step: HubStep; project: HubProject }): void {
 		clients: project.clients,
 		refusal: {
 			origin: 'hub',
-			key: 'PROJECT_ENGINE_UNAVAILABLE',
+			key: SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE.key,
 			detail: `no engine for "${project.project}" opened within ${HUB_OPEN_BUDGET_MS} ms`,
 			meta: {
 				project: project.project,
@@ -762,7 +763,7 @@ function electHost(params: {
 		clients,
 		refusal: {
 			origin: 'hub',
-			key: 'PROJECT_ENGINE_UNAVAILABLE',
+			key: SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE.key,
 			detail: `no connected view can start an engine of "${dialecteId}"`,
 			meta: { project, dialecteId },
 		},
@@ -870,7 +871,7 @@ function engineOpenFailed(params: {
 		return refuseAwayClients({ step, project, error: failed.failure.error, openDeadline })
 	}
 	const retry =
-		failed.failure.key === ('PROJECT_ENGINE_BUSY' satisfies DialecteErrorKey) &&
+		failed.failure.key === SQLITE_ERRORS.PROJECT_ENGINE_BUSY.key &&
 		project.clients.size > 0 &&
 		openDeadline - step.now >= ENGINE_OPEN_MIN_BUDGET_MS
 	const host = retry ? retryHost({ step, project }) : undefined
@@ -982,7 +983,7 @@ function engineEnded(params: {
 		clients: project.clients,
 		refusal: {
 			origin: 'hub',
-			key: 'PROJECT_ENGINE_UNAVAILABLE',
+			key: SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE.key,
 			detail: `the engine of "${project.project}" ended before it opened`,
 			meta: { project: project.project, dialecteId: project.dialecteId },
 		},
@@ -1043,7 +1044,7 @@ function refuseLateHeldOpens(params: { step: HubStep; hold: HubHold }): void {
 			dialecteId: hold.dialecteId,
 			refusal: {
 				origin: 'hub',
-				key: 'PROJECT_ENGINE_UNAVAILABLE',
+				key: SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE.key,
 				detail: `"${hold.project}" is being destroyed and was not done within ${HUB_OPEN_BUDGET_MS} ms`,
 				meta: { project: hold.project, openBudgetMs: HUB_OPEN_BUDGET_MS },
 			},

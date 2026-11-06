@@ -1,3 +1,4 @@
+import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
 import { refuseAnotherWire } from '../client/check-engine-wire'
 import { ENGINE_CLOSE_BUDGET_MS, ENGINE_HEARTBEAT_TIMEOUT_MS } from '../client/client.constants'
 import { answeredOrSilent, createEngineControl } from '../client/engine-control'
@@ -46,7 +47,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 			let worker: Worker
 			try {
 				if (!spawner) {
-					throw createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+					throw createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE, {
 						detail: `This view cannot start an engine of ${dialecteId}`,
 						meta: { project, dialecteId },
 					})

@@ -1,6 +1,7 @@
 import { projectKeyOf } from '../../../project-key'
 import { throwOpenElsewhere } from '../../../store-errors'
-import { ENGINE_LOST_DETAILS, ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
+import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
+import { CONNECTION_LOST_DETAILS, ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
 import { destroyFromFreshWorker } from '../client/worker-connector'
 import { refuseOtherCreation } from '../creation-refusal'
@@ -24,7 +25,7 @@ import { createDialecteError, throwDialecteError, toDialecteError } from '@/erro
 import { tellListeners } from '@/utils/tell-listener'
 import { TOLD_OF } from '@/utils/tell-listener.constants'
 
-import type { EngineLostReason } from '../client/client.types'
+import type { ConnectionLostReason } from '../client/client.types'
 import type { LinkNotice } from '../engine-store.types'
 import type {
 	EngineWaiter,
@@ -105,7 +106,7 @@ function refuseOtherVersions(params: {
 		})
 	})
 	if (conflicting.length === 0) return
-	throwDialecteError('STORE_HUB_SPAWNERS_FIXED', {
+	throwDialecteError(SQLITE_ERRORS.STORE_HUB_SPAWNERS_FIXED, {
 		detail: `This page's hub connection runs ${describeSpawners({ spawners: registered })}, not ${describeSpawners({ spawners: conflicting })}: a page runs one version of each dialecte's engine`,
 		meta: { spawners: conflicting },
 	})
@@ -563,7 +564,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 
 	/**
 	 * The hub's lock asked for: granted once the hub is gone (its worker crashed or was ended) - this realm instance is
-	 * then over (the calls on its engines refused `STORE_ENGINE_LOST`, `host-gone`) and it joins the next hub at once,
+	 * then over (the calls on its engines refused `STORE_CONNECTION_LOST`, `host-gone`) and it joins the next hub at once,
 	 * the calls waiting for an engine waiting for that hub's: a read is made again there, as a single engine would
 	 * answer it - at most `HUB_REJOIN_AT_ONCE_MAX` times in a row. That join failing, a hub lost within the first rejoin
 	 * delay of its welcome (a hub that does not last), or hubs that keep ending past that cap: its calls are refused as
@@ -709,7 +710,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	 * This realm instance over: its engines ended, its clients dropped (their calls in flight refused for
 	 * `reason`), its lock let go, its port closed.
 	 */
-	function endInstance(params: { reason: EngineLostReason }): void {
+	function endInstance(params: { reason: ConnectionLostReason }): void {
 		abandonJoin()
 		hubWatch?.abort()
 		hubWatch = undefined
@@ -741,7 +742,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				continue
 			}
 			pending.refused(
-				createDialecteError('STORE_ENGINE_LOST', {
+				createDialecteError('STORE_CONNECTION_LOST', {
 					detail: `Project "${project}" may be partly deleted: this view lost its hub before the deletion was answered`,
 					meta: { project, reason: 'host-gone' },
 				}),
@@ -773,7 +774,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 		phase = 'suspended'
 		endInstance({ reason: 'host-gone' })
 		refuseDestroys({
-			error: createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+			error: createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE, {
 				detail: 'The page was suspended before the hub granted the destroy',
 				meta: { realmId },
 			}),
@@ -820,13 +821,13 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 	/**
 	 * The hub dropped this bound child with the page that bound it (that page gone, frozen, or unbinding
 	 * it), or its join on a new port failed (`cause`): its calls in flight, those waiting and what was said
-	 * meanwhile refused `STORE_ENGINE_LOST` (`realm-dropped`), and every later one until it joins again - on
+	 * meanwhile refused `STORE_CONNECTION_LOST` (`realm-dropped`), and every later one until it joins again - on
 	 * the next port its page hands it, at once if it has one already.
 	 */
 	function stayDropped(params: { cause?: unknown }): void {
 		const { cause } = params
-		const error = createDialecteError('STORE_ENGINE_LOST', {
-			detail: ENGINE_LOST_DETAILS['realm-dropped'],
+		const error = createDialecteError('STORE_CONNECTION_LOST', {
+			detail: CONNECTION_LOST_DETAILS['realm-dropped'],
 			meta: { reason: 'realm-dropped' },
 			// a join on a new port that failed: why, kept for whoever looks
 			...(cause instanceof Error && { cause }),
@@ -1291,7 +1292,7 @@ function rejectWaiter(params: { waiter: EngineWaiter; error: unknown }): void {
 }
 
 /** The engine client of the link let go: its calls in flight refused for `reason`, its port closed. */
-function dropClient(params: { entry: ProjectEntry; reason: EngineLostReason }): void {
+function dropClient(params: { entry: ProjectEntry; reason: ConnectionLostReason }): void {
 	const { entry, reason } = params
 	const current = entry.current
 	entry.current = undefined

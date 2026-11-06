@@ -23,6 +23,12 @@ export type GeneratedSource = {
 	totalRecords: number
 }
 
+/**
+ * The 50 MB fixtures the export bench reads, by the names the perf project's fixture command serves them under: a store
+ * of any kind exports them.
+ */
+export type ExportBenchFixtureName = 'structural-50' | 'composed-50-compact'
+
 /** One timed export of a fixture: its time, its bytes, and the machine load it started at. */
 export type ExportBenchRun = { totalMs: number; bytes: number; machine: unknown }
 

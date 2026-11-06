@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,8 +7,10 @@ import {
 	ENGINE_CHUNK,
 	ENGINE_ONLY_MARKER,
 	PACKAGING_CASE_TIMEOUT_MS,
+	PACKAGING_TYPE_CHECK_TIMEOUT_MS,
 } from './engine-packaging.constants'
 
+import ts from 'typescript'
 import { build, createServer, optimizeDeps, resolveConfig } from 'vite'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -235,6 +238,38 @@ async function docblockOf(params: { name: string }): Promise<string> {
 	}
 	return ''
 }
+
+/**
+ * What the compiler says of a consumer's file, type-checked against core's built declarations as an installed package
+ * (`@dialecte/core` resolved through the package.json beside the build, declarations of the library not re-checked):
+ * one line per diagnostic, none when the file is accepted.
+ */
+function diagnosticsOfConsumer(params: { name: string; source: string }): string[] {
+	const { name, source } = params
+	const directory = path.join(WORK, `consumer-types-${name}`)
+	const file = path.join(directory, 'consumer.ts')
+	mkdirSync(directory, { recursive: true })
+	writeFileSync(file, source)
+	const program = ts.createProgram({
+		rootNames: [file],
+		options: {
+			noEmit: true,
+			strict: true,
+			skipLibCheck: true,
+			target: ts.ScriptTarget.ES2022,
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+			lib: ['lib.esnext.d.ts', 'lib.dom.d.ts'],
+			types: [],
+		},
+	})
+	return ts.getPreEmitDiagnostics(program).map(function lineOf(diagnostic) {
+		return `TS${diagnostic.code}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')}`
+	})
+}
+
+/** The files of a build that only the package's own development uses: scripts, fixtures, tests, benches. */
+const DEV_ONLY_FILE = /\.(?:script|fixtures|test|bench)(?:[.-]|$)/
 
 beforeAll(async () => {
 	await rm(WORK, { recursive: true, force: true })
@@ -626,5 +661,71 @@ describe('the engine as a dialecte and a consumer bundle it', () => {
 		} finally {
 			await server.close()
 		}
+	})
+
+	it(
+		"a consumer’s types → { type: 'sqlite' } is a type error until it imports @dialecte/core/sqlite, then accepted",
+		() => {
+			const withoutImport = diagnosticsOfConsumer({
+				name: 'sqlite-without-import',
+				source: [
+					"import type { StorageParam } from '@dialecte/core'",
+					"export const storage: StorageParam = { type: 'sqlite' }",
+				].join('\n'),
+			})
+			const withImport = diagnosticsOfConsumer({
+				name: 'sqlite-with-import',
+				source: [
+					"import '@dialecte/core/sqlite'",
+					"import type { StorageParam } from '@dialecte/core'",
+					"export const storage: StorageParam = { type: 'sqlite' }",
+				].join('\n'),
+			})
+			expect({
+				refusedWithoutImport: withoutImport.some(
+					(line) => line.startsWith('TS2322') && line.includes('sqlite'),
+				),
+				diagnosticsWithImport: withImport,
+			}).toEqual({ refusedWithoutImport: true, diagnosticsWithImport: [] })
+		},
+		PACKAGING_TYPE_CHECK_TIMEOUT_MS,
+	)
+
+	it(
+		'a third-party package augmenting StorageKinds → its storage param is accepted with its own fields, refused without them; registerStorageKind, StorageKind and SQLITE_ERRORS come from the entries',
+		() => {
+			const diagnostics = diagnosticsOfConsumer({
+				name: 'third-party-kind',
+				source: [
+					"import { registerStorageKind } from '@dialecte/core'",
+					"import type { StorageKind, StorageParam } from '@dialecte/core'",
+					"import { SQLITE_ERRORS } from '@dialecte/core/sqlite'",
+					"declare module '@dialecte/core' {",
+					'\tinterface StorageKinds {',
+					"\t\tfake: { type: 'fake'; url: string }",
+					'\t}',
+					'}',
+					"export const accepted: StorageParam = { type: 'fake', url: 'x' }",
+					'// @ts-expect-error the kind asks for its url',
+					"export const refused: StorageParam = { type: 'fake' }",
+					"export const kind: StorageKind<'fake'> = {",
+					"\tid: 'fake@1',",
+					"\tstoreOf: () => { throw new Error('not built') },",
+					'}',
+					"registerStorageKind({ type: 'fake', kind })",
+					'export const code: string = SQLITE_ERRORS.STORE_PROTOCOL_MISMATCH.code',
+				].join('\n'),
+			})
+			expect(diagnostics).toEqual([])
+		},
+		PACKAGING_TYPE_CHECK_TIMEOUT_MS,
+	)
+
+	it('core’s build → no file only the package’s development uses: no script, fixture, test or bench, in a chunk or a declaration', async () => {
+		const files = await filesUnder({ directory: CORE_DIST })
+		// a build that emitted nothing would prove nothing
+		expect(files).toContain('index.js')
+		const devOnly = files.filter((file) => DEV_ONLY_FILE.test(path.basename(file)))
+		expect(devOnly).toEqual([])
 	})
 })

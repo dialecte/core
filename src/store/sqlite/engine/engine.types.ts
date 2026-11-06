@@ -100,7 +100,7 @@ export type OpenSqliteEngineParams = {
 	explainIoFailure?: (params: { thrown: unknown }) => Promise<Error | undefined>
 	/**
 	 * Called once the engine broke: an import left its connection inside a transaction it could neither roll back
-	 * nor commit (a lost handle, no memory). The engine is closed by then, every call refused `STORE_ENGINE_LOST`
+	 * nor commit (a lost handle, no memory). The engine is closed by then, every call refused `STORE_CONNECTION_LOST`
 	 * (`host-gone`); its host lets it go and starts the next engine on the file, which removes what the import left.
 	 */
 	onBroken?: () => void

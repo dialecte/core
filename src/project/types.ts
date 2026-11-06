@@ -104,7 +104,7 @@ export type ProjectChannelMessage =
 
 /**
  * Posted on a Project's own channel (a store that announces its changes) once it read its documents and their history
- * again - its store reached another engine of the project, or more changes were told while it opened than it holds:
+ * again - its store's connection was made again, to what serves the project anew, or more changes were told while it opened than it holds:
  * what changed meanwhile is in its state, not told change by change. A listener reads what it shows again.
  */
 export type ProjectChannelResync = { type: 'resync'; timestamp: number }
@@ -115,15 +115,18 @@ export type ProjectChannelEvent = ProjectChannelMessage | ProjectChannelResync
 // ── Storage ──────────────────────────────────────────────────────────────────
 
 /**
- * Where a project's data lives: `local` (IndexedDB, the default), `sqlite` (SQLite on the origin's private file
- * system, one engine per project shared by every view of the app; a project made by a dialecte's project factory),
- * `inMemory` (this page only), or a `custom` store.
+ * The storage kinds a project can live on, by type: `local` (IndexedDB, the default), `inMemory` (this page only) and
+ * a `custom` store are core's own; every other member is added by the entry that registers its kind
+ * (`registerStorageKind`), with a module augmentation of this interface - `sqlite` by `@dialecte/core/sqlite`.
  */
-export type StorageParam =
-	| { type: 'local' }
-	| { type: 'sqlite' }
-	| { type: 'custom'; store: Store }
-	| { type: 'inMemory'; writable?: boolean }
+export interface StorageKinds {
+	local: { type: 'local' }
+	inMemory: { type: 'inMemory'; writable?: boolean }
+	custom: { type: 'custom'; store: Store }
+}
+
+/** Where a project's data lives: any member of `StorageKinds`. */
+export type StorageParam = StorageKinds[keyof StorageKinds]
 
 // ── Project constructor ──────────────────────────────────────────────────────
 
@@ -140,7 +143,7 @@ export type ProjectParams<
 	configs: Record<string, GenericConfig>
 	/** Used when configKey is omitted in createDocument. Defaults to first key. */
 	defaultConfigKey?: string
-	/** Storage backend: 'local' (IndexedDB, the default), 'sqlite' (after `import '@dialecte/core/sqlite'`), 'inMemory', or a 'custom' Store. */
+	/** Storage backend: 'local' (IndexedDB, the default), 'inMemory', a 'custom' Store, or a kind an entry registers ('sqlite' after `import '@dialecte/core/sqlite'`). */
 	storage: StorageParam
 	/** Extensions applied to all Documents opened from this Project */
 	extensions?: { base?: BaseExtensions; custom?: CustomExtensions }
@@ -151,7 +154,10 @@ export type ProjectParams<
 	 * store holds - two dialectes' projects of one name are two projects. Without it, the name alone.
 	 */
 	dialecteId?: string
-	/** The version of the dialecte (its factory gives it): the SQLite engine a view reaches runs that version. */
+	/**
+	 * The version of the dialecte (its factory gives it): a store that runs the dialecte elsewhere (a worker, a server)
+	 * checks it against the one it runs.
+	 */
 	dialecteVersion?: string
 }
 

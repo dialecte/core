@@ -142,7 +142,7 @@ describe('an engine alive or lost', () => {
 			},
 			'its progress handler silent → lost, no-heartbeat': {
 				scenario: 'slow-statements-silent',
-				expected: { key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } },
+				expected: { key: 'STORE_CONNECTION_LOST', meta: { reason: 'no-heartbeat' } },
 			},
 		}
 		for (const [description, { scenario, expected }] of Object.entries(testCases)) {
@@ -197,12 +197,12 @@ describe('an engine alive or lost', () => {
 		})
 		const importOutcome = await outcomeOf(importing)
 		expect(importOutcome).toEqual({
-			key: 'STORE_ENGINE_LOST',
+			key: 'STORE_CONNECTION_LOST',
 			meta: { reason: 'no-heartbeat', writeId: 'w-paused' },
 		})
 		const commitOutcome = await outcomeOf(committing)
 		expect(commitOutcome).toEqual({
-			key: 'STORE_ENGINE_LOST',
+			key: 'STORE_CONNECTION_LOST',
 			meta: { reason: 'no-heartbeat', writeId: 'w-commit' },
 		})
 		const pausedWriteOutcome = await store.getWriteOutcome({ writeId: 'w-paused' })

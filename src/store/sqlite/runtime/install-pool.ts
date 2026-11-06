@@ -2,6 +2,7 @@ import { projectKeyOf } from '../../project-key'
 import { refuseUnnamableProject } from '../../project-name'
 import { refuseOtherCreation } from '../served/creation-refusal'
 import { engineLockNameOf } from '../served/engine-lock'
+import { SQLITE_ERRORS } from '../sqlite-errors.constants'
 import { classifyPool } from './pool-header'
 import {
 	NEW_POOL_FREE_BYTES,
@@ -200,7 +201,7 @@ export function takeEngineLock(params: {
 /** The lock still held by another engine once the wait's budget is spent. */
 function engineBusy(params: { project: string; budgetMs: number; cause?: unknown }): Error {
 	const { project, budgetMs, cause } = params
-	return createDialecteError('PROJECT_ENGINE_BUSY', {
+	return createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_BUSY, {
 		detail: `Project "${project}" was still held by another engine after ${budgetMs} ms`,
 		meta: { project, budgetMs },
 		cause: cause instanceof Error ? cause : undefined,
@@ -289,7 +290,7 @@ async function probePoolFiles(params: {
 				retriedOn.add(file.name)
 				const wait = PROBE_BACKOFF_MS[Math.min(attempt, PROBE_BACKOFF_MS.length - 1)]!
 				if (performance.now() + wait > deadline) {
-					throw createDialecteError('PROJECT_ENGINE_BUSY', {
+					throw createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_BUSY, {
 						detail: `Project "${project}" is still held by another engine: its files are busy`,
 						meta: { project, retriedOn: [...retriedOn] },
 						cause: thrown instanceof Error ? thrown : undefined,
@@ -314,7 +315,7 @@ function refuseLostDatabase(params: { project: string; heads: PoolFileHead[] }):
 	const { project, heads } = params
 	const contents = classifyPool({ files: heads })
 	if (contents !== 'lost') return contents
-	throw createDialecteError('PROJECT_DATABASE_LOST', {
+	throw createDialecteError(SQLITE_ERRORS.PROJECT_DATABASE_LOST, {
 		detail: `Project "${project}" holds data but its database is gone (its file's header is damaged): nothing was opened or changed`,
 		meta: { project },
 	})

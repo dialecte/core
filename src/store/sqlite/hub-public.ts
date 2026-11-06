@@ -37,7 +37,7 @@ export async function connectHub(): Promise<HubRealm | undefined> {
  * hub's script), and get that document's connection: a client only, whose liveness is that page's. A port nobody answers fails the join
  * `STORE_CONNECTION_FAILED` once the welcome budget has passed. A document that connected already gets
  * its connection - `undefined` when that one found no hub. One the hub dropped with its page (its calls
- * refused `STORE_ENGINE_LOST`, `realm-dropped`) joins again on the new port, on its own: the page makes
+ * refused `STORE_CONNECTION_LOST`, `realm-dropped`) joins again on the new port, on its own: the page makes
  * it one from `onRejoined`, and a join that fails leaves it dropped until the next one.
  *
  * @intent join the hub from an iframe of another origin, open projects on SQLite storage in a child frame through its page's engine, bind a child frame again after its page rejoined the hub

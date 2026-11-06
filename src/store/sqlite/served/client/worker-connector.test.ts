@@ -563,7 +563,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			await plain.destroy()
 		})
 
-		it('ended from inside during an import → STORE_ENGINE_LOST host-gone with the import’s id; the next call starts another engine, which says not applied', async () => {
+		it('ended from inside during an import → STORE_CONNECTION_LOST host-gone with the import’s id; the next call starts another engine, which says not applied', async () => {
 			const name = projectName()
 			const connector = createSqliteWorkerConnector({
 				...FIXTURE_DIALECTE,
@@ -581,7 +581,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			orderFixtures({ type: 'end' })
 			const lost = await errorOfRejection(importing)
 			expect(lost).toMatchObject({
-				key: 'STORE_ENGINE_LOST',
+				key: 'STORE_CONNECTION_LOST',
 				meta: { reason: 'host-gone', writeId: 'w-gone' },
 			})
 			hold.release()

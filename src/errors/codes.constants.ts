@@ -15,7 +15,7 @@ export const ERROR_CATALOG = {
 		code: 'D0002',
 		message: 'Assertion failed',
 		explanation: {
-			when: 'An `invariant` without its own key failed, or core met a state it never expects (a catalogue built wrong, an inconsistent export, an engine running an sqlite-wasm older than 3.54.1, which removes a project on a failed install).',
+			when: 'An `invariant` without its own key failed, or core met a state it never expects (a catalogue built wrong, an inconsistent export, a store running on a dependency older than the one it supports).',
 			fix: 'Read `detail`: it names the condition. Give `invariant` a key of its own when the failure is one a caller should handle.',
 			docs: `${CORE_DOCS_URL}/guide/development/state-and-errors#error-catalog`,
 		},
@@ -26,8 +26,8 @@ export const ERROR_CATALOG = {
 		code: 'D1001',
 		message: 'Failed to open database',
 		explanation: {
-			when: "The project's database could not be opened (the SQLite file or its worker did not start), or the origin's hub could not be joined: its SharedWorker failed to start or was blocked, or a child's port went unanswered past the welcome budget (its page unbound it).",
-			fix: 'Check the browser supports the store (OPFS, workers, SharedWorker for the hub) and that no other tab holds the project; reload, or open the project with another storage. A child view refused so is bound again by its page (`createHubPort`, then `adoptHubPort`).',
+			when: "The store could not open the project's data, or could not reach what serves it (its database, a worker, a server): it failed to start, was blocked, or went unanswered; the failure is the `cause` when there is one.",
+			fix: "Check the browser supports what the store needs and that no other tab holds the project; reload, or open the project with another storage. The store's own docs name what it needs.",
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
@@ -116,35 +116,8 @@ export const ERROR_CATALOG = {
 		code: 'D1011',
 		message: 'Failed to read from database',
 		explanation: {
-			when: "The SQLite store's database failed under a read; the failure is the `cause`.",
+			when: "The store's database failed under a read; the failure is the `cause`.",
 			fix: 'Read `cause`; reopen the project. A lasting failure means the file is damaged: import its documents again.',
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
-		},
-	},
-	STORE_PROTOCOL_MISMATCH: {
-		code: 'D1012',
-		message: 'Another version of the library holds the shared store connection',
-		explanation: {
-			when: 'Another version of the library already holds the shared store connection (another tab runs an older or newer build).',
-			fix: 'Close the other tabs of the app, or reload them all on the same version.',
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
-		},
-	},
-	STORE_REALM_ID_TAKEN: {
-		code: 'D1013',
-		message: 'A view with this id is already connected to the shared store',
-		explanation: {
-			when: 'A view joined the shared store with an id another connected view already uses.',
-			fix: 'Give each view its own id; reload the page that reused one.',
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
-		},
-	},
-	STORE_REALM_UNKNOWN: {
-		code: 'D1014',
-		message: 'The shared store does not know this view',
-		explanation: {
-			when: 'A view spoke to the shared store without having joined it, or after it left.',
-			fix: 'Join (open the project) before reading or writing; reload a view that was disconnected.',
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
@@ -161,8 +134,8 @@ export const ERROR_CATALOG = {
 		code: 'D1016',
 		message: 'This browser gives the page no storage for a project',
 		explanation: {
-			when: 'The browser gives the page no private file system (a private window), or a worker no synchronous file access, so the SQLite project store cannot create, open or destroy the project; nothing is changed.',
-			fix: 'Open the app in a normal (not private) window of a browser that supports the origin private file system.',
+			when: 'The browser gives the page none of the storage the store needs (a private window, an API the browser lacks), so it cannot create, open or destroy the project; nothing is changed.',
+			fix: "Open the app in a normal (not private) window of a browser that supports what the project's store needs, or open the project with another storage.",
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
@@ -170,36 +143,27 @@ export const ERROR_CATALOG = {
 		code: 'D1017',
 		message: 'Not enough storage left for the project',
 		explanation: {
-			when: "The origin has too little storage left: for a new project's files, for an import (eight times the file's size and at least 1 MiB, less the project's free pages), or the file system refused a write for want of space; nothing of the call applied. The SQLite project store answers it; the local (IndexedDB) store answers the failing write's own error (`STORE_COMMIT_FAILED`, `STORE_BULK_ADD_FAILED`, `STORE_BULK_UPDATE_FAILED`; an import `IMPORT_FAILED`) until it moves to SQLite; the in-memory store has no limit.",
+			when: "The origin has too little storage left for what the call needs (a new project's files, an import's room ahead of it), or the store's storage refused a write for want of space; nothing of the call applied. A store that checks the room it needs answers it; the local (IndexedDB) store answers the failing write's own error (`STORE_COMMIT_FAILED`, `STORE_BULK_ADD_FAILED`, `STORE_BULK_UPDATE_FAILED`; an import `IMPORT_FAILED`); the in-memory store has no limit.",
 			fix: 'Free storage for the origin (delete projects no longer needed) or import a smaller file, then try again; `meta.needed` and `meta.available` give the sizes when known.',
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
-	STORE_ENGINE_LOST: {
+	STORE_CONNECTION_LOST: {
 		code: 'D1018',
-		message: 'The project engine stopped answering',
+		message: 'The store lost its connection',
 		explanation: {
-			when: "A call to a project engine served from a worker lost that engine: it ended with what hosted it or gave no answer within its budget (`meta.reason` `'host-gone'`), it sent nothing for too long while the call waited (`'no-heartbeat'`, it may still finish), or the hub dropped this view with the page that bound it - frozen, gone, or unbinding it (`'realm-dropped'`: every call, `getWriteOutcome` too, is refused so until the view is bound again).",
-			fix: "A Document's commit and a Project's import ask the outcome themselves, once: a commit that landed resolves; otherwise the refusal says `meta.outcome` - `not-applied` (make it again if wanted), `running` (a silent engine may still apply it: tell the user, read again later), `unknown` (it could not be asked), or `applied` for an import (its document is in the project; its diagnostics were lost). Elsewhere ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again; never retry a write blindly. For `'realm-dropped'`, every call is refused until the page binds the view again once it is back (`onRejoined`, then `createHubPort`, its port handed to the view's `adoptHubPort`).",
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
+			when: "A call to a store whose project is served elsewhere (a worker, another realm, a server) lost its connection to what serves it: that went away or gave no answer within its budget, sent nothing for too long while the call waited (the call may still finish), or dropped this view. `meta.reason` is the store's own word for why, listed in its docs; a write's refusal carries `meta.writeId`.",
+			fix: "A Document's commit and a Project's import ask the outcome themselves, once: a commit that landed resolves; otherwise the refusal says `meta.outcome` - `not-applied` (make it again if wanted), `running` (what serves the store may still apply it: tell the user, read again later), `unknown` (it could not be asked), or `applied` for an import (its document is in the project; its diagnostics were lost). Elsewhere ask `getWriteOutcome({ writeId })` with `meta.writeId` before writing again; never retry a write blindly. The store's docs say what each `meta.reason` asks of the app.",
+			docs: `${CORE_DOCS_URL}/api/project#a-lost-connection`,
 		},
 	},
-	STORE_HUB_SPAWNERS_FIXED: {
-		code: 'D1019',
-		message: "The page's hub connection runs another version of this dialecte's engine",
+	STORE_KIND_TAKEN: {
+		code: 'D1021',
+		message: 'This storage type is registered already by another kind',
 		explanation: {
-			when: "`registerSqliteEngine({ url, dialectes })` named two versions of one dialecte (nothing kept), or the engines the app registered name a dialecte the page's connection already runs at another version, as `connectHub()` or a project opening on `sqlite` offers them to the hub: a page runs one version of each dialecte's engine (two would split a project's views between two engines). `meta.spawners` names the dialectes (id and version) refused; nothing of the call was added, nothing opened.",
-			fix: 'Ship one version of each dialecte in the app, and name it once in `registerSqliteEngine({ url, dialectes })` and in `serveSqliteEngine({ dialectes })`, from the copy the app opens its projects with.',
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
-		},
-	},
-	STORE_SQLITE_ENGINE_FIXED: {
-		code: 'D1020',
-		message: "This page's SQLite engine is registered already",
-		explanation: {
-			when: 'A second `registerSqliteEngine({ url, dialectes })` named another URL or other dialectes than the first (the same URL and the same dialectes, in any order, do nothing: a module evaluated twice). There is no additive call. `meta`: `registered` (kept), `asked` (refused), each `{ url, dialectes }`.',
-			fix: 'Name all the dialectes of the app in one call, once, before the first project opens; the worker file serves them all (`serveSqliteEngine({ dialectes })`).',
-			docs: `${CORE_DOCS_URL}/api/dialecte#the-engine-worker-and-its-packaging`,
+			when: '`registerStorageKind({ type, kind })` named a type a kind of another `id` holds already: the first registration in the realm is kept, nothing replaced (the same `id` again does nothing: a module evaluated twice, or another copy of the package). `meta`: `type`, `registered` (the id kept), `asked` (the id refused).',
+			fix: 'Register each storage type once, from one package: import the entry that registers it from a single copy, or give the other kind a type of its own.',
+			docs: `${CORE_DOCS_URL}/guide/development/implementing-a-store#register-a-storage-kind`,
 		},
 	},
 
@@ -505,47 +469,20 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/project#blobs`,
 		},
 	},
-	PROJECT_LAYOUT_OUTDATED: {
-		code: 'D7005',
-		message: 'Project stored by another version of the library',
-		explanation: {
-			when: 'The project file was stored by another version of the library (another layout); nothing was written to it.',
-			fix: 'Delete the project and import its files again with this version.',
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
-		},
-	},
-	PROJECT_ENGINE_UNAVAILABLE: {
-		code: 'D7006',
-		message: 'No view can start the project engine',
-		explanation: {
-			when: "The project's engine could not be started or reached: its worker failed to load, could not load the engine's chunk (a build or a precache list that leaves it out), or never answered its open within the open budget; through the origin's hub, no open view offers an engine for the project's dialecte, or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it.",
-			fix: "Keep one tab of the app open and reload; check the `url` given to `registerSqliteEngine` points at the app's engine worker file and that it loads (the console names a script that fails); a destroy refused so is asked again once the project is closed elsewhere.",
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
-		},
-	},
-	PROJECT_ENGINE_BUSY: {
-		code: 'D7007',
-		message: 'The project is still held by another engine',
-		explanation: {
-			when: 'Another engine still holds the project (another tab or a worker that did not stop).',
-			fix: 'Close the other tabs of the app, then open the project again.',
-			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
-		},
-	},
 	PROJECT_DIALECTE_MISMATCH: {
 		code: 'D7008',
-		message: "The project's engine or file is of another dialecte",
+		message: "The project's data is of another dialecte",
 		explanation: {
-			when: "A project file stored by another dialecte was opened (nothing of it written); or an engine worker was asked for a project of a dialecte it does not serve - `registerSqliteEngine({ url, dialectes })` names one that `serveSqliteEngine({ dialectes })` was not given. Two dialectes' projects of one name are two projects: opening one never meets the other. `meta`: `project`, `realmDialecteId` (the one asked), and `projectDialecteId` (the engine's or the file's) or, refused by a worker that does not serve it, `engineDialecteIds` (the ones it was given).",
-			fix: 'Open the project with the dialecte it was created with; give `serveSqliteEngine({ dialectes })` every dialecte `registerSqliteEngine({ url, dialectes })` names.',
+			when: "A project stored by another dialecte was opened (nothing of it written), or what serves the store (a worker, a server) was asked for a project of a dialecte it does not serve. Two dialectes' projects of one name are two projects: opening one never meets the other. `meta`: `project`, `realmDialecteId` (the one asked), and `projectDialecteId` (the project's), or the dialectes served, as the store's docs name them.",
+			fix: "Open the project with the dialecte it was created with; serve every dialecte the app opens projects of, as the store's docs say.",
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
 	},
 	PROJECT_DIALECTE_VERSION_MISMATCH: {
 		code: 'D7009',
-		message: 'The project engine runs another version of the dialecte',
+		message: "The project's store runs another version of the dialecte",
 		explanation: {
-			when: "The project's engine runs another version of the dialecte than this view: another tab's, or one this page runs already for the project (a page runs one version of each dialecte).",
+			when: "What serves the project's store (a worker, a server) runs another version of the dialecte than this view: another tab's, or one this page runs already for the project (a page runs one version of each dialecte).",
 			fix: 'Reload every tab of the app so they run the same version.',
 			docs: `${CORE_DOCS_URL}/api/project#store-errors`,
 		},
@@ -554,7 +491,7 @@ export const ERROR_CATALOG = {
 		code: 'D7010',
 		message: 'The project could not be deleted',
 		explanation: {
-			when: 'Destroying a project left its files in place: another tab or worker still holds one.',
+			when: 'Destroying a project left its data in place: another tab, window or connection still holds it.',
 			fix: 'Close the other tabs or windows of the app that have the project open, then destroy it again.',
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
@@ -568,20 +505,11 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
-	PROJECT_DATABASE_LOST: {
-		code: 'D7012',
-		message: "The project's database is gone",
-		explanation: {
-			when: "The project's files hold data but none of them is its database any more: the database file's header was damaged (by the disk, another program, or site data changed outside the app). Nothing is opened or changed: no empty database is made in its place. `meta.project` names the project.",
-			fix: "The project's data cannot be read back. Offer the user a reset, never automatically: `destroy()` on the same Project instance whose `open` was refused (keep it: `const project = new Project(params)`, then `await project.open(name)`) removes what the refused store holds, without opening it; `open(name)` then makes it again, empty, and its documents can be imported again.",
-			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
-		},
-	},
 	PROJECT_DESTROYED_WHILE_AWAY: {
 		code: 'D7013',
 		message: 'The project was deleted while this view was away',
 		explanation: {
-			when: "A view's connection to a project came back - the page back from a freeze or the back/forward cache, its engine started again - and the project it had open was destroyed meanwhile by another tab (and maybe made again under its name): nothing is opened in its place and nothing of it is read. `meta.project` names the project.",
+			when: "A view's connection to a project came back - the page back from a freeze or the back/forward cache, what serves its store started again - and the project it had open was destroyed meanwhile by another tab (and maybe made again under its name): nothing is opened in its place and nothing of it is read. `meta.project` names the project.",
 			fix: 'Tell the user the project was deleted elsewhere; close it in this view (`project.close()`), then open it again by its name for what is there now, or choose another.',
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
@@ -590,36 +518,18 @@ export const ERROR_CATALOG = {
 		code: 'D7014',
 		message: "The project's name cannot name its files",
 		explanation: {
-			when: "A project's name or its dialecte's id is empty, `.` or `..`: every store refuses it before it is built (a SQLite project's files sit in a directory named after both, which no directory can be); nothing was opened or written. `meta.project` and `meta.dialecteId` say which.",
+			when: "A project's name or its dialecte's id is empty, `.` or `..`: every store refuses it before it is built (a store may name its files after both, which no file can be); nothing was opened or written. `meta.project` and `meta.dialecteId` say which.",
 			fix: 'Give the project a name of its own (and the dialecte an id) other than an empty one, `.` or `..`.',
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
-	PROJECT_ENGINE_NOT_DECLARED: {
-		code: 'D7015',
-		message: 'This project has no engine to open it on SQLite',
+	PROJECT_STORAGE_NOT_REGISTERED: {
+		code: 'D7018',
+		message: "The project's storage type is not registered",
 		explanation: {
-			when: "A project was opened on `storage: { type: 'sqlite' }` but made by no dialecte's project factory: its dialecte's id or version is known to no one, so no engine can be asked for it. Nothing was opened.",
-			fix: "Make the project with the dialecte's project factory (`createProjectFactory({ dialecte })`, as a dialecte package exports it), or open it on another storage.",
-			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
-		},
-	},
-	PROJECT_SQLITE_NOT_IMPORTED: {
-		code: 'D7016',
-		message: "SQLite storage needs `import '@dialecte/core/sqlite'`",
-		explanation: {
-			when: "A project was opened (or destroyed by name) on `storage: { type: 'sqlite' }`, or a test asked for the `sqlite` test store, but the app never imported `@dialecte/core/sqlite`: the SQLite storage kind lives behind that entry, so an app that never imports it neither emits nor downloads the SQLite engine, its wasm or the hub. Nothing was opened.",
-			fix: "Add `import '@dialecte/core/sqlite'` once to the app's entry (for tests, to the test runner's setup file), before the first project is opened on SQLite; or open the project on another storage. Imported already? The import registers the kind for every copy of @dialecte/core of the same SQLite storage version in the realm: a copy of another one (a dialecte bringing its own core) does not see it - align the core versions.",
-			docs: `${CORE_DOCS_URL}/api/project#sqlite-storage`,
-		},
-	},
-	PROJECT_SQLITE_ENGINE_NOT_REGISTERED: {
-		code: 'D7017',
-		message: 'SQLite storage needs the engine registered for this dialecte',
-		explanation: {
-			when: "A project was opened (or destroyed by name) on `storage: { type: 'sqlite' }` in a realm that can store, but the app told the page of no engine for its dialecte: no `registerSqliteEngine` call, or one that does not name it. Nothing was started. A child its page bound through `adoptHubPort` is not refused: it goes through its page's engine. `meta`: `project`, `dialecteId`.",
-			fix: "Write the app's one worker file (`serveSqliteEngine({ dialectes })`) and call `registerSqliteEngine({ url, dialectes })` from `@dialecte/core/sqlite` once, before the first project opens, naming every dialecte of the app; `url` is a `?worker&url` import of that file. The registration is the page's: a frame of the same origin joining the hub on its own registers too (or is bound by its page); a frame of another origin never registers - it joins through `adoptHubPort` before it opens a project.",
-			docs: `${CORE_DOCS_URL}/api/dialecte#the-engine-worker-and-its-packaging`,
+			when: 'A project was opened (or destroyed by name), or a test asked for a test store, on a `storage.type` no kind is registered for in this realm: core serves `local`, `inMemory` and `custom` itself, every other type comes from the entry that registers it (`registerStorageKind`). Nothing was opened. `meta`: `project`, `type`.',
+			fix: "Import the entry that registers the type once in the app's entry (for tests, in the test runner's setup file), before the first project opens on it; or open the project on another storage. Imported already? A kind is shared by every copy of @dialecte/core of the same storage version in the realm: one registered by a copy of another version (a package bringing its own core) is not seen - align the core versions.",
+			docs: `${CORE_DOCS_URL}/guide/development/implementing-a-store#register-a-storage-kind`,
 		},
 	},
 	DOCUMENT_PATH_INVALID: {

@@ -1,25 +1,36 @@
-import { runEngineControlLoop } from './store/sqlite/runtime/engine-control-loop'
 /**
  * `@dialecte/core/sqlite` - SQLite storage, opt-in: importing this entry once (the app's entry, a test runner's setup
- * file) registers the `sqlite` storage kind, so projects open on `storage: { type: 'sqlite' }` - one engine per
- * project in a worker, shared by every tab, window and iframe of the app through the origin's hub. It carries what
- * only SQLite storage uses: the hub (`connectHub`, `adoptHubPort`) and `listProjects`. One entry serves both sides of
- * an app: its page tells where the engine is (`registerSqliteEngine`), its one engine worker file serves it
- * (`serveSqliteEngine`). The engine itself and sqlite-wasm are reached through a lazy import inside
+ * file) declares the `sqlite` storage type and registers its kind, so projects open on `storage: { type: 'sqlite' }` -
+ * one engine per project in a worker, shared by every tab, window and iframe of the app through the origin's hub. It
+ * carries what only SQLite storage uses: the hub (`connectHub`, `adoptHubPort`) and `listProjects`. One entry serves
+ * both sides of an app: its page tells where the engine is (`registerSqliteEngine`), its one engine worker file serves
+ * it (`serveSqliteEngine`). The engine itself and sqlite-wasm are reached through a lazy import inside
  * `serveSqliteEngine`, so a page, which never calls it, holds neither; the worker file, which imports this entry, also
  * carries its page side. An app that never imports it neither emits nor downloads the SQLite engine's side, its wasm or
- * the hub's worker; `{ type: 'sqlite' }` there is refused `PROJECT_SQLITE_NOT_IMPORTED`.
+ * the hub's worker; `{ type: 'sqlite' }` there is a type error, and refused `PROJECT_STORAGE_NOT_REGISTERED` at run
+ * time.
  */
-import { registerSqliteStorage } from './store/sqlite/sqlite-storage'
-import { sqliteStoreOf } from './store/sqlite/sqlite-store-of'
+import { runEngineControlLoop } from './store/sqlite/runtime/engine-control-loop'
+import { SQLITE_STORAGE_KIND } from './store/sqlite/sqlite-storage-kind.constants'
+import { registerStorageKind } from './store/storage-kinds'
 
 import type { ServeSqliteEngineParams } from './store/sqlite/runtime/serve-sqlite-engine.types'
 
-registerSqliteStorage({ storage: { storeOf: sqliteStoreOf } })
+declare module './project/types' {
+	interface StorageKinds {
+		/** SQLite on the origin's private file system: one engine per project, shared by every view of the app. */
+		sqlite: { type: 'sqlite' }
+	}
+}
+
+registerStorageKind({ type: 'sqlite', kind: SQLITE_STORAGE_KIND })
 
 export { adoptHubPort, connectHub } from './store/sqlite/hub-public'
 export { listProjects } from './store/sqlite/list-projects'
 export { registerSqliteEngine } from './store/sqlite/sqlite-engine-registration'
+export { SQLITE_ERRORS } from './store/sqlite/sqlite-errors.constants'
+export type { SqliteErrorKey } from './store/sqlite/sqlite-errors.types'
+export type { ConnectionLostReason } from './store/sqlite/served/client/client.types'
 export type { ProjectListing, ProjectListingState } from './store/sqlite/list-projects.types'
 export type { HubPortHandle, HubRealm } from './store/sqlite/served/hub/hub-client.types'
 export type { SqliteEngineRegistration } from './store/sqlite/sqlite-storage.types'

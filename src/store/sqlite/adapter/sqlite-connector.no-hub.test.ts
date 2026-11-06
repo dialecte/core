@@ -79,6 +79,7 @@ describe('a page with no hub whose private file system is refused', () => {
 					withSqliteStorage()
 					return createProjectFactory({ dialecte: TEST_DIALECTE }).destroyProject({
 						name: `no-hub-${crypto.randomUUID()}`,
+						storage: { type: 'sqlite' },
 					})
 				},
 			},

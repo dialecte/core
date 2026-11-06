@@ -53,7 +53,8 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
   in-memory) the channel is the Project's own and reposts what the store tells; on `local` (IndexedDB) it is
   shared by project name.
 - `listProjects({ dialecteId? })` from `@dialecte/core/sqlite` (SQLite projects of the origin, read from the private
-  file system) and `factory.destroyProject({ name })` (delete one without opening it).
+  file system) and `factory.destroyProject({ name, storage })` (delete one without opening it, from the storage named:
+  `storage: { type: 'sqlite' }` for a project on SQLite; any kind works the same way).
 
 ## Document (`document/document.ts`)
 
@@ -184,13 +185,20 @@ needs the parent's `updated` (children list) too.
 
 ## Stores (`store/`)
 
-- `storage` param: `{ type: 'local' }` (IndexedDB, the default), `{ type: 'sqlite' }` (the SQLite
-  engine in a worker, one per project shared by every tab through the hub; setup below),
-  `{ type: 'inMemory', writable? }`,
-  `{ type: 'custom', store }`. The store is a switch: results must be identical on every store,
-  only speed changes. A difference is a store bug.
+- `storage` param: `{ type: 'local' }` (IndexedDB, the default), `{ type: 'inMemory', writable? }`,
+  `{ type: 'custom', store }` - core's own kinds - and any kind an entry registers: `{ type: 'sqlite' }` (the SQLite
+  engine in a worker, one per project shared by every tab through the hub; setup below) exists once
+  `@dialecte/core/sqlite` is imported. The store is a switch: results must be identical on every store, only speed
+  changes. A difference is a store bug.
+- Storage kinds are a registry: an entry adds its kind with `registerStorageKind({ type, kind: { id, storeOf } })`
+  (from `@dialecte/core`) and widens `StorageParam` by augmenting `interface StorageKinds` of `@dialecte/core`
+  (`declare module '@dialecte/core' { interface StorageKinds { mine: { type: 'mine'; url: string } } }`) - how a
+  store package plugs in like SQLite does. A type nobody registered (an app that never imported
+  `@dialecte/core/sqlite`) is refused `PROJECT_STORAGE_NOT_REGISTERED`; another kind under a taken type,
+  `STORE_KIND_TAKEN`.
 - SQLite storage is opt-in and **the app assembles its engine**; a dialecte package ships its declaration
-  only, no worker. Everything comes from `@dialecte/core/sqlite`, which the app imports once:
+  only, no worker. The SQLite calls come from `@dialecte/core/sqlite`, which the app imports once (the factory and
+  the rest of the API stay in `@dialecte/core`):
   - the app's one engine worker file (say `engine.worker.ts` in its sources) calls `serveSqliteEngine({ dialectes })`
     with every dialecte the app opens on SQLite - one file for all of them, not one per dialecte;
   - the page calls `registerSqliteEngine({ url, dialectes })` once, before the first project opens: `url` a
@@ -198,9 +206,18 @@ needs the parent's `updated` (children list) too.
   - `createProjectFactory({ dialecte })` takes the declaration only, no engine URL; a project opens with
     `storage: { type: 'sqlite' }`; `connectHub()` takes no parameter (optional: a project opening on
     `sqlite` offers the registered engines too).
-- SQLite refusals: entry never imported → `PROJECT_SQLITE_NOT_IMPORTED`; no registration, or one that does not name
-  the project's dialecte → `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`, nothing started; a worker file that fails to
-  load, or cannot load the engine's chunk (a precache list that leaves it out) → `PROJECT_ENGINE_UNAVAILABLE`.
+- SQLite refusals: entry never imported → `PROJECT_STORAGE_NOT_REGISTERED` (core: no `sqlite` kind); no
+  registration, or one that does not name the project's dialecte → `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`, nothing
+  started; a worker file that fails to load, or cannot load the engine's chunk (a precache list that leaves it out)
+  → `PROJECT_ENGINE_UNAVAILABLE`; a project stored by another layout → `PROJECT_LAYOUT_OUTDATED`. The keys only SQLite
+  raises (`PROJECT_SQLITE_*`, `PROJECT_ENGINE_*`, `PROJECT_LAYOUT_OUTDATED`, `PROJECT_DATABASE_LOST`, the hub's
+  `STORE_HUB_*`, `STORE_REALM_*`, `STORE_PROTOCOL_MISMATCH`, `STORE_SQLITE_ENGINE_FIXED`) are declared by
+  `SQLITE_ERRORS` from `@dialecte/core/sqlite`, codes unchanged: match them with
+  `isKnownDialecteError(error, { catalogues: [SQLITE_ERRORS] })` or `SQLITE_ERRORS.<KEY>.key`.
+- A store behind a connection (SQLite's worker, a remote store) that loses it refuses the call
+  `STORE_CONNECTION_LOST` (core); for a write, `meta.writeId` and `meta.outcome` (`applied`, `not-applied`,
+  `running`, `unknown`) say whether it landed - a Document's commit and a Project's import ask it once themselves;
+  never write again blindly (`store.getWriteOutcome({ writeId })`).
 - `Store` interface is public surface for custom stores. The patch merge every built-in store uses
   is internal to the stores (not exported): a custom store merges a `RecordPatch` itself.
 

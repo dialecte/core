@@ -325,7 +325,7 @@ describe('commitTransaction', () => {
 		expect(state.lastUpdate).toBeNull()
 	})
 
-	describe('a commit whose engine is lost (STORE_ENGINE_LOST) → its outcome asked once by its writeId, never committed again', () => {
+	describe('a commit whose connection is lost (STORE_CONNECTION_LOST) → its outcome asked once by its writeId, never committed again', () => {
 		type TestCase = {
 			outcome: WriteOutcome | 'ask-fails'
 			expected: { committed: true } | { refusedWith: string; outcome: string }
@@ -335,22 +335,22 @@ describe('commitTransaction', () => {
 				outcome: 'applied',
 				expected: { committed: true },
 			},
-			'not applied → STORE_ENGINE_LOST, meta.outcome not-applied: commit it again if wanted': {
+			'not applied → STORE_CONNECTION_LOST, meta.outcome not-applied: commit it again if wanted': {
 				outcome: 'not-applied',
-				expected: { refusedWith: 'STORE_ENGINE_LOST', outcome: 'not-applied' },
+				expected: { refusedWith: 'STORE_CONNECTION_LOST', outcome: 'not-applied' },
 			},
-			'still running (a silent engine) → STORE_ENGINE_LOST, meta.outcome running': {
+			'still running (a silent engine) → STORE_CONNECTION_LOST, meta.outcome running': {
 				outcome: 'running',
-				expected: { refusedWith: 'STORE_ENGINE_LOST', outcome: 'running' },
+				expected: { refusedWith: 'STORE_CONNECTION_LOST', outcome: 'running' },
 			},
-			'the outcome itself not answered → STORE_ENGINE_LOST, meta.outcome unknown': {
+			'the outcome itself not answered → STORE_CONNECTION_LOST, meta.outcome unknown': {
 				outcome: 'ask-fails',
-				expected: { refusedWith: 'STORE_ENGINE_LOST', outcome: 'unknown' },
+				expected: { refusedWith: 'STORE_CONNECTION_LOST', outcome: 'unknown' },
 			},
 		}
 		for (const [description, { outcome, expected }] of Object.entries(testCases)) {
 			it(description, async () => {
-				const lost = createDialecteError('STORE_ENGINE_LOST', {
+				const lost = createDialecteError('STORE_CONNECTION_LOST', {
 					detail: 'its host went',
 					meta: { reason: 'host-gone' },
 				})

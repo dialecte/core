@@ -2,7 +2,7 @@ import { ENGINE_SIGNAL } from '../engine.constants'
 import { fromThrownData } from '../wire/error-envelope'
 import { toWireArgs } from '../wire/wire-values'
 import { ENGINE_WIRE_MEMBERS } from '../wire/wire.constants'
-import { ENGINE_HEARTBEAT_TIMEOUT_MS, ENGINE_LOST_DETAILS } from './client.constants'
+import { ENGINE_HEARTBEAT_TIMEOUT_MS, CONNECTION_LOST_DETAILS } from './client.constants'
 import { watchHeartbeat } from './heartbeat-watch'
 
 import * as Comlink from 'comlink'
@@ -17,7 +17,7 @@ import type { EngineWire, WireMemberSpec } from '../wire/wire.types'
 import type {
 	CallInFlight,
 	EngineClient,
-	EngineLostReason,
+	ConnectionLostReason,
 	EventListeners,
 	ProgressListeners,
 } from './client.types'
@@ -29,7 +29,7 @@ import type { WriteOutcome } from '@/store/store.types'
  * the wire table says - its JSON values copied as plain data, its progress listener kept here under an
  * id (the engine posts each tick on this port: every tick is told before the answer), its answer an
  * envelope: a value, or what the engine threw, rebuilt. The calls in flight are known: once the engine is lost they are refused
- * `STORE_ENGINE_LOST` (a write with its `writeId`); a write refused so while its engine may still run
+ * `STORE_CONNECTION_LOST` (a write with its `writeId`); a write refused so while its engine may still run
  * it is `running` for `getWriteOutcome` until its answer arrives.
  */
 export function createEngineClient(params: {
@@ -54,7 +54,7 @@ export function createEngineClient(params: {
 		},
 	})
 
-	function lose(params: { reason: EngineLostReason }): void {
+	function lose(params: { reason: ConnectionLostReason }): void {
 		const { reason } = params
 		for (const entry of inFlight) {
 			refuseLost({ entry, reason, unanswered })
@@ -256,15 +256,15 @@ function createEventListeners(params: { port: MessagePort }): EventListeners {
 /** A call in flight refused: its engine is lost; a write's id kept to say it may still be running. */
 function refuseLost(params: {
 	entry: CallInFlight
-	reason: EngineLostReason
+	reason: ConnectionLostReason
 	unanswered: Set<string>
 }): void {
 	const { entry, reason, unanswered } = params
 	entry.lost = true
 	if (entry.writeId !== undefined && reason === 'no-heartbeat') unanswered.add(entry.writeId)
 	entry.reject(
-		createDialecteError('STORE_ENGINE_LOST', {
-			detail: ENGINE_LOST_DETAILS[reason],
+		createDialecteError('STORE_CONNECTION_LOST', {
+			detail: CONNECTION_LOST_DETAILS[reason],
 			meta: { reason, ...(entry.writeId !== undefined && { writeId: entry.writeId }) },
 		}),
 	)

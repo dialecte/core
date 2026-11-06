@@ -44,7 +44,7 @@ describe('SQLite storage where the realm can run no engine (node)', () => {
 		'a project destroyed by name through the factory → STORE_UNAVAILABLE': {
 			call: function destroyByName() {
 				const factory = createProjectFactory({ dialecte: createCountingDialecte() })
-				return factory.destroyProject({ name: uniqueName() })
+				return factory.destroyProject({ name: uniqueName(), storage: { type: 'sqlite' } })
 			},
 		},
 		'the store resolveStore builds, opened → STORE_UNAVAILABLE': {

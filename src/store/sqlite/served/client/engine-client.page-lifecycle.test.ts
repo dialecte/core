@@ -23,6 +23,6 @@ describe('a client watching its engine, on a page', () => {
 		])
 		expect(early).toBe('waiting')
 		const outcome = await calling
-		expect(outcome).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } })
+		expect(outcome).toEqual({ key: 'STORE_CONNECTION_LOST', meta: { reason: 'no-heartbeat' } })
 	})
 })

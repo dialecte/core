@@ -42,7 +42,7 @@ async function openProject(params: {
 function destroyBothWhenDone(params: { name: string }): void {
 	onTestFinished(async function destroyBoth() {
 		for (const which of ['first', 'second'] as const) {
-			await FACTORIES[which].destroyProject({ name: params.name })
+			await FACTORIES[which].destroyProject({ name: params.name, storage: { type: 'sqlite' } })
 		}
 	})
 }

@@ -8,15 +8,15 @@ import type {
 	ProjectFactory,
 } from './dialecte.types'
 import type { ExtensionModules } from '@/document'
-import type { Project } from '@/project'
+import type { Project, StorageParam } from '@/project'
 import type { AnyDialecteConfig } from '@/types'
 
 /**
  * The project factory of a dialecte: every config, the default key, the dialecte's extensions
- * merged under the consumer's, and a fresh hooks instance per Project. It carries the declaration and names no store
- * and no engine: an app on SQLite storage writes its one worker file and tells the page once
- * (`registerSqliteEngine({ url, dialectes })` from `@dialecte/core/sqlite`). `destroyProject({ name })` deletes the
- * dialecte's project of that name on SQLite storage without opening it (an outdated or lost one too).
+ * merged under the consumer's, and a fresh hooks instance per Project. It carries the declaration and names no store:
+ * each Project it makes opens on the `storage` given to it, core's own or a kind an entry registers (SQLite storage
+ * with `@dialecte/core/sqlite`, whose page tells once where its engine worker is). `destroyProject({ name, storage })`
+ * deletes the dialecte's project of that name on that storage without opening it (one a store cannot open too).
  *
  * @intent open projects of a dialecte from an app, get the factory that creates a dialecte's projects, delete a dialecte's project without opening it, use SQLite storage in an app (register the app's engine with `registerSqliteEngine` from `@dialecte/core/sqlite` and open with `storage: { type: 'sqlite' }`), share one SQLite engine per project between the tabs of an app
  */
@@ -39,18 +39,20 @@ export function createProjectFactory<
 	}
 
 	/**
-	 * The dialecte's project of that name on SQLite storage deleted, never opened (one of another layout, or whose
-	 * database is lost, too): through the page's hub when it has one, else by the page; refused `PROJECT_OPEN_ELSEWHERE`
-	 * while a view has it open, `STORE_UNAVAILABLE` where the browser gives no private file system,
-	 * `PROJECT_SQLITE_ENGINE_NOT_REGISTERED` where the app registered no engine for the dialecte - but in a child bound
-	 * through `adoptHubPort`, deleted by a view of the origin that can store.
+	 * The dialecte's project of that name on `storage` deleted, never opened: the store of that kind is resolved for the
+	 * dialecte as a Project's open would, then destroyed. Refused as that store refuses a destroy (another connection
+	 * holding the project, a browser giving no storage for it); a type no kind is registered for in this realm is
+	 * refused `PROJECT_STORAGE_NOT_REGISTERED`, nothing deleted.
 	 */
-	async function destroyProject(destroyParams: { name: string }): Promise<void> {
-		const { name } = destroyParams
+	async function destroyProject(destroyParams: {
+		name: string
+		storage: StorageParam
+	}): Promise<void> {
+		const { name, storage } = destroyParams
 		const store = resolveStore({
 			name,
 			dialecteId: dialecte.id,
-			storage: { type: 'sqlite' },
+			storage,
 			runtime: {
 				configs: dialecte.configs as Record<string, AnyDialecteConfig>,
 				defaultConfigKey: dialecte.defaultConfigKey,

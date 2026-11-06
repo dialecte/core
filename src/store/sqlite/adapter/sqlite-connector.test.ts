@@ -280,12 +280,14 @@ describe('a project on sqlite storage whose dialecte the registered engine does 
 					const factory = createTestProject
 					return call === 'open'
 						? factory({ storage: { type: 'sqlite' } }).open(uniqueName())
-						: factory.destroyProject({ name: uniqueName() })
+						: factory.destroyProject({ name: uniqueName(), storage: { type: 'sqlite' } })
 				},
 			})
 			expect(refused.key).toBe('PROJECT_SQLITE_ENGINE_NOT_REGISTERED')
 			expect(refused.message).toContain('registerSqliteEngine')
 			expect(refused.message).toContain(TEST_DIALECTE.id)
+			// the other cause: a copy of the library of another SQLite storage version registered the engine
+			expect(refused.message).toContain('a copy of @dialecte/core of another')
 			expect(started).toEqual({ workers: [], hubs: [] })
 		})
 	}

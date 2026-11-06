@@ -551,7 +551,7 @@ type ReadFailureCase = { thrown: () => unknown; reported: boolean }
 const readFailureCases: Record<string, ReadFailureCase> = {
 	'its engine lost (the resync that follows repairs it) → not reported': {
 		thrown: function engineLost() {
-			return createDialecteError('STORE_ENGINE_LOST', { detail: 'the host went away' })
+			return createDialecteError('STORE_CONNECTION_LOST', { detail: 'the host went away' })
 		},
 		reported: false,
 	},
@@ -714,13 +714,13 @@ describe('a Document subscriber throwing as a call of the project changes its do
 		/** The store wrapped before the call, when the call meets a lost engine. */
 		engineLost: boolean
 		/** What the call rejects with: the subscriber's failure, or the lost engine. */
-		rejected: 'subscriber' | 'STORE_ENGINE_LOST'
+		rejected: 'subscriber' | 'STORE_CONNECTION_LOST'
 	}
 	const callCases: Record<string, CallCase> = {
-		'an undo its store refuses STORE_ENGINE_LOST → rejected STORE_ENGINE_LOST, the subscriber’s failure reported':
+		'an undo its store refuses STORE_CONNECTION_LOST → rejected STORE_CONNECTION_LOST, the subscriber’s failure reported':
 			{
 				engineLost: true,
-				rejected: 'STORE_ENGINE_LOST',
+				rejected: 'STORE_CONNECTION_LOST',
 			},
 	}
 	for (const [description, { engineLost, rejected }] of Object.entries(callCases)) {
@@ -738,7 +738,7 @@ describe('a Document subscriber throwing as a call of the project changes its do
 			})
 			if (engineLost) {
 				store.undo = async function lostWhileUndoing() {
-					throw createDialecteError('STORE_ENGINE_LOST', { detail: 'the host went away' })
+					throw createDialecteError('STORE_CONNECTION_LOST', { detail: 'the host went away' })
 				}
 			}
 			const outcome = await project.undo(documentId).then(

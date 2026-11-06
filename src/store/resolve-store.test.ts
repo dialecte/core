@@ -1,10 +1,20 @@
-import { resolveStore, sqliteConnectorParamsOf } from './resolve-store'
+import { resolveStore } from './resolve-store'
 import { EngineStore } from './sqlite/served/engine-store'
-import { replaceSqliteStorage } from './sqlite/sqlite-storage'
+import { sqliteConnectorParamsOf } from './sqlite/sqlite-storage-kind'
 import { withoutSqliteStorage, withSqliteStorage } from './sqlite/sqlite-storage.fixtures'
+import { replaceStorageKind, registerStorageKind } from './storage-kinds'
+import {
+	answerOf,
+	fakeKindOf,
+	fakeStorageOf,
+	outcomeOf,
+	refusalOf,
+	uniqueFakeType,
+} from './storage-kinds.fixtures'
 
 import { describe, it, expect, onTestFinished, vi } from 'vitest'
 
+import '@/sqlite'
 import { toDialecteError } from '@/errors'
 import { DexieStore, InMemoryStore } from '@/store'
 import { TEST_DIALECTE_CONFIG } from '@/test'
@@ -142,12 +152,12 @@ describe('resolveStore', () => {
 			runtime: typeof SQLITE_RUNTIME | typeof RUNTIME
 		}
 		const notImported: Record<string, RegistrationCase> = {
-			'the app never imported @dialecte/core/sqlite → PROJECT_SQLITE_NOT_IMPORTED, the import to add named':
+			'the app never imported @dialecte/core/sqlite → PROJECT_STORAGE_NOT_REGISTERED, naming the type':
 				{
 					dialecteId: 'core/test',
 					runtime: SQLITE_RUNTIME,
 				},
-			'never imported, a project made by no dialecte → PROJECT_SQLITE_NOT_IMPORTED first: no SQLite is known':
+			'never imported, a project made by no dialecte → PROJECT_STORAGE_NOT_REGISTERED first: no kind is known':
 				{
 					dialecteId: undefined,
 					runtime: RUNTIME,
@@ -163,31 +173,30 @@ describe('resolveStore', () => {
 					thrown = error
 				}
 				const error = toDialecteError(thrown)
-				expect(error?.key).toBe('PROJECT_SQLITE_NOT_IMPORTED')
-				expect(error?.detail).toContain("import '@dialecte/core/sqlite'")
+				expect(error?.key).toBe('PROJECT_STORAGE_NOT_REGISTERED')
+				expect(error?.meta).toEqual({ project: 'resolve-store', type: 'sqlite' })
 			})
 		}
 
-		it('registered → the store its storeOf builds, given what the project connects with', () => {
-			const built = { open: vi.fn() } as unknown as Store
-			const storeOf = vi.fn(function builtStore() {
-				return built
+		it('registered → the store its storeOf builds, given the name, the storage, the runtime and the dialecte id', () => {
+			const { kind, storeOf, built } = fakeKindOf({ id: 'fake-sqlite@1' })
+			const storage = { type: 'sqlite' } as const
+			const outcome = outcomeOf(function resolveRegistered() {
+				onTestFinished(replaceStorageKind({ type: 'sqlite', kind }))
+				return resolveStore({
+					name: 'resolve-store',
+					storage,
+					runtime: SQLITE_RUNTIME,
+					dialecteId: 'core/test',
+				})
 			})
-			onTestFinished(replaceSqliteStorage({ storage: { storeOf } }))
-			const store = resolvedOrRefused({
+
+			expect(answerOf(outcome)).toBe(built)
+			expect(storeOf).toHaveBeenCalledWith({
 				name: 'resolve-store',
-				storage: { type: 'sqlite' },
+				storage,
 				runtime: SQLITE_RUNTIME,
 				dialecteId: 'core/test',
-			})
-			expect(store).toBe(built)
-			expect(storeOf).toHaveBeenCalledWith({
-				connector: {
-					name: 'resolve-store',
-					dialecteId: 'core/test',
-					dialecteVersion: SQLITE_RUNTIME.dialecteVersion,
-					perf: undefined,
-				},
 			})
 		})
 	})
@@ -244,5 +253,122 @@ describe('resolveStore', () => {
 				}
 			})
 		}
+	})
+
+	describe('a storage kind registered by type', () => {
+		it('a registered type → the store its storeOf builds, given the name, the storage as given, the runtime and the dialecte id', () => {
+			const type = uniqueFakeType()
+			const storage = fakeStorageOf({ type })
+			const { kind, storeOf, built } = fakeKindOf({ id: 'fake@1' })
+			const outcome = outcomeOf(function resolveRegistered() {
+				onTestFinished(replaceStorageKind({ type, kind: undefined }))
+				registerStorageKind({ type: type as 'sqlite', kind: kind as never })
+				return resolveStore({
+					name: 'resolve-registered',
+					storage,
+					runtime: RUNTIME,
+					dialecteId: 'core/test',
+				})
+			})
+
+			expect(answerOf(outcome)).toBe(built)
+			expect(storeOf).toHaveBeenCalledTimes(1)
+			expect(storeOf).toHaveBeenCalledWith({
+				name: 'resolve-registered',
+				storage,
+				runtime: RUNTIME,
+				dialecteId: 'core/test',
+			})
+			expect(storeOf.mock.calls[0]?.[0].storage).toBe(storage)
+		})
+
+		it('a type no kind registered → PROJECT_STORAGE_NOT_REGISTERED, naming the type and the project', () => {
+			const type = uniqueFakeType()
+			const outcome = outcomeOf(function resolveUnregistered() {
+				return resolveStore({
+					name: 'resolve-unregistered',
+					storage: fakeStorageOf({ type }),
+					runtime: RUNTIME,
+					dialecteId: 'core/test',
+				})
+			})
+
+			const refusal = refusalOf(outcome)
+			expect({ key: refusal?.key, meta: refusal?.meta }).toEqual({
+				key: 'PROJECT_STORAGE_NOT_REGISTERED',
+				meta: { project: 'resolve-unregistered', type },
+			})
+		})
+
+		it('a kind put on the registry of the realm by another copy of the library of the same version → the one resolveStore serves', () => {
+			const type = uniqueFakeType()
+			const { kind, built } = fakeKindOf({ id: 'other-copy@1' })
+			const realm = globalThis as unknown as Record<symbol, Map<string, unknown> | undefined>
+			const key = Symbol.for('@dialecte/core/storage-kinds/v1')
+			const existing = realm[key]
+			const registry = existing ?? new Map<string, unknown>()
+			realm[key] = registry
+			registry.set(type, kind)
+			onTestFinished(function leaveRegistry() {
+				registry.delete(type)
+				if (!existing) delete realm[key]
+			})
+			const outcome = outcomeOf(function resolveFromOtherCopy() {
+				return resolveStore({
+					name: 'resolve-other-copy',
+					storage: fakeStorageOf({ type }),
+					runtime: RUNTIME,
+					dialecteId: 'core/test',
+				})
+			})
+
+			expect(answerOf(outcome)).toBe(built)
+		})
+
+		it('a local entry put on the registry of the realm → ignored: the built-in kinds come first, local still resolves to a DexieStore', () => {
+			const { kind } = fakeKindOf({ id: 'other-copy-local@1' })
+			const realm = globalThis as unknown as Record<symbol, Map<string, unknown> | undefined>
+			const key = Symbol.for('@dialecte/core/storage-kinds/v1')
+			const existing = realm[key]
+			const registry = existing ?? new Map<string, unknown>()
+			realm[key] = registry
+			const before = registry.get('local')
+			registry.set('local', kind)
+			onTestFinished(function leaveRegistry() {
+				if (before === undefined) registry.delete('local')
+				else registry.set('local', before)
+				if (!existing) delete realm[key]
+			})
+			const outcome = outcomeOf(function resolveLocal() {
+				return resolveStore({
+					name: 'resolve-local-first',
+					storage: { type: 'local' },
+					runtime: RUNTIME,
+					dialecteId: 'core/test',
+				})
+			})
+
+			expect(answerOf(outcome)).toBeInstanceOf(DexieStore)
+		})
+
+		it('the refusal of an unregistered type → its detail names the type, says to import the entry that registers it, and names the other-copy cause, no store', () => {
+			const type = uniqueFakeType()
+			const outcome = outcomeOf(function resolveUnregistered() {
+				return resolveStore({
+					name: 'resolve-unregistered-detail',
+					storage: fakeStorageOf({ type }),
+					runtime: RUNTIME,
+					dialecteId: 'core/test',
+				})
+			})
+
+			const detail = refusalOf(outcome)?.detail ?? ''
+			expect({
+				namesType: detail.includes(type),
+				importsEntry: detail.includes('import the entry that registers it'),
+				otherCopy: detail.includes('a copy of @dialecte/core of another'),
+				namesStore: /sqlite|indexeddb|dexie/i.test(detail),
+			}).toEqual({ namesType: true, importsEntry: true, otherCopy: true, namesStore: false })
+		})
 	})
 })

@@ -1,3 +1,4 @@
+import { SQLITE_ERRORS } from '../sqlite-errors.constants'
 import {
 	APPLICATION_ID_DIGEST,
 	BLOB_COLUMNS,
@@ -121,7 +122,7 @@ export function prepareFile(params: {
 		applyConnectionPragmas({ db, steadyCacheMiB })
 		return { creationId: meta.creationId }
 	}
-	throwDialecteError('PROJECT_LAYOUT_OUTDATED', {
+	throwDialecteError(SQLITE_ERRORS.PROJECT_LAYOUT_OUTDATED, {
 		detail:
 			`The project file is at layout ${layoutVersion}, this library reads layout ${LAYOUT_VERSION}: ` +
 			'delete the project and import its files again',

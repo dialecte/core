@@ -28,6 +28,7 @@ import {
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { SQLITE_ERRORS } from '@/store/sqlite/sqlite-errors.constants'
 import { TEST_DIALECTE } from '@/test'
 
 import type { HubConnection, HubLifecycleTargets } from '../hub/hub-client.types'
@@ -119,7 +120,11 @@ describe('a store reaching its project’s engine through the hub', () => {
 		const tab = await joinHub({ hub, canStartEngines: false })
 		const project = uniqueProject()
 		const store = storeThrough({ connection: tab, name: project })
-		await expectRejectsWith({ action: store.open(), key: 'PROJECT_ENGINE_UNAVAILABLE' })
+		const thrown = await store.open().then(
+			() => undefined,
+			(error: unknown) => error,
+		)
+		expect(toDialecteError(thrown)?.key).toBe(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE.key)
 		await joinHub({ hub, canStartEngines: true })
 		await store.open()
 		const documents = await store.getDocuments()
@@ -184,7 +189,7 @@ describe('a store reaching its project’s engine through the hub', () => {
 		expect(documents).toEqual([])
 	})
 
-	it('a commit in flight when its host freezes → refused STORE_ENGINE_LOST host-gone with its id, not made again; its outcome asked of the next engine', async () => {
+	it('a commit in flight when its host freezes → refused STORE_CONNECTION_LOST host-gone with its id, not made again; its outcome asked of the next engine', async () => {
 		const hub = serveHub()
 		const page = fakePage()
 		const shell = await joinHub({ hub, canStartEngines: true, lifecycle: page })
@@ -213,7 +218,7 @@ describe('a store reaching its project’s engine through the hub', () => {
 			},
 		)
 		expect(lost).toMatchObject({
-			key: 'STORE_ENGINE_LOST',
+			key: 'STORE_CONNECTION_LOST',
 			meta: { reason: 'host-gone', writeId: 'w-frozen' },
 		})
 		// the freeze ends the host's engine before the commit reaches it: nothing applied, nothing made again

@@ -1,0 +1,14 @@
+schema_version: '1.1'
+name: sqlite-project-admin
+expected_outcome: |
+  `deleteWorkspace` calls the factory's `destroyProject({ name, storage: { type: 'sqlite' } })`, naming the storage
+  it deletes from (no open first). `describeFailure` reads the structured error with `toDialecteError`: a lost storage
+  connection is `STORE_CONNECTION_LOST` (core's catalogue), whose `meta.outcome` says whether the write landed
+  (`applied`, `not-applied`, `running`, `unknown`); a project stored by another layout is `PROJECT_LAYOUT_OUTDATED`,
+  declared by `SQLITE_ERRORS` from `@dialecte/core/sqlite` (matched through that catalogue, e.g.
+  `isKnownDialecteError(error, { catalogues: [SQLITE_ERRORS] })` or `SQLITE_ERRORS.PROJECT_LAYOUT_OUTDATED.key`); a
+  build that never loaded SQLite storage is `PROJECT_STORAGE_NOT_REGISTERED` (core). `createProjectFactory`,
+  `toDialecteError` and `isKnownDialecteError` come from `@dialecte/core`; `SQLITE_ERRORS`, `registerSqliteEngine`
+  and `serveSqliteEngine` from `@dialecte/core/sqlite`. No `STORE_ENGINE_LOST`, no `PROJECT_SQLITE_NOT_IMPORTED`.
+context:
+  scaffold_script: place-files.sh

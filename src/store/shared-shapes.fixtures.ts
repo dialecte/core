@@ -119,6 +119,15 @@ function declaredInPackage(params: { symbol: ts.Symbol; sources: string }): bool
 	)
 }
 
+/**
+ * A member's name as the shape writes it: a well-known symbol key (`[Symbol.iterator]`), which the checker names
+ * `__@iterator@189` - its internal id depends on the program's load order, so never written - by `[Symbol.iterator]`.
+ */
+function memberNameOf(params: { symbol: ts.Symbol }): string {
+	const wellKnown = /^__@(\w+)@\d+$/.exec(params.symbol.escapedName as string)
+	return wellKnown ? `[Symbol.${wellKnown[1]}]` : params.symbol.name
+}
+
 function objectFlagsOf(params: { type: ts.Type }): number {
 	return (params.type as ts.ObjectType).objectFlags ?? 0
 }
@@ -298,7 +307,7 @@ export function sharedShape(params: {
 			const optional = property.flags & ts.SymbolFlags.Optional ? '?' : ''
 			const memberType = checker.getTypeOfSymbolAtLocation(property, source)
 			reachedFrom({ type: memberType, walked })
-			return `  ${property.name}${optional}: ${written({ type: memberType })}`
+			return `  ${memberNameOf({ symbol: property })}${optional}: ${written({ type: memberType })}`
 		})
 		const indexes = indexInfos.map(function indexOf(info) {
 			reachedFrom({ type: info.type, walked })

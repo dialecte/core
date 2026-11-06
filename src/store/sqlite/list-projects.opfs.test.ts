@@ -49,7 +49,8 @@ async function madeProject(params: { name: string }): Promise<void> {
 function destroyedAfter(params: { name: string }): void {
 	onTestFinished(async function destroyLeft() {
 		const listed = await listedAs({ name: params.name })
-		if (listed) await createTestProject.destroyProject({ name: params.name })
+		if (listed)
+			await createTestProject.destroyProject({ name: params.name, storage: { type: 'sqlite' } })
 	})
 }
 
@@ -187,7 +188,9 @@ describe('the projects on SQLite storage, read from the private file system', ()
 			await damage({ name })
 			const listedProject = await listedAs({ name })
 			expect(listedProject).toMatchObject({ state })
-			await expect(createTestProject.destroyProject({ name })).resolves.toBeUndefined()
+			await expect(
+				createTestProject.destroyProject({ name, storage: { type: 'sqlite' } }),
+			).resolves.toBeUndefined()
 			const listedAfterDestroy = await listedAs({ name })
 			expect(listedAfterDestroy).toBeUndefined()
 		})
@@ -203,7 +206,9 @@ describe('the projects on SQLite storage, read from the private file system', ()
 		await writable.close()
 		const listedProject = await listedAs({ name })
 		expect(listedProject).toMatchObject({ state: 'new' })
-		await expect(createTestProject.destroyProject({ name })).resolves.toBeUndefined()
+		await expect(
+			createTestProject.destroyProject({ name, storage: { type: 'sqlite' } }),
+		).resolves.toBeUndefined()
 		const listedAfterDestroy = await listedAs({ name })
 		expect(listedAfterDestroy).toBeUndefined()
 	})
@@ -219,7 +224,7 @@ describe('the projects on SQLite storage, read from the private file system', ()
 		onTestFinished(function closeProject() {
 			return project.close()
 		})
-		const key = await createTestProject.destroyProject({ name }).then(
+		const key = await createTestProject.destroyProject({ name, storage: { type: 'sqlite' } }).then(
 			function destroyed() {
 				return 'destroyed'
 			},

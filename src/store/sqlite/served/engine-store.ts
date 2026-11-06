@@ -60,7 +60,7 @@ export class EngineStore implements Store {
 	/** The link whose notices this store hears now. */
 	private listenedLink: EngineLink | undefined
 	/**
-	 * The writes of this store refused `STORE_ENGINE_LOST`, by id: one that lands later is announced as another
+	 * The writes of this store refused `STORE_CONNECTION_LOST`, by id: one that lands later is announced as another
 	 * connection's, so whoever listens folds it in. Forgotten once told, once its outcome answers settled (`applied`,
 	 * `not-applied`), at a resync (the engine gone tells nothing more) and once the link is released.
 	 */
@@ -136,7 +136,7 @@ export class EngineStore implements Store {
 
 	/**
 	 * Every change of the project, this store's own and its other connections', told once each (its own before the
-	 * call that made it settles); a write of its own that was refused `STORE_ENGINE_LOST` and landed later is told
+	 * call that made it settles); a write of its own that was refused `STORE_CONNECTION_LOST` and landed later is told
 	 * as another's. `resync` once the store reached another engine. Kept across `close()` and `open()`.
 	 */
 	subscribe(listener: (notice: StoreNotice) => void): () => void {
@@ -447,11 +447,11 @@ export class EngineStore implements Store {
 		}
 	}
 
-	/** A write refused `STORE_ENGINE_LOST` (its id on the refusal): its change, if it lands, is told as another's. */
+	/** A write refused `STORE_CONNECTION_LOST` (its id on the refusal): its change, if it lands, is told as another's. */
 	private noteLostWrite(params: { thrown: unknown }): void {
 		const error = toDialecteError(params.thrown)
 		const writeId = error?.meta?.writeId
-		if (error?.key === 'STORE_ENGINE_LOST' && typeof writeId === 'string')
+		if (error?.key === 'STORE_CONNECTION_LOST' && typeof writeId === 'string')
 			this.lostWrites.add(writeId)
 	}
 
@@ -537,7 +537,7 @@ function forwardAbort(params: { signal?: AbortSignal; abort: () => Promise<void>
 /** Refused because its engine ended with its host (not because it went silent: it may still be running). */
 function isHostGone(params: { thrown: unknown }): boolean {
 	const error = toDialecteError(params.thrown)
-	return error?.key === 'STORE_ENGINE_LOST' && error.meta?.reason === 'host-gone'
+	return error?.key === 'STORE_CONNECTION_LOST' && error.meta?.reason === 'host-gone'
 }
 
 /** Nothing to stop: no link listened to, no forwarding of an abort. */

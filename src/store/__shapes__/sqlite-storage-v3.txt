@@ -1,0 +1,4 @@
+SqliteEngineRegistration {
+  dialectes: readonly { id: string; version: string; }[]
+  url: string
+}

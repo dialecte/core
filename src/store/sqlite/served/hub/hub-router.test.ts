@@ -2682,7 +2682,7 @@ describe('createHubRouter', () => {
 					{ event: open({ realmId: 'shell' }), commands: [SPAWN_SHELL_1] },
 				],
 			},
-		'the view deleting a child’s project gone before it is done → the child refused STORE_ENGINE_LOST, the hold lifted':
+		'the view deleting a child’s project gone before it is done → the child refused STORE_CONNECTION_LOST, the hold lifted':
 			{
 				history: [
 					hello({ realmId: 'shell', spawners: [] }),
@@ -2702,7 +2702,7 @@ describe('createHubRouter', () => {
 								dialecteId: 'scl',
 								refusal: {
 									origin: 'hub',
-									key: 'STORE_ENGINE_LOST',
+									key: 'STORE_CONNECTION_LOST',
 									detail: `the view deleting "${PROJECT}" is gone: its files may be partly deleted`,
 									meta: { project: PROJECT, reason: 'host-gone' },
 								},

@@ -1,13 +1,14 @@
+import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
 import { ENGINE_OPEN_WINDOW_MS } from '../client/client.constants'
 
-import type { DialecteErrorKey } from '@/errors'
+import type { SqliteRaisedErrorKey } from '../../sqlite-errors.types'
 
 /**
  * The wire protocol a realm and the hub speak; a realm speaking another one is refused. It also keys the connection
  * every copy of the library in a realm shares (`HubRegistry`). Bumped with any change of either: `shared-shapes.test.ts`
  * fails until it is, the shape recorded per version in `src/store/__shapes__/hub-protocol-v<version>.txt`.
  */
-export const HUB_PROTOCOL_VERSION = 5
+export const HUB_PROTOCOL_VERSION = 6
 
 /** An engine left without client is told to close after this long; an open meanwhile keeps it. */
 export const ENGINE_IDLE_CLOSE_MS = 5_000
@@ -39,10 +40,10 @@ export const HUB_WORKER_NAME = 'dialecte-hub'
  * wire, its project destroyed while the realm was away); any other refusal answers the calls waiting, and
  * the next call asks the hub again.
  */
-export const LASTING_REFUSALS: readonly DialecteErrorKey[] = [
+export const LASTING_REFUSALS: readonly SqliteRaisedErrorKey[] = [
 	'PROJECT_DIALECTE_MISMATCH',
 	'PROJECT_DIALECTE_VERSION_MISMATCH',
-	'STORE_PROTOCOL_MISMATCH',
+	SQLITE_ERRORS.STORE_PROTOCOL_MISMATCH.key,
 	'PROJECT_DESTROYED_WHILE_AWAY',
 	'PROJECT_NAME_INVALID',
 ]

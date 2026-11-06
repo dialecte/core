@@ -19,7 +19,7 @@ export type HubRegistry = Partial<Record<symbol, Promise<HubConnection | undefin
 /**
  * What a page holds of its connection to the hub: its realm id, ports for the documents that cannot
  * reach the hub themselves, and a call each time it is welcomed back. A child bound to a page that
- * freezes is dropped by the hub with the page and told: its calls are refused `STORE_ENGINE_LOST`
+ * freezes is dropped by the hub with the page and told: its calls are refused `STORE_CONNECTION_LOST`
  * (`realm-dropped`) until the page, welcomed back (`onRejoined`), hands it a new port from
  * `createHubPort` and the child calls `adoptHubPort` with it.
  */

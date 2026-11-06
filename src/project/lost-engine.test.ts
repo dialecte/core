@@ -24,7 +24,7 @@ afterEach(async () => {
 })
 
 function lost(params: { writeId?: string }): Error {
-	return createDialecteError('STORE_ENGINE_LOST', {
+	return createDialecteError('STORE_CONNECTION_LOST', {
 		detail: 'its host went while the call waited',
 		meta: { reason: 'host-gone', ...(params.writeId !== undefined && { writeId: params.writeId }) },
 	})
@@ -34,7 +34,7 @@ function lost(params: { writeId?: string }): Error {
 type LosingMember = 'commit' | 'importFile' | 'undo' | 'redo' | 'removeDocument'
 
 /**
- * An in-memory store whose writes named in `losing` are refused `STORE_ENGINE_LOST` - landed first or not, as
+ * An in-memory store whose writes named in `losing` are refused `STORE_CONNECTION_LOST` - landed first or not, as
  * `landing` says - each counted; the first `losses` of them only (all when not given); `outcomeRefused`: the ask of
  * a lost write's outcome refused too; `announcing: false`: a store that tells no change (no `subscribe`). Every other
  * member as the store answers it.
@@ -71,7 +71,7 @@ function losingStore(params: {
 			throw lost({ writeId: write.writeIdOf(...args) })
 		}
 	}
-	const noWriteId = function noWriteId(): undefined {
+	function noWriteId(): undefined {
 		return undefined
 	}
 	store.commit = losingWrite({
@@ -213,34 +213,35 @@ describe('a project whose engine is lost during its write', () => {
 			canUndo: true,
 			heard: [{ type: 'commit', documentId: true }],
 		},
-		'a commit that did not land → STORE_ENGINE_LOST, meta.outcome not-applied, nothing posted': {
-			landing: 'not-applied',
-			expected: { key: 'STORE_ENGINE_LOST', outcome: 'not-applied' },
-			canUndo: false,
-			heard: [],
-		},
-		'a commit that landed, its outcome not known (the ask lost too) → STORE_ENGINE_LOST, meta.outcome unknown; its history read again, the change the store told posted':
-			{
-				landing: 'applied',
-				outcomeRefused: true,
-				expected: { key: 'STORE_ENGINE_LOST', outcome: 'unknown' },
-				canUndo: true,
-				heard: [{ type: 'commit', documentId: true }],
-			},
-		'on a store that tells no change, a commit that did not land → STORE_ENGINE_LOST not-applied, nothing posted':
+		'a commit that did not land → STORE_CONNECTION_LOST, meta.outcome not-applied, nothing posted':
 			{
 				landing: 'not-applied',
-				announcing: false,
-				expected: { key: 'STORE_ENGINE_LOST', outcome: 'not-applied' },
+				expected: { key: 'STORE_CONNECTION_LOST', outcome: 'not-applied' },
 				canUndo: false,
 				heard: [],
 			},
-		'on a store that tells no change, a commit whose outcome is not known → STORE_ENGINE_LOST unknown, posted (it may have landed)':
+		'a commit that landed, its outcome not known (the ask lost too) → STORE_CONNECTION_LOST, meta.outcome unknown; its history read again, the change the store told posted':
+			{
+				landing: 'applied',
+				outcomeRefused: true,
+				expected: { key: 'STORE_CONNECTION_LOST', outcome: 'unknown' },
+				canUndo: true,
+				heard: [{ type: 'commit', documentId: true }],
+			},
+		'on a store that tells no change, a commit that did not land → STORE_CONNECTION_LOST not-applied, nothing posted':
+			{
+				landing: 'not-applied',
+				announcing: false,
+				expected: { key: 'STORE_CONNECTION_LOST', outcome: 'not-applied' },
+				canUndo: false,
+				heard: [],
+			},
+		'on a store that tells no change, a commit whose outcome is not known → STORE_CONNECTION_LOST unknown, posted (it may have landed)':
 			{
 				landing: 'applied',
 				outcomeRefused: true,
 				announcing: false,
-				expected: { key: 'STORE_ENGINE_LOST', outcome: 'unknown' },
+				expected: { key: 'STORE_CONNECTION_LOST', outcome: 'unknown' },
 				canUndo: true,
 				heard: [{ type: 'commit', documentId: true }],
 			},
@@ -277,7 +278,7 @@ describe('a project whose engine is lost during its write', () => {
 		})
 	}
 
-	it('a prepared commit that did not land → STORE_ENGINE_LOST not-applied; committed again → it lands', async () => {
+	it('a prepared commit that did not land → STORE_CONNECTION_LOST not-applied; committed again → it lands', async () => {
 		const { project, store, calls, documentId } = await openWithDocument({
 			losing: ['commit'],
 			landing: 'not-applied',
@@ -285,14 +286,15 @@ describe('a project whose engine is lost during its write', () => {
 		})
 		const prepared = await project.openDocument(documentId).prepare(addOneA)
 		const settled = await settledOf({ action: prepared.commit() })
-		expect(settled).toMatchObject({ key: 'STORE_ENGINE_LOST', outcome: 'not-applied' })
+		expect(settled).toMatchObject({ key: 'STORE_CONNECTION_LOST', outcome: 'not-applied' })
 		await prepared.commit()
 		expect(calls.commit).toBe(2)
-		expect(await store.getHistoryStatus(documentId)).toMatchObject({ canUndo: true })
+		const historyStatus = await store.getHistoryStatus(documentId)
+		expect(historyStatus).toMatchObject({ canUndo: true })
 		expect(project.state.documents.get(documentId)?.canUndo).toBe(true)
 	})
 
-	it('a prepared commit whose outcome is not known → STORE_ENGINE_LOST unknown; committed again → nothing made again', async () => {
+	it('a prepared commit whose outcome is not known → STORE_CONNECTION_LOST unknown; committed again → nothing made again', async () => {
 		const { project, calls, documentId } = await openWithDocument({
 			losing: ['commit'],
 			landing: 'applied',
@@ -301,7 +303,7 @@ describe('a project whose engine is lost during its write', () => {
 		})
 		const prepared = await project.openDocument(documentId).prepare(addOneA)
 		const settled = await settledOf({ action: prepared.commit() })
-		expect(settled).toMatchObject({ key: 'STORE_ENGINE_LOST', outcome: 'unknown' })
+		expect(settled).toMatchObject({ key: 'STORE_CONNECTION_LOST', outcome: 'unknown' })
 		await prepared.commit()
 		expect(calls.commit).toBe(1)
 	})
@@ -315,11 +317,11 @@ describe('a project whose engine is lost during its write', () => {
 		heard: string[]
 	}
 	const importCases: Record<string, ImportCase> = {
-		'an import that landed → STORE_ENGINE_LOST, meta.outcome applied and its documentId: the document in the project (its diagnostics went with the lost answer), posted to the listeners':
+		'an import that landed → STORE_CONNECTION_LOST, meta.outcome applied and its documentId: the document in the project (its diagnostics went with the lost answer), posted to the listeners':
 			{ landing: 'applied', outcome: 'applied', inState: true, heard: ['document-imported'] },
-		'an import that did not land → STORE_ENGINE_LOST, meta.outcome not-applied: no document, nothing posted':
+		'an import that did not land → STORE_CONNECTION_LOST, meta.outcome not-applied: no document, nothing posted':
 			{ landing: 'not-applied', outcome: 'not-applied', inState: false, heard: [] },
-		'an import that landed, its outcome not known (the ask lost too) → STORE_ENGINE_LOST, meta.outcome unknown; the change the store told posted':
+		'an import that landed, its outcome not known (the ask lost too) → STORE_CONNECTION_LOST, meta.outcome unknown; the change the store told posted':
 			{
 				landing: 'applied',
 				outcomeRefused: true,
@@ -327,7 +329,7 @@ describe('a project whose engine is lost during its write', () => {
 				inState: true,
 				heard: ['document-imported'],
 			},
-		'on a store that tells no change, an import that landed → STORE_ENGINE_LOST applied, the document posted to the listeners':
+		'on a store that tells no change, an import that landed → STORE_CONNECTION_LOST applied, the document posted to the listeners':
 			{
 				landing: 'applied',
 				announcing: false,
@@ -356,7 +358,7 @@ describe('a project whose engine is lost during its write', () => {
 			})
 			const listened = heardOn({ project })
 			const settled = await settledOf({ action: project.importFile(sourceFile()) })
-			expect(settled.key).toBe('STORE_ENGINE_LOST')
+			expect(settled.key).toBe('STORE_CONNECTION_LOST')
 			expect(settled.outcome).toBe(outcome)
 			expect(calls.importFile).toBe(1)
 			const documents = await store.getDocuments()
@@ -387,7 +389,7 @@ describe('a project whose engine is lost during its write', () => {
 		})
 	}
 
-	it('an import of a batch that landed → its entry failed STORE_ENGINE_LOST, meta.outcome applied and the documentId made', async () => {
+	it('an import of a batch that landed → its entry failed STORE_CONNECTION_LOST, meta.outcome applied and the documentId made', async () => {
 		const name = `lost-${crypto.randomUUID()}`
 		const { store, calls } = losingStore({ name, losing: ['importFile'], landing: 'applied' })
 		const project = await openOn({ store, name })
@@ -398,7 +400,10 @@ describe('a project whose engine is lost during its write', () => {
 		const [document] = await store.getDocuments()
 		expect(entry).toMatchObject({
 			status: 'failed',
-			error: { key: 'STORE_ENGINE_LOST', meta: { outcome: 'applied', documentId: document!.id } },
+			error: {
+				key: 'STORE_CONNECTION_LOST',
+				meta: { outcome: 'applied', documentId: document!.id },
+			},
 		})
 		expect(calls.importFile).toBe(1)
 	})
@@ -411,7 +416,7 @@ describe('a project whose engine is lost during its write', () => {
 		expected: (params: { project: Project<AnyDialecteConfig>; documentId: string }) => void
 	}
 	const historyCases: Record<string, HistoryCase> = {
-		'an undo that landed → STORE_ENGINE_LOST, never made again; its history read again, posted to the listeners':
+		'an undo that landed → STORE_CONNECTION_LOST, never made again; its history read again, posted to the listeners':
 			{
 				member: 'undo',
 				write: function undo({ project, documentId }) {
@@ -425,7 +430,7 @@ describe('a project whose engine is lost during its write', () => {
 					})
 				},
 			},
-		'a redo that landed → STORE_ENGINE_LOST, never made again; its history read again, posted to the listeners':
+		'a redo that landed → STORE_CONNECTION_LOST, never made again; its history read again, posted to the listeners':
 			{
 				member: 'redo',
 				prepare: function undoFirst({ project, documentId }) {
@@ -442,7 +447,7 @@ describe('a project whose engine is lost during its write', () => {
 					})
 				},
 			},
-		'a removal that landed → STORE_ENGINE_LOST, never made again; the document gone from the project, posted to the listeners':
+		'a removal that landed → STORE_CONNECTION_LOST, never made again; the document gone from the project, posted to the listeners':
 			{
 				member: 'removeDocument',
 				write: function remove({ project, documentId }) {
@@ -466,7 +471,7 @@ describe('a project whose engine is lost during its write', () => {
 			await prepare?.({ project, documentId })
 			const listened = heardOn({ project })
 			const settled = await settledOf({ action: write({ project, documentId }) })
-			expect(settled.key).toBe('STORE_ENGINE_LOST')
+			expect(settled.key).toBe('STORE_CONNECTION_LOST')
 			expect(calls[member]).toBe(1)
 			expected({ project, documentId })
 			await vi.waitFor(function heardFirst() {

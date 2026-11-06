@@ -1,4 +1,5 @@
 import { toThrownData } from '../served/wire/error-envelope'
+import { SQLITE_ERRORS } from '../sqlite-errors.constants'
 
 import { createDialecteError } from '@/errors'
 
@@ -61,7 +62,7 @@ export function runEngineControlLoop(
 function answerFailed(params: { thrown: unknown }): AnswerEngineControl {
 	const failure = params.thrown instanceof Error ? params.thrown.message : String(params.thrown)
 	const thrown = toThrownData({
-		thrown: createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+		thrown: createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE, {
 			detail: `The engine worker could not load the engine's chunk, which serveSqliteEngine imports: ${failure}. A build or a precache list that leaves that chunk out cannot open any project`,
 			meta: { failure },
 		}),

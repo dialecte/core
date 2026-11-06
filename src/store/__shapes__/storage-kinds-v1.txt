@@ -1,0 +1,1074 @@
+AfterImportResult<GenericDiagnostic extends Diagnostic = Diagnostic> {
+  creates?: AnyRawRecord[] | undefined
+  deletes?: string[] | undefined
+  diagnostics?: GenericDiagnostic[] | undefined
+  updates?: RecordPatch[] | undefined
+}
+
+AnyAttribute {
+  name: string
+  namespace?: Namespace | undefined
+  value: string
+}
+
+AnyDefinition {
+  [key: string]: ElementDefinition
+}
+
+AnyDialecteConfig {
+  ancestors: Record<string, readonly string[]>
+  attributes: AttributeTables
+  children: Record<string, readonly string[]>
+  database: Readonly<{ recordSchema: RecordSchema; tables?: { xmlElements: { name: string; schema: string; }; additionalTables?: Record<string, { schema: string; }> | undefined; } | undefined; }>
+  definition: AnyDefinition
+  descendants: Record<string, readonly string[]>
+  elements: readonly string[]
+  io: IOConfig
+  namespaces: Record<"default", Namespace> & Record<string, Namespace>
+  parents: Record<string, readonly string[]>
+  rootElementName: string
+  singletonElements?: readonly string[] | undefined
+  transparentElements?: readonly string[] | undefined
+  types: Readonly<Record<string, ContentDefinition>>
+}
+
+AnyQuery<GenericConfig extends AnyDialecteConfig> {
+  dialecteConfig: GenericConfig
+  findAncestors: (refOrRecord: AnyRefOrRecord | undefined) => Promise<AnyTrackedRecord[]>
+  findByAttributes: (params: { tagName: string; attributes: Record<string, string | string[]>; }) => Promise<AnyTrackedRecord[]>
+  findDescendants: (refOrRecord: AnyRefOrRecord | undefined) => Promise<Record<string, AnyTrackedRecord[]>>
+  getAttribute: { (refOrRecord: AnyRefOrRecord | undefined, params: { name: string; namespace?: string | undefined; fullObject?: false | undefined; defaults?: AttributeDefaults | undefined; }): Promise<string>; (refOrRecord: AnyRefOrRecord | undefined, params: { name: string; namespace?: string | undefined; fullObject: true; defaults?: AttributeDefaults | undefined; }): Promise<AnyAttribute | undefined>; }
+  getAttributes: { (refOrRecord: AnyRefOrRecord | undefined, params?: { namespace?: string | undefined; fullObject?: false | undefined; defaults?: AttributeDefaults | undefined; } | undefined): Promise<Record<string, string>>; (refOrRecord: AnyRefOrRecord | undefined, params: { namespace?: string | undefined; fullObject: true; defaults?: AttributeDefaults | undefined; }): Promise<AnyAttribute[]>; }
+  getChild: (parent: AnyRefOrRecord, tagName: string) => Promise<AnyTrackedRecord | undefined>
+  getChildren: (parent: AnyRefOrRecord, tagName: string) => Promise<AnyTrackedRecord[]>
+  getContext: () => Context<GenericConfig>
+  getDefinition: (ref: AnyRefOrRecord) => Promise<ResolvedDefinition | undefined>
+  getRecord: (ref: AnyRef) => Promise<AnyTrackedRecord | undefined>
+  getRecords: (refs: AnyRef[]) => Promise<(AnyTrackedRecord | undefined)[]>
+  getRecordsByTagName: (tagName: string) => Promise<AnyTrackedRecord[]>
+  getSnapshot: { (options?: (GetSnapshotOptions<AnyDialecteConfig> & { as?: "tree" | undefined; }) | undefined): Promise<AnyTreeRecord>; (options: GetSnapshotOptions<AnyDialecteConfig> & { as: "xml"; }): Promise<string>; (options: GetSnapshotOptions<AnyDialecteConfig> & { as: "both"; }): Promise<SnapshotResult>; }
+  getTree: (refOrRecord: AnyRefOrRecord | undefined, options?: GetTreeParams<AnyDialecteConfig, string> | undefined) => Promise<AnyTreeRecord | undefined>
+}
+
+AnyRawRecord {
+  attributes: AnyAttribute[]
+  children: AnyRelationship[]
+  id: string
+  namespace: Namespace
+  parent: AnyRelationship | null
+  tagName: string
+  value: string
+}
+
+AnyRef {
+  id?: string | undefined
+  tagName: string
+}
+
+AnyRefOrRecord = RawRecord<AnyDialecteConfig, string> & { status: OperationStatus; } | RawRecord<AnyDialecteConfig, string> & { status: OperationStatus; } & { tree: TreeRecord<AnyDialecteConfig, string>[]; } | { id: string; tagName: string; namespace: Namespace; attributes: AnyAttribute[]; value: string; parent: AnyRelationship | null; children: AnyRelationship[]; } | { readonly tagName: string; readonly id?: string | undefined; }
+
+AnyRelationship {
+  id: string
+  tagName: string
+}
+
+AnyTrackedRecord<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> {
+  attributes: (Attribute<GenericConfig, ElementsOf<GenericConfig>> | QualifiedAttribute<GenericConfig, ElementsOf<GenericConfig>>)[]
+  children: ChildRelationship<GenericConfig, ElementsOf<GenericConfig>>[]
+  id: string
+  namespace: Namespace
+  parent: ParentRelationship<GenericConfig, ElementsOf<GenericConfig>> | null
+  status: OperationStatus
+  tagName: ElementsOf<GenericConfig>
+  value: string
+}
+
+AnyTreeRecord<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> {
+  attributes: (Attribute<GenericConfig, ElementsOf<GenericConfig>> | QualifiedAttribute<GenericConfig, ElementsOf<GenericConfig>>)[]
+  children: ChildRelationship<GenericConfig, ElementsOf<GenericConfig>>[]
+  id: string
+  namespace: Namespace
+  parent: ParentRelationship<GenericConfig, ElementsOf<GenericConfig>> | null
+  status: OperationStatus
+  tagName: ElementsOf<GenericConfig>
+  tree: TreeRecord<GenericConfig, ChildrenOf<GenericConfig, ElementsOf<GenericConfig>>>[]
+  value: string
+}
+
+Attribute<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  name: AttributesOf<GenericConfig, GenericElement>
+  value: string
+}
+
+AttributeDefinition {
+  default?: string | undefined
+  fixed?: string | undefined
+  namespace?: Namespace | undefined
+  required?: true | undefined
+  type?: undefined | { readonly builtin: string; readonly facets?: Facets | undefined; } | { readonly list: DataType; readonly facets?: Facets | undefined; } | { readonly union: readonly DataType[]; readonly facets?: Facets | undefined; }
+}
+
+AttributeTables {
+  byParent: Record<string, Record<string, any>>
+  byTag: Record<string, any>
+}
+
+AttributesOf<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>, GenericParent extends ElementsOf<GenericConfig> = never> {
+  [Symbol.iterator]: () => StringIterator<string>
+  anchor: (name: string) => string
+  at: (index: number) => string | undefined
+  big: () => string
+  blink: () => string
+  bold: () => string
+  charAt: (pos: number) => string
+  charCodeAt: (index: number) => number
+  codePointAt: (pos: number) => number | undefined
+  concat: (...strings: string[]) => string
+  endsWith: (searchString: string, endPosition?: number | undefined) => boolean
+  fixed: () => string
+  fontcolor: (color: string) => string
+  fontsize: { (size: number): string; (size: string): string; }
+  includes: (searchString: string, position?: number | undefined) => boolean
+  indexOf: (searchString: string, position?: number | undefined) => number
+  isWellFormed: () => boolean
+  italics: () => string
+  lastIndexOf: (searchString: string, position?: number | undefined) => number
+  length: number
+  link: (url: string) => string
+  localeCompare: { (that: string): number; (that: string, locales?: string | string[] | undefined, options?: CollatorOptions | undefined): number; (that: string, locales?: LocalesArgument, options?: CollatorOptions | undefined): number; }
+  match: { (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }
+  matchAll: (regexp: RegExp) => RegExpStringIterator<RegExpExecArray>
+  normalize: { (form: "NFC" | "NFD" | "NFKC" | "NFKD"): string; (form?: string | undefined): string; }
+  padEnd: (maxLength: number, fillString?: string | undefined) => string
+  padStart: (maxLength: number, fillString?: string | undefined) => string
+  repeat: (count: number) => string
+  replace: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }
+  replaceAll: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }
+  search: { (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }
+  slice: (start?: number | undefined, end?: number | undefined) => string
+  small: () => string
+  split: { (separator: string | RegExp, limit?: number | undefined): string[]; (splitter: { [Symbol.split](string: string, limit?: number | undefined): string[]; }, limit?: number | undefined): string[]; }
+  startsWith: (searchString: string, position?: number | undefined) => boolean
+  strike: () => string
+  sub: () => string
+  substr: (from: number, length?: number | undefined) => string
+  substring: (start: number, end?: number | undefined) => string
+  sup: () => string
+  toLocaleLowerCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLocaleString: () => string | { (locales?: string | string[] | undefined, options?: NumberFormatOptions | undefined): string; (locales?: LocalesArgument, options?: NumberFormatOptions | undefined): string; }
+  toLocaleUpperCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLowerCase: () => string
+  toString: (() => string) & (() => string) | ((radix?: number | undefined) => string) & (() => string) | () => string
+  toUpperCase: () => string
+  toWellFormed: () => string
+  trim: () => string
+  trimEnd: () => string
+  trimLeft: () => string
+  trimRight: () => string
+  trimStart: () => string
+  valueOf: (() => number) & (() => string) | (() => symbol) & (() => string) | () => string
+  [key: number]: string
+}
+
+BlobAttachment {
+  attribute?: string | undefined
+  documentId: string
+  recordRef: string
+}
+
+BlobRecord {
+  attachedTo: BlobAttachment[]
+  createdAt: number
+  documentId: string
+  id: string
+  mimeType?: string | undefined
+  name: string
+  size?: number | undefined
+}
+
+ChangeLogEntry {
+  documentId: string
+  id: number
+  operations: { creates: AnyRawRecord[]; updates: { before: AnyRawRecord; after: AnyRawRecord; }[]; deletes: AnyRawRecord[]; }
+  sequenceNumber: number
+  timestamp: number
+  writeId: string
+}
+
+ChildDefinition {
+  declarations: Readonly<Record<string, readonly string[]>>
+}
+
+ChildRelationship<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  id: string
+  tagName: ChildrenOf<GenericConfig, GenericElement>
+}
+
+ChildrenOf<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  [Symbol.iterator]: () => StringIterator<string>
+  anchor: (name: string) => string
+  at: (index: number) => string | undefined
+  big: () => string
+  blink: () => string
+  bold: () => string
+  charAt: (pos: number) => string
+  charCodeAt: (index: number) => number
+  codePointAt: (pos: number) => number | undefined
+  concat: (...strings: string[]) => string
+  endsWith: (searchString: string, endPosition?: number | undefined) => boolean
+  fixed: () => string
+  fontcolor: (color: string) => string
+  fontsize: { (size: number): string; (size: string): string; }
+  includes: (searchString: string, position?: number | undefined) => boolean
+  indexOf: (searchString: string, position?: number | undefined) => number
+  isWellFormed: () => boolean
+  italics: () => string
+  lastIndexOf: (searchString: string, position?: number | undefined) => number
+  length: number
+  link: (url: string) => string
+  localeCompare: { (that: string): number; (that: string, locales?: string | string[] | undefined, options?: CollatorOptions | undefined): number; (that: string, locales?: LocalesArgument, options?: CollatorOptions | undefined): number; }
+  match: { (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }
+  matchAll: (regexp: RegExp) => RegExpStringIterator<RegExpExecArray>
+  normalize: { (form: "NFC" | "NFD" | "NFKC" | "NFKD"): string; (form?: string | undefined): string; }
+  padEnd: (maxLength: number, fillString?: string | undefined) => string
+  padStart: (maxLength: number, fillString?: string | undefined) => string
+  repeat: (count: number) => string
+  replace: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }
+  replaceAll: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }
+  search: { (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }
+  slice: (start?: number | undefined, end?: number | undefined) => string
+  small: () => string
+  split: { (separator: string | RegExp, limit?: number | undefined): string[]; (splitter: { [Symbol.split](string: string, limit?: number | undefined): string[]; }, limit?: number | undefined): string[]; }
+  startsWith: (searchString: string, position?: number | undefined) => boolean
+  strike: () => string
+  sub: () => string
+  substr: (from: number, length?: number | undefined) => string
+  substring: (start: number, end?: number | undefined) => string
+  sup: () => string
+  toLocaleLowerCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLocaleUpperCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLowerCase: () => string
+  toString: () => string
+  toUpperCase: () => string
+  toWellFormed: () => string
+  trim: () => string
+  trimEnd: () => string
+  trimLeft: () => string
+  trimRight: () => string
+  trimStart: () => string
+  valueOf: () => string
+  [key: number]: string
+}
+
+ChunkOptions {
+  batchSize: number
+  chunkSize: number
+}
+
+ContentDefinition {
+  attributes: { readonly sequence: readonly string[]; readonly any?: Wildcard | undefined; readonly details: Readonly<Record<string, AttributeDefinition>>; readonly identityFields?: readonly string[] | undefined; }
+  children: { readonly sequence: readonly string[]; readonly any?: true | undefined; readonly details: Readonly<Record<string, ChildDefinition>>; }
+  contentModel?: undefined | { readonly kind: "any"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } & Wildcard | { readonly kind: "element"; readonly name: string; readonly namespace?: string | undefined; readonly declaration?: string | undefined; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } | { readonly kind: "sequence" | "choice" | "all"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; readonly particles: readonly Particle[]; }
+  textContent?: TextContent | undefined
+}
+
+Context<GenericConfig extends AnyDialecteConfig> {
+  dialecteConfig: GenericConfig
+  documentId: string
+  perf: Perf
+  progress: ProgressReporter
+  recordCache: Map<string, AnyRawRecord> | undefined
+  stagedOperations: StagedOperations<GenericConfig>
+  store: Store
+}
+
+DataType = { readonly builtin: string; readonly facets?: Facets | undefined; } | { readonly list: DataType; readonly facets?: Facets | undefined; } | { readonly union: readonly DataType[]; readonly facets?: Facets | undefined; }
+
+DeclarationDefinition {
+  abstractType?: true | undefined
+  attributes: { readonly sequence: readonly string[]; readonly any?: Wildcard | undefined; readonly details: Readonly<Record<string, AttributeDefinition>>; readonly identityFields?: readonly string[] | undefined; }
+  children: { readonly sequence: readonly string[]; readonly any?: true | undefined; readonly details: Readonly<Record<string, ChildDefinition>>; }
+  constraints?: readonly IdentityConstraint[] | undefined
+  contentModel?: undefined | { readonly kind: "any"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } & Wildcard | { readonly kind: "element"; readonly name: string; readonly namespace?: string | undefined; readonly declaration?: string | undefined; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } | { readonly kind: "sequence" | "choice" | "all"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; readonly particles: readonly Particle[]; }
+  documentation?: string | undefined
+  global?: true | undefined
+  namespace: Namespace
+  nillable?: true | undefined
+  textContent?: TextContent | undefined
+  type?: string | undefined
+  variants?: readonly string[] | undefined
+}
+
+DescendantsOf<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  [Symbol.iterator]: () => StringIterator<string>
+  anchor: (name: string) => string
+  at: (index: number) => string | undefined
+  big: () => string
+  blink: () => string
+  bold: () => string
+  charAt: (pos: number) => string
+  charCodeAt: (index: number) => number
+  codePointAt: (pos: number) => number | undefined
+  concat: (...strings: string[]) => string
+  endsWith: (searchString: string, endPosition?: number | undefined) => boolean
+  fixed: () => string
+  fontcolor: (color: string) => string
+  fontsize: { (size: number): string; (size: string): string; }
+  includes: (searchString: string, position?: number | undefined) => boolean
+  indexOf: (searchString: string, position?: number | undefined) => number
+  isWellFormed: () => boolean
+  italics: () => string
+  lastIndexOf: (searchString: string, position?: number | undefined) => number
+  length: number
+  link: (url: string) => string
+  localeCompare: { (that: string): number; (that: string, locales?: string | string[] | undefined, options?: CollatorOptions | undefined): number; (that: string, locales?: LocalesArgument, options?: CollatorOptions | undefined): number; }
+  match: { (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }
+  matchAll: (regexp: RegExp) => RegExpStringIterator<RegExpExecArray>
+  normalize: { (form: "NFC" | "NFD" | "NFKC" | "NFKD"): string; (form?: string | undefined): string; }
+  padEnd: (maxLength: number, fillString?: string | undefined) => string
+  padStart: (maxLength: number, fillString?: string | undefined) => string
+  repeat: (count: number) => string
+  replace: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }
+  replaceAll: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }
+  search: { (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }
+  slice: (start?: number | undefined, end?: number | undefined) => string
+  small: () => string
+  split: { (separator: string | RegExp, limit?: number | undefined): string[]; (splitter: { [Symbol.split](string: string, limit?: number | undefined): string[]; }, limit?: number | undefined): string[]; }
+  startsWith: (searchString: string, position?: number | undefined) => boolean
+  strike: () => string
+  sub: () => string
+  substr: (from: number, length?: number | undefined) => string
+  substring: (start: number, end?: number | undefined) => string
+  sup: () => string
+  toLocaleLowerCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLocaleUpperCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLowerCase: () => string
+  toString: () => string
+  toUpperCase: () => string
+  toWellFormed: () => string
+  trim: () => string
+  trimEnd: () => string
+  trimLeft: () => string
+  trimRight: () => string
+  trimStart: () => string
+  valueOf: () => string
+  [key: number]: string
+}
+
+Diagnostic<GenericCode extends string = string> {
+  code: GenericCode
+  message: string
+  meta?: Record<string, unknown> | undefined
+  ref: DiagnosticRef
+  related?: undefined | { ref: DiagnosticRef; message: string; }[]
+  severity: DiagnosticSeverity
+  source: string
+}
+
+DiagnosticRef {
+  attribute?: string | undefined
+  id: string
+  tagName: string
+}
+
+DiagnosticSeverity = "error" | "hint" | "information" | "warning"
+
+DialecteHooks<GenericConfig extends AnyDialecteConfig> {
+  afterCreated?: <GenericElement extends ElementsOf<GenericConfig>, GenericParentElement extends ParentsOf<GenericConfig, GenericElement>>(params: { childRecord: RawRecord<GenericConfig, GenericElement>; parentRecord: RawRecord<GenericConfig, GenericParentElement>; query: Query<GenericConfig>; }) => Promise<Operation<GenericConfig>[]> | undefined
+  afterDelete?: <GenericElement extends ElementsOf<GenericConfig>, GenericParentElement extends ParentsOf<GenericConfig, GenericElement>>(params: { record: RawRecord<GenericConfig, GenericElement>; parentRecord: RawRecord<GenericConfig, GenericParentElement>; query: Query<GenericConfig>; }) => Promise<Operation<GenericConfig>[]> | undefined
+  afterStandardizedRecord?: <GenericElement extends ElementsOf<GenericConfig>>(params: { record: RawRecord<GenericConfig, GenericElement>; }) => RawRecord<GenericConfig, GenericElement> | undefined
+  afterUpdated?: <GenericElement extends ElementsOf<GenericConfig>>(params: { oldRecord: RawRecord<GenericConfig, GenericElement>; newRecord: RawRecord<GenericConfig, GenericElement>; query: Query<GenericConfig>; }) => Promise<Operation<GenericConfig>[]> | undefined
+  beforeClone?: <GenericElement extends ElementsOf<GenericConfig>>(params: { record: TreeRecord<GenericConfig, GenericElement>; }) => { shouldBeCloned: boolean; transformedRecord: TreeRecord<GenericConfig, GenericElement>; } | undefined
+  beforeCommit?: (params: { operations: readonly Operation<GenericConfig>[]; query: Query<GenericConfig>; }) => Promise<Operation<GenericConfig>[]> | undefined
+  beforeDelete?: <GenericElement extends ElementsOf<GenericConfig>>(params: { record: RawRecord<GenericConfig, GenericElement>; query: Query<GenericConfig>; }) => Promise<Operation<GenericConfig>[]> | undefined
+  beforeImport?: (xml: string) => string | undefined
+  createImportSession?: (params: { documentId: string; configKey: string; }) => ImportSession<Diagnostic> | undefined
+}
+
+DocumentRecord {
+  configKey: string
+  createdAt: number
+  extension: string
+  id: string
+  metadata?: Record<string, unknown> | undefined
+  name: string
+  path?: string | undefined
+  status: DocumentStatus
+  writeId?: string | undefined
+}
+
+DocumentStatus = "importing" | "ready"
+
+ElementDefinition {
+  abstractType?: true | undefined
+  attributes: { readonly sequence: readonly string[]; readonly any?: Wildcard | undefined; readonly details: Readonly<Record<string, AttributeDefinition>>; readonly identityFields?: readonly string[] | undefined; }
+  children: { readonly sequence: readonly string[]; readonly any?: true | undefined; readonly details: Readonly<Record<string, ChildDefinition>>; }
+  constraints?: readonly IdentityConstraint[] | undefined
+  contentModel?: undefined | { readonly kind: "any"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } & Wildcard | { readonly kind: "element"; readonly name: string; readonly namespace?: string | undefined; readonly declaration?: string | undefined; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } | { readonly kind: "sequence" | "choice" | "all"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; readonly particles: readonly Particle[]; }
+  declarations?: Readonly<Record<string, DeclarationDefinition>> | undefined
+  documentation?: string | undefined
+  global?: true | undefined
+  namespace: Namespace
+  nillable?: true | undefined
+  parents: readonly string[]
+  tag: string
+  textContent?: TextContent | undefined
+  type?: string | undefined
+  variants?: readonly string[] | undefined
+}
+
+ElementsOf<GenericConfig extends AnyDialecteConfig> {
+  [Symbol.iterator]: () => StringIterator<string>
+  anchor: (name: string) => string
+  at: (index: number) => string | undefined
+  big: () => string
+  blink: () => string
+  bold: () => string
+  charAt: (pos: number) => string
+  charCodeAt: (index: number) => number
+  codePointAt: (pos: number) => number | undefined
+  concat: (...strings: string[]) => string
+  endsWith: (searchString: string, endPosition?: number | undefined) => boolean
+  fixed: () => string
+  fontcolor: (color: string) => string
+  fontsize: { (size: number): string; (size: string): string; }
+  includes: (searchString: string, position?: number | undefined) => boolean
+  indexOf: (searchString: string, position?: number | undefined) => number
+  isWellFormed: () => boolean
+  italics: () => string
+  lastIndexOf: (searchString: string, position?: number | undefined) => number
+  length: number
+  link: (url: string) => string
+  localeCompare: { (that: string): number; (that: string, locales?: string | string[] | undefined, options?: CollatorOptions | undefined): number; (that: string, locales?: LocalesArgument, options?: CollatorOptions | undefined): number; }
+  match: { (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }
+  matchAll: (regexp: RegExp) => RegExpStringIterator<RegExpExecArray>
+  normalize: { (form: "NFC" | "NFD" | "NFKC" | "NFKD"): string; (form?: string | undefined): string; }
+  padEnd: (maxLength: number, fillString?: string | undefined) => string
+  padStart: (maxLength: number, fillString?: string | undefined) => string
+  repeat: (count: number) => string
+  replace: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }
+  replaceAll: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }
+  search: { (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }
+  slice: (start?: number | undefined, end?: number | undefined) => string
+  small: () => string
+  split: { (separator: string | RegExp, limit?: number | undefined): string[]; (splitter: { [Symbol.split](string: string, limit?: number | undefined): string[]; }, limit?: number | undefined): string[]; }
+  startsWith: (searchString: string, position?: number | undefined) => boolean
+  strike: () => string
+  sub: () => string
+  substr: (from: number, length?: number | undefined) => string
+  substring: (start: number, end?: number | undefined) => string
+  sup: () => string
+  toLocaleLowerCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLocaleUpperCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLowerCase: () => string
+  toString: () => string
+  toUpperCase: () => string
+  toWellFormed: () => string
+  trim: () => string
+  trimEnd: () => string
+  trimLeft: () => string
+  trimRight: () => string
+  trimStart: () => string
+  valueOf: () => string
+  [key: number]: string
+}
+
+ExportFileOptions {
+  batchSize?: number | undefined
+  indent?: false | true | undefined
+  withDatabaseIds?: false | true | undefined
+}
+
+ExportFileParams {
+  documentId: string
+  onProgress?: (progress: ExportProgress) => void | undefined
+  options?: ExportFileOptions | undefined
+  signal?: AbortSignal | undefined
+}
+
+ExportFileResult {
+  file: Blob
+  filename: string
+  perf?: PerfSnapshot | undefined
+}
+
+ExportOptions {
+  useBrowserApi: false | true
+}
+
+ExportProgress {
+  recordsWritten: number
+  totalRecords: number
+}
+
+Facets {
+  enumeration?: readonly string[] | undefined
+  fractionDigits?: number | undefined
+  length?: number | undefined
+  maxExclusive?: string | undefined
+  maxInclusive?: string | undefined
+  maxLength?: number | undefined
+  minExclusive?: string | undefined
+  minInclusive?: string | undefined
+  minLength?: number | undefined
+  pattern?: readonly (readonly string[])[] | undefined
+  totalDigits?: number | undefined
+  whiteSpace?: "collapse" | "preserve" | "replace" | undefined
+}
+
+FieldPath {
+  attribute?: NameTest | undefined
+  deep?: true | undefined
+  steps: readonly NameTest[]
+}
+
+FilterAttributes<GenericVersion extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericVersion>> {
+  [key: string]: GenericVersion["attributes"]["byTag"][GenericElement][string] | GenericVersion["attributes"]["byTag"][GenericElement][string][] | undefined
+}
+
+FindAncestorsOptions<GenericConfig extends AnyDialecteConfig> {
+  depth?: number | undefined
+  order?: "bottom-up" | "top-down" | undefined
+  stopAtTagName?: ElementsOf<GenericConfig> | undefined
+}
+
+FindDescendantsParams<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>, GenericCollect extends Collect<GenericConfig, GenericElement>> {
+  collect: GenericCollect
+  omit?: OmitEntry<GenericConfig>[] | undefined
+}
+
+FindDescendantsReturn<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>, GenericCollect extends Collect<GenericConfig, GenericElement>> = { [K in ExtractCollectTags<GenericCollect> & ElementsOf<GenericConfig>]: TrackedRecord<GenericConfig, K>[]; }
+
+FullAttributeObjectOf<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  name: AttributesOf<GenericConfig, GenericElement, never>
+  namespace?: Namespace | undefined
+  value: GenericConfig["attributes"]["byTag"][GenericElement][AttributesOf<GenericConfig, GenericElement, never>]
+}
+
+GetSnapshotOptions<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig> = ElementsOf<GenericConfig>> {
+  ancestors?: number | undefined
+  as?: "both" | "tree" | "xml" | undefined
+  declareNamespaces?: false | true | undefined
+  depth?: number | undefined
+  includeDeleted?: false | true | undefined
+  includeXmlDeclaration?: false | true | undefined
+  omit?: OmitEntry<GenericConfig>[] | undefined
+  ref?: ChildRelationship<GenericConfig, GenericElement> | ParentRelationship<GenericConfig, GenericElement> | RawRecord<GenericConfig, GenericElement> | Ref<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement> | undefined
+  siblings?: false | true | undefined | { expand?: boolean | undefined; }
+  unwrap?: ElementsOf<GenericConfig>[] | undefined
+}
+
+GetTreeParams<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  depth?: number | undefined
+  omit?: OmitEntry<GenericConfig>[] | undefined
+  select?: TreeSelect<GenericConfig, GenericElement> | undefined
+  unwrap?: ElementsOf<GenericConfig>[] | undefined
+}
+
+IOConfig {
+  exportOptions?: Partial<ExportOptions> | undefined
+  importOptions?: Partial<ImportOptions> | undefined
+  supportedFileExtensions: readonly string[]
+}
+
+IdentityConstraint {
+  fields: readonly (readonly FieldPath[])[]
+  kind: "key" | "keyref" | "unique"
+  name: string
+  namespace: string
+  refer?: undefined | { readonly name: string; readonly namespace: string; }
+  selector: readonly SelectorPath[]
+}
+
+ImportFileOptions {
+  chunkOptions?: Partial<ChunkOptions> | undefined
+  configKey?: string | undefined
+  metadata?: Record<string, unknown> | undefined
+  path?: string | undefined
+  useCustomRecordsIds?: false | true | undefined
+}
+
+ImportFileParams {
+  file: File
+  onProgress?: (progress: ImportProgress) => void | undefined
+  options?: ImportFileOptions | undefined
+  signal?: AbortSignal | undefined
+  writeId?: string | undefined
+}
+
+ImportFileResult {
+  diagnostics: Diagnostic[]
+  perf?: PerfSnapshot | undefined
+  record: DocumentRecord
+  recordCount: number
+}
+
+ImportOptions {
+  batchSize: number
+  chunkSize: number
+  useBrowserApi: false | true
+}
+
+ImportPhase = "indexing" | "storing"
+
+ImportProgress {
+  bytesRead: number
+  phase: ImportPhase
+  totalBytes: number
+}
+
+ImportSession<GenericDiagnostic extends Diagnostic = Diagnostic> {
+  afterImport?: () => Promise<AfterImportResult<GenericDiagnostic>> | undefined
+  beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[]; }) => void | undefined
+  recordTagNames?: readonly string[] | undefined
+}
+
+NameTest {
+  name?: string | undefined
+  namespace?: string | undefined
+}
+
+Namespace {
+  prefix: string
+  uri: string
+}
+
+NamespaceKeysUsedByElement<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  [Symbol.iterator]: () => StringIterator<string>
+  anchor: (name: string) => string
+  at: (index: number) => string | undefined
+  big: () => string
+  blink: () => string
+  bold: () => string
+  charAt: (pos: number) => string
+  charCodeAt: (index: number) => number
+  codePointAt: (pos: number) => number | undefined
+  concat: (...strings: string[]) => string
+  endsWith: (searchString: string, endPosition?: number | undefined) => boolean
+  fixed: () => string
+  fontcolor: (color: string) => string
+  fontsize: { (size: number): string; (size: string): string; }
+  includes: (searchString: string, position?: number | undefined) => boolean
+  indexOf: (searchString: string, position?: number | undefined) => number
+  isWellFormed: () => boolean
+  italics: () => string
+  lastIndexOf: (searchString: string, position?: number | undefined) => number
+  length: number
+  link: (url: string) => string
+  localeCompare: { (that: string): number; (that: string, locales?: string | string[] | undefined, options?: CollatorOptions | undefined): number; (that: string, locales?: LocalesArgument, options?: CollatorOptions | undefined): number; }
+  match: { (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }
+  matchAll: (regexp: RegExp) => RegExpStringIterator<RegExpExecArray>
+  normalize: { (form: "NFC" | "NFD" | "NFKC" | "NFKD"): string; (form?: string | undefined): string; }
+  padEnd: (maxLength: number, fillString?: string | undefined) => string
+  padStart: (maxLength: number, fillString?: string | undefined) => string
+  repeat: (count: number) => string
+  replace: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }
+  replaceAll: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }
+  search: { (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }
+  slice: (start?: number | undefined, end?: number | undefined) => string
+  small: () => string
+  split: { (separator: string | RegExp, limit?: number | undefined): string[]; (splitter: { [Symbol.split](string: string, limit?: number | undefined): string[]; }, limit?: number | undefined): string[]; }
+  startsWith: (searchString: string, position?: number | undefined) => boolean
+  strike: () => string
+  sub: () => string
+  substr: (from: number, length?: number | undefined) => string
+  substring: (start: number, end?: number | undefined) => string
+  sup: () => string
+  toLocaleLowerCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLocaleUpperCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLowerCase: () => string
+  toString: () => string
+  toUpperCase: () => string
+  toWellFormed: () => string
+  trim: () => string
+  trimEnd: () => string
+  trimLeft: () => string
+  trimRight: () => string
+  trimStart: () => string
+  valueOf: () => string
+  [key: number]: string
+}
+
+NamespacedAttributesValueObjectOf<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>, GenericNamespaceKey extends NamespaceKeysOf<GenericConfig>> = { [K in keyof GenericConfig["attributes"]["byTag"][GenericElement] as K extends `${PrefixOfNamespaceKey<GenericConfig, GenericNamespaceKey>}:${infer GenericLocal}` ? GenericLocal : never]: GenericConfig["attributes"]["byTag"][GenericElement][K]; }
+
+OmitEntry<GenericConfig extends AnyDialecteConfig> = GenericConfig["elements"][number] | { [K in ElementsOf<GenericConfig>]?: { where?: FilterAttributes<GenericConfig, K> | undefined; scope?: "children" | "self" | undefined; } | undefined; }
+
+OmitEntryWithFilter<GenericConfig extends AnyDialecteConfig> = { [K in ElementsOf<GenericConfig>]?: { where?: FilterAttributes<GenericConfig, K> | undefined; scope?: "children" | "self" | undefined; } | undefined; }
+
+Operation<GenericConfig extends AnyDialecteConfig> = { status: "created"; oldRecord: undefined; newRecord: RawRecord<GenericConfig, ElementsOf<GenericConfig>>; } | { status: "deleted"; oldRecord: RawRecord<GenericConfig, ElementsOf<GenericConfig>>; newRecord: undefined; } | { status: "updated"; oldRecord: RawRecord<GenericConfig, ElementsOf<GenericConfig>>; newRecord: RawRecord<GenericConfig, ElementsOf<GenericConfig>>; }
+
+OperationStatus = "created" | "deleted" | "unchanged" | "updated"
+
+ParentRelationship<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  id: string
+  tagName: ParentsOf<GenericConfig, GenericElement>
+}
+
+ParentsOf<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  [Symbol.iterator]: () => StringIterator<string>
+  anchor: (name: string) => string
+  at: (index: number) => string | undefined
+  big: () => string
+  blink: () => string
+  bold: () => string
+  charAt: (pos: number) => string
+  charCodeAt: (index: number) => number
+  codePointAt: (pos: number) => number | undefined
+  concat: (...strings: string[]) => string
+  endsWith: (searchString: string, endPosition?: number | undefined) => boolean
+  fixed: () => string
+  fontcolor: (color: string) => string
+  fontsize: { (size: number): string; (size: string): string; }
+  includes: (searchString: string, position?: number | undefined) => boolean
+  indexOf: (searchString: string, position?: number | undefined) => number
+  isWellFormed: () => boolean
+  italics: () => string
+  lastIndexOf: (searchString: string, position?: number | undefined) => number
+  length: number
+  link: (url: string) => string
+  localeCompare: { (that: string): number; (that: string, locales?: string | string[] | undefined, options?: CollatorOptions | undefined): number; (that: string, locales?: LocalesArgument, options?: CollatorOptions | undefined): number; }
+  match: { (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }
+  matchAll: (regexp: RegExp) => RegExpStringIterator<RegExpExecArray>
+  normalize: { (form: "NFC" | "NFD" | "NFKC" | "NFKD"): string; (form?: string | undefined): string; }
+  padEnd: (maxLength: number, fillString?: string | undefined) => string
+  padStart: (maxLength: number, fillString?: string | undefined) => string
+  repeat: (count: number) => string
+  replace: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }
+  replaceAll: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }
+  search: { (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }
+  slice: (start?: number | undefined, end?: number | undefined) => string
+  small: () => string
+  split: { (separator: string | RegExp, limit?: number | undefined): string[]; (splitter: { [Symbol.split](string: string, limit?: number | undefined): string[]; }, limit?: number | undefined): string[]; }
+  startsWith: (searchString: string, position?: number | undefined) => boolean
+  strike: () => string
+  sub: () => string
+  substr: (from: number, length?: number | undefined) => string
+  substring: (start: number, end?: number | undefined) => string
+  sup: () => string
+  toLocaleLowerCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLocaleUpperCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLowerCase: () => string
+  toString: () => string
+  toUpperCase: () => string
+  toWellFormed: () => string
+  trim: () => string
+  trimEnd: () => string
+  trimLeft: () => string
+  trimRight: () => string
+  trimStart: () => string
+  valueOf: () => string
+  [key: number]: string
+}
+
+Particle = { readonly kind: "any"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } & Wildcard | { readonly kind: "element"; readonly name: string; readonly namespace?: string | undefined; readonly declaration?: string | undefined; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } | { readonly kind: "sequence" | "choice" | "all"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; readonly particles: readonly Particle[]; }
+
+Perf {
+  count: (name: string) => void
+  log: () => void
+  merge: (params: { report: PerfSnapshot; prefix: string; }) => void
+  profile: <GenericResult>(name: string, fn: () => Promise<GenericResult>) => Promise<GenericResult>
+  report: () => PerfReport
+  reset: () => void
+  snapshot: () => PerfSnapshot
+  start: (name: string) => void
+  stop: (name: string) => void
+  time: <GenericResult>(name: string, fn: () => GenericResult) => GenericResult
+}
+
+PerfReport {
+  [key: string]: { calls: number; totalMs: number; avgMs: number; count?: number | undefined; }
+}
+
+PerfSnapshot {
+  spans: PerfSpan[]
+  timeOrigin: number
+  totals: PerfReport
+}
+
+PerfSpan {
+  duration: number
+  name: string
+  startTime: number
+}
+
+PlanInput {
+  label?: string | undefined
+  steps: number
+}
+
+ProgressReporter {
+  endPlan: () => void
+  forceClear: () => void
+  nextStep: (label?: string | undefined) => void
+  plan: (plan: PlanInput) => void
+}
+
+ProjectChannelMessage = { type: "blob-added"; blobId: string; documentId: string; timestamp: number; } | { type: "blob-attached"; blobId: string; ref: BlobAttachment; timestamp: number; } | { type: "blob-detached"; blobId: string; ref: { documentId: string; recordRef: string; }; timestamp: number; } | { type: "blob-removed"; blobId: string; timestamp: number; } | { type: "commit"; documentId: string; timestamp: number; } | { type: "document-imported"; documentId: string; timestamp: number; } | { type: "document-removed"; documentId: string; timestamp: number; } | { type: "document-updated"; documentId: string; timestamp: number; } | { type: "init-empty-document"; documentId: string; timestamp: number; }
+
+QualifiedAttribute<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  name: AttributesOf<GenericConfig, GenericElement>
+  namespace: Namespace
+  value: string
+}
+
+Query<GenericConfig extends AnyDialecteConfig> {
+  _any?: AnyQuery<GenericConfig> | undefined
+  _perf: Perf
+  any: AnyQuery<GenericConfig>
+  context: Context<GenericConfig>
+  dialecteConfig: GenericConfig
+  documentId: string
+  findAncestors: <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options?: FindAncestorsOptions<GenericConfig> | undefined) => Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]>
+  findByAttributes: <GenericElement extends ElementsOf<GenericConfig>>(params: { tagName: GenericElement; attributes: FilterAttributes<GenericConfig, GenericElement>; }) => Promise<TrackedRecord<GenericConfig, GenericElement>[]>
+  findDescendants: { <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined): Promise<Partial<Record<DescendantsOf<GenericConfig, GenericElement>, TrackedRecord<GenericConfig, DescendantsOf<GenericConfig, GenericElement>>[]>>>; <GenericElement extends ElementsOf<GenericConfig>, GenericCollect extends Collect<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>>; }
+  getAttribute: { <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { name: AttributesOf<GenericConfig, GenericElement> | (string & {}); namespace?: (string & {}) | NamespaceKeysUsedByElement<GenericConfig, GenericElement> | undefined; fullObject?: false | undefined; defaults?: AttributeDefaults | undefined; }): Promise<"" | FullAttributeObjectOf<GenericConfig, GenericElement>["value"]>; <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { name: (string & {}) | AttributesOf<GenericConfig, GenericElement>; namespace?: (string & {}) | NamespaceKeysUsedByElement<GenericConfig, GenericElement> | undefined; fullObject: true; defaults?: AttributeDefaults | undefined; }): Promise<FullAttributeObjectOf<GenericConfig, GenericElement> | undefined>; }
+  getAttributes: { <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params?: { namespace?: undefined; fullObject?: false | undefined; defaults?: AttributeDefaults | undefined; } | undefined): Promise<GenericConfig["attributes"]["byTag"][GenericElement]>; <GenericElement extends ElementsOf<GenericConfig>, GenericNamespaceKey extends NamespaceKeysUsedByElement<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { namespace: GenericNamespaceKey; fullObject?: false | undefined; defaults?: AttributeDefaults | undefined; }): Promise<NamespacedAttributesValueObjectOf<GenericConfig, GenericElement, GenericNamespaceKey>>; <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { namespace: string; fullObject?: false | undefined; defaults?: AttributeDefaults | undefined; }): Promise<Record<string, string>>; <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, params: { fullObject: true; defaults?: AttributeDefaults | undefined; }): Promise<FullAttributeObjectOf<GenericConfig, GenericElement>[]>; }
+  getChild: <GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement> | undefined>
+  getChildren: <GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement>[]>
+  getDefinition: <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<ResolvedDefinition | undefined>
+  getDocumentInfo: () => Promise<DocumentRecord>
+  getOperations: () => StagedOperations<GenericConfig>
+  getRecord: <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<TrackedRecord<GenericConfig, GenericElement> | undefined>
+  getRecords: <GenericElement extends ElementsOf<GenericConfig>>(refsOrRecords: (RefOrRecord<GenericConfig, GenericElement> | undefined)[]) => Promise<(TrackedRecord<GenericConfig, GenericElement> | undefined)[]>
+  getRecordsByTagName: <GenericElement extends ElementsOf<GenericConfig>>(tagName: GenericElement) => Promise<TrackedRecord<GenericConfig, GenericElement>[]>
+  getRoot: () => Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>>>
+  getSnapshot: { <GenericElement extends ElementsOf<GenericConfig>>(options?: (GetSnapshotOptions<GenericConfig, GenericElement> & { as?: "tree" | undefined; }) | undefined): Promise<AnyTreeRecord>; <GenericElement extends ElementsOf<GenericConfig>>(options: GetSnapshotOptions<GenericConfig, GenericElement> & { as: "xml"; }): Promise<string>; <GenericElement extends ElementsOf<GenericConfig>>(options: GetSnapshotOptions<GenericConfig, GenericElement> & { as: "both"; }): Promise<SnapshotResult>; }
+  getTree: <GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options?: GetTreeParams<GenericConfig, GenericElement> | undefined) => Promise<TreeRecord<GenericConfig, GenericElement> | undefined>
+  perf: Perf
+  store: Store
+}
+
+RawRecord<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  attributes: (Attribute<GenericConfig, GenericElement> | QualifiedAttribute<GenericConfig, GenericElement>)[]
+  children: ChildRelationship<GenericConfig, GenericElement>[]
+  id: string
+  namespace: Namespace
+  parent: ParentRelationship<GenericConfig, GenericElement> | null
+  tagName: GenericElement
+  value: string
+}
+
+RecordPatch {
+  attributes?: AnyAttribute[] | undefined
+  children?: AnyRelationship[] | undefined
+  namespace?: Namespace | undefined
+  parent?: AnyRelationship | null | undefined
+  recordId: string
+  removeAttributes?: readonly string[] | undefined
+  tagName?: string | undefined
+  value?: string | undefined
+}
+
+RecordSchema {
+  arrayIndexes: string[]
+  autoIncrement?: false | true | undefined
+  compoundIndexes: string[][]
+  indexes: string[]
+  primaryKey: string
+}
+
+Ref<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  id?: string | undefined
+  tagName: (GenericConfig["singletonElements"] extends readonly (infer E)[] ? E : never) & string | GenericConfig["rootElementName"] | string
+}
+
+ResolvedDefinition {
+  abstractType?: true | undefined
+  attributes: { readonly sequence: readonly string[]; readonly any?: Wildcard | undefined; readonly details: Readonly<Record<string, AttributeDefinition>>; readonly identityFields?: readonly string[] | undefined; }
+  children: { readonly sequence: readonly string[]; readonly any?: true | undefined; readonly details: Readonly<Record<string, ChildDefinition>>; }
+  constraints?: readonly IdentityConstraint[] | undefined
+  contentModel?: undefined | { readonly kind: "any"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } & Wildcard | { readonly kind: "element"; readonly name: string; readonly namespace?: string | undefined; readonly declaration?: string | undefined; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; } | { readonly kind: "sequence" | "choice" | "all"; readonly minOccurs?: number | undefined; readonly maxOccurs?: number | undefined; readonly particles: readonly Particle[]; }
+  documentation?: string | undefined
+  global?: true | undefined
+  namespace: Namespace
+  nillable?: true | undefined
+  parents: readonly string[]
+  tag: string
+  textContent?: TextContent | undefined
+  type?: string | undefined
+  variants?: readonly string[] | undefined
+}
+
+RootElementOf<GenericConfig extends AnyDialecteConfig> {
+  [Symbol.iterator]: () => StringIterator<string>
+  anchor: (name: string) => string
+  at: (index: number) => string | undefined
+  big: () => string
+  blink: () => string
+  bold: () => string
+  charAt: (pos: number) => string
+  charCodeAt: (index: number) => number
+  codePointAt: (pos: number) => number | undefined
+  concat: (...strings: string[]) => string
+  endsWith: (searchString: string, endPosition?: number | undefined) => boolean
+  fixed: () => string
+  fontcolor: (color: string) => string
+  fontsize: { (size: number): string; (size: string): string; }
+  includes: (searchString: string, position?: number | undefined) => boolean
+  indexOf: (searchString: string, position?: number | undefined) => number
+  isWellFormed: () => boolean
+  italics: () => string
+  lastIndexOf: (searchString: string, position?: number | undefined) => number
+  length: number
+  link: (url: string) => string
+  localeCompare: { (that: string): number; (that: string, locales?: string | string[] | undefined, options?: CollatorOptions | undefined): number; (that: string, locales?: LocalesArgument, options?: CollatorOptions | undefined): number; }
+  match: { (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }
+  matchAll: (regexp: RegExp) => RegExpStringIterator<RegExpExecArray>
+  normalize: { (form: "NFC" | "NFD" | "NFKC" | "NFKD"): string; (form?: string | undefined): string; }
+  padEnd: (maxLength: number, fillString?: string | undefined) => string
+  padStart: (maxLength: number, fillString?: string | undefined) => string
+  repeat: (count: number) => string
+  replace: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }
+  replaceAll: { (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }
+  search: { (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }
+  slice: (start?: number | undefined, end?: number | undefined) => string
+  small: () => string
+  split: { (separator: string | RegExp, limit?: number | undefined): string[]; (splitter: { [Symbol.split](string: string, limit?: number | undefined): string[]; }, limit?: number | undefined): string[]; }
+  startsWith: (searchString: string, position?: number | undefined) => boolean
+  strike: () => string
+  sub: () => string
+  substr: (from: number, length?: number | undefined) => string
+  substring: (start: number, end?: number | undefined) => string
+  sup: () => string
+  toLocaleLowerCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLocaleUpperCase: { (locales?: string | string[] | undefined): string; (locales?: LocalesArgument): string; }
+  toLowerCase: () => string
+  toString: () => string
+  toUpperCase: () => string
+  toWellFormed: () => string
+  trim: () => string
+  trimEnd: () => string
+  trimLeft: () => string
+  trimRight: () => string
+  trimStart: () => string
+  valueOf: () => string
+  [key: number]: string
+}
+
+SelectorPath {
+  deep?: true | undefined
+  steps: readonly NameTest[]
+}
+
+SnapshotResult {
+  tree: AnyTreeRecord
+  xmlString: string
+}
+
+StagedOperations<GenericConfig extends AnyDialecteConfig> {
+  byId: Map<string, Operation<GenericConfig>>
+  log: Operation<GenericConfig>[]
+}
+
+StorageKind<GenericType extends string = string> {
+  id: string
+  storeOf: (params: { name: string; storage: Extract<{ type: "local"; }, { type: GenericType; }> | Extract<{ type: "inMemory"; writable?: boolean | undefined; }, { type: GenericType; }> | Extract<{ type: "custom"; store: Store; }, { type: GenericType; }>; runtime: StoreRuntime; dialecteId?: string | undefined; perf?: Perf | undefined; }) => Store
+  testStoreOf?: (params: { name: string; storage: Extract<{ type: "local"; }, { type: GenericType; }> | Extract<{ type: "inMemory"; writable?: boolean | undefined; }, { type: GenericType; }> | Extract<{ type: "custom"; store: Store; }, { type: GenericType; }>; dialecte: StorageKindDialecte; perf?: boolean | undefined; }) => Promise<Store> | undefined
+}
+
+StorageKindDialecte {
+  configs: Readonly<Record<string, AnyDialecteConfig>>
+  createHooks?: () => DialecteHooks<AnyDialecteConfig> | undefined
+  defaultConfigKey: string
+  id: string
+}
+
+Store {
+  addBlob: (entry: BlobRecord, data: Blob) => Promise<void>
+  attachBlob: (blobId: string, ref: BlobAttachment) => Promise<void>
+  bulkWrite: (documentId: string, ops: { creates?: AnyRawRecord[] | undefined; updates?: RecordPatch[] | undefined; deletes?: string[] | undefined; }) => Promise<void>
+  close: () => Promise<void>
+  commit: (params: { documentId: string; writeId?: string | undefined; creates: AnyRawRecord[]; updates: AnyRawRecord[]; deletes: string[]; onProgress: (current: number, total: number) => void; }) => Promise<void>
+  count: (documentId: string) => Promise<number>
+  destroy: () => Promise<void>
+  detachBlob: (blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>
+  exportFile: (params: ExportFileParams) => Promise<ExportFileResult>
+  get: (id: string, documentId: string) => Promise<AnyRawRecord | undefined>
+  getBlob: (blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>
+  getBlobsByDocument: (documentId: string) => Promise<BlobRecord[]>
+  getBlobsByRecord: (documentId: string, recordRef: string) => Promise<BlobRecord[]>
+  getByDocumentId: (documentId: string) => Promise<AnyRawRecord[]>
+  getByTagNameInDocument: (tagName: string, documentId: string) => Promise<AnyRawRecord[]>
+  getChangeLog: (documentId: string) => Promise<ChangeLogEntry[]>
+  getDatabaseInstance: () => unknown
+  getDocument: (documentId: string) => Promise<DocumentRecord | undefined>
+  getDocuments: () => Promise<DocumentRecord[]>
+  getHistoryStatus: (documentId: string) => Promise<{ canUndo: boolean; canRedo: boolean; }>
+  getMany: (ids: string[], documentId: string) => Promise<(AnyRawRecord | undefined)[]>
+  getStandaloneBlobs: () => Promise<BlobRecord[]>
+  getWriteOutcome: (params: { writeId: string; }) => Promise<WriteOutcome>
+  importFile: (params: ImportFileParams) => Promise<ImportFileResult>
+  isDocumentReadable: (documentId: string) => Promise<boolean>
+  name: string
+  open: () => Promise<void>
+  reconcile: (documentId?: string | undefined) => Promise<void>
+  redo: (documentId: string) => Promise<void>
+  registerDocument: (file: DocumentRecord) => Promise<void>
+  removeBlob: (blobId: string) => Promise<void>
+  removeDocument: (documentId: string) => Promise<void>
+  subscribe?: (listener: (notice: StoreNotice) => void) => () => void | undefined
+  undo: (documentId: string) => Promise<void>
+  updateDocument: (documentId: string, updates: Partial<Pick<DocumentRecord, "name" | "path" | "metadata">>) => Promise<void>
+}
+
+StoreChange {
+  message: ProjectChannelMessage
+  own: false | true
+  type: "change"
+}
+
+StoreNotice = { type: "change"; message: ProjectChannelMessage; own: boolean; } | { type: "resync"; }
+
+StoreResync {
+  type: "resync"
+}
+
+StoreRuntime {
+  configs: Record<string, AnyDialecteConfig>
+  defaultConfigKey: string
+  dialecteVersion?: string | undefined
+  hooks?: DialecteHooks<AnyDialecteConfig> | undefined
+  perf?: false | true | undefined
+}
+
+TextContent {
+  default?: string | undefined
+  fixed?: string | undefined
+  type?: undefined | { readonly builtin: string; readonly facets?: Facets | undefined; } | { readonly list: DataType; readonly facets?: Facets | undefined; } | { readonly union: readonly DataType[]; readonly facets?: Facets | undefined; }
+}
+
+TrackedRecord<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  attributes: (Attribute<GenericConfig, GenericElement> | QualifiedAttribute<GenericConfig, GenericElement>)[]
+  children: ChildRelationship<GenericConfig, GenericElement>[]
+  id: string
+  namespace: Namespace
+  parent: ParentRelationship<GenericConfig, GenericElement> | null
+  status: OperationStatus
+  tagName: GenericElement
+  value: string
+}
+
+TreeRecord<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>> {
+  attributes: (Attribute<GenericConfig, GenericElement> | QualifiedAttribute<GenericConfig, GenericElement>)[]
+  children: ChildRelationship<GenericConfig, GenericElement>[]
+  id: string
+  namespace: Namespace
+  parent: ParentRelationship<GenericConfig, GenericElement> | null
+  status: OperationStatus
+  tagName: GenericElement
+  tree: TreeRecord<GenericConfig, ChildrenOf<GenericConfig, GenericElement>>[]
+  value: string
+}
+
+TreeSelect<GenericConfig extends AnyDialecteConfig, GenericParent extends ElementsOf<GenericConfig>> {
+  recursive?: false | number | true | undefined
+  where?: FilterAttributes<GenericConfig, GenericParent> | undefined
+}
+
+Wildcard {
+  namespace?: readonly string[] | undefined
+  notNamespace?: readonly string[] | undefined
+  processContents: "lax" | "skip" | "strict"
+}
+
+WriteOutcome = "applied" | "not-applied" | "running"

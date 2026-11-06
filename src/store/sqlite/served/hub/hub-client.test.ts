@@ -33,6 +33,7 @@ import {
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { createDialecteError, toDialecteError } from '@/errors'
+import { SQLITE_ERRORS } from '@/store/sqlite/sqlite-errors.constants'
 import { withSqliteEngine, withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
 import { TEST_DIALECTE } from '@/test'
 
@@ -48,7 +49,8 @@ import type { HubShell } from './hub-shell.types'
 import type { FakePage } from './hub.fixtures.types'
 import type { HubSpawner } from './hub.types'
 import type { RealmEngineSpawner } from './realm-host.types'
-import type { DialecteErrorKey } from '@/errors'
+import type { DialecteErrorDefinition, DialecteErrorKey } from '@/errors'
+import type { SqliteErrorKey } from '@/store/sqlite/sqlite-errors.types'
 
 vi.setConfig({ testTimeout: ENGINE_WORKER_CASE_TIMEOUT_MS })
 
@@ -213,7 +215,7 @@ function fakeHub(
 					? {
 							type: 'hello-refused',
 							error: toThrownData({
-								thrown: createDialecteError('STORE_PROTOCOL_MISMATCH', {
+								thrown: createDialecteError(SQLITE_ERRORS.STORE_PROTOCOL_MISMATCH, {
 									detail: 'another protocol',
 								}),
 							}),
@@ -523,7 +525,7 @@ describe('a realm connected to the hub', () => {
 		type TestCase = {
 			spawners: RealmEngineSpawner[]
 			/** The key it is refused with; none: it gets the page's connection. */
-			refusedWith?: DialecteErrorKey
+			refusedWith?: DialecteErrorKey | SqliteErrorKey
 			/** The engines the hub is told the page adds; none: nothing said. */
 			added?: HubSpawner[]
 		}
@@ -545,17 +547,17 @@ describe('a realm connected to the hub', () => {
 			'its dialecte at another version → STORE_HUB_SPAWNERS_FIXED, nothing said, the page’s connection kept':
 				{
 					spawners: [{ ...SPAWNER, dialecteVersion: '99.0.0' }],
-					refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
+					refusedWith: SQLITE_ERRORS.STORE_HUB_SPAWNERS_FIXED.key,
 				},
 			'two versions of a dialecte the page does not run → STORE_HUB_SPAWNERS_FIXED, nothing added':
 				{
 					spawners: [OTHER, { ...OTHER, dialecteVersion: '99.0.0' }],
-					refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
+					refusedWith: SQLITE_ERRORS.STORE_HUB_SPAWNERS_FIXED.key,
 				},
 			'a new dialecte beside its dialecte at another version → STORE_HUB_SPAWNERS_FIXED, nothing added':
 				{
 					spawners: [OTHER, { ...SPAWNER, dialecteVersion: '99.0.0' }],
-					refusedWith: 'STORE_HUB_SPAWNERS_FIXED',
+					refusedWith: SQLITE_ERRORS.STORE_HUB_SPAWNERS_FIXED.key,
 				},
 		}
 		for (const [description, { spawners, refusedWith, added }] of Object.entries(testCases)) {
@@ -1223,7 +1225,7 @@ describe('a realm connected to the hub', () => {
 		expect(closeSpy).toHaveBeenCalled()
 	})
 
-	it('a child told `dropped` → its call in flight and its waiting call refused STORE_ENGINE_LOST realm-dropped, a later call the same', async () => {
+	it('a child told `dropped` → its call in flight and its waiting call refused STORE_CONNECTION_LOST realm-dropped, a later call the same', async () => {
 		const hub = fakeHub()
 		const child = await joinFakeHubAsChild({ hub })
 		onTestFinished(child.close)
@@ -2167,7 +2169,7 @@ describe('a realm connected to the hub', () => {
 			type: 'open-refused',
 			project,
 			dialecteId: TEST_DIALECTE.id,
-			error: refusalData({ key: 'PROJECT_ENGINE_UNAVAILABLE' }),
+			error: refusalData({ key: SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE }),
 		})
 		const refused = await outcomeOf({ promise: waiting })
 		expect(refused).toBe('PROJECT_ENGINE_UNAVAILABLE')
@@ -2348,14 +2350,14 @@ describe('a realm connected to the hub', () => {
 						project,
 						dialecteId: TEST_DIALECTE.id,
 						error: toThrownData({
-							thrown: createDialecteError('STORE_ENGINE_LOST', {
+							thrown: createDialecteError('STORE_CONNECTION_LOST', {
 								detail: 'the deleting view is gone',
 							}),
 						}),
 					}
 				},
 				openedMeanwhile: false,
-				outcome: 'STORE_ENGINE_LOST',
+				outcome: 'STORE_CONNECTION_LOST',
 				creationId: 'creation-1',
 			},
 		'deleted, another link of the realm opened meanwhile → that link asks the hub again (the project made anew)':
@@ -2420,7 +2422,7 @@ describe('a realm connected to the hub', () => {
 		})
 	}
 
-	it('a destroy elsewhere sent, then the hub gone before it answered → refused STORE_ENGINE_LOST: a view may have deleted part of the files', async () => {
+	it('a destroy elsewhere sent, then the hub gone before it answered → refused STORE_CONNECTION_LOST: a view may have deleted part of the files', async () => {
 		const hub = fakeHub()
 		const connection = await joinFakeHub({ hub })
 		onTestFinished(connection.close)
@@ -2435,7 +2437,7 @@ describe('a realm connected to the hub', () => {
 		await hub.next('destroy-elsewhere')
 		hub.end()
 		const destroyingOutcome = await destroying
-		expect(destroyingOutcome).toBe('STORE_ENGINE_LOST')
+		expect(destroyingOutcome).toBe('STORE_CONNECTION_LOST')
 	})
 
 	it('a destroy elsewhere refused before the hub held anything (another view uses the project) → its own link keeps its engine: nothing asked again', async () => {
@@ -2610,7 +2612,9 @@ describe('a realm connected to the hub', () => {
 			project,
 			dialecteId: TEST_DIALECTE.id,
 			error: toThrownData({
-				thrown: createDialecteError('PROJECT_ENGINE_UNAVAILABLE', { detail: 'no host for now' }),
+				thrown: createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE, {
+					detail: 'no host for now',
+				}),
 			}),
 		})
 		const outcome = await outcomeOf({ promise: waiting })
@@ -2751,7 +2755,7 @@ describe('a realm connected to the hub', () => {
 		expect(realmLocksAfter).toBe(realmLocksBefore + 2)
 	})
 
-	it('a child realm joining through a port its parent made → a client of the project’s engine; unbound → refused STORE_ENGINE_LOST realm-dropped', async () => {
+	it('a child realm joining through a port its parent made → a client of the project’s engine; unbound → refused STORE_CONNECTION_LOST realm-dropped', async () => {
 		const hub = serveHub()
 		const shell = await joinHub({ hub })
 		const project = uniqueProject()
@@ -2895,14 +2899,14 @@ function joinFakeHubAsChild(params: {
 	})
 }
 
-/** Why a call was refused `STORE_ENGINE_LOST` (its `meta.reason`), or what else it settled with. */
+/** Why a call was refused `STORE_CONNECTION_LOST` (its `meta.reason`), or what else it settled with. */
 async function lostReasonOf(params: { promise: Promise<unknown> }): Promise<unknown> {
 	try {
 		await params.promise
 		return 'resolved'
 	} catch (thrown) {
 		const error = toDialecteError(thrown)
-		return error?.key === 'STORE_ENGINE_LOST' ? error.meta?.reason : error?.key
+		return error?.key === 'STORE_CONNECTION_LOST' ? error.meta?.reason : error?.key
 	}
 }
 
@@ -2942,7 +2946,7 @@ async function engineLostHeard(params: { link: HubProjectLink }): Promise<void> 
 }
 
 /** A hub refusal of that key, as the hub sends it. */
-function refusalData(params: { key: DialecteErrorKey }): ThrownData {
+function refusalData(params: { key: DialecteErrorKey | DialecteErrorDefinition }): ThrownData {
 	return toThrownData({
 		thrown: createDialecteError(params.key, { detail: 'refused by the case' }),
 	})

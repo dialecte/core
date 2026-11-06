@@ -1,13 +1,15 @@
-import { realmSqliteStorage } from './sqlite-storage'
+import { SQLITE_ERRORS } from './sqlite-errors.constants'
+import { SQLITE_ENGINE_KEY } from './sqlite-storage.constants'
 
 import { throwDialecteError } from '@/errors'
 
-import type { SqliteEngineRegistration, SqliteStorage } from './sqlite-storage.types'
+import type { SqliteEngineHolder, SqliteEngineRegistration } from './sqlite-storage.types'
 
 /**
  * Tell this page where the app's SQLite engine is: `url`, its one worker file (a `?worker&url` import of the file that
  * calls `serveSqliteEngine`), and `dialectes`, the dialectes that file serves (their declarations fit; only each id and
- * version are kept, as plain data on the realm's `sqlite` storage kind, so every copy of the library finds them). Call
+ * version are kept, as plain data on the realm's `globalThis`, so every copy of the library of the same SQLite storage
+ * version finds them). Call
  * it once, before the first project opens on `sqlite`; a project of a dialecte it does not name is refused
  * `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`. The same URL and the same dialectes again, in any order, do nothing (a module
  * evaluated twice). Anything else is refused `STORE_SQLITE_ENGINE_FIXED`, the first kept: there is no additive call, the
@@ -20,36 +22,24 @@ export function registerSqliteEngine(params: SqliteEngineRegistration): void {
 	const { url, dialectes } = params
 	refuseTwoVersions({ dialectes })
 	const asked: SqliteEngineRegistration = { url, dialectes: idsAndVersionsOf({ dialectes }) }
-	const kind = realmKindOf({ url })
-	const registered = kind.engine
+	const registered = registeredSqliteEngine()
 	if (!registered) {
-		kind.engine = asked
+		putEngine({ engine: asked })
 		return
 	}
 	if (sameRegistration({ registered, asked })) return
-	throwDialecteError('STORE_SQLITE_ENGINE_FIXED', {
+	throwDialecteError(SQLITE_ERRORS.STORE_SQLITE_ENGINE_FIXED, {
 		detail: `This page's SQLite engine is registered already (${describeRegistration({ registration: registered })}), not ${describeRegistration({ registration: asked })}: an app names all its dialectes in one registration`,
 		meta: { registered, asked },
 	})
 }
 
 /**
- * The engine the app registered, read from the realm's `sqlite` storage kind: whichever copy of the library registered
- * it, this copy finds it. None until the app registers one.
+ * The engine the app registered, read from the realm's `globalThis`: whichever copy of the library of the same SQLite
+ * storage version registered it, this copy finds it. None until the app registers one.
  */
 export function registeredSqliteEngine(): SqliteEngineRegistration | undefined {
-	return realmSqliteStorage()?.engine
-}
-
-/** The kind to keep the registration on: importing `@dialecte/core/sqlite`, the only way here, has put it there. */
-function realmKindOf(params: { url: string }): SqliteStorage {
-	const kind = realmSqliteStorage()
-	if (!kind) {
-		throwDialecteError('ASSERTION_FAILED', {
-			detail: `The engine worker ${params.url} is registered in a realm with no \`sqlite\` storage kind: importing @dialecte/core/sqlite registers it`,
-		})
-	}
-	return kind
+	return (globalThis as SqliteEngineHolder)[SQLITE_ENGINE_KEY]
 }
 
 /** Each dialecte once, its id and version only: no hook, no config stays on the realm. */
@@ -80,7 +70,7 @@ function refuseTwoVersions(params: { dialectes: SqliteEngineRegistration['dialec
 	const spawners = conflicting.map(function asSpawner({ id, version }) {
 		return { dialecteId: id, dialecteVersion: version }
 	})
-	throwDialecteError('STORE_HUB_SPAWNERS_FIXED', {
+	throwDialecteError(SQLITE_ERRORS.STORE_HUB_SPAWNERS_FIXED, {
 		detail: `One registration names ${describeDialectes({ dialectes: conflicting })}: a page runs one version of each dialecte's engine`,
 		meta: { spawners },
 	})
@@ -115,4 +105,27 @@ function describeDialectes(params: { dialectes: SqliteEngineRegistration['dialec
 			return `${id}@${version}`
 		})
 		.join(', ')
+}
+
+/**
+ * A test's engine registration for its case (`undefined`: none); answers the restore, which puts back the engine
+ * registered before it, or none.
+ *
+ * @internal for tests
+ */
+export function replaceSqliteEngine(params: {
+	engine: SqliteEngineRegistration | undefined
+}): () => void {
+	const before = registeredSqliteEngine()
+	putEngine({ engine: params.engine })
+	return function restoreSqliteEngine() {
+		putEngine({ engine: before })
+	}
+}
+
+/** The realm's engine set to `engine`, or removed for none. */
+function putEngine(params: { engine: SqliteEngineRegistration | undefined }): void {
+	const holder = globalThis as SqliteEngineHolder
+	if (params.engine) holder[SQLITE_ENGINE_KEY] = params.engine
+	else delete holder[SQLITE_ENGINE_KEY]
 }

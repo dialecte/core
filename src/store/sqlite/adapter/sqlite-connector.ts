@@ -1,6 +1,7 @@
 import { createHubConnector } from '../served/client/hub-connector'
 import { runsDirectly } from '../served/client/worker-connector'
 import { keptHubConnection, openHubConnection } from '../served/hub/hub-client'
+import { SQLITE_ERRORS } from '../sqlite-errors.constants'
 import { refuseWithoutStorage, storesHere } from './realm-storage'
 import { sqliteHubSpawnersOf } from './sqlite-hub-spawner'
 import { createSqliteWorkerConnector } from './sqlite-worker-connector'
@@ -112,8 +113,8 @@ function namingDialecte(params: {
 /** `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`: the app told this page of no engine worker for the dialecte. */
 function refuseNotRegistered(params: { name: string; dialecteId: string }): never {
 	const { name, dialecteId } = params
-	throwDialecteError('PROJECT_SQLITE_ENGINE_NOT_REGISTERED', {
-		detail: `Project "${name}" asks for SQLite storage, but no engine is registered for ${dialecteId}: call \`registerSqliteEngine({ url, dialectes })\` from '@dialecte/core/sqlite' once, before the first project opens, naming ${dialecteId} among the dialectes of the app's engine worker`,
+	throwDialecteError(SQLITE_ERRORS.PROJECT_SQLITE_ENGINE_NOT_REGISTERED, {
+		detail: `Project "${name}" asks for SQLite storage, but no engine is registered for ${dialecteId}: call \`registerSqliteEngine({ url, dialectes })\` from '@dialecte/core/sqlite' once, before the first project opens, naming ${dialecteId} among the dialectes of the app's engine worker. Registered already? Then a copy of @dialecte/core of another SQLite version registered it (a dialecte bringing its own core): align the core versions`,
 		meta: { project: name, dialecteId },
 	})
 }

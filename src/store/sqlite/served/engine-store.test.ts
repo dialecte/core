@@ -17,7 +17,7 @@ import { createDialecteError } from '@/errors'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { StoreNotice, WriteOutcome } from '../../store.types'
-import type { EngineLostReason } from './client/client.types'
+import type { ConnectionLostReason } from './client/client.types'
 import type {
 	CallLog,
 	GatedCall,
@@ -106,7 +106,7 @@ describe('EngineStore', () => {
 function losingConnector(params: {
 	name: string
 	member: keyof EngineApi
-	reason: EngineLostReason
+	reason: ConnectionLostReason
 	losses?: number
 	calls: CallLog
 }): EngineConnector {
@@ -115,7 +115,7 @@ function losingConnector(params: {
 	let engines = 0
 	const inner = createInProcessConnector({ name, dialecteId: TEST_DIALECTE.id })
 	function lostError(): Error {
-		return createDialecteError('STORE_ENGINE_LOST', {
+		return createDialecteError('STORE_CONNECTION_LOST', {
 			detail: 'the engine was lost while the call waited',
 			meta: { reason },
 		})
@@ -160,7 +160,7 @@ function losingConnector(params: {
  */
 async function losingStore(params: {
 	member: keyof EngineApi
-	reason: EngineLostReason
+	reason: ConnectionLostReason
 	losses?: number
 }): Promise<{ store: EngineStore; calls: CallLog }> {
 	const seeded = await seededStore()
@@ -337,7 +337,8 @@ describe('EngineStore, an engine lost while a call waited', () => {
 			it(`${member}, a read, lost with its host → made once more, on the next engine; the store unchanged`, async () => {
 				const { store, calls } = await losingStore({ member, reason: 'host-gone' })
 				const before = await stateOf({ name: store.name })
-				await act(store)
+				// a loss it does not recognise reaches the caller: the assertion, not the case, then fails
+				await expect(act(store).then(() => 'answered')).resolves.toBe('answered')
 				const reached = enginesReached({ calls, member })
 				expect(reached).toHaveLength(2)
 				expect(reached[1]).toBeGreaterThan(reached[0] ?? Infinity)
@@ -348,9 +349,9 @@ describe('EngineStore, an engine lost while a call waited', () => {
 			})
 			continue
 		}
-		it(`${member}, not a read, lost with its host → refused STORE_ENGINE_LOST, not made again`, async () => {
+		it(`${member}, not a read, lost with its host → refused STORE_CONNECTION_LOST, not made again`, async () => {
 			const { store, calls } = await losingStore({ member, reason: 'host-gone' })
-			await expectRejectsWith({ action: act(store), key: 'STORE_ENGINE_LOST' })
+			await expectRejectsWith({ action: act(store), key: 'STORE_CONNECTION_LOST' })
 			expect(callsOf({ calls, member })).toBe(1)
 			store.close()
 		})
@@ -358,21 +359,22 @@ describe('EngineStore, an engine lost while a call waited', () => {
 
 	it('a read lost with its host → answered by the next engine', async () => {
 		const { store } = await losingStore({ member: 'getDocuments', reason: 'host-gone' })
-		const documents = await store.getDocuments()
-		expect(documents.map(idOf)).toEqual(['doc-1'])
+		// a loss it does not recognise reaches the caller: the assertion, not the case, then fails
+		const documents = await store.getDocuments().catch((thrown: unknown) => thrown)
+		expect(Array.isArray(documents) && documents.map(idOf)).toEqual(['doc-1'])
 		store.close()
 	})
 
-	it('a read lost with its host twice → refused STORE_ENGINE_LOST after its one retry', async () => {
+	it('a read lost with its host twice → refused STORE_CONNECTION_LOST after its one retry', async () => {
 		const { store, calls } = await losingStore({ member: 'get', reason: 'host-gone', losses: 2 })
-		await expectRejectsWith({ action: store.get('r1', 'doc-1'), key: 'STORE_ENGINE_LOST' })
+		await expectRejectsWith({ action: store.get('r1', 'doc-1'), key: 'STORE_CONNECTION_LOST' })
 		expect(callsOf({ calls, member: 'get' })).toBe(2)
 		store.close()
 	})
 
 	it('a read lost to a silent engine → refused, not retried (the engine may still be running)', async () => {
 		const { store, calls } = await losingStore({ member: 'count', reason: 'no-heartbeat' })
-		await expectRejectsWith({ action: store.count('doc-1'), key: 'STORE_ENGINE_LOST' })
+		await expectRejectsWith({ action: store.count('doc-1'), key: 'STORE_CONNECTION_LOST' })
 		expect(callsOf({ calls, member: 'count' })).toBe(1)
 		store.close()
 	})
@@ -469,7 +471,7 @@ describe('EngineStore, the changes it tells', () => {
 					engine: async function losingEngine() {
 						return {
 							commit: async function lose(params: { writeId: string }) {
-								throw createDialecteError('STORE_ENGINE_LOST', {
+								throw createDialecteError('STORE_CONNECTION_LOST', {
 									detail: 'lost while it waited',
 									meta: { reason: 'no-heartbeat', writeId: params.writeId },
 								})
@@ -520,7 +522,7 @@ describe('EngineStore, the changes it tells', () => {
 				deletes: [],
 				onProgress: function ignoreProgress() {},
 			}),
-			key: 'STORE_ENGINE_LOST',
+			key: 'STORE_CONNECTION_LOST',
 		})
 		tell(commitEvent({ writeId: 'w-lost', connectionId: 'own-connection' }))
 		// told as another's once: the same id again is its own
@@ -601,7 +603,7 @@ describe('EngineStore, the changes it tells', () => {
 					deletes: [],
 					onProgress: function ignoreProgress() {},
 				}),
-				key: 'STORE_ENGINE_LOST',
+				key: 'STORE_CONNECTION_LOST',
 			})
 			await followedBy({ store, tell })
 			tell(commitEvent({ writeId: 'w-lost', connectionId: 'own-connection' }))
@@ -755,4 +757,31 @@ function settleNothing(): void {}
 /** A link that announces nothing: its unsubscribe does nothing either. */
 function listenToNothing(): () => void {
 	return function stopNothing() {}
+}
+
+describe('EngineStore, two projects’ keys stay apart', () => {
+	it('two projects whose parts joined as they are would read the same → opened apart: neither holds the other’s documents', async () => {
+		const suffix = crypto.randomUUID()
+		const first = await openInProcess({ dialecteId: `a-${suffix}`, name: 'b/c' })
+		const second = await openInProcess({ dialecteId: `a-${suffix}/b`, name: 'c' })
+		try {
+			await first.registerDocument(makeDocument({ id: 'first' }))
+			const secondDocuments = await second.getDocuments()
+			expect(secondDocuments).toEqual([])
+			await second.registerDocument(makeDocument({ id: 'second' }))
+			const firstDocuments = await first.getDocuments()
+			expect(firstDocuments.map((document) => document.id)).toEqual(['first'])
+		} finally {
+			await first.destroy()
+			await second.destroy()
+		}
+	})
+})
+
+/** An open store of that dialecte and name, its engine in this realm. */
+async function openInProcess(params: { dialecteId: string; name: string }): Promise<EngineStore> {
+	const { dialecteId, name } = params
+	const store = new EngineStore({ name, connector: createInProcessConnector({ name, dialecteId }) })
+	await store.open()
+	return store
 }

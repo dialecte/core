@@ -1,97 +1,67 @@
-import {
-	registeredSqliteStorage,
-	registerSqliteStorage,
-	replaceSqliteStorage,
-} from './sqlite-storage'
-import { SQLITE_STORAGE_KEY } from './sqlite-storage.constants'
+import { registeredSqliteEngine, replaceSqliteEngine } from './sqlite-engine-registration'
 
 import { describe, expect, it, onTestFinished } from 'vitest'
 
-import { toDialecteError } from '@/errors'
+import '@/sqlite'
+import { resolveStore } from '@/store/resolve-store'
+import { replaceStorageKind } from '@/store/storage-kinds'
+import { answerOf, fakeKindOf, outcomeOf, refusalOf } from '@/store/storage-kinds.fixtures'
+import { TEST_DIALECTE_CONFIG } from '@/test'
 
-import type { SqliteStorage, SqliteStorageHolder } from './sqlite-storage.types'
+import type { SqliteEngineRegistration } from './sqlite-storage.types'
+import type { AnyDialecteConfig } from '@/types'
 
-// Importing `@dialecte/core/sqlite` registers the kind: pinned by the `node-sqlite` project (its setup imports the
-// entry, every Document suite then opens on it) and by the browser connector suites (they import it, and open).
+// The `sqlite` kind lives in the registry of storage kinds (`storage-kinds.test.ts` pins first-wins, the refusals and
+// the lookup); importing `@dialecte/core/sqlite` registers it, pinned here, and by the `node-sqlite` project.
 
-function storage(): SqliteStorage {
-	return {
-		storeOf: function notBuilt() {
-			throw new Error('not built in this case')
-		},
-	}
+const RUNTIME = {
+	configs: { default: TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig },
+	defaultConfigKey: 'default',
 }
 
-/** The kind registered for `north`, or the key it was refused with. */
-function answerOf(): SqliteStorage | string | undefined {
-	try {
-		return registeredSqliteStorage({ project: 'north' })
-	} catch (thrown) {
-		return toDialecteError(thrown)?.key
-	}
+const ENGINE: SqliteEngineRegistration = {
+	url: 'https://dialecte.test/engine.worker.js',
+	dialectes: [{ id: 'core/test', version: '0.0.0' }],
 }
 
 describe('the sqlite storage kind', () => {
-	const first = storage()
-	const second = storage()
-	type TestCase = {
-		/** The kind in place before the case (as a case replaces it), then what the case registers, in order. */
-		before?: SqliteStorage
-		registers: SqliteStorage[]
-		/** A copy of the library of the same storage version registered it (on `globalThis`, not through this module). */
-		byAnotherCopy?: SqliteStorage
-		expected: SqliteStorage | string
-	}
-	const testCases: Record<string, TestCase> = {
-		'none registered → PROJECT_SQLITE_NOT_IMPORTED': {
-			registers: [],
-			expected: 'PROJECT_SQLITE_NOT_IMPORTED',
-		},
-		'registered → that kind': { registers: [first], expected: first },
-		'registered twice (two copies of the same storage version imported the entry) → the first kept: one copy runs the realm’s engines':
-			{ registers: [first, second], expected: first },
-		'one registered already, the entry imported again → the one registered already': {
-			before: first,
-			registers: [second],
-			expected: first,
-		},
-		'registered by another copy of the library of the same storage version → that kind': {
-			registers: [],
-			byAnotherCopy: first,
-			expected: first,
-		},
-	}
-	for (const [description, { before, registers, byAnotherCopy, expected }] of Object.entries(
-		testCases,
-	)) {
-		it(description, () => {
-			onTestFinished(replaceSqliteStorage({ storage: before }))
-			for (const registered of registers) registerSqliteStorage({ storage: registered })
-			if (byAnotherCopy) (globalThis as SqliteStorageHolder)[SQLITE_STORAGE_KEY] = byAnotherCopy
-			expect(answerOf()).toBe(expected)
+	it('replaced for a case → the replacement answers', () => {
+		const { kind, built } = fakeKindOf({ id: 'fake-sqlite@1' })
+		const replaced = outcomeOf(function resolveReplaced() {
+			onTestFinished(replaceStorageKind({ type: 'sqlite', kind }))
+			return resolveStore({
+				name: 'sqlite-kind',
+				storage: { type: 'sqlite' },
+				runtime: RUNTIME,
+				dialecteId: 'core/test',
+			})
 		})
-	}
 
-	it('replaced for a case, then restored → the kind registered before it, or none', () => {
-		onTestFinished(replaceSqliteStorage({ storage: undefined }))
-		registerSqliteStorage({ storage: first })
-		const restore = replaceSqliteStorage({ storage: second })
-		expect(answerOf()).toBe(second)
-		restore()
-		expect(answerOf()).toBe(first)
+		expect(answerOf(replaced)).toBe(built)
 	})
 
-	it('refused → its meta names the project, its detail the import to add and the other-copy cause', () => {
-		onTestFinished(replaceSqliteStorage({ storage: undefined }))
-		let thrown: unknown
-		try {
-			registeredSqliteStorage({ project: 'north' })
-		} catch (error) {
-			thrown = error
-		}
-		const error = toDialecteError(thrown)
-		expect(error?.meta).toMatchObject({ project: 'north' })
-		expect(error?.detail).toContain("import '@dialecte/core/sqlite'")
-		expect(error?.detail).toContain('another copy of @dialecte/core')
+	it('replaced, then restored → the kind the entry registered answers again', () => {
+		const { kind } = fakeKindOf({ id: 'fake-sqlite@1' })
+		const restored = outcomeOf(function resolveRestored() {
+			const restore = replaceStorageKind({ type: 'sqlite', kind })
+			restore()
+			// a project made by no dialecte: the sqlite kind itself refuses it, the registry does not
+			return resolveStore({ name: 'sqlite-kind', storage: { type: 'sqlite' }, runtime: RUNTIME })
+		})
+
+		expect(refusalOf(restored)?.key).toBe('PROJECT_ENGINE_NOT_DECLARED')
+	})
+})
+
+describe('the engine registration on its own key of the realm', () => {
+	it('replaced for a case, then restored → found as put, then as it was (none)', () => {
+		const outcome = outcomeOf(function replaceAndRestore() {
+			const restore = replaceSqliteEngine({ engine: ENGINE })
+			const during = registeredSqliteEngine()
+			restore()
+			return { during, after: registeredSqliteEngine() }
+		})
+
+		expect(answerOf(outcome)).toEqual({ during: ENGINE, after: undefined })
 	})
 })

@@ -4,8 +4,10 @@ import { createCountingDialecte, ENGINE_URL } from './create-project-factory.fix
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { rejectionKey } from '@/errors/errors.fixtures'
 import { Project } from '@/project'
 import { withoutSqliteStorage, withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
+import { fakeStorageOf, uniqueFakeType } from '@/store/storage-kinds.fixtures'
 import { XMLNS_DEFAULT_NAMESPACE } from '@/test/constant'
 
 const SOURCE_XML = /* xml */ `<Root ${XMLNS_DEFAULT_NAMESPACE}><A aA="1"/><A aA="2"/></Root>`
@@ -107,21 +109,24 @@ describe('createProjectFactory', () => {
 				},
 				refusedWith: 'PROJECT_ENGINE_NOT_DECLARED',
 			},
-			'made by the factory, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED at open':
+			'made by the factory, @dialecte/core/sqlite never imported → PROJECT_STORAGE_NOT_REGISTERED at open':
 				{
 					open: function openFromFactory() {
 						const factory = createProjectFactory({ dialecte: createCountingDialecte() })
 						return factory({ storage: { type: 'sqlite' } }).open(`sqlite-${crypto.randomUUID()}`)
 					},
-					refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',
+					refusedWith: 'PROJECT_STORAGE_NOT_REGISTERED',
 					imported: false,
 				},
-			'destroyed by name, @dialecte/core/sqlite never imported → PROJECT_SQLITE_NOT_IMPORTED': {
+			'destroyed by name, @dialecte/core/sqlite never imported → PROJECT_STORAGE_NOT_REGISTERED': {
 				open: function destroyByName() {
 					const factory = createProjectFactory({ dialecte: createCountingDialecte() })
-					return factory.destroyProject({ name: `sqlite-${crypto.randomUUID()}` })
+					return factory.destroyProject({
+						name: `sqlite-${crypto.randomUUID()}`,
+						storage: { type: 'sqlite' },
+					})
 				},
-				refusedWith: 'PROJECT_SQLITE_NOT_IMPORTED',
+				refusedWith: 'PROJECT_STORAGE_NOT_REGISTERED',
 				imported: false,
 			},
 		}
@@ -140,5 +145,46 @@ describe('createProjectFactory', () => {
 				expect(key).toBe(refusedWith)
 			})
 		}
+	})
+
+	describe('destroyProject, naming the storage it deletes from', () => {
+		it('inMemory → the project removed: a new open finds no document', async () => {
+			const factory = createProjectFactory({ dialecte: createCountingDialecte() })
+			const name = `destroy-in-memory-${crypto.randomUUID()}`
+			const first = await factory({ storage: { type: 'inMemory' } }).open(name)
+			await first.importFile(new File([SOURCE_XML], 'source.xml'))
+			await first.close()
+
+			const destroyed = await rejectionKey({
+				action: factory.destroyProject({ name, storage: { type: 'inMemory' } }),
+			})
+			const second = await factory({ storage: { type: 'inMemory' } }).open(name)
+			projects.push(second)
+			const documents = await second.getDocuments()
+
+			expect(destroyed).toBe('resolved')
+			expect(documents).toEqual([])
+		})
+
+		it('a type no kind registered → PROJECT_STORAGE_NOT_REGISTERED, nothing removed: the project of that name still holds its document', async () => {
+			const factory = createProjectFactory({ dialecte: createCountingDialecte() })
+			const name = `destroy-unregistered-${crypto.randomUUID()}`
+			const first = await factory({ storage: { type: 'inMemory' } }).open(name)
+			await first.importFile(new File([SOURCE_XML], 'source.xml'))
+			await first.close()
+
+			const destroyed = await rejectionKey({
+				action: factory.destroyProject({
+					name,
+					storage: fakeStorageOf({ type: uniqueFakeType() }),
+				}),
+			})
+			const second = await factory({ storage: { type: 'inMemory' } }).open(name)
+			projects.push(second)
+			const documents = await second.getDocuments()
+
+			expect(destroyed).toBe('PROJECT_STORAGE_NOT_REGISTERED')
+			expect(documents).toHaveLength(1)
+		})
 	})
 })

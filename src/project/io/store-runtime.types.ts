@@ -11,6 +11,6 @@ export type StoreRuntime = {
 	hooks?: DialecteHooks<AnyDialecteConfig>
 	/** Measure the import's and the export's stages: each result then carries the run's perf snapshot */
 	perf?: boolean
-	/** The version of the dialecte: the engine a store starts or reaches runs that version (SQLite). */
+	/** The version of the dialecte: a store that runs the dialecte elsewhere (a worker, a server) checks it runs that one. */
 	dialecteVersion?: string
 }

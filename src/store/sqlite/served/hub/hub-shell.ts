@@ -1,3 +1,5 @@
+import { sqliteErrorEntryOf } from '../../sqlite-error-entry'
+import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
 import { toThrownData } from '../wire/error-envelope'
 import { HUB_HELLO_BUDGET_MS } from './hub-client.constants'
 import { createHubRouter } from './hub-router'
@@ -416,7 +418,7 @@ function dropRealm(params: { state: HubShellState; realmId: string }): void {
 					type: 'hello-refused',
 					error: refusalData({
 						origin: 'hub',
-						key: 'STORE_REALM_UNKNOWN',
+						key: SQLITE_ERRORS.STORE_REALM_UNKNOWN.key,
 						detail: `the view that bound this one ("${realmId}") is gone`,
 						meta: { realmId },
 					}),
@@ -630,7 +632,10 @@ function scheduleTick(params: {
 function refusalData(refusal: HubRefusal): ThrownData {
 	if (refusal.origin === 'engine') return refusal.error as ThrownData
 	return toThrownData({
-		thrown: createDialecteError(refusal.key, { detail: refusal.detail, meta: refusal.meta }),
+		thrown: createDialecteError(sqliteErrorEntryOf({ key: refusal.key }), {
+			detail: refusal.detail,
+			meta: refusal.meta,
+		}),
 	})
 }
 

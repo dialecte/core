@@ -164,8 +164,10 @@ describe('an engine importing files', () => {
 			}),
 			key: 'IMPORT_FAILED',
 		})
-		expect(await engine.getDocuments()).toEqual([])
-		expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('not-applied')
+		const documents = await engine.getDocuments()
+		expect(documents).toEqual([])
+		const writeOutcomeW1 = await engine.getWriteOutcome({ writeId: 'w-1' })
+		expect(writeOutcomeW1).toBe('not-applied')
 	})
 
 	describe('one import at a time', () => {
@@ -177,14 +179,18 @@ describe('an engine importing files', () => {
 				writeId: 'w-2',
 				clientId: 'c-2',
 			})
-			expect(await engine.getWriteOutcome({ writeId: 'w-2' })).toBe('running')
-			expect((await engine.getDocuments()).map((document) => document.writeId)).toEqual(['w-1'])
+			const runningOutcomeW2 = await engine.getWriteOutcome({ writeId: 'w-2' })
+			expect(runningOutcomeW2).toBe('running')
+			const documentsMapped = await engine.getDocuments()
+			expect(documentsMapped.map((document) => document.writeId)).toEqual(['w-1'])
 			first.release()
 			await first.importing
 			const imported = await second
 			expect(imported.record.status).toBe('ready')
-			expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('applied')
-			expect(await engine.getWriteOutcome({ writeId: 'w-2' })).toBe('applied')
+			const writeOutcomeW1 = await engine.getWriteOutcome({ writeId: 'w-1' })
+			expect(writeOutcomeW1).toBe('applied')
+			const writeOutcomeW2 = await engine.getWriteOutcome({ writeId: 'w-2' })
+			expect(writeOutcomeW2).toBe('applied')
 		})
 
 		it('an import asked, its outcome asked in the same turn → running: it will run', async () => {
@@ -195,7 +201,8 @@ describe('an engine importing files', () => {
 				clientId: 'c-1',
 			})
 			const outcome = engine.getWriteOutcome({ writeId: 'w-1' })
-			expect(await outcome).toBe('running')
+			const outcomeSettled = await outcome
+			expect(outcomeSettled).toBe('running')
 			await importing
 		})
 
@@ -211,9 +218,11 @@ describe('an engine importing files', () => {
 			first.release()
 			await expectRejectsWith({ action: first.importing, key: 'IMPORT_ABORTED' })
 			const imported = await second
-			expect((await engine.getDocuments()).map((document) => document.writeId)).toEqual(['w-2'])
+			const documentsMapped = await engine.getDocuments()
+			expect(documentsMapped.map((document) => document.writeId)).toEqual(['w-2'])
 			expect(imported.record.status).toBe('ready')
-			expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('not-applied')
+			const writeOutcomeW1 = await engine.getWriteOutcome({ writeId: 'w-1' })
+			expect(writeOutcomeW1).toBe('not-applied')
 		})
 
 		it('a waiting import aborted → IMPORT_ABORTED at once, while the running one still runs; nothing registered', async () => {
@@ -226,13 +235,16 @@ describe('an engine importing files', () => {
 			})
 			await engine.abortImport({ writeId: 'w-2' })
 			await expectRejectsWith({ action: second, key: 'IMPORT_ABORTED' })
-			expect((await engine.getDocuments()).map((document) => document.writeId)).toEqual(['w-1'])
+			const documentsMapped = await engine.getDocuments()
+			expect(documentsMapped.map((document) => document.writeId)).toEqual(['w-1'])
 			// the running import's window is still the one a write of another client settles
 			await engine.registerDocument(makeDocument({ id: 'other' }))
 			first.release()
 			await first.importing
-			expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('applied')
-			expect(await engine.getWriteOutcome({ writeId: 'w-2' })).toBe('not-applied')
+			const writeOutcomeW1 = await engine.getWriteOutcome({ writeId: 'w-1' })
+			expect(writeOutcomeW1).toBe('applied')
+			const writeOutcomeW2 = await engine.getWriteOutcome({ writeId: 'w-2' })
+			expect(writeOutcomeW2).toBe('not-applied')
 		})
 	})
 
@@ -243,10 +255,12 @@ describe('an engine importing files', () => {
 			expect(indexesOfImport({ db, writeId: 'w-1' })).toEqual([])
 			const [importingDocument] = await engine.getDocuments()
 			// the root and its one record, stored before the session's hold
-			expect(await engine.count(importingDocument!.id)).toBe(2)
+			const countWhileImporting = await engine.count(importingDocument!.id)
+			expect(countWhileImporting).toBe(2)
 			held.release()
 			await held.importing
-			expect(await engine.count(importingDocument!.id)).toBe(2)
+			const countOnceReady = await engine.count(importingDocument!.id)
+			expect(countOnceReady).toBe(2)
 			expect(indexesOfImport({ db, writeId: 'w-1' })).toEqual([
 				`${TABLE_RECORD_PREFIX}1_id`,
 				`${TABLE_RECORD_PREFIX}1_tag`,
@@ -315,8 +329,10 @@ describe('an engine importing files', () => {
 			await engine.bulkWrite('other', { creates: [makeRecord({ id: 'n1' })] })
 			release()
 			await expectRejectsWith({ action: importing, key: 'DOCUMENT_NOT_REGISTERED' })
-			expect((await engine.getByDocumentId('other')).map((record) => record.id)).toEqual(['n1'])
-			expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('not-applied')
+			const recordsMappedOther = await engine.getByDocumentId('other')
+			expect(recordsMappedOther.map((record) => record.id)).toEqual(['n1'])
+			const writeOutcomeW1 = await engine.getWriteOutcome({ writeId: 'w-1' })
+			expect(writeOutcomeW1).toBe('not-applied')
 		})
 	})
 
@@ -351,8 +367,10 @@ describe('an engine importing files', () => {
 		await engine.bulkWrite(documentId, { creates: [makeRecord({ id: 'n1' })] })
 		release()
 		await expectRejectsWith({ action: importing, key: 'DOCUMENT_NOT_REGISTERED' })
-		expect(await engine.getDocument(documentId)).toEqual(makeDocument({ id: documentId }))
-		expect((await engine.getByDocumentId(documentId)).map((record) => record.id)).toEqual(['n1'])
+		const document = await engine.getDocument(documentId)
+		expect(document).toEqual(makeDocument({ id: documentId }))
+		const recordsMapped = await engine.getByDocumentId(documentId)
+		expect(recordsMapped.map((record) => record.id)).toEqual(['n1'])
 	})
 
 	it('a session creating a record of an id the file gave → STORE_DUPLICATE_ID naming it, nothing left', async () => {
@@ -374,11 +392,12 @@ describe('an engine importing files', () => {
 			key: 'STORE_DUPLICATE_ID',
 			meta: { documentId: expect.any(String), recordIds: ['given'] },
 		})
-		expect(await engine.getDocuments()).toEqual([])
+		const documents = await engine.getDocuments()
+		expect(documents).toEqual([])
 	})
 
 	it('a session creating a record of an id the file gave, holding a value that is not JSON → STORE_VALUE_NOT_JSON first, as every store answers; nothing left', async () => {
-		const notJson = function notJson() {}
+		function notJson() {}
 		const { engine } = await startImportEngine({
 			runtime: runtimeCreatingAfterHold({
 				reached: () => undefined,
@@ -401,7 +420,8 @@ describe('an engine importing files', () => {
 			}),
 			key: 'STORE_VALUE_NOT_JSON',
 		})
-		expect(await engine.getDocuments()).toEqual([])
+		const documents = await engine.getDocuments()
+		expect(documents).toEqual([])
 	})
 
 	it('a session creating two records of one id (the file’s ids generated) → STORE_DUPLICATE_ID naming it, caught as the id index is built; nothing left', async () => {
@@ -421,7 +441,8 @@ describe('an engine importing files', () => {
 			key: 'STORE_DUPLICATE_ID',
 			meta: { documentId: expect.any(String), recordIds: ['twice'] },
 		})
-		expect(await engine.getDocuments()).toEqual([])
+		const documents = await engine.getDocuments()
+		expect(documents).toEqual([])
 	})
 
 	it('a session patching more records than one bind holds, one patch not JSON past the first bind → STORE_VALUE_NOT_JSON naming its place among all the patches, nothing left', async () => {
@@ -462,7 +483,8 @@ describe('an engine importing files', () => {
 			key: 'STORE_VALUE_NOT_JSON',
 			detail: new RegExp(`field "${refusedAt}"`),
 		})
-		expect(await engine.getDocuments()).toEqual([])
+		const documents = await engine.getDocuments()
+		expect(documents).toEqual([])
 	})
 
 	it('a session patching more records than one bind holds, a window of 0 ms → the engine yields while it checks the patches: a task queued meanwhile runs before the check ends', async () => {
@@ -552,7 +574,8 @@ describe('an engine importing files', () => {
 				}, 0)
 			},
 		)
-		expect((await engine.get('later', result.record.id))?.value).toBe('given')
+		const later = await engine.get('later', result.record.id)
+		expect(later?.value).toBe('given')
 	})
 
 	it('a file giving one of its own ids twice → refused STORE_DUPLICATE_ID at its batch, before the session’s after-import runs', async () => {
@@ -729,11 +752,13 @@ describe('an engine importing files', () => {
 				expect(pragmasOf({ db, sqlite3 })).toMatchObject({ synchronous: 0, inTransaction: true })
 				await run(engine)
 				expect(pragmasOf({ db, sqlite3 })).toMatchObject({ synchronous: 2, inTransaction: false })
-				expect(await engine.count('other')).toBe(expectedCount)
+				const countOther = await engine.count('other')
+				expect(countOther).toBe(expectedCount)
 				held.release()
 				const result = (await held.importing) as { record: { id: string; status: string } }
 				expect(result.record.status).toBe('ready')
-				expect(await engine.count(result.record.id)).toBe(2)
+				const count = await engine.count(result.record.id)
+				expect(count).toBe(2)
 			})
 		}
 
@@ -767,7 +792,8 @@ describe('an engine importing files', () => {
 				},
 			)
 			expect(told.length).toBeGreaterThan(2)
-			expect(await committed).toBe(1)
+			const committedSettled = await committed
+			expect(committedSettled).toBe(1)
 		})
 
 		it('the commit of the import’s window failing for a write of another client → that write refused, the import refused STORE_COMMIT_FAILED, nothing of it left', async () => {
@@ -796,9 +822,11 @@ describe('an engine importing files', () => {
 			}
 			held.release()
 			await expectRejectsWith({ action: held.importing, key: 'STORE_COMMIT_FAILED' })
-			expect(await engine.getDocuments()).toEqual([])
+			const documents = await engine.getDocuments()
+			expect(documents).toEqual([])
 			expect(pragmasOf({ db, sqlite3 })).toEqual(DURABLE)
-			expect(await engine.getWriteOutcome({ writeId: 'w-1' })).toBe('not-applied')
+			const writeOutcomeW1 = await engine.getWriteOutcome({ writeId: 'w-1' })
+			expect(writeOutcomeW1).toBe('not-applied')
 		})
 
 		it('an import that fails → synchronous full, the steady cache, no transaction left open', async () => {
@@ -865,7 +893,8 @@ describe('an engine importing files', () => {
 		expect(seen.map((read) => read.inTransaction)).toEqual([false, false, false])
 		const lengths = await Promise.all(seen.map((read) => read.stored.then((rows) => rows.length)))
 		expect(lengths).toEqual([2, 2 + ROWS_PER_BIND, 2 + 2 * ROWS_PER_BIND])
-		expect(await engine.count(result.record.id)).toBe(2 + 2500)
+		const count = await engine.count(result.record.id)
+		expect(count).toBe(2 + 2500)
 	})
 
 	it('an import that fails, its window’s ROLLBACK and COMMIT failing too → the engine broken: told once, closed with its connection, its calls refused as its host gone; the next engine on the file finds no trace of the import', async () => {
@@ -917,11 +946,12 @@ describe('an engine importing files', () => {
 		// the caller's store never closed: its host is gone, a read is made again on the next engine
 		await expectRejectsWith({
 			action: engine.getDocuments(),
-			key: 'STORE_ENGINE_LOST',
+			key: 'STORE_CONNECTION_LOST',
 			meta: { reason: 'host-gone' },
 		})
 		const next = await startEngine({ db: file.connect() })
-		expect(await next.getDocuments()).toEqual([])
+		const documents = await next.getDocuments()
+		expect(documents).toEqual([])
 		next.close()
 	})
 
@@ -1009,7 +1039,8 @@ describe('an engine importing files', () => {
 				held.release()
 				await expectRejectsWith({ action: held.importing, key: 'IMPORT_ABORTED' })
 				expect(pragmasOf({ db, sqlite3 })).toEqual(DURABLE)
-				expect(await engine.getDocuments()).toEqual([])
+				const documents = await engine.getDocuments()
+				expect(documents).toEqual([])
 			})
 		}
 
@@ -1034,7 +1065,8 @@ describe('an engine importing files', () => {
 					key: 'IMPORT_FAILED',
 				})
 				expect(pragmasOf({ db, sqlite3 })).toEqual(DURABLE)
-				expect(await engine.getDocuments()).toEqual([])
+				const documents = await engine.getDocuments()
+				expect(documents).toEqual([])
 			} finally {
 				db.exec = exec as unknown as Database['exec']
 				if (sqlite3.capi.sqlite3_get_autocommit(db) === 0) db.exec('ROLLBACK')

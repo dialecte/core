@@ -99,9 +99,9 @@ export interface Store {
 	 * another tab: a store several connections share announces their changes itself (a project on it posts what the
 	 * store tells, nothing else). A call that changed nothing announces nothing. The change a call of this connection
 	 * made is told before that call settles - a store that implements this must keep that order. `resync`: changes
-	 * may have been missed (the connection reached another engine): read the project again. A closed store is told
-	 * nothing until opened again. Answers the unsubscribe. A store without it (IndexedDB, a custom one) leaves the
-	 * announcing to the project's BroadcastChannel.
+	 * may have been missed (the connection was made again, to what serves the store anew): read the project again. A
+	 * closed store is told nothing until opened again. Answers the unsubscribe. A store without it (IndexedDB, a custom
+	 * one) leaves the announcing to the project's BroadcastChannel.
 	 */
 	subscribe?(listener: (notice: StoreNotice) => void): () => void
 
@@ -473,7 +473,7 @@ export type ExportSource = Pick<
 /** A change of the project, told to a connection: the project event, and whether this connection made it. */
 export type StoreChange = { type: 'change'; message: ProjectChannelMessage; own: boolean }
 
-/** Changes may have been missed (the connection reached another engine): read the project again. */
+/** Changes may have been missed (the connection was made again, to what serves the store anew): read the project again. */
 export type StoreResync = { type: 'resync' }
 
 /** What a store that announces tells its connections. */

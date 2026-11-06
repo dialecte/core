@@ -1,5 +1,4 @@
-import type { Store } from '../store.types'
-import type { SQLITE_STORAGE_KEY } from './sqlite-storage.constants'
+import type { SQLITE_ENGINE_KEY } from './sqlite-storage.constants'
 
 /** A project on `sqlite` storage: its name and its dialecte; its engine comes from what the app registered. */
 export type SqliteConnectorParams = {
@@ -21,13 +20,5 @@ export type SqliteEngineRegistration = {
 	dialectes: readonly { id: string; version: string }[]
 }
 
-/** The `sqlite` storage kind, as `@dialecte/core/sqlite` registers it. */
-export type SqliteStorage = {
-	/** The engine the app registered with `registerSqliteEngine`; none until then. */
-	engine?: SqliteEngineRegistration
-	/** The store of a project on `sqlite` storage: its engine in a worker, through the origin's hub or the page. */
-	storeOf: (params: { connector: SqliteConnectorParams }) => Store
-}
-
-/** `globalThis` as it holds the registered `sqlite` storage kind. */
-export type SqliteStorageHolder = { [SQLITE_STORAGE_KEY]?: SqliteStorage }
+/** `globalThis` as it holds the registered SQLite engine. */
+export type SqliteEngineHolder = { [SQLITE_ENGINE_KEY]?: SqliteEngineRegistration }

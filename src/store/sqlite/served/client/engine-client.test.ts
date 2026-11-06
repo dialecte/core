@@ -5,6 +5,7 @@ import { outcomeOf, watchedClient } from './engine-client.fixtures'
 import * as Comlink from 'comlink'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
 import type { ProgressSignal } from '../host/host.types'
@@ -70,7 +71,7 @@ describe('a client watching its engine', () => {
 		])
 		expect(afterBeat).toBe('waiting')
 		const outcome = await waiting
-		expect(outcome).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } })
+		expect(outcome).toEqual({ key: 'STORE_CONNECTION_LOST', meta: { reason: 'no-heartbeat' } })
 	})
 
 	it('its page stalled past the timeout while a beat waited → no loss: the beat is read first; silent after → lost', async () => {
@@ -84,7 +85,19 @@ describe('a client watching its engine', () => {
 		])
 		expect(early).toBe('waiting')
 		const outcome = await calling
-		expect(outcome).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } })
+		expect(outcome).toEqual({ key: 'STORE_CONNECTION_LOST', meta: { reason: 'no-heartbeat' } })
+	})
+
+	it('a call lost for no heartbeat → refused STORE_CONNECTION_LOST with the code D1018, its reason in the meta', async () => {
+		const { client, engineSide } = watchedClient({ cleanups })
+		silentEngine({ port: engineSide })
+		const thrown = await client.api.getDocuments().catch((error: unknown) => error)
+		const refusal = toDialecteError(thrown)
+		expect({ key: refusal?.key, code: refusal?.code, meta: refusal?.meta }).toEqual({
+			key: 'STORE_CONNECTION_LOST',
+			code: 'D1018',
+			meta: { reason: 'no-heartbeat' },
+		})
 	})
 
 	it('an export lost for no heartbeat → the engine told to abort it, by its id', async () => {
@@ -92,7 +105,7 @@ describe('a client watching its engine', () => {
 		const calls = silentEngine({ port: engineSide })
 		const exporting = client.api.exportFile({ documentId: 'doc-1', exportId: 'export-1' })
 		const outcome = await outcomeOf(exporting)
-		expect(outcome).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'no-heartbeat' } })
+		expect(outcome).toEqual({ key: 'STORE_CONNECTION_LOST', meta: { reason: 'no-heartbeat' } })
 		await vi.waitFor(function abortAsked() {
 			expect(calls.map((call) => [call.member, call.args])).toContainEqual([
 				'abortExport',
@@ -107,7 +120,7 @@ describe('a client watching its engine', () => {
 		const file = new File(['<A/>'], 'a.xml')
 		const outcome = await outcomeOf(client.api.importFile({ file, writeId: 'import-1' }))
 		expect(outcome).toEqual({
-			key: 'STORE_ENGINE_LOST',
+			key: 'STORE_CONNECTION_LOST',
 			meta: { reason: 'no-heartbeat', writeId: 'import-1' },
 		})
 		await new Promise((resolve) => setTimeout(resolve, 100))
@@ -242,7 +255,7 @@ describe('a client hearing its calls’ progress', () => {
 		two!.answer()
 		await laterCall
 		const outcome = await calling
-		expect(outcome).toEqual({ key: 'STORE_ENGINE_LOST', meta: { reason: 'host-gone' } })
+		expect(outcome).toEqual({ key: 'STORE_CONNECTION_LOST', meta: { reason: 'host-gone' } })
 	})
 
 	it('closed → every listener it put on the port taken off', () => {

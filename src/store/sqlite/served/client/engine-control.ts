@@ -1,3 +1,4 @@
+import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
 import { ENGINE_SIGNAL } from '../engine.constants'
 import { fromThrownData } from '../wire/error-envelope'
 import { UNANSWERED } from './client.constants'
@@ -23,7 +24,7 @@ export function createEngineControl(params: { worker: Worker }): EngineControl {
 	let busy = false
 	worker.addEventListener('error', function refuseUnstartedWorker(event: ErrorEvent) {
 		if (isOpen) return
-		const failure = createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+		const failure = createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE, {
 			detail: `The project engine worker could not start: ${event.message || 'its script failed to load'}`,
 			cause: new Error(event.message || 'worker error'),
 		})

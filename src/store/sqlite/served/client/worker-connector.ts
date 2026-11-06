@@ -2,6 +2,7 @@ import { createOpenConnections } from '../../../open-connections'
 import { projectKeyOf } from '../../../project-key'
 import { refuseUnnamableProject } from '../../../project-name'
 import { throwOpenElsewhere } from '../../../store-errors'
+import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
 import { refuseOtherCreation } from '../creation-refusal'
 import { refuseAnotherDialecte } from '../dialecte-refusal'
 import { engineLockNameOf } from '../engine-lock'
@@ -13,7 +14,7 @@ import {
 	ENGINE_HEARTBEAT_TIMEOUT_MS,
 	ENGINE_OPEN_BUDGET_MS,
 	ENGINE_OPEN_WINDOW_MS,
-	ENGINE_LOST_DETAILS,
+	CONNECTION_LOST_DETAILS,
 	UNANSWERED,
 } from './client.constants'
 import { createEngineClient } from './engine-client'
@@ -313,7 +314,7 @@ function spawnEngine(params: {
 						lockBudgetMs: openBudgetMs,
 					})
 				}
-				throw createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+				throw createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE, {
 					detail: `The engine of project "${name}" gave no answer to its open within ${openWindowMs} ms: it was ended`,
 					meta: { project: name, openWindowMs },
 				})
@@ -378,7 +379,7 @@ function watchEngineLock(params: { name: string; dialecteId: string; engine: Rea
 }
 
 /**
- * The engine gone on its own: every call in flight on it refused `STORE_ENGINE_LOST` (`host-gone`),
+ * The engine gone on its own: every call in flight on it refused `STORE_CONNECTION_LOST` (`host-gone`),
  * its worker ended; the next call of a connection starts another engine.
  */
 function endLostEngine(params: { name: string; dialecteId: string; engine: RealmEngine }): void {
@@ -394,7 +395,7 @@ function endLostEngine(params: { name: string; dialecteId: string; engine: Realm
 	engine.worker.terminate()
 }
 
-/** Every call in flight on the engine's clients refused `STORE_ENGINE_LOST` (`host-gone`): its worker is gone. */
+/** Every call in flight on the engine's clients refused `STORE_CONNECTION_LOST` (`host-gone`): its worker is gone. */
 function loseClientsOf(params: { engine: RealmEngine }): void {
 	const { engine } = params
 	for (const link of engine.links) {
@@ -421,7 +422,7 @@ function followNothing(): void {}
 /**
  * A client of its own for the connection: a new port, handed to the engine. An engine silent for the
  * heartbeat timeout while not busy is lost: ended (the calls in flight of its other clients, and their
- * adoptions, refused `STORE_ENGINE_LOST` `host-gone`, the next call starting another engine) and the
+ * adoptions, refused `STORE_CONNECTION_LOST` `host-gone`, the next call starting another engine) and the
  * adoption refused `PROJECT_ENGINE_UNAVAILABLE`. A busy one - dialecte code running long - is waited for.
  */
 async function adoptClient(params: {
@@ -466,7 +467,7 @@ async function adoptClient(params: {
 				lockBudgetMs: openBudgetMs,
 			})
 		}
-		throw createDialecteError('PROJECT_ENGINE_UNAVAILABLE', {
+		throw createDialecteError(SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE, {
 			detail: `The engine of project "${name}" gave no answer to a new connection within ${heartbeatTimeoutMs} ms: it was ended`,
 			meta: { project: name, heartbeatTimeoutMs },
 		})
@@ -763,8 +764,8 @@ function holdNextEngine(params: { key: string; until: Promise<void> }): void {
 
 /** What a call answers once its engine is gone (`host-gone`): the next call starts another engine. */
 function lostEngine(): Error {
-	return createDialecteError('STORE_ENGINE_LOST', {
-		detail: ENGINE_LOST_DETAILS['host-gone'],
+	return createDialecteError('STORE_CONNECTION_LOST', {
+		detail: CONNECTION_LOST_DETAILS['host-gone'],
 		meta: { reason: 'host-gone' },
 	})
 }

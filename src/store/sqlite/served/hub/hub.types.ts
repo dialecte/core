@@ -1,4 +1,4 @@
-import type { DialecteErrorKey } from '@/errors'
+import type { SqliteRaisedErrorKey } from '../../sqlite-errors.types'
 
 // ── Router input ─────────────────────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ export type HubEvent =
 
 /** Why the hub answers a hello or an open with no: its own reason, or the engine's error as it came. */
 export type HubRefusal =
-	| { origin: 'hub'; key: DialecteErrorKey; detail: string; meta: Record<string, unknown> }
+	| { origin: 'hub'; key: SqliteRaisedErrorKey; detail: string; meta: Record<string, unknown> }
 	| { origin: 'engine'; error: unknown }
 
 /** What the router asks the hub worker to do: realms by realm id, engines by project and generation. */

@@ -24,6 +24,7 @@
 	"exclude": [
 		"**/*.test.ts",
 		"**/*.script.ts",
+		"**/*.script.*.ts",
 		"**/*.fixtures.ts",
 		"**/*.fixtures.*.ts",
 		"**/__tests__/**",

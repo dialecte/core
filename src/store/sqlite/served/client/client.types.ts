@@ -11,18 +11,20 @@ export type EngineClient = {
 	connection: (params: { connectionId: string }) => EngineApi
 	/** `listener` told each change the engine announces on this port; answers the unsubscribe. */
 	onEvent: (listener: (signal: EngineEventSignal) => void) => () => void
-	/** Refuse every call in flight `STORE_ENGINE_LOST` for that reason; the port stays. */
-	lose: (params: { reason: EngineLostReason }) => void
+	/** Refuse every call in flight `STORE_CONNECTION_LOST` for that reason; the port stays. */
+	lose: (params: { reason: ConnectionLostReason }) => void
 	/** Release the port: the client reaches the engine no more; a call still waiting is refused `STORE_CLOSED`. */
 	close: (params: { storeName: string }) => void
 }
 
 /**
- * Why an engine is lost: the view hosting it ended (its lock released), it sent nothing for too long
- * while a call waited (busy beyond reach, paused, frozen), or the hub dropped this view with the page
- * that bound it (it reaches the engine again once bound again).
+ * Why a call on SQLite storage was refused `STORE_CONNECTION_LOST` (its `meta.reason`): `host-gone`, the view hosting
+ * the project's engine ended (its lock released) or the engine gave no answer within its budget; `no-heartbeat`, the
+ * engine sent nothing for too long while a call waited (busy beyond reach, paused, frozen: it may still finish);
+ * `realm-dropped`, the hub dropped this view with the page that bound it (it reaches the engine again once bound
+ * again).
  */
-export type EngineLostReason = 'host-gone' | 'no-heartbeat' | 'realm-dropped'
+export type ConnectionLostReason = 'host-gone' | 'no-heartbeat' | 'realm-dropped'
 
 /** A call waiting for the engine's answer: refused at once if the engine is lost. */
 export type CallInFlight = {
