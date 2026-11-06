@@ -66,7 +66,7 @@ class MyStore implements Store {
 
 - `ImportTarget` is the store's own `registerDocument`, `getDocument`, `removeDocument` and `bulkWrite`, plus `markReady` (the one way a document becomes `ready`) and `writeSession` (the import session's writes, checked as `bulkWrite` checks them). A `close()` after the import started must not refuse it: the import is one operation and completes.
 - `ExportSource` is the store's `getDocument`, `count`, `getMany`, `getByTagNameInDocument`, plus `getExportVersion` - how many writes the document has taken (`undefined` once it is not registered or not `ready`). A write during the export restarts it once; a second one fails it `EXPORT_CONFLICT`.
-- A `StoreRuntime` is `{ configs, defaultConfigKey, hooks?, perf?, dialecteVersion?, engineUrl? }` (the last two only for a store that starts the dialecte's engine worker, as SQLite does): build it from the dialecte's declaration (`DIALECTE.configs`, `DIALECTE.defaultConfigKey`). A store on the page shares the project's hooks instance (hand the same one to the `Project`'s `hooks`); a store apart, in a worker, makes its own with `DIALECTE.createHooks()`.
+- A `StoreRuntime` is `{ configs, defaultConfigKey, hooks?, perf?, dialecteVersion? }` (the version only for a store that reaches an engine of the dialecte, as SQLite does): build it from the dialecte's declaration (`DIALECTE.configs`, `DIALECTE.defaultConfigKey`). A store on the page shares the project's hooks instance (hand the same one to the `Project`'s `hooks`); a store apart, in a worker, makes its own with `DIALECTE.createHooks()`.
 
 ## Telling changes
 

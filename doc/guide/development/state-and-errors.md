@@ -231,7 +231,7 @@ Errors use a typed catalog organized by domain:
 | `D6xxx` | Config                | `EXTENSION_METHOD_COLLISION`                                                                                                                                                                                                          |
 | `D7xxx` | Project               | `UNKNOWN_CONFIG_KEY`, `DOCUMENT_NOT_REGISTERED`, `PROJECT_LAYOUT_OUTDATED`, `PROJECT_DESTROY_FAILED`, `PROJECT_OPEN_ELSEWHERE`, `PROJECT_DATABASE_LOST`                                                                               |
 
-The store and engine errors, with what to do about each, are in [Store errors](/api/project#store-errors). The full catalog is in `core/src/errors/codes.ts`. Every entry also carries an `explanation`: `when` it is raised, the usual `fix`, and the `docs` page about it - what `npx @dialecte/cli explain <code>` prints.
+The store and engine errors, with what to do about each, are in [Store errors](/api/project#store-errors). The full catalog is in `core/src/errors/codes.constants.ts`. Every entry also carries an `explanation`: `when` it is raised, the usual `fix`, and the `docs` page about it - what `npx @dialecte/cli explain <code>` prints.
 
 ### Errors of a dialecte
 

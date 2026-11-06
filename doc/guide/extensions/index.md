@@ -129,9 +129,8 @@ The modules go in the dialecte's declaration; the project factory core derives f
 import { version } from '../package.json'
 import { MY_CONFIG } from './config'
 import { MY_EXTENSION_MODULES } from './extensions'
-// dialecte.ts
-import engineUrl from './worker?worker&url'
 
+// dialecte.ts
 import { createProjectFactory, defineDialecte } from '@dialecte/core'
 
 export const MY_DIALECTE = defineDialecte({
@@ -142,7 +141,7 @@ export const MY_DIALECTE = defineDialecte({
 	extensions: MY_EXTENSION_MODULES,
 })
 
-export const createMyProject = createProjectFactory({ dialecte: MY_DIALECTE, engineUrl })
+export const createMyProject = createProjectFactory({ dialecte: MY_DIALECTE })
 ```
 
 ## Letting consumers add their own extensions

@@ -45,11 +45,9 @@ Hooks keep state (an import session's bookkeeping, a counter). A factory gives e
 ### createProjectFactory
 
 ```ts
-import engineUrl from './engine.worker?worker&url'
-
 import { createProjectFactory } from '@dialecte/core'
 
-export const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE, engineUrl })
+export const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE })
 
 const project = await createSclProject({ extensions: myModules }).open('my-project')
 ```
@@ -62,7 +60,7 @@ The factory makes a `Project` with every config of the declaration, its default 
 | `extensions` | `ExtensionModules`   | The consumer's own modules, merged over the dialecte's. |
 | `dev`        | `{ perf?: boolean }` | Project dev options (see [Project](/api/project)).      |
 
-The factory carries what it was made with: `createSclProject.dialecte` and `createSclProject.engineUrl`, and `createSclProject.spawner`, the dialecte's engine as a page offers it to the hub (`connectHub`, below). `createSclProject.destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (see [SQLite storage](/api/project#sqlite-storage)). `engineUrl` is the address of the dialecte's engine worker, the URL the dialecte's module exports from a `?worker&url` import of its worker entry; a project on `sqlite` storage starts `new Worker(engineUrl, { type: 'module' })` on it. See [The engine worker and its packaging](#the-engine-worker-and-its-packaging).
+The factory carries what it was made with, `createSclProject.dialecte`, and names no store and no engine: it is the same whatever storage a project opens on. `createSclProject.destroyProject({ name })` deletes the dialecte's project of that name on SQLite storage without opening it (see [SQLite storage](/api/project#sqlite-storage)). A project on `sqlite` storage reaches the engine the app registered: see [The engine worker and its packaging](#the-engine-worker-and-its-packaging).
 
 ### createTestHelpers
 
@@ -98,55 +96,66 @@ The builders it is made of take the declaration too: `createTestRunner({ dialect
 
 ## The engine worker and its packaging
 
-A project on `sqlite` storage runs in the dialecte's engine worker. A dialecte package ships that worker; an app only bundles it.
+A project on `sqlite` storage runs in an engine worker, and the app assembles it: one worker file for all its dialectes, and one call that tells the page where it is. Both come from one entry, `@dialecte/core/sqlite`. A dialecte ships nothing of this.
 
-**The worker entry.** One call, in a file of the dialecte package. Core's `@dialecte/core/engine` entry serves the engine, with the dialecte's configs and its own hooks instance (`createHooks()`):
+**The worker file.** One file in the app, one call, every dialecte the app opens on SQLite. Each engine runs its dialecte's configs and its own hooks instance (`createHooks()`). One file serves all the dialectes; each worker it starts serves one project.
 
 ```ts
-import { SCL_DIALECTE } from './dialecte'
+// src/engine.worker.ts
+import { serveSqliteEngine } from '@dialecte/core/sqlite'
+import { NSD_DIALECTE } from '@dialecte/nsd'
+import { SCL_DIALECTE } from '@dialecte/scl'
 
-// src/v2019C1/engine.worker.ts
-import { serveDialecteEngine } from '@dialecte/core/engine'
-
-serveDialecteEngine({ dialecte: SCL_DIALECTE })
+serveSqliteEngine({ dialectes: [SCL_DIALECTE, NSD_DIALECTE] })
 ```
 
-**The engine URL.** The module that builds the project factory imports the worker entry as a URL and hands it to `createProjectFactory` (core starts it with `new Worker(engineUrl, { type: 'module' })`). Put that module behind a sub-path of its own: a dialecte whose main entry imports the worker makes every app that imports the dialecte emit the worker, SQLite engine inside, used or not.
+A worker asked for a dialecte it was not given answers `PROJECT_DIALECTE_MISMATCH`, naming the ones it was given, and one of a given dialecte at another version `PROJECT_DIALECTE_VERSION_MISMATCH`; no file touched in either case.
+
+**The page.** `registerSqliteEngine({ url, dialectes })`, synchronous, answers nothing. Call it once, before the first project opens: in the app's entry, or in the shell of an app made of several frames. The registration lives in the page (its realm): a frame of the same origin that joins the hub on its own registers too, or is bound by its page through `adoptHubPort`; a frame of another origin never registers - it joins through `adoptHubPort` first, and a project it opens before that is refused. `url` is a `?worker&url` import of the worker file. `dialectes` names every dialecte that file serves; the declarations fit, and only each id and version are kept, as plain data, so every copy of the library in the page finds them.
 
 ```ts
+// src/main.ts
 import engineUrl from './engine.worker?worker&url'
 
-import { createProjectFactory } from '@dialecte/core'
+import { registerSqliteEngine } from '@dialecte/core/sqlite'
+import { NSD_DIALECTE } from '@dialecte/nsd'
+import { SCL_DIALECTE } from '@dialecte/scl'
 
-export const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE, engineUrl })
+registerSqliteEngine({ url: engineUrl, dialectes: [SCL_DIALECTE, NSD_DIALECTE] })
 ```
 
-**A dialecte's library build** (Vite): `base: './'` (the default base writes absolute `/assets/` URLs, which break once the package is installed elsewhere), `worker: { format: 'es' }`, and `@dialecte/core` external. The worker chunk holds no wasm: every engine is handed the app's one SQLite wasm file at open.
+The page reads the registration when a project connects, so a project built before the call and opened after it works. A project whose dialecte it does not name, or any project with no call made, is refused `PROJECT_SQLITE_ENGINE_NOT_REGISTERED`, at `open` and at `destroyProject`, nothing started. A registration names a dialecte by id: a project of a registered dialecte at another version goes on and is refused `PROJECT_DIALECTE_VERSION_MISMATCH` by its engine or the hub.
 
-```ts
-export default defineConfig({
-	base: './',
-	worker: { format: 'es' },
-	build: {
-		lib: { entry: { index: 'src/index.ts' }, formats: ['es'] },
-		rollupOptions: { external: [/^@dialecte\/core/] },
-	},
-})
-```
+**A second call.** There is no additive call: the app names all its dialectes once.
 
-**An app's build** needs nothing: no `optimizeDeps.exclude`, no `worker.format` (dev server and production build both checked with core's built package and with a packed tarball). Once the app imports `@dialecte/core/sqlite` it emits one content-hashed `sqlite3-*.wasm` for every dialecte engine and the hub's worker (`hub.worker-*.js`); an app that never imports it emits neither. Each dialecte's engine worker is emitted when the app imports the module that names it. An app that works offline (a PWA) adds those to its precache list - the hub chunk (`hub.worker-*.js`), each engine chunk (named after the dialecte's worker entry file: `engine.worker.ts` gives `engine.worker-*.js`) and the wasm (`sqlite3-*.wasm`) - and nothing else. The app installs nothing beyond `@dialecte/core` and its dialectes: sqlite-wasm and comlink are core's dependencies.
+| A later `registerSqliteEngine`                              | What it does                                                                        |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| The same URL and the same dialectes, in any order           | Nothing (a module evaluated twice).                                                 |
+| Another URL, or other dialectes                             | Thrown `STORE_SQLITE_ENGINE_FIXED`, the first kept; `meta` `{ registered, asked }`. |
+| Two versions of one dialecte in the call (a first call too) | Thrown `STORE_HUB_SPAWNERS_FIXED`, nothing of that call kept.                       |
 
-**Version check.** A view and the engine it reaches run the same dialecte version: the engine runs the copy of the view that started it, and a view of another version is refused `PROJECT_DIALECTE_VERSION_MISMATCH` (reload every tab after a deploy).
+**A child frame of another origin** does not register: its shell does. It joins through `adoptHubPort` before its first `open`, and is a client of the engines its shell starts ([below](#views-sharing-a-project-the-origin-s-hub)); its destroys are deleted by a view of the origin that can store.
+
+**A dialecte package** ships its declaration only: no worker, no store named, nothing of SQLite. Its main entry exports the declaration (and the factory derived from it); its library build keeps `@dialecte/core` external and needs no worker setting.
+
+**An app's build** needs nothing: no `optimizeDeps.exclude`, no `worker.format`, in the dev server and in a production build. The page holds no engine code: the engine and sqlite-wasm are reached through a lazy import inside `serveSqliteEngine`, which a page never calls, so they end up in the worker file only. The worker file also carries the entry's page side (its import registers the storage kind), a size cost the page does not pay. An app importing `@dialecte/core/sqlite` emits one content-hashed `sqlite3-*.wasm` for all its engines, and the hub's worker (`hub.worker-*.js`); an app that never imports it emits neither. It installs nothing beyond `@dialecte/core` and its dialectes: sqlite-wasm and comlink are core's dependencies.
+
+**An app that works offline** (a PWA) adds three files to its precache list and nothing else: the hub's worker (`hub.worker-*.js`), the engine worker file (named after the app's file: `engine.worker.ts` gives `engine.worker-*.js`) and the wasm (`sqlite3-*.wasm`). That holds for the bundler's default worker format, which bundles the worker whole; an app that sets `worker.format: 'es'` gets a fourth file, the engine's own chunk (`sqlite-engine-*.js`), which its list must hold too (a worker that cannot load it answers every open `PROJECT_ENGINE_UNAVAILABLE`).
+
+**A browser test of the app's worker** starts it from the same `?worker&url` import, never from a plain `new URL(file, import.meta.url)`: the test runner's browser mode wraps the worker's lazy import of the engine in a helper it gives only to the workers it knows from that import.
+
+**Version check.** A view and the engine it reaches run the same dialecte version: a view of another version is refused `PROJECT_DIALECTE_VERSION_MISMATCH` (reload every tab after a deploy).
 
 ## Views sharing a project: the origin's hub
 
-The origin's hub is a SharedWorker through which every tab, window and iframe of an app shares one engine per project on `sqlite` storage. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already, offering each dialecte's engine through its project factory's `spawner` (the dialecte's id, its version and its engine worker's URL):
+The origin's hub is a SharedWorker through which every tab, window and iframe of an app shares one engine per project on `sqlite` storage. It elects the view that hosts each project's engine worker, hands every other view a port to it, and elects another host when that view goes away. A page joins it and binds its children already, offering the engines the app registered, one per dialecte on the one worker file:
 
 ```ts
-import { adoptHubPort, connectHub } from '@dialecte/core/sqlite'
+import { adoptHubPort, connectHub, registerSqliteEngine } from '@dialecte/core/sqlite'
 
-// a page: joins the hub, offering the engines it can start (their worker of its own origin)
-const realm = await connectHub({ spawners: [scl.spawner, nsd.spawner] })
+// a page: joins the hub, offering the engines the app registered (their worker of its own origin)
+registerSqliteEngine({ url: engineUrl, dialectes: [SCL_DIALECTE, NSD_DIALECTE] })
+const realm = await connectHub()
 
 // an iframe that cannot reach the hub's script (another origin, a sandbox): its page makes it a port and hands it
 // over - the message is the app's own
@@ -164,7 +173,7 @@ window.addEventListener('message', async function joinThroughPage(event) {
 })
 ```
 
-- `connectHub({ spawners? })` answers the page's connection, the same one for every call and every copy of the library of the same protocol in the page; `undefined` where the browser has no SharedWorker or the hub never welcomed the page (its script failed to load, was blocked or stayed silent) - a later call tries again. A spawner whose engine worker is of another origin is left out: the page cannot start it. A later call adds the engines the page does not run yet (a project opened on `sqlite` adds its own as it opens: a page that never calls `connectHub` still hosts the engines of its own projects); one naming a dialecte the page runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, nothing of it added, the connection kept - a page runs one version of each dialecte's engine. A document that joined through `adoptHubPort` hosts no engine: the spawners it names are not registered. Neither are those of a page that cannot store (no private file system) - checked all the same, two versions of one dialecte refused: such a page hosts no engine, its own projects on `sqlite` are refused `STORE_UNAVAILABLE` (unless its page bound it through `adoptHubPort`), and its connection serves to hand ports to its children (`createHubPort`). An engine's files (the SQLite wasm) are fetched when the page first starts one. Call it early in the page that hosts the app (the shell), with every dialecte it opens: a view of another origin is a client of the engines the shell starts. The browser refusing to make the hub's worker (a `DOMException`) is no hub; any other error thrown making it is thrown.
+- `connectHub()` answers the page's connection, the same one for every call and every copy of the library of the same protocol in the page; `undefined` where the browser has no SharedWorker or the hub never welcomed the page (its script failed to load, was blocked or stayed silent) - a later call tries again. It offers the engines the app registered (`registerSqliteEngine`); a worker file of another origin is left out: the page cannot start it. Connecting before registering is allowed and offers nothing: a later call adds those registered since, and so does a project opening on `sqlite`, which offers every registered dialecte as it opens (a page that never calls `connectHub` still hosts the engines of its own projects) - but register first. An engine the connection runs at another version is refused `STORE_HUB_SPAWNERS_FIXED`, nothing added, the connection kept: a page runs one version of each dialecte's engine. A document that joined through `adoptHubPort` hosts no engine and offers none. Neither does a page that cannot store (no private file system): it hosts no engine, its own projects on `sqlite` are refused `STORE_UNAVAILABLE` (unless its page bound it through `adoptHubPort`), and its connection serves to hand ports to its children (`createHubPort`). An engine's files (the SQLite wasm) are fetched when the page first starts one. Call it early in the page that hosts the app (the shell), after registering: a view of another origin is a client of the engines the shell starts. The browser refusing to make the hub's worker (a `DOMException`) is no hub; any other error thrown making it is thrown.
 - `createHubPort()` makes a port bound to the page for a child view; `unbind()` on its handle tells the hub the child is gone (its iframe removed).
 - `adoptHubPort({ port })`, in the child, joins the hub through that port. A port nobody answers fails it `STORE_CONNECTION_FAILED` once the welcome budget has passed.
 - The hub's worker gone (the browser ended it), each view joins the next hub at once: a call waiting for an engine waits for that hub's - a read is made again there - and a write in flight is refused `STORE_ENGINE_LOST` as for any lost engine. A hub lost within a second of its welcome, or hubs that keep ending (past three at-once joins in a row), refuse the calls `STORE_CONNECTION_FAILED` until a later join, after a growing delay. A child bound through `adoptHubPort` (it cannot watch the hub) asks its hub whether it lives when its page hands it a new port, and joins on that port only when no answer comes.
@@ -172,15 +181,15 @@ window.addEventListener('message', async function joinThroughPage(event) {
 
 What a view's calls through the hub will answer, and what joining it answers already:
 
-| Key                                 | When                                                                                                                                                                                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PROJECT_ENGINE_UNAVAILABLE`        | No open view can start the project's engine worker (none offered a spawner for its dialecte), or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it. |
-| `PROJECT_ENGINE_BUSY`               | Another engine still holds the project (another tab, or a worker that did not stop).                                                                                                                                                        |
-| `PROJECT_DIALECTE_MISMATCH`         | The project's file or engine is of another dialecte than the one asked: an `engineUrl` pointing at another dialecte's worker, or a file another dialecte stored. Two dialectes' projects of one name are two projects.                      |
-| `PROJECT_DIALECTE_VERSION_MISMATCH` | The project's engine runs another version of the dialecte than this view.                                                                                                                                                                   |
-| `PROJECT_DESTROYED_WHILE_AWAY`      | A view came back to its project (a page back from a freeze, its engine started again) after another tab destroyed it: nothing is opened in its place.                                                                                       |
-| `STORE_PROTOCOL_MISMATCH`           | Another version of the library holds the hub, or the engine speaks another wire: every view of an app must run the same build.                                                                                                              |
-| `STORE_HUB_SPAWNERS_FIXED`          | `connectHub({ spawners })` named a dialecte the page's connection runs at another version, or a project on `sqlite` was opened or destroyed from a factory of such a version: one version of each dialecte's engine per page.               |
-| `STORE_REALM_ID_TAKEN`              | A view joined with an id another connected view already uses.                                                                                                                                                                               |
-| `STORE_REALM_UNKNOWN`               | A view spoke to the hub without having joined it, or after it left (a child whose page went before it said hello).                                                                                                                          |
-| `STORE_ENGINE_LOST`                 | The engine was lost while the call waited: `host-gone`, `no-heartbeat`, or `realm-dropped` for a child dropped with its page - see the error.                                                                                               |
+| Key                                 | When                                                                                                                                                                                                                                           |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PROJECT_ENGINE_UNAVAILABLE`        | No open view can start the project's engine worker (none registered an engine for its dialecte), or the engine never said it opened; a destroy still running past the open budget, or one asked by a page suspended before the hub granted it. |
+| `PROJECT_ENGINE_BUSY`               | Another engine still holds the project (another tab, or a worker that did not stop).                                                                                                                                                           |
+| `PROJECT_DIALECTE_MISMATCH`         | The project's file or engine is of another dialecte than the one asked: a worker file not given a dialecte the page registered, or a file another dialecte stored. Two dialectes' projects of one name are two projects.                       |
+| `PROJECT_DIALECTE_VERSION_MISMATCH` | The project's engine runs another version of the dialecte than this view.                                                                                                                                                                      |
+| `PROJECT_DESTROYED_WHILE_AWAY`      | A view came back to its project (a page back from a freeze, its engine started again) after another tab destroyed it: nothing is opened in its place.                                                                                          |
+| `STORE_PROTOCOL_MISMATCH`           | Another version of the library holds the hub, or the engine speaks another wire: every view of an app must run the same build.                                                                                                                 |
+| `STORE_HUB_SPAWNERS_FIXED`          | The engines the app registered name a dialecte the page's connection runs at another version, as `connectHub()` or a project opening on `sqlite` offers them: one version of each dialecte's engine per page.                                  |
+| `STORE_REALM_ID_TAKEN`              | A view joined with an id another connected view already uses.                                                                                                                                                                                  |
+| `STORE_REALM_UNKNOWN`               | A view spoke to the hub without having joined it, or after it left (a child whose page went before it said hello).                                                                                                                             |
+| `STORE_ENGINE_LOST`                 | The engine was lost while the call waited: `host-gone`, `no-heartbeat`, or `realm-dropped` for a child dropped with its page - see the error.                                                                                                  |

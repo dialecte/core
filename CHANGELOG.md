@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking, for the opt-in SQLite surface only.** The app assembles the SQLite engine: one worker file for all its dialectes, and one call that tells the page where it is, both from `@dialecte/core/sqlite`. A dialecte ships its declaration only: no worker, no store named. A local or in-memory project changes nothing. To migrate:
+
+  ```ts
+  // before: a worker per dialecte, shipped by the dialecte package
+  import { serveDialecteEngine } from '@dialecte/core/engine'
+  serveDialecteEngine({ dialecte: SCL_DIALECTE })
+
+  // the factory held the worker's address, and the page offered it to the hub
+  import engineUrl from './engine.worker?worker&url'
+  const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE, engineUrl })
+  await connectHub({ spawners: [createSclProject.spawner] })
+  ```
+
+  ```ts
+  // after: the app's one worker file (src/engine.worker.ts)
+  import { serveSqliteEngine } from '@dialecte/core/sqlite'
+  serveSqliteEngine({ dialectes: [SCL_DIALECTE, NSD_DIALECTE] })
+
+  // the page says it once, before the first project; the factory names no engine
+  import engineUrl from './engine.worker?worker&url'
+
+  import { connectHub, registerSqliteEngine } from '@dialecte/core/sqlite'
+  registerSqliteEngine({ url: engineUrl, dialectes: [SCL_DIALECTE, NSD_DIALECTE] })
+  const createSclProject = createProjectFactory({ dialecte: SCL_DIALECTE })
+  await connectHub() // optional: a project opening on `sqlite` offers the engines too
+  ```
+
+  - `createProjectFactory({ dialecte })` takes the declaration only: `engineUrl` and `factory.spawner` are gone, and so is `engineUrl` on a `Project`'s params.
+  - `connectHub()` takes no parameter: it offers every dialecte the app registered, a later call adding those registered since. `ConnectHubParams` and `HubEngineSpawner` are gone.
+  - `@dialecte/core/engine` and `serveDialecteEngine` are gone: `serveSqliteEngine({ dialectes })` from `@dialecte/core/sqlite` serves a project of any dialecte given. A dialecte not given is refused `PROJECT_DIALECTE_MISMATCH` as data, naming the ones given, nothing touched; a worker serving a project keeps refusing any other, of any dialecte, before any lock.
+  - A child frame of another origin does not register: its shell does, and it joins through `adoptHubPort`.
+  - A dialecte package removes its worker file and its worker build settings (`worker.format`, `base`). An app needs no bundler setting. An app's precache list holds the hub's worker, its one engine worker file and the wasm (with `worker.format: 'es'`, also the engine's chunk `sqlite-engine-*.js`). The worker file also carries the entry's page side (its import registers the storage kind): a size cost of the worker file (about 730 kB minified for the engine and that side together), none for the page. A browser test starts the worker from the `?worker&url` import, not from a plain `new URL(file, import.meta.url)`.
+  - The `sqlite` storage kind's shape changed (`SQLITE_STORAGE_VERSION` 2): every copy of `@dialecte/core` in a page must be of the same storage version. A project's files are unchanged.
+
+### Added
+
+- `registerSqliteEngine({ url, dialectes })` and its parameter type `SqliteEngineRegistration`, from `@dialecte/core/sqlite`: `url` a `?worker&url` import of the app's engine worker file, `dialectes` every dialecte it serves (declarations fit; only each id and version are kept). Called once, before the first project; the same URL and the same dialectes again do nothing.
+- `serveSqliteEngine({ dialectes })`, from `@dialecte/core/sqlite`: the one call of an app's engine worker file. The engine and sqlite-wasm are reached through a lazy import inside it, so a page holds neither; a worker that cannot load that chunk answers every open `PROJECT_ENGINE_UNAVAILABLE`, naming why.
+- `PROJECT_SQLITE_ENGINE_NOT_REGISTERED` (`D7017`): a project on `sqlite`, opened or destroyed by name, in a realm that can store, with no registration or one that does not name its dialecte; nothing started, the message naming `registerSqliteEngine`. A child bound through `adoptHubPort` is not refused: it goes through its page's engine.
+- `STORE_SQLITE_ENGINE_FIXED` (`D1020`): a second `registerSqliteEngine` naming another URL or other dialectes; the first is kept, `meta` `{ registered, asked }`. Two versions of one dialecte in one call are refused `STORE_HUB_SPAWNERS_FIXED`, nothing kept.
+
+### Fixed
+
+- A page running a project's SQLite engine itself (no hub) and asked for the same project from another version of its dialecte refuses it `PROJECT_DIALECTE_VERSION_MISMATCH`, as the hub does, instead of joining the engine it runs.
+
 ## [0.8.1] - 2026-11-04
 
 ### Added
