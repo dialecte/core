@@ -26,6 +26,9 @@ export function resolveStore(params: {
 	dialecteId?: string
 }): Store {
 	const { name, storage, runtime, perf, dialecteId } = params
+	// Read before the built-ins narrow `storage`: when no entry (such as `@dialecte/core/sqlite`) declares a kind beyond
+	// them, it narrows to never.
+	const { type } = storage
 	if (storage.type === 'local') {
 		const config = runtime.configs[runtime.defaultConfigKey]
 		return new DexieStore(name, {
@@ -38,6 +41,6 @@ export function resolveStore(params: {
 		return new InMemoryStore(name, { writable: storage.writable ?? true, runtime, dialecteId })
 	}
 	if (storage.type === 'custom') return storage.store
-	const kind = registeredStorageKind({ project: name, type: storage.type })
+	const kind = registeredStorageKind({ project: name, type })
 	return kind.storeOf({ name, storage, runtime, dialecteId, perf })
 }
