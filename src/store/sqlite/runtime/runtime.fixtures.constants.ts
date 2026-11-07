@@ -40,6 +40,13 @@ export const CROSS_REALM_CLOCK_SLACK_MS = 5
 export const ENGINE_WORKER_CASE_TIMEOUT_MS = 60_000
 
 /**
+ * How long a case exporting a large document may run before it counts as hung: it imports the document and exports it
+ * several times (about 20 s on an idle machine, 45 s on one CI runner, past 60 s on a slower one) - a bound for a
+ * hang, never a measure of speed.
+ */
+export const LARGE_EXPORT_CASE_TIMEOUT_MS = 180_000
+
+/**
  * How long a case waits for engine workers to queue on a project's engine lock: each loads SQLite before it asks for
  * the lock, seconds on a loaded machine - a bound for a hang, never a measure of speed.
  */

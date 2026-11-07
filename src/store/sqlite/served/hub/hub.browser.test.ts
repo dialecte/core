@@ -8,6 +8,7 @@ import { fixtureUrl, isEngineLockFree, orderFixture } from '../../runtime/runtim
 import {
 	ENGINE_WORKER_CASE_TIMEOUT_MS,
 	FIXTURE_DIALECTE,
+	LARGE_EXPORT_CASE_TIMEOUT_MS,
 } from '../../runtime/runtime.fixtures.constants'
 import { engineLockNameOf } from '../engine-lock'
 import { ENGINE_IDLE_CLOSE_MS } from './hub.constants'
@@ -537,41 +538,45 @@ describe('the hub across realms of the page', () => {
 		)
 	})
 
-	it('a realm removed during its own export → the export aborted in the engine: an export under its id is not refused', async () => {
-		const project = uniqueProject()
-		const host = await realmFrame({ canStartEngines: true })
-		const exporter = await realmFrame({ canStartEngines: false })
-		const { documentId } = await host.realm.importHeld({
-			project,
-			writeId: 'w-large',
-			file: contractFile({ body: '<B aB="B0" bB="b"/>'.repeat(EXPORTED_RECORDS) }),
-		})
-		// how long the export runs on this machine, uninterrupted: the abort must free its id well within it
-		const controlStartedAt = performance.now()
-		const control = await host.realm.exportUnder({ project, documentId, exportId: 'e-control' })
-		const exportMs = performance.now() - controlStartedAt
-		expect(typeof control).toBe('number')
-		expect(exportMs).toBeGreaterThan(EXPORT_LONG_ENOUGH_MS)
-		const firstBatch = new Promise<void>(function waitForFirstBatch(resolve) {
-			void exporter.realm.exportUnder({
+	it(
+		'a realm removed during its own export → the export aborted in the engine: an export under its id is not refused',
+		{ timeout: LARGE_EXPORT_CASE_TIMEOUT_MS },
+		async () => {
+			const project = uniqueProject()
+			const host = await realmFrame({ canStartEngines: true })
+			const exporter = await realmFrame({ canStartEngines: false })
+			const { documentId } = await host.realm.importHeld({
+				project,
+				writeId: 'w-large',
+				file: contractFile({ body: '<B aB="B0" bB="b"/>'.repeat(EXPORTED_RECORDS) }),
+			})
+			// how long the export runs on this machine, uninterrupted: the abort must free its id well within it
+			const controlStartedAt = performance.now()
+			const control = await host.realm.exportUnder({ project, documentId, exportId: 'e-control' })
+			const exportMs = performance.now() - controlStartedAt
+			expect(typeof control).toBe('number')
+			expect(exportMs).toBeGreaterThan(EXPORT_LONG_ENOUGH_MS)
+			const firstBatch = new Promise<void>(function waitForFirstBatch(resolve) {
+				void exporter.realm.exportUnder({
+					project,
+					documentId,
+					exportId: 'e-gone',
+					onFirstProgress: resolve,
+				})
+			})
+			await firstBatch
+			exporter.frame.remove()
+			const answer = await exportOnceFree({
+				realm: host.realm,
 				project,
 				documentId,
 				exportId: 'e-gone',
-				onFirstProgress: resolve,
+				withinMs: exportMs * EXPORT_ID_FREE_SHARE,
 			})
-		})
-		await firstBatch
-		exporter.frame.remove()
-		const answer = await exportOnceFree({
-			realm: host.realm,
-			project,
-			documentId,
-			exportId: 'e-gone',
-			withinMs: exportMs * EXPORT_ID_FREE_SHARE,
-		})
-		expect(typeof answer).toBe('number')
-		await host.realm.destroyProject({ project })
-	})
+			expect(typeof answer).toBe('number')
+			await host.realm.destroyProject({ project })
+		},
+	)
 
 	it('a read the host’s engine holds when its realm ends → answered by the next engine, on the same files', async () => {
 		const project = uniqueProject()
