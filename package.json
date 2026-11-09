@@ -52,7 +52,8 @@
 		"doc:preview": "vitepress preview",
 		"//====== TEST ======//": "",
 		"test": "npm run test:node && npm run test:browser",
-		"test:node": "vitest run --project node --project node-indexeddb --project node-sqlite",
+		"test:node": "vitest run --project node --project node-indexeddb --project node-sqlite --project node-indexeddb-documents",
+		"test:scope": "tsx scripts/test-scope/run-test-scope.ts --runner vitest",
 		"test:browser": "vitest run --project browser",
 		"test:browser:all": "vitest run --project browser-all",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
@@ -158,7 +159,7 @@
 				},
 				{
 					"name": "browser tests",
-					"run": "npx vitest run --project browser",
+					"run": "npm run test:scope",
 					"counts": "tests"
 				}
 			]

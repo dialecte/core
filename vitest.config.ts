@@ -11,6 +11,7 @@ import {
 	NODE_BENCH_TEST_FILES,
 	NODE_ONLY_TEST_FILES,
 	NODE_STORE_CONTRACT_TEST_FILES,
+	SCRIPT_TEST_PATTERN,
 	UNIT_TEST_PATTERN,
 	WORKER_FILE_PATTERN,
 } from './vitest.config.constants'
@@ -173,7 +174,7 @@ export default mergeConfig(
 						name: 'node',
 						environment: 'node',
 						isolate: false,
-						include: [UNIT_TEST_PATTERN],
+						include: [UNIT_TEST_PATTERN, SCRIPT_TEST_PATTERN],
 						exclude: [
 							...configDefaults.exclude,
 							BENCH_TEST_PATTERN,
@@ -196,6 +197,21 @@ export default mergeConfig(
 						include: [DOCUMENT_SUITES_PATTERN],
 						exclude: [...configDefaults.exclude, BENCH_TEST_PATTERN, ...browserOnlyPaths],
 						setupFiles: ['src/test/sqlite-storage.setup.ts'],
+						root,
+					},
+				},
+				{
+					// the Document and Query suites again, in node on IndexedDB through fake-indexeddb (the local store):
+					// the test helpers' default set by the setup file, as a runner on IndexedDB chooses it
+					resolve: viteConfig.resolve,
+					plugins: [],
+					test: {
+						name: 'node-indexeddb-documents',
+						environment: 'node',
+						isolate: false,
+						include: [DOCUMENT_SUITES_PATTERN],
+						exclude: [...configDefaults.exclude, BENCH_TEST_PATTERN, ...browserOnlyPaths],
+						setupFiles: ['src/test/indexeddb-storage.setup.ts'],
 						root,
 					},
 				},

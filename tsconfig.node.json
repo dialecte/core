@@ -5,6 +5,7 @@
 		"vitest.config.*",
 		"vite.engine.config.*",
 		"build/**/*.ts",
+		"scripts/**/*.ts",
 		"cypress.config.*",
 		"nightwatch.conf.*",
 		"playwright.config.*",

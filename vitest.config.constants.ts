@@ -192,6 +192,9 @@ export const DOCUMENT_SUITES_PATTERN = 'src/document/**/*.test.ts'
 /** Every unit test file; benches run in their own project. */
 export const UNIT_TEST_PATTERN = 'src/**/*.test.{js,ts,jsx,tsx}'
 
+/** The tests of the package's own scripts (the test scope): node only, never in a browser. */
+export const SCRIPT_TEST_PATTERN = 'scripts/**/*.test.ts'
+
 export const BENCH_TEST_PATTERN = 'src/**/*.bench.test.{js,ts}'
 
 /** The benches that measure in node, not in a browser: the `perf-node` project runs them, `perf` leaves them out. */
