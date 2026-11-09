@@ -1,3 +1,9 @@
+import type {
+	StoreContractNeed,
+	StoreContractTable,
+	StoreContractTag,
+	TransportCase,
+} from './store-contract.types'
 import type { DiagnosticCatalogue } from '@/diagnostics'
 import type { HubConnection } from '@/store/sqlite/served/hub/hub-client.types'
 import type { FakePage } from '@/store/sqlite/served/hub/hub.fixtures.types'
@@ -168,3 +174,74 @@ export const AWAY_UNREACHABLE_REASON =
 
 /** The page each realm of the hub leg runs on. */
 export const REALM_PAGES = new WeakMap<HubConnection, FakePage>()
+
+/** The tag of the cases about what crosses between a client and its engine. */
+export const TRANSPORT_TAG: StoreContractTag = 'transport'
+
+/**
+ * What makes a case a transport case: a second connection, the announcements, an engine ending or away, another
+ * dialecte's project, an import's liveness, a full storage, an import or an export (listeners and aborts cross the port).
+ */
+export const TRANSPORT_NEEDS: readonly StoreContractNeed[] = [
+	'second-connection',
+	'announce',
+	'away',
+	'engine-end',
+	'dialecte-key',
+	'import-liveness',
+	'full-storage',
+	'import',
+	'export',
+]
+
+/**
+ * The groups whose every case is a transport case: imports and exports (listeners and aborts cross the port), and text
+ * across the port (kept as written, keys that are not well-formed, characters XML does not allow).
+ */
+export const TRANSPORT_GROUPS: readonly { table: StoreContractTable; group: string }[] = [
+	{ table: 'store', group: 'importing a file' },
+	{ table: 'store', group: 'an edit during an import' },
+	{ table: 'export', group: 'exporting a document' },
+	{ table: 'export', group: 'a write during an export' },
+	{ table: 'export', group: 'refused exports' },
+	{ table: 'text', group: 'text kept as written' },
+	{ table: 'text', group: 'a key that is not well-formed names nothing' },
+	{ table: 'text', group: 'a character XML does not allow is never imported nor exported' },
+]
+
+/**
+ * Cases run behind a port though no need or group makes them transport cases: each reaches a member of the engine's
+ * wire no other transport case calls (the worker and hub legs check every member is called).
+ */
+export const TRANSPORT_CASES: readonly TransportCase[] = [
+	{
+		table: 'store',
+		group: 'blobs',
+		description: 'getStandaloneBlobs returns the blobs attached to nothing',
+		reaches: 'getStandaloneBlobs',
+	},
+]
+
+/** The tables of value shapes and paths: what they check is the same on every port, they run in-process only. */
+export const IN_PROCESS_ONLY_TABLES: readonly StoreContractTable[] = ['path', 'well-formed']
+
+/** The variable that runs the full table on every leg (a release): `1` or `true`. */
+export const FULL_TABLE_VARIABLE = 'STORE_CONTRACT_FULL_TABLE'
+
+/** The values of the full-table variable that run the full table. */
+export const FULL_TABLE_ON: readonly string[] = ['1', 'true']
+
+/** The values of the full-table variable that leave the legs behind a port on their subset (empty: not set). */
+export const FULL_TABLE_OFF: readonly string[] = ['', '0', 'false']
+
+/** The name every store of the worker leg starts with: its leftover pools are told from the hub leg's running beside it. */
+export const WORKER_LEG_PREFIX = 'store-contract-worker'
+
+/** The name every store of the hub leg starts with. */
+export const HUB_LEG_PREFIX = 'store-contract-hub'
+
+/**
+ * How long one case of a leg in the test's own realm may take: a few ms to a few hundred at rest (fake IndexedDB's
+ * connection cases the slowest), many times that on a loaded machine.
+ */
+export const IN_REALM_CASE_TIMEOUT_MS = 30_000

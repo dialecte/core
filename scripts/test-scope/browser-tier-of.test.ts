@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import type { BrowserTier } from './test-scope.types'
 
 const CASES: Record<string, BrowserTier> = {
-	'src/store/contract/store-contract.test.ts': 'T4',
+	'src/store/contract/store-contract.sqlite-worker.test.ts': 'T4',
 	'src/store/sqlite/served/hub/hub-client.test.ts': 'T4',
 	'src/store/json-values.page.test.ts': 'T4',
 	'src/project/import.indexeddb.test.ts': 'T4',

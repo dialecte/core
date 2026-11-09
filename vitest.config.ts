@@ -1,6 +1,7 @@
 import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import { FULL_TABLE_VARIABLE } from './src/store/contract/store-contract.constants'
 import { benchCommands } from './src/store/sqlite/bench/bench-commands'
 import viteConfig from './vite.config'
 import {
@@ -12,6 +13,7 @@ import {
 	NODE_ONLY_TEST_FILES,
 	NODE_STORE_CONTRACT_TEST_FILES,
 	SCRIPT_TEST_PATTERN,
+	TEST_TAGS,
 	UNIT_TEST_PATTERN,
 	WORKER_FILE_PATTERN,
 } from './vitest.config.constants'
@@ -24,6 +26,12 @@ import type { Plugin } from 'vite'
 import type { BrowserConfigOptions } from 'vitest/node'
 
 const root = fileURLToPath(new URL('./', import.meta.url))
+
+/**
+ * What a project running the store contract's legs gives its tests: the full-table switch from the environment (a
+ * release sets it), readable in node and in the browser alike.
+ */
+const contractEnvironment = { [FULL_TABLE_VARIABLE]: process.env[FULL_TABLE_VARIABLE] ?? '' }
 
 /** Every include pattern names at least one file: a moved test file must not drop out of its project unseen. */
 function assertEachIncludeMatches(params: {
@@ -149,6 +157,10 @@ function browserTestProject(params: {
 		test: {
 			name,
 			sequence: { groupOrder },
+			tags: [...TEST_TAGS],
+			env: contractEnvironment,
+			// the same value on a second channel: a leg checks its realm sees what the config set
+			provide: contractEnvironment,
 			browser: createBrowser(browserTestInstances()),
 			include,
 			exclude: [...configDefaults.exclude, BENCH_TEST_PATTERN, ...exclude],
@@ -225,6 +237,9 @@ export default mergeConfig(
 						name: 'node-indexeddb',
 						environment: 'node',
 						isolate: false,
+						tags: [...TEST_TAGS],
+						env: contractEnvironment,
+						provide: contractEnvironment,
 						include: nodeStoreContractPaths,
 						setupFiles: ['src/store/contract/store-contract.node.setup.ts'],
 						root,

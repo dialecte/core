@@ -1,39 +1,20 @@
 import { readFileSync } from 'node:fs'
 import { join, matchesGlob } from 'node:path'
 
-import vitestConfig from '../../vitest.config'
 import { DOCUMENT_SUITES_PATTERN } from '../../vitest.config.constants'
 import { PACKAGE_ROOT } from './test-scope.constants'
+import { configuredProjects } from './vitest-projects.fixtures'
 
 import { describe, expect, it } from 'vitest'
+
+import type { ConfiguredProject } from './vitest-projects.fixtures.types'
 
 /** A Document suite file: what each store's leg must run. */
 const DOCUMENT_SUITE_FILE = 'src/document/document.test.ts'
 
-type ConfiguredProject = {
-	name: string
-	environment?: string
-	include: string[]
-	setupFiles: string[]
-}
-
 type PackageJson = {
 	scripts: Record<string, string>
 	dialecte: { gate: { full: { name: string; run: string }[] } }
-}
-
-function projectsOf(): ConfiguredProject[] {
-	const projects = (vitestConfig.test?.projects ?? []) as { test?: Record<string, unknown> }[]
-	return projects.map(function configured(project) {
-		const test = project.test ?? {}
-		const setupFiles = test.setupFiles
-		return {
-			name: String(test.name),
-			environment: test.environment as string | undefined,
-			include: (test.include as string[] | undefined) ?? [],
-			setupFiles: typeof setupFiles === 'string' ? [setupFiles] : ((setupFiles as string[]) ?? []),
-		}
-	})
 }
 
 function readPackageJson(): PackageJson {
@@ -47,7 +28,7 @@ function setupTextOf(project: ConfiguredProject): string {
 /** The node project running the Document suites on a store: its setup names that store for the test helpers. */
 function documentLegOf(params: { storage: string }): ConfiguredProject | undefined {
 	const { storage } = params
-	return projectsOf().find(function runsDocumentsOn(project) {
+	return configuredProjects().find(function runsDocumentsOn(project) {
 		return (
 			project.environment === 'node' &&
 			project.include.some((pattern) => matchesGlob(DOCUMENT_SUITE_FILE, pattern)) &&

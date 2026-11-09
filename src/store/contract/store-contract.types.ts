@@ -1,4 +1,4 @@
-import type { EngineControlRequest } from '../sqlite/served/engine.types'
+import type { EngineApi, EngineControlRequest } from '../sqlite/served/engine.types'
 import type { ImportFileOptions, Store } from '../store.types'
 import type {
 	STORE_CONTRACT_DIFFERENCES,
@@ -278,4 +278,47 @@ export type ImportWithLoneSurrogate = {
 export type TextPlace = {
 	needs?: StoreContractNeed[]
 	write: (store: Store) => Promise<unknown>
+}
+
+/** The tables of the contract, by the concern each covers. */
+export type StoreContractTable = 'store' | 'announce' | 'export' | 'path' | 'text' | 'well-formed'
+
+/**
+ * A tag a case carries (vitest's test tags): `transport`, a case about what crosses between a client and its engine
+ * (connections, announcements, engines ending, imports and exports, text kept across the port).
+ */
+export type StoreContractTag = 'transport'
+
+/** What of the table a leg runs: every case, or the transport cases only (unless the full table is asked for). */
+export type StoreContractSubset = 'full' | 'transport'
+
+/** A case's place in the contract: its table, its group and what it needs of a leg. */
+export type StoreContractCasePlace = {
+	table: StoreContractTable
+	group: string
+	/** The case's name in its group. */
+	description: string
+	needs?: readonly StoreContractNeed[]
+}
+
+/** A case of the table run behind a port for what it reaches there, and why. */
+export type TransportCase = {
+	table: StoreContractTable
+	group: string
+	description: string
+	/** The member of the engine's wire only this case reaches among the transport cases. */
+	reaches: keyof EngineApi
+}
+
+/** A group of the contract with the table it belongs to. */
+export type StoreContractGroup = {
+	table: StoreContractTable
+	group: string
+	cases: StoreContractCases
+}
+
+/** How a leg registers a case: under which name, and run, run as an expected failure, run alone or skipped. */
+export type CaseRegistration = {
+	name: string
+	mode: 'run' | 'only' | 'fails' | 'skip'
 }

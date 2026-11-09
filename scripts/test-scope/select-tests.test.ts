@@ -56,7 +56,7 @@ const CASES: Record<string, SelectionCase> = {
 		inConfigOrder: true,
 		selected: [
 			{
-				path: 'src/store/contract/store-contract.test.ts',
+				path: 'src/store/contract/store-contract.sqlite-worker.test.ts',
 				tier: 'T4',
 				reason: /vite\.engine\.config\.ts/,
 			},
@@ -126,7 +126,7 @@ const CASES: Record<string, SelectionCase> = {
 		exactly: BROWSER_FILES,
 		selected: [
 			{
-				path: 'src/store/contract/store-contract.test.ts',
+				path: 'src/store/contract/store-contract.sqlite-worker.test.ts',
 				tier: 'T4',
 				reason: /no-such-ref/,
 			},

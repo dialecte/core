@@ -1,4 +1,17 @@
 import type { TierOnlyTestFile } from './vitest.config.types'
+import type { TestTagDefinition } from 'vitest/config'
+
+/**
+ * The store contract, one file per leg: the legs in the test's own realm run in node and in the browser, the engine
+ * worker legs in the browser only.
+ */
+export const STORE_CONTRACT_LEG_FILES = {
+	inMemory: 'src/store/contract/store-contract.in-memory.test.ts',
+	indexedDb: 'src/store/contract/store-contract.indexeddb.test.ts',
+	sqliteInProcess: 'src/store/contract/store-contract.sqlite-in-process.test.ts',
+	sqliteWorker: 'src/store/contract/store-contract.sqlite-worker.test.ts',
+	sqliteHub: 'src/store/contract/store-contract.sqlite-hub.test.ts',
+} as const
 
 /** The files core's browser tests start as workers, with or without a query. */
 export const WORKER_FILE_PATTERN = /\.worker\.ts(?:\?|$)/
@@ -9,8 +22,24 @@ export const WORKER_FILE_PATTERN = /\.worker\.ts(?:\?|$)/
  */
 export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	{
-		path: 'src/store/contract/store-contract.test.ts',
-		why: 'the store contract on IndexedDB and on SQLite over OPFS (node runs it on the in-memory store and fake-indexeddb)',
+		path: STORE_CONTRACT_LEG_FILES.inMemory,
+		why: "the store contract on the in-memory store in a page's realm (node runs it too)",
+	},
+	{
+		path: STORE_CONTRACT_LEG_FILES.indexedDb,
+		why: 'the store contract on IndexedDB (node runs it on fake-indexeddb)',
+	},
+	{
+		path: STORE_CONTRACT_LEG_FILES.sqliteInProcess,
+		why: "the store contract on the SQLite engine in a page's realm (node runs it too)",
+	},
+	{
+		path: STORE_CONTRACT_LEG_FILES.sqliteWorker,
+		why: 'the store contract through an engine worker on OPFS',
+	},
+	{
+		path: STORE_CONTRACT_LEG_FILES.sqliteHub,
+		why: "the store contract through the origin's hub, its engines in workers on OPFS",
 	},
 	{ path: 'src/store/local/dexie-store.test.ts', why: 'the IndexedDB store' },
 	{
@@ -174,7 +203,9 @@ export const NODE_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
  * and on IndexedDB through fake-indexeddb, given to node by their own setup file.
  */
 export const NODE_STORE_CONTRACT_TEST_FILES: readonly string[] = [
-	'src/store/contract/store-contract.test.ts',
+	STORE_CONTRACT_LEG_FILES.inMemory,
+	STORE_CONTRACT_LEG_FILES.indexedDb,
+	STORE_CONTRACT_LEG_FILES.sqliteInProcess,
 	'src/project/store-switch.test.ts',
 	// the IndexedDB-specific files: at every step on fake-indexeddb, once per lot in the browser on IndexedDB
 	'src/store/local/dexie-store.test.ts',
@@ -210,3 +241,12 @@ export const NODE_BENCH_TEST_FILES: readonly TierOnlyTestFile[] = [
  * several never starts their Chromiums at once.
  */
 export const BROWSER_GROUP_ORDER = { browser: 1, browserAll: 2, perf: 3 } as const
+
+/** The tags the test cases may carry (vitest refuses any other): the store contract's transport cases. */
+export const TEST_TAGS: readonly TestTagDefinition[] = [
+	{
+		name: 'transport',
+		description:
+			'a store contract case about what crosses between a client and its engine: the legs behind a port run these',
+	},
+]

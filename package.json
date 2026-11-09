@@ -56,6 +56,7 @@
 		"test:scope": "tsx scripts/test-scope/run-test-scope.ts --runner vitest",
 		"test:browser": "vitest run --project browser",
 		"test:browser:all": "vitest run --project browser-all",
+		"test:browser:release": "STORE_CONTRACT_FULL_TABLE=1 vitest run --project browser-all",
 		"test:perf": "VITE_BENCH=1 vitest run --project perf --mode bench --reporter=verbose",
 		"test:perf:node": "VITE_BENCH=1 vitest run --project perf-node --mode bench --reporter=verbose",
 		"test:hook": "dialecte gate --hook",

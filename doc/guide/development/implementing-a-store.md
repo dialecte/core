@@ -134,7 +134,7 @@ await createSclProject.destroyProject({
 
 ## Checking a store
 
-Core's store contract suite (`src/store/contract/` in the core repository) runs one table of cases over every store it ships - `InMemoryStore`, `DexieStore`, the SQLite engine store in process, in a worker and through the hub - so they differ only in speed. A difference is a store bug, unless the case names it as one the store cannot have (an in-memory store has no storage limit). The suite is not exported yet: a custom store is checked by its own tests against the contract in `store.types.ts`.
+Core's store contract suite (`src/store/contract/` in the core repository) runs one table of cases over every store it ships - `InMemoryStore`, `DexieStore`, the SQLite engine store in process, in a worker and through the hub, one test file per store - so they differ only in speed. A difference is a store bug, unless the case names it as one the store cannot have (an in-memory store has no storage limit). The stores behind a port (an engine in a worker, through the hub) run the cases about what crosses the port - second connections, announcements, engines ending, imports and exports, text kept as written - and every member of the engine's wire must be called by one of them; a release runs the full table on every store (`npm run test:browser:release`: the whole suite in the browser with `STORE_CONTRACT_FULL_TABLE=1`). The suite is not exported yet: a custom store is checked by its own tests against the contract in `store.types.ts`.
 
 ## See also
 
