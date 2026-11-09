@@ -2,15 +2,56 @@ name: _test
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'pr: the browser tests a change selects; release: the whole suite in the browser with the store contract full table'
+        type: choice
+        options: [pr, release]
+        default: release
   workflow_call:
+    inputs:
+      mode:
+        description: 'pr: the browser tests a change selects; release: the whole suite in the browser with the store contract full table'
+        type: string
+        required: true
 
 jobs:
-  test:
+  node:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 'latest'
+          cache: 'npm'
+
+      - name: Restore node_modules cache
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Run the node tests
+        run: npm run test:node
+
+  # the browser tests, split over shards by vitest (a file's shard follows from its path)
+  browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      # the whole history: the selection compares the change with its merge base on the pull request base
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -39,8 +80,11 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
-      - name: Run the node tests
-        run: npm run test:node
+      # a shard may hold none of the selected files: it passes with no test
+      - name: Run the browser tests the change selects
+        if: inputs.mode == 'pr'
+        run: npm run test:scope -- --base origin/${{ github.base_ref }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --passWithNoTests --retry=1
 
-      - name: Run the whole suite in the browser
-        run: npm run test:browser:all -- --retry=1
+      - name: Run the whole suite in the browser, the store contract's full table on every store
+        if: inputs.mode == 'release'
+        run: npm run test:browser:release -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --retry=1
