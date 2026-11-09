@@ -185,6 +185,10 @@ export const NODE_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'reads package.json and the sources from disk: no retired XML module',
 	},
 	{
+		path: 'src/store/contract/store-contract.legs.test.ts',
+		why: "reads the package's config, scripts and the contract's sources from disk: one file per store, each in its projects",
+	},
+	{
 		path: 'src/test/assert-valid-xml/assert-valid-xml-imports.test.ts',
 		why: 'reads the sources of the shape check from disk',
 	},

@@ -1,7 +1,7 @@
 import { globSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { FULL_TABLE_VARIABLE } from './src/store/contract/store-contract.constants'
+import { FULL_TABLE_VARIABLE } from './src/store/contract/store-contract.full-table.constants'
 import { benchCommands } from './src/store/sqlite/bench/bench-commands'
 import viteConfig from './vite.config'
 import {
