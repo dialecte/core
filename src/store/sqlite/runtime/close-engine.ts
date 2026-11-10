@@ -12,7 +12,7 @@ export async function closeEngine(params: { state: EngineRuntimeState }): Promis
 		await endEngineAndClients({ state })
 	} finally {
 		// the lock let go whatever ending the engine did: in hub mode the next engine waits for it
-		releasePool({ state })
+		await releasePool({ state })
 	}
 }
 
@@ -60,8 +60,11 @@ async function closeClients(params: {
 	state.heartbeat = undefined
 }
 
-/** The pool paused and the lock released whatever the pause does: the files stay, another engine may open them. */
-export function releasePool(params: { state: EngineRuntimeState }): void {
+/**
+ * The pool paused and the lock released whatever the pause does: the files stay, another engine may open them.
+ * Settled once the browser has let the lock go: an answer posted after it finds the lock free in any context.
+ */
+export async function releasePool(params: { state: EngineRuntimeState }): Promise<void> {
 	const { state } = params
 	state.events?.close()
 	state.events = undefined
@@ -69,7 +72,8 @@ export function releasePool(params: { state: EngineRuntimeState }): void {
 	try {
 		state.pool?.pauseVfs()
 	} finally {
-		state.releaseLock?.()
+		const release = state.releaseLock
 		state.releaseLock = undefined
+		await release?.()
 	}
 }

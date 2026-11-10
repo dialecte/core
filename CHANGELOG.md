@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- SQLite storage: an engine answers a close, a destroy (refused or done) and a failed open only once the browser has let its project's lock go, so a view, another tab or a test checking the lock right after the answer finds it free. Before, the answer could arrive while the lock was still being let go.
+
 ## [0.9.0] - 2026-11-06
 
 ### Changed

@@ -75,7 +75,7 @@ export async function openPool(params: {
 		const pool = await sqlite3.installOpfsSAHPoolVfs(options)
 		return { pool, lock }
 	} catch (thrown) {
-		lock.release()
+		await lock.release()
 		throw thrown
 	}
 }
@@ -168,15 +168,21 @@ export function takeEngineLock(params: {
 	const budgetMs = Math.max(0, Math.round(deadline - performance.now()))
 	const name = engineLockNameOf({ dialecteId, project })
 	return new Promise(function requestLock(resolve, reject) {
-		let release: () => void = releaseNothing
+		let letGo: () => void = releaseNothing
 		const held = new Promise<void>(function holdUntilReleased(done) {
-			release = done
+			letGo = done
 		})
+		// the request settles once the browser has let the lock go (or refused it): the release waits for that, so what
+		// is answered after it reaches another context with the lock free
+		async function release(): Promise<void> {
+			letGo()
+			await requested
+		}
 		const ifFree = mode === 'if-available' || budgetMs === 0
 		const options: LockOptions = ifFree
 			? { ifAvailable: true }
 			: { signal: AbortSignal.timeout(budgetMs) }
-		navigator.locks
+		const requested: Promise<void> = navigator.locks
 			.request(name, options, async function holdLock(granted) {
 				if (!granted) {
 					reject(

@@ -1,5 +1,6 @@
 import { engineLockNameOf } from '../served/engine-lock'
 import { poolDirectoryOf, refuseShortSpace, takeEngineLock } from './install-pool'
+import { isEngineLockFree } from './runtime.fixtures'
 import { FIXTURE_DIALECTE } from './runtime.fixtures.constants'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -107,6 +108,18 @@ describe('the engine lock waited for until a deadline', () => {
 			},
 		)
 		expect(refused).toBe('PROJECT_ENGINE_BUSY')
+	})
+
+	it('released → free for any other context as soon as the release has settled (what an engine answers after it, a page reads free)', async () => {
+		const project = uniqueProject()
+		const held = await takeEngineLock({
+			project,
+			...FIXTURE_DIALECTE,
+			mode: 'if-available',
+			deadline: performance.now(),
+		})
+		await held.release()
+		await expect(isEngineLockFree({ project })).resolves.toBe(true)
 	})
 
 	it('held, then let go before the deadline → taken', async () => {

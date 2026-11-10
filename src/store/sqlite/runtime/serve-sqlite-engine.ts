@@ -230,7 +230,7 @@ async function openEngine(params: {
 			await probePausedPool({ dialecteId: dialecte.id, project, deadline, expectedCreationId })
 			await state.pool.unpauseVfs()
 		} catch (thrown) {
-			releasePool({ state })
+			await releasePool({ state })
 			throw thrown
 		}
 	} else {
@@ -295,7 +295,7 @@ async function openEngine(params: {
 	} catch (thrown) {
 		// the engine closes its database when its start fails; one never handed to it is closed here
 		if (db?.isOpen()) db.close()
-		releasePool({ state })
+		await releasePool({ state })
 		throw thrown
 	}
 }
@@ -357,7 +357,7 @@ async function destroyProject(params: {
 			state.dialecteId = undefined
 		}
 		// the lock let go whatever the destroy did: a hub keeps this worker alive for the next engine
-		releasePool({ state })
+		await releasePool({ state })
 	}
 }
 

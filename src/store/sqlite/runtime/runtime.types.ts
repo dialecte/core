@@ -18,7 +18,7 @@ export type EngineRuntimeState = {
 	dialecteId: string | undefined
 	pool: SAHPoolUtil | undefined
 	/** Releases the engine lock (held from the open until `close` or `destroy`). */
-	releaseLock: (() => void) | undefined
+	releaseLock: (() => Promise<void>) | undefined
 	engine: SqliteEngine | undefined
 	/** The project's channel, open while the engine is. */
 	events: StoreEvents | undefined
@@ -35,7 +35,8 @@ export type PoolInstallOptions = Parameters<Sqlite3Static['installOpfsSAHPoolVfs
 
 /** The project's lock, held: release it once the engine no longer touches the files. */
 export type HeldEngineLock = {
-	release: () => void
+	/** Let the lock go; settled once the browser has let it go: another context asking for it then gets it. */
+	release: () => Promise<void>
 }
 
 /** A file of the private file system as a dedicated worker reaches it (the page's types lack this member). */
