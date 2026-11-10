@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: snapshot-every-round
+expected_outcome: |
+  Even for a verify-only last round, the orchestrator takes the round's snapshot (`dialecte lot snapshot <folder>
+  --round 2`) before it spawns the reviewer, gives the reviewer the delta from it (`dialecte lot delta <folder>
+  --round 2`, reusing the fixer's throwaway for running the new tests), records the verdict with `lot decide`, and
+  only then hands the throwaway's removal to the user: the throwaway is never the only copy of a round's state.

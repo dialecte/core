@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: station-zero-removing-hook
+expected_outcome: |
+  Before the test station, the orchestrator runs a discovery pass over the whole cli surface (`dialecte api find`,
+  `explain`, `schema`, `fixture`, `standard find`, the package skills, then a code search) and writes, per hit,
+  reused or why not into the lot's decisions.md. Because the hook deletes content on its own, the brief opens with
+  its invariant (never remove an element unless it is proven empty, declared prunable, ...) and a list of
+  adversarial cases written before the tests, and it asks a preservation check per unit (only the targeted
+  elements went, the rest unchanged, counted per element or document) with a boundary case where the target
+  touches what must stay.

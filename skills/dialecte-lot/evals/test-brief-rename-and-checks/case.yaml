@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: test-brief-rename-and-checks
+expected_outcome: |
+  The test-station brief states the rename as a rule by call (a `lot finding` call expects `lot finding:`, a
+  `lot decide` call `lot decide:`) and asks one audit pass of every touched file against it before `tdd red`;
+  the `--by` test values are neutral names, and the brief forbids a real person's name or handle in any file. Per
+  step it runs the related tests, `check` and `dialecte rules` on the touched files, not only at the end; after
+  any test edit (a test-review return) `tdd red` runs again before `tdd green`. The station stops every
+  background task it started (the watcher), checked with `ps`, before it reports, and the orchestrator checks
+  for live tasks before calling the step done.
