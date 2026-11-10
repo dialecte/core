@@ -87,6 +87,10 @@ function collectTestEntryTypeNames(params: {
 	const { checker, type, seen, names } = params
 	if (seen.has(type)) return
 	seen.add(type)
+	// the test dialecte's generated types are fixtures generated from its schema: they name no type of the test entry,
+	// and walking them (every element of the schema) is most of the scan's time
+	const own = type.aliasSymbol ?? type.getSymbol()
+	if (own && isGenerated(own)) return
 	const generic = genericOf(type)
 	// an instance met again with the same arguments is the same type (`seen`); one with other arguments is
 	// read again (`Recursive<number>` holding `Recursive<string>`), up to a few levels: a generic that

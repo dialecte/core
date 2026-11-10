@@ -25,6 +25,8 @@ jobs:
     name: Run Tests
     needs: install
     uses: ./.github/workflows/_test.yml
+    with:
+      mode: release
 
   version:
     name: Check Version

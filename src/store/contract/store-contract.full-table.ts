@@ -1,4 +1,8 @@
-import { FULL_TABLE_OFF, FULL_TABLE_ON, FULL_TABLE_VARIABLE } from './store-contract.constants'
+import {
+	FULL_TABLE_OFF,
+	FULL_TABLE_ON,
+	FULL_TABLE_VARIABLE,
+} from './store-contract.full-table.constants'
 
 /**
  * Whether the full table runs on every leg: the variable set to `1` or `true`; empty, absent, `0` or `false` is not.

@@ -225,15 +225,6 @@ export const TRANSPORT_CASES: readonly TransportCase[] = [
 /** The tables of value shapes and paths: what they check is the same on every port, they run in-process only. */
 export const IN_PROCESS_ONLY_TABLES: readonly StoreContractTable[] = ['path', 'well-formed']
 
-/** The variable that runs the full table on every leg (a release): `1` or `true`. */
-export const FULL_TABLE_VARIABLE = 'STORE_CONTRACT_FULL_TABLE'
-
-/** The values of the full-table variable that run the full table. */
-export const FULL_TABLE_ON: readonly string[] = ['1', 'true']
-
-/** The values of the full-table variable that leave the legs behind a port on their subset (empty: not set). */
-export const FULL_TABLE_OFF: readonly string[] = ['', '0', 'false']
-
 /** The name every store of the worker leg starts with: its leftover pools are told from the hub leg's running beside it. */
 export const WORKER_LEG_PREFIX = 'store-contract-worker'
 
@@ -245,3 +236,6 @@ export const HUB_LEG_PREFIX = 'store-contract-hub'
  * connection cases the slowest), many times that on a loaded machine.
  */
 export const IN_REALM_CASE_TIMEOUT_MS = 30_000
+
+// the full-table names live in a module that imports nothing (the vitest config reads them without the DOM)
+export { FULL_TABLE_VARIABLE } from './store-contract.full-table.constants'

@@ -1,15 +1,18 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-import { FULL_TABLE_VARIABLE } from '../../src/store/contract/store-contract.constants'
 import {
 	BROWSER_ONLY_TEST_FILES,
 	NODE_STORE_CONTRACT_TEST_FILES,
 	STORE_CONTRACT_LEG_FILES,
-} from '../../vitest.config.constants'
-import { PACKAGE_ROOT } from './test-scope.constants'
+} from '../../../vitest.config.constants'
+import { FULL_TABLE_VARIABLE } from './store-contract.full-table.constants'
 
 import { describe, expect, it, vi } from 'vitest'
+
+/** The package root: the guard reads the package's own files. */
+const PACKAGE_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
 /** The contract file before it was split per leg. */
 const SINGLE_CONTRACT_FILE = 'src/store/contract/store-contract.test.ts'
@@ -39,8 +42,8 @@ async function fullTableValuesWith(params: {
 	vi.stubEnv(FULL_TABLE_VARIABLE, params.value)
 	vi.resetModules()
 	try {
-		const projects = await import('./vitest-projects.fixtures').then((fixtures) =>
-			fixtures.configuredProjects(),
+		const projects = await import('../../../scripts/test-scope/vitest-projects.fixtures').then(
+			(fixtures) => fixtures.configuredProjects(),
 		)
 		return projects
 			.filter((project) => ['browser', 'browser-all', 'node-indexeddb'].includes(project.name))
@@ -58,8 +61,8 @@ async function providedFullTableWith(params: {
 	vi.stubEnv(FULL_TABLE_VARIABLE, params.value)
 	vi.resetModules()
 	try {
-		const projects = await import('./vitest-projects.fixtures').then((fixtures) =>
-			fixtures.configuredProjects(),
+		const projects = await import('../../../scripts/test-scope/vitest-projects.fixtures').then(
+			(fixtures) => fixtures.configuredProjects(),
 		)
 		return projects
 			.filter((project) => ['browser', 'browser-all', 'node-indexeddb'].includes(project.name))
