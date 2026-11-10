@@ -14,6 +14,10 @@ Never edit, move or remove a file under a repository's .git folder (a lock, a co
 No multi-agent workflow (a host tool that fans out many agents at once) unless the user opted in; a sub-agent
   of yours has its own spawn. No rm, mv or xargs on a variable path: leave temporary files in the
   hand-over folder or the scratchpad.
+Edit files with the edit tool. A script that rewrites a file reads it fully before it opens the file for
+  writing, never both in one expression (opening for writing empties the file before the read).
+Never run an ad-hoc script that writes files with a lot's worktree as its working folder: cd to the scratchpad
+  or the hand-over folder first, and name a worktree file by its absolute path.
 ```
 
 ## Test-station brief
@@ -121,8 +125,8 @@ Later rounds - delta review of the fix diff and its blast radius only. Start fro
   `git diff --no-index --no-color --no-ext-diff round-<n-1>/<file> <worktree>/<file>`; not in round-<n-1>/ (at
   the base then), `git -C <worktree> diff --no-color --no-ext-diff HEAD -- <file>`, or /dev/null as the left
   side for a file the base does not have or that round-<n-1>.deleted lists; gone from the worktree, /dev/null as
-  the right side (from cli 0.2.0, `dialecte review delta <folder> --round <n>` prints that diff per file).
-  Throwaway worktree: <path - from `dialecte review delta <folder> --round <n> --worktree` (cli 0.2.0; the
+  the right side (from cli 0.4.0, `dialecte lot delta <folder> --round <n>` prints that diff per file).
+  Throwaway worktree: <path - from `dialecte lot delta <folder> --round <n> --worktree` (cli 0.4.0; the
   fixer's, when it made one), or made by the orchestrator with `dialecte worktree add <repository> <lot-branch>-round-<n-1> --from
   <base>`, round-<n-1>/ copied over, `git -C <throwaway> rm -q --pathspec-from-file=<folder>/round-<n-1>.deleted
   --pathspec-file-nul` | none>. Verify each fix: copy its new test file in and run it there - it must fail - and in
@@ -150,8 +154,8 @@ Blast radius, one line under each fix: what it widens, excludes or replaces (a p
   now matching more or less; the earlier code or fix it replaces), and the findings-ledger rows it touches - its
   own and any other whose code it changes ("none beyond <id>" when so). The next round's reviewer starts there.
 A fix's new test: write it before the fix and take its red with `npx dialecte tdd red`; when production already
-  holds the fix, run it on round <n>'s tree - `npx dialecte review delta <hand-over folder> --round <n+1>
-  --worktree` (cli 0.2.0; else the throwaway I made: <path>) makes the throwaway and prints its removal command;
+  holds the fix, run it on round <n>'s tree - `npx dialecte lot delta <hand-over folder> --round <n+1>
+  --worktree` (cli 0.4.0; else the throwaway I made: <path>) makes the throwaway and prints its removal command;
   copy in the test file and the test code it imports - where it must fail on its assertion, and report "red on
   round-<n>/: <failing line>" with the throwaway's path. Never edit production back to the old behaviour to get
   a red.

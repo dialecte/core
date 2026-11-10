@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The `dialecte-lot` and `dialecte-contributing` skills and the guide page _Delivering a change with agents_ cite the `@dialecte/cli` 0.4.0 command forms: `dialecte record review` is `dialecte lot finding <folder> --round <n> --severity <blocking|should-fix|nit> --at <file:line> <finding>`, `record decision` is `lot decide <folder> <finding> <state>` (the state typed `fix-to-verify`), `record snapshot` is `lot snapshot`, `record standard` is `lot standard <folder> consulted <note> | not-consulted <reason>`, `review delta` is `lot delta`, `dialecte recap` is `lot recap`, and `dialecte handover <lots.json>` is `dialecte handover write <lots.json>` (`--rehash` follows it); the manual fallbacks for an older cli stay. Every station brief now carries three file-write safety lines: edit files with the edit tool; a script that rewrites a file reads it fully before opening it for writing, never both in one expression; never run an ad-hoc script that writes files with a lot's worktree as its working folder, but from the scratchpad or the hand-over folder, naming a worktree file by its absolute path. New eval cases: `review-round-records-lot-commands`, `brief-file-write-safety`.
+- Core pins `@dialecte/cli` 0.4.0 exactly (dev dependency). With it, `dialecte skills check` reads the cli's command map: the four-layers diagram of the `dialecte` skill says "a dialecte package", and `dialecte-lot` names the machine's live-runs list in plain words, since no cli command lists them yet.
+
 ## [0.9.0] - 2026-11-06
 
 ### Changed

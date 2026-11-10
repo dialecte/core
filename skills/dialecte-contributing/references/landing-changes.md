@@ -8,7 +8,7 @@ script may be waiting or running in the human's terminal.
 
 ## The hand-over
 
-The agent writes only a lots file; `npx dialecte handover <lots.json>` does the rest. One lots file per lot
+The agent writes only a lots file; `npx dialecte handover write <lots.json>` does the rest. One lots file per lot
 group, in an uncommitted hand-over folder (for example `_commit-plan/<topic>-<yyyy-mm-dd>/lots.json` at the
 workspace root, outside every repo); the hand-over files are written next to it (`--out <dir>` elsewhere):
 
@@ -64,13 +64,13 @@ workspace root, outside every repo); the hand-over files are written next to it 
   and is for when the person asks. A heavy hook that does run is rehearsed while another suite loads the
   machine, as it will be when the user commits; when that is not possible, the hand-over notes the machine's
   load at rehearsal time (`uptime`). The real commit's hook always runs.
-- Edited a file after the snapshot (a review fix)? `npx dialecte handover --rehash <lots.json>`.
+- Edited a file after the snapshot (a review fix)? `npx dialecte handover write <lots.json> --rehash` (a cli from 0.2.0 to 0.3: `npx dialecte handover <lots.json> --rehash`).
 - `npx dialecte handover list` shows every hand-over folder with its state (pending, partly committed,
   committed, stale); after a merge, `npx dialecte worktree prune` lists the committed ones with the merged
   worktrees and prints their removal commands: an agent hands them (or the `--yes` command, which asks on
   a terminal) to the user with their `cd`.
-- `handover` comes with `@dialecte/cli` 0.2.0 or later; with an older cli in the package, run
-  `npx @dialecte/cli@^0.2.0 handover <lots.json>` (never `@latest`, which can be older).
+- `handover write` comes with `@dialecte/cli` 0.4.0 or later; a cli from 0.2.0 to 0.3 takes
+  `npx dialecte handover <lots.json>` (the same command 0.4.0 keeps as an alias).
 
 ## Commit messages
 

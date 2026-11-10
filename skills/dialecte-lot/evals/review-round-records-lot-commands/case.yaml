@@ -1,0 +1,10 @@
+schema_version: '1.1'
+name: review-round-records-lot-commands
+expected_outcome: |
+  The orchestrator records a review round with the 0.4.0 `lot` command group of @dialecte/cli: it takes the round's
+  snapshot first, before the findings (`dialecte lot snapshot`), records each finding (`dialecte lot finding` with
+  round, severity, location) and each state after the fixer's report (`dialecte lot decide`), prepares round 2 with
+  `dialecte lot delta ... --worktree`, records the standard line (`dialecte lot standard ... not-consulted <reason>`
+  since none is configured), hands the lots file over with `dialecte handover write`, and prints the PR details with
+  `dialecte lot recap`. It uses none of the renamed forms (`dialecte record ...`, `dialecte review delta`, a bare
+  `dialecte recap`).

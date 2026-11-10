@@ -21,7 +21,7 @@ uuid/name fix-up that a hook already performs on every write. This skill exists 
 
 ```
 your app            custom extensions, services, UI           (yours)
-dialecte package    @dialecte/<id>, @acme/widget              (domain)
+a dialecte package  @dialecte/<id>, @acme/widget              (domain)
   ├ definition/*.generated.ts   generated from the XSD - never edited by hand
   ├ config/                     wires the definition into core, `namespace <Name>` types
   ├ hooks/                      automatic coherence on every write and on import
