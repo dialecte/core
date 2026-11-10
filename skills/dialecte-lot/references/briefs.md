@@ -14,6 +14,14 @@ Never edit, move or remove a file under a repository's .git folder (a lock, a co
 No multi-agent workflow (a host tool that fans out many agents at once) unless the user opted in; a sub-agent
   of yours has its own spawn. No rm, mv or xargs on a variable path: leave temporary files in the
   hand-over folder or the scratchpad.
+Edit files with the edit tool. A script that rewrites a file reads it fully before it opens the file for
+  writing, never both in one expression (opening for writing empties the file before the read).
+Never run an ad-hoc script that writes files with a lot's worktree as its working folder: cd to the scratchpad
+  or the hand-over folder first, and name a worktree file by its absolute path.
+No real person's name or handle in any file you write, test values included: use neutral names (`reviewer`,
+  `person-a`).
+Before you report, stop every background task you started (a wait loop, a watcher, a server) and check with
+  `ps` that none is left.
 ```
 
 ## Test-station brief
@@ -24,6 +32,10 @@ Tier: standard (model-tiers.md; `npx @dialecte/cli models` says which model). St
 
 Step: <the 3-6 behaviours of the step, as case keys "<state> → <outcome>">
 Spec: <the plan section(s), by path and heading; the decisions that bind it>
+Invariant (a lot that deletes, moves or resets on its own; else no such line): <never <act> on <thing> unless
+  proven <X>, <Y>>; every test checks it, and the adversarial cases are written first.
+Preservation (a step that removes content; else no such line): a check per unit that only the target went, and
+  a boundary case where the target touches what must stay.
 Read: this brief and the existing code only - not an implementation, not another agent's notes.
 Worktree: <absolute path>, branch <branch>, base <sha>. Work only there. Never commit, stage, push,
   `git stash` or any git command that writes the index.
@@ -31,9 +43,15 @@ You may change: the test files of the step, and stubs - new exports with their r
   `new Error('not implemented: <name>')`. Never a behaviour of the production code.
 Each test calls the code under test inside an `expect(...)` a matcher completes, so a stub's error is a
   red on the behaviour. Remove every `.only` and `only: true` before `tdd red` (it refuses a file holding one).
+Each case spells its full title: `tdd` keys a case by its title, and vitest cuts each `$` field of an
+  `it.each(...)` title (`'$name'`) at 40 characters, so long names collide - never a `$` field for them.
 A test that reads the disk, spawns a process or measures time carries an explicit bound with wide slack,
   a named constant (core: `SOURCE_SCAN_TIMEOUT_MS` in `src/test/test-timing.constants.ts`), never the
   runner's default timeout.
+Rename mapping (a lot that renames an output across many cases; else no such line): <the rule, `<call>` →
+  `<expected text>`>. Before `tdd red`, one audit pass of every touched file against it.
+Per step: the other tests related to the files you touched, `check`, and `dialecte rules` on them (a dialecte
+  package). After any edit of a test - a test-review return included - you take `tdd red` again.
 Done when `npx dialecte tdd red` records a red for every case of the step; a refused case (passes, missing
   export, type or syntax error, timeout, stub at import or before the assertion) is fixed in the test.
 Report: the `tdd red` output, unfiltered, and the list of stubs.
@@ -86,7 +104,9 @@ Skills: load dialecte and dialecte-lot (and dialecte-contributing in a dialecte 
   before the change; runs with and before the change on the standard and strong tiers, several per
   configuration; graded blind by
   a separate agent, never by you; its benchmark and viewer paths in your report.
-Gates: fast gate per behaviour; full Definition of Done once at the end (<the package's commands>).
+Gates: per step, the tests related to the touched files, `check` and `dialecte rules` on them (a dialecte
+  package); fast gate per behaviour; full Definition of Done once at the end (<the package's commands>).
+Discovery: <the lot's decisions.md> lists what already covers the concept; reuse it, or add why not there.
 Mutation (a dialecte package that declares a mutation scope; else no such line): <off | changed | gate | audit, set in .dialecte/lot.json>; once green (a gate lot: again after the last
   fix), `dialecte mutants run` in the background, survivors judged (`dialecte mutants judge --json`, then a
   test, `record` or `schedule`), `dialecte mutants status` before the report: no new survivor, no died run, a
@@ -121,8 +141,8 @@ Later rounds - delta review of the fix diff and its blast radius only. Start fro
   `git diff --no-index --no-color --no-ext-diff round-<n-1>/<file> <worktree>/<file>`; not in round-<n-1>/ (at
   the base then), `git -C <worktree> diff --no-color --no-ext-diff HEAD -- <file>`, or /dev/null as the left
   side for a file the base does not have or that round-<n-1>.deleted lists; gone from the worktree, /dev/null as
-  the right side (from cli 0.2.0, `dialecte review delta <folder> --round <n>` prints that diff per file).
-  Throwaway worktree: <path - from `dialecte review delta <folder> --round <n> --worktree` (cli 0.2.0; the
+  the right side (from cli 0.4.0, `dialecte lot delta <folder> --round <n>` prints that diff per file).
+  Throwaway worktree: <path - from `dialecte lot delta <folder> --round <n> --worktree` (cli 0.4.0; the
   fixer's, when it made one), or made by the orchestrator with `dialecte worktree add <repository> <lot-branch>-round-<n-1> --from
   <base>`, round-<n-1>/ copied over, `git -C <throwaway> rm -q --pathspec-from-file=<folder>/round-<n-1>.deleted
   --pathspec-file-nul` | none>. Verify each fix: copy its new test file in and run it there - it must fail - and in
@@ -133,7 +153,11 @@ Later rounds - delta review of the fix diff and its blast radius only. Start fro
 Rules: the repository's code rules and Definition of Done (dialecte-contributing in a dialecte package), dialecte (reuse ladder).
 Run (read-only): the tests of the lot, `skills check`, the type-check - report the real counts.
 Check: every time bound of a test reading the disk, spawning a process or measuring time holds under load;
-  a hand-written commit or merge script in the hand-over is a finding (it goes through `dialecte handover`).
+  a hand-written commit or merge script in the hand-over is a finding (it goes through `dialecte handover`);
+  the diff against the discovery list in <the lot's decisions.md> (a hand-rolled helper it missed is a
+  finding); `git -C <worktree> grep -i -w -f <names file>` over the changed files for real people's names and
+  handles, test values included (<names file: one name or handle per line, kept outside every repository, the
+  brief carries only its path>).
 Answer: would you approve? Use the review report shape, with a severity per finding and the proposed findings-ledger rows.
 Max ~80 lines, most severe first, file:line for each finding.
 ```
@@ -150,8 +174,8 @@ Blast radius, one line under each fix: what it widens, excludes or replaces (a p
   now matching more or less; the earlier code or fix it replaces), and the findings-ledger rows it touches - its
   own and any other whose code it changes ("none beyond <id>" when so). The next round's reviewer starts there.
 A fix's new test: write it before the fix and take its red with `npx dialecte tdd red`; when production already
-  holds the fix, run it on round <n>'s tree - `npx dialecte review delta <hand-over folder> --round <n+1>
-  --worktree` (cli 0.2.0; else the throwaway I made: <path>) makes the throwaway and prints its removal command;
+  holds the fix, run it on round <n>'s tree - `npx dialecte lot delta <hand-over folder> --round <n+1>
+  --worktree` (cli 0.4.0; else the throwaway I made: <path>) makes the throwaway and prints its removal command;
   copy in the test file and the test code it imports - where it must fail on its assertion, and report "red on
   round-<n>/: <failing line>" with the throwaway's path. Never edit production back to the old behaviour to get
   a red.

@@ -52,7 +52,7 @@ follows the hand-over, and the branch goes up by pull request through that repos
 (`dialecte-contributing`). In an app that consumes a dialecte, the lot ends at
 Station 6: what comes after belongs to the app's own process - its PR skill and template for the pull
 request, its own retro and clean-up if it has them - and no further station of this skill runs (no Station 7,
-no `dialecte worktree prune`, no dialecte PR or release step). The hand-over's records (`dialecte recap`
+no `dialecte worktree prune`, no dialecte PR or release step). The hand-over's records (`dialecte lot recap <folder>`
 prints a PR's details part from them) feed the app's template only where its rules ask for it. Pushing and
 posting stay the user's (or wait for their approval).
 
@@ -71,9 +71,27 @@ wrong.
 
 Before the test station, the plan holds what the tests will pin; a gap found by a reviewer costs a round.
 
+- **Discovery first**, before any test or code: list what already covers the concept with the whole cli
+  surface - `dialecte api find` and the API index, `explain`, `schema`, `fixture`, `standard find` / `show`, the
+  package skills - then a code search for what they do not index. The list goes into the lot's `decisions.md`,
+  each hit reused or with why not; a shared read found wrong is fixed in place, never forked. Reviewers check the
+  diff against that list. The list records evidence: it never limits what a station may use.
+- **An automatic destructive action** (a command or hook that deletes, moves or resets without the person
+  running it): the brief opens with its invariant - "never <act> on <thing> unless it is proven <X>, <Y>, <Z>" -
+  and a list of adversarial cases written before the tests: for checkouts, other lots, reused or switched
+  worktrees and branches, locks, live processes, links; for content, what the target touches, references to
+  it, a target emptied and refilled; for both, concurrent runs and an interrupted step. Where proving costs more than
+  asking, print the command for the person instead of acting. Keep rules alone let every round find one more
+  state.
+- **A step that removes content** (a prune, a redaction, a dedupe): a preservation check per unit (file, page,
+  element) proves only the targeted content went, loss counted per unit and never by a summary that hides a
+  one-off, and a boundary case (the target touching what must stay) is written before the code.
+- **A rename across many cases** (an output prefix, a message: behaviour, so never an exempt lot): the
+  test-station brief states the mapping as a rule (`<call>` → `<expected text>`) and asks for one audit pass
+  of every touched file against it before `tdd red`; a text replace without it swaps names in both directions.
 - **The standard** (a lot whose rules come from a standard the code implements):
   [references/standard-check.md](references/standard-check.md) - how it is read, the cross-check for a
-  decision, and what the station records for the hand-over card (`dialecte record standard`).
+  decision, and what the station records for the hand-over card (`dialecte lot standard`).
 - **A tooling lot with shared state or an external tool**: the plan carries the store's transition table, its
   invariant and the interleavings, the test-station brief asks one forced-order test per interleaving, and the
   hand-over folder gets a `SMOKE.md` with the lot's one real run; how and where that run happens, and citing
@@ -131,7 +149,13 @@ test edited after red; the test code changed since its freeze; the cases the cha
 --fast` and `--full` check the receipts in their `tdd` step: every test-code file of the change as frozen,
 every new or changed case red then green (or unchanged), the flags and deleted cases listed.
 
-**Exempt lots.** A lot that changes no behaviour - a wording, a rename, a doc-only or a CHANGELOG-only
+**Checks run per step, not at the end of the lot**: the other tests related to the touched files (`vitest
+related` or `--changed <base>`), `check` (its type-check covers the tests) and, in a dialecte package, `dialecte
+rules` on the touched files. The whole suite runs once, at `gate --full`. After any edit of a test (a test-review
+return included, a type-only one too), the test station takes `tdd red` again before `tdd green`: a case greened
+over an unproven edit ends up accepted, not proven.
+
+**Exempt lots.** A lot that changes no behaviour - a wording, a rename nothing outputs, a doc-only or a CHANGELOG-only
 lot - has no red to prove. The orchestrator declares it in the brief and writes
 `{ "tdd": "exempt: <reason>" }` to `.dialecte/lot.json` at the package root of the worktree; the gate's
 `tdd` step passes with the reason and what the change touches ("exempt: <reason> (n production files, m
@@ -152,7 +176,8 @@ Before touching code (the implement station; the test station does the same befo
    can assume things that changed. A contradiction stops you: say it, do not reinterpret the plan.
 2. `git status -sb` in your worktree: right branch, clean (or dirty only with your own earlier work).
    Note the HEAD sha for your report.
-3. Load `dialecte` (and `dialecte-contributing` in a dialecte package); run the reuse ladder before writing anything.
+3. Load `dialecte` (and `dialecte-contributing` in a dialecte package); run the reuse ladder before writing anything,
+   starting from the lot's discovery list in `decisions.md` (Station 0).
 
 Then, within the step:
 
@@ -261,8 +286,10 @@ copy of every file `git status --porcelain -z --untracked-files=all` lists at th
 untracked, at its path relative to the repository root, and beside it `round-<n>.deleted`, NUL-separated, naming
 each deleted file and the old path of each rename (beside the copy, never in it: it is no file of the lot). A copy,
 not a patch: nothing to apply, binary files included. The lot stays uncommitted until the hand-over, so HEAD is the
-base for the whole loop: these snapshots are the only refs the later rounds have. From cli 0.2.0,
-`dialecte record snapshot <folder> --round <n>` takes it (and `dialecte review delta` reads it); the text here is
+base for the whole loop: these snapshots are the only refs the later rounds have. Every round gets one, round 1
+and a verify-only round included: without it a throwaway worktree holds the only copy of that round's state,
+lost when the throwaway is removed. From cli 0.4.0,
+`dialecte lot snapshot <folder> --round <n>` takes it (and `dialecte lot delta` reads it); the text here is
 the manual fallback for an older cli.
 
 - **Round 1 - full review**, blind to the implementer's conclusions, every severity. The checklist, each angle
@@ -276,8 +303,8 @@ the manual fallback for an older cli.
   the findings ledger. The last round reports what its class acts on; anything below is logged as a follow-up, not
   fixed in the lot. A finding the last round acts on is fixed; the round that would verify the fix goes to the user
   (above). The floor rises so the rounds converge. The review has three parts:
-  - (a) **Each fix verified on the old code.** From cli 0.2.0,
-    `dialecte review delta <folder> --round <n> --worktree` makes the throwaway worktree holding `round-<n-1>/`
+  - (a) **Each fix verified on the old code.** From cli 0.4.0,
+    `dialecte lot delta <folder> --round <n> --worktree` makes the throwaway worktree holding `round-<n-1>/`
     (the fixer's, when it made one: Station 4, reused, never a second); with an older cli, the orchestrator makes one by hand on its own branch
     (never the lot's), copies the snapshot over it, removes its deleted files - the one place a `git rm` is
     allowed, never in the lot's worktree - and passes the path (`worktree prune` lists it after the lot):
@@ -313,13 +340,15 @@ the manual fallback for an older cli.
   - (c) **One line naming what round 1 did not look at.**
 
 **The findings ledger** (`findings-ledger.md` in the hand-over folder) is the lot's memory across rounds. Only the
-orchestrator writes it, by hand or, from cli 0.2.0, with `dialecte record review` (a new row, `open`) and
-`dialecte record decision` (the states `open`, `fix to verify`, `fixed <n> [note]`, `accepted`, `logged`). The
-cli writes neither the risk-class line nor `reopened`, and its `fix to verify` carries no blast radius: write
-those by hand, or keep the blast-radius lines in a fixes file beside the ledger. Reviewers propose rows. It
-opens with the risk class (`Risk class: <class> - <rounds> rounds, last round acts on <floor>, a further round
-only with the user - set by <files>`). One row per finding: id, round
-raised, severity, file:line, state - `open`, `fix to verify - <blast radius>` (the fixer says fixed; its
+orchestrator writes it, by hand or, from cli 0.4.0, with
+`dialecte lot finding <folder> --round <n> --severity <blocking|should-fix|nit> --at <file:line> <finding>`
+(a new row, `open`) and
+`dialecte lot decide <folder> <finding> <open | fix-to-verify | fixed <round> [note] | accepted <reason> | logged <where>>`
+(the ledger row spells the state `fix to verify`). The cli writes neither the risk-class line nor `reopened`,
+and its `fix-to-verify` carries no blast radius: write those by hand, or keep the blast-radius lines in a fixes
+file beside the ledger. Reviewers propose rows. It opens with the risk class (`Risk class: <class> - <rounds>
+rounds, last round acts on <floor>, a further round only with the user - set by <files>`). One row per finding:
+id, round raised, severity, file:line, state - `open`, `fix to verify - <blast radius>` (the fixer says fixed; its
 blast-radius line comes with it), `fixed <n>` (n = the round that verified the fix; `fixed <n> (reasoned)` when the
 guard was not run), `reopened <n> by <id>` (a later fix broke it again), `accepted <reason>`, `logged <follow-up>`.
 Every reviewer reads it; a finding fixed or accepted is not raised again unless the fix is wrong. Outside every
@@ -362,8 +391,8 @@ that fixes one finding and hides another, a fix that undoes an earlier one.
 
 **The red of a fix's new test comes from the tree the round reviewed, never from production put back.** Write the
 test before the fix and take its red with `npx dialecte tdd red` while the code it pins is still the reviewed one.
-When production already holds the fix, run the new test where the old code still lives: `npx dialecte review delta
-<folder> --round <n+1> --worktree` (n = the round whose findings you fix; cli 0.2.0, else the orchestrator's
+When production already holds the fix, run the new test where the old code still lives: `npx dialecte lot delta
+<folder> --round <n+1> --worktree` (n = the round whose findings you fix; cli 0.4.0, else the orchestrator's
 hand-made throwaway of Station 3 (a)) makes a throwaway worktree holding `round-<n>/` and prints its removal
 command; copy the new test file in, with the test code it imports that the round changed, run it there - it must
 fail on its assertion - and in the lot's worktree, where it passes. The report says the red was taken on
@@ -381,12 +410,13 @@ it from a test-first red (it flags `red after green` only when the case already 
 
 ## Station 6 - hand over
 
-Write only the lots file and run `npx dialecte handover
-<lots.json>`: it writes the hand-over folder and prints its card. Never a hand-written script, nor a file per
-commit. When the repository has a commit hook (`core.hooksPath`), rehearse first with `npx dialecte handover
-run <folder> --rehearse`: a scratch clone holding your tree, the hooks folder and `node_modules`, so the hook
-runs as it will for the user. Rehearse a heavy hook while another suite loads the machine, or at least note
-the load at rehearsal time (`uptime`) after the card: a quiet rehearsal hides a time bound that fails under load.
+Write only the lots file and run
+`npx dialecte handover write <lots.json>`: it writes the hand-over folder and prints its card. Never a
+hand-written script, nor a file per commit. When the repository has a commit hook (`core.hooksPath`),
+rehearse first with `npx dialecte handover run <folder> --rehearse`: a scratch clone holding your tree, the
+hooks folder and `node_modules`, so the hook runs as it will for the user. Rehearse a heavy hook while another
+suite loads the machine, or at least note the load at rehearsal time (`uptime`) after the card: a quiet
+rehearsal hides a time bound that fails under load.
 
 **A check's result belongs to the tree it ran on.** From cli 0.2.0 every gate and hook result is recorded with
 what it checked - the tree, the installed lock, the linked `file:` dependencies and the command - and a run with
@@ -411,7 +441,9 @@ never a pasted or retyped card, which goes stale as soon as a record changes. Wi
 **is the card** `handover` printed - repository, worktree, branch, HEAD, gates, the lots with their files and
 messages, and the command with its absolute `cd` - pasted as printed, never retyped. After it: what was not verified, and one usage line (the lot's sub-agent tokens, in total
 and by station: [references/retro.md](references/retro.md)). A refusal is a finding: fix the file or the
-message, do not loosen the lots. `npx dialecte handover list` shows every hand-over waiting on the machine.
+message, do not loosen the lots. Before reporting, stop every background task you started and check with `ps`
+that none is left: a forgotten wait loop holds the worktree, and `lot close` keeps it, for as long as it runs.
+`npx dialecte handover list` shows every hand-over waiting on the machine.
 Never commit, push, stage, or touch a repository's index while a hand-over may be waiting.
 
 ## Station 7 - retro
@@ -433,10 +465,15 @@ that is rewritten every retro never settles.
   in its worktree before anything else. Its hygiene step fails on a staged file or a stash added since the
   worktree was made, whatever wrote it. A failure is a finding: look with the read-only commands it prints
   and report it; never repair it with a git command that writes. When the agent changed nothing, the gate
-  still runs its hygiene and `tdd` step and answers the rest from its record of that tree.
+  still runs its hygiene and `tdd` step and answers the rest from its record of that tree. Then check with `ps`
+  that no task the agent started is still running in its worktree: one left is stopped and reported.
 - Write each brief from [references/briefs.md](references/briefs.md): the brief is the agent's whole
   context; synthesise, do not say "based on the findings". Every brief carries its lines for all stations
-  (nothing under `.git` by hand, no workflow without the user's opt-in, no `rm` on a variable path).
+  (nothing under `.git` by hand, no workflow without the user's opt-in, no `rm` on a variable path, files
+  edited with the edit tool, a rewriting script reads before it opens for writing, no ad-hoc file-writing
+  script with a lot's worktree as its working folder: it runs from the scratchpad or the hand-over folder; no
+  real person's name or handle in any file, test values included; every background task it started stopped,
+  checked with `ps`, before it reports).
 - Each station agent is defined once, for every host, in [references/stations.md](references/stations.md):
   its tier, its access (`read`, `review`: runs commands but edits nothing, `edit`) and its role (`test-writer`,
   `test-reviewer`, `implementer`, `implementer-strong`, `reviewer`, `fixer`, `eval-runner`, `grader`,
@@ -477,8 +514,8 @@ orchestrator launches in the background gets a **deadline** when it is launched:
   you - a scheduled check or a wake-up at the deadline, or a monitor on the run's log - so you are woken even
   if no notice comes. A host with none polls at the deadline.
 - **At the deadline, look at the run itself**: its process tree (`pgrep -P <pid>`, `ps -o pid,stat,time,command`:
-  is its CPU time growing?), the agent's last activity or the log's last line and its time, and `dialecte runs`
-  once the cli has it (the live runs of the machine, each with its state).
+  is its CPU time growing?), the agent's last activity or the log's last line and its time, and a list of the
+  machine's live runs, each with its state, once the cli has one.
 - **Kill on what you see, never on the clock.** No new output and no CPU time gained by the tree since the
   last look: it is stuck - tell the user what you saw (the tree, the last line, since when) and stop or
   restart it. Still gaining CPU time or writing output: set one more deadline. Past that second deadline it
@@ -521,6 +558,8 @@ hooks. What differs is how a host starts a session, spawns an agent and wakes yo
 - `rm`, `mv` or `xargs` on a variable path: leave temporary files in the hand-over folder or the scratchpad.
 - Wait on a background run with no deadline, or on its completion notice alone.
 - Hand over a hand-written commit or merge script.
+- Write a real person's name or handle in any file, test values included: neutral names (`reviewer`,
+  `person-a`).
 - Implement two lots in one station "because they are small".
 - Reach for `any`, `@ts-ignore` or a skipped test to get green.
 - Let an output live only in the chat.

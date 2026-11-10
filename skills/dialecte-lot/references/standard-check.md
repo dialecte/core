@@ -31,10 +31,10 @@ The hand-over card carries a `standard` line (`@dialecte/cli` 0.3.0). The cli le
 `DIALECTE_STANDARD` (a file or a folder, from the environment only: never committed, never shipped), and the
 station that read it records its word in the hand-over folder:
 
-- consulted: `npx dialecte record standard <folder> consulted <note>` - the note says what was checked; the
+- consulted: `npx dialecte lot standard <folder> consulted <note>` - the note says what was checked; the
   `file:line` refs stay in the plan's research folder or the findings ledger, never in committed text. The card
   shows `✓ standard consulted`.
-- none configured: propose to the user to configure one, then `npx dialecte record standard <folder> not-consulted
+- none configured: propose to the user to configure one, then `npx dialecte lot standard <folder> not-consulted
   <reason>`. The card shows `! standard not consulted`, which never blocks.
 - a standard configured and nothing recorded fails the card (`✗ standard`); with one configured, only `consulted`
   passes, `not-consulted` fails it too.

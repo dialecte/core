@@ -121,7 +121,7 @@ what the station records for the hand-over card).
 5. **Independent review**: have a fresh reviewer (a sub-agent with only the spec, the diff and
    these rules, or a human) read the diff against the previous version before hand-over. Self-review
    re-reads your own intent and misses weakened assertions and unusable types.
-6. **Hand over** through `npx dialecte handover <lots.json>`: the agent writes only the lots file, the
+6. **Hand over** through `npx dialecte handover write <lots.json>`: the agent writes only the lots file, the
    command writes the hand-over folder and prints the card the user gets
    ([references/landing-changes.md](references/landing-changes.md)). The agent never commits or pushes.
 

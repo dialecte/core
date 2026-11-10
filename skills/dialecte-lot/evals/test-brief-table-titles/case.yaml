@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: test-brief-table-titles
+expected_outcome: |
+  The test-station brief tells the station that each table row spells its full title, and never to title the rows
+  with `it.each(...)('$name')` (or another `$`-interpolated title) for these long names: vitest cuts such a title at
+  40 characters, and `tdd` keys a case by its title, so the rows would share one case id. Any example table the
+  brief gives titles its rows in full.

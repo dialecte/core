@@ -8,7 +8,7 @@ Most changes to the Dialecte packages are written by coding agents. This page ex
 person who works with them, how a change goes from a plan to a published version: the steps, who acts
 at each one, which `dialecte` command runs, and where you come in.
 
-Everything on this page needs `@dialecte/cli` 0.2.0 or later; the commit hook's reuse of a green full gate needs 0.2.1, `dialecte contrib` 0.3.0.
+Everything on this page needs `@dialecte/cli` 0.4.0 or later; the commit hook's reuse of a green full gate needs 0.2.1, `dialecte contrib` 0.3.0.
 
 The rule behind every step: **agents prepare, the person commits.** No agent commits, stages, pushes
 or publishes. Every commit is yours, and you make it by running one command.
@@ -48,11 +48,11 @@ flowchart TD
   testReview["Test review, before any code<br/>another agent, strong tier"]
   green["Implementation<br/>agent, standard or strong tier<br/>dialecte tdd green"]
   fast["Fast gate<br/>no agent<br/>dialecte gate --fast · dialecte rules"]
-  review["Review rounds<br/>a new agent each round, strong tier, read-only<br/>the orchestrator records them:<br/>dialecte record review · decision · snapshot<br/>dialecte review delta"]
+  review["Review rounds<br/>a new agent each round, strong tier, read-only<br/>the orchestrator records them:<br/>dialecte lot finding · decide · snapshot<br/>dialecte lot delta"]
   ledger[("findings ledger")]
   fix["Fix<br/>the implementer, in fix mode"]
   full["Full gate<br/>no agent<br/>dialecte gate --full<br/>dialecte contrib in a dialecte package"]
-  handover["Hand-over<br/>agent<br/>dialecte handover lots.json<br/>dialecte handover run --rehearse:<br/>the cli rehearses only what can find something new"]
+  handover["Hand-over<br/>agent<br/>dialecte handover write lots.json<br/>dialecte handover run --rehearse:<br/>the cli rehearses only what can find something new"]
   run["You run the hand-over<br/>dialecte handover run<br/>the commit hook is the last check"]
   merge["Merge hand-over<br/>agent writes merge lots<br/>you run it"]
   push["You push main<br/>a new version publishes"]
@@ -79,11 +79,11 @@ The same steps in a table:
 | Test review     | a different agent, strong tier, read-only                                                                    | none                                                                                                                                             | a verdict on the tests, before any code exists                                                               | a behaviour of the brief without a test; a test a plausible wrong implementation would pass                                                                                   |
 | Implementation  | another agent, standard or strong tier by the kind of lot                                                    | `dialecte tdd green`                                                                                                                             | a green receipt per case                                                                                     | test code changed since its red; a case with no red; a green with no production change                                                                                        |
 | Fast gate       | no agent: the implementer runs it                                                                            | `dialecte gate --fast`, `dialecte rules`                                                                                                         | each step with its counts, in the worktree's git folder                                                      | a staged file or a new stash entry; a failing step; a test step that counts no test (unless the change touches no test); a missing receipt; a code-rule error                 |
-| Review rounds   | a new agent each round, strong tier, read-only; the orchestrator keeps the records; fixes by the implementer | `dialecte record snapshot`, `record review`, `record decision`, `review delta`                                                                   | the findings ledger and a copy of the tree each round reviewed, in the hand-over folder                      | a blocking or should-fix finding still open                                                                                                                                   |
+| Review rounds   | a new agent each round, strong tier, read-only; the orchestrator keeps the records; fixes by the implementer | `dialecte lot snapshot`, `lot finding`, `lot decide`, `lot delta`                                                                                | the findings ledger and a copy of the tree each round reviewed, in the hand-over folder                      | a blocking or should-fix finding still open                                                                                                                                   |
 | Full gate       | no agent                                                                                                     | `dialecte gate --full`                                                                                                                           | the full gate's steps and counts, kept with the tree they ran on                                             | any step failing: build, the whole test suite; in a dialecte package, a `dialecte contrib` row: the code rules, the documentation build, the type benchmark                   |
-| Hand-over       | an agent                                                                                                     | `dialecte handover <lots.json>`, then `dialecte handover run <folder> --rehearse` (the cli skips each lot whose tree already has a green record) | the hand-over folder: the lots, the file snapshot with hashes, `commit.sh`, the card; the rehearsal's result | a changed file in no lot or in two; something staged; the branch or HEAD moved; a plan tag in a file or a message                                                             |
+| Hand-over       | an agent                                                                                                     | `dialecte handover write <lots.json>`, then `dialecte handover run <folder> --rehearse` (skips each lot whose tree already holds a green record) | the hand-over folder: the lots, the file snapshot with hashes, `commit.sh`, the card; the rehearsal's result | a changed file in no lot or in two; something staged; the branch or HEAD moved; a plan tag in a file or a message                                                             |
 | You run it      | you                                                                                                          | `dialecte handover run <folder>` (or `bash commit.sh`)                                                                                           | the commits; the commit hook's result                                                                        | a file changed since the review; the commit hook failing (the lot is unstaged; the same command resumes after the fix)                                                        |
-| Merge hand-over | an agent writes it, you run it                                                                               | `dialecte handover <lots.json>` with merge lots, then `--rehearse`                                                                               | the merge's conflicts, resolutions and the tree the rehearsal recorded                                       | the branch moved since it was reviewed; a conflict without a resolution; no rehearsal yet ("tree not recorded: rehearse first")                                               |
+| Merge hand-over | an agent writes it, you run it                                                                               | `dialecte handover write <lots.json>` with merge lots, then `--rehearse`                                                                         | the merge's conflicts, resolutions and the tree the rehearsal recorded                                       | the branch moved since it was reviewed; a conflict without a resolution; no rehearsal yet ("tree not recorded: rehearse first")                                               |
 | Push            | you                                                                                                          | `git push` of the main branch                                                                                                                    | the release tag, when CI publishes                                                                           | CI failing: nothing is published                                                                                                                                              |
 
 ### Plan
@@ -131,9 +131,9 @@ lot's memory across rounds: one row per finding, with its state (open, fix to ve
 logged as a follow-up). It lives in the hand-over folder, outside the repository, and is never
 committed.
 
-- `dialecte record snapshot <folder> --round <n>` copies the tree a round reviews.
-- `dialecte record review` adds a finding; `dialecte record decision` sets its state.
-- `dialecte review delta <folder> --round <n>` shows what changed since the round before.
+- `dialecte lot snapshot <folder> --round <n>` copies the tree a round reviews.
+- `dialecte lot finding` adds a finding; `dialecte lot decide` sets its state.
+- `dialecte lot delta <folder> --round <n>` shows what changed since the round before.
   With `--worktree` it makes a throwaway worktree holding the old code, so the reviewer can check that
   a fix's new test fails on the old code and passes on the new.
 
@@ -153,7 +153,7 @@ gate passed costs seconds, not a second run of the suite.
 ### Hand-over, and your run
 
 The agent writes `lots.json` (the commits to make: the files and the message of each) and runs
-`dialecte handover <lots.json>`. It writes the hand-over folder and prints the card. When the repository
+`dialecte handover write <lots.json>`. It writes the hand-over folder and prints the card. When the repository
 has a commit hook, the agent then rehearses it with `dialecte handover run <folder> --rehearse`; the cli
 decides for each lot whether a rehearsal can find anything new. Read the card (next section), then run the command printed under it, with its `cd`. Each lot is committed in turn;
 the repository's commit hook runs on each commit as it would for any commit. It is the last check, and
