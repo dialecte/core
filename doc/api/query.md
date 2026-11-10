@@ -46,6 +46,8 @@ const records = await doc.query.getRecords([refA, refB, refC])
 // (TrackedRecord | undefined)[]
 ```
 
+**Reads:** staged operations and the transaction cache answer first, a ref without id resolves by its tag name, and every other ref is read in one store `getMany` (each id once). The dev perf counter `core::store::getMany` counts those calls.
+
 ### getRecordsByTagName
 
 Returns all records with a given tag name.

@@ -80,7 +80,26 @@ export async function getRecord<
 	}
 
 	if (!raw) return undefined
+	return trackStoredRecord({ raw, ref })
+}
 
+/**
+ * A record read from the store or the transaction cache, as a read hands it back: a copy with
+ * status `unchanged`.
+ *
+ * @internal shared by `getRecord` and `getRecords`
+ *
+ * @throws {@link DialecteError} `ELEMENT_TAGNAME_MISMATCH` when the record's tagName differs from
+ * `ref.tagName`.
+ */
+export function trackStoredRecord<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(params: {
+	raw: RawRecord<GenericConfig, ElementsOf<GenericConfig>>
+	ref: RefOrRecord<GenericConfig, GenericElement>
+}): TrackedRecord<GenericConfig, GenericElement> {
+	const { raw, ref } = params
 	if (raw.tagName !== ref.tagName) {
 		throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
 			detail: `Expected tagName '${ref.tagName}', got '${raw.tagName}' for id '${ref.id}'`,
@@ -88,6 +107,5 @@ export async function getRecord<
 			meta: { id: ref.id, expectedTagName: ref.tagName, actualTagName: raw.tagName },
 		})
 	}
-
 	return { ...raw, status: 'unchanged' } as TrackedRecord<GenericConfig, GenericElement>
 }
