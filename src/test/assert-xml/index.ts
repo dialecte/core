@@ -8,3 +8,4 @@ export type {
 	XmlQueriesParams,
 	XmlQueriesWithNamespacesParams,
 } from './assert-xml.types'
+export { XmlAssertionError } from './xml-assertion-error'

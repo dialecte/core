@@ -5,6 +5,7 @@ import {
 	describeRefusedQuery,
 	describeUnexpectedElement,
 } from './query-failure-message'
+import { XmlAssertionError } from './xml-assertion-error'
 import { splitXpathIntoSteps } from './xpath-parser'
 
 import type { XmlDocument, XmlNamespaces, XmlNode } from '../xml'
@@ -40,7 +41,8 @@ export function createXmlAssertions(params: {
 /**
  * Asserts that each XPath query selects at least one node of the XML text, parsed once for all of them.
  * A failure names the steps that matched, the step that failed, where the last match sits, what the failing
- * step finds there without its predicates, and the XML around it.
+ * step finds there without its predicates, and the XML around it. A query that selects nothing throws
+ * an `XmlAssertionError`.
  *
  * @intent assert that XML holds the elements XPath queries select, check that an export holds an element
  */
@@ -50,7 +52,8 @@ export function assertExpectedElementQueries(params: XmlQueriesWithNamespacesPar
 }
 
 /**
- * Asserts that no XPath query selects a node of the XML text, parsed once for all of them.
+ * Asserts that no XPath query selects a node of the XML text, parsed once for all of them. A query that
+ * selects a node throws an `XmlAssertionError`.
  *
  * Every step but the last must still select a node: an absence is only meaningful when the ancestors
  * exist, so a missing ancestor (a fixture bug) fails the assertion instead of passing it for the wrong
@@ -87,7 +90,7 @@ function assertExpectedQuery(params: {
 	const { document, namespaces, query } = params
 	if (selectQueryNode({ document, namespaces, query })) return
 	const trace = traceQuerySteps({ document, namespaces, query, stepCount: undefined })
-	throw new Error(
+	throw new XmlAssertionError(
 		describeMissingElement({
 			header: FAILURE_HEADERS.expectedNotFound,
 			query,
@@ -105,7 +108,7 @@ function assertUnexpectedQuery(params: {
 }): void {
 	const { document, namespaces, query } = params
 	const node = selectQueryNode({ document, namespaces, query })
-	if (node) throw new Error(describeUnexpectedElement({ query, node }))
+	if (node) throw new XmlAssertionError(describeUnexpectedElement({ query, node }))
 	const ancestorSteps = splitXpathIntoSteps(query).length - 1
 	const trace = traceQuerySteps({ document, namespaces, query, stepCount: ancestorSteps })
 	if (trace.matchedSteps === ancestorSteps) return

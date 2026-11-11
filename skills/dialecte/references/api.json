@@ -681,12 +681,12 @@
 			"entry": "@dialecte/core/test",
 			"otherRoutes": [],
 			"signature": "(params: XmlQueriesWithNamespacesParams) => void",
-			"summary": "Asserts that each XPath query selects at least one node of the XML text, parsed once for all of them. A failure names the steps that matched, the step that failed, where the last match sits, what the failing step finds there without its predicates, and the XML around it.",
+			"summary": "Asserts that each XPath query selects at least one node of the XML text, parsed once for all of them. A failure names the steps that matched, the step that failed, where the last match sits, what the failing step finds there without its predicates, and the XML around it. A query that selects nothing throws an `XmlAssertionError`.",
 			"intents": [
 				"assert that XML holds the elements XPath queries select",
 				"check that an export holds an element"
 			],
-			"declaredAt": "src/test/assert-xml/assert-xml.ts:47"
+			"declaredAt": "src/test/assert-xml/assert-xml.ts:49"
 		},
 		{
 			"path": "@dialecte/core/test.assertUnexpectedElementQueries",
@@ -694,12 +694,12 @@
 			"entry": "@dialecte/core/test",
 			"otherRoutes": [],
 			"signature": "(params: XmlQueriesWithNamespacesParams) => void",
-			"summary": "Asserts that no XPath query selects a node of the XML text, parsed once for all of them.",
+			"summary": "Asserts that no XPath query selects a node of the XML text, parsed once for all of them. A query that selects a node throws an `XmlAssertionError`.",
 			"intents": [
 				"assert that XML does not hold an element",
 				"check that an element was removed from an export"
 			],
-			"declaredAt": "src/test/assert-xml/assert-xml.ts:61"
+			"declaredAt": "src/test/assert-xml/assert-xml.ts:64"
 		},
 		{
 			"path": "@dialecte/core/test.createMockRandomUUID",
@@ -775,7 +775,7 @@
 				"make XPath assertions bound to a dialecte's namespaces",
 				"assert exported XML in tests"
 			],
-			"declaredAt": "src/test/assert-xml/assert-xml.ts:26"
+			"declaredAt": "src/test/assert-xml/assert-xml.ts:27"
 		},
 		{
 			"path": "@dialecte/core/test.createXmlSchemaAssertions",
