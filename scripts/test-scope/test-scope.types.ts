@@ -62,3 +62,27 @@ export type ChangesSinceBase = {
 	base: string
 	changes: ScopeChanges
 }
+
+/** What a gate hands a scoped step through its environment. */
+export type GateScope = {
+	base: string
+	tree: string
+	/** The paths changed between the base and the tree, from the package root. */
+	changed: string[]
+	/** Where the step writes its selection. */
+	selectionPath: string
+}
+
+/** A selected browser file as the gate records it: its id and why it runs. */
+export type GateSelectionEntry = { id: string; reasons: string[] }
+
+/** What a scoped step writes for its gate (the cli's selection file, schema 1). */
+export type GateSelection = {
+	schema: 1
+	base: string
+	tree: string
+	/** How many changed paths the selection judged: the gate checks it is the count it handed. */
+	changed: number
+	selected: GateSelectionEntry[]
+	skipped: { id: string; reason: string }[]
+}

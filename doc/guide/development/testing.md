@@ -786,7 +786,7 @@ The browser-only files, the node-only ones and the node benches are listed in `v
 - a store file (`src/store/**`, `*.indexeddb.test.ts`) when it changed, or when a changed file is in its runtime import closure: imports, re-exports, dynamic imports, files started by their address (`new URL('./x.worker.ts', import.meta.url)`, which `vitest --changed` does not see); imports of types only are not followed, the type-check covers them;
 - every browser-only file when a config, a build plugin, a tsconfig, `package.json` or the lock file changed, or when the base cannot be read.
 
-The node projects always run, in their own step. `--list` prints the selection and its reasons without running a test; `--selection-out <path>` writes it as JSON. A change that selects no browser file still runs the browser-only files that are not store files, so the gate's browser step always counts tests.
+The node projects always run, in their own step. `--list` prints the selection and its reasons without running a test; `--selection-out <path>` writes it as JSON. A change that selects no browser file runs none. In `gate --full` the step is scoped: the gate hands it the paths it judges (`DIALECTE_GATE_CHANGED`), reads its selection back (`DIALECTE_GATE_SELECTION`, one id per browser file with its reasons, shown on the hand-over card), passes it with a note when nothing is selected, and reruns it serially on its failing files. `npx dialecte gate --release` runs the full matrix instead: the checks, the build, every node project, the whole suite in the browser with the store contract's full table (`npm run test:browser:release`) and the type gates.
 
 ### Teardown
 

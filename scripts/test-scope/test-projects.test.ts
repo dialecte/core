@@ -12,9 +12,11 @@ import type { ConfiguredProject } from './vitest-projects.fixtures.types'
 /** A Document suite file: what each store's leg must run. */
 const DOCUMENT_SUITE_FILE = 'src/document/document.test.ts'
 
+type GateStep = { name: string; run: string; counts?: string; scoped?: boolean; heavy?: boolean }
+
 type PackageJson = {
 	scripts: Record<string, string>
-	dialecte: { gate: { full: { name: string; run: string }[] } }
+	dialecte: { gate: { full: GateStep[]; release?: GateStep[] } }
 }
 
 function readPackageJson(): PackageJson {
@@ -91,10 +93,42 @@ describe('the full gate', () => {
 			expect.stringMatching(/scripts\/test-scope\/run-test-scope\.ts/),
 		)
 		expect(runs).toContain('npm run test:scope')
-		// cli 0.3.1 reruns a failed test step serially on its failing files only when the step's script names vitest
-		expect(packageJson.scripts['test:scope']).toMatch(/\bvitest\b/)
+		// the cli hands a scoped step the gate's base, tree and changed paths, reruns it on its failing files, and passes it
+		// when it selected nothing
+		expect(
+			packageJson.dialecte.gate.full.find((step) => step.run === 'npm run test:scope'),
+		).toEqual({
+			name: 'browser tests',
+			run: 'npm run test:scope',
+			counts: 'tests',
+			scoped: true,
+		})
+		expect(packageJson.scripts['test:scope']).toBe('tsx scripts/test-scope/run-test-scope.ts')
 		expect(
 			runs.filter((run) => /--project browser(?:\s|$)|npm run test:browser(?:\s|$)/.test(run)),
 		).toEqual([])
+	})
+})
+
+describe('the release gate', () => {
+	it('runs the full matrix: checks, build, every node tier, the whole browser suite with the full table, the type gates', () => {
+		const runs = (readPackageJson().dialecte.gate.release ?? []).map((step) => step.run)
+		expect(runs).toEqual([
+			'npm run check',
+			'npm run skills:check',
+			'npm run build',
+			'npm run test:node',
+			'npm run test:browser:release',
+			'npm run type-narrowing',
+			'npm run type-bench:check',
+		])
+	})
+
+	it('selects nothing: no step of the release list is scoped', () => {
+		const release = readPackageJson().dialecte.gate.release
+		expect({
+			listed: Array.isArray(release),
+			scoped: (release ?? []).filter((step) => step.scoped),
+		}).toEqual({ listed: true, scoped: [] })
 	})
 })

@@ -30,7 +30,7 @@ describe('selectionReportOf', () => {
 		})
 	})
 
-	it('a run with a note keeps it: the interim floor is visible in the report', () => {
+	it('a run with a note keeps it: the note is visible in the report', () => {
 		const floor: BrowserRun = { files: ['src/utils/save-to-disk.test.ts'], note: 'the floor' }
 		expect(
 			selectionReportOf({

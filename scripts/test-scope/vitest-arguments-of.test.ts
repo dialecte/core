@@ -34,10 +34,6 @@ const CASES: Record<string, ArgumentsCase> = {
 		argv: ['src/utils/save-to-disk.test.ts', '--no-file-parallelism'],
 		arguments: ['run', '--project', 'browser', ...FILES, '--no-file-parallelism'],
 	},
-	'the runner option and its value are left out': {
-		argv: ['--runner', 'vitest', '--retry=1'],
-		arguments: ['run', '--project', 'browser', ...FILES, '--retry=1'],
-	},
 	'the `=` forms of its own options are left out too': {
 		argv: ['--base=main', '--selection-out=out.json', '--bail=1'],
 		arguments: ['run', '--project', 'browser', ...FILES, '--bail=1'],
@@ -56,8 +52,6 @@ describe('vitestArgumentsOf', () => {
 	it("a gate's serial rerun of the step (`npm run test:scope -- <files> --no-file-parallelism`): exactly those files, serially", () => {
 		// the gate appends the failing files and the serial flag to the step's command, the script's own option first
 		const argv = [
-			'--runner',
-			'vitest',
 			'src/store/sqlite/served/hub/hub.browser.test.ts',
 			'src/utils/save-to-disk.test.ts',
 			'--no-file-parallelism',

@@ -19,25 +19,14 @@ export const BASE_FLAG = '--base'
 /** The option naming the file the selection is written to. */
 export const SELECTION_OUT_FLAG = '--selection-out'
 
-/**
- * The option naming the runner, `--runner vitest`, the only one: it exists so the `test:scope` script names vitest, which
- * is how @dialecte/cli 0.3.1 recognises a test step it reruns serially on its failing files. To remove once the cli's
- * scoped gate step is rerunnable by itself.
- */
-export const RUNNER_FLAG = '--runner'
-
-/** The runner `--runner` accepts. */
-export const VITEST_RUNNER = 'vitest'
-
 /** The options this tool reads that carry a value: vitest never sees them nor their value. */
-export const OWN_VALUE_FLAGS: readonly string[] = [BASE_FLAG, SELECTION_OUT_FLAG, RUNNER_FLAG]
+export const OWN_VALUE_FLAGS: readonly string[] = [BASE_FLAG, SELECTION_OUT_FLAG]
 
 /** The option printing the selection without running a test. */
 export const LIST_FLAG = '--list'
 
-/** What a run says when it starts the T3 files for a selection with no browser file. */
-export const INTERIM_FLOOR_NOTE =
-	'selected: T0-T2; T3 run as the interim floor until the cli passes empty selections'
+/** What a run says when the change needs no browser test file: nothing runs (a gate passes such a scoped step). */
+export const NOTHING_SELECTED_NOTE = 'nothing selected: no browser test file this change needs'
 
 /** What a run says when it starts the files named on its command line instead of the selection. */
 export const NAMED_FILES_NOTE = 'the files named on the command line run, not the selection'
@@ -50,6 +39,24 @@ export const BROWSER_PROJECT = 'browser'
 
 /** The variable a gate passes the lot's base ref in. */
 export const GATE_BASE_VARIABLE = 'DIALECTE_GATE_BASE'
+
+/**
+ * What a gate hands its scoped step (@dialecte/cli 0.4.0, selection.constants.ts GATE_SCOPE_VARIABLES): the base and the
+ * tree it judges, the file listing the paths changed between them (NUL-separated), the file the step writes its
+ * selection to.
+ */
+export const GATE_SCOPE_VARIABLES = {
+	base: GATE_BASE_VARIABLE,
+	tree: 'DIALECTE_GATE_TREE',
+	changed: 'DIALECTE_GATE_CHANGED',
+	selection: 'DIALECTE_GATE_SELECTION',
+} as const
+
+/** The schema of the selection file the gate reads. */
+export const GATE_SELECTION_SCHEMA = 1
+
+/** The end of a test file's name: a selected file's id is its name without it. */
+export const TEST_FILE_SUFFIX = '.test.ts'
 
 /** The base a run compares with when neither `--base` nor the gate names one. */
 export const DEFAULT_BASE = 'main'

@@ -53,7 +53,7 @@
 		"//====== TEST ======//": "",
 		"test": "npm run test:node && npm run test:browser",
 		"test:node": "vitest run --project node --project node-indexeddb --project node-sqlite --project node-indexeddb-documents",
-		"test:scope": "tsx scripts/test-scope/run-test-scope.ts --runner vitest",
+		"test:scope": "tsx scripts/test-scope/run-test-scope.ts",
 		"test:browser": "vitest run --project browser",
 		"test:browser:all": "vitest run --project browser-all",
 		"test:browser:release": "STORE_CONTRACT_FULL_TABLE=1 vitest run --project browser-all",
@@ -161,7 +161,41 @@
 				{
 					"name": "browser tests",
 					"run": "npm run test:scope",
+					"counts": "tests",
+					"scoped": true
+				}
+			],
+			"release": [
+				{
+					"name": "check",
+					"run": "npm run check"
+				},
+				{
+					"name": "skills",
+					"run": "npm run skills:check"
+				},
+				{
+					"name": "build",
+					"run": "npm run build"
+				},
+				{
+					"name": "tests",
+					"run": "npm run test:node",
 					"counts": "tests"
+				},
+				{
+					"name": "browser tests",
+					"run": "npm run test:browser:release",
+					"counts": "tests",
+					"heavy": true
+				},
+				{
+					"name": "type narrowing",
+					"run": "npm run type-narrowing"
+				},
+				{
+					"name": "type bench",
+					"run": "npm run type-bench:check"
 				}
 			]
 		}

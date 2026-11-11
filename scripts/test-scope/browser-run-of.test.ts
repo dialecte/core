@@ -1,5 +1,4 @@
 import { browserRunOf } from './browser-run-of'
-import { T3_FILES } from './test-scope.fixtures'
 
 import { describe, expect, it } from 'vitest'
 
@@ -58,15 +57,11 @@ const CASES: Record<string, RunCase> = {
 		},
 		run: { files: ['src/store/sqlite/load-sqlite.test.ts', 'src/utils/save-to-disk.test.ts'] },
 	},
-	// interim: the cli's gate fails a test step that ran nothing; once it passes an empty selection, this floor goes
-	'no browser file selected: the T3 files as the interim floor, the note saying what was selected and why they run':
-		{
-			selection: { tiers: ['T0', 'T1', 'T2'], browserFiles: [] },
-			run: {
-				files: [...T3_FILES],
-				note: 'selected: T0-T2; T3 run as the interim floor until the cli passes empty selections',
-			},
-		},
+	// the gate passes a scoped step that selected nothing: no floor runs
+	'no browser file selected: nothing runs, the note says so': {
+		selection: { tiers: ['T0', 'T1', 'T2'], browserFiles: [] },
+		run: { files: [], note: 'nothing selected: no browser test file this change needs' },
+	},
 }
 
 describe('browserRunOf', () => {
