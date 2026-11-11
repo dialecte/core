@@ -237,8 +237,9 @@ doc.query.myFeature.findOrphanParts({ assembly })   // first param is bound away
   (no service, store, composable, component, policy file) and carries none of your product's rules.
   Where your product decides differently from the plain behaviour, see policies below.
 - **Tests on the node tier**: table-driven with the package's runner (`<package>/<version>/test` →
-  `run<Name>TestCases`), inline XML fixtures, the function called directly with `source.query` / `tx`,
-  not through the bound method. No test names a store: the runner runs them in Node on the in-memory
+  `run<Name>TestCases`), whole-document XML fixtures, one call of the unit per test (the function
+  with `source.query` / `tx`, or its bound method; never both), see references/testing.md. No test
+  names a store: the runner runs them in Node on the in-memory
   store. See [Testing](#testing).
 
 ### Policies: your product's choices, passed per call
@@ -289,9 +290,10 @@ composable then imports them with `import type`): do not wrap a type only to re-
 Each dialecte package exports table-driven runners from its `/test` entry
 (`<package>/<version>/test` → `run<Name>TestCases`; core's own: `@dialecte/core/test`). Details
 and the case format: [references/testing.md](references/testing.md). Short version: one table per
-behaviour, inline XML fixtures with `dev:db-id` ids that say intent, `.withExport` asserts the
-resulting XML with XPath, `.withoutExport` asserts inside `act`, `.generic` for pure functions.
-Red first, one case at a time. No test names its store: the runner chooses it (in Node on the
+behaviour, whole-document XML fixtures (inline up to 40 lines, else a sibling `?raw` file) with
+`dev:db-id` ids that say intent, one call of the unit per `act`, `.withExport` asserts the resulting
+XML with hand-written XPath, `.withoutExport` asserts inside `act`, `.generic` for pure functions.
+Refusals assert the error key and nothing staged, never a spy. Red first, one case at a time. No test names its store: the runner chooses it (in Node on the
 in-memory store under a node vitest project whose setup file calls `useTestStorage`, core 0.8+).
 Assertions take XML text; on a big file, check record expectations (tag, attributes, parent,
 count) with the query API instead of XPath on the whole export.

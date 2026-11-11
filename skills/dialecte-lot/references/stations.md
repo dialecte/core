@@ -33,7 +33,8 @@ configuration names and the grader none, blind to which text produced a run.
 
 Station 1a. Writes the tests of one brief step from the spec, never the production code. It may add stubs
 whose body throws `not implemented: <name>` so the tests compile, called inside `expect(...)`. It runs
-`dialecte tdd red` until every case is red on an assertion, and answers with its output.
+`dialecte tdd red` until every case is red on an assertion, and answers with its output. It writes every case by the
+rules of the `dialecte` skill's references/testing.md (section Rules).
 
 ### test-reviewer
 
@@ -41,8 +42,9 @@ whose body throws `not implemented: <name>` so the tests compile, called inside 
 - Access: review
 
 Station 1b. Reads the tests of the step against the brief, before any production code. It modifies nothing
-(`dialecte tdd status` is the one command to run). It answers per test: the behaviour it pins, a plausible
-wrong implementation it lets through, a verdict.
+(`dialecte tdd status` is the one command to run). It judges the tests against the rules of the
+`dialecte` skill's references/testing.md (section Rules) and answers per test: the behaviour it pins, a
+plausible wrong implementation it lets through, a rule it breaks, a verdict.
 
 ### implementer
 

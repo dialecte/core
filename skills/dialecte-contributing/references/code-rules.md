@@ -12,6 +12,7 @@ does not name.
 - Files and types
 - Naming
 - Comments and committed text
+- Tests
 - Self-check before hand-over
 
 ## Reuse and sources of truth
@@ -86,6 +87,12 @@ does not name.
   reword that line only, and list it in the hand-over.
 - Do not create documentation that was not asked for, beyond the docs + CHANGELOG the Definition
   of Done requires.
+
+## Tests
+
+Tests follow the rules of the `dialecte` skill's references/testing.md (section Rules): the one source for
+how a table, a case, a fixture and an expectation are written. Read it before writing a case; this page
+does not repeat it.
 
 ## Self-check before hand-over
 
