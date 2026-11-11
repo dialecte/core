@@ -1,10 +1,11 @@
 import { DIALECTE_TEST_NAMESPACES } from '../constant'
 import * as testEntry from '../index'
+import { MalformedXmlError } from '../xml'
 import { createXmlAssertions } from './assert-xml'
 
 import { describe, expect, it } from 'vitest'
 
-import { runTestCases } from '@/test'
+import { XmlAssertionError, runTestCases } from '@/test'
 
 import type { BaseTestCase } from '@/test'
 
@@ -276,8 +277,12 @@ describe('failure message, the fixes of the implementation review', () => {
 		})
 
 		it('more than ten candidates across the matches → ten listed, then how many more', () => {
-			const children = (count: number, offset: number) =>
-				Array.from({ length: count }, (_, index) => `<AA_1 aAA_1="n${offset + index}"/>`).join('')
+			function children(count: number, offset: number): string {
+				return Array.from(
+					{ length: count },
+					(_, index) => `<AA_1 aAA_1="n${offset + index}"/>`,
+				).join('')
+			}
 			const xml = `<Root ${NS}><A aA="a1">${children(6, 1)}</A><A aA="a2">${children(6, 7)}</A></Root>`
 			const message = messageOf(() =>
 				assertExpectedElementQueries({ xml, queries: ['//default:A/default:AA_1[@aAA_1="zz"]'] }),
@@ -438,5 +443,85 @@ describe('the XML text is the only target', () => {
 			'countXmlParses',
 		]
 		expect(internal.filter((name) => name in testEntry)).toEqual([])
+	})
+})
+
+describe('the error a failure throws', () => {
+	const ANCESTOR_MISSING_QUERY = '//default:A[@aA="NOPE"]//default:AA_1[@aAA_1="v1"]'
+
+	function thrownBy(run: () => void): unknown {
+		try {
+			run()
+		} catch (error) {
+			return error
+		}
+		throw new Error('expected the run to throw, it did not')
+	}
+
+	describe('a behaviour miss is an assertion', () => {
+		it('an expected query selects nothing → an XmlAssertionError named AssertionError, header "Expected element not found"', () => {
+			const error = thrownBy(() =>
+				assertExpectedElementQueries({
+					xml: DIAGNOSTIC_XML,
+					queries: ['//default:A[@aA="a1"]/default:AA_1[@aAA_1="zz"]'],
+				}),
+			)
+			expect(error).toBeInstanceOf(XmlAssertionError)
+			expect(error).toBeInstanceOf(Error)
+			expect((error as Error).name).toBe('AssertionError')
+			expect((error as Error).message).toMatch(/^Expected element not found$/m)
+		})
+
+		it('an unexpected query selects a node → an XmlAssertionError named AssertionError, header "Unexpected element found"', () => {
+			const error = thrownBy(() =>
+				assertUnexpectedElementQueries({
+					xml: DIAGNOSTIC_XML,
+					queries: ['//default:A[@aA="a1"]/default:AA_1[@aAA_1="v1"]'],
+				}),
+			)
+			expect(error).toBeInstanceOf(XmlAssertionError)
+			expect(error).toBeInstanceOf(Error)
+			expect((error as Error).name).toBe('AssertionError')
+			expect((error as Error).message).toMatch(/^Unexpected element found$/m)
+		})
+	})
+
+	describe('a test defect stays a plain error (kept as today)', () => {
+		it('an unexpected query whose ancestor step matches nothing → a plain Error named Error, header "Unexpected element check unreliable"', () => {
+			const error = thrownBy(() =>
+				assertUnexpectedElementQueries({ xml: DIAGNOSTIC_XML, queries: [ANCESTOR_MISSING_QUERY] }),
+			)
+			expect(error).toBeInstanceOf(Error)
+			expect(error).not.toBeInstanceOf(XmlAssertionError)
+			expect((error as Error).name).toBe('Error')
+			expect((error as Error).message).toMatch(/^Unexpected element check unreliable: /m)
+		})
+
+		it('an expected query the engine refuses (unterminated predicate) → a plain Error named Error, header "Query refused"', () => {
+			const error = thrownBy(() =>
+				assertExpectedElementQueries({ xml: DIAGNOSTIC_XML, queries: ['//default:A[@aA='] }),
+			)
+			expect(error).not.toBeInstanceOf(XmlAssertionError)
+			expect((error as Error).name).toBe('Error')
+			expect((error as Error).message).toMatch(/^Query refused$/m)
+		})
+
+		it('an unexpected query the engine refuses (unbound prefix) → a plain Error named Error, header "Query refused"', () => {
+			const error = thrownBy(() =>
+				assertUnexpectedElementQueries({ xml: DIAGNOSTIC_XML, queries: ['//unknown:A'] }),
+			)
+			expect(error).not.toBeInstanceOf(XmlAssertionError)
+			expect((error as Error).name).toBe('Error')
+			expect((error as Error).message).toMatch(/^Query refused$/m)
+		})
+
+		it('malformed queried XML → a MalformedXmlError, not an AssertionError', () => {
+			const error = thrownBy(() =>
+				assertExpectedElementQueries({ xml: '<Root><A></Root>', queries: ['//default:A'] }),
+			)
+			expect(error).toBeInstanceOf(MalformedXmlError)
+			expect(error).not.toBeInstanceOf(XmlAssertionError)
+			expect((error as Error).name).not.toBe('AssertionError')
+		})
 	})
 })
