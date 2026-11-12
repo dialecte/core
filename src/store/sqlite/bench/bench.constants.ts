@@ -104,8 +104,8 @@ export const KILL_TARGET_PHASES: Record<KillScenario, ReadonlyArray<BenchPhase |
 	'kill-after-parse-failure': ['dropping'],
 }
 
-/** The afterImport write-back of a file SET wrote (0) and of a file named by paths only (worst case). */
-export const AFTER_IMPORT_RATIOS = { setWritten: 0, pathNamed: 0.107 } as const
+/** The afterImport write-back of a file written by the consumer's own export (0) and of a file named by paths only (worst case). */
+export const AFTER_IMPORT_RATIOS = { exportWritten: 0, pathNamed: 0.107 } as const
 
 //====== VARIANTS ======//
 
@@ -205,7 +205,7 @@ export const ALL_MEASURES = {
 	removal: true,
 } as const
 
-export const BOTH_RATIOS = [AFTER_IMPORT_RATIOS.setWritten, AFTER_IMPORT_RATIOS.pathNamed]
+export const BOTH_RATIOS = [AFTER_IMPORT_RATIOS.exportWritten, AFTER_IMPORT_RATIOS.pathNamed]
 /** The indented and compact inputs hold the same records: only the parse differs, so the indented arm runs the main dimensions. */
 export const MAIN_DIMENSIONS = [VARIANTS.base, VARIANTS.L2, VARIANTS.I1, VARIANTS.J2]
 export const STRUCTURAL: BenchFixtureName[] = ['structural-50', 'structural-100', 'structural-500']

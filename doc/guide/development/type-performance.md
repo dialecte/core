@@ -111,7 +111,7 @@ Most of these are inherent to a config-driven DSL of this size and are bounded b
 
 ## When a gate goes red — what to do
 
-**`type-narrowing` red.** A narrowing guarantee broke. The output points at the failing assertion in `narrowing.generated.test-d.ts`. Fix the type so narrowing is restored (this is the gate doing its job — a consumer like SET would have lost IntelliSense). The assertions are regenerated from the schema every run, so a _legitimate_ schema change won't false-alarm here.
+**`type-narrowing` red.** A narrowing guarantee broke. The output points at the failing assertion in `narrowing.generated.test-d.ts`. Fix the type so narrowing is restored (this is the gate doing its job — a consumer would have lost IntelliSense). The assertions are regenerated from the schema every run, so a _legitimate_ schema change won't false-alarm here.
 
 **`type-bench` red.** A scenario crossed +5%. Decide:
 
@@ -122,7 +122,7 @@ Most of these are inherent to a config-driven DSL of this size and are bounded b
 
 Be aware of the blind spots — none of these are failures of the tooling, just its scope:
 
-- **Exact extension return types.** Narrowing asserts _core_ machinery and that the full surface _compiles_ — it does not pin, say, `getSortedHitems → TrackedRecord<'Hitem'>[]`. A type-sound-but-different extension change passes. Your **app's own `tsc` check** (e.g. SET's `pnpm check:all`) is the backstop, or add a small hand-written `*.test-d.ts` to pin specific domain types.
+- **Exact extension return types.** Narrowing asserts _core_ machinery and that the full surface _compiles_ — it does not pin, say, `getSortedHitems → TrackedRecord<'Hitem'>[]`. A type-sound-but-different extension change passes. Your **app's own `tsc` check** (e.g. its `check` script) is the backstop, or add a small hand-written `*.test-d.ts` to pin specific domain types.
 - **Sub-5% drift.** Small regressions accumulate silently until they cross the line; re-baseline occasionally to tighten.
 - **TypeScript version bumps.** Instantiation counts are deterministic _for a fixed `tsc`_. After bumping `typescript`, re-baseline (`npm run type-bench`) so the numbers match.
 

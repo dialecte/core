@@ -11,7 +11,7 @@
  *     nice -n 10 npx vitest run --project perf --mode bench src/store/sqlite/bench/layout.bench.test.ts
  */
 import { reportedDeviceMemoryGiB } from '../engine/device-cache'
-import { BENCH_CELLS } from './bench-matrix'
+import { BENCH_CELLS } from './bench-matrix.constants'
 import { realmMemory } from './bench-memory'
 import { fetchFixtureFile, waitForQuietMachine } from './bench-page'
 import { buildCommitRecords } from './bench-variants'
@@ -375,8 +375,9 @@ async function runKill(params: { scenario: KillScenario; run: number }): Promise
 		reportPhases: true,
 		holdAtPhase: scenario === 'kill-after-parse-failure' ? 'dropping' : undefined,
 	})
+	const otherFile = await fixtureFile({ fixture: other })
 	await first.api.importFile({
-		file: await fixtureFile({ fixture: other }),
+		file: otherFile,
 		documentId: OTHER_DOCUMENT_ID,
 		afterImportRatio: 0,
 		root: FIXTURE_ROOTS.composed,
@@ -384,7 +385,9 @@ async function runKill(params: { scenario: KillScenario; run: number }): Promise
 	const before = await first.api.exportSignatures({ documentId: OTHER_DOCUMENT_ID })
 	const victimFile = await fixtureFile({ fixture: victim })
 	const startedAt = performance.now()
-	const killDelay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+	function killDelay(ms: number): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, ms))
+	}
 	const killAt =
 		scenario === 'kill-after-spill'
 			? killDelay(KILL_DELAY_MIN_MS + Math.random() * KILL_DELAY_SPREAD_MS)
@@ -471,8 +474,10 @@ describe('record layout bench (OPFS sahpool, real worker)', () => {
 			scenario,
 			async () => {
 				const runs: KillRun[] = []
-				for (let run = 1; run <= (RUNS_OVERRIDE ?? KILL_RUNS); run++)
-					runs.push(await runKill({ scenario, run }))
+				for (let run = 1; run <= (RUNS_OVERRIDE ?? KILL_RUNS); run++) {
+					const killRun = await runKill({ scenario, run })
+					runs.push(killRun)
+				}
 				expect(
 					runs.filter(
 						(killRun) =>

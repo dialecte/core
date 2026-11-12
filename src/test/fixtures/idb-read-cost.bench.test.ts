@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest'
  * `audit-core-methods.ts`. The node audit runs the in-memory (Map) store and isolates
  * ALGORITHMIC cost; this one runs the SAME read methods on `local` (real IndexedDB) AND
  * `inMemory` in the same engine, so the delta is PURE store cost — the async round-trip
- * price SET actually pays.
+ * price an app actually pays.
  *
  * Why it matters: on IndexedDB every by-id `store.get` is an async round-trip. `getTree`
  * issues one per node, `getChildren` one per child, `getRecords` one per ref. This bench
@@ -48,7 +48,9 @@ function fetchText(url: URL): Promise<string> {
 	})
 }
 
-const stressUrl = (mb: number): URL => new URL(`./data/stress-${mb}mb.xml`, import.meta.url)
+function stressUrl(mb: number): URL {
+	return new URL(`./data/stress-${mb}mb.xml`, import.meta.url)
+}
 
 function withCap<T>(label: string, p: Promise<T>): Promise<T> {
 	let timer: ReturnType<typeof setTimeout>
@@ -102,7 +104,8 @@ async function measure(
 }
 
 async function benchStorage(mb: number, storage: Storage): Promise<void> {
-	const { project, doc } = await openImported(await fetchText(stressUrl(mb)), storage)
+	const xml = await fetchText(stressUrl(mb))
+	const { project, doc } = await openImported(xml, storage)
 	try {
 		const q = doc.query.any
 		const [rootRec] = await q.getRecordsByTagName('Root')
@@ -112,21 +115,26 @@ async function benchStorage(mb: number, storage: Storage): Promise<void> {
 		const ddd = await q.getRecordsByTagName('DDD_1')
 		const batchRefs = ddd.slice(0, 2000).map((r: Ref) => ({ tagName: r.tagName, id: r.id }))
 
+		const probes: Array<{ method: string; fn: () => Promise<unknown>; repeat?: number }> = [
+			{ method: 'getRoot', fn: () => doc.query.getRoot() },
+			{ method: 'getRecord(byId)', fn: () => q.getRecord(sampleRef), repeat: 50 },
+			{ method: 'getRecords(batch2k)', fn: () => q.getRecords(batchRefs) },
+			{ method: 'getRecordsByTagName', fn: () => q.getRecordsByTagName('DDD_1') },
+			{ method: 'getChild', fn: () => q.getChild(rootRef, 'D'), repeat: 20 },
+			{ method: 'getChildren', fn: () => q.getChildren(rootRef, 'D'), repeat: 5 },
+			{
+				method: 'findByAttributes',
+				fn: () => q.findByAttributes({ tagName: 'DDD_1', attributes: { aDDD_1: 'x' } }),
+			},
+			{ method: 'getTree(root)', fn: () => q.getTree(rootRef) },
+			{ method: 'getTree(root,depth:1)', fn: () => q.getTree(rootRef, { depth: 1 }) },
+			{ method: 'getSnapshot', fn: () => q.getSnapshot() },
+		]
 		const rows: Row[] = []
-		rows.push(await measure(doc, 'getRoot', () => doc.query.getRoot()))
-		rows.push(await measure(doc, 'getRecord(byId)', () => q.getRecord(sampleRef), 50))
-		rows.push(await measure(doc, 'getRecords(batch2k)', () => q.getRecords(batchRefs)))
-		rows.push(await measure(doc, 'getRecordsByTagName', () => q.getRecordsByTagName('DDD_1')))
-		rows.push(await measure(doc, 'getChild', () => q.getChild(rootRef, 'D'), 20))
-		rows.push(await measure(doc, 'getChildren', () => q.getChildren(rootRef, 'D'), 5))
-		rows.push(
-			await measure(doc, 'findByAttributes', () =>
-				q.findByAttributes({ tagName: 'DDD_1', attributes: { aDDD_1: 'x' } }),
-			),
-		)
-		rows.push(await measure(doc, 'getTree(root)', () => q.getTree(rootRef)))
-		rows.push(await measure(doc, 'getTree(root,depth:1)', () => q.getTree(rootRef, { depth: 1 })))
-		rows.push(await measure(doc, 'getSnapshot', () => q.getSnapshot()))
+		for (const probe of probes) {
+			const row = await measure(doc, probe.method, probe.fn, probe.repeat)
+			rows.push(row)
+		}
 
 		for (const row of rows) {
 			RESULTS[row.method] ??= {}
