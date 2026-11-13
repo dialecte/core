@@ -39,7 +39,7 @@ src/documentation/
 src/script/xsd
 src/script/pyodide
 
-AGENTS.md
+AGENTS.local.md
 
 .vitepress/dist
 .vitepress/cache
