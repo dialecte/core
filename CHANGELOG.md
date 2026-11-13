@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-An import names every step from the file to the ready document, so a progress bar never sits on a finished file while the dialecte's import session, the checks and the session's writes run.
+## [0.11.0] - 2026-11-13
+
+An import names every step from the file to the ready document - waiting, storing, indexing, the dialecte's own steps, checking, applying, finishing - so a progress bar never sits on a finished file: `afterImport` gets `{ report, signal }`, `project.import` tells each file with its place and `onFile`, and the SQLite store tells again the phase it was in after an index build. Breaking at the type level in two places: code that calls a session's `afterImport` itself passes it a context, and a `switch` that was exhaustive over `progress.phase` handles the new phases. The engine wire, the hub protocol and the storage kinds registry are bumped, so library copies of 0.10 and 0.11 do not share an engine. Core pins `@dialecte/cli` 0.6.0; the skills name tiers and procedures, never a host's tool, and the repository commits a tool-neutral `AGENTS.md`.
 
 ### Added
 
@@ -19,6 +21,7 @@ An import names every step from the file to the ready document, so a progress ba
 
 ### Changed
 
+- Core pins `@dialecte/cli` 0.6.0 exactly (dev dependency).
 - The SQLite engine wire (`ENGINE_WIRE_PROTOCOL` 3) and the hub protocol (`HUB_PROTOCOL_VERSION` 7) carry the new progress union, and the storage kinds registry (`STORAGE_KINDS_VERSION` 2) the new hook context: copies of the library of different versions refuse each other as for any change of what they share.
 - After an index build the SQLite store tells again the phase it was in (an index is built in the session's writes and while the document is made ready), instead of `storing`.
 - The skills name tiers and procedures, never a host's tool or a model: how each host starts a session, spawns a
