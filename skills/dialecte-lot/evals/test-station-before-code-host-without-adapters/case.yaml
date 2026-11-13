@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: test-station-before-code-host-without-adapters
+expected_outcome: |
+  On a host without station adapters, step 1 still runs as test station -> test review -> implement station, three
+  different general sub-agents spawned from the station definitions: the test station (standard tier, workspace
+  edits) closes with `dialecte tdd red`; the test review (strong tier, read-only sandbox) gives its verdict before any
+  code; the implementer changes production code only until `dialecte tdd green`; a wrong test goes back to the test station.

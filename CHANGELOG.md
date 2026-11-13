@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The skills name tiers and procedures, never a host's tool or a model: how each host starts a session, spawns a
+  station, loads a skill and arms a deadline is on one page, `dialecte-lot` references/hosts.md; a skill text
+  change goes through the skill-eval loop (references/skill-eval.md). The skill-change brief
+  eval case is renamed `skill-change-brief-runs-the-skill-eval-loop`, and three cases set on a host without station
+  adapters are added.
+- The repository commits a tool-neutral `AGENTS.md`; machine notes go in an ignored `AGENTS.local.md`.
+
 ## [0.10.0] - 2026-11-11
 
 No breaking change. `getRecords` and `getChildren` read the records they ask by id in one store call, `@dialecte/core/test` reports a missed XML expectation as a failed assertion, the SQLite engine answers a close or a destroy once its project's lock is free, and the testing skill states the test rules.

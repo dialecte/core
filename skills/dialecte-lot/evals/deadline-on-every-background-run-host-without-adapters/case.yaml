@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: deadline-on-every-background-run-host-without-adapters
+expected_outcome: |
+  On a host without station adapters, the orchestrator gives every agent and command it runs in the background a
+  deadline when it launches it, armed with what this host has (a background timer command, its own scheduler, or
+  polling at the deadline), and at the deadline checks the run itself (process tree, CPU time, last activity)
+  instead of only waiting; it names no model and no other host's tool, and cites no cli command the cli does not have.
