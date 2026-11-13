@@ -3,7 +3,7 @@ import type { DocumentState, ExtensionModules } from '@/document'
 import type { DialecteError } from '@/errors'
 import type { Perf } from '@/perf'
 import type { DOCUMENT_UPDATE_FIELDS } from '@/store/document-path.constants'
-import type { ImportControl, ImportFileOptions, Store } from '@/store/store.types'
+import type { ImportControl, ImportFileOptions, ImportProgress, Store } from '@/store/store.types'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
 // ── DocumentRecord ───────────────────────────────────────────────────────────
@@ -217,8 +217,26 @@ export type InitEmptyDocumentResult = {
 /** How to import a file: what the store is asked to do, and what the caller holds over it. */
 export type ImportDocumentOptions = ImportFileOptions & ImportControl
 
-/** How to import several files: as one file, without a path (a path names one file). */
-export type ImportFilesOptions = Omit<ImportDocumentOptions, 'path'>
+/** How far an import of several files is: the file's progress, and which file of the call it is. */
+export type ImportFilesProgress = ImportProgress & {
+	/** The file's place among the call's files, from 0 */
+	fileIndex: number
+	/** How many files the call imports */
+	fileCount: number
+	/** `file.name` as given */
+	fileName: string
+}
+
+/**
+ * How to import several files: as one file, without a path (a path names one file); each progress names its file,
+ * and `onFile` is told each file's entry as it ends.
+ */
+export type ImportFilesOptions = Omit<ImportDocumentOptions, 'path' | 'onProgress'> & {
+	/** Told at each phase of each file and after each stored batch; never awaited, its failure reported once per file. */
+	onProgress?: (progress: ImportFilesProgress) => void
+	/** Told as each file ends, imported or failed, with its entry and its place; never awaited, its failure reported once. */
+	onFile?: (entry: ImportFileEntry) => void
+}
 
 /** A file `Project.importFile` imported: the document it is now, and what the import had to say. */
 export type ImportedDocument = {
@@ -228,6 +246,12 @@ export type ImportedDocument = {
 	recordCount: number
 	/** Always present, `[]` when the import had nothing to say; an open union, narrowed with `isKnownDiagnostic` */
 	diagnostics: Diagnostic[]
+}
+
+/** What `onFile` is told: the file's entry, and its place among the call's files (two files may share a name). */
+export type ImportFileEntry = ImportEntry & {
+	/** The file's place among the call's files, from 0 */
+	fileIndex: number
 }
 
 /**

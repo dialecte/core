@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+An import names every step from the file to the ready document, so a progress bar never sits on a finished file while the dialecte's import session, the checks and the session's writes run.
+
+### Added
+
+- `ImportProgress` is a union by `phase`, each report keeping `bytesRead` / `totalBytes` (the whole file once stored): `waiting` (told once when a file's import is queued behind another import of the project or of the SQLite engine, another tab's included), `storing` and `indexing` as before (`indexing` now names its `index`), then `processing` (`step: 'start'` before the dialecte's `afterImport`, then each step it reports, with `done` / `total` when it counts), `checking` (`done` / `total`: the session's diagnostics and writes checked per chunk), `applying` (`done` / `total`: the session's writes, `0` first, then per batch the store writes, then `total`; told only when there are writes) and `finishing` (the document made ready). New exported types `ImportBytes`, `ImportStepReport`, `ImportFilesProgress`, `ImportFileEntry`, `WriteSessionControl`, and the constant `IMPORT_PROGRESS_INTERVAL_MS` (50). `ImportPhase` and `ImportProgress` gained these phases: a `switch` over `progress.phase` that was exhaustive over `storing` and `indexing` must handle them.
+- `afterImport` receives a context `{ report, signal }`: `report({ step, done, total })` tells the import's caller where the hook is (at most one counted report per 50 ms per file, the last of each step always told; ignored once aborted); `signal` is the import's abort, for the hook to stop between steps - core then throws `IMPORT_ABORTED` and keeps nothing, whatever the hook returned or threw. A hook that takes no argument works as before; code that calls a session's `afterImport` itself (a test, a session wrapping another) now passes it `{ report, signal }` - `afterImport()` with no argument no longer type-checks. New exported type `AfterImportContext`. `step: 'start'` is core's: a hook names its steps otherwise.
+- `project.import(files, options)`: each report also carries `fileIndex` (from 0), `fileCount` and `fileName` (`ImportFilesProgress`), and `options.onFile(entry)` is told as each file ends with its `ImportEntry` and its `fileIndex` (`ImportFileEntry`: two files may share a name), imported or failed.
+- `ImportTarget.writeSession(documentId, ops, control?)`: a store tells `control.onProgress({ done, total })` after each batch of the session's writes; the SQLite engine does per bind, the in-memory and IndexedDB stores once. A custom store may ignore it.
+- Dev perf: each phase an import tells is a span `import::phase.<name>`, each step the session reports a span `import::hook.<step>` (`store::`-prefixed in the project's report).
+
+### Changed
+
+- The SQLite engine wire (`ENGINE_WIRE_PROTOCOL` 3) and the hub protocol (`HUB_PROTOCOL_VERSION` 7) carry the new progress union, and the storage kinds registry (`STORAGE_KINDS_VERSION` 2) the new hook context: copies of the library of different versions refuse each other as for any change of what they share.
+- After an index build the SQLite store tells again the phase it was in (an index is built in the session's writes and while the document is made ready), instead of `storing`.
+
 ## [0.10.0] - 2026-11-11
 
 No breaking change. `getRecords` and `getChildren` read the records they ask by id in one store call, `@dialecte/core/test` reports a missed XML expectation as a failed assertion, the SQLite engine answers a close or a destroy once its project's lock is free, and the testing skill states the test rules.

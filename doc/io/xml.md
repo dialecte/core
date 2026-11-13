@@ -42,7 +42,7 @@ const { documentId, recordCount, diagnostics } = await parseXmlFile({
 
 **Returns** `Promise<{ documentId: string; recordCount: number; diagnostics: Diagnostic[] }>` - `diagnostics` is what the file's [import session](/io/hooks#afterimport) had to say, `[]` when nothing.
 
-A second argument, `{ onProgress, signal }`, is told the progress after each stored batch (`{ phase: 'storing', bytesRead, totalBytes }`, never awaited) and aborts before the next batch or before the session's writes (`IMPORT_ABORTED`).
+A second argument, `{ onProgress, signal }`, is told the progress (never awaited): after each stored batch (`{ phase: 'storing', bytesRead, totalBytes }`), then `processing` (`step: 'start'`, then each step the session's `afterImport` reports), `checking` and `applying` (`done` / `total`); the signal aborts before the next batch, between the session's steps, before its checks and before its writes (`IMPORT_ABORTED`). `finishing` is told by `runImport`, which makes the document ready.
 
 A text value is read on XML whitespace only - space, tab, carriage return, line feed: each run of text between two tags, comments or other markup is trimmed of it and each inner run of it becomes one space, then the runs are joined (`x <!-- c --> y` reads `xy`). Every other character is kept as written: a no-break space (also written `&#160;`), a byte order mark, U+2028. CDATA is kept as written. An attribute value is read as written, but `xsi:type`: a type name, trimmed of XML whitespace and stored in its canonical form (a no-break space at its ends is part of the name).
 

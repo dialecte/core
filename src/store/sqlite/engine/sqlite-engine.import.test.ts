@@ -13,12 +13,13 @@ import {
 } from '../../contract/store-contract.import-session'
 import { loadSqlite } from '../load-sqlite'
 import { deviceCacheMiB, reportedDeviceMemoryGiB } from './device-cache'
-import { ROWS_PER_BIND } from './engine.constants'
+import { RECORD_INDEXES, ROWS_PER_BIND } from './engine.constants'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE, DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
+import { IMPORT_PROGRESS_INTERVAL_MS } from '@/store/import-progress/import-progress.constants'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
 import type { ContractImportHold } from '../../contract/store-contract.types'
@@ -35,6 +36,7 @@ const opened: Database[] = []
 const holds: (() => void)[] = []
 
 afterEach(() => {
+	vi.restoreAllMocks()
 	for (const release of holds.splice(0)) release()
 	for (const db of opened.splice(0)) db.close()
 })
@@ -64,14 +66,16 @@ function indexesOfImport(params: { db: Database; writeId: string }): string[] {
 
 /**
  * How many spans named `inner` stopped within the span named `outer`: a perf keeps its spans in the
- * order they stop, so the inner spans of a span come right before it (the clock plays no part).
+ * order they stop, so the inner spans of a span come right before it (the clock plays no part); the spans of the
+ * phases the import tells around each index build (`import::phase.indexing`) stop among them and are passed over.
  */
 function spansWithin(params: { spans: PerfSpan[]; outer: string; inner: string }): number {
 	const { spans, outer, inner } = params
-	const end = spans.findIndex((span) => span.name === outer)
+	const named = spans.filter((span) => !span.name.startsWith('import::phase.'))
+	const end = named.findIndex((span) => span.name === outer)
 	if (end === -1) return 0
 	let start = end
-	while (start > 0 && spans[start - 1]!.name === inner) start -= 1
+	while (start > 0 && named[start - 1]!.name === inner) start -= 1
 	return end - start
 }
 
@@ -108,11 +112,12 @@ async function startHeldImport(params: {
 	engine: SqliteEngine
 	writeId: string
 	clientId: string
+	onProgress?: (progress: ImportProgress) => void
 }): Promise<{ importing: Promise<unknown>; release: () => void }> {
-	const { engine, writeId, clientId } = params
+	const { engine, writeId, clientId, onProgress } = params
 	const hold = holdContractImport()
 	holds.push(hold.release)
-	const importing = engine.importFile({ file: heldFile({ hold }), writeId, clientId })
+	const importing = engine.importFile({ file: heldFile({ hold }), writeId, clientId }, onProgress)
 	// a case that ends early must not leave an unhandled rejection behind
 	importing.catch(() => undefined)
 	await untilHeld({ hold, importing })
@@ -191,6 +196,30 @@ describe('an engine importing files', () => {
 			expect(writeOutcomeW1).toBe('applied')
 			const writeOutcomeW2 = await engine.getWriteOutcome({ writeId: 'w-2' })
 			expect(writeOutcomeW2).toBe('applied')
+		})
+
+		it('a second import of another client while one runs → it tells waiting at once, then storing once its turn comes; the first never waits', async () => {
+			const { engine } = await startImportEngine()
+			const firstHeard: ImportProgress[] = []
+			const first = await startHeldImport({
+				engine,
+				writeId: 'w-1',
+				clientId: 'c-1',
+				onProgress: (progress) => firstHeard.push(progress),
+			})
+			const secondHeard: ImportProgress[] = []
+			const second = engine.importFile(
+				{ file: contractFile({ body: sessionRecords(2) }), writeId: 'w-2', clientId: 'c-2' },
+				(progress) => secondHeard.push(progress),
+			)
+			await vi.waitFor(function waitingTold() {
+				expect(secondHeard.map((progress) => progress.phase)).toEqual(['waiting'])
+			})
+			first.release()
+			await first.importing
+			await second
+			expect(secondHeard[1]?.phase).toBe('storing')
+			expect(firstHeard.some((progress) => progress.phase === 'waiting')).toBe(false)
 		})
 
 		it('an import asked, its outcome asked in the same turn → running: it will run', async () => {
@@ -523,7 +552,7 @@ describe('an engine importing files', () => {
 			function queueAfterTheIdIndex(progress: ImportProgress) {
 				if (progress.phase === 'indexing') afterIndexing = true
 				// once, after the first index build (the id index): the finalize builds come after the check
-				if (!afterIndexing || progress.phase !== 'storing' || queued) return
+				if (!afterIndexing || progress.phase === 'indexing' || queued) return
 				queued = true
 				// the first task runs at the yield after the index build, the second one at the next yield
 				setTimeout(() => setTimeout(() => (ran.second = true), 0), 0)
@@ -560,7 +589,7 @@ describe('an engine importing files', () => {
 			function createLaterAfterTheCheck(progress: ImportProgress) {
 				if (progress.phase === 'indexing') afterIndexing = true
 				// once, after the first index build (the id index): the finalize builds come after the check
-				if (!afterIndexing || progress.phase !== 'storing' || queued) return
+				if (!afterIndexing || progress.phase === 'indexing' || queued) return
 				queued = true
 				// the first task runs at the yield after the index build, the second one at the check's yield
 				setTimeout(() => {
@@ -611,6 +640,47 @@ describe('an engine importing files', () => {
 		expect(result.perf?.totals['import::encode']?.calls).toBeGreaterThan(1)
 		expect(result.perf?.totals['import::commit']?.calls).toBeGreaterThan(0)
 		expect(result.perf?.spans.filter((span) => span.name === 'import::index')).toHaveLength(2)
+	})
+
+	it('a session creating more records than two binds hold, the clock moving past the progress interval at each read → applying told per bind written, each index told by its name', async () => {
+		const createCount = ROWS_PER_BIND * 2 + 1
+		const runtime: StoreRuntime = {
+			...createContractRuntime(),
+			hooks: {
+				createImportSession: function sessionCreatingMany() {
+					return {
+						afterImport: async function createMany() {
+							return {
+								creates: Array.from({ length: createCount }, (_, index) =>
+									makeRecord({ id: `created-${index}` }),
+								),
+							}
+						},
+					}
+				},
+			},
+		}
+		const { engine } = await startImportEngine({ runtime })
+		// the realm's clock moved for the import only: every report past the interval is told; the engine's other
+		// readers of it (its window's time, its yields) then commit and yield at each bind, which changes no write
+		let clock = 0
+		vi.spyOn(performance, 'now').mockImplementation(function movingClock() {
+			clock += IMPORT_PROGRESS_INTERVAL_MS
+			return clock
+		})
+		const heard: ImportProgress[] = []
+		await engine.importFile(
+			{ file: contractFile({ body: '<A/>' }), writeId: 'w-1', clientId: 'c-1' },
+			(progress) => heard.push(progress),
+		)
+		const applied = heard.flatMap((progress) =>
+			progress.phase === 'applying' ? [progress.done] : [],
+		)
+		expect([...new Set(applied)]).toEqual([0, ROWS_PER_BIND, ROWS_PER_BIND * 2, createCount])
+		const indexes = heard.flatMap((progress) =>
+			progress.phase === 'indexing' ? [progress.index] : [],
+		)
+		expect(new Set(indexes)).toEqual(new Set(Object.keys(RECORD_INDEXES)))
 	})
 
 	describe('the transactions of an import', () => {
@@ -983,11 +1053,36 @@ describe('an engine importing files', () => {
 				.filter((phase, index, phases) => phase !== phases[index - 1])
 		}
 
-		const testCases: Record<string, { body: string }> = {
-			'a session that writes after the parse → indexing twice (its writes, the end), each closed at once, after the whole file':
-				{ body: sessionRecords(2) },
-			'a session that writes nothing → indexing twice at the end, each closed at once, after the whole file':
-				{ body: '<A/><C/>' },
+		const testCases: Record<string, { body: string; runs: ImportProgress['phase'][] }> = {
+			'a session that writes after the parse → indexing twice (the id index in its writes, the tag index at the end), each followed by the phase it was in, after the whole file':
+				{
+					body: sessionRecords(2),
+					runs: [
+						'storing',
+						'processing',
+						'checking',
+						'applying',
+						'indexing',
+						'applying',
+						'finishing',
+						'indexing',
+						'finishing',
+					],
+				},
+			'a session that writes nothing → indexing twice at the end, each followed by finishing, after the whole file':
+				{
+					body: '<A/><C/>',
+					runs: [
+						'storing',
+						'processing',
+						'checking',
+						'finishing',
+						'indexing',
+						'finishing',
+						'indexing',
+						'finishing',
+					],
+				},
 		}
 		for (const [description, testCase] of Object.entries(testCases)) {
 			it(description, async () => {
@@ -1000,17 +1095,11 @@ describe('an engine importing files', () => {
 						progress.push(step)
 					},
 				)
-				expect(phaseRuns({ progress })).toEqual([
-					'storing',
-					'indexing',
-					'storing',
-					'indexing',
-					'storing',
-				])
+				expect(phaseRuns({ progress })).toEqual(testCase.runs)
 				const indexing = progress.filter((step) => step.phase === 'indexing')
 				expect(indexing).toEqual([
-					{ phase: 'indexing', bytesRead: file.size, totalBytes: file.size },
-					{ phase: 'indexing', bytesRead: file.size, totalBytes: file.size },
+					{ phase: 'indexing', index: 'id', bytesRead: file.size, totalBytes: file.size },
+					{ phase: 'indexing', index: 'tag', bytesRead: file.size, totalBytes: file.size },
 				])
 			})
 		}

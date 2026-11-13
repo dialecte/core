@@ -104,10 +104,10 @@ export function withOpaquePhases(params: {
 				if (!afterImport) return session
 				return {
 					...session,
-					afterImport: async function afterImportTold() {
+					afterImport: async function afterImportTold(context) {
 						heartbeat.busy()
 						try {
-							return await afterImport()
+							return await afterImport(context)
 						} finally {
 							heartbeat.idle()
 						}

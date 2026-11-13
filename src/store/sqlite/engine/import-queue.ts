@@ -38,8 +38,9 @@ async function runInTurn<GenericResult>(params: {
 	writeId: string
 	clientId: string
 	work: (signal: AbortSignal) => Promise<GenericResult>
+	onWait?: () => void
 }): Promise<GenericResult> {
-	const { entries, writeId, clientId, work } = params
+	const { entries, writeId, clientId, work, onWait } = params
 	const turn = Promise.withResolvers<void>()
 	const entry: ImportQueueEntry = {
 		writeId,
@@ -51,6 +52,7 @@ async function runInTurn<GenericResult>(params: {
 	}
 	entries.push(entry)
 	if (entries.length === 1) giveTurn({ entry })
+	else onWait?.()
 	try {
 		await turn.promise
 		return await work(entry.controller.signal)

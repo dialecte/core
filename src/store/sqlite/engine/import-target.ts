@@ -15,6 +15,7 @@ import { insertDocument, markImportReady, readDocument, readDocumentState } from
 import { createRecordIndex } from './schema'
 import { inWriteTransaction } from './transaction'
 
+import { NOOP_PERF } from '@/perf'
 import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered } from '@/store/store-errors'
 import { tellListener } from '@/utils/tell-listener'
@@ -28,7 +29,13 @@ import type {
 	RecordIndex,
 	RegistryRowState,
 } from './engine.types'
-import type { ImportControl, ImportProgress, ImportTarget } from '@/store/store.types'
+import type { Perf } from '@/perf'
+import type {
+	ImportControl,
+	ImportProgress,
+	ImportTarget,
+	WriteSessionControl,
+} from '@/store/store.types'
 import type { AnyRawRecord, RecordPatch } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
@@ -92,9 +99,9 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 		 * The session's writes, the id index built first: a create reusing an id the import made is refused there as
 		 * one the document holds, as every store refuses it.
 		 */
-		writeSession: async function writeSession(documentId, ops) {
+		writeSession: async function writeSession(documentId, ops, control) {
 			if (!state.built.has('id')) await buildIndex({ params, state, documentId, index: 'id' })
-			await writeOps({ params, state, documentId, ops })
+			await writeOps({ params, state, documentId, ops, onWritten: writtenTally({ ops, control }) })
 		},
 		/**
 		 * The document ready, once its table has every index. A document removed meanwhile is refused
@@ -122,21 +129,44 @@ export function createImportTarget(params: ImportTargetParams): ImportTarget {
 	}
 }
 
-/** Creates, updates, deletes, in that order; the id index built before the first update or delete. */
+/**
+ * How far the session's writes are, told to `control.onProgress` after each bind: the writes handed so far (a patch
+ * of a record the document no longer holds counted as written), out of all of them.
+ */
+function writtenTally(params: {
+	ops: Parameters<ImportTarget['writeSession']>[1]
+	control: WriteSessionControl | undefined
+}): (count: number) => void {
+	const { ops, control } = params
+	const total = (ops.creates?.length ?? 0) + (ops.updates?.length ?? 0) + (ops.deletes?.length ?? 0)
+	let done = 0
+	return function tellWritten(count) {
+		done += count
+		control?.onProgress?.({ done, total })
+	}
+}
+
+/**
+ * Creates, updates, deletes, in that order; the id index built before the first update or delete. `onWritten` told
+ * the writes handed after each bind (the session's writes tell their progress).
+ */
 async function writeOps(params: {
 	params: ImportTargetParams
 	state: ImportTargetState
 	documentId: string
 	ops: Parameters<ImportTarget['bulkWrite']>[1]
+	onWritten?: (count: number) => void
 }): Promise<void> {
-	const { state, documentId, ops } = params
+	const { state, documentId, ops, onWritten } = params
 	const { creates = [], updates = [], deletes = [] } = ops
-	if (creates.length > 0) await writeCreates({ params: params.params, state, documentId, creates })
+	if (creates.length > 0) {
+		await writeCreates({ params: params.params, state, documentId, creates, onWritten })
+	}
 	if (updates.length === 0 && deletes.length === 0) return
 	if (!state.built.has('id')) {
 		await buildIndex({ params: params.params, state, documentId, index: 'id' })
 	}
-	await writeChanges({ params: params.params, state, documentId, updates, deletes })
+	await writeChanges({ params: params.params, state, documentId, updates, deletes, onWritten })
 }
 
 /** The table of the document this import registered, while its row is still this import's own. */
@@ -187,8 +217,9 @@ async function writeCreates(params: {
 	state: ImportTargetState
 	documentId: string
 	creates: AnyRawRecord[]
+	onWritten?: (count: number) => void
 }): Promise<void> {
-	const { state, documentId, creates } = params
+	const { state, documentId, creates, onWritten } = params
 	const { db, perf, counts, window } = params.params
 	const detail = `Records of document "${documentId}" could not be written`
 	const table = ownTable(params)
@@ -215,6 +246,7 @@ async function writeCreates(params: {
 			},
 		})
 		counts.set(documentId, (counts.get(documentId) ?? 0) + records.length)
+		onWritten?.(records.length)
 		await commitAtCap({ params: params.params, documentId })
 	}
 }
@@ -229,8 +261,9 @@ async function writeChanges(params: {
 	documentId: string
 	updates: RecordPatch[]
 	deletes: string[]
+	onWritten?: (count: number) => void
 }): Promise<void> {
-	const { documentId, updates, deletes } = params
+	const { documentId, updates, deletes, onWritten } = params
 	const { db, counts, window } = params.params
 	const detail = `Records of document "${documentId}" could not be written`
 	// the patches checked are the ones applied: a record created since by another write is not patched
@@ -252,8 +285,11 @@ async function writeChanges(params: {
 				})
 			},
 		})
+		onWritten?.(patches.length)
 		await commitAtCap({ params: params.params, documentId })
 	}
+	// the patches of records the document no longer holds are handed, never applied: counted as written
+	if (applying.length < updates.length) onWritten?.(updates.length - applying.length)
 	for (let start = 0; start < deletes.length; start += ROWS_PER_BIND) {
 		const table = ownTable(params)
 		const ids = deletes.slice(start, start + ROWS_PER_BIND)
@@ -267,6 +303,7 @@ async function writeChanges(params: {
 			},
 		})
 		counts.set(documentId, (counts.get(documentId) ?? 0) - deleted)
+		onWritten?.(ids.length)
 		await commitAtCap({ params: params.params, documentId })
 	}
 }
@@ -330,7 +367,7 @@ function yieldToTimers(): Promise<void> {
 
 /**
  * One index built on the import's table in a transaction of its own (one long statement), timed as
- * `import::index`, the caller told `indexing` before and `storing` after it (the edits of other
+ * `import::index`, the caller told `indexing` before and the phase it was in after it (the edits of other
  * connections wait while it is built, and only then); the queue gets a turn after it.
  */
 async function buildIndex(params: {
@@ -340,9 +377,9 @@ async function buildIndex(params: {
 	index: RecordIndex
 }): Promise<void> {
 	const { state, documentId, index } = params
-	const { sqlite3, db, perf, window, tellPhase, onLongStatement } = params.params
+	const { sqlite3, db, perf, window, tellIndexing, tellIndexBuilt, onLongStatement } = params.params
 	const table = ownTable(params)
-	tellPhase({ phase: 'indexing' })
+	tellIndexing({ index })
 	perf.start('import::index')
 	try {
 		asStoreFailure({
@@ -366,11 +403,12 @@ async function buildIndex(params: {
 		})
 	} finally {
 		perf.stop('import::index')
+		perf.stop('import::phase.indexing')
 	}
 	state.built.add(index)
 	// the index refuses a taken id from now on
 	if (index === 'id') state.givenIds = undefined
-	tellPhase({ phase: 'storing' })
+	tellIndexBuilt()
 	await yieldToTimers()
 }
 
@@ -409,21 +447,36 @@ function markOwnReady(params: {
 
 /**
  * The import's progress relayed to the caller's listener (never awaited, its failure reported once for the import):
- * the parser's progress told on and kept, so a phase is told with the bytes read so far.
+ * the import's progress told on and kept, so an index build is told with the bytes read so far and, once built, the
+ * phase the import was in is told again; each build timed as `import::phase.indexing` (opened here, closed by the
+ * build whether it succeeds or not).
  */
 export function createProgressRelay(params: {
 	file: File
 	listener: ImportControl['onProgress']
+	perf?: Perf
 }): ImportProgressRelay {
-	const { file, listener } = params
-	const last: ImportProgress = { phase: 'storing', bytesRead: 0, totalBytes: file.size }
+	const { file, listener, perf = NOOP_PERF } = params
+	// the import's reports: a listener failing at each one reported once
+	const call = {}
+	let last: ImportProgress = { phase: 'storing', bytesRead: 0, totalBytes: file.size }
 	return {
 		onProgress: function relayProgress(progress) {
-			Object.assign(last, progress)
-			tellListener({ listener, value: progress, of: TOLD_OF.importProgress, call: last })
+			last = progress
+			tellListener({ listener, value: progress, of: TOLD_OF.importProgress, call })
 		},
-		tellPhase: function tellPhase({ phase }) {
-			tellListener({ listener, value: { ...last, phase }, of: TOLD_OF.importProgress, call: last })
+		tellIndexing: function tellIndexing({ index }) {
+			perf.start('import::phase.indexing')
+			const { bytesRead, totalBytes } = last
+			tellListener({
+				listener,
+				value: { phase: 'indexing', index, bytesRead, totalBytes },
+				of: TOLD_OF.importProgress,
+				call,
+			})
+		},
+		tellIndexBuilt: function tellIndexBuilt() {
+			tellListener({ listener, value: last, of: TOLD_OF.importProgress, call })
 		},
 	}
 }

@@ -211,6 +211,7 @@ export const NODE_STORE_CONTRACT_TEST_FILES: readonly string[] = [
 	STORE_CONTRACT_LEG_FILES.indexedDb,
 	STORE_CONTRACT_LEG_FILES.sqliteInProcess,
 	'src/project/store-switch.test.ts',
+	'src/project/import-progress.test.ts',
 	// the IndexedDB-specific files: at every step on fake-indexeddb, once per lot in the browser on IndexedDB
 	'src/store/local/dexie-store.test.ts',
 	'src/store/local/dexie-store.instrumentation.test.ts',

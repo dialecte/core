@@ -128,7 +128,10 @@ export type StoreContractContext = {
 }
 
 /** What a held import and its case say on the hold channel. */
-export type ContractHoldMessage = { type: 'reached' } | { type: 'release' }
+export type ContractHoldMessage =
+	| { type: 'reached' }
+	| { type: 'release'; afterAbort?: boolean }
+	| { type: 'saw-abort' }
 
 /** An import the case holds at the end of its parse: `reached` once it waits, `release` lets it go on. */
 export type ContractImportHold = {
@@ -137,6 +140,13 @@ export type ContractImportHold = {
 	reached: Promise<void>
 	/** Lets the held import go on, and every later one reaching the hold (the same file imported again). */
 	release: () => void
+	/**
+	 * Lets the held import go on once its session sees the import's signal aborted (the case aborts it): the session
+	 * then says so (`sawAbort`) and stops with its own error. One without a signal fails the import.
+	 */
+	releaseAfterAbort: () => void
+	/** Whether the held session has seen its import's signal aborted */
+	sawAbort: () => boolean
 }
 
 export type StoreContractCase = BaseTestCase & {

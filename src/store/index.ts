@@ -9,18 +9,22 @@ export type {
 	ExportFileResult,
 	ExportProgress,
 	ExportSource,
+	ImportBytes,
 	ImportControl,
 	ImportFileOptions,
 	ImportFileParams,
 	ImportFileResult,
 	ImportPhase,
 	ImportProgress,
+	ImportStepReport,
 	ImportTarget,
 	StoreChange,
 	StoreNotice,
 	StoreResync,
 	WriteOutcome,
+	WriteSessionControl,
 } from './store.types'
+export { IMPORT_PROGRESS_INTERVAL_MS } from './import-progress/import-progress.constants'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'
 export { registerStorageKind } from './storage-kinds'
 export type { StorageKind, StorageKindDialecte } from './storage-kinds.types'

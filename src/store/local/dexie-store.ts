@@ -1,10 +1,8 @@
 import { applyRecordPatch } from '../apply-record-patch'
-import { createClosingConnections } from '../closing-connections'
 import { tellCommitProgress } from '../commit-progress'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkWriteId, toJsonCopy } from '../json-values'
-import { createOpenConnections } from '../open-connections'
 import { isOwnImporting } from '../own-import'
 import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
@@ -37,6 +35,10 @@ import {
 	DESTROY_LOCK_WAIT_MS,
 	DISCARDED_SEQUENCE,
 	IMPORT_LOCK_PREFIX,
+	CLOSING_LOCAL_CONNECTIONS,
+	DEFAULT_RECORD_SCHEMA,
+	LOCAL_DESTROY_TURNS,
+	OPEN_LOCAL_CONNECTIONS,
 	OPEN_LOCK_PREFIX,
 	VERSION_KEY_PREFIX,
 } from './dexie-store.constants'
@@ -48,6 +50,7 @@ import { NOOP_PERF } from '@/perf'
 import { runExport } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
 import { requireStoreRuntime } from '@/project/io/store-runtime'
+import { tellSessionWritten } from '@/store/import-progress/import-progress'
 
 import type {
 	Store,
@@ -59,6 +62,7 @@ import type {
 	ImportFileParams,
 	ImportFileResult,
 	ImportTarget,
+	WriteSessionControl,
 	RecordSchema,
 	WriteOutcome,
 } from '../store.types'
@@ -77,14 +81,6 @@ function versionKey(documentId: string): string {
 function importLockName(params: { storeName: string; writeId: string }): string {
 	return `${IMPORT_LOCK_PREFIX}${params.storeName}:${params.writeId}`
 }
-
-/** The local connections of each name open in this realm: the count a destroy reads where there are no Web Locks. */
-const OPEN_LOCAL_CONNECTIONS = createOpenConnections()
-/** The local connections of each name closed with operations running, in this realm: a destroy of the name lets them complete first. */
-const CLOSING_LOCAL_CONNECTIONS = createClosingConnections()
-
-/** The destroys of each name in this realm, in turn: settled when the last one called has. */
-const LOCAL_DESTROY_TURNS = new Map<string, Promise<void>>()
 
 /** `run` once every destroy of the name called before it in this realm has settled. */
 function inDestroyTurn(params: { name: string; run: () => Promise<void> }): Promise<void> {
@@ -138,14 +134,6 @@ export function buildDexieSchema(schema: RecordSchema): string {
 	}
 
 	return parts.join(', ')
-}
-
-/** Default minimal schema when none provided */
-const DEFAULT_RECORD_SCHEMA: RecordSchema = {
-	primaryKey: 'id',
-	indexes: ['tagName'],
-	compoundIndexes: [],
-	arrayIndexes: [],
 }
 
 /**
@@ -486,11 +474,10 @@ export class DexieStore implements Store {
 				storeName: this.name,
 				operation: 'import',
 			})
-			const run = () =>
-				runImport(
-					{ store: this.ownImportTarget(), runtime, file, options, writeId },
-					{ onProgress, signal },
-				)
+			const target = this.ownImportTarget()
+			function run(): Promise<ImportFileResult> {
+				return runImport({ store: target, runtime, file, options, writeId }, { onProgress, signal })
+			}
 			if (!navigator.locks) return run()
 			return navigator.locks.request(importLockName({ storeName: this.name, writeId }), run)
 		})
@@ -891,6 +878,18 @@ export class DexieStore implements Store {
 		}
 	}
 
+	/** The import session's writes, checked as the file's and written in one step, then told written. */
+	private async writeOwnSession(params: {
+		documentId: string
+		ops: Parameters<ImportTarget['writeSession']>[1]
+		control: WriteSessionControl | undefined
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, ops, control, registered } = params
+		await this.bulkWriteOwnImport({ documentId, ops, registered })
+		tellSessionWritten({ ops, control })
+	}
+
 	/**
 	 * The target the store's own import writes through: the import is one operation, so a `close()`
 	 * after it started does not refuse the calls it makes (each still counted while it runs).
@@ -910,9 +909,9 @@ export class DexieStore implements Store {
 				this.tracked(() => this.removeOwnImport({ documentId, registered })),
 			bulkWrite: (documentId, ops) =>
 				this.tracked(() => this.bulkWriteOwnImport({ documentId, ops, registered })),
-			// every id held is looked up at each write: the session's are checked as the file's
-			writeSession: (documentId, ops) =>
-				this.tracked(() => this.bulkWriteOwnImport({ documentId, ops, registered })),
+			// every id held is looked up at each write: the session's are checked as the file's, written in one step
+			writeSession: (documentId, ops, control) =>
+				this.tracked(() => this.writeOwnSession({ documentId, ops, control, registered })),
 		}
 	}
 
@@ -1021,7 +1020,8 @@ export class DexieStore implements Store {
 			if (!held) return undefined
 			const document = applyDocumentUpdates({ document: withStatus(held), updates: checked })
 			if (document.path !== held.path) {
-				assertDocumentPlace({ document, documents: await documents.toArray() })
+				const placed = await documents.toArray()
+				assertDocumentPlace({ document, documents: placed })
 			}
 			await documents.put(document)
 			return document

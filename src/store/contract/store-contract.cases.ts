@@ -9,6 +9,7 @@ import {
 	CONTRACT_SESSION_LONE_SURROGATE_VALUE,
 	CONTRACT_SESSION_REUSE_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
+	CONTRACT_SESSION_STEP,
 	CONTRACT_SESSION_TAG,
 } from './store-contract.constants'
 import {
@@ -22,6 +23,8 @@ import {
 	nestedArrays,
 	scribble,
 	sessionRecords,
+	lastCountOf,
+	phasesInOrder,
 	SMALL_BATCHES,
 } from './store-contract.fixtures'
 import { holdContractImport, untilHeld } from './store-contract.import-session'
@@ -70,7 +73,8 @@ const lifecycle: StoreContractCases = {
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 			await store.destroy()
 			const reopened = await reopen()
-			expect(await reopened.getDocuments()).toEqual([])
+			const documents = await reopened.getDocuments()
+			expect(documents).toEqual([])
 		},
 	},
 	'opened twice at once, then closed → it holds nothing: another connection’s destroy goes on': {
@@ -93,7 +97,8 @@ const lifecycle: StoreContractCases = {
 				const destroying = store.destroy()
 				await expect(Promise.all([opening, destroying])).resolves.toEqual([undefined, undefined])
 				const other = await connect()
-				expect(await other.getDocuments()).toEqual([])
+				const documents = await other.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 	'a commit running when the store is closed → it completes, kept; the close settles after it': {
@@ -110,8 +115,10 @@ const lifecycle: StoreContractCases = {
 			await committing
 			await closing
 			const reopened = await reopen()
-			expect(await reopened.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
-			expect(await reopened.getWriteOutcome({ writeId: 'w-at-close' })).toBe('applied')
+			const recordR1 = await reopened.get('r1', 'doc-1')
+			expect(recordR1).toEqual(makeRecord({ id: 'r1' }))
+			const writeOutcome = await reopened.getWriteOutcome({ writeId: 'w-at-close' })
+			expect(writeOutcome).toBe('applied')
 		},
 	},
 	'opened again while its own import runs → the import kept and applied, the open settled': {
@@ -128,8 +135,10 @@ const lifecycle: StoreContractCases = {
 				hold.release()
 				const { record } = await importing
 				await opening
-				expect((await store.getDocument(record.id))?.status).toBe('ready')
-				expect(await store.getWriteOutcome({ writeId: 'w-reopened' })).toBe('applied')
+				const documentRecord = await store.getDocument(record.id)
+				expect(documentRecord?.status).toBe('ready')
+				const writeOutcome = await store.getWriteOutcome({ writeId: 'w-reopened' })
+				expect(writeOutcome).toBe('applied')
 			} finally {
 				hold.release()
 				await importing.catch(() => undefined)
@@ -158,7 +167,8 @@ const registry: StoreContractCases = {
 		act: async ({ store }) => {
 			const document = makeDocument({ metadata: { origin: 'test' } })
 			await store.registerDocument(document)
-			expect(await store.getDocument('doc-1')).toEqual(document)
+			const documentDoc1 = await store.getDocument('doc-1')
+			expect(documentDoc1).toEqual(document)
 		},
 	},
 	'lists every registered document': {
@@ -171,7 +181,8 @@ const registry: StoreContractCases = {
 	},
 	'an unknown document reads undefined': {
 		act: async ({ store }) => {
-			expect(await store.getDocument('nope')).toBeUndefined()
+			const documentNope = await store.getDocument('nope')
+			expect(documentNope).toBeUndefined()
 		},
 	},
 	...Object.fromEntries(
@@ -182,7 +193,8 @@ const registry: StoreContractCases = {
 					const document = makeDocument()
 					await store.registerDocument(document)
 					await store.updateDocument('doc-1', updates)
-					expect(await store.getDocument('doc-1')).toEqual({ ...document, ...updates })
+					const documentDoc1 = await store.getDocument('doc-1')
+					expect(documentDoc1).toEqual({ ...document, ...updates })
 				},
 			},
 		]),
@@ -193,7 +205,8 @@ const registry: StoreContractCases = {
 			await store.registerDocument(makeDocument({ id: 'b' }))
 			await store.updateDocument('a', { status: 'ready' } as DocumentUpdates)
 			await store.updateDocument('b', { name: 'renamed', status: 'importing' } as DocumentUpdates)
-			expect(await store.getDocuments()).toEqual([
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([
 				makeDocument({ id: 'a', status: 'importing' }),
 				makeDocument({ id: 'b', name: 'renamed' }),
 			])
@@ -204,9 +217,12 @@ const registry: StoreContractCases = {
 			await store.registerDocument(makeDocument())
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 			await store.removeDocument('doc-1')
-			expect(await store.getDocument('doc-1')).toBeUndefined()
-			expect(await store.getDocuments()).toEqual([])
-			expect(await store.getByDocumentId('doc-1')).toEqual([])
+			const documentDoc1 = await store.getDocument('doc-1')
+			expect(documentDoc1).toBeUndefined()
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([])
+			const recordsDoc1 = await store.getByDocumentId('doc-1')
+			expect(recordsDoc1).toEqual([])
 		},
 	},
 }
@@ -224,13 +240,15 @@ const reads: StoreContractCases = {
 	'get by id within a document': {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
-			expect((await store.get('r1', 'doc-1'))?.id).toBe('r1')
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1?.id).toBe('r1')
 		},
 	},
 	'an unknown id reads undefined': {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
-			expect(await store.get('nope', 'doc-1')).toBeUndefined()
+			const recordNope = await store.get('nope', 'doc-1')
+			expect(recordNope).toBeUndefined()
 		},
 	},
 	'getByDocumentId returns every record of the document': {
@@ -243,11 +261,13 @@ const reads: StoreContractCases = {
 	'count is the number of records of the document': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
-			expect(await store.count('doc-1')).toBe(0)
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(0)
 			await store.bulkWrite('doc-1', {
 				creates: [makeRecord({ id: 'r1' }), makeRecord({ id: 'r2' })],
 			})
-			expect(await store.count('doc-1')).toBe(2)
+			const recordCountDoc1AfterBulkWrite = await store.count('doc-1')
+			expect(recordCountDoc1AfterBulkWrite).toBe(2)
 		},
 	},
 	'getByTagNameInDocument keeps the records of that tag only': {
@@ -271,10 +291,14 @@ const reads: StoreContractCases = {
 			await store.registerDocument(makeDocument({ id: 'b' }))
 			await store.bulkWrite('a', { creates: [makeRecord({ id: 'ra', tagName: 'Bay' })] })
 			await store.bulkWrite('b', { creates: [makeRecord({ id: 'rb', tagName: 'Bay' })] })
-			expect((await store.getByDocumentId('a')).map((record) => record.id)).toEqual(['ra'])
-			expect((await store.getByDocumentId('b')).map((record) => record.id)).toEqual(['rb'])
-			expect(await store.get('ra', 'b')).toBeUndefined()
-			expect(await store.getByTagNameInDocument('Bay', 'a')).toHaveLength(1)
+			const recordsA = await store.getByDocumentId('a')
+			expect(recordsA.map((record) => record.id)).toEqual(['ra'])
+			const recordsB = await store.getByDocumentId('b')
+			expect(recordsB.map((record) => record.id)).toEqual(['rb'])
+			const recordRa = await store.get('ra', 'b')
+			expect(recordRa).toBeUndefined()
+			const taggedRecordsBay = await store.getByTagNameInDocument('Bay', 'a')
+			expect(taggedRecordsBay).toHaveLength(1)
 		},
 	},
 }
@@ -336,7 +360,8 @@ const bulkWrites: StoreContractCases = {
 				children: [{ id: 'c1', tagName: 'B' }],
 			})
 			await store.bulkWrite('doc-1', { creates: [record] })
-			expect(await store.get('r1', 'doc-1')).toEqual(record)
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toEqual(record)
 		},
 	},
 	...Object.fromEntries(
@@ -381,7 +406,8 @@ const bulkWrites: StoreContractCases = {
 					},
 				],
 			})
-			expect((await store.get('p', 'doc-1'))?.children).toEqual([
+			const recordP = await store.get('p', 'doc-1')
+			expect(recordP?.children).toEqual([
 				{ id: 'c1', tagName: 'C' },
 				{ id: 'c2', tagName: 'B' },
 				{ id: 'c3', tagName: 'B' },
@@ -393,9 +419,8 @@ const bulkWrites: StoreContractCases = {
 			await store.registerDocument(makeDocument())
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1', value: 'old' })] })
 			await store.bulkWrite('doc-1', { updates: [{ recordId: 'r1', value: 'new', tagName: 'Z' }] })
-			expect(await store.get('r1', 'doc-1')).toEqual(
-				makeRecord({ id: 'r1', value: 'new', tagName: 'Z' }),
-			)
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toEqual(makeRecord({ id: 'r1', value: 'new', tagName: 'Z' }))
 		},
 	},
 	'update patch of a record created by the same write → applied to it': {
@@ -405,7 +430,8 @@ const bulkWrites: StoreContractCases = {
 				creates: [makeRecord({ id: 'r9' })],
 				updates: [{ recordId: 'r9', value: 'patched' }],
 			})
-			expect(await store.get('r9', 'doc-1')).toEqual(makeRecord({ id: 'r9', value: 'patched' }))
+			const recordR9 = await store.get('r9', 'doc-1')
+			expect(recordR9).toEqual(makeRecord({ id: 'r9', value: 'patched' }))
 		},
 	},
 	'two patches of one record in one write → applied in the order given': {
@@ -418,7 +444,8 @@ const bulkWrites: StoreContractCases = {
 					{ recordId: 'r1', attributes: [{ name: 'b', value: 'second' }] },
 				],
 			})
-			expect(await store.get('r1', 'doc-1')).toEqual(
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toEqual(
 				makeRecord({
 					id: 'r1',
 					value: 'first',
@@ -434,14 +461,16 @@ const bulkWrites: StoreContractCases = {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
 			await store.bulkWrite('doc-1', { updates: [{ recordId: 'nope', value: 'new' }] })
-			expect(await store.getByDocumentId('doc-1')).toEqual([])
+			const recordsDoc1 = await store.getByDocumentId('doc-1')
+			expect(recordsDoc1).toEqual([])
 		},
 	},
 	'deletes remove the records, an absent id is ignored': {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			await store.bulkWrite('doc-1', { deletes: ['r1', 'nope'] })
-			expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual(['r2'])
+			const recordsDoc1 = await store.getByDocumentId('doc-1')
+			expect(recordsDoc1.map((record) => record.id)).toEqual(['r2'])
 		},
 	},
 	'count follows a bulk write creating and deleting, an id deleted twice': {
@@ -451,18 +480,23 @@ const bulkWrites: StoreContractCases = {
 				creates: [makeRecord({ id: 'r3' })],
 				deletes: ['r1', 'r3', 'r1'],
 			})
-			expect(await store.count('doc-1')).toBe(1)
-			expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual(['r2'])
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(1)
+			const recordsDoc1 = await store.getByDocumentId('doc-1')
+			expect(recordsDoc1.map((record) => record.id)).toEqual(['r2'])
 		},
 	},
 	'leaves no history: bulk writes are not undoable': {
 		needs: ['history'],
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
-			expect(await store.getChangeLog('doc-1')).toEqual([])
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: false })
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1).toEqual([])
+			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: false, canRedo: false })
 			await store.undo('doc-1')
-			expect(await store.count('doc-1')).toBe(2)
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(2)
 		},
 	},
 }
@@ -485,7 +519,8 @@ const history: StoreContractCases = {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
-			expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toEqual(makeRecord({ id: 'r1' }))
 		},
 	},
 	'commit updates records whole': {
@@ -493,15 +528,18 @@ const history: StoreContractCases = {
 			await seedTwoRecords(store)
 			const updated = makeRecord({ id: 'r1', tagName: 'VoltageLevel', attributes: [] })
 			await commit({ store, documentId: 'doc-1', updates: [updated] })
-			expect(await store.get('r1', 'doc-1')).toEqual(updated)
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toEqual(updated)
 		},
 	},
 	'commit deletes records': {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			await commit({ store, documentId: 'doc-1', deletes: ['r1'] })
-			expect(await store.get('r1', 'doc-1')).toBeUndefined()
-			expect(await store.count('doc-1')).toBe(1)
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toBeUndefined()
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(1)
 		},
 	},
 	'commit reports progress up to the number of operations; a listener slow on every tick still hears the last one before the commit resolves':
@@ -536,9 +574,12 @@ const history: StoreContractCases = {
 				deletes: ['r2'],
 			})
 			await store.undo('doc-1')
-			expect(await store.get('r3', 'doc-1')).toBeUndefined()
-			expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
-			expect(await store.get('r2', 'doc-1')).toEqual(makeRecord({ id: 'r2', tagName: 'Bay' }))
+			const recordR3 = await store.get('r3', 'doc-1')
+			expect(recordR3).toBeUndefined()
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
+			const recordR2 = await store.get('r2', 'doc-1')
+			expect(recordR2).toEqual(makeRecord({ id: 'r2', tagName: 'Bay' }))
 		},
 	},
 	'redo re-applies an undone commit': {
@@ -553,9 +594,12 @@ const history: StoreContractCases = {
 			})
 			await store.undo('doc-1')
 			await store.redo('doc-1')
-			expect(await store.get('r3', 'doc-1')).toEqual(makeRecord({ id: 'r3' }))
-			expect((await store.get('r1', 'doc-1'))?.value).toBe('v')
-			expect(await store.get('r2', 'doc-1')).toBeUndefined()
+			const recordR3 = await store.get('r3', 'doc-1')
+			expect(recordR3).toEqual(makeRecord({ id: 'r3' }))
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1?.value).toBe('v')
+			const recordR2 = await store.get('r2', 'doc-1')
+			expect(recordR2).toBeUndefined()
 		},
 	},
 	'undo at the start of history is a no-op': {
@@ -569,19 +613,24 @@ const history: StoreContractCases = {
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
 			await expect(store.redo('doc-1')).resolves.toBeUndefined()
-			expect(await store.count('doc-1')).toBe(1)
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(1)
 		},
 	},
 	'history status follows commit, undo and redo': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: false })
+			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: false, canRedo: false })
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+			const historyStatusDoc1AfterCommit = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1AfterCommit).toEqual({ canUndo: true, canRedo: false })
 			await store.undo('doc-1')
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: true })
+			const historyStatusDoc1AfterUndo = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1AfterUndo).toEqual({ canUndo: false, canRedo: true })
 			await store.redo('doc-1')
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+			const historyStatusDoc1AfterRedo = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1AfterRedo).toEqual({ canUndo: true, canRedo: false })
 		},
 	},
 	'a commit after an undo drops the redo future': {
@@ -591,34 +640,43 @@ const history: StoreContractCases = {
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r2' })] })
 			await store.undo('doc-1')
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
 			const log = await store.getChangeLog('doc-1')
 			expect(log.map((entry) => entry.operations.creates[0]?.id)).toEqual(['r1', 'r3'])
 			await store.redo('doc-1')
-			expect(await store.get('r2', 'doc-1')).toBeUndefined()
+			const recordR2 = await store.get('r2', 'doc-1')
+			expect(recordR2).toBeUndefined()
 		},
 	},
 	'count follows every write: bulk write, commit, undo, redo, remove': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
-			expect(await store.count('doc-1'), 'empty').toBe(0)
+			const recordCountEmpty = await store.count('doc-1')
+			expect(recordCountEmpty, 'empty').toBe(0)
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
-			expect(await store.count('doc-1'), 'after a bulk write').toBe(1)
+			const recordCountAfterBulkWrite = await store.count('doc-1')
+			expect(recordCountAfterBulkWrite, 'after a bulk write').toBe(1)
 			await commit({
 				store,
 				documentId: 'doc-1',
 				creates: [makeRecord({ id: 'r2' }), makeRecord({ id: 'r3' })],
 			})
-			expect(await store.count('doc-1'), 'after a commit creating two').toBe(3)
+			const recordCountAfterCommitCreatingTwo = await store.count('doc-1')
+			expect(recordCountAfterCommitCreatingTwo, 'after a commit creating two').toBe(3)
 			await commit({ store, documentId: 'doc-1', deletes: ['r1'] })
-			expect(await store.count('doc-1'), 'after a commit deleting one').toBe(2)
+			const recordCountAfterCommitDeletingOne = await store.count('doc-1')
+			expect(recordCountAfterCommitDeletingOne, 'after a commit deleting one').toBe(2)
 			await store.undo('doc-1')
-			expect(await store.count('doc-1'), 'after undoing the delete').toBe(3)
+			const recordCountAfterUndoingDelete = await store.count('doc-1')
+			expect(recordCountAfterUndoingDelete, 'after undoing the delete').toBe(3)
 			await store.redo('doc-1')
-			expect(await store.count('doc-1'), 'after redoing it').toBe(2)
+			const recordCountAfterRedoing = await store.count('doc-1')
+			expect(recordCountAfterRedoing, 'after redoing it').toBe(2)
 			await store.removeDocument('doc-1')
 			await store.registerDocument(makeDocument())
-			expect(await store.count('doc-1'), 'after removing the document').toBe(0)
+			const recordCountAfterRemovingDocument = await store.count('doc-1')
+			expect(recordCountAfterRemovingDocument, 'after removing the document').toBe(0)
 		},
 	},
 	'getChangeLog lists the entries of the document in sequence order': {
@@ -641,9 +699,11 @@ const history: StoreContractCases = {
 				writeId: 'w1',
 				creates: [makeRecord({ id: 'r1' })],
 			})
-			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('applied')
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w1' })
+			expect(writeOutcome).toBe('applied')
 			await store.undo('doc-1')
-			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('applied')
+			const writeOutcomeAfterUndo = await store.getWriteOutcome({ writeId: 'w1' })
+			expect(writeOutcomeAfterUndo).toBe('applied')
 		},
 	},
 	'a commit undone, then discarded by a later commit, asked by its id → still applied': {
@@ -662,10 +722,14 @@ const history: StoreContractCases = {
 				writeId: 'w2',
 				creates: [makeRecord({ id: 'r2' })],
 			})
-			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('applied')
-			expect(await store.getWriteOutcome({ writeId: 'w2' })).toBe('applied')
-			expect((await store.getChangeLog('doc-1')).map((entry) => entry.writeId)).toEqual(['w2'])
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+			const writeOutcomeW1 = await store.getWriteOutcome({ writeId: 'w1' })
+			expect(writeOutcomeW1).toBe('applied')
+			const writeOutcomeW2 = await store.getWriteOutcome({ writeId: 'w2' })
+			expect(writeOutcomeW2).toBe('applied')
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1.map((entry) => entry.writeId)).toEqual(['w2'])
+			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
 		},
 	},
 	'a refused commit asked by its id → not-applied': {
@@ -680,7 +744,8 @@ const history: StoreContractCases = {
 				}),
 				key: 'STORE_DUPLICATE_ID',
 			})
-			expect(await store.getWriteOutcome({ writeId: 'w-refused' })).toBe('not-applied')
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w-refused' })
+			expect(writeOutcome).toBe('not-applied')
 		},
 	},
 	'a commit whose document was removed since, asked by its id → not-applied': {
@@ -693,7 +758,8 @@ const history: StoreContractCases = {
 				creates: [makeRecord({ id: 'r1' })],
 			})
 			await store.removeDocument('doc-1')
-			expect(await store.getWriteOutcome({ writeId: 'w1' })).toBe('not-applied')
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w1' })
+			expect(writeOutcome).toBe('not-applied')
 		},
 	},
 	'a history entry carries the id of its commit, one of its own when none was given': {
@@ -715,7 +781,8 @@ const history: StoreContractCases = {
 			expect(new Set(generated).size).toBe(2)
 			expect(generated).not.toContain('w1')
 			for (const writeId of generated) {
-				expect(await store.getWriteOutcome({ writeId })).toBe('applied')
+				const writeOutcome = await store.getWriteOutcome({ writeId })
+				expect(writeOutcome).toBe('applied')
 			}
 		},
 	},
@@ -728,12 +795,16 @@ const history: StoreContractCases = {
 				creates: [makeRecord({ id: 'r1' })],
 				deletes: ['r1'],
 			})
-			expect(await store.get('r1', 'doc-1'), 'after the commit').toBeUndefined()
+			const recordAfterCommit = await store.get('r1', 'doc-1')
+			expect(recordAfterCommit, 'after the commit').toBeUndefined()
 			await store.undo('doc-1')
-			expect(await store.get('r1', 'doc-1'), 'after its undo').toBeUndefined()
+			const recordAfterUndo = await store.get('r1', 'doc-1')
+			expect(recordAfterUndo, 'after its undo').toBeUndefined()
 			await store.redo('doc-1')
-			expect(await store.get('r1', 'doc-1'), 'after its redo').toBeUndefined()
-			expect(await store.count('doc-1')).toBe(0)
+			const recordAfterRedo = await store.get('r1', 'doc-1')
+			expect(recordAfterRedo, 'after its redo').toBeUndefined()
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(0)
 		},
 	},
 	'a commit updating and deleting one id → undo gives it back as before, redo leaves nothing': {
@@ -745,12 +816,16 @@ const history: StoreContractCases = {
 				updates: [makeRecord({ id: 'r1', value: 'v' })],
 				deletes: ['r1'],
 			})
-			expect(await store.get('r1', 'doc-1')).toBeUndefined()
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toBeUndefined()
 			await store.undo('doc-1')
-			expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
+			const recordR1AfterUndo = await store.get('r1', 'doc-1')
+			expect(recordR1AfterUndo).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
 			await store.redo('doc-1')
-			expect(await store.get('r1', 'doc-1')).toBeUndefined()
-			expect(await store.count('doc-1')).toBe(1)
+			const recordR1AfterRedo = await store.get('r1', 'doc-1')
+			expect(recordR1AfterRedo).toBeUndefined()
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(1)
 		},
 	},
 	'a commit updating one record twice → the last update stands, undo gives the record as before': {
@@ -764,11 +839,14 @@ const history: StoreContractCases = {
 					makeRecord({ id: 'r1', value: 'last' }),
 				],
 			})
-			expect((await store.get('r1', 'doc-1'))?.value).toBe('last')
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1?.value).toBe('last')
 			await store.undo('doc-1')
-			expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
+			const recordR1AfterUndo = await store.get('r1', 'doc-1')
+			expect(recordR1AfterUndo).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
 			await store.redo('doc-1')
-			expect((await store.get('r1', 'doc-1'))?.value).toBe('last')
+			const recordR1AfterRedo = await store.get('r1', 'doc-1')
+			expect(recordR1AfterRedo?.value).toBe('last')
 		},
 	},
 	...Object.fromEntries(
@@ -785,16 +863,13 @@ const history: StoreContractCases = {
 						deletes: ['r2'],
 						onProgress: listener,
 					})
-					expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
-						'r1',
-						'r3',
-					])
-					expect((await store.get('r1', 'doc-1'))?.value).toBe('v')
+					const recordsDoc1 = await store.getByDocumentId('doc-1')
+					expect(recordsDoc1.map((record) => record.id)).toEqual(['r1', 'r3'])
+					const recordR1 = await store.get('r1', 'doc-1')
+					expect(recordR1?.value).toBe('v')
 					await store.undo('doc-1')
-					expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
-						'r1',
-						'r2',
-					])
+					const recordsDoc1AfterUndo = await store.getByDocumentId('doc-1')
+					expect(recordsDoc1AfterUndo.map((record) => record.id)).toEqual(['r1', 'r2'])
 					await vi.waitFor(function reported() {
 						expect(reportedFailures({ reports })).toContain(LISTENER_FAILURE)
 					})
@@ -810,12 +885,12 @@ const history: StoreContractCases = {
 				await commit({ store, documentId: 'doc-1', deletes: ['r1'] })
 				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1', value: 'again' })] })
 				await store.undo('doc-1')
-				expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
-				expect(await store.count('doc-1')).toBe(2)
-				expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
-					'r1',
-					'r2',
-				])
+				const recordR1 = await store.get('r1', 'doc-1')
+				expect(recordR1).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
+				const recordCountDoc1 = await store.count('doc-1')
+				expect(recordCountDoc1).toBe(2)
+				const recordsDoc1 = await store.getByDocumentId('doc-1')
+				expect(recordsDoc1.map((record) => record.id)).toEqual(['r1', 'r2'])
 			},
 		},
 	'a commit creating a record, a bulk write deleting it, then the undo and the redo → the record back after the redo, counted once':
@@ -825,11 +900,15 @@ const history: StoreContractCases = {
 				await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
 				await store.bulkWrite('doc-1', { deletes: ['r3'] })
 				await store.undo('doc-1')
-				expect(await store.get('r3', 'doc-1')).toBeUndefined()
-				expect(await store.count('doc-1')).toBe(2)
+				const recordR3 = await store.get('r3', 'doc-1')
+				expect(recordR3).toBeUndefined()
+				const recordCountDoc1 = await store.count('doc-1')
+				expect(recordCountDoc1).toBe(2)
 				await store.redo('doc-1')
-				expect(await store.get('r3', 'doc-1')).toEqual(makeRecord({ id: 'r3' }))
-				expect(await store.count('doc-1')).toBe(3)
+				const recordR3AfterRedo = await store.get('r3', 'doc-1')
+				expect(recordR3AfterRedo).toEqual(makeRecord({ id: 'r3' }))
+				const recordCountDoc1AfterRedo = await store.count('doc-1')
+				expect(recordCountDoc1AfterRedo).toBe(3)
 			},
 		},
 	'a commit’s progress listener reading the store → it reads the whole commit': {
@@ -848,7 +927,10 @@ const history: StoreContractCases = {
 				},
 			})
 			expect(reads.length).toBeGreaterThan(0)
-			for (const read of reads) expect(await read).toEqual(['r1', 'r3'])
+			for (const read of reads) {
+				const readIds = await read
+				expect(readIds).toEqual(['r1', 'r3'])
+			}
 		},
 	},
 	'a commit on a document still importing → DOCUMENT_NOT_REGISTERED, nothing written, no entry': {
@@ -865,9 +947,12 @@ const history: StoreContractCases = {
 				key: 'DOCUMENT_NOT_REGISTERED',
 				meta: { documentId: 'doc-1' },
 			})
-			expect((await store.getByDocumentId('doc-1')).map((record) => record.id)).toEqual(['r1'])
-			expect(await store.getChangeLog('doc-1')).toEqual([])
-			expect(await store.getWriteOutcome({ writeId: 'w-importing' })).toBe('not-applied')
+			const recordsDoc1 = await store.getByDocumentId('doc-1')
+			expect(recordsDoc1.map((record) => record.id)).toEqual(['r1'])
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1).toEqual([])
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w-importing' })
+			expect(writeOutcome).toBe('not-applied')
 		},
 	},
 	'history is document-scoped': {
@@ -876,11 +961,15 @@ const history: StoreContractCases = {
 			await store.registerDocument(makeDocument({ id: 'b' }))
 			await commit({ store, documentId: 'a', creates: [makeRecord({ id: 'ra' })] })
 			await commit({ store, documentId: 'b', creates: [makeRecord({ id: 'rb' })] })
-			expect(await store.getChangeLog('a')).toHaveLength(1)
-			expect(await store.getChangeLog('b')).toHaveLength(1)
+			const changeLogA = await store.getChangeLog('a')
+			expect(changeLogA).toHaveLength(1)
+			const changeLogB = await store.getChangeLog('b')
+			expect(changeLogB).toHaveLength(1)
 			await store.undo('a')
-			expect(await store.get('rb', 'b')).toBeDefined()
-			expect(await store.getHistoryStatus('b')).toEqual({ canUndo: true, canRedo: false })
+			const recordRb = await store.get('rb', 'b')
+			expect(recordRb).toBeDefined()
+			const historyStatusB = await store.getHistoryStatus('b')
+			expect(historyStatusB).toEqual({ canUndo: true, canRedo: false })
 		},
 	},
 }
@@ -892,11 +981,10 @@ const reopen: StoreContractCases = {
 		act: async ({ store, reopen }) => {
 			await seedTwoRecords(store)
 			const reopened = await reopen()
-			expect((await reopened.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
-			expect((await reopened.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
-				'r1',
-				'r2',
-			])
+			const documents = await reopened.getDocuments()
+			expect(documents.map((document) => document.id)).toEqual(['doc-1'])
+			const recordsDoc1 = await reopened.getByDocumentId('doc-1')
+			expect(recordsDoc1.map((record) => record.id)).toEqual(['r1', 'r2'])
 		},
 	},
 	'history is there again after a reopen: undo still works': {
@@ -905,9 +993,11 @@ const reopen: StoreContractCases = {
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
 			const reopened = await reopen()
-			expect(await reopened.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+			const historyStatusDoc1 = await reopened.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
 			await reopened.undo('doc-1')
-			expect(await reopened.get('r1', 'doc-1')).toBeUndefined()
+			const recordR1 = await reopened.get('r1', 'doc-1')
+			expect(recordR1).toBeUndefined()
 		},
 	},
 }
@@ -927,7 +1017,8 @@ const blobs: StoreContractCases = {
 			await store.addBlob(entry, new Blob(['hello'], { type: 'text/plain' }))
 			const result = await store.getBlob(entry.id)
 			expect(result?.entry).toEqual(entry)
-			expect(await result?.data.text()).toBe('hello')
+			const blobText = await result?.data.text()
+			expect(blobText).toBe('hello')
 		},
 	},
 	'addBlob is rejected when the owner document is not registered': {
@@ -942,7 +1033,8 @@ const blobs: StoreContractCases = {
 	},
 	'an unknown blob reads undefined': {
 		act: async ({ store }) => {
-			expect(await store.getBlob('nope')).toBeUndefined()
+			const blobNope = await store.getBlob('nope')
+			expect(blobNope).toBeUndefined()
 		},
 	},
 	'getBlobsByDocument filters by attachedTo, not by the owner': {
@@ -953,8 +1045,10 @@ const blobs: StoreContractCases = {
 				new Blob(['1']),
 			)
 			await store.addBlob(makeBlobEntry({ id: 'b2' }), new Blob(['2']))
-			expect((await store.getBlobsByDocument('doc-2')).map((blob) => blob.id)).toEqual(['b1'])
-			expect(await store.getBlobsByDocument('doc-1')).toEqual([])
+			const documentBlobsDoc2 = await store.getBlobsByDocument('doc-2')
+			expect(documentBlobsDoc2.map((blob) => blob.id)).toEqual(['b1'])
+			const documentBlobsDoc1 = await store.getBlobsByDocument('doc-1')
+			expect(documentBlobsDoc1).toEqual([])
 		},
 	},
 	'getBlobsByRecord filters on documentId + recordRef': {
@@ -970,8 +1064,10 @@ const blobs: StoreContractCases = {
 				}),
 				new Blob(['x']),
 			)
-			expect((await store.getBlobsByRecord('doc-2', 'r1')).map((blob) => blob.id)).toEqual(['b1'])
-			expect(await store.getBlobsByRecord('doc-2', 'r3')).toEqual([])
+			const recordBlobsOfR1 = await store.getBlobsByRecord('doc-2', 'r1')
+			expect(recordBlobsOfR1.map((blob) => blob.id)).toEqual(['b1'])
+			const recordBlobsOfR3 = await store.getBlobsByRecord('doc-2', 'r3')
+			expect(recordBlobsOfR3).toEqual([])
 		},
 	},
 	'getStandaloneBlobs returns the blobs attached to nothing': {
@@ -982,7 +1078,8 @@ const blobs: StoreContractCases = {
 				makeBlobEntry({ id: 'b2', attachedTo: [{ documentId: 'doc-2', recordRef: 'r1' }] }),
 				new Blob(['2']),
 			)
-			expect((await store.getStandaloneBlobs()).map((blob) => blob.id)).toEqual(['b1'])
+			const standaloneBlobs = await store.getStandaloneBlobs()
+			expect(standaloneBlobs.map((blob) => blob.id)).toEqual(['b1'])
 		},
 	},
 	'attachBlob is idempotent on an identical ref': {
@@ -992,7 +1089,8 @@ const blobs: StoreContractCases = {
 			const ref = { documentId: 'doc-2', recordRef: 'r1' }
 			await store.attachBlob('b1', ref)
 			await store.attachBlob('b1', ref)
-			expect((await store.getBlob('b1'))?.entry.attachedTo).toEqual([ref])
+			const blobB1 = await store.getBlob('b1')
+			expect(blobB1?.entry.attachedTo).toEqual([ref])
 		},
 	},
 	'attachBlob and detachBlob of an unknown blob are rejected': {
@@ -1022,9 +1120,8 @@ const blobs: StoreContractCases = {
 				new Blob(['x']),
 			)
 			await store.detachBlob('b1', { documentId: 'doc-2', recordRef: 'r1' })
-			expect((await store.getBlob('b1'))?.entry.attachedTo).toEqual([
-				{ documentId: 'doc-2', recordRef: 'r2' },
-			])
+			const blobB1 = await store.getBlob('b1')
+			expect(blobB1?.entry.attachedTo).toEqual([{ documentId: 'doc-2', recordRef: 'r2' }])
 		},
 	},
 	'removeBlob removes the entry and its data; an unknown blob is ignored': {
@@ -1033,8 +1130,10 @@ const blobs: StoreContractCases = {
 			await store.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['x']))
 			await store.removeBlob('b1')
 			await expect(store.removeBlob('b1')).resolves.toBeUndefined()
-			expect(await store.getBlob('b1')).toBeUndefined()
-			expect(await store.getStandaloneBlobs()).toEqual([])
+			const blobB1 = await store.getBlob('b1')
+			expect(blobB1).toBeUndefined()
+			const standaloneBlobs = await store.getStandaloneBlobs()
+			expect(standaloneBlobs).toEqual([])
 		},
 	},
 	'removeDocument cascades: the blobs it owns go, the others stay': {
@@ -1043,8 +1142,10 @@ const blobs: StoreContractCases = {
 			await store.addBlob(makeBlobEntry({ id: 'b1', documentId: 'doc-1' }), new Blob(['1']))
 			await store.addBlob(makeBlobEntry({ id: 'b2', documentId: 'doc-2' }), new Blob(['2']))
 			await store.removeDocument('doc-1')
-			expect(await store.getBlob('b1')).toBeUndefined()
-			expect((await store.getBlob('b2'))?.entry.id).toBe('b2')
+			const blobB1 = await store.getBlob('b1')
+			expect(blobB1).toBeUndefined()
+			const blobB2 = await store.getBlob('b2')
+			expect(blobB2?.entry.id).toBe('b2')
 		},
 	},
 }
@@ -1315,7 +1416,8 @@ const nonJsonPatchOfAbsentRecord: StoreContractCases = {
 				await store.bulkWrite('doc-1', {
 					updates: [{ recordId: 'absent', value: (() => '') as unknown as string }],
 				})
-				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+				const recordsDoc1 = await store.getByDocumentId('doc-1')
+				expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
 			},
 		},
 }
@@ -1330,12 +1432,16 @@ const nonJsonWrites: StoreContractCases = Object.fromEntries(
 				act: async ({ store }: StoreContractContext) => {
 					await store.registerDocument(makeDocument())
 					await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
-					expect(await store.count('doc-1')).toBe(1)
+					const recordCountDoc1 = await store.count('doc-1')
+					expect(recordCountDoc1).toBe(1)
 					await expectRejectsWith({ action: write(store), key })
-					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
-					expect(await store.count('doc-1')).toBe(1)
+					const recordsDoc1 = await store.getByDocumentId('doc-1')
+					expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
+					const recordCountDoc1AfterRefusal = await store.count('doc-1')
+					expect(recordCountDoc1AfterRefusal).toBe(1)
 					if (keepsHistory) {
-						expect(await store.getHistoryStatus('doc-1')).toEqual({
+						const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+						expect(historyStatusDoc1).toEqual({
 							canUndo: false,
 							canRedo: false,
 						})
@@ -1356,8 +1462,10 @@ const rejectedWrites: StoreContractCases = {
 				key: 'STORE_DUPLICATE_ID',
 				meta: { documentId: 'doc-1' },
 			})
-			expect((await store.getDocument('doc-1'))?.name).toBe('first')
-			expect(await store.count('doc-1')).toBe(1)
+			const documentDoc1 = await store.getDocument('doc-1')
+			expect(documentDoc1?.name).toBe('first')
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(1)
 		},
 	},
 	'a bulk write creating an id the document holds is rejected and nothing of it lands': {
@@ -1370,9 +1478,12 @@ const rejectedWrites: StoreContractCases = {
 				key: 'STORE_DUPLICATE_ID',
 				meta: { documentId: 'doc-1', recordIds: ['r1'] },
 			})
-			expect(await store.get('r9', 'doc-1')).toBeUndefined()
-			expect((await store.get('r1', 'doc-1'))?.value).toBe('')
-			expect(await store.count('doc-1')).toBe(2)
+			const recordR9 = await store.get('r9', 'doc-1')
+			expect(recordR9).toBeUndefined()
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1?.value).toBe('')
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(2)
 		},
 	},
 	'a commit creating an id the document holds is rejected, nothing lands, no history entry': {
@@ -1389,11 +1500,16 @@ const rejectedWrites: StoreContractCases = {
 				key: 'STORE_DUPLICATE_ID',
 				meta: { documentId: 'doc-1', recordIds: ['r1'] },
 			})
-			expect(await store.get('r9', 'doc-1')).toBeUndefined()
-			expect((await store.get('r1', 'doc-1'))?.value).toBe('')
-			expect(await store.get('r2', 'doc-1')).toBeDefined()
-			expect(await store.getChangeLog('doc-1')).toEqual([])
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: false })
+			const recordR9 = await store.get('r9', 'doc-1')
+			expect(recordR9).toBeUndefined()
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1?.value).toBe('')
+			const recordR2 = await store.get('r2', 'doc-1')
+			expect(recordR2).toBeDefined()
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1).toEqual([])
+			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: false, canRedo: false })
 		},
 	},
 	'a bulk write holding one id twice is rejected and nothing of it lands': {
@@ -1407,7 +1523,8 @@ const rejectedWrites: StoreContractCases = {
 				meta: { documentId: 'doc-1', recordIds: ['r1'] },
 				detail: /given twice: r1$/,
 			})
-			expect(await store.count('doc-1')).toBe(0)
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(0)
 		},
 	},
 	'a bulk write giving twice an id the document holds is rejected, the id named once': {
@@ -1421,7 +1538,8 @@ const rejectedWrites: StoreContractCases = {
 				meta: { documentId: 'doc-1', recordIds: ['r1'] },
 				detail: /already holds: r1; given twice: r1$/,
 			})
-			expect((await store.get('r1', 'doc-1'))?.value).toBe('')
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1?.value).toBe('')
 		},
 	},
 	'a commit holding one id twice is rejected, nothing lands, no history entry': {
@@ -1437,8 +1555,10 @@ const rejectedWrites: StoreContractCases = {
 				key: 'STORE_DUPLICATE_ID',
 				meta: { documentId: 'doc-1', recordIds: ['r1'] },
 			})
-			expect(await store.count('doc-1')).toBe(0)
-			expect(await store.getChangeLog('doc-1')).toEqual([])
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(0)
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1).toEqual([])
 		},
 	},
 	'a commit updating a record the document does not hold is rejected and nothing lands': {
@@ -1455,9 +1575,12 @@ const rejectedWrites: StoreContractCases = {
 				key: 'STORE_RECORD_NOT_FOUND',
 				meta: { documentId: 'doc-1', recordId: 'nope' },
 			})
-			expect(await store.get('r9', 'doc-1')).toBeUndefined()
-			expect(await store.get('nope', 'doc-1')).toBeUndefined()
-			expect(await store.getChangeLog('doc-1')).toEqual([])
+			const recordR9 = await store.get('r9', 'doc-1')
+			expect(recordR9).toBeUndefined()
+			const recordNope = await store.get('nope', 'doc-1')
+			expect(recordNope).toBeUndefined()
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1).toEqual([])
 		},
 	},
 	'a commit with a taken id and an absent update is refused for the absent update': {
@@ -1474,8 +1597,10 @@ const rejectedWrites: StoreContractCases = {
 				key: 'STORE_RECORD_NOT_FOUND',
 				meta: { documentId: 'doc-1', recordId: 'nope' },
 			})
-			expect((await store.get('r1', 'doc-1'))?.value).toBe('')
-			expect(await store.getChangeLog('doc-1')).toEqual([])
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1?.value).toBe('')
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1).toEqual([])
 		},
 	},
 	'a commit deleting an absent id deletes nothing of it and snapshots nothing of it': {
@@ -1486,7 +1611,8 @@ const rejectedWrites: StoreContractCases = {
 			const [entry] = await store.getChangeLog('doc-1')
 			expect(entry.operations.deletes.map((record) => record.id)).toEqual(['r1'])
 			await store.undo('doc-1')
-			expect(await store.count('doc-1')).toBe(2)
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(2)
 		},
 	},
 	'a bulk write to an unregistered document is rejected': {
@@ -1496,7 +1622,8 @@ const rejectedWrites: StoreContractCases = {
 				key: 'DOCUMENT_NOT_REGISTERED',
 				meta: { documentId: 'nope' },
 			})
-			expect(await store.get('r1', 'nope')).toBeUndefined()
+			const recordR1 = await store.get('r1', 'nope')
+			expect(recordR1).toBeUndefined()
 		},
 	},
 	'a commit to an unregistered document is rejected': {
@@ -1507,8 +1634,10 @@ const rejectedWrites: StoreContractCases = {
 				key: 'DOCUMENT_NOT_REGISTERED',
 				meta: { documentId: 'nope' },
 			})
-			expect(await store.get('r1', 'nope')).toBeUndefined()
-			expect(await store.getChangeLog('nope')).toEqual([])
+			const recordR1 = await store.get('r1', 'nope')
+			expect(recordR1).toBeUndefined()
+			const changeLogNope = await store.getChangeLog('nope')
+			expect(changeLogNope).toEqual([])
 		},
 	},
 }
@@ -1608,8 +1737,10 @@ const nonJsonValues: StoreContractCases = Object.fromEntries(
 						action: write({ store, value: value() }),
 						key: 'STORE_VALUE_NOT_JSON',
 					})
-					expect(await store.getDocuments()).toEqual([makeDocument()])
-					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+					const documents = await store.getDocuments()
+					expect(documents).toEqual([makeDocument()])
+					const recordsDoc1 = await store.getByDocumentId('doc-1')
+					expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
 				},
 			},
 		]),
@@ -1687,13 +1818,17 @@ const extraFieldsDropped: StoreContractCases = Object.fromEntries(
 				await store.registerDocument(makeDocument())
 				await run(store)
 				const kept = recordKept({ id, value })
-				expect(await store.get(id, 'doc-1')).toStrictEqual(kept)
-				expect(await store.getMany([id], 'doc-1')).toStrictEqual([kept])
-				expect(await store.getByDocumentId('doc-1')).toStrictEqual([kept])
+				const record = await store.get(id, 'doc-1')
+				expect(record).toStrictEqual(kept)
+				const manyRecords = await store.getMany([id], 'doc-1')
+				expect(manyRecords).toStrictEqual([kept])
+				const recordsDoc1 = await store.getByDocumentId('doc-1')
+				expect(recordsDoc1).toStrictEqual([kept])
 				if (needs?.includes('history')) {
 					await store.undo('doc-1')
 					await store.redo('doc-1')
-					expect(await store.get(id, 'doc-1')).toStrictEqual(kept)
+					const recordAfterRedo = await store.get(id, 'doc-1')
+					expect(recordAfterRedo).toStrictEqual(kept)
 				}
 			},
 		},
@@ -1723,9 +1858,8 @@ const nonJsonPatchPlace: StoreContractCases = {
 					key: 'STORE_VALUE_NOT_JSON',
 					detail: new RegExp(`field "${REFUSED_PATCH_AT}"`),
 				})
-				expect((await store.getByDocumentId('doc-1')).every((record) => record.value === '')).toBe(
-					true,
-				)
+				const recordsDoc1 = await store.getByDocumentId('doc-1')
+				expect(recordsDoc1.every((record) => record.value === '')).toBe(true)
 			},
 		},
 }
@@ -1751,8 +1885,10 @@ const proxiesKept: StoreContractCases = {
 						reactive(makeRecord({ id: 'r2', attributes: [reactive({ name: 'a', value: '1' })] })),
 					],
 				})
-				expect(await store.getDocuments()).toEqual([makeDocument({ metadata: { origin: 'ui' } })])
-				expect(await store.getByDocumentId('doc-1')).toEqual([
+				const documents = await store.getDocuments()
+				expect(documents).toEqual([makeDocument({ metadata: { origin: 'ui' } })])
+				const recordsDoc1 = await store.getByDocumentId('doc-1')
+				expect(recordsDoc1).toEqual([
 					makeRecord({ id: 'r1' }),
 					makeRecord({ id: 'r2', attributes: [{ name: 'a', value: '1' }] }),
 				])
@@ -1766,9 +1902,8 @@ const undefinedFieldsDropped: StoreContractCases = {
 			await store.registerDocument(
 				makeDocument({ metadata: { origin: 'test', gone: undefined }, writeId: undefined }),
 			)
-			expect(await store.getDocument('doc-1')).toStrictEqual(
-				makeDocument({ metadata: { origin: 'test' } }),
-			)
+			const documentDoc1 = await store.getDocument('doc-1')
+			expect(documentDoc1).toStrictEqual(makeDocument({ metadata: { origin: 'test' } }))
 		},
 	},
 	'a document updated with fields holding undefined → those fields as they were, undefined dropped from the metadata':
@@ -1779,18 +1914,16 @@ const undefinedFieldsDropped: StoreContractCases = {
 					name: undefined,
 					metadata: { origin: 'test', gone: undefined },
 				})
-				expect(await store.getDocument('doc-1')).toStrictEqual(
-					makeDocument({ metadata: { origin: 'test' } }),
-				)
+				const documentDoc1 = await store.getDocument('doc-1')
+				expect(documentDoc1).toStrictEqual(makeDocument({ metadata: { origin: 'test' } }))
 			},
 		},
 	'a document updated with metadata undefined → its metadata kept': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument({ metadata: { origin: 'test' } }))
 			await store.updateDocument('doc-1', { metadata: undefined })
-			expect(await store.getDocument('doc-1')).toStrictEqual(
-				makeDocument({ metadata: { origin: 'test' } }),
-			)
+			const documentDoc1 = await store.getDocument('doc-1')
+			expect(documentDoc1).toStrictEqual(makeDocument({ metadata: { origin: 'test' } }))
 		},
 	},
 	'a record created with a field holding undefined → read without it': {
@@ -1800,7 +1933,8 @@ const undefinedFieldsDropped: StoreContractCases = {
 			await store.bulkWrite('doc-1', {
 				creates: [makeRecord({ id: 'r1', attributes: [attribute] })],
 			})
-			expect(await store.get('r1', 'doc-1')).toStrictEqual(makeRecord({ id: 'r1' }))
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toStrictEqual(makeRecord({ id: 'r1' }))
 		},
 	},
 	'a record patched with a field holding undefined → read without it': {
@@ -1809,7 +1943,8 @@ const undefinedFieldsDropped: StoreContractCases = {
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 			const attribute = { name: 'b', value: '2', gone: undefined }
 			await store.bulkWrite('doc-1', { updates: [{ recordId: 'r1', attributes: [attribute] }] })
-			expect(await store.get('r1', 'doc-1')).toStrictEqual(
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toStrictEqual(
 				makeRecord({
 					id: 'r1',
 					attributes: [
@@ -1853,8 +1988,10 @@ const nonJsonBlobValues: StoreContractCases = Object.fromEntries(
 						action: write({ store, value: value() }),
 						key: 'STORE_VALUE_NOT_JSON',
 					})
-					expect(await store.getStandaloneBlobs()).toEqual([held])
-					expect(await store.getBlob('b9')).toBeUndefined()
+					const standaloneBlobs = await store.getStandaloneBlobs()
+					expect(standaloneBlobs).toEqual([held])
+					const blobB9 = await store.getBlob('b9')
+					expect(blobB9).toBeUndefined()
 				},
 			},
 		]),
@@ -1897,7 +2034,8 @@ const nonJsonRefusalOrder: StoreContractCases = {
 			act: async ({ store }) => {
 				await store.registerDocument(makeDocument())
 				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
-				expect(await store.count('doc-1')).toBe(1)
+				const recordCountDoc1 = await store.count('doc-1')
+				expect(recordCountDoc1).toBe(1)
 				await expectRejectsWith({
 					action: store.bulkWrite('doc-1', {
 						creates: [
@@ -1909,9 +2047,12 @@ const nonJsonRefusalOrder: StoreContractCases = {
 					}),
 					key: 'STORE_VALUE_NOT_JSON',
 				})
-				expect(await store.count('doc-1')).toBe(1)
-				expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
-				expect(await store.getDocuments()).toEqual([makeDocument()])
+				const recordCountDoc1AfterRefusal = await store.count('doc-1')
+				expect(recordCountDoc1AfterRefusal).toBe(1)
+				const recordsDoc1 = await store.getByDocumentId('doc-1')
+				expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
+				const documents = await store.getDocuments()
+				expect(documents).toEqual([makeDocument()])
 			},
 		},
 	'registering a taken id with metadata that is not JSON → STORE_DUPLICATE_ID: the id is checked first':
@@ -1922,7 +2063,8 @@ const nonJsonRefusalOrder: StoreContractCases = {
 					action: store.registerDocument(makeDocument({ metadata: { at: new Date(0) } })),
 					key: 'STORE_DUPLICATE_ID',
 				})
-				expect(await store.getDocuments()).toEqual([makeDocument()])
+				const documents = await store.getDocuments()
+				expect(documents).toEqual([makeDocument()])
 			},
 		},
 	'updating a document not registered with metadata that is not JSON → STORE_VALUE_NOT_JSON: the value is checked first':
@@ -1932,7 +2074,8 @@ const nonJsonRefusalOrder: StoreContractCases = {
 					action: store.updateDocument('nope', { metadata: { at: new Date(0) } }),
 					key: 'STORE_VALUE_NOT_JSON',
 				})
-				expect(await store.getDocuments()).toEqual([])
+				const documents = await store.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 }
@@ -1980,7 +2123,8 @@ const jsonNestingDepth: StoreContractCases = Object.fromEntries(
 					await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 					const value = nestedArrays({ levels: JSON_MAX_DEPTH - levelsAbove })
 					await write({ store, value })
-					expect(await read(store)).toEqual(value)
+					const readBack = await read(store)
+					expect(readBack).toEqual(value)
 				},
 			},
 		],
@@ -1997,8 +2141,10 @@ const jsonNestingDepth: StoreContractCases = Object.fromEntries(
 						}),
 						key: 'STORE_VALUE_NOT_JSON',
 					})
-					expect(await store.getDocuments()).toEqual([makeDocument()])
-					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
+					const documents = await store.getDocuments()
+					expect(documents).toEqual([makeDocument()])
+					const recordsDoc1 = await store.getByDocumentId('doc-1')
+					expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
 				},
 			},
 		],
@@ -2045,7 +2191,8 @@ const absentDocument: StoreContractCases = {
 				needs,
 				act: async ({ store }: StoreContractContext) => {
 					await seedTwoRecords(store)
-					expect(await read(store)).toEqual(expected)
+					const readBack = await read(store)
+					expect(readBack).toEqual(expected)
 				},
 			},
 		]),
@@ -2063,7 +2210,8 @@ const absentDocument: StoreContractCases = {
 						creates: [makeRecord({ id: 'r1' }), makeRecord({ id: 'r2' })],
 					})
 					await store.removeDocument('nope')
-					expect(await read(store)).toEqual(expected)
+					const readBack = await read(store)
+					expect(readBack).toEqual(expected)
 				},
 			},
 		]),
@@ -2071,15 +2219,18 @@ const absentDocument: StoreContractCases = {
 	'updateDocument of an unknown document registers nothing': {
 		act: async ({ store }) => {
 			await store.updateDocument('nope', { name: 'x' })
-			expect(await store.getDocument('nope')).toBeUndefined()
-			expect(await store.getDocuments()).toEqual([])
+			const documentNope = await store.getDocument('nope')
+			expect(documentNope).toBeUndefined()
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([])
 		},
 	},
 	'removeDocument of an unknown document resolves': {
 		act: async ({ store }) => {
 			await seedTwoRecords(store)
 			await expect(store.removeDocument('nope')).resolves.toBeUndefined()
-			expect(await store.count('doc-1')).toBe(2)
+			const recordCountDoc1 = await store.count('doc-1')
+			expect(recordCountDoc1).toBe(2)
 		},
 	},
 	'undo and redo of an unknown document resolve and write nothing': {
@@ -2087,7 +2238,8 @@ const absentDocument: StoreContractCases = {
 		act: async ({ store }) => {
 			await expect(store.undo('nope')).resolves.toBeUndefined()
 			await expect(store.redo('nope')).resolves.toBeUndefined()
-			expect(await store.getDocuments()).toEqual([])
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([])
 		},
 	},
 }
@@ -2103,13 +2255,17 @@ const removedDocument: StoreContractCases = {
 			await store.undo('doc-1')
 			await store.removeDocument('doc-1')
 			await store.registerDocument(makeDocument())
-			expect(await store.getChangeLog('doc-1')).toEqual([])
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: false })
+			const changeLogDoc1 = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1).toEqual([])
+			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: false, canRedo: false })
 			await store.undo('doc-1')
 			await store.redo('doc-1')
-			expect(await store.getByDocumentId('doc-1')).toEqual([])
+			const recordsDoc1 = await store.getByDocumentId('doc-1')
+			expect(recordsDoc1).toEqual([])
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
-			expect((await store.getChangeLog('doc-1')).map((entry) => entry.sequenceNumber)).toEqual([1])
+			const changeLogDoc1AfterCommit = await store.getChangeLog('doc-1')
+			expect(changeLogDoc1AfterCommit.map((entry) => entry.sequenceNumber)).toEqual([1])
 		},
 	},
 	'a removal leaves the history of the other documents alone': {
@@ -2119,11 +2275,14 @@ const removedDocument: StoreContractCases = {
 			await commit({ store, documentId: 'a', creates: [makeRecord({ id: 'ra' })] })
 			await commit({ store, documentId: 'b', creates: [makeRecord({ id: 'rb' })] })
 			await store.removeDocument('a')
-			expect(await store.getChangeLog('b')).toHaveLength(1)
+			const changeLogB = await store.getChangeLog('b')
+			expect(changeLogB).toHaveLength(1)
 			await store.undo('b')
-			expect(await store.get('rb', 'b')).toBeUndefined()
+			const recordRb = await store.get('rb', 'b')
+			expect(recordRb).toBeUndefined()
 			await store.redo('b')
-			expect(await store.get('rb', 'b')).toBeDefined()
+			const recordRbAfterRedo = await store.get('rb', 'b')
+			expect(recordRbAfterRedo).toBeDefined()
 		},
 	},
 }
@@ -2151,13 +2310,18 @@ const duringImport: StoreContractCases = {
 				hold.release()
 				const { record } = await importing
 
-				expect((await store.get('rb', 'b'))?.value).toBe('edited')
-				expect(await store.getHistoryStatus('b')).toEqual({ canUndo: true, canRedo: false })
-				expect((await store.getDocument(record.id))?.status).toBe('ready')
+				const recordRbAfterImport = await store.get('rb', 'b')
+				expect(recordRbAfterImport?.value).toBe('edited')
+				const historyStatusB = await store.getHistoryStatus('b')
+				expect(historyStatusB).toEqual({ canUndo: true, canRedo: false })
+				const documentRecord = await store.getDocument(record.id)
+				expect(documentRecord?.status).toBe('ready')
 				await expectSessionSeen({ store, documentId: record.id, count: 1 })
-				expect(await store.getChangeLog(record.id)).toEqual([])
+				const changeLog = await store.getChangeLog(record.id)
+				expect(changeLog).toEqual([])
 				await store.undo('b')
-				expect((await store.get('rb', 'b'))?.value).toBe('')
+				const recordRbAfterUndo = await store.get('rb', 'b')
+				expect(recordRbAfterUndo?.value).toBe('')
 				await expectSessionSeen({ store, documentId: record.id, count: 1 })
 			} finally {
 				hold.release()
@@ -2176,12 +2340,15 @@ const duringImport: StoreContractCases = {
 				await untilHeld({ hold, importing })
 				const [listed] = await store.getDocuments()
 				expect(listed?.status).toBe('importing')
-				expect(await store.getDocument(listed!.id)).toEqual(listed)
+				const documentRecord = await store.getDocument(listed!.id)
+				expect(documentRecord).toEqual(listed)
 				// the file's records stored, the session's writes not yet
-				expect(await store.count(listed!.id)).toBe(2)
+				const recordCount = await store.count(listed!.id)
+				expect(recordCount).toBe(2)
 				hold.release()
 				const { record } = await importing
-				expect(await store.getDocument(record.id)).toEqual({ ...listed, status: 'ready' })
+				const documentAfterRelease = await store.getDocument(record.id)
+				expect(documentAfterRelease).toEqual({ ...listed, status: 'ready' })
 			} finally {
 				hold.release()
 				await importing.catch(() => undefined)
@@ -2218,9 +2385,12 @@ async function seedKeptDocument(store: Store): Promise<void> {
 /** Nothing of an import remains: the kept document alone, as it was, and the import not applied. */
 async function expectOnlyKeptDocument(params: { store: Store; writeId: string }): Promise<void> {
 	const { store, writeId } = params
-	expect((await store.getDocuments()).map((document) => document.id)).toEqual(['kept'])
-	expect(await store.getByDocumentId('kept')).toEqual([makeRecord({ id: 'k1' })])
-	expect(await store.getWriteOutcome({ writeId })).toBe('not-applied')
+	const documents = await store.getDocuments()
+	expect(documents.map((document) => document.id)).toEqual(['kept'])
+	const recordsKept = await store.getByDocumentId('kept')
+	expect(recordsKept).toEqual([makeRecord({ id: 'k1' })])
+	const writeOutcome = await store.getWriteOutcome({ writeId })
+	expect(writeOutcome).toBe('not-applied')
 }
 
 /** A failing import, and the structured error it must be refused with. */
@@ -2288,9 +2458,11 @@ const importing: StoreContractCases = {
 				status: 'ready',
 				writeId: 'w-1',
 			})
-			expect(await store.getDocument(result.record.id)).toEqual(result.record)
+			const documentRecord = await store.getDocument(result.record.id)
+			expect(documentRecord).toEqual(result.record)
 			expect(result.recordCount).toBe(4)
-			expect(await store.count(result.record.id)).toBe(4)
+			const recordCount = await store.count(result.record.id)
+			expect(recordCount).toBe(4)
 			const handed = await store.getByTagNameInDocument(CONTRACT_SESSION_TAG, result.record.id)
 			expect(result.diagnostics).toHaveLength(2)
 			expect(result.diagnostics).toEqual(
@@ -2365,18 +2537,70 @@ const importing: StoreContractCases = {
 					options: { chunkOptions: SMALL_BATCHES },
 					onProgress: (step) => progress.push(step),
 				})
-				// a store that builds indexes says so between batches (`indexing`); one that builds none never does
-				expect(progress.every((step) => ['storing', 'indexing'].includes(step.phase))).toBe(true)
 				const storing = progress.filter((step) => step.phase === 'storing')
 				expect(storing.length).toBeGreaterThan(1)
 				const bytes = storing.map((step) => step.bytesRead)
 				expect(bytes).toEqual([...bytes].sort((left, right) => left - right))
 				expect(progress.every((step) => step.totalBytes === file.size)).toBe(true)
-				expect(progress.at(-1)).toEqual({
+				expect(storing.at(-1)).toEqual({
 					phase: 'storing',
 					bytesRead: file.size,
 					totalBytes: file.size,
 				})
+			},
+		},
+	'an import tells its phases in order - storing, processing (start, then the session steps), checking, applying, finishing - each count reaching its total, the whole file read':
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				const file = contractFile({ body: sessionRecords(3) })
+				const progress: ImportProgress[] = []
+				await store.importFile({
+					file,
+					options: { chunkOptions: SMALL_BATCHES },
+					onProgress: (step) => progress.push(step),
+				})
+				// a store that builds indexes says so whenever it builds one (`indexing`), then goes on with its phase
+				expect(phasesInOrder({ progress })).toEqual([
+					'storing',
+					'processing',
+					'checking',
+					'applying',
+					'finishing',
+				])
+				// a store that builds indexes names each one it builds
+				expect(progress.every((step) => step.phase !== 'indexing' || step.index.length > 0)).toBe(
+					true,
+				)
+				const afterStoring = progress.filter((step) => step.phase !== 'storing')
+				expect(afterStoring.every((step) => step.bytesRead === file.size)).toBe(true)
+				const processing = progress.filter((step) => step.phase === 'processing')
+				expect(processing[0]).toMatchObject({ step: 'start' })
+				expect(processing.at(-1)).toMatchObject({ step: CONTRACT_SESSION_STEP, done: 3, total: 3 })
+				// the session says one diagnostic and writes one patch per record it was handed
+				expect(lastCountOf({ progress, phase: 'checking' })).toEqual({ done: 6, total: 6 })
+				expect(lastCountOf({ progress, phase: 'applying' })).toEqual({ done: 3, total: 3 })
+				expect(progress.at(-1)).toMatchObject({ phase: 'finishing' })
+			},
+		},
+	'a session handed no record reports nothing and writes nothing → processing start still told, no applying':
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				const progress: ImportProgress[] = []
+				await store.importFile({
+					file: contractFile({ body: '<A/>' }),
+					onProgress: (step) => progress.push(step),
+				})
+				expect(phasesInOrder({ progress })).toEqual([
+					'storing',
+					'processing',
+					'checking',
+					'finishing',
+				])
+				expect(progress.filter((step) => step.phase === 'processing')).toEqual([
+					expect.objectContaining({ step: 'start' }),
+				])
 			},
 		},
 	'a progress listener that never answers, rejects or throws neither holds nor fails the import; a failure reported':
@@ -2424,6 +2648,33 @@ const importing: StoreContractCases = {
 			await expectOnlyKeptDocument({ store, writeId: 'w-aborted' })
 		},
 	},
+	'an import aborted while its session runs is refused IMPORT_ABORTED and leaves nothing; the session sees its signal aborted':
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				await seedKeptDocument(store)
+				const controller = new AbortController()
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({ body: `<B aB="B0" bB="${hold.value}"/>` }),
+					writeId: 'w-aborted',
+					signal: controller.signal,
+				})
+				try {
+					await untilHeld({ hold, importing })
+					controller.abort()
+					hold.releaseAfterAbort()
+					await expectRejectsWith({ action: importing, key: 'IMPORT_ABORTED' })
+					await vi.waitFor(function sessionSawAbort() {
+						expect(hold.sawAbort()).toBe(true)
+					})
+					await expectOnlyKeptDocument({ store, writeId: 'w-aborted' })
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
 	'an import aborted before it starts is refused IMPORT_ABORTED and registers nothing': {
 		needs: ['import'],
 		act: async ({ store }) => {
@@ -2450,7 +2701,8 @@ const importing: StoreContractCases = {
 			await store.bulkWrite('left', { creates: [makeRecord({ id: 'l1' })] })
 			const reopened = await reopen()
 			await expectOnlyKeptDocument({ store: reopened, writeId: 'w-left' })
-			expect(await reopened.getByDocumentId('left')).toEqual([])
+			const recordsLeft = await reopened.getByDocumentId('left')
+			expect(recordsLeft).toEqual([])
 		},
 	},
 	'an import whose engine ends while it runs → gone once the store opens again: nothing of the file remains, a ready document stays':
@@ -2489,14 +2741,17 @@ const importing: StoreContractCases = {
 					whileRunning ??= store.getWriteOutcome({ writeId: 'w-running' })
 				},
 			})
-			expect(await whileRunning).toBe('running')
-			expect(await store.getWriteOutcome({ writeId: 'w-running' })).toBe('applied')
+			const outcomeWhileRunning = await whileRunning
+			expect(outcomeWhileRunning).toBe('running')
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w-running' })
+			expect(writeOutcome).toBe('applied')
 		},
 	},
 	'the outcome of a write is read from the document carrying its id: ready → applied': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument({ id: 'b', writeId: 'w-b' }))
-			expect(await store.getWriteOutcome({ writeId: 'w-b' })).toBe('applied')
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w-b' })
+			expect(writeOutcome).toBe('applied')
 		},
 	},
 	// what a failed import whose removal failed too leaves: its row, no import running
@@ -2504,12 +2759,14 @@ const importing: StoreContractCases = {
 		needs: ['import-liveness'],
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument({ id: 'a', status: 'importing', writeId: 'w-a' }))
-			expect(await store.getWriteOutcome({ writeId: 'w-a' })).toBe('not-applied')
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'w-a' })
+			expect(writeOutcome).toBe('not-applied')
 		},
 	},
 	'the outcome of an id no import carried is not-applied': {
 		act: async ({ store }) => {
-			expect(await store.getWriteOutcome({ writeId: 'never' })).toBe('not-applied')
+			const writeOutcome = await store.getWriteOutcome({ writeId: 'never' })
+			expect(writeOutcome).toBe('not-applied')
 		},
 	},
 	'the importing document removed through another connection, a new one registered → DOCUMENT_NOT_REGISTERED, not applied; the new one untouched':
@@ -2526,14 +2783,18 @@ const importing: StoreContractCases = {
 					await untilHeld({ hold, importing })
 					const [imported] = await other.getDocuments()
 					await other.removeDocument(imported!.id)
-					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('not-applied')
+					const writeOutcome = await other.getWriteOutcome({ writeId: 'w-held' })
+					expect(writeOutcome).toBe('not-applied')
 					await other.registerDocument(makeDocument({ id: 'new' }))
 					await other.bulkWrite('new', { creates: [makeRecord({ id: 'n1' })] })
 					hold.release()
 					await expectRejectsWith({ action: importing, key: 'DOCUMENT_NOT_REGISTERED' })
-					expect(await other.getByDocumentId('new')).toEqual([makeRecord({ id: 'n1' })])
-					expect((await other.getDocuments()).map((document) => document.id)).toEqual(['new'])
-					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('not-applied')
+					const recordsNew = await other.getByDocumentId('new')
+					expect(recordsNew).toEqual([makeRecord({ id: 'n1' })])
+					const documents = await other.getDocuments()
+					expect(documents.map((document) => document.id)).toEqual(['new'])
+					const writeOutcomeAfterRefusal = await other.getWriteOutcome({ writeId: 'w-held' })
+					expect(writeOutcomeAfterRefusal).toBe('not-applied')
 				} finally {
 					hold.release()
 					await importing.catch(() => undefined)
@@ -2554,13 +2815,17 @@ const importing: StoreContractCases = {
 					await untilHeld({ hold, importing })
 					const [imported] = await other.getDocuments()
 					await other.updateDocument(imported!.id, { status: 'ready' } as DocumentUpdates)
-					expect((await other.getDocument(imported!.id))?.status).toBe('importing')
-					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('running')
+					const documentRecord = await other.getDocument(imported!.id)
+					expect(documentRecord?.status).toBe('importing')
+					const writeOutcomeAfterUpdateDocument = await other.getWriteOutcome({ writeId: 'w-held' })
+					expect(writeOutcomeAfterUpdateDocument).toBe('running')
 					hold.release()
 					const { record } = await importing
-					expect((await other.getDocument(record.id))?.status).toBe('ready')
+					const documentAfterRelease = await other.getDocument(record.id)
+					expect(documentAfterRelease?.status).toBe('ready')
 					await expectSessionSeen({ store: other, documentId: record.id, count: 2 })
-					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('applied')
+					const writeOutcomeOnceReady = await other.getWriteOutcome({ writeId: 'w-held' })
+					expect(writeOutcomeOnceReady).toBe('applied')
 				} finally {
 					hold.release()
 					await importing.catch(() => undefined)
@@ -2592,9 +2857,12 @@ const importing: StoreContractCases = {
 					await other.registerDocument(another)
 					hold.release()
 					await expectRejectsWith({ action: importing, key: 'DOCUMENT_NOT_REGISTERED' })
-					expect(await other.getDocument(imported!.id)).toEqual(another)
-					expect(await other.getByDocumentId(imported!.id)).toEqual([])
-					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('not-applied')
+					const documentRecord = await other.getDocument(imported!.id)
+					expect(documentRecord).toEqual(another)
+					const records = await other.getByDocumentId(imported!.id)
+					expect(records).toEqual([])
+					const writeOutcome = await other.getWriteOutcome({ writeId: 'w-held' })
+					expect(writeOutcome).toBe('not-applied')
 				} finally {
 					hold.release()
 					await importing.catch(() => undefined)
@@ -2619,8 +2887,10 @@ const importing: StoreContractCases = {
 				await other.bulkWrite('written', { creates: [makeRecord({ id: 'w1' })] })
 				hold.release()
 				await expectRejectsWith({ action: importing, key: 'IMPORT_FAILED' })
-				expect((await store.getDocuments()).map((document) => document.id)).toEqual(['written'])
-				expect(await store.getByDocumentId('written')).toEqual([makeRecord({ id: 'w1' })])
+				const documents = await store.getDocuments()
+				expect(documents.map((document) => document.id)).toEqual(['written'])
+				const recordsWritten = await store.getByDocumentId('written')
+				expect(recordsWritten).toEqual([makeRecord({ id: 'w1' })])
 			} finally {
 				hold.release()
 				await importing.catch(() => undefined)
@@ -2654,14 +2924,15 @@ const importing: StoreContractCases = {
 					await other.redo('edited')
 					hold.release()
 					await expectRejectsWith({ action: importing, key: 'IMPORT_FAILED' })
-					expect((await store.getDocuments()).map((document) => document.id)).toEqual(['edited'])
-					expect((await store.getByDocumentId('edited')).map((record) => record.id)).toEqual([
-						'e1',
-						'e2',
-					])
-					expect(await store.getWriteOutcome({ writeId: 'w-commit' })).toBe('applied')
+					const documents = await store.getDocuments()
+					expect(documents.map((document) => document.id)).toEqual(['edited'])
+					const recordsEdited = await store.getByDocumentId('edited')
+					expect(recordsEdited.map((record) => record.id)).toEqual(['e1', 'e2'])
+					const writeOutcome = await store.getWriteOutcome({ writeId: 'w-commit' })
+					expect(writeOutcome).toBe('applied')
 					await store.undo('edited')
-					expect(await store.getByDocumentId('edited')).toEqual([])
+					const recordsEditedAfterUndo = await store.getByDocumentId('edited')
+					expect(recordsEditedAfterUndo).toEqual([])
 				} finally {
 					hold.release()
 					await importing.catch(() => undefined)
@@ -2726,8 +2997,10 @@ const oneState: StoreContractCases = {
 			const other = await connect()
 			await store.registerDocument(makeDocument())
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
-			expect(await other.getDocument('doc-1')).toEqual(makeDocument())
-			expect((await other.getByDocumentId('doc-1')).map((record) => record.id)).toEqual(['r1'])
+			const documentDoc1 = await other.getDocument('doc-1')
+			expect(documentDoc1).toEqual(makeDocument())
+			const recordsDoc1 = await other.getByDocumentId('doc-1')
+			expect(recordsDoc1.map((record) => record.id)).toEqual(['r1'])
 		},
 	},
 	'a document removed through one connection is gone through another': {
@@ -2736,12 +3009,17 @@ const oneState: StoreContractCases = {
 			const other = await connect()
 			await store.registerDocument(makeDocument())
 			await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
-			expect(await other.count('doc-1')).toBe(1)
+			const recordCountDoc1 = await other.count('doc-1')
+			expect(recordCountDoc1).toBe(1)
 			await store.removeDocument('doc-1')
-			expect(await other.getDocument('doc-1')).toBeUndefined()
-			expect(await other.getDocuments()).toEqual([])
-			expect(await other.getByDocumentId('doc-1')).toEqual([])
-			expect(await other.count('doc-1')).toBe(0)
+			const documentDoc1 = await other.getDocument('doc-1')
+			expect(documentDoc1).toBeUndefined()
+			const documents = await other.getDocuments()
+			expect(documents).toEqual([])
+			const recordsDoc1 = await other.getByDocumentId('doc-1')
+			expect(recordsDoc1).toEqual([])
+			const recordCountDoc1AfterRemoveDocument = await other.count('doc-1')
+			expect(recordCountDoc1AfterRemoveDocument).toBe(0)
 		},
 	},
 	'a commit through one connection is seen, and undone, through another': {
@@ -2750,11 +3028,15 @@ const oneState: StoreContractCases = {
 			const other = await connect()
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
-			expect(await other.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
-			expect(await other.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
+			const recordR1 = await other.get('r1', 'doc-1')
+			expect(recordR1).toEqual(makeRecord({ id: 'r1' }))
+			const historyStatusDoc1 = await other.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
 			await other.undo('doc-1')
-			expect(await store.get('r1', 'doc-1')).toBeUndefined()
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: false, canRedo: true })
+			const recordR1AfterUndo = await store.get('r1', 'doc-1')
+			expect(recordR1AfterUndo).toBeUndefined()
+			const historyStatusDoc1AfterUndo = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1AfterUndo).toEqual({ canUndo: false, canRedo: true })
 		},
 	},
 	'a write through one connection is refused the ids another connection took': {
@@ -2809,11 +3091,13 @@ const oneStateAfterDestroy: StoreContractCases = {
 			act: async ({ store, connect }) => {
 				await store.registerDocument(makeDocument())
 				const other = await connect()
-				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+				const documentIdsOfOther = await documentIdsOf({ store: other })
+				expect(documentIdsOfOther).toEqual(['doc-1'])
 				await other.close()
 				await store.destroy()
 				const fresh = await connect()
-				expect(await fresh.getDocuments()).toEqual([])
+				const documents = await fresh.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 	'a destroy refused while another connection is open → PROJECT_OPEN_ELSEWHERE naming the project, and how many connections where the store counts them':
@@ -2847,8 +3131,10 @@ const oneStateAfterDestroy: StoreContractCases = {
 				const other = await connect()
 				await store.close()
 				await store.open()
-				expect(await documentIdsOf({ store })).toEqual(['doc-1'])
-				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+				const documentIds = await documentIdsOf({ store })
+				expect(documentIds).toEqual(['doc-1'])
+				const documentIdsOfOther = await documentIdsOf({ store: other })
+				expect(documentIdsOfOther).toEqual(['doc-1'])
 			},
 		},
 	'a view away while another view destroys its project → back, its calls refused PROJECT_DESTROYED_WHILE_AWAY: never an empty project in its place':
@@ -2879,7 +3165,8 @@ const oneStateAfterDestroy: StoreContractCases = {
 					key: 'PROJECT_DESTROYED_WHILE_AWAY',
 				})
 				const fresh = await connect()
-				expect(await documentIdsOf({ store: fresh })).toEqual(['remade'])
+				const documentIdsOfFresh = await documentIdsOf({ store: fresh })
+				expect(documentIdsOfFresh).toEqual(['remade'])
 			},
 		},
 	'a view away while another view destroys its project and makes it again → back, refused; a new view of its own realm, the refused one still open, reads the project made again':
@@ -2893,7 +3180,8 @@ const oneStateAfterDestroy: StoreContractCases = {
 					key: 'PROJECT_DESTROYED_WHILE_AWAY',
 				})
 				const fresh = await connectInRealm()
-				expect(await documentIdsOf({ store: fresh })).toEqual(['remade'])
+				const documentIdsOfFresh = await documentIdsOf({ store: fresh })
+				expect(documentIdsOfFresh).toEqual(['remade'])
 				await expectRejectsWith({
 					action: store.getDocuments(),
 					key: 'PROJECT_DESTROYED_WHILE_AWAY',
@@ -2906,14 +3194,18 @@ const oneStateAfterDestroy: StoreContractCases = {
 			act: async ({ store, connectAsOtherDialecte }) => {
 				await store.registerDocument(makeDocument())
 				const other = await connectAsOtherDialecte()
-				expect(await other.getDocuments()).toEqual([])
+				const documents = await other.getDocuments()
+				expect(documents).toEqual([])
 				await other.registerDocument(makeDocument({ id: 'theirs' }))
-				expect(await documentIdsOf({ store })).toEqual(['doc-1'])
+				const documentIds = await documentIdsOf({ store })
+				expect(documentIds).toEqual(['doc-1'])
 				// this one open counts not against the other's destroy: they are two projects
 				await other.destroy()
-				expect(await documentIdsOf({ store })).toEqual(['doc-1'])
+				const documentIdsAfterDestroy = await documentIdsOf({ store })
+				expect(documentIdsAfterDestroy).toEqual(['doc-1'])
 				const otherAgain = await connectAsOtherDialecte()
-				expect(await otherAgain.getDocuments()).toEqual([])
+				const documentsAfterDestroy = await otherAgain.getDocuments()
+				expect(documentsAfterDestroy).toEqual([])
 				await otherAgain.close()
 			},
 		},
@@ -2925,12 +3217,15 @@ const oneStateAfterDestroy: StoreContractCases = {
 				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1' })] })
 				const other = await connect()
 				await expectRejectsWith({ action: store.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
-				expect(await documentIdsOf({ store: store })).toEqual(['doc-1'])
-				expect(await other.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
+				const documentIdsOfStore = await documentIdsOf({ store: store })
+				expect(documentIdsOfStore).toEqual(['doc-1'])
+				const recordR1 = await other.get('r1', 'doc-1')
+				expect(recordR1).toEqual(makeRecord({ id: 'r1' }))
 				await other.close()
 				await store.destroy()
 				const fresh = await connect()
-				expect(await fresh.getDocuments()).toEqual([])
+				const documents = await fresh.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 	'a destroy refused while another connection has the project open → the refused one still counts open: the other closed, a third connection’s destroy refused too; the refused one closed → destroyed':
@@ -2946,7 +3241,8 @@ const oneStateAfterDestroy: StoreContractCases = {
 				await store.close()
 				await third.destroy()
 				const fresh = await connect()
-				expect(await fresh.getDocuments()).toEqual([])
+				const documents = await fresh.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 	'two connections destroy at once → both refused PROJECT_OPEN_ELSEWHERE, nothing removed: both read on':
@@ -2960,8 +3256,10 @@ const oneStateAfterDestroy: StoreContractCases = {
 					refusalKeyOf({ destroying: other.destroy() }),
 				])
 				expect(outcomes).toEqual(['PROJECT_OPEN_ELSEWHERE', 'PROJECT_OPEN_ELSEWHERE'])
-				expect(await documentIdsOf({ store: store })).toEqual(['doc-1'])
-				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+				const documentIdsOfStore = await documentIdsOf({ store: store })
+				expect(documentIdsOfStore).toEqual(['doc-1'])
+				const documentIdsOfOther = await documentIdsOf({ store: other })
+				expect(documentIdsOfOther).toEqual(['doc-1'])
 			},
 		},
 	'a connection made while another one’s destroy runs → either it counts (the destroy refused, the document kept) or it waits for the destroy and reads empty; it never fails':
@@ -2992,8 +3290,10 @@ const oneStateAfterDestroy: StoreContractCases = {
 				const other = await connect()
 				const destroying = refusalKeyOf({ destroying: store.destroy() })
 				void store.close()
-				expect(await destroying).toBe('PROJECT_OPEN_ELSEWHERE')
-				expect(await documentIdsOf({ store: other })).toEqual(['doc-1'])
+				const destroyRefusal = await destroying
+				expect(destroyRefusal).toBe('PROJECT_OPEN_ELSEWHERE')
+				const documentIdsOfOther = await documentIdsOf({ store: other })
+				expect(documentIdsOfOther).toEqual(['doc-1'])
 			},
 		},
 	'a store destroyed twice at once → both destroys go on, one after the other: the name reads empty':
@@ -3001,7 +3301,8 @@ const oneStateAfterDestroy: StoreContractCases = {
 			act: async ({ store }) => {
 				await store.registerDocument(makeDocument())
 				await Promise.all([store.destroy(), store.destroy()])
-				expect(await store.getDocuments()).toEqual([])
+				const documents = await store.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 	'destroyed through one connection left open, then a new connection of the name destroys → destroyed: the destroyed one counts no more':
@@ -3014,7 +3315,8 @@ const oneStateAfterDestroy: StoreContractCases = {
 				await next.registerDocument(makeDocument())
 				await next.destroy()
 				const fresh = await connect()
-				expect(await fresh.getDocuments()).toEqual([])
+				const documents = await fresh.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 	'destroyed through one connection, then used again through it → it reads empty, then open again: another connection’s destroy refused PROJECT_OPEN_ELSEWHERE; it closed → destroyed':
@@ -3023,15 +3325,18 @@ const oneStateAfterDestroy: StoreContractCases = {
 			act: async ({ store, connect }) => {
 				await store.registerDocument(makeDocument())
 				await store.destroy()
-				expect(await store.getDocuments()).toEqual([])
+				const documents = await store.getDocuments()
+				expect(documents).toEqual([])
 				await store.registerDocument(makeDocument())
 				const other = await connect()
 				await expectRejectsWith({ action: other.destroy(), key: 'PROJECT_OPEN_ELSEWHERE' })
-				expect(await documentIdsOf({ store: store })).toEqual(['doc-1'])
+				const documentIdsOfStore = await documentIdsOf({ store: store })
+				expect(documentIdsOfStore).toEqual(['doc-1'])
 				await store.close()
 				await other.destroy()
 				const fresh = await connect()
-				expect(await fresh.getDocuments()).toEqual([])
+				const documentsAfterDestroy = await fresh.getDocuments()
+				expect(documentsAfterDestroy).toEqual([])
 			},
 		},
 	'a read and a write through a store while its own destroy runs → each goes on once the destroy has ended: the read answers empty, the write is kept':
@@ -3048,11 +3353,13 @@ const oneStateAfterDestroy: StoreContractCases = {
 				await destroying
 				// nothing of before the destroy; the write started after the read may land before it, as no store
 				// orders a read before a write started next
-				expect(otherThan({ documents: await reading, id: 'doc-2' })).toEqual([])
+				const documentsRead = await reading
+				expect(otherThan({ documents: documentsRead, id: 'doc-2' })).toEqual([])
 				await writing
 				void store.close()
 				const fresh = await connect()
-				expect(await documentIdsOf({ store: fresh })).toEqual(['doc-2'])
+				const documentIdsOfFresh = await documentIdsOf({ store: fresh })
+				expect(documentIdsOfFresh).toEqual(['doc-2'])
 			},
 		},
 	'a store opened again while its own destroy runs → the open waits for it: the destroy goes on, the store reads empty':
@@ -3063,7 +3370,8 @@ const oneStateAfterDestroy: StoreContractCases = {
 				const opening = store.open()
 				await destroying
 				await opening
-				expect(await store.getDocuments()).toEqual([])
+				const documents = await store.getDocuments()
+				expect(documents).toEqual([])
 			},
 		},
 	'an import running through a store, then its own destroy, then a read and a write through it → the destroy waits for the import, they for the destroy: the read answers empty, the write is kept':
@@ -3088,9 +3396,11 @@ const oneStateAfterDestroy: StoreContractCases = {
 					await destroying
 					// nothing of before the destroy (the import's document neither); the write started after the read
 					// may land before it
-					expect(otherThan({ documents: await reading, id: 'doc-2' })).toEqual([])
+					const documentsRead = await reading
+					expect(otherThan({ documents: documentsRead, id: 'doc-2' })).toEqual([])
 					await writing
-					expect(await documentIdsOf({ store: store })).toEqual(['doc-2'])
+					const documentIdsOfStore = await documentIdsOf({ store: store })
+					expect(documentIdsOfStore).toEqual(['doc-2'])
 				} finally {
 					hold.release()
 					await importing.catch(() => undefined)
@@ -3122,7 +3432,8 @@ const oneStateAfterDestroy: StoreContractCases = {
 					await importing
 					await destroying
 					const fresh = await connect()
-					expect(await fresh.getDocuments()).toEqual([])
+					const documents = await fresh.getDocuments()
+					expect(documents).toEqual([])
 				} finally {
 					hold.release()
 					await importing.catch(() => undefined)
@@ -3143,8 +3454,10 @@ const oneStateAfterDestroy: StoreContractCases = {
 					const other = await connect()
 					hold.release()
 					const result = await importing
-					expect(await other.getWriteOutcome({ writeId: 'w-held' })).toBe('applied')
-					expect(await other.count(result.record.id)).toBe(2)
+					const writeOutcome = await other.getWriteOutcome({ writeId: 'w-held' })
+					expect(writeOutcome).toBe('applied')
+					const recordCount = await other.count(result.record.id)
+					expect(recordCount).toBe(2)
 				} finally {
 					// a failure above must not leave the import waiting for the rest of the worker
 					hold.release()
@@ -3167,10 +3480,13 @@ const otherNames: StoreContractCases = {
 				await other.bulkWrite('doc-1', {
 					creates: [makeRecord({ id: 'r1', attributes: [{ name: 'a', value: '2' }] })],
 				})
-				expect(await store.get('r1', 'doc-1')).toEqual(makeRecord({ id: 'r1' }))
+				const recordR1 = await store.get('r1', 'doc-1')
+				expect(recordR1).toEqual(makeRecord({ id: 'r1' }))
 				await other.removeDocument('doc-1')
-				expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
-				expect(await store.count('doc-1')).toBe(1)
+				const documents = await store.getDocuments()
+				expect(documents.map((document) => document.id)).toEqual(['doc-1'])
+				const recordCountDoc1 = await store.count('doc-1')
+				expect(recordCountDoc1).toBe(1)
 			},
 		},
 }
@@ -3242,7 +3558,10 @@ const idOrder: StoreContractCases = Object.fromEntries(
 		`${name}: written out of id order → answered in id order`,
 		{
 			needs,
-			act: async ({ store }: StoreContractContext) => expect(await read(store)).toEqual(ID_ORDER),
+			act: async ({ store }: StoreContractContext) => {
+				const readBack = await read(store)
+				expect(readBack).toEqual(ID_ORDER)
+			},
 		},
 	]),
 )
@@ -3376,7 +3695,8 @@ const values: StoreContractCases = {
 					const first = await read(store)
 					const asRead = structuredClone(first)
 					scribble(first)
-					expect(await read(store)).toEqual(asRead)
+					const readBack = await read(store)
+					expect(readBack).toEqual(asRead)
 				},
 			},
 		]),
@@ -3389,9 +3709,11 @@ const values: StoreContractCases = {
 					await seedValues(store)
 					const handed = given()
 					await write({ store, given: handed })
-					const asWritten = structuredClone(await read(store))
+					const readAfterWrite = await read(store)
+					const asWritten = structuredClone(readAfterWrite)
 					scribble(handed)
-					expect(await read(store)).toEqual(asWritten)
+					const readBack = await read(store)
+					expect(readBack).toEqual(asWritten)
 				},
 			},
 		]),
@@ -3444,38 +3766,52 @@ async function seedClosedStore(store: Store): Promise<void> {
 const OPERATIONS_IN_FLIGHT: Record<string, OperationInFlight> = {
 	registerDocument: {
 		run: (store) => store.registerDocument(makeDocument({ id: 'doc-2' })),
-		expected: async (store) =>
-			expect((await store.getDocuments()).map((document) => document.id)).toEqual([
-				'doc-1',
-				'doc-2',
-			]),
+		expected: async (store) => {
+			const documents = await store.getDocuments()
+			expect(documents.map((document) => document.id)).toEqual(['doc-1', 'doc-2'])
+		},
 	},
 	removeDocument: {
 		run: (store) => store.removeDocument('doc-1'),
-		expected: async (store) => expect(await store.getDocuments()).toEqual([]),
+		expected: async (store) => {
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([])
+		},
 	},
 	bulkWrite: {
 		run: (store) => store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r9' })] }),
-		expected: async (store) =>
-			expect(await store.get('r9', 'doc-1')).toEqual(makeRecord({ id: 'r9' })),
+		expected: async (store) => {
+			const recordR9 = await store.get('r9', 'doc-1')
+			expect(recordR9).toEqual(makeRecord({ id: 'r9' }))
+		},
 	},
 	commit: {
 		run: (store) => commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r9' })] }),
-		expected: async (store) =>
-			expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false }),
+		expected: async (store) => {
+			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
+		},
 	},
 	undo: {
 		run: (store) => store.undo('doc-1'),
-		expected: async (store) => expect(await store.get('r1', 'doc-1')).toBeUndefined(),
+		expected: async (store) => {
+			const recordR1 = await store.get('r1', 'doc-1')
+			expect(recordR1).toBeUndefined()
+		},
 	},
 	getByDocumentId: {
-		run: async (store) =>
-			expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })]),
+		run: async (store) => {
+			const recordsDoc1 = await store.getByDocumentId('doc-1')
+			expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
+		},
 		expected: async () => {},
 	},
 	addBlob: {
 		run: (store) => store.addBlob(makeBlobEntry({ id: 'b9' }), new Blob(['b9'])),
-		expected: async (store) => expect((await store.getBlob('b9'))?.entry.id).toBe('b9'),
+		expected: async (store) => {
+			const blobB9 = await store.getBlob('b9')
+			expect(blobB9?.entry.id).toBe('b9')
+		},
 	},
 }
 
@@ -3530,7 +3866,8 @@ const closedStore: StoreContractCases = {
 					await running
 					await destroying
 					const reopened = await reopen()
-					expect(await reopened.getDocuments()).toEqual([])
+					const documents = await reopened.getDocuments()
+					expect(documents).toEqual([])
 				},
 			},
 		]),
@@ -3550,7 +3887,8 @@ const closedStore: StoreContractCases = {
 				await importing
 				await destroying
 				const reopened = await reopen()
-				expect(await reopened.getDocuments()).toEqual([])
+				const documents = await reopened.getDocuments()
+				expect(documents).toEqual([])
 			} finally {
 				hold.release()
 				await importing.catch(() => undefined)
@@ -3572,8 +3910,10 @@ const closedStore: StoreContractCases = {
 				hold.release()
 				const result = await importing
 				await store.open()
-				expect(await store.getWriteOutcome({ writeId: 'w-held' })).toBe('applied')
-				expect(await store.count(result.record.id)).toBe(2)
+				const writeOutcome = await store.getWriteOutcome({ writeId: 'w-held' })
+				expect(writeOutcome).toBe('applied')
+				const recordCount = await store.count(result.record.id)
+				expect(recordCount).toBe(2)
 			} finally {
 				hold.release()
 				await importing.catch(() => undefined)
@@ -3594,10 +3934,14 @@ const closedStore: StoreContractCases = {
 						meta: { storeName: store.name },
 					})
 					await store.open()
-					expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
-					expect(await store.getByDocumentId('doc-1')).toEqual([makeRecord({ id: 'r1' })])
-					expect(await store.getHistoryStatus('doc-1')).toEqual({ canUndo: true, canRedo: false })
-					expect((await store.getStandaloneBlobs()).map((entry) => entry.id)).toEqual(['b1'])
+					const documents = await store.getDocuments()
+					expect(documents.map((document) => document.id)).toEqual(['doc-1'])
+					const recordsDoc1 = await store.getByDocumentId('doc-1')
+					expect(recordsDoc1).toEqual([makeRecord({ id: 'r1' })])
+					const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
+					expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
+					const standaloneBlobs = await store.getStandaloneBlobs()
+					expect(standaloneBlobs.map((entry) => entry.id)).toEqual(['b1'])
 				},
 			},
 		]),
@@ -3612,7 +3956,8 @@ const closedStore: StoreContractCases = {
 			await expectRejectsWith({ action: opening, key: 'STORE_CLOSED' })
 			await expectRejectsWith({ action: store.getDocuments(), key: 'STORE_CLOSED' })
 			await store.open()
-			expect((await store.getDocuments()).map((document) => document.id)).toEqual(['doc-1'])
+			const documents = await store.getDocuments()
+			expect(documents.map((document) => document.id)).toEqual(['doc-1'])
 		},
 	},
 	'a closed store closed again → nothing thrown; destroyed → the name reopens empty': {
@@ -3623,7 +3968,8 @@ const closedStore: StoreContractCases = {
 			await expect(store.close()).resolves.toBeUndefined()
 			await store.destroy()
 			const reopened = await reopen()
-			expect(await reopened.getDocuments()).toEqual([])
+			const documents = await reopened.getDocuments()
+			expect(documents).toEqual([])
 		},
 	},
 	'one connection closed → another connection of the name reads and writes on': {
@@ -3633,10 +3979,8 @@ const closedStore: StoreContractCases = {
 			const other = await connect()
 			void store.close()
 			await other.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r2' })] })
-			expect((await other.getByDocumentId('doc-1')).map((record) => record.id)).toEqual([
-				'r1',
-				'r2',
-			])
+			const recordsDoc1 = await other.getByDocumentId('doc-1')
+			expect(recordsDoc1.map((record) => record.id)).toEqual(['r1', 'r2'])
 		},
 	},
 }
@@ -3672,7 +4016,8 @@ const fullStorage: StoreContractCases = {
 				}),
 				key: 'STORE_QUOTA_EXCEEDED',
 			})
-			expect(await context.store.count('doc-1')).toBe(0)
+			const recordCountDoc1 = await context.store.count('doc-1')
+			expect(recordCountDoc1).toBe(0)
 		},
 	},
 	'a bulk write the storage has no room for → STORE_QUOTA_EXCEEDED, nothing of it applied': {
@@ -3688,7 +4033,8 @@ const fullStorage: StoreContractCases = {
 				}),
 				key: 'STORE_QUOTA_EXCEEDED',
 			})
-			expect(await context.store.count('doc-1')).toBe(0)
+			const recordCountDoc1 = await context.store.count('doc-1')
+			expect(recordCountDoc1).toBe(0)
 		},
 	},
 	'a document the storage has no room to register → STORE_QUOTA_EXCEEDED, not registered': {
@@ -3702,7 +4048,8 @@ const fullStorage: StoreContractCases = {
 				),
 				key: 'STORE_QUOTA_EXCEEDED',
 			})
-			expect(await context.store.getDocuments()).toEqual([])
+			const documents = await context.store.getDocuments()
+			expect(documents).toEqual([])
 		},
 	},
 }

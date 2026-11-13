@@ -14,7 +14,6 @@ import type {
 	ExportFileResult,
 	ImportControl,
 	ImportFileResult,
-	ImportPhase,
 	ImportProgress,
 } from '@/store/store.types'
 import type { AnyRawRecord } from '@/types'
@@ -179,11 +178,15 @@ export type ImportQueueEntry = {
 
 /** The imports of an engine, one running at a time, the others waiting their turn in order. */
 export type ImportQueue = {
-	/** Run `work` once every import before it is done; `work` is given the import's abort signal. */
+	/**
+	 * Run `work` once every import before it is done; `work` is given the import's abort signal. `onWait` is told
+	 * once, at the call, when another import runs or waits before it.
+	 */
 	run: <GenericResult>(params: {
 		writeId: string
 		clientId: string
 		work: (signal: AbortSignal) => Promise<GenericResult>
+		onWait?: () => void
 	}) => Promise<GenericResult>
 	abort: (params: { writeId: string }) => void
 	abortOwnedBy: (params: { clientId: string }) => void
@@ -303,8 +306,9 @@ export type ImportTargetParams = {
 	window: ImportWindow
 	/** How long the import works before the engine's queue gets a turn (its window's time). */
 	windowMs: number
-	/** Tell the caller what the import does now (`indexing` around an index build). */
-	tellPhase: (params: { phase: ImportPhase }) => void
+	/** Tell the caller an index build begins (`indexing`, the index named) and, once built, the phase it was in again. */
+	tellIndexing: ImportProgressRelay['tellIndexing']
+	tellIndexBuilt: ImportProgressRelay['tellIndexBuilt']
 	/** Runs an index build: one long statement. */
 	onLongStatement: LongStatementRunner
 	/** Told once the import's document is registered (its registry row exists). */
@@ -313,10 +317,13 @@ export type ImportTargetParams = {
 	customIds: boolean
 }
 
-/** The import's progress as the engine relays it: the parser's told on, the last one kept to tell a phase with. */
+/** The import's progress as the engine relays it: the import's told on, the last one kept to tell again after an index. */
 export type ImportProgressRelay = {
 	onProgress: (progress: ImportProgress) => void
-	tellPhase: (params: { phase: ImportPhase }) => void
+	/** `indexing`, the index named, with the bytes the last report told */
+	tellIndexing: (params: { index: string }) => void
+	/** The last report told again: the phase the import was in before the index build */
+	tellIndexBuilt: () => void
 }
 
 /** What an import's target knows of its document: the one it registered (with its table) and the indexes built on it. */

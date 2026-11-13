@@ -1,3 +1,8 @@
+import { createClosingConnections } from '../closing-connections'
+import { createOpenConnections } from '../open-connections'
+
+import type { RecordSchema } from '../store.types'
+
 /**
  * The Web Lock every open connection to a local store holds shared, `<prefix><store name>`: a destroy
  * asks for it alone, so it is refused while another connection - of any tab - is open. A connection
@@ -22,3 +27,19 @@ export const VERSION_KEY_PREFIX = 'writes:'
 
 /** The sequence number of a changelog entry a commit discarded (undone, then a commit came): it only keeps its write id. */
 export const DISCARDED_SEQUENCE = -1
+
+/** The local connections of each name open in this realm: the count a destroy reads where there are no Web Locks. */
+export const OPEN_LOCAL_CONNECTIONS = createOpenConnections()
+/** The local connections of each name closed with operations running, in this realm: a destroy of the name lets them complete first. */
+export const CLOSING_LOCAL_CONNECTIONS = createClosingConnections()
+
+/** The destroys of each name in this realm, in turn: settled when the last one called has. */
+export const LOCAL_DESTROY_TURNS = new Map<string, Promise<void>>()
+
+/** Default minimal schema when none provided */
+export const DEFAULT_RECORD_SCHEMA: RecordSchema = {
+	primaryKey: 'id',
+	indexes: ['tagName'],
+	compoundIndexes: [],
+	arrayIndexes: [],
+}

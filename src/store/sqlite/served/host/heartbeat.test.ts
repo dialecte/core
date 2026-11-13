@@ -1,8 +1,10 @@
-import { createHeartbeat } from './heartbeat'
+import { createHeartbeat, withOpaquePhases } from './heartbeat'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
+
+import type { AfterImportContext } from '@/types'
 
 /** What a case leaves: its ports closed. */
 const cleanups: (() => void)[] = []
@@ -43,5 +45,30 @@ describe('the engine’s heartbeat', () => {
 		// nothing to wait for: a bounded wait, longer than a message takes on a loaded machine
 		await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
 		expect(signals).toEqual([])
+	})
+})
+
+describe('the dialecte’s hooks with their opaque phases told', () => {
+	it('an import session’s afterImport → handed the context core gives it, report and signal alike', async () => {
+		const heartbeat = createHeartbeat({ intervalMs: 60_000 })
+		const handed: (AfterImportContext | undefined)[] = []
+		const hooks = withOpaquePhases({
+			heartbeat,
+			hooks: {
+				createImportSession: () => ({
+					afterImport: async (context) => {
+						handed.push(context)
+						return {}
+					},
+				}),
+			},
+		})
+		const context: AfterImportContext = {
+			report: function reportNothing() {},
+			signal: new AbortController().signal,
+		}
+		const session = hooks?.createImportSession?.({ documentId: 'd-1', configKey: 'default' })
+		await session?.afterImport?.(context)
+		expect(handed).toEqual([context])
 	})
 })

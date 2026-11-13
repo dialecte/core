@@ -18,6 +18,8 @@ import {
 } from '@/store/lost-write'
 import { createRunningOperations } from '@/store/running-operations'
 import { invariant } from '@/utils'
+import { tellListener } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 
 import type {
 	InitEmptyDocumentOptions,
@@ -39,7 +41,7 @@ import type {
 } from './types'
 import type { ExtensionModules, MergedExtensions, QueryExtensions, Query } from '@/document'
 import type { Perf } from '@/perf'
-import type { ImportFileResult, Store, StoreNotice } from '@/store'
+import type { ImportFileResult, ImportProgress, Store, StoreNotice } from '@/store'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 
 // ── Project class ────────────────────────────────────────────────────────────
@@ -142,8 +144,11 @@ export class Project<
 	private enqueueImport<GenericResult>(params: {
 		fileName: string
 		work: () => Promise<GenericResult>
+		/** Told once, at the call, when another import of the project runs or waits before this one */
+		onWait?: () => void
 	}): Promise<GenericResult> {
-		const { fileName, work } = params
+		const { fileName, work, onWait } = params
+		if (this.importsInFlight.size > 0) onWait?.()
 		const queued = this.importChain.then(work, work)
 		this.importChain = queued
 		// one entry per import, so two of one file name are both told
@@ -872,7 +877,7 @@ export class Project<
 	 * store, which the import then writes to even if the project closes meanwhile), a known
 	 * `configKey`.
 	 */
-	private importStore(options?: ImportDocumentOptions): GenericStore {
+	private importStore(options?: Pick<ImportDocumentOptions, 'configKey'>): GenericStore {
 		const store = this.store
 		resolveConfig({
 			configs: this.configs,
@@ -888,7 +893,8 @@ export class Project<
 	 * and a file that fails is its own `failed` entry, the next file still attempted: nothing of a
 	 * failed file lands (but an import whose connection was lost after it landed: see `importFile`). The call itself rejects only for what is about the call: an unknown
 	 * `configKey`, a project not open, a `path` (`DOCUMENT_PATH_INVALID`: a path names one file,
-	 * `importFile` takes it).
+	 * `importFile` takes it). `options.onProgress` is told each file's progress with `fileIndex`, `fileCount` and
+	 * `fileName`; `options.onFile` each file's entry as it ends; neither is awaited.
 	 *
 	 * @intent import several XML files at once, get one result per file without a throw for a failed file
 	 */
@@ -899,11 +905,22 @@ export class Project<
 		// imported into a project opened since
 		const opened = this.opens
 
+		const { onProgress, onFile, ...fileOptions } = options ?? {}
+		// the call's reports and ends: a listener failing at each one reported once
+		const call = {}
 		const entries: ImportEntry[] = []
-		for (const file of files) {
+		for (const [fileIndex, file] of files.entries()) {
+			const fileOf = { fileIndex, fileCount: files.length, fileName: file.name }
 			try {
 				this.refuseClosedOpen({ opened })
-				const imported = await this.importFile(file, options)
+				const imported = await this.importFile(file, {
+					...fileOptions,
+					...(onProgress && {
+						onProgress: function tellFileProgress(progress: ImportProgress) {
+							onProgress({ ...progress, ...fileOf })
+						},
+					}),
+				})
 				entries.push({ status: 'imported', ...imported })
 			} catch (thrown) {
 				// the structured error thrown - `PARSE_ERROR`, a dialecte's own from a hook - or
@@ -919,6 +936,12 @@ export class Project<
 					)!
 				entries.push({ status: 'failed', fileName: file.name, error })
 			}
+			tellListener({
+				listener: onFile,
+				value: { ...entries.at(-1)!, fileIndex },
+				of: TOLD_OF.importedFile,
+				call,
+			})
 		}
 		return entries
 	}
@@ -929,7 +952,7 @@ export class Project<
 	 * fails before that, or an abort through `options.signal`, leaves nothing and is thrown
 	 * (`PARSE_ERROR` for a malformed file, `IMPORT_ABORTED`, `IMPORT_FAILED` wrapping a foreign
 	 * error). One refusal leaves its document: an import whose connection was lost after it landed is
-	 * refused `STORE_CONNECTION_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told after each stored batch, never awaited. One file is in
+	 * refused `STORE_CONNECTION_LOST`, `meta.outcome` `applied`, its document in the state and broadcast. `options.onProgress` is told at each phase of the import (`storing` after each stored batch, then `processing`, `checking`, `applying`, `finishing`), never awaited. One file is in
 	 * flight per project: a call made while another import runs waits for it.
 	 *
 	 * @intent import an XML file, load a file into the project, parse XML into records
@@ -939,6 +962,13 @@ export class Project<
 		return this.enqueueImport({
 			fileName: file.name,
 			work: () => this.importOne({ file, options, store }),
+			onWait: function tellWaiting() {
+				tellListener({
+					listener: options?.onProgress,
+					value: { phase: 'waiting', bytesRead: 0, totalBytes: file.size },
+					of: TOLD_OF.importProgress,
+				})
+			},
 		})
 	}
 

@@ -1,5 +1,6 @@
 import type { Diagnostic } from '@/diagnostics'
 import type { Perf } from '@/perf'
+import type { ImportReporter } from '@/store/import-progress/import-progress.types'
 import type { ImportTarget } from '@/store/store.types'
 import type { AnyDialecteConfig, ChunkOptions, DialecteHooks } from '@/types'
 
@@ -24,6 +25,8 @@ export type ParseXmlFileParams = {
 	hooks?: DialecteHooks<AnyDialecteConfig>
 	/** Dev perf helper (shared project instance); defaults to a no-op. */
 	perf?: Perf
+	/** Where the file's import tells its progress; one made over `control.onProgress` when absent */
+	reporter?: ImportReporter
 }
 
 export type ParseXmlFileResult = {

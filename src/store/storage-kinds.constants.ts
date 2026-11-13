@@ -5,7 +5,7 @@
  * `shared-shapes.test.ts` fails until it is; the shape is recorded per version in
  * `__shapes__/storage-kinds-v<version>.txt`, written at the first local run of a new version.
  */
-export const STORAGE_KINDS_VERSION = 1
+export const STORAGE_KINDS_VERSION = 2
 
 /**
  * Where the storage kinds are registered: on `globalThis`, so every copy of the library of the same version the page

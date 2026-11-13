@@ -448,7 +448,7 @@ const runtimeFixtureDialecte = defineDialecte({
 						if (marker?.kind === 'after-yield-pause') afterYieldPauseMs = marker.ms
 						session.beforeImportRecord?.(recordParams)
 					},
-					afterImport: async function pauseAfterImport() {
+					afterImport: async function pauseAfterImport(context) {
 						if (afterPauseMs > 0) tellFixtureChannel({ type: 'reached', marker: 'after-pause' })
 						if (afterYieldPauseMs > 0) {
 							tellFixtureChannel({ type: 'reached', marker: 'after-yield-pause' })
@@ -459,7 +459,7 @@ const runtimeFixtureDialecte = defineDialecte({
 							busyWait({ ms: YIELDING_SLICE_MS })
 							await yieldToQueue()
 						}
-						return session.afterImport!()
+						return session.afterImport!(context)
 					},
 				}
 			},

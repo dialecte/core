@@ -41,6 +41,9 @@ export const CONTRACT_CLIENT_GONE_CHANNEL = 'dialecte::store-contract::client-go
 /** The attribute the contract's import session writes on every record of its tag, after the parse. */
 export const CONTRACT_SESSION_SEEN_ATTRIBUTE = 'seen'
 
+/** The step the contract session reports, one record handed at a time; a file handing it none reports nothing. */
+export const CONTRACT_SESSION_STEP = 'contract-records'
+
 /** What the contract's import session says: one diagnostic per record of its tag it was handed. */
 export const CONTRACT_SESSION_DIAGNOSTICS = {
 	source: 'store-contract',

@@ -2,15 +2,25 @@ import { runImport } from './run-import'
 
 import { describe, expect, it } from 'vitest'
 
+import { createDiagnostic } from '@/diagnostics'
 import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
+import { IMPORT_CHECK_CHUNK_SIZE } from '@/store/import-progress/import-progress.constants'
 import { findInMemoryState, inMemoryStateKeyOf } from '@/store/in-memory/in-memory-state'
 import { InMemoryStore } from '@/store/in-memory/in-memory-store'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEV_NAMESPACE } from '@/test'
 
 import type { StoreRuntime } from './store-runtime.types'
+import type { DiagnosticCatalogue } from '@/diagnostics'
 import type { DialecteErrorKey } from '@/errors'
-import type { ImportFileOptions, ImportTarget, Store } from '@/store/store.types'
+import type {
+	DistributiveOmit,
+	ImportFileOptions,
+	ImportProgress,
+	ImportStepReport,
+	ImportTarget,
+	Store,
+} from '@/store/store.types'
 import type { AnyDialecteConfig, AnyRawRecord, DialecteHooks } from '@/types'
 
 // Through a real in-memory store, no parse mock: what one import registers, stores and answers.
@@ -59,6 +69,23 @@ function importTargetOf(store: InMemoryStore): ImportTarget {
 			state.documents.set(documentId, { ...document, status: 'ready' })
 		},
 	}
+}
+
+/** The diagnostics a session says while its writes are checked a chunk at a time. */
+const CHUNK_DIAGNOSTICS = {
+	source: 'test',
+	codes: { seen: { severity: 'information', family: 'reference', message: 'Seen' } },
+} as const satisfies DiagnosticCatalogue
+
+/** A record a session creates, of no tag the file holds. */
+const EXTRA_RECORD: AnyRawRecord = {
+	id: 'extra-1',
+	tagName: 'B',
+	namespace: { prefix: '', uri: NS },
+	attributes: [],
+	value: '',
+	parent: null,
+	children: [],
 }
 
 /** The structured error an action rejects with. */
@@ -115,7 +142,8 @@ describe('runImport - the document registered', () => {
 				status: 'ready',
 				writeId: 'w',
 			})
-			expect(await store.getDocuments()).toEqual([result.record])
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([result.record])
 		})
 	}
 })
@@ -220,14 +248,14 @@ describe('runImport - refused, nothing left', () => {
 			if (testCase.failingWrite) expect(writes).toBe(testCase.failingWrite)
 			if (testCase.removalFails) {
 				// the row stays `importing`: the next store start removes it
-				expect((await store.getDocuments()).map((document) => document.status)).toEqual([
-					'importing',
-				])
+				const documentsBeforeReopen = await store.getDocuments()
+				expect(documentsBeforeReopen.map((document) => document.status)).toEqual(['importing'])
 				store.removeDocument = removeDocument
 				await store.close()
 				await store.open()
 			}
-			expect(await store.getDocuments()).toEqual([])
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([])
 		})
 	}
 })
@@ -306,7 +334,8 @@ describe('runImport - what it hands back', () => {
 		})
 
 		expect(result.recordCount).toBe(2)
-		expect(await store.count(result.record.id)).toBe(2)
+		const recordCount = await store.count(result.record.id)
+		expect(recordCount).toBe(2)
 		expect(result.perf).toBeUndefined()
 	})
 
@@ -325,6 +354,271 @@ describe('runImport - what it hands back', () => {
 			options: { useCustomRecordsIds: true },
 			writeId: 'w',
 		})
-		expect((await store.get('a-1', result.record.id))?.tagName).toBe('A')
+		const recordA1 = await store.get('a-1', result.record.id)
+		expect(recordA1?.tagName).toBe('A')
+	})
+})
+
+describe('runImport - the progress it tells, phase by phase', () => {
+	type TestCase = {
+		hooks?: DialecteHooks<AnyDialecteConfig>
+		/** the phases told, in order, without their bytes */
+		expected: DistributiveOmit<ImportProgress, 'bytesRead' | 'totalBytes'>[]
+	}
+	const testCases: Record<string, TestCase> = {
+		'a session reporting its steps and writing → storing, processing start then its steps, checking, applying, finishing':
+			{
+				hooks: {
+					createImportSession: () => {
+						const seen: string[] = []
+						return {
+							recordTagNames: ['A'],
+							beforeImportRecord: ({ record }) => seen.push(record.id),
+							afterImport: async ({ report }) => {
+								report({ step: 'links', done: 1, total: 2 })
+								report({ step: 'links', done: 2, total: 2 })
+								report({ step: 'names' })
+								return {
+									updates: seen.map((recordId) => ({ recordId, value: 'v' })),
+									diagnostics: [],
+								}
+							},
+						}
+					},
+				},
+				expected: [
+					{ phase: 'storing' },
+					{ phase: 'processing', step: 'start' },
+					{ phase: 'processing', step: 'links', done: 1, total: 2 },
+					{ phase: 'processing', step: 'links', done: 2, total: 2 },
+					{ phase: 'processing', step: 'names' },
+					{ phase: 'checking', done: 0, total: 2 },
+					{ phase: 'checking', done: 2, total: 2 },
+					{ phase: 'applying', done: 0, total: 2 },
+					{ phase: 'applying', done: 2, total: 2 },
+					{ phase: 'finishing' },
+				],
+			},
+		'a session that reports nothing and writes nothing → processing start, checking, no applying, finishing':
+			{
+				hooks: {
+					createImportSession: () => ({ afterImport: async () => ({}) }),
+				},
+				expected: [
+					{ phase: 'storing' },
+					{ phase: 'processing', step: 'start' },
+					{ phase: 'checking', done: 0, total: 0 },
+					{ phase: 'finishing' },
+				],
+			},
+		'a dialecte without an import session → processing start, then finishing': {
+			expected: [
+				{ phase: 'storing' },
+				{ phase: 'processing', step: 'start' },
+				{ phase: 'finishing' },
+			],
+		},
+	}
+
+	for (const [description, testCase] of Object.entries(testCases)) {
+		it(description, async () => {
+			const store = await openStore()
+			const file = xmlFile({ body: '<A/><A/><B aB="1"/>' })
+			const heard: ImportProgress[] = []
+			const outcome = await runImport(
+				{ store: importTargetOf(store), runtime: runtime(testCase.hooks), file, writeId: 'w' },
+				{ onProgress: (progress) => heard.push(progress) },
+			).then(
+				() => 'imported',
+				(thrown: unknown) => thrown,
+			)
+			expect(heard.map(({ bytesRead: _read, totalBytes: _total, ...told }) => told)).toEqual(
+				testCase.expected,
+			)
+			expect(heard.every((progress) => progress.totalBytes === file.size)).toBe(true)
+			expect(heard.slice(1).every((progress) => progress.bytesRead === file.size)).toBe(true)
+			expect(outcome).toBe('imported')
+		})
+	}
+})
+
+describe('runImport - a step the session reports, taken field by field', () => {
+	type TestCase = { reported: Record<string, unknown>; expected: Record<string, unknown> }
+	const testCases: Record<string, TestCase> = {
+		'a report holding a phase of its own → still told as processing, the phase dropped': {
+			reported: { step: 'links', phase: 'checking', done: 1, total: 1 },
+			expected: { phase: 'processing', step: 'links', done: 1, total: 1 },
+		},
+		'a report holding a value that is no number in done and total, and a field of its own → only the step told':
+			{
+				reported: { step: 'links', done: () => 1, total: '2', extra: { nested: true } },
+				expected: { phase: 'processing', step: 'links' },
+			},
+	}
+	for (const [description, testCase] of Object.entries(testCases)) {
+		it(description, async () => {
+			const store = await openStore()
+			const file = xmlFile({ body: '<A/>' })
+			const heard: ImportProgress[] = []
+			const hooks: DialecteHooks<AnyDialecteConfig> = {
+				createImportSession: () => ({
+					afterImport: async ({ report }) => {
+						report(testCase.reported as unknown as ImportStepReport)
+						return {}
+					},
+				}),
+			}
+			await runImport(
+				{ store: importTargetOf(store), runtime: runtime(hooks), file, writeId: 'w' },
+				{ onProgress: (progress) => heard.push(progress) },
+			)
+			const reported = heard.filter(
+				(progress) => progress.phase === 'processing' && progress.step === 'links',
+			)
+			expect(reported).toEqual([
+				{ ...testCase.expected, bytesRead: file.size, totalBytes: file.size },
+			])
+		})
+	}
+})
+
+describe('runImport - aborted while the session runs', () => {
+	type TestCase = {
+		/** what the session does once it sees the abort: stop with its own error, or return as if done */
+		onAbort: 'throws' | 'returns'
+	}
+	const testCases: Record<string, TestCase> = {
+		'the session throws its own error on the abort → IMPORT_ABORTED, nothing left': {
+			onAbort: 'throws',
+		},
+		'the session returns its writes as if done → IMPORT_ABORTED, nothing left': {
+			onAbort: 'returns',
+		},
+	}
+
+	for (const [description, testCase] of Object.entries(testCases)) {
+		it(description, async () => {
+			const store = await openStore()
+			const controller = new AbortController()
+			let sawAbort = false
+			const hooks: DialecteHooks<AnyDialecteConfig> = {
+				createImportSession: () => ({
+					afterImport: async ({ signal }) => {
+						controller.abort()
+						sawAbort = signal.aborted
+						if (testCase.onAbort === 'throws') throw new Error('stopped on abort')
+						return { creates: [{ ...EXTRA_RECORD }] }
+					},
+				}),
+			}
+			const refusal = await rejection(
+				runImport(
+					{
+						store: importTargetOf(store),
+						runtime: runtime(hooks),
+						file: xmlFile({ body: '<A/>' }),
+						writeId: 'w',
+					},
+					{ signal: controller.signal },
+				),
+			)
+			expect(refusal?.key).toBe('IMPORT_ABORTED')
+			expect(sawAbort).toBe(true)
+			const documents = await store.getDocuments()
+			expect(documents).toEqual([])
+		})
+	}
+
+	it('a step reported once the import is aborted → not told, the start before it told', async () => {
+		const store = await openStore()
+		const controller = new AbortController()
+		const heard: ImportProgress[] = []
+		const hooks: DialecteHooks<AnyDialecteConfig> = {
+			createImportSession: () => ({
+				afterImport: async ({ report }) => {
+					controller.abort()
+					report({ step: 'after-abort' })
+					return {}
+				},
+			}),
+		}
+		await rejection(
+			runImport(
+				{
+					store: importTargetOf(store),
+					runtime: runtime(hooks),
+					file: xmlFile({ body: '<A/>' }),
+					writeId: 'w',
+				},
+				{ signal: controller.signal, onProgress: (progress) => heard.push(progress) },
+			),
+		)
+		expect(
+			heard.flatMap((progress) => (progress.phase === 'processing' ? [progress.step] : [])),
+		).toEqual(['start'])
+	})
+})
+
+describe('runImport - perf on', () => {
+	it('each phase a span import::phase.<name>, each step the session reports a span import::hook.<step>', async () => {
+		const store = await openStore()
+		const hooks: DialecteHooks<AnyDialecteConfig> = {
+			createImportSession: () => ({
+				afterImport: async ({ report }) => {
+					report({ step: 'links', done: 1, total: 1 })
+					return { creates: [{ ...EXTRA_RECORD }] }
+				},
+			}),
+		}
+		const result = await runImport({
+			store: importTargetOf(store),
+			runtime: { ...runtime(hooks), perf: true },
+			file: xmlFile({ body: '<A/>' }),
+			writeId: 'w',
+		})
+		const names = new Set(result.perf?.spans.map((span) => span.name))
+		for (const name of [
+			'import::phase.storing',
+			'import::phase.processing',
+			'import::hook.links',
+			'import::phase.checking',
+			'import::phase.applying',
+			'import::phase.finishing',
+		]) {
+			expect(names, name).toContain(name)
+		}
+	})
+})
+
+describe('runImport - the session checked a chunk at a time', () => {
+	it('a diagnostic that is not JSON past the first chunk → STORE_VALUE_NOT_JSON naming the chunk it was in, nothing left', async () => {
+		const store = await openStore()
+		const total = IMPORT_CHECK_CHUNK_SIZE + 1
+		const hooks: DialecteHooks<AnyDialecteConfig> = {
+			createImportSession: () => ({
+				afterImport: async () => ({
+					diagnostics: Array.from({ length: total }, (_, index) =>
+						createDiagnostic(CHUNK_DIAGNOSTICS, 'seen', {
+							ref: { tagName: 'A', id: `a-${index}` },
+							...(index === total - 1 && { meta: { fix: function notJson() {} } }),
+						}),
+					),
+				}),
+			}),
+		}
+		const refusal = await rejection(
+			runImport({
+				store: importTargetOf(store),
+				runtime: runtime(hooks),
+				file: xmlFile({ body: '<A/>' }),
+				writeId: 'w',
+			}),
+		)
+		expect(refusal?.key).toBe('STORE_VALUE_NOT_JSON')
+		expect(refusal?.detail).toMatch(
+			new RegExp(`among the diagnostics ${IMPORT_CHECK_CHUNK_SIZE}-${total - 1}\\)$`),
+		)
+		const documents = await store.getDocuments()
+		expect(documents).toEqual([])
 	})
 })

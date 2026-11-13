@@ -59,6 +59,8 @@ import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwStoreClosed } from '@/store/store-errors'
 import { writeOutcomeOf } from '@/store/write-outcome'
 import { invariant } from '@/utils'
+import { tellListener } from '@/utils/tell-listener'
+import { TOLD_OF } from '@/utils/tell-listener.constants'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
@@ -712,6 +714,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		return queue.run({
 			writeId,
 			clientId,
+			// behind another import of the engine (another client's included): told once, the import's next phase ends it
+			onWait: function tellWaiting() {
+				tellListener({
+					listener: onProgress,
+					value: { phase: 'waiting', bytesRead: 0, totalBytes: file.size },
+					of: TOLD_OF.importProgress,
+				})
+			},
 			work: async function importInTurn(signal) {
 				// a waiting import aborted gets its turn at once: refused before it takes any part of the engine
 				throwIfAborted({ signal, file })
@@ -730,6 +740,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				})
 				const progress = createProgressRelay({
 					file,
+					perf,
 					listener: function tellWorkDone(told) {
 						onWork?.()
 						// its answer handed on: the relay drops a rejection, never leaves it unhandled
@@ -748,7 +759,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					},
 					window,
 					windowMs: engineOptions.importWindowMs,
-					tellPhase: progress.tellPhase,
+					tellIndexing: progress.tellIndexing,
+					tellIndexBuilt: progress.tellIndexBuilt,
 					onLongStatement,
 					onRegistered: function rowWritten() {
 						queue.markRegistered({ writeId })

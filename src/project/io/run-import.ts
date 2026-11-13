@@ -3,12 +3,14 @@ import { resolveConfig } from './resolve-config'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { createPerf } from '@/perf'
 import { readableExtensionsOf, splitFileName } from '@/store/document-path'
+import { createImportReporter } from '@/store/import-progress/import-progress'
 import { parseXmlFile } from '@/xml'
 import { throwIfAborted } from '@/xml/parse/parse-xml-document'
 
 import type { RunImportParams } from './run-import.types'
 import type { Perf } from '@/perf'
 import type { DocumentRecord } from '@/project/types'
+import type { ImportReporter } from '@/store/import-progress/import-progress.types'
 import type { ImportControl, ImportFileResult } from '@/store/store.types'
 import type { AnyDialecteConfig } from '@/types'
 
@@ -19,7 +21,8 @@ import type { AnyDialecteConfig } from '@/types'
  * A document is whole or absent: whatever fails, or an abort, removes it and is thrown (a foreign
  * error as `IMPORT_FAILED`, its cause kept; diagnostics that are not plain JSON as
  * `STORE_VALUE_NOT_JSON`). The progress listener and the abort come apart from the import's data, as
- * a worker call carries them.
+ * a worker call carries them: the listener is told each phase (`storing` ... `finishing`), the dialecte's
+ * `afterImport` handed `{ report, signal }`.
  *
  * @intent implement importFile of a custom store, import a file into a store with core's import pipeline
  */
@@ -48,10 +51,15 @@ export async function runImport(
 		...(options?.path !== undefined && { path: options.path }),
 	}
 
+	const reporter = createImportReporter({
+		totalBytes: file.size,
+		listener: control.onProgress,
+		perf,
+	})
 	perf.start('import')
 	let imported: Omit<ImportFileResult, 'perf'>
 	try {
-		imported = await importRegistered({ ...params, control, registered, config, perf })
+		imported = await importRegistered({ ...params, control, registered, config, perf, reporter })
 	} catch (failure) {
 		// structured as thrown; anything else as `IMPORT_FAILED`, the original as its cause
 		if (toDialecteError(failure)) throw failure
@@ -60,6 +68,7 @@ export async function runImport(
 			cause: failure instanceof Error ? failure : undefined,
 		})
 	} finally {
+		reporter.close()
 		perf.stop('import')
 	}
 	return { ...imported, ...(runtime.perf && { perf: perf.snapshot() }) }
@@ -91,9 +100,10 @@ async function importRegistered(
 		registered: DocumentRecord
 		config: AnyDialecteConfig
 		perf: Perf
+		reporter: ImportReporter
 	},
 ): Promise<Omit<ImportFileResult, 'perf'>> {
-	const { store, runtime, file, options, control, registered, config, perf } = params
+	const { store, runtime, file, options, control, registered, config, perf, reporter } = params
 
 	perf.start('import::register')
 	try {
@@ -114,10 +124,12 @@ async function importRegistered(
 				chunkOptions: options?.chunkOptions,
 				hooks: runtime.hooks,
 				perf,
+				reporter,
 			},
 			control,
 		)
 		throwIfAborted({ signal: control.signal, file })
+		reporter.tell({ phase: 'finishing' })
 		perf.start('import::finalize')
 		try {
 			// a registry row removed meanwhile (by another connection) is never answered ready

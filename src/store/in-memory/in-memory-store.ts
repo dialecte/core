@@ -39,6 +39,7 @@ import { throwDialecteError } from '@/errors'
 import { runExport } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
 import { requireStoreRuntime } from '@/project/io/store-runtime'
+import { tellSessionWritten } from '@/store/import-progress/import-progress'
 
 import type {
 	Store,
@@ -49,6 +50,7 @@ import type {
 	ImportFileParams,
 	ImportFileResult,
 	ImportTarget,
+	WriteSessionControl,
 	StoreNotice,
 	WriteOutcome,
 } from '../store.types'
@@ -827,6 +829,18 @@ export class InMemoryStore implements Store {
 		await this.guardOpen()
 	}
 
+	/** The import session's writes, checked as the file's and written in one step, then told written. */
+	private async writeOwnSession(params: {
+		documentId: string
+		ops: Parameters<ImportTarget['writeSession']>[1]
+		control: WriteSessionControl | undefined
+		registered: DocumentRecord | undefined
+	}): Promise<void> {
+		const { documentId, ops, control, registered } = params
+		await this.bulkWriteOwnImport({ documentId, ops, registered })
+		tellSessionWritten({ ops, control })
+	}
+
 	/**
 	 * The target the store's own import writes through: the import is one operation, so a `close()`
 	 * after it started does not refuse the calls it makes.
@@ -843,8 +857,9 @@ export class InMemoryStore implements Store {
 			markReady: (documentId) => this.markReadyUnguarded({ documentId, registered }),
 			removeDocument: (documentId) => this.removeOwnImport({ documentId, registered }),
 			bulkWrite: (documentId, ops) => this.bulkWriteOwnImport({ documentId, ops, registered }),
-			// every id held is looked up at each write: the session's are checked as the file's
-			writeSession: (documentId, ops) => this.bulkWriteOwnImport({ documentId, ops, registered }),
+			// every id held is looked up at each write: the session's are checked as the file's, written in one step
+			writeSession: (documentId, ops, control) =>
+				this.writeOwnSession({ documentId, ops, control, registered }),
 		}
 	}
 

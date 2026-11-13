@@ -3,6 +3,7 @@ import { EngineStore } from './sqlite/served/engine-store'
 import { sqliteConnectorParamsOf } from './sqlite/sqlite-storage-kind'
 import { withoutSqliteStorage, withSqliteStorage } from './sqlite/sqlite-storage.fixtures'
 import { replaceStorageKind, registerStorageKind } from './storage-kinds'
+import { STORAGE_KINDS_VERSION } from './storage-kinds.constants'
 import {
 	answerOf,
 	fakeKindOf,
@@ -304,7 +305,8 @@ describe('resolveStore', () => {
 			const type = uniqueFakeType()
 			const { kind, built } = fakeKindOf({ id: 'other-copy@1' })
 			const realm = globalThis as unknown as Record<symbol, Map<string, unknown> | undefined>
-			const key = Symbol.for('@dialecte/core/storage-kinds/v1')
+			// the key another copy of this version computes for itself
+			const key = Symbol.for(`@dialecte/core/storage-kinds/v${STORAGE_KINDS_VERSION}`)
 			const existing = realm[key]
 			const registry = existing ?? new Map<string, unknown>()
 			realm[key] = registry
@@ -328,7 +330,8 @@ describe('resolveStore', () => {
 		it('a local entry put on the registry of the realm → ignored: the built-in kinds come first, local still resolves to a DexieStore', () => {
 			const { kind } = fakeKindOf({ id: 'other-copy-local@1' })
 			const realm = globalThis as unknown as Record<symbol, Map<string, unknown> | undefined>
-			const key = Symbol.for('@dialecte/core/storage-kinds/v1')
+			// the key another copy of this version computes for itself
+			const key = Symbol.for(`@dialecte/core/storage-kinds/v${STORAGE_KINDS_VERSION}`)
 			const existing = realm[key]
 			const registry = existing ?? new Map<string, unknown>()
 			realm[key] = registry

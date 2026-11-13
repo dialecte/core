@@ -65,18 +65,20 @@ The store runs each import with a perf of its own and hands its `snapshot()` bac
 merges it under `store::` - whichever store ran it: in the page, in a worker or on a server - its
 spans placed on the page's timeline (shifted by the difference of the two realms' `timeOrigin`). With `dev.perf` on, `project.perf.report()` holds:
 
-| Name                          | Kind  | What                                                       |
-| ----------------------------- | ----- | ---------------------------------------------------------- |
-| `store::import`               | span  | the whole import, register to ready                        |
-| `store::import::register`     | span  | the document registered `importing`                        |
-| `store::import::decode`       | tally | bytes decoded to text, per chunk                           |
-| `store::import::parse`        | tally | the SAX pass, per chunk (holds the two per-record tallies) |
-| `store::import::standardize`  | tally | per record                                                 |
-| `store::import::hooks.record` | tally | the session's `beforeImportRecord`, per record handed      |
-| `store::import::insert`       | span  | one stored batch                                           |
-| `store::import::hooks.after`  | span  | the session's `afterImport`                                |
-| `store::import::writes.after` | span  | the writes `afterImport` returned                          |
-| `store::import::finalize`     | span  | the document set `ready`                                   |
+| Name                          | Kind  | What                                                                                                             |
+| ----------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------- |
+| `store::import`               | span  | the whole import, register to ready                                                                              |
+| `store::import::register`     | span  | the document registered `importing`                                                                              |
+| `store::import::decode`       | tally | bytes decoded to text, per chunk                                                                                 |
+| `store::import::parse`        | tally | the SAX pass, per chunk (holds the two per-record tallies)                                                       |
+| `store::import::standardize`  | tally | per record                                                                                                       |
+| `store::import::hooks.record` | tally | the session's `beforeImportRecord`, per record handed                                                            |
+| `store::import::insert`       | span  | one stored batch                                                                                                 |
+| `store::import::hooks.after`  | span  | the session's `afterImport`                                                                                      |
+| `store::import::writes.after` | span  | the writes `afterImport` returned                                                                                |
+| `store::import::finalize`     | span  | the document set `ready`                                                                                         |
+| `store::import::phase.<name>` | span  | each phase the import tells (`storing`, `processing`, `checking`, `applying`, `finishing`); `indexing` on SQLite |
+| `store::import::hook.<step>`  | span  | each step the session's `afterImport` reports                                                                    |
 
 On `sqlite` storage the import runs in the engine's worker, on the engine's clock, and its report holds three more names:
 

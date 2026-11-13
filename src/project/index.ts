@@ -22,6 +22,8 @@ export type {
 	DocumentStatus,
 	DocumentUpdates,
 	ImportFilesOptions,
+	ImportFilesProgress,
+	ImportFileEntry,
 	DocumentEntry,
 	ProjectState,
 	ProjectChannelMessage,

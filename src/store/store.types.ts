@@ -323,28 +323,70 @@ export type ImportFileOptions = {
 }
 
 /**
- * What an import is doing: `storing` while it reads the file and stores it (the edits of other views
- * are served between its transactions), `indexing` while it builds an index of the document (they
- * wait until it is built). A store that builds no index only ever says `storing`.
+ * What an import is doing, in the order a file goes through it: `waiting` while it waits its turn behind another
+ * import (told once, when the wait starts; the next phase ends it), `storing` while it reads the file and stores it
+ * (the edits of other views are served between its transactions), `indexing` while it builds an index of the
+ * document (they wait until it is built; a store that builds no index never says it), `processing` while the
+ * dialecte's `afterImport` runs, `checking` while the session's diagnostics and writes are checked, `applying` while
+ * the session's writes are stored (only when it has some), `finishing` while the document is made ready.
  */
-export type ImportPhase = 'storing' | 'indexing'
+export type ImportPhase =
+	| 'waiting'
+	| 'storing'
+	| 'indexing'
+	| 'processing'
+	| 'checking'
+	| 'applying'
+	| 'finishing'
 
-/** How far an import is: what it is doing, and the bytes of the file parsed so far, out of its size. */
-export type ImportProgress = {
-	phase: ImportPhase
+/** The bytes of the file parsed so far, out of its size: on every report, the whole file once it is stored. */
+export type ImportBytes = {
 	bytesRead: number
 	totalBytes: number
 }
+
+/** A step of the dialecte's `afterImport`, as it reports it: its name, and how far it is when it knows its count. */
+export type ImportStepReport = {
+	/** The step's name; `start` is core's, told once before the hook runs: a hook names its steps otherwise */
+	step: string
+	done?: number
+	total?: number
+}
+
+/** How far an import is: what it is doing (`phase`), the bytes of the file parsed, and what the phase counts. */
+export type ImportProgress =
+	| (ImportBytes & { phase: 'waiting' })
+	| (ImportBytes & { phase: 'storing' })
+	| (ImportBytes & {
+			phase: 'indexing'
+			/** The index being built */
+			index: string
+	  })
+	| (ImportBytes & { phase: 'processing' } & ImportStepReport)
+	| (ImportBytes & { phase: 'checking' | 'applying'; done: number; total: number })
+	| (ImportBytes & { phase: 'finishing' })
 
 /**
  * What a caller holds over an import that runs: kept apart from the import's data, as a worker call
  * carries the listener as an argument of its own and the abort as a call of its own.
  */
 export type ImportControl = {
-	/** Told after each stored batch; never awaited, its failure ignored. */
+	/**
+	 * Told at each phase and after each stored batch, at most once per `IMPORT_PROGRESS_INTERVAL_MS` within a phase's
+	 * counted reports (the last of a step always told); never awaited, its failure ignored.
+	 */
 	onProgress?: (progress: ImportProgress) => void
-	/** Aborts the import at the next batch: nothing of the file remains, `IMPORT_ABORTED` thrown. */
+	/**
+	 * Aborts the import at the next batch or step (the dialecte's `afterImport` handed it to stop between its steps):
+	 * nothing of the file remains, `IMPORT_ABORTED` thrown.
+	 */
 	signal?: AbortSignal
+}
+
+/** What `ImportTarget.writeSession` is handed beside its writes: who hears how far it is. */
+export type WriteSessionControl = {
+	/** Told after each batch it stores: the writes stored so far, out of all the session's (creates, updates, deletes) */
+	onProgress?: (progress: { done: number; total: number }) => void
 }
 
 export type ImportFileParams = ImportControl & {
@@ -450,11 +492,12 @@ export type ImportTarget = Pick<
 	/**
 	 * The writes of the import's session, once every record of the file is stored (`bulkWrite` takes the file's):
 	 * checked as `bulkWrite` checks them, a create of an id the file gave refused `STORE_DUPLICATE_ID` as one the
-	 * document holds. A store whose import keeps no list of the ids it made looks them up here.
+	 * document holds. Tells `control.onProgress` after each batch it stores. A store whose import keeps no list of the ids it made looks them up here.
 	 */
 	writeSession(
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
+		control?: WriteSessionControl,
 	): Promise<void>
 }
 

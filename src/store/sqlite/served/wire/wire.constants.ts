@@ -6,7 +6,7 @@ import type { WireMemberSpec } from './wire.types'
  * messages): the engine says it as it opens, and a client of another version refuses it - each runs its
  * own copy of the library.
  */
-export const ENGINE_WIRE_PROTOCOL = 2
+export const ENGINE_WIRE_PROTOCOL = 3
 
 /** How many causes of a thrown error cross a port with it: the deeper ones are left behind. */
 export const WIRE_CAUSE_DEPTH = 4

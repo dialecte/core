@@ -522,7 +522,12 @@ describe('parseXmlFile', () => {
 			children: [],
 		}
 		const patch = { recordId: 'some-id', attributes: [{ name: 'a', value: '1' }] }
-		const afterImport = (result: AfterImportResult) => async () => result
+		/** A session's afterImport that answers `result`. */
+		function afterImport(result: AfterImportResult): () => Promise<AfterImportResult> {
+			return async function answer() {
+				return result
+			}
+		}
 
 		const testCases: Record<string, TestCase> = {
 			'session reports one diagnostic and no write → the diagnostic comes out, nothing written': {
@@ -596,8 +601,11 @@ describe('parseXmlFile', () => {
 			expect(result.recordCount).toBe(testCase.expectedRecordCount)
 			// the parse writes Root in one batch; the session's write, when it has one, goes as the session's
 			expect(store.bulkWriteCalls).toHaveLength(1)
+			// handed with a control that hears how far the writes are
 			expect(store.sessionWriteCalls).toEqual(
-				testCase.expectedWrite ? [['f1', testCase.expectedWrite]] : [],
+				testCase.expectedWrite
+					? [['f1', testCase.expectedWrite, { onProgress: expect.any(Function) }]]
+					: [],
 			)
 		})
 
@@ -688,8 +696,8 @@ describe('parseXmlFile', () => {
 					}
 				},
 			}
-			const parse = (documentId: string, body: string) =>
-				parseXmlFile({
+			function parse(documentId: string, body: string): ReturnType<typeof parseXmlFile> {
+				return parseXmlFile({
 					file: xmlFile(minimalXml(body)),
 					documentId,
 					configKey: 'test',
@@ -697,6 +705,7 @@ describe('parseXmlFile', () => {
 					config: CONFIG,
 					hooks,
 				})
+			}
 
 			await parse('first', '<A><AA_1/></A>')
 			await parse('second', '<B/>')

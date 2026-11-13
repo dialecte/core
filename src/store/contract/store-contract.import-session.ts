@@ -8,6 +8,7 @@ import {
 	CONTRACT_SESSION_LONE_SURROGATE_VALUE,
 	CONTRACT_SESSION_REUSE_VALUE,
 	CONTRACT_SESSION_SEEN_ATTRIBUTE,
+	CONTRACT_SESSION_STEP,
 	CONTRACT_SESSION_TAG,
 	HOLD_ID_SEPARATOR,
 } from './store-contract.constants'
@@ -20,7 +21,13 @@ import { TEST_CONFIG_KEY } from '@/test/constant'
 
 import type { ContractHoldMessage, ContractImportHold } from './store-contract.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
-import type { AnyDialecteConfig, AnyRawRecord, DialecteHooks, ImportSession } from '@/types'
+import type {
+	AfterImportContext,
+	AnyDialecteConfig,
+	AnyRawRecord,
+	DialecteHooks,
+	ImportSession,
+} from '@/types'
 
 /**
  * Hold the next contract import whose file has a record of the session's tag with `bB` set to the
@@ -36,11 +43,13 @@ export function holdContractImport(): ContractImportHold {
 		markReached = resolve
 	})
 	let released = false
+	let sawAbort = false
 	// open until the case ends: a released hold answers a later import of the same file too
 	onTestFinished(function closeHoldChannel() {
 		channel.close()
 	})
 	channel.onmessage = function hearHold(event: MessageEvent<ContractHoldMessage>) {
+		if (event.data.type === 'saw-abort') sawAbort = true
 		if (event.data.type !== 'reached') return
 		markReached()
 		// released for good: a later import of the same file reaching it goes on at once
@@ -54,20 +63,55 @@ export function holdContractImport(): ContractImportHold {
 			released = true
 			channel.postMessage({ type: 'release' } satisfies ContractHoldMessage)
 		},
+		releaseAfterAbort: function releaseAfterAbort() {
+			if (released) return
+			released = true
+			channel.postMessage({ type: 'release', afterAbort: true } satisfies ContractHoldMessage)
+		},
+		sawAbort: function hasSeenAbort() {
+			return sawAbort
+		},
 	}
 }
 
-/** Say the hold is reached, then wait for the case's release, in whatever realm the session runs. */
-async function waitForRelease(params: { id: string }): Promise<void> {
+/**
+ * Say the hold is reached, then wait for the case's release, in whatever realm the session runs. A release after an
+ * abort waits for the session's signal to be aborted, says so on the channel, and stops the session with its own
+ * error: the abort and the release travel apart (the abort through the store's own calls), the release never wins.
+ */
+async function waitForRelease(params: {
+	id: string
+	signal: AbortSignal | undefined
+}): Promise<void> {
+	const { signal } = params
 	const channel = holdChannel(params)
-	const released = new Promise<void>(function waitForRelease(resolve) {
+	const release = new Promise<ContractHoldMessage>(function waitForRelease(resolve) {
 		channel.onmessage = function hearRelease(event: MessageEvent<ContractHoldMessage>) {
-			if (event.data.type === 'release') resolve()
+			if (event.data.type === 'release') resolve(event.data)
 		}
 	})
 	channel.postMessage({ type: 'reached' } satisfies ContractHoldMessage)
-	await released
-	channel.close()
+	const told = await release
+	try {
+		if (told.type !== 'release' || !told.afterAbort) return
+		if (!signal) throw new Error('the contract session was handed no signal')
+		await abortOf({ signal })
+		channel.postMessage({ type: 'saw-abort' } satisfies ContractHoldMessage)
+		throw new Error('the contract session stops: its import was aborted')
+	} finally {
+		channel.close()
+	}
+}
+
+/** Settles once the signal is aborted. */
+function abortOf(params: { signal: AbortSignal }): Promise<void> {
+	const { signal } = params
+	if (signal.aborted) return Promise.resolve()
+	return new Promise(function waitForAbort(resolve) {
+		signal.addEventListener('abort', function aborted() {
+			resolve()
+		})
+	})
 }
 
 /** The channel of one hold (its id: holds of test files running at once never meet); in node it never keeps the process alive. */
@@ -117,7 +161,8 @@ function holdIdOf(params: { handed: { record: AnyRawRecord }[] }): string | unde
  * attribute after the parse, creates again under its id a record whose `bB` holds the reuse value, fails
  * when one of them has `bB` set to the fail value, and waits for the
  * case's release when one has it set to the hold value (`holdContractImport`, every file holding it
- * is held).
+ * is held; `releaseAfterAbort` stops it with its own error once it sees its import aborted). It reports its step
+ * once per record it was handed (`CONTRACT_SESSION_STEP`).
  */
 function createContractImportSession(): ImportSession {
 	const handed: { record: AnyRawRecord; ancestry: string[] }[] = []
@@ -126,9 +171,13 @@ function createContractImportSession(): ImportSession {
 		beforeImportRecord: ({ record, ancestry }) => {
 			handed.push({ record, ancestry: ancestry.map((ancestor) => ancestor.tagName) })
 		},
-		afterImport: async () => {
+		// read as optional, as a hook may: the cases that do not look at the context stand without it
+		afterImport: async (context?: AfterImportContext) => {
 			const holdId = holdIdOf({ handed })
-			if (holdId) await waitForRelease({ id: holdId })
+			if (holdId) await waitForRelease({ id: holdId, signal: context?.signal })
+			for (let done = 1; done <= handed.length; done++) {
+				context?.report({ step: CONTRACT_SESSION_STEP, done, total: handed.length })
+			}
 			const failing = handed.find(({ record }) =>
 				record.attributes.some(
 					(attribute) => attribute.name === 'bB' && attribute.value === CONTRACT_SESSION_FAIL_VALUE,

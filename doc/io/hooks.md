@@ -19,7 +19,7 @@ type IOHooks = {
 type ImportSession<GenericDiagnostic extends Diagnostic = Diagnostic> = {
 	recordTagNames?: readonly string[] // the records beforeImportRecord is handed; absent = all
 	beforeImportRecord?: (params: { record: AnyRawRecord; ancestry: readonly AnyRawRecord[] }) => void
-	afterImport?: () => Promise<AfterImportResult<GenericDiagnostic>>
+	afterImport?: (context: AfterImportContext) => Promise<AfterImportResult<GenericDiagnostic>>
 }
 ```
 
@@ -145,7 +145,29 @@ Fires **once** after all records are stored. Return batched creates, updates, an
 The hook must settle. Nothing aborts a hook that never resolves: its import stays in flight, the project engine stays busy with it, and `project.close()` and `destroy()` wait for it for good - after 10 seconds the console names the files the close still waits for. A hook waiting on something outside the import (a network call, a user's answer) bounds that wait itself and throws when it gives up.
 
 ```ts
-afterImport?: () => Promise<AfterImportResult>
+afterImport?: (context: AfterImportContext) => Promise<AfterImportResult>
+
+type AfterImportContext = {
+	report: (step: { step: string; done?: number; total?: number }) => void
+	signal: AbortSignal
+}
+```
+
+The context is optional to read: a hook that takes no argument works as before. Code that calls a session's `afterImport` itself - a test, a session wrapping another - passes it a context: `afterImport({ report, signal })`.
+
+- `report({ step, done, total })` tells the import's caller where the hook is: its progress says `phase: 'processing'` with the step (core tells `step: 'start'` once before the hook runs). Name each step of the hook and give `done` / `total` when the step loops over a count it holds. Core keeps at most one report per `IMPORT_PROGRESS_INTERVAL_MS` (50 ms) per file and always tells the last of a step, so a long loop may report every item. `report` never throws and is ignored once the import is aborted. With dev perf on, each step is a span `import::hook.<step>`.
+- `signal` is the import's abort. Check it between steps (and every so many items in a long loop) and stop - return or throw, it does not matter: core throws `IMPORT_ABORTED` and keeps nothing of the file, whatever the hook did.
+
+```ts
+afterImport: async ({ report, signal }) => {
+	for (const [done, target] of targets.entries()) {
+		if (signal.aborted) return {}
+		resolve(target)
+		report({ step: 'references', done: done + 1, total: targets.length })
+	}
+	report({ step: 'names' })
+	return { updates }
+}
 ```
 
 ```ts
@@ -225,7 +247,7 @@ createImportSession     (once - { documentId, configKey })
 afterStandardizedRecord (per record - standardization runs first)
 beforeImportRecord      (per record, document order - receives the standardized record)
 [records stored]
-afterImport             (once - writes applied, diagnostics returned)
+afterImport             (once - { report, signal }; its steps reported, writes checked then applied, diagnostics returned)
 ```
 
 See [IO overview](/io/) for how this fits into the full import → API → export pipeline.

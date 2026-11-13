@@ -5,7 +5,7 @@ import { expect } from 'vitest'
 import { toDialecteError } from '@/errors'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
-import type { Store } from '../store.types'
+import type { ImportProgress, Store } from '../store.types'
 import type { DialecteErrorKey } from '@/errors'
 import type { DocumentRecord } from '@/project/types'
 import type { AnyRawRecord, AnyRelationship, BlobRecord } from '@/types'
@@ -97,6 +97,30 @@ export function contractFile(params: { body: string; name?: string; truncated?: 
 /** `count` records of the contract session's tag, `B0`.. as their `aB`. */
 export function sessionRecords(count: number): string {
 	return Array.from({ length: count }, (_, index) => `<B aB="B${index}"/>`).join('')
+}
+
+/**
+ * The phases an import told, in order, each once: `indexing` left out (a store that builds indexes says so whenever
+ * it builds one, then goes on with the phase it was in).
+ */
+export function phasesInOrder(params: {
+	progress: readonly ImportProgress[]
+}): ImportProgress['phase'][] {
+	const phases: ImportProgress['phase'][] = []
+	for (const { phase } of params.progress) {
+		if (phase !== 'indexing' && phases.at(-1) !== phase) phases.push(phase)
+	}
+	return phases
+}
+
+/** The last count an import told of a counted phase. */
+export function lastCountOf(params: {
+	progress: readonly ImportProgress[]
+	phase: 'checking' | 'applying'
+}): { done: number; total: number } | undefined {
+	const last = params.progress.findLast((step) => step.phase === params.phase)
+	if (!last || (last.phase !== 'checking' && last.phase !== 'applying')) return undefined
+	return { done: last.done, total: last.total }
 }
 
 /** Chunks and batches small enough that a file of a few records is stored in several batches. */
