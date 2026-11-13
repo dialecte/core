@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: skill-change-brief-runs-the-skill-eval-loop
+expected_outcome: |
+  The implementer brief of a lot that changes skill text tells the implementer to run the skill-eval loop: the
+  eval case first, failing on the text before the change; runs with the changed text and with the text before it,
+  on the standard and the strong tier, several runs per configuration; graded by a separate agent that is not told
+  which text produced a run, never by the implementer; a benchmark of the pass rates against the current skill;
+  the runs, grades and benchmark kept in the lot folder, their paths in the report. It names no host tool and no model.

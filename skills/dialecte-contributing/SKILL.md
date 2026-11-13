@@ -247,7 +247,7 @@ If public API or user-visible behaviour changed, it is not done until you also:
   cannot find, and writes again. An export not meant for callers is tagged `@internal` instead and stays out
   of the index;
 - update the `doc/` page that describes that surface (types, verbs, contracts),
-- add a line under `## UNRELEASED` in the package's `CHANGELOG.md`, written for the user, and
+- add a line under `## [Unreleased]` in the package's `CHANGELOG.md`, written for the user, and
 - update the package's `skills/` when the change touches what a skill describes (API, hooks,
   extensions, scripts, layout, rules); `npm run skills:generate` refreshes the generated tables, and the
   check runs in the gate (step 6).
@@ -333,11 +333,11 @@ core has `dialecte`, `dialecte-contributing` and `dialecte-lot`, create `dialect
 package its own `dialecte-<id>` with the knowledge of its schema. A skill changes in the same PR as the code it describes - never
 in another repository afterwards. `@dialecte/cli` maintains them:
 
-| Command                    | Does                                                                                                                                                                                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dialecte skills sync`     | installs the skills of the app's dependencies into `.claude/skills` + `.agents/skills` (`--agent claude,copilot,agents`, `--copy`); consumer skills only unless `--contributing` (remembered); `--from <workspace> --contributing` takes every skill from local checkouts |
-| `dialecte skills generate` | rewrites the `<!-- dialecte-skills:generated ... -->` blocks (verb map, method and export index, hook files) from the source                                                                                                                                              |
-| `dialecte skills check`    | frontmatter, links, and every API / path / npm script a page cites must exist; generated blocks must be fresh; every public function and method has a JSDoc summary and an `@intent`; `--workspace <dir>` also verifies pages that describe several repositories          |
+| Command                    | Does                                                                                                                                                                                                                                                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dialecte skills sync`     | installs the skills of the app's dependencies into the folders of the hosts the project uses (`--agent <host>`, values and folders in `dialecte-lot` references/hosts.md; `--copy`); consumer skills only unless `--contributing` (remembered); `--from <workspace> --contributing` takes every skill from local checkouts |
+| `dialecte skills generate` | rewrites the `<!-- dialecte-skills:generated ... -->` blocks (verb map, method and export index, hook files) from the source                                                                                                                                                                                               |
+| `dialecte skills check`    | frontmatter, links, and every API / path / npm script a page cites must exist; generated blocks must be fresh; every public function and method has a JSDoc summary and an `@intent`; `--workspace <dir>` also verifies pages that describe several repositories                                                           |
 
 Write claims so the check can verify them: API as `query.<method>` / `tx.<ns>.<verb>`, paths
 relative to a package, scripts as `npm run <script>`. A deliberate mention of something outside the package goes in
@@ -366,8 +366,8 @@ and every correction the user made that a skill should have prevented. Then:
 
 - **Inside a dialecte repository**: draft each skill edit as before/after and show it to the user; an
   approved edit goes in the same change (skills ship with the package that owns the code), through
-  the skill-creator skill (`anthropic-skills:skill-creator`) loaded - the eval case first, failing on the text
-  before the change, as `dialecte-lot` describes - then `npm run skills:generate` and `npm run skills:check`.
+  the skill-eval loop (`dialecte-lot`, references/skill-eval.md) - the eval case first, failing on the text
+  before the change - then `npm run skills:generate` and `npm run skills:check`.
 - **In an app**: draft an issue for the package that ships the skill - the statement that was wrong
   or missing, the evidence (file, behaviour), the wording you propose - and show it to the user.
   Post it only with their approval.

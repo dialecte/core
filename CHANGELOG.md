@@ -21,6 +21,12 @@ An import names every step from the file to the ready document, so a progress ba
 
 - The SQLite engine wire (`ENGINE_WIRE_PROTOCOL` 3) and the hub protocol (`HUB_PROTOCOL_VERSION` 7) carry the new progress union, and the storage kinds registry (`STORAGE_KINDS_VERSION` 2) the new hook context: copies of the library of different versions refuse each other as for any change of what they share.
 - After an index build the SQLite store tells again the phase it was in (an index is built in the session's writes and while the document is made ready), instead of `storing`.
+- The skills name tiers and procedures, never a host's tool or a model: how each host starts a session, spawns a
+  station, loads a skill and arms a deadline is on one page, `dialecte-lot` references/hosts.md; a skill text
+  change goes through the skill-eval loop (references/skill-eval.md). The skill-change brief
+  eval case is renamed `skill-change-brief-runs-the-skill-eval-loop`, and three cases set on a host without station
+  adapters are added.
+- The repository commits a tool-neutral `AGENTS.md`; machine notes go in an ignored `AGENTS.local.md`.
 
 ## [0.10.0] - 2026-11-11
 

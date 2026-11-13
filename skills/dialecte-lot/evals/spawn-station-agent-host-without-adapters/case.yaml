@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: spawn-station-agent-host-without-adapters
+expected_outcome: |
+  On a host without station adapters, the orchestrator spawns a general sub-agent for the implementation on the
+  standard tier (the lot is fully specified) with workspace edits, and one for the review on the strong tier in a
+  read-only sandbox, each tier resolved with `dialecte models`, each prompt carrying the station's definition then
+  the brief; it names no model and no other host's mechanism.

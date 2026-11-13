@@ -189,15 +189,9 @@ Then, within the step:
 - Only the lot's scope. A refactor outside it is a new lot, said out loud.
 
 A **skill text change** is code too: when the lot changes what a skill tells agents to do (a new command to
-run, a rule), load the skill-creator skill (`anthropic-skills:skill-creator`) and follow it; a host without it
-runs the same loop by hand, as below. A skill change judged
-by hand, or by the agent that wrote it, looks green on one run and its own reading; skill-creator's loop is
-what shows the change moves behaviour. As it applies here: the eval case under the skill's `evals/` first
-(it describes the behaviour the new text must produce; the text before the change fails it); runs with the
-changed text and with the text before it (`git show <base>:skills/...` into the eval workspace), on the
-standard and the strong tier, several runs per configuration, every run with the same tools; grading by a
-separate agent that is not told which text produced a run; skill-creator's benchmark and viewer handed on
-with the report. Then `skills:generate` and `skills:check`.
+run, a rule), it goes through the [skill-eval loop](references/skill-eval.md): the case first, runs with and
+without the change on the standard and the strong tier, a blind separate grader, repeats, a benchmark against
+the current skill, verdicts in the lot folder. Then `skills:generate` and `skills:check`.
 
 Report (exactly this shape):
 
@@ -208,7 +202,7 @@ Files: <list>
 Tests: <n> passing of <m> table cases - command: <the exact command, unfiltered>
 Red seen: <the `tdd red` line of each case: case, kind, failing message>   (one line per behaviour)
 Gates: <the lines `dialecte gate` printed, with their counts>
-Skill evals: <case: pass rate with / before, runs per configuration; benchmark and viewer paths>   | n/a
+Skill evals: <case: pass rate with / before, runs per configuration; benchmark and verdict paths>   | n/a
 Deviations from the brief: <none | what and why>
 Open questions: <none | ...>
 ```
@@ -527,16 +521,10 @@ orchestrator launches in the background gets a **deadline** when it is launched:
 ## Per host
 
 The stations, gates and hand-over are the same everywhere: they run through the `dialecte` cli and the git
-hooks. What differs is how a host starts a session, spawns an agent and wakes you:
-
-- **Every host**: the session starts with `npx --no-install @dialecte/cli doctor --brief` (the synced `AGENTS.md`
-  section says so; where a hook already ran it, its lines are in your context): nothing printed means the skills
-  are in sync, else fix each line first. Station agents come from references/stations.md.
-- **Claude Code**: a `SessionStart` hook runs that check for you (do not run it again); `.claude/agents/dialecte-<station>.md` are the
-  station adapters (the Agent tool spawns them by name); skills load with the Skill tool; the Workflow tool is
-  the multi-agent workflow that needs the user's opt-in; a scheduled wake-up or a monitor arms a deadline.
-- **Another host** (Codex, Cursor, Gemini CLI, Copilot): skills in `.agents/skills/` (or `.github/skills/`); a
-  general sub-agent per station, as above; its own scheduler or a timer arms a deadline, else poll at it.
+hooks. The session starts with `npx --no-install @dialecte/cli doctor --brief` (the project's `AGENTS.md` says
+so): nothing printed means the skills are in sync, else fix each line first. Each station is spawned as
+references/stations.md defines it; a deadline is armed at launch with what the host has, else polled at. How a
+given host starts a session, spawns an agent, loads a skill and wakes you: [references/hosts.md](references/hosts.md).
 
 ## Never
 

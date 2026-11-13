@@ -13,8 +13,8 @@ the lot: which step, which files, which worktree.
 - `edit`: reads, edits files in its worktree, runs commands.
 
 **Spawning one.** A host with an adapter has the agent ready: its tier and access are set by the adapter's file,
-so the spawn names the station and hands the brief. Claude Code: `.claude/agents/dialecte-<station>.md`,
-written by `npx @dialecte/cli skills sync` whenever it installs `dialecte-lot`. A host without one spawns a general sub-agent:
+so the spawn names the station and hands the brief; which hosts have adapters, and where: [hosts.md](hosts.md).
+A host without one spawns a general sub-agent:
 the model of the station's tier (`npx @dialecte/cli models`), the narrowest tool or sandbox setting the host has
 that still allows the access (a read-only sandbox for `read` and `review`, workspace edits for `edit`; a host
 that cannot restrict says the access in the prompt), and a prompt holding this station's section, then the
@@ -83,7 +83,7 @@ why) or needs the user, with the blast-radius line of each fix; it never drops o
 - Tier: standard
 - Access: edit
 
-Runs one skill-eval case of a Dialecte skill (a skill text change goes through skill-creator evals), with or
+Runs one skill-eval case of a Dialecte skill (a skill text change goes through the [skill-eval loop](skill-eval.md)), with or
 without the skill as its brief says, and writes only the outputs the case names. The strong tier runs the
 second configuration.
 
