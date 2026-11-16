@@ -57,6 +57,33 @@ describe('valuePatterns', () => {
 		it(name, () => expect(patterns.every((pattern) => pattern.test(value))).toBe(expected))
 	}
 
+	it('two levels of two alternatives read twice -> one pattern per level, each the same compiled one', () => {
+		const datatype: DataType = {
+			builtin: 'string',
+			facets: {
+				pattern: [
+					['[a-z]+', '[0-9]+'],
+					['.{2,3}', 'x+'],
+				],
+			},
+		}
+		const first = valuePatterns(datatype)
+		const second = valuePatterns(datatype)
+		expect(first).toHaveLength(2)
+		expect(second).toHaveLength(2)
+		expect(first[0]).toBe(second[0])
+		expect(first[1]).toBe(second[1])
+		expect(first[0]).not.toBe(first[1])
+	})
+
+	it('another pattern on the same builtin -> another compiled pattern', () => {
+		const [lower] = valuePatterns({ builtin: 'string', facets: { pattern: [['[a-z]+']] } })
+		const [digits] = valuePatterns({ builtin: 'string', facets: { pattern: [['[0-9]+']] } })
+		expect(lower).not.toBe(digits)
+		expect(lower?.test('abc')).toBe(true)
+		expect(digits?.test('abc')).toBe(false)
+	})
+
 	it('patterns written for the u flag -> compiled with it', () => {
 		const [named] = valuePatterns({ builtin: 'string', facets: { pattern: [['\\p{Lu}']] } })
 		expect(named?.test('É')).toBe(true)

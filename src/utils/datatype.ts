@@ -20,7 +20,16 @@ export function enumeratedValues(datatype: DataType | undefined): readonly strin
  * @intent validate an attribute value against its datatype patterns, get the regular expressions an attribute value must match
  */
 export function valuePatterns(datatype: DataType | undefined): readonly RegExp[] {
-	return (datatype?.facets?.pattern ?? []).map(
-		(level) => new RegExp(`^(?:${level.map((pattern) => `(?:${pattern})`).join('|')})$`, 'u'),
-	)
+	return (datatype?.facets?.pattern ?? []).map((level) => compiledLevel(level))
 }
+
+/** A level's patterns as one anchored expression, compiled once per level of the definition (no g/y flag: stateless). */
+function compiledLevel(level: readonly string[]): RegExp {
+	const cached = compiledLevels.get(level)
+	if (cached !== undefined) return cached
+	const compiled = new RegExp(`^(?:${level.map((pattern) => `(?:${pattern})`).join('|')})$`, 'u')
+	compiledLevels.set(level, compiled)
+	return compiled
+}
+
+const compiledLevels = new WeakMap<readonly string[], RegExp>()
