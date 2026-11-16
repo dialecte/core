@@ -1,10 +1,14 @@
 import { getRecordsByTagName } from '@/document'
-import { canonicalXsiType, isXsiTypeAttribute, storedNamespaceLookup } from '@/utils/xsi-type'
+import { declaredAttributeTypeOf, declaredDefinitionOf } from '@/utils/qname-definition'
+import { qualifiedNameAttributesOf, readsQualifiedNames } from '@/utils/qname-typed'
+import { canonicalQNameValue, storedNamespaceLookup } from '@/utils/qname-value'
+import { canonicalXsiType, isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { Context, FilterAttributes } from '@/document'
 import type {
 	AnyDialecteConfig,
 	AnyRawRecord,
+	ResolvedDefinition,
 	TrackedRecord,
 	ElementsOf,
 	AttributesOf,
@@ -52,6 +56,8 @@ export async function findByAttributes<
  * - Undefined values: ignored (attribute removed from filter)
  * - `xsi:type`: compared as the type it names, whatever form the filter writes it in (local name, dialecte prefix,
  *   Clark name) or the record holds it in
+ * - a QName-typed attribute: the filter's value read as a write reads it (`xs:integer` and the Clark name of the same
+ *   type are one filter), compared with the stored form
  *
  * @internal the attribute filter of `findByAttributes` and `getTree`'s `where`
  */
@@ -69,8 +75,10 @@ export function matchesAttributeFilter<
 		return true
 	}
 
-	for (const [attributeName, expectedValues] of Object.entries(attributeFilter)) {
-		if (expectedValues === undefined) continue
+	const qualifiedNames = qualifiedNameFilterOf({ dialecteConfig, record })
+	for (const [attributeName, rawExpected] of Object.entries(attributeFilter)) {
+		if (rawExpected === undefined) continue
+		const expectedValues = qualifiedNames(attributeName, rawExpected)
 
 		if (attributeName === 'xsi:type') {
 			if (!matchesXsiType({ dialecteConfig, record, expected: expectedValues })) return false
@@ -118,4 +126,48 @@ function matchesXsiType(params: {
 		(value): value is string => typeof value === 'string',
 	)
 	return values.some((value) => canonicalXsiType({ dialecteConfig, value, namespaceOf }) === actual)
+}
+
+/**
+ * How the filter reads its values for the record: a QName-typed attribute's in stored form (read with the engine
+ * table), any other as given. The record's definition is read only when the filter names an attribute its tag may
+ * hold as QName-typed (`qualifiedNameAttributesOf`), once.
+ */
+function qualifiedNameFilterOf(params: {
+	dialecteConfig: AnyDialecteConfig
+	record: AnyRawRecord
+}): (attributeName: string, expected: unknown) => unknown {
+	const { dialecteConfig, record } = params
+	const qualifiedAttributes = qualifiedNameAttributesOf({ dialecteConfig, tagName: record.tagName })
+	if (qualifiedAttributes.size === 0) return keepAsGiven
+	let definition: ResolvedDefinition | undefined
+	let resolved = false
+	function definitionOfRecord(): ResolvedDefinition | undefined {
+		if (!resolved) definition = declaredDefinitionOf({ dialecteConfig, record })
+		resolved = true
+		return definition
+	}
+	const namespaceOf = storedNamespaceLookup({ dialecteConfig })
+	return function storedFormOf(attributeName, expected) {
+		if (!qualifiedAttributes.has(attributeName)) return expected
+		const declared = definitionOfRecord()
+		if (declared === undefined) return expected
+		// the record's attribute of that name, read as declared (a foreign homonym of the name is not QName-typed)
+		const attribute = record.attributes.find((candidate) => candidate.name === attributeName)
+		const type =
+			attribute === undefined
+				? undefined
+				: declaredAttributeTypeOf({ definition: declared, attribute })
+		if (type === undefined || !readsQualifiedNames(type)) return expected
+		const qualifiedType = type
+		function canonical(value: unknown): unknown {
+			if (typeof value !== 'string') return value
+			return canonicalQNameValue({ dialecteConfig, type: qualifiedType, value, namespaceOf })
+		}
+		return Array.isArray(expected) ? expected.map(canonical) : canonical(expected)
+	}
+}
+
+function keepAsGiven(_attributeName: string, expected: unknown): unknown {
+	return expected
 }

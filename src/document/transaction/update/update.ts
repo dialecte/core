@@ -9,6 +9,7 @@ import {
 	toFullAttributeArray,
 } from '@/helpers'
 import { invariant } from '@/utils'
+import { assertQNameValuesReadable } from '@/utils/qname-definition'
 import { assertXsiTypePrefixKnown, isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { UpdateParams } from './update.types'
@@ -89,6 +90,16 @@ export async function stageUpdate<
 			...record,
 			attributes: updatedAttributes,
 			value: value !== undefined ? value : record.value,
+		},
+	})
+
+	// Write-path guard: a QName-typed value the update authors is one core can read; a value it leaves stays as stored
+	assertQNameValuesReadable({
+		dialecteConfig,
+		record: updatedRecord,
+		authored: {
+			attributes: new Set(newAttributes.map((attribute) => attribute.name)),
+			text: value !== undefined,
 		},
 	})
 

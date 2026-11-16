@@ -143,6 +143,53 @@ describe('findByAttributes', () => {
 	runTestCases.withExport({ testCases, act })
 })
 
+describe('findByAttributes - a QName-typed attribute', () => {
+	type TestCase = BaseXmlTestCase & {
+		attributes: FilterAttributes<TestDialecteConfig, 'EE_1'>
+		expectedCount: number
+	}
+
+	const sourceXml = /* xml */ `
+		<Root ${XMLNS_DEFAULT_NAMESPACE} xmlns:q="http://www.w3.org/2001/XMLSchema" xmlns:f="urn:f">
+			<E aE="e"><EE_1 aEE_1="q:integer"/></E>
+			<E aE="e"><EE_1 aEE_1="f:Thing"/></E>
+		</Root>
+	`
+
+	const testCases: TestCases<TestCase> = {
+		'a filter in the stored form xs:integer → the record the file wrote q:integer': {
+			sourceXml,
+			attributes: { aEE_1: 'xs:integer' },
+			expectedCount: 1,
+		},
+		'a filter as a Clark name of XSD → the record the file wrote q:integer': {
+			sourceXml,
+			attributes: { aEE_1: '{http://www.w3.org/2001/XMLSchema}integer' },
+			expectedCount: 1,
+		},
+		'a filter as a foreign Clark name → the record the file wrote f:Thing': {
+			sourceXml,
+			attributes: { aEE_1: '{urn:f}Thing' },
+			expectedCount: 1,
+		},
+		'a filter with a prefix outside the engine table → no record': {
+			sourceXml,
+			attributes: { aEE_1: 'f:Thing' },
+			expectedCount: 0,
+		},
+	}
+
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const result = await source.query.findByAttributes({
+			tagName: 'EE_1',
+			attributes: testCase.attributes,
+		})
+		expect(result).toHaveLength(testCase.expectedCount)
+	}
+
+	runTestCases.withoutExport({ testCases, act })
+})
+
 // ---------------------------------------------------------------------------
 // matchesAttributeFilter — pure sync, no DB
 // ---------------------------------------------------------------------------

@@ -2,8 +2,10 @@ import { assertNotNamespaceDeclaration } from './assert-not-namespace-declaratio
 import { toFullAttributeArray } from './converter'
 
 import { isNamespaceAllowedByWildcard, orderAttributesBySequence } from '@/utils'
+import { withCanonicalQNameValues } from '@/utils/qname-definition'
+import { storedNamespaceLookup } from '@/utils/qname-value'
 import { resolveDefinition } from '@/utils/resolve-definition'
-import { storedNamespaceLookup, withCanonicalXsiType } from '@/utils/xsi-type'
+import { withCanonicalXsiType } from '@/utils/xsi-type'
 
 import type {
 	AnyDialecteConfig,
@@ -14,6 +16,7 @@ import type {
 	AttributesValueObjectOf,
 	TransactionHooks,
 } from '@/types'
+import type { NamespaceLookup } from '@/utils/xsi-type'
 
 /**
  * The raw record core stores for an element input. A record of a tag the dialecte does not declare, or in a
@@ -22,6 +25,9 @@ import type {
  * and order, its namespace resolved, then the `afterStandardizedRecord` hook applied; for it, an unqualified
  * attribute the schema does not declare is dropped (unless its attribute wildcard admits no-namespace attributes),
  * and so is a schema attribute without a value (an empty one is kept only where a `default` or `fixed` is declared).
+ * xsi:type and every QName-typed value (attribute or text) are stored in the engine table's form; a QName-typed
+ * value is read with `namespaceOf`: the element's in-scope bindings on import, the engine table (the default) on a
+ * write. A value already in stored form is read once only: never again with a document's bindings.
  *
  * @internal record normalization of every record core stores (import, create, clone, update)
  */
@@ -31,6 +37,8 @@ export function standardizeRecord<
 >(params: {
 	dialecteConfig: GenericConfig
 	hooks?: TransactionHooks<GenericConfig>
+	/** The namespaces in scope where a parsed element stands; absent, the engine table (`storedNamespaceLookup`). */
+	namespaceOf?: NamespaceLookup
 	record: {
 		tagName: GenericElement
 		attributes?:
@@ -43,6 +51,7 @@ export function standardizeRecord<
 
 	const recordId = id ?? crypto.randomUUID()
 
+	// xsi:type read as stored: a parsed element's was resolved with its in-scope bindings when its tag opened
 	const attributesArray = canonicalXsiTypeOf({
 		dialecteConfig,
 		attributes: attributes ? toFullAttributeArray({ tagName, attributes, dialecteConfig }) : [],
@@ -144,6 +153,15 @@ export function standardizeRecord<
 		namespace: readNamespace ?? namespace ?? declaredNamespaces[0],
 		attributes: orderAttributesBySequence(canonicalAttributes, standardAttributeNames),
 	}
+	standardizedRecord = withCanonicalQNameValues({
+		dialecteConfig,
+		record: standardizedRecord,
+		namespaceOf: function namespacesInScope() {
+			return params.namespaceOf ?? storedNamespaceLookup({ dialecteConfig })
+		},
+		// the import's values are the file's: read lexically, with its bindings
+		lexicalOnly: params.namespaceOf !== undefined,
+	})
 
 	if (hooks?.afterStandardizedRecord) {
 		standardizedRecord = hooks.afterStandardizedRecord({
@@ -156,13 +174,22 @@ export function standardizeRecord<
 		for (const attribute of standardizedRecord.attributes) {
 			assertNotNamespaceDeclaration({ attribute, tagName })
 		}
-		standardizedRecord = {
-			...standardizedRecord,
-			attributes: orderAttributesBySequence(
-				canonicalXsiTypeOf({ dialecteConfig, attributes: standardizedRecord.attributes }),
-				standardAttributeNames,
-			),
-		}
+		// and QName values: a hook authors them as a write does, read with the engine table, typed by the definition
+		// that applies once the hook ran (it may name another type with xsi:type)
+		standardizedRecord = withCanonicalQNameValues({
+			dialecteConfig,
+			record: {
+				...standardizedRecord,
+				attributes: orderAttributesBySequence(
+					canonicalXsiTypeOf({ dialecteConfig, attributes: standardizedRecord.attributes }),
+					standardAttributeNames,
+				),
+			},
+			namespaceOf: function engineTable() {
+				return storedNamespaceLookup({ dialecteConfig })
+			},
+			lexicalOnly: false,
+		})
 	}
 
 	return standardizedRecord

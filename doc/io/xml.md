@@ -44,7 +44,7 @@ const { documentId, recordCount, diagnostics } = await parseXmlFile({
 
 A second argument, `{ onProgress, signal }`, is told the progress (never awaited): after each stored batch (`{ phase: 'storing', bytesRead, totalBytes }`), then `processing` (`step: 'start'`, then each step the session's `afterImport` reports), `checking` and `applying` (`done` / `total`); the signal aborts before the next batch, between the session's steps, before its checks and before its writes (`IMPORT_ABORTED`). `finishing` is told by `runImport`, which makes the document ready.
 
-A text value is read on XML whitespace only - space, tab, carriage return, line feed: each run of text between two tags, comments or other markup is trimmed of it and each inner run of it becomes one space, then the runs are joined (`x <!-- c --> y` reads `xy`). Every other character is kept as written: a no-break space (also written `&#160;`), a byte order mark, U+2028. CDATA is kept as written. An attribute value is read as written, but `xsi:type`: a type name, trimmed of XML whitespace and stored in its canonical form (a no-break space at its ends is part of the name).
+A text value is read on XML whitespace only - space, tab, carriage return, line feed: each run of text between two tags, comments or other markup is trimmed of it and each inner run of it becomes one space, then the runs are joined (`x <!-- c --> y` reads `xy`). Every other character is kept as written: a no-break space (also written `&#160;`), a byte order mark, U+2028. CDATA is kept as written. An attribute value is read as written, but `xsi:type` and a QName-typed value: a qualified name, trimmed of XML whitespace (a list collapsed) and stored in its canonical form (a no-break space at its ends is part of the name).
 
 **Throws** `PARSE_ERROR` on a malformed file - its `detail` names what the parser saw (a tag not closed, text outside the root, a second root element); `meta.reason` is `'malformed-xml'` (with `meta.parser`, the parser's words), `'second-root'` (with `meta.tagName`) or `'not-xml-character'`: a text value, CDATA or an attribute value holds a character XML does not allow - a control character below U+0020 but tab, line feed and carriage return, U+FFFE, U+FFFF -, as written or as a character reference (`&#11;`), with `meta.character` (`U+000B`) and the element and attribute named in `detail`. A record a hook (`afterStandardizedRecord`, `beforeImportRecord`) gave such a character in its value, an attribute value or a namespace URI fails the same way (the file's names sax reads as XML names; a name a hook writes is refused by the export, with `XML_CHARACTER_NOT_ALLOWED`); the session's own writes (`afterImport`) are refused with `XML_CHARACTER_NOT_ALLOWED`. The records stored before the error are the caller's to remove: [`runImport`](/io/#import-inside-the-store) (and so every store's `importFile`, `project.importFile` and `project.import`) does it.
 
@@ -71,16 +71,28 @@ Import and export use one consistent namespace form (the same records serialize 
   one of these forms is accepted; another prefix, or a malformed Clark name, is refused with
   `UNKNOWN_NAMESPACE_PREFIX`. `deepClone` copies the stored values as they are (on an element the dialecte declares,
   its type is still judged).
+- **QName and NOTATION values** — an attribute or a text the definition types `xs:QName` or `NOTATION` (a type derived
+  from one included), a list of one, or a union whose value its QName member reads, is stored in the `xsi:type` form,
+  resolved with the bindings in scope where it stands in the file: `f:Thing` under `xmlns:f="urn:f"` is stored
+  `{urn:f}Thing`, a list item by item. A union's value is read by its first member whose lexical space admits it, as
+  XSD reads it: `12` of an `integer | QName` union stays `12`, `f:Kind` becomes `{urn:f}Kind`, and `f:Kind` of a
+  `string | QName` union stays a string. A value no binding resolves is kept as written. Writes store and refuse such
+  values as they do `xsi:type`; a filter of `findByAttributes` on such an attribute is read the same way, so
+  `{ base: 'xs:integer' }` and `{ base: '{http://www.w3.org/2001/XMLSchema}integer' }` find the same record.
 
-Export declares every namespace the written records use (element names, attribute names, `xsi:type` values) on the
+Export declares every namespace the written records use (element names, attribute names, `xsi:type` and QName values) on the
 written root - the document's root, or a fragment's start element - and nowhere below it, in a fixed order: `xmlns`,
 `xmlns:xsi`, the dialecte's namespaces in its config order, then the others by URI; the root's own attributes follow.
 Each URI gets one prefix: the dialecte's own for its namespaces, `xs` for XSD, otherwise the prefix the first record
-using it was stored with, `ns1`, `ns2`... for a namespace known only from an `xsi:type` value or from an unprefixed
+using it was stored with, `ns1`, `ns2`... for a namespace known only from an `xsi:type` or QName value or from an unprefixed
 subtree default; a prefix already taken by another URI is renamed `<prefix>2`, `<prefix>3`... The dialecte's default
 namespace may also take one alias on the root, for what cannot be written unprefixed in it: an attribute of that
-namespace (an unprefixed attribute is in no namespace), or an `xsi:type` value on an element where another default is
-in force. The alias is the first such attribute's stored prefix when it is free, so its stored name survives an export
+namespace (an unprefixed attribute is in no namespace), an `xsi:type` or QName value on an element where another
+default is in force, or a NOTATION value of the default namespace (written prefixed: libxml2 reads an unprefixed
+NOTATION in no namespace). A qualified name in no namespace (`{}Kind`) is written unprefixed where no default is in
+force: its element declares `xmlns=""` and takes the alias, or, on the written root, the root takes the alias and binds
+no default. A written root outside the dialecte's default namespace (a fragment of another namespace) binds no default
+either: each default-namespace element below it declares `xmlns` on itself. The alias is the first such attribute's stored prefix when it is free, so its stored name survives an export
 and a re-import, else `ns<k>`. A declaration the file had and no record uses is not exported. The only declarations
 below the written root are the default namespace's: `xmlns=""` on an element in no namespace under a default, and
 `xmlns="<default>"` on a default-namespace element under one in no namespace (a default has no prefix).

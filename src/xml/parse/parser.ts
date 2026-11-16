@@ -25,6 +25,7 @@ import type {
 	ImportSession,
 	TransactionHooks,
 } from '@/types'
+import type { NamespaceLookup } from '@/utils/qname-value.types'
 
 //====== PUBLIC FUNCTIONS ======//
 
@@ -56,13 +57,16 @@ export function setSaxParser(params: {
 		sawRoot: false,
 	}
 
+	// beside each open record of the stack, the namespaces in scope where it stands: its QName values are read with them
+	const scopes: NamespaceLookup[] = []
+
 	const parser = sax.parser(true /* strict mode */, SAX_PARSER_OPTIONS)
 
 	// The records the session asks for, when it names them: the others pass it by.
 	const sessionTags = importSession?.recordTagNames && new Set(importSession.recordTagNames)
 
 	parser.onopentag = (node: sax.QualifiedTag) => {
-		handleOpenTag({ node, state, dialecteConfig, useCustomRecordsIds })
+		scopes.push(handleOpenTag({ node, state, dialecteConfig, useCustomRecordsIds }))
 	}
 
 	parser.ontext = (text: string) => {
@@ -76,6 +80,7 @@ export function setSaxParser(params: {
 	parser.onclosetag = () => {
 		handleCloseTag({
 			state,
+			namespaceOf: scopes.pop(),
 			hooks,
 			importSession,
 			sessionTags,
@@ -111,14 +116,14 @@ export function setSaxParser(params: {
  * @param node sax element
  * @param state Current tracker state
  * @param namespaces Namespace configuration from dialecte
- * @returns Updated tracker state
+ * @returns The namespaces in scope where the opened element stands, read when it closes
  */
 function handleOpenTag(params: {
 	node: sax.QualifiedTag
 	state: ParserState
 	dialecteConfig: AnyDialecteConfig
 	useCustomRecordsIds: boolean
-}): void {
+}): NamespaceLookup {
 	const { node, state, dialecteConfig, useCustomRecordsIds } = params
 
 	const tagName = getElementLocalName(node)
@@ -151,11 +156,15 @@ function handleOpenTag(params: {
 
 	assertDeclaredNamespacesCharacters({ attributes: node.attributes, tagName })
 
-	// the xsi:type value read with the namespaces in scope here (an ancestor's bindings too), stored canonical
+	// the namespaces in scope here (an ancestor's bindings too): the xsi:type value is read with them now, stored
+	// canonical; the QName-typed values when the record closes, its text known
+	function namespaceOf(prefix: string): string | undefined {
+		return namespaceInScope({ node, prefix, documentDefault })
+	}
 	const attributes = withCanonicalXsiType({
 		dialecteConfig,
 		attributes: getElementAttributes(filteredAttributes),
-		namespaceOf: (prefix) => namespaceInScope({ node, prefix, documentDefault }),
+		namespaceOf,
 	})
 	const parent = getParent(state.stack)
 
@@ -170,6 +179,7 @@ function handleOpenTag(params: {
 	}
 
 	state.stack.push(record)
+	return namespaceOf
 }
 
 /**
@@ -229,6 +239,8 @@ function throwNotXmlCharacter(params: { character: string; where: string }): nev
  */
 function handleCloseTag(params: {
 	state: ParserState
+	/** The namespaces in scope where the closing record stands: its QName values are read with them */
+	namespaceOf: NamespaceLookup | undefined
 	pendingChildren: PendingChildrenOfParse
 	hooks?: TransactionHooks<AnyDialecteConfig>
 	importSession?: ImportSession
@@ -238,6 +250,7 @@ function handleCloseTag(params: {
 }): void {
 	const {
 		state,
+		namespaceOf,
 		hooks,
 		importSession,
 		sessionTags,
@@ -264,6 +277,7 @@ function handleCloseTag(params: {
 		standardizeRecord({
 			dialecteConfig,
 			hooks,
+			namespaceOf,
 			record: rawRecord,
 		}),
 	)

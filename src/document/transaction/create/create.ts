@@ -4,6 +4,7 @@ import { getRecord } from '@/document'
 import { assertNoFixedViolation, assertXsiTypeAdmitted, standardizeRecord } from '@/helpers'
 import { readAttributeInput } from '@/helpers/attribute-input'
 import { invariant } from '@/utils'
+import { assertQNameValuesReadable } from '@/utils/qname-definition'
 import { assertXsiTypePrefixKnown } from '@/utils/xsi-type'
 
 import type { AddChildParams, ChildAttributesOf } from './create.types'
@@ -115,9 +116,9 @@ export async function stageAddChild<
 }
 
 /**
- * The write-path guards of a new child: no authored value violates a schema `fixed`; an authored xsi:type prefix is
- * one the engine table binds (a copied value stays as stored, even one import kept as written); an abstract type is
- * named, and only a type the element may take.
+ * The write-path guards of a new child: no authored value violates a schema `fixed`; an authored xsi:type or
+ * QName-typed value names a prefix the engine table binds (a copied value stays as stored, even one import kept as
+ * written); an abstract type is named, and only a type the element may take.
  */
 function assertChildRecordWritable(params: {
 	dialecteConfig: AnyDialecteConfig
@@ -126,7 +127,10 @@ function assertChildRecordWritable(params: {
 }): void {
 	const { dialecteConfig, record, copiesStoredValues } = params
 	assertNoFixedViolation({ dialecteConfig, record, attributes: record.attributes })
-	if (!copiesStoredValues) assertXsiTypePrefixKnown({ dialecteConfig, record })
+	if (!copiesStoredValues) {
+		assertXsiTypePrefixKnown({ dialecteConfig, record })
+		assertQNameValuesReadable({ dialecteConfig, record })
+	}
 	assertXsiTypeAdmitted({ dialecteConfig, record })
 }
 

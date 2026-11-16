@@ -24,9 +24,9 @@ export class ValidateQuery<GenericConfig extends AnyDialecteConfig> {
 	/**
 	 * Whether a value may be written to an attribute (or, without `attribute`, the text) of a child, as the child
 	 * is declared under `parent` - before it exists. Reads the parent once, nothing else: every prefix resolves
-	 * through the dialecte's namespaces (`xs` for XSD, `xml:` always bound; an xsi:type Clark name `{uri}local` as
-	 * itself), as the write path reads it. `attribute` takes the write path's two forms: a value-object key or
-	 * `{ name, namespace }`. A QName value whose prefix the dialecte does not declare is not judged yet (`undefined`).
+	 * through the dialecte's namespaces (`xs` for XSD, `xml:` always bound; a Clark name `{uri}local` as itself), as
+	 * the write path reads it: a QName value whose prefix the dialecte does not declare is refused (`datatype`).
+	 * `attribute` takes the write path's two forms: a value-object key or `{ name, namespace }`.
 	 *
 	 * @returns The `ValueIssue` that refuses the value, or `undefined` when it is admitted or not typed.
 	 * @throws `ELEMENT_NOT_FOUND` when the parent is not found, `INVALID_PARENT_CHILD` when it cannot hold the

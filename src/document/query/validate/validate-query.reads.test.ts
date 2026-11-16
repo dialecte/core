@@ -91,10 +91,6 @@ describe('query.validate.value - one read: the parent', () => {
 		dev: { perf: true },
 		testCases: {
 			'a QName with a config prefix → 1 read': { sourceXml, check: check({ value: 'ext:x' }) },
-			'a QName whose prefix the dialecte does not declare → 1 read': {
-				sourceXml,
-				check: check({ value: 'g:x' }),
-			},
 			'an xsi:type value with xs from the engine table → 1 read': {
 				sourceXml: SOURCE_XML,
 				check: async (document) => {

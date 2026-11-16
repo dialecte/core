@@ -4,6 +4,7 @@ import { standardizeRecord } from './standardizing'
 import { describe, expect, it } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { XSD_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
 import {
 	DIALECTE_TEST_NAMESPACES,
 	TEST_DIALECTE_CONFIG,
@@ -18,6 +19,7 @@ import type { AnyDialecteConfig, ElementsOf, FullAttributeObjectOf, RawRecord } 
 
 const ns = DIALECTE_TEST_NAMESPACES
 const config = TEST_DIALECTE_CONFIG
+const VARIANT_TYPE = '{http://dialecte.dev/XML/DEFAULT}tDD_2A'
 
 // ── Attributes handling ───────────────────────────────────────────────────────
 
@@ -483,6 +485,51 @@ describe('standardizeRecord', () => {
 
 	// ── Hook integration ──────────────────────────────────────────────────────
 	describe('afterStandardizedRecord hook', () => {
+		it('stores a QName value the hook writes in the form of the type the hook names (xsi:type set by the hook)', () => {
+			const variantType = config.types[VARIANT_TYPE]
+			// tDD_2A with one more attribute, gDD_2 typed xs:QName: declared by the variant only
+			const variantQNameConfig = {
+				...config,
+				types: {
+					...config.types,
+					[VARIANT_TYPE]: {
+						...variantType,
+						attributes: {
+							...variantType.attributes,
+							sequence: [...variantType.attributes.sequence, 'gDD_2'],
+							details: {
+								...variantType.attributes.details,
+								gDD_2: { type: { builtin: 'QName' as const } },
+							},
+						},
+					},
+				},
+			}
+			const hooks = {
+				afterStandardizedRecord: <C extends AnyDialecteConfig, E extends ElementsOf<C>>({
+					record,
+				}: {
+					record: RawRecord<C, E>
+				}): RawRecord<C, E> => ({
+					...record,
+					attributes: [
+						...record.attributes,
+						{ name: 'xsi:type', value: 'tDD_2A', namespace: XSI_NAMESPACE },
+						{ name: 'gDD_2', value: `{${XSD_NAMESPACE_URI}}integer` },
+					] as RawRecord<C, E>['attributes'],
+				}),
+			}
+
+			const result = standardizeRecord({
+				record: { tagName: 'DD_2', attributes: { aDD_2: 'p' }, parent: { tagName: 'D', id: 'd' } },
+				dialecteConfig: variantQNameConfig as unknown as typeof config,
+				hooks,
+			})
+
+			const stored = result.attributes.find((attribute) => attribute.name === 'gDD_2')?.value
+			expect(stored).toBe('xs:integer')
+		})
+
 		it('calls the hook and applies the returned record', () => {
 			let hookCalled = false
 

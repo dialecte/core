@@ -105,7 +105,8 @@ export type SimpleValue = AtomicValue | ListValue
 
 /**
  * What reading a lexical form against a built-in gives: its value, or nothing when the built-in refuses it. A
- * `schemaLiteral` is a facet value as the definition writes it (a qualified name as its Clark name).
+ * With `clarkNames`, a qualified name may also be its Clark name `{uri}local`: a facet value as the definition writes
+ * it, a value in the form core stores (`{}local` in no namespace).
  */
 export type ParseAtomic = (params: ParseAtomicParams) => AtomicValue | undefined
 
@@ -113,7 +114,7 @@ export type ParseAtomic = (params: ParseAtomicParams) => AtomicValue | undefined
 export type ParseAtomicParams = {
 	lexical: string
 	namespaces: NamespaceLookup
-	schemaLiteral: boolean
+	clarkNames: boolean
 }
 
 /** What checking a value against a datatype gives: why it is refused, or its normalized form and its value. */

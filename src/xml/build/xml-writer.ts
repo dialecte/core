@@ -1,4 +1,4 @@
-import { createRecordElement } from './record-element'
+import { createRecordElement, writtenRootUri } from './record-element'
 import { emptyNamespaceTable, requiredRootAttributes, rootDeclarations } from './root-namespaces'
 import {
 	escapeCompactTextValue,
@@ -61,6 +61,7 @@ export function createXmlWriter(params: XmlWriterParams): XmlWriter {
 		const { opened, startTag, text } = openRecord({
 			element: created.element,
 			record,
+			value: created.text,
 			parent,
 			rootScope,
 			prefixes,
@@ -113,7 +114,10 @@ function elementOf(params: {
 	const table =
 		parent && params.table
 			? params.table
-			: emptyNamespaceTable({ config: settings.config, rootUri: record.namespace.uri })
+			: emptyNamespaceTable({
+					config: settings.config,
+					rootUri: writtenRootUri({ settings, record }),
+				})
 	return createRecordElement({ settings, table, record, parent: parent?.element })
 }
 
@@ -124,14 +128,16 @@ function elementOf(params: {
 function openRecord(params: {
 	element: XmlElement
 	record: AnyRawRecord
+	/** The record's text as written (a QName-typed text with its prefixes). */
+	value: string
 	parent: OpenElement | undefined
 	rootScope: NamespaceScope
 	prefixes: GeneratedPrefixes
 	indent: boolean
 }): OpenedRecord {
-	const { element, record, parent, rootScope, prefixes, indent } = params
+	const { element, record, value, parent, rootScope, prefixes, indent } = params
 	// trimmed of XML whitespace only: a no-break space or a byte order mark is text
-	const text = record.value ? trimXmlWhitespace({ text: record.value }) : ''
+	const text = value ? trimXmlWhitespace({ text: value }) : ''
 	const startTag = parent
 		? serializeStartTag({ element, scope: parent.scope, prefixes })
 		: undefined

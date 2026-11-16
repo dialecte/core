@@ -9,7 +9,8 @@ export * from './required-choices'
 export { saveToDisk } from './save-to-disk'
 export * from './resolve-definition'
 export { canonicalXsiType, resolveXsiType } from './xsi-type'
-export type { NamespaceLookup, XsiTypeName } from './xsi-type'
+export type { XsiTypeName } from './xsi-type'
+export type { NamespaceLookup } from './qname-value'
 export { validateValue } from '@/validation/value/validate-value'
 export type {
 	ValidateValueParams,

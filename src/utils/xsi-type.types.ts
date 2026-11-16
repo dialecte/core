@@ -1,7 +1,7 @@
-import type { AnyDialecteConfig, Namespace } from '@/types'
+import type { QualifiedName } from './qname-value.types'
+import type { Namespace } from '@/types'
 
-/** What the readers need of a dialecte config: its namespaces. */
-export type NamespacesConfig = Pick<AnyDialecteConfig, 'namespaces'>
+export type { NamespaceLookup, NamespacesConfig } from './qname-value.types'
 
 /** An attribute as the readers see it, parsed or created. */
 export type AttributeLike = {
@@ -10,13 +10,5 @@ export type AttributeLike = {
 	readonly namespace?: Namespace
 }
 
-/** The namespace uri a prefix names (`''` for the default namespace); `undefined` when it is bound nowhere. */
-export type NamespaceLookup = (prefix: string) => string | undefined
-
 /** A type an element names with xsi:type: its Clark name (`{uri}local`, bare `local` in no namespace), parts. */
-export type XsiTypeName = {
-	readonly clark: string
-	/** `''` for no namespace. */
-	readonly namespace: string
-	readonly local: string
-}
+export type XsiTypeName = QualifiedName

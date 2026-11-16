@@ -1,4 +1,5 @@
-import { canonicalXsiType, storedNamespaceLookup, resolveXsiType } from './xsi-type'
+import { storedNamespaceLookup } from './qname-value'
+import { canonicalXsiType, resolveXsiType } from './xsi-type'
 
 import { describe, expect, it } from 'vitest'
 

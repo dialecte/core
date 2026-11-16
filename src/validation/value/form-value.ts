@@ -1,17 +1,14 @@
-import { ATOMIC_BUILTINS } from './builtins.constants'
-import { isQName } from './names'
-import { parseQualifiedName } from './qualified-name'
-import { validateValue } from './validate-value'
+import { checkValue } from './validate-value'
 import { UNJUDGED, XSI_TYPE_ATTRIBUTE } from './validate-value.constants'
 import { normalizeWhiteSpace } from './whitespace'
 
 import { throwDialecteError } from '@/errors'
 import { readAttributeInput } from '@/helpers/attribute-input'
 import { XSD_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
-import { xmlNamespaceOf } from '@/helpers/xml-namespace'
 import { isNamespaceAllowedByWildcard } from '@/utils/namespaces'
+import { storedNamespaceLookup } from '@/utils/qname-value'
+import { qualifiedNameOf } from '@/utils/qualified-name'
 import { admittedXsiTypes, isXsiTypeAdmitted, resolveDefinition } from '@/utils/resolve-definition'
-import { storedNamespaceLookup, xsiTypeNameOf } from '@/utils/xsi-type'
 
 import type {
 	FormValueAttribute,
@@ -21,8 +18,8 @@ import type {
 	ValueIssue,
 } from './validate-value.types'
 import type { DataType, DeclarationDefinition, ResolvedDefinition } from '@/types'
+import type { QualifiedName } from '@/utils/qname-value.types'
 import type { DefinitionConfig, ResolvableRecord } from '@/utils/resolve-definition.types'
-import type { NamespaceLookup, XsiTypeName } from '@/utils/xsi-type.types'
 
 /**
  * What a value written to an attribute (or, without one, the text) of a child under a parent is judged as, the child
@@ -69,10 +66,11 @@ export function formValueTarget(params: FormValueParams): FormValueTarget {
 }
 
 /**
- * Whether a value may be written where its target says (`formValueTarget`). A QName resolves through the engine table
- * (`xml:` always bound); a Clark name `{uri}local` is no QName value (`datatype`), and a QName whose prefix the
- * dialecte does not declare is not judged yet (`undefined`). `xsi:type` must name a type the declaration admits (`isXsiTypeAdmitted`, the write path's rule),
- * read as a write reads it. An unjudged target admits any value (`undefined`).
+ * Whether a value may be written where its target says (`formValueTarget`), read as a write reads it. A qualified name
+ * resolves through the engine table (`storedNamespaceLookup`, `xml:` always bound) or is its Clark name `{uri}local`
+ * (`{}local` in no namespace); a prefix the dialecte does not declare refuses it (`datatype`), as the write does. A
+ * union's value is judged by its first admitting member. `xsi:type` must name a type the declaration admits
+ * (`isXsiTypeAdmitted`, the write path's rule). An unjudged target admits any value (`undefined`).
  */
 export function validateFormValue(params: {
 	dialecteConfig: DefinitionConfig
@@ -89,10 +87,8 @@ export function validateFormValue(params: {
 			value,
 		})
 	if (target.kind !== 'datatype') return undefined
-	const namespaces = valueNamespaces({ dialecteConfig })
-	if (readsQualifiedNames(target.type) && namesUndeclaredPrefix({ value, namespaces }))
-		return undefined
-	return validateValue({ value, type: target.type, namespaces })
+	const namespaces = storedNamespaceLookup({ dialecteConfig })
+	return checkValue({ value, type: target.type, namespaces, clarkNames: true }).issue
 }
 
 /** The child as declared under the parent (refused when the parent cannot hold it), and its definition there. */
@@ -142,13 +138,6 @@ function typedOrUnjudged(type: DataType | undefined): FormValueTarget {
 	return type === undefined ? UNJUDGED : { kind: 'datatype', type }
 }
 
-/** Whether a datatype reads a qualified name: a built-in parsed as one, or a list or union holding one. */
-function readsQualifiedNames(type: DataType): boolean {
-	if ('list' in type) return readsQualifiedNames(type.list)
-	if ('union' in type) return type.union.some(readsQualifiedNames)
-	return ATOMIC_BUILTINS[type.builtin]?.parse === parseQualifiedName
-}
-
 /** Refuse a child the parent's declaration cannot hold (a wildcard holds any). */
 function assertHeld(params: {
 	parent: FormValueParent
@@ -189,14 +178,14 @@ function xsiTypeIssue(params: {
 
 /**
  * The one reader of an `xsi:type` value, the value written and the `xsiType` param alike: the write path's
- * (`xsiTypeNameOf` over the engine table, a Clark name read as itself). `undefined` for a prefix bound nowhere.
+ * (`qualifiedNameOf` over the engine table, a Clark name read as itself). `undefined` for a prefix bound nowhere.
  */
 function readXsiType(params: {
 	dialecteConfig: DefinitionConfig
 	value: string
-}): XsiTypeName | undefined {
+}): QualifiedName | undefined {
 	const { dialecteConfig, value } = params
-	return xsiTypeNameOf({ value, namespaceOf: storedNamespaceLookup({ dialecteConfig }) })
+	return qualifiedNameOf({ value, namespaceOf: storedNamespaceLookup({ dialecteConfig }) })
 }
 
 /** A value refused as a QName: its prefix is bound nowhere. */
@@ -206,29 +195,6 @@ function qualifiedNameIssue(value: string): ValueIssue {
 		actual: normalizeWhiteSpace({ value, whiteSpace: 'collapse' }),
 		expected: 'QName',
 	}
-}
-
-/** How a QName value's prefixes resolve: the engine table (`storedNamespaceLookup`), `xml` always bound. */
-function valueNamespaces(params: { dialecteConfig: DefinitionConfig }): NamespaceLookup {
-	const table = storedNamespaceLookup(params)
-	return function namespaceOf(prefix) {
-		return xmlNamespaceOf(prefix)?.uri ?? table(prefix)
-	}
-}
-
-/**
- * Whether a value is made of lexical QNames, one of them with a prefix `namespaces` does not bind: a QName left
- * unjudged. A value with a name that is no QName (`a:b:c`, `1a:x`, a Clark name) is judged, whatever its prefixes.
- */
-function namesUndeclaredPrefix(params: { value: string; namespaces: NamespaceLookup }): boolean {
-	const { value, namespaces } = params
-	const collapsed = normalizeWhiteSpace({ value, whiteSpace: 'collapse' })
-	const names = collapsed === '' ? [] : collapsed.split(' ')
-	if (!names.every(isQName)) return false
-	return names.some((name) => {
-		const colon = name.indexOf(':')
-		return colon !== -1 && namespaces(name.slice(0, colon)) === undefined
-	})
 }
 
 /**

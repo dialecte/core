@@ -26,7 +26,7 @@ export function validateValue(params: ValidateValueParams): ValueIssue | undefin
 		value,
 		type,
 		namespaces: params.namespaces ?? noNamespaces,
-		schemaLiteral: false,
+		clarkNames: false,
 	}).issue
 }
 
@@ -35,7 +35,7 @@ export function checkValue(params: {
 	value: string
 	type: DataType
 	namespaces: NamespaceLookup
-	schemaLiteral: boolean
+	clarkNames: boolean
 }): CheckedValue {
 	const { type } = params
 	if ('list' in type) return checkList({ ...params, type })
@@ -62,9 +62,9 @@ function checkAtomic(params: {
 	value: string
 	type: Extract<DataType, { builtin: string }>
 	namespaces: NamespaceLookup
-	schemaLiteral: boolean
+	clarkNames: boolean
 }): CheckedValue {
-	const { value, type, namespaces, schemaLiteral } = params
+	const { value, type, namespaces, clarkNames } = params
 	const builtin = ATOMIC_BUILTINS[type.builtin]
 	const whiteSpace = effectiveWhiteSpace({
 		builtin: builtin?.whiteSpace ?? 'preserve',
@@ -74,7 +74,7 @@ function checkAtomic(params: {
 	const parsed =
 		builtin === undefined
 			? { kind: 'string' as const, value: actual }
-			: builtin.parse({ lexical: actual, namespaces, schemaLiteral })
+			: builtin.parse({ lexical: actual, namespaces, clarkNames })
 	if (parsed === undefined) return { issue: { reason: 'datatype', actual, expected: type.builtin } }
 	const issue = facetIssue({ actual, value: parsed, type, literalValue: literalReader(type) })
 	return issue === undefined ? { actual, value: parsed } : { issue }
@@ -85,12 +85,12 @@ function checkList(params: {
 	value: string
 	type: Extract<DataType, { list: DataType }>
 	namespaces: NamespaceLookup
-	schemaLiteral: boolean
+	clarkNames: boolean
 }): CheckedValue {
-	const { value, type, namespaces, schemaLiteral } = params
+	const { value, type, namespaces, clarkNames } = params
 	const actual = normalizeWhiteSpace({ value, whiteSpace: 'collapse' })
 	const checkedItems = (actual === '' ? [] : actual.split(' ')).map((item) =>
-		checkValue({ value: item, type: type.list, namespaces, schemaLiteral }),
+		checkValue({ value: item, type: type.list, namespaces, clarkNames }),
 	)
 	const refused = checkedItems.find((checked) => checked.issue !== undefined)
 	if (refused !== undefined) return refused
@@ -109,17 +109,41 @@ function checkUnion(params: {
 	value: string
 	type: Extract<DataType, { union: readonly DataType[] }>
 	namespaces: NamespaceLookup
-	schemaLiteral: boolean
+	clarkNames: boolean
 }): CheckedValue {
-	const { value, type, namespaces, schemaLiteral } = params
+	const { value, type, namespaces, clarkNames } = params
 	for (const member of type.union) {
-		const checked = checkValue({ value, type: member, namespaces, schemaLiteral })
+		const checked = checkValue({ value, type: member, namespaces, clarkNames })
 		if (checked.issue !== undefined) continue
 		const issue = facetIssue({ ...checked, type, literalValue: literalReader(type) })
 		return issue === undefined ? checked : { issue }
 	}
 	const actual = normalizeWhiteSpace({ value, whiteSpace: 'collapse' })
 	return { issue: { reason: 'datatype', actual, expected: type.union.map(describeType) } }
+}
+
+/**
+ * The member of a union that reads a value: the first whose lexical space and facets admit it, a member union opened
+ * to its own member. A qualified name is read with `namespaces`, or, with `clarkNames`, as its Clark name.
+ * `undefined` when no member admits the value.
+ *
+ * @internal how core reads a union value it stores (import, writes, export, filters)
+ */
+export function unionMemberOf(params: {
+	value: string
+	type: Extract<DataType, { union: readonly DataType[] }>
+	namespaces: NamespaceLookup
+	/** A qualified name may be its Clark name: a value in the form core stores; a file's value is lexical only. */
+	clarkNames: boolean
+}): Exclude<DataType, { union: readonly DataType[] }> | undefined {
+	const { value, type, namespaces, clarkNames } = params
+	for (const member of type.union) {
+		if (checkValue({ value, type: member, namespaces, clarkNames }).issue !== undefined) continue
+		return 'union' in member
+			? unionMemberOf({ value, type: member, namespaces, clarkNames })
+			: member
+	}
+	return undefined
 }
 
 /** A datatype as an issue names it: its built-in, `list of …`, or its members joined with `|`. */
@@ -142,7 +166,7 @@ function literalReader(type: DataType): (literal: string) => SimpleValue | undef
 				value: literal,
 				type: withoutOwnFacets(type),
 				namespaces: noNamespaces,
-				schemaLiteral: true,
+				clarkNames: true,
 			})
 			read.set(literal, checked.issue === undefined ? checked.value : undefined)
 		}

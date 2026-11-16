@@ -9,8 +9,9 @@ export type RecordElementSettings = {
 	withDatabaseIds: boolean
 }
 
-/** The element a record is written as, and the namespace table grown by the namespaces it uses. */
+/** The element a record is written as, the namespace table grown by the namespaces it uses, its text as written. */
 export type RecordElement = {
 	element: XmlElement
 	table: NamespaceTable
+	text: string
 }

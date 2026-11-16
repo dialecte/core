@@ -837,12 +837,12 @@
 			"entry": "@dialecte/core/utils",
 			"otherRoutes": [],
 			"signature": "(params: { dialecteConfig: NamespacesConfig; value: string; namespaceOf: NamespaceLookup; }) => string",
-			"summary": "The form core stores an xsi:type value in, one string whose prefixes come from the engine table only: the local name for a type in the dialecte's default namespace, `prefix:local` for a namespace the dialecte declares, `xs:local` for XSD (unless the dialecte declares the prefix `xs` itself), `{}local` for no namespace when the default is not empty, and a Clark name `{uri}local` for any other namespace. A value whose prefix is bound nowhere is kept as written. The value keeps what XML says it means: only the prefix it is written with changes.",
+			"summary": "The form core stores an xsi:type value in: the local name for a type in the dialecte's default namespace, `prefix:local` for a namespace the dialecte declares, `xml:local` for the XML namespace, `xs:local` for XSD (unless the dialecte declares the prefix `xs` itself), `{}local` for no namespace when the default is not empty, and a Clark name `{uri}local` for any other namespace. A value whose prefix is bound nowhere is kept as written.",
 			"intents": [
 				"write an xsi:type value the way core stores it",
 				"compare xsi:type values written with different prefixes"
 			],
-			"declaredAt": "src/utils/xsi-type.ts:75"
+			"declaredAt": "src/utils/xsi-type.ts:47"
 		},
 		{
 			"path": "@dialecte/core/utils.childOccurrences",
@@ -1102,7 +1102,7 @@
 				"read the type an element names with xsi:type",
 				"resolve an xsi:type prefix to its namespace"
 			],
-			"declaredAt": "src/utils/xsi-type.ts:55"
+			"declaredAt": "src/utils/xsi-type.ts:28"
 		},
 		{
 			"path": "@dialecte/core/utils.saveToDisk",
@@ -1480,7 +1480,7 @@
 			"root": "q",
 			"otherRoutes": [],
 			"signature": "<GenericParent extends ElementsOf<GenericConfig>, GenericChild extends ChildrenOf<GenericConfig, GenericParent>>(params: ValidateFormValueParams<GenericConfig, GenericParent, GenericChild>) => Promise<ValueIssue | undefined>",
-			"summary": "Whether a value may be written to an attribute (or, without `attribute`, the text) of a child, as the child is declared under `parent` - before it exists. Reads the parent once, nothing else: every prefix resolves through the dialecte's namespaces (`xs` for XSD, `xml:` always bound; an xsi:type Clark name `{uri}local` as itself), as the write path reads it. `attribute` takes the write path's two forms: a value-object key or `{ name, namespace }`. A QName value whose prefix the dialecte does not declare is not judged yet (`undefined`).",
+			"summary": "Whether a value may be written to an attribute (or, without `attribute`, the text) of a child, as the child is declared under `parent` - before it exists. Reads the parent once, nothing else: every prefix resolves through the dialecte's namespaces (`xs` for XSD, `xml:` always bound; a Clark name `{uri}local` as itself), as the write path reads it: a QName value whose prefix the dialecte does not declare is refused (`datatype`). `attribute` takes the write path's two forms: a value-object key or `{ name, namespace }`.",
 			"intents": [
 				"check a form value before writing it",
 				"validate an attribute or text value against the schema",
