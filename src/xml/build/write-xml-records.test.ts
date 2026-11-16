@@ -1,6 +1,6 @@
 // dialecte-allow test-file-long: over 400 lines before this lot; the split by behaviour is a logged follow-up
 import { writeXmlRecords } from './write-xml-records'
-import { XmlWriter } from './xml-writer'
+import { createXmlWriter } from './xml-writer'
 
 import { describe, expect, it } from 'vitest'
 
@@ -1415,7 +1415,7 @@ describe('writeXmlRecords', () => {
 					attributes: [{ name: 'cA', value: 'e', namespace: NS.ext }],
 				}),
 			]
-			const writer = new XmlWriter({ config: CONFIG, documentRoot: records[0] })
+			const writer = createXmlWriter({ config: CONFIG, documentRoot: records[0] })
 			const parts: string[] = []
 			writer.openElement({ record: records[0]! })
 			parts.push(writer.take())

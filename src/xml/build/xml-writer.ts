@@ -1,5 +1,5 @@
 import { createRecordElement } from './record-element'
-import { RootNamespaces } from './root-namespaces'
+import { emptyNamespaceTable, requiredRootAttributes, rootDeclarations } from './root-namespaces'
 import {
 	escapeCompactTextValue,
 	escapeTextValue,
@@ -17,135 +17,196 @@ import {
 import { assertXmlCharacters } from '@/helpers/assert-xml-characters'
 import { trimXmlWhitespace } from '@/utils/xml-whitespace'
 
-import type { RecordElementContext } from './record-element.types'
+import type { RecordElement, RecordElementSettings } from './record-element.types'
+import type { NamespaceTable } from './root-namespaces.types'
 import type { GeneratedPrefixes, NamespaceScope, XmlElement } from './xml-element.types'
-import type { OpenElement, XmlWriterParams } from './xml-writer.types'
+import type { OpenedRecord, OpenElement, XmlWriter, XmlWriterParams } from './xml-writer.types'
 import type { AnyRawRecord } from '@/types'
 
 /**
- * Write records as XML text, element by element in document order, with no DOM, as `XMLSerializer` writes the same
- * elements: formatted (4 spaces, CRLF, a text value on its element's line) or compact. Every namespace the records
- * use is declared on the written root, and only there (but `xmlns=""` on an element in no namespace under a default):
- * the root start tag is only complete once every element is written, so the writer hands the body as it goes
- * (`take`) and the head (declaration and root start tag) at the end (`head`).
+ * A writer of records as XML text, element by element in document order, with no DOM, as `XMLSerializer` writes the
+ * same elements: formatted (4 spaces, CRLF, a text value on its element's line) or compact. Every namespace the
+ * records use is declared on the written root, and only there (but `xmlns=""` on an element in no namespace under a
+ * default): the root start tag is only complete once every element is written, so the writer hands the body as it goes
+ * (`take`) and the head (declaration and root start tag) at the end (`head`). It holds the streaming state only: the
+ * open elements, the body not yet taken, the namespace table and the root.
  */
-export class XmlWriter {
-	private readonly context: RecordElementContext
-	private readonly indent: boolean
-	private readonly includeXmlDeclaration: boolean
-	private readonly openElements: OpenElement[] = []
-	private body: string[] = []
-	private root: OpenElement | undefined
-	/** The root's bindings: the namespaces registered so far, all declared on the root at the end. */
-	private readonly rootScope: NamespaceScope
-	/** The prefixes generated for the elements below the root, numbered across the document */
-	private readonly prefixes: GeneratedPrefixes = { next: 1 }
-	/** A line break and the indentation of each level, made once */
-	private readonly newLines: string[] = []
+export function createXmlWriter(params: XmlWriterParams): XmlWriter {
+	const { config, documentRoot, declareNamespaces = true, withDatabaseIds = false } = params
+	const indent = params.indent ?? true
+	const includeXmlDeclaration = params.includeXmlDeclaration ?? true
+	const settings: RecordElementSettings = { config, declareNamespaces, withDatabaseIds }
+	const openElements: OpenElement[] = []
+	const body: string[] = []
+	let table: NamespaceTable | undefined
+	let root: OpenElement | undefined
+	// the root's bindings, read where they are at each start tag: every namespace is declared on the root at the end
+	const rootScope: NamespaceScope = {
+		get bindings() {
+			return table ? table.bindings : EMPTY_SCOPE.bindings
+		},
+		parent: undefined,
+	}
+	// the prefixes generated for the elements below the root, numbered across the document
+	const prefixes: GeneratedPrefixes = { next: 1 }
+	// a line break and the indentation of each level, made once
+	const lineBreaks: string[] = []
 
-	constructor(params: XmlWriterParams) {
-		const { config, documentRoot, declareNamespaces = true, withDatabaseIds = false } = params
-		this.context = {
-			config,
-			declareNamespaces,
-			withDatabaseIds,
-			documentRoot,
-			namespaces: new RootNamespaces({ config, documentRoot }),
-		}
-		this.rootScope = { bindings: this.context.namespaces.bindings, parent: undefined }
-		this.indent = params.indent ?? true
-		this.includeXmlDeclaration = params.includeXmlDeclaration ?? true
+	function lineBreak(level: number): string {
+		lineBreaks[level] ??= LINE_SEPARATOR + INDENTATION.repeat(level)
+		return lineBreaks[level]
 	}
 
-	/** Open the element of the next record in document order (the first is the written root). */
-	openElement(params: { record: AnyRawRecord }): void {
+	function openElement(params: { record: AnyRawRecord }): void {
 		const { record } = params
-		// a character XML does not allow could be written neither as is nor as a reference: refused, no file
-		assertXmlCharacters({ record, withId: this.context.withDatabaseIds })
-		const parent = this.openElements.at(-1)
-		const element = createRecordElement({ context: this.context, record, parent: parent?.element })
-		// trimmed of XML whitespace only: a no-break space or a byte order mark is text
-		const text = record.value ? trimXmlWhitespace({ text: record.value }) : ''
-		const hasChildren = record.children.length > 0
-		const level = parent ? parent.level + 1 : 0
-		const insideInline = parent ? parent.inline || parent.insideInline : false
-		const opened: OpenElement = {
-			element,
-			qualifiedName: qualifiedNameOf(element),
-			level,
-			scope: this.rootScope,
-			empty: !text && !hasChildren,
-			inline: !this.indent || insideInline || isInline({ element, text, hasChildren }),
-			insideInline,
-		}
-
-		if (parent) {
-			const { text: startTag, scope } = serializeStartTag({
-				element,
-				scope: parent.scope,
-				prefixes: this.prefixes,
-			})
-			opened.scope = scope
-			if (!insideInline) this.newLine({ level })
-			this.body.push(startTag, opened.empty ? '/>' : '>')
-		} else {
-			this.root = opened
-		}
-		this.openElements.push(opened)
-		if (text) this.writeText({ text, owner: opened })
-	}
-
-	/** Close the element opened last. */
-	closeElement(): void {
-		const closed = this.openElements.pop()
-		if (!closed || closed.empty) return
-		if (!closed.inline) this.newLine({ level: closed.level })
-		this.body.push(`</${closed.qualifiedName}>`)
-	}
-
-	/** The body written since the last call: what follows the root start tag. */
-	take(): string {
-		const chunk = this.body.join('')
-		this.body = []
-		return chunk
-	}
-
-	/** The XML declaration and the root start tag, complete once the root is closed. */
-	head(): string {
-		const root = this.root
-		if (!root) return ''
-		const declarations = this.context.declareNamespaces
-			? this.context.namespaces.declarations()
-			: []
-		const { text: startTag } = serializeStartTag({
-			element: { ...root.element, attributes: [...declarations, ...root.element.attributes] },
-			scope: EMPTY_SCOPE,
-			prefixes: { next: 1 },
+		const parent = openElements.at(-1)
+		const created = elementOf({ settings, table, record, parent })
+		// the table grown first: the start tag below reads the root's bindings as they now are
+		table = created.table
+		const { opened, startTag, text } = openRecord({
+			element: created.element,
+			record,
+			parent,
+			rootScope,
+			prefixes,
+			indent,
 		})
-		const declaration = this.includeXmlDeclaration
-			? XML_DECLARATION + (this.indent ? LINE_SEPARATOR : '')
-			: ''
-		return declaration + startTag + (root.empty ? '/>' : '>')
-	}
-
-	private writeText(params: { text: string; owner: OpenElement }): void {
-		const { text, owner } = params
-		if (!this.indent) {
-			// a carriage return as a reference: an XML reader would turn it into a line feed
-			this.body.push(escapeCompactTextValue(text))
-			return
+		if (startTag === undefined) {
+			root = opened
+		} else {
+			if (indent && !opened.insideInline) body.push(lineBreak(opened.level))
+			body.push(startTag, opened.empty ? '/>' : '>')
 		}
-		const escaped = escapeTextValue(text)
-		if (!owner.inline) this.newLine({ level: owner.level + 1 })
-		this.body.push(toLineSeparator(escaped))
+		openElements.push(opened)
+		if (!text) return
+		if (indent && !opened.inline) body.push(lineBreak(opened.level + 1))
+		body.push(textOf({ text, indent }))
 	}
 
-	private newLine(params: { level: number }): void {
-		if (!this.indent) return
-		const { level } = params
-		this.newLines[level] ??= LINE_SEPARATOR + INDENTATION.repeat(level)
-		this.body.push(this.newLines[level])
+	function closeElement(): void {
+		const closed = openElements.pop()
+		if (!closed || closed.empty) return
+		if (indent && !closed.inline) body.push(lineBreak(closed.level))
+		body.push(`</${closed.qualifiedName}>`)
 	}
+
+	function take(): string {
+		return body.splice(0).join('')
+	}
+
+	function head(): string {
+		if (!root || !table) return ''
+		return headOf({ root, table, settings, documentRoot, indent, includeXmlDeclaration })
+	}
+
+	return { openElement, closeElement, take, head }
+}
+
+/**
+ * The element of a record below its parent (none for the root), and the namespace table it grew: the root starts the
+ * table.
+ */
+function elementOf(params: {
+	settings: RecordElementSettings
+	table: NamespaceTable | undefined
+	record: AnyRawRecord
+	parent: OpenElement | undefined
+}): RecordElement {
+	const { settings, record, parent } = params
+	// a character XML does not allow could be written neither as is nor as a reference: refused, no file
+	assertXmlCharacters({ record, withId: settings.withDatabaseIds })
+	const table =
+		parent && params.table
+			? params.table
+			: emptyNamespaceTable({ config: settings.config, rootUri: record.namespace.uri })
+	return createRecordElement({ settings, table, record, parent: parent?.element })
+}
+
+/**
+ * A record's element opened below its parent: the open element, its start tag where the parent's scope is in force
+ * (none for the root, written at the end) and its text value.
+ */
+function openRecord(params: {
+	element: XmlElement
+	record: AnyRawRecord
+	parent: OpenElement | undefined
+	rootScope: NamespaceScope
+	prefixes: GeneratedPrefixes
+	indent: boolean
+}): OpenedRecord {
+	const { element, record, parent, rootScope, prefixes, indent } = params
+	// trimmed of XML whitespace only: a no-break space or a byte order mark is text
+	const text = record.value ? trimXmlWhitespace({ text: record.value }) : ''
+	const startTag = parent
+		? serializeStartTag({ element, scope: parent.scope, prefixes })
+		: undefined
+	const opened = openedElementOf({
+		element,
+		parent,
+		scope: startTag ? startTag.scope : rootScope,
+		text,
+		hasChildren: record.children.length > 0,
+		indent,
+	})
+	return { opened, startTag: startTag?.text, text }
+}
+
+/** An element just opened: where it stands, and how its content is laid out. */
+function openedElementOf(params: {
+	element: XmlElement
+	parent: OpenElement | undefined
+	scope: NamespaceScope
+	text: string
+	hasChildren: boolean
+	indent: boolean
+}): OpenElement {
+	const { element, parent, scope, text, hasChildren, indent } = params
+	const insideInline = parent ? parent.inline || parent.insideInline : false
+	return {
+		element,
+		qualifiedName: qualifiedNameOf(element),
+		level: parent ? parent.level + 1 : 0,
+		scope,
+		empty: !text && !hasChildren,
+		inline: !indent || insideInline || isInline({ element, text, hasChildren }),
+		insideInline,
+	}
+}
+
+/**
+ * A text value as written: formatted, every line break as CRLF; compact, a carriage return as a reference (an XML
+ * reader would turn it into a line feed).
+ */
+function textOf(params: { text: string; indent: boolean }): string {
+	const { text, indent } = params
+	if (!indent) return escapeCompactTextValue(text)
+	return toLineSeparator(escapeTextValue(text))
+}
+
+/**
+ * The XML declaration and the root start tag: the namespaces the written records use declared first, then the root's
+ * own attributes, then the root attributes those namespaces require.
+ */
+function headOf(params: {
+	root: OpenElement
+	table: NamespaceTable
+	settings: RecordElementSettings
+	documentRoot: AnyRawRecord | undefined
+	indent: boolean
+	includeXmlDeclaration: boolean
+}): string {
+	const { root, table, settings, documentRoot, indent, includeXmlDeclaration } = params
+	const { config } = settings
+	const { element } = root
+	const declarations = settings.declareNamespaces ? rootDeclarations({ table, config }) : []
+	const required = requiredRootAttributes({ table, config, documentRoot, element })
+	const { text: startTag } = serializeStartTag({
+		element: { ...element, attributes: [...declarations, ...element.attributes, ...required] },
+		scope: EMPTY_SCOPE,
+		prefixes: { next: 1 },
+	})
+	const declaration = includeXmlDeclaration ? XML_DECLARATION + (indent ? LINE_SEPARATOR : '') : ''
+	return declaration + startTag + (root.empty ? '/>' : '>')
 }
 
 /**

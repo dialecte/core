@@ -54,6 +54,8 @@ by an earlier core are not migrated: export them with that version and import th
   dialecte's prefixes, `xs`), or a malformed Clark value, is refused with `UNKNOWN_NAMESPACE_PREFIX`, before the type
   is judged; `deepClone` copies stored values as they are (on an element the dialecte declares, its type is still
   judged). `xs:integer` written on an element whose file declared `xs` on an ancestor is now admitted.
+- **Breaking** - `ParseSession` is no longer exported. Nothing replaces it for a consumer: `parseXmlFile` and
+  `runImport` keep the children a parse resolves across batches themselves.
 
 ## [0.11.0] - 2026-11-13
 

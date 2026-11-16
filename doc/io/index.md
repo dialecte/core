@@ -65,7 +65,7 @@ A write that sets an attribute to a value differing from its schema `fixed` is r
 
 The lower-level building blocks are still exported for advanced use cases:
 
-- `parseXmlFile` / `ParseSession` - SAX-based streaming parser (`runImport` around it registers, finalizes and cleans up)
+- `parseXmlFile` - SAX-based streaming parser, which keeps the children it resolves across batches itself (`runImport` around it registers, finalizes and cleans up)
 - `runExport` - the export every store runs (below)
 - `parseXmlDocument` - the DOM of an exported file, in the page
 

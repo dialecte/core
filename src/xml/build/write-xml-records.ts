@@ -1,9 +1,10 @@
 import { isDocumentRoot } from './document-root'
-import { XmlWriter } from './xml-writer'
+import { createXmlWriter } from './xml-writer'
 
 import { invariant, orderByConfigSequence } from '@/utils'
 
 import type { WriteXmlRecordsParams } from './write-xml-records.types'
+import type { XmlWriter } from './xml-writer.types'
 import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
 /**
@@ -31,7 +32,7 @@ export function writeXmlRecords(params: WriteXmlRecordsParams): string {
 		key: 'EXPORT_ROOT_NOT_FOUND',
 	})
 
-	const writer = new XmlWriter({
+	const writer = createXmlWriter({
 		config,
 		documentRoot: rootRecord.tagName === config.rootElementName ? rootRecord : undefined,
 		indent,

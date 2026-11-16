@@ -1,6 +1,21 @@
 import type { NamespaceScope, XmlElement } from './xml-element.types'
 import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
+/**
+ * Writes records as XML text, element by element in document order. The root start tag is only complete once every
+ * element is written: the body comes as it goes (`take`), the head (declaration and root start tag) at the end (`head`).
+ */
+export type XmlWriter = {
+	/** Open the element of the next record in document order (the first is the written root). */
+	openElement: (params: { record: AnyRawRecord }) => void
+	/** Close the element opened last. */
+	closeElement: () => void
+	/** The body written since the last call: what follows the root start tag. */
+	take: () => string
+	/** The XML declaration and the root start tag, complete once the root is closed. */
+	head: () => string
+}
+
 export type XmlWriterParams = {
 	config: AnyDialecteConfig
 	/**
@@ -32,4 +47,13 @@ export type OpenElement = {
 	inline: boolean
 	/** It stands inside an inline element. */
 	insideInline: boolean
+}
+
+/** A record's element just opened, and what the writer writes of it. */
+export type OpenedRecord = {
+	opened: OpenElement
+	/** Its start tag, without its closing `>` or `/>`; none for the root, written at the end. */
+	startTag: string | undefined
+	/** Its text value, trimmed of XML whitespace; `''` when none. */
+	text: string
 }

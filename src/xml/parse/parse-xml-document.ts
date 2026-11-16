@@ -1,4 +1,3 @@
-import { ParseSession } from './parse-session'
 import { DEFAULT_BATCH_SIZE, DEFAULT_CHUNK_SIZE } from './parse-xml-document.constants'
 import { setSaxParser } from './parser'
 
@@ -34,7 +33,8 @@ export type { ParseXmlFileParams, ParseXmlFileResult } from './parse-xml-documen
  *
  * - Uses SAX streaming to avoid loading full XML into memory
  * - Batches records and flushes to Store.bulkWrite in chunks
- * - ParseSession encapsulates parent-child resolution state (no module globals)
+ * - The parser keeps the children whose parent left its stack for this file only (no module globals), and hands
+ *   each batch with them added
  * - Database-agnostic: only calls its target's bulkWrite (the file's records) and writeSession (the session's)
  * - `control`: progress told after each stored batch, then `processing` (core's `start`, then the steps the
  *   session reports), `checking` and `applying` (never awaited; through `params.reporter` when given, which the
@@ -99,13 +99,11 @@ async function parseWithReporter(
 	const chunkSize = chunkOptions?.chunkSize ?? DEFAULT_CHUNK_SIZE
 	const batchSize = chunkOptions?.batchSize ?? DEFAULT_BATCH_SIZE
 
-	const session = new ParseSession()
 	// One session per file: its state is this file's only, and it is dropped after afterImport.
 	const importSession = hooks?.createImportSession?.({ documentId, configKey })
 	const sax = setSaxParser({
 		dialecteConfig: config,
 		useCustomRecordsIds,
-		session,
 		hooks,
 		importSession,
 		perf,
@@ -114,7 +112,6 @@ async function parseWithReporter(
 	const parsedCount = await streamFileInChunks({
 		file,
 		sax,
-		session,
 		store,
 		documentId,
 		chunkSize,
@@ -142,7 +139,6 @@ async function parseWithReporter(
 async function streamFileInChunks(params: {
 	file: File
 	sax: ReturnType<typeof setSaxParser>
-	session: ParseSession
 	store: ParseTarget
 	documentId: string
 	chunkSize: number
@@ -151,10 +147,9 @@ async function streamFileInChunks(params: {
 	control: ImportControl
 	reporter: ImportReporter
 }): Promise<number> {
-	const { file, sax, session, store, documentId, chunkSize, batchSize, perf, control, reporter } =
-		params
+	const { file, sax, store, documentId, chunkSize, batchSize, perf, control, reporter } = params
 
-	const batchParams = { sax, session, store, documentId, file, perf, control, reporter }
+	const batchParams = { sax, store, documentId, file, perf, control, reporter }
 	let totalRecords = 0
 	// The bytes fed to the parser so far: what progress tells, the file's size once all is parsed.
 	let bytesRead = 0
@@ -396,7 +391,6 @@ function appendToBuffer(existing: Uint8Array, incoming: Uint8Array<ArrayBufferLi
 /** Store the records parsed so far once there are `threshold` of them, then tell the bytes parsed. */
 async function flushBatch(params: {
 	sax: ReturnType<typeof setSaxParser>
-	session: ParseSession
 	store: ParseTarget
 	documentId: string
 	file: File
@@ -407,8 +401,7 @@ async function flushBatch(params: {
 	/** The bytes of the file parsed so far: what the progress tells */
 	bytesRead: number
 }): Promise<number> {
-	const { sax, session, store, documentId, file, threshold, perf, control, reporter, bytesRead } =
-		params
+	const { sax, store, documentId, file, threshold, perf, control, reporter, bytesRead } = params
 
 	if (sax.getSize() < threshold) return 0
 	throwIfAborted({ signal: control.signal, file })
@@ -416,7 +409,7 @@ async function flushBatch(params: {
 	perf.start('import::insert')
 	let stored: number
 	try {
-		const resolved = session.resolveChildrenForBatch(sax.drainBatch())
+		const resolved = sax.drainBatch()
 		await store.bulkWrite(documentId, { creates: resolved })
 		stored = resolved.length
 	} finally {

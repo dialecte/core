@@ -1,5 +1,4 @@
 export { parseXmlFile } from './parse-xml-document'
-export { ParseSession } from './parse-session'
 export type {
 	ParseTarget,
 	ParseXmlFileParams,

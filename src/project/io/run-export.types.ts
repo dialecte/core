@@ -2,7 +2,7 @@ import type { StoreRuntime } from './store-runtime.types'
 import type { Perf } from '@/perf'
 import type { ExportControl, ExportFileOptions, ExportSource } from '@/store/store.types'
 import type { AnyRawRecord } from '@/types'
-import type { XmlWriter } from '@/xml/build/xml-writer'
+import type { XmlWriter } from '@/xml/build/xml-writer.types'
 
 export type RunExportParams = {
 	/** The store the records are read from */

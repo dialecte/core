@@ -8,7 +8,7 @@ import { tellListener } from '@/utils/tell-listener'
 import { TOLD_OF } from '@/utils/tell-listener.constants'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 import { isDocumentRoot } from '@/xml/build/document-root'
-import { XmlWriter } from '@/xml/build/xml-writer'
+import { createXmlWriter } from '@/xml/build/xml-writer'
 
 import type { ExportAttempt, ExportFrame, ExportPass, RunExportParams } from './run-export.types'
 import type { Perf } from '@/perf'
@@ -119,7 +119,7 @@ async function exportOnce(
 		totalRecords,
 		control,
 		perf,
-		writer: new XmlWriter({
+		writer: createXmlWriter({
 			config,
 			documentRoot: rootRecord,
 			indent: options?.indent,

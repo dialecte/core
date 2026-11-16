@@ -1,13 +1,16 @@
-import type { RootNamespaces } from './root-namespaces'
-import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
+import type { NamespaceTable } from './root-namespaces.types'
+import type { XmlElement } from './xml-element.types'
+import type { AnyDialecteConfig } from '@/types'
 
-/** What every element of one written document is made with. */
-export type RecordElementContext = {
+/** What every element of one written document is made with: read only, the same for the whole document. */
+export type RecordElementSettings = {
 	config: AnyDialecteConfig
 	declareNamespaces: boolean
 	withDatabaseIds: boolean
-	/** The document's root record; `undefined` for a fragment, which gets no root attributes. */
-	documentRoot: AnyRawRecord | undefined
-	/** The namespaces the written records use, each with the one prefix it is written with, declared on the root. */
-	namespaces: RootNamespaces
+}
+
+/** The element a record is written as, and the namespace table grown by the namespaces it uses. */
+export type RecordElement = {
+	element: XmlElement
+	table: NamespaceTable
 }

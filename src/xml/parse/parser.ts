@@ -1,5 +1,5 @@
-import { ParseSession } from './parse-session'
 import { SAX_PARSER_OPTIONS } from './parser.constants'
+import { createPendingChildren } from './pending-children'
 
 import * as sax from 'sax'
 
@@ -12,6 +12,7 @@ import { notXmlCharacterOf } from '@/utils/xml-characters'
 import { readXmlTextRun } from '@/utils/xml-whitespace'
 import { withCanonicalXsiType } from '@/utils/xsi-type'
 
+import type { PendingChildrenOfParse } from './pending-children.types'
 import type { ParserInstance, ParserState } from './types'
 import type { Perf } from '@/perf'
 import type {
@@ -31,25 +32,19 @@ import type {
  * Sets up the SAX parser for XML parsing.
  * @param namespaces Namespace configuration from dialecte
  * @param useCustomRecordsIds Whether to use custom record IDs from the XML attributes
- * @returns SAX parser instance
+ * @returns SAX parser instance, whose drained batches hold the children a record waited for
  */
 export function setSaxParser(params: {
 	dialecteConfig: AnyDialecteConfig
 	useCustomRecordsIds: boolean
-	session: ParseSession
 	/** The record hooks standardization applies; the per-record io hook is the import session's */
 	hooks?: TransactionHooks<AnyDialecteConfig>
 	importSession?: ImportSession
 	perf?: Perf
 }): ParserInstance {
-	const {
-		dialecteConfig,
-		useCustomRecordsIds,
-		session,
-		hooks,
-		importSession,
-		perf = NOOP_PERF,
-	} = params
+	const { dialecteConfig, useCustomRecordsIds, hooks, importSession, perf = NOOP_PERF } = params
+	// The children whose parent left the stack before they closed: this parse's own
+	const pendingChildren = createPendingChildren()
 
 	// Single closure-private state, mutated in place per SAX event. The parser is
 	// the sole sequential writer, so immutable rebuilds bought nothing and cost an
@@ -79,7 +74,15 @@ export function setSaxParser(params: {
 	}
 
 	parser.onclosetag = () => {
-		handleCloseTag({ state, hooks, importSession, sessionTags, session, dialecteConfig, perf })
+		handleCloseTag({
+			state,
+			hooks,
+			importSession,
+			sessionTags,
+			pendingChildren,
+			dialecteConfig,
+			perf,
+		})
 	}
 
 	parser.onerror = handleError
@@ -87,7 +90,7 @@ export function setSaxParser(params: {
 	function drainBatch() {
 		const snapshot = state.recordsBatch
 		state.recordsBatch = []
-		return snapshot
+		return pendingChildren.resolve({ batch: snapshot })
 	}
 
 	function getSize() {
@@ -218,7 +221,7 @@ function throwNotXmlCharacter(params: { character: string; where: string }): nev
 /**
  * Handles the closing tag event.
  * @param state Current state
- * @param session Parse session
+ * @param pendingChildren The parse's children whose parent left the stack before they closed
  * @param hooks Dialecte record hooks (standardization), from the Project instance
  * @param importSession This file's import session, when the dialecte creates one
  * @param sessionTags The tag names the session asks for; absent, every record is handed to it
@@ -226,7 +229,7 @@ function throwNotXmlCharacter(params: { character: string; where: string }): nev
  */
 function handleCloseTag(params: {
 	state: ParserState
-	session: ParseSession
+	pendingChildren: PendingChildrenOfParse
 	hooks?: TransactionHooks<AnyDialecteConfig>
 	importSession?: ImportSession
 	sessionTags?: ReadonlySet<string>
@@ -238,7 +241,7 @@ function handleCloseTag(params: {
 		hooks,
 		importSession,
 		sessionTags,
-		session,
+		pendingChildren,
 		dialecteConfig,
 		perf = NOOP_PERF,
 	} = params
@@ -280,9 +283,9 @@ function handleCloseTag(params: {
 		parent.children.push({ id: currentRecord.id, tagName: currentRecord.tagName })
 	} else if (currentRecord.parent) {
 		// Parent already left the stack (drained in an earlier batch) → resolve later.
-		session.registerPendingChild(currentRecord.parent.id, {
-			id: currentRecord.id,
-			tagName: currentRecord.tagName,
+		pendingChildren.register({
+			parentId: currentRecord.parent.id,
+			child: { id: currentRecord.id, tagName: currentRecord.tagName },
 		})
 	}
 

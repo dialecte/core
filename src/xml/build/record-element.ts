@@ -1,4 +1,5 @@
 import { TEMP_IDB_ID_ATTRIBUTE_NAME } from './constant'
+import { registerDefaultAlias, registerNamespace } from './root-namespaces'
 import {
 	createXmlElement,
 	getAttributeNS,
@@ -13,65 +14,43 @@ import { XSI_NAMESPACE } from '@/helpers/constant'
 import { extractLocalName, resolveDefinition, resolveSchemaAttributeValue } from '@/utils'
 import { storedNamespaceLookup, xsiTypeNameOf } from '@/utils/xsi-type'
 
-import type { RecordElementContext } from './record-element.types'
+import type { RecordElement, RecordElementSettings } from './record-element.types'
+import type { NamespaceRegistration, NamespaceTable } from './root-namespaces.types'
 import type { XmlElement } from './xml-element.types'
 import type { AnyAttribute, AnyQualifiedAttribute, AnyRawRecord, Namespace } from '@/types'
 
 /**
  * The element a record is written as, with what the document holds on it: its attributes, the required and fixed
- * attributes the schema asks for and the record does not hold, its xsi:type value written with the prefix its
- * namespace takes, every namespace it uses registered for the written root (where it is the root: the root attributes
- * those namespaces bring), and its database id when asked. Its text and children are the writer's.
+ * attributes the schema asks for and the record does not hold (the root's come with the root start tag, once every
+ * namespace is known), its xsi:type value written with the prefix its namespace takes, and its database id when asked.
+ * Every namespace it uses is registered for the written root: the answer holds the table that grew. Its text and
+ * children are the writer's.
  */
 export function createRecordElement(params: {
-	context: RecordElementContext
+	settings: RecordElementSettings
+	table: NamespaceTable
 	record: AnyRawRecord
 	parent: XmlElement | undefined
-}): XmlElement {
-	const { context, record, parent } = params
-	return parent === undefined
-		? createRootElement({ context, record })
-		: createChildElement({ context, record, parent })
-}
-
-// ── Root ─────────────────────────────────────────────────────────────────────
-
-function createRootElement(params: {
-	context: RecordElementContext
-	record: AnyRawRecord
-}): XmlElement {
-	const { context, record } = params
-	const { declareNamespaces, withDatabaseIds } = context
-	context.namespaces.openRoot({ uri: record.namespace.uri })
-	const element = createElementOf({ context, record, parent: undefined })
-	addRecordAttributes({ context, element, attributes: record.attributes })
+}): RecordElement {
+	const { settings, table, record, parent } = params
+	const { declareNamespaces, withDatabaseIds } = settings
+	const named = createElementOf({ settings, table, record, parent })
+	const { element } = named
+	let grown = addRecordAttributes({
+		settings,
+		table: named.table,
+		element,
+		attributes: record.attributes,
+	})
+	// the root's required and fixed attributes are the root start tag's, once every namespace is known
+	if (declareNamespaces && parent !== undefined) {
+		grown = materializeRequiredAndFixedAttributes({ settings, table: grown, element, record })
+	}
 	if (withDatabaseIds) {
 		setAttribute({ element, qualifiedName: TEMP_IDB_ID_ATTRIBUTE_NAME, value: record.id })
 	}
-	if (declareNamespaces) writeXsiType({ context, element })
-	// the root attributes of the namespaces the root itself uses, once it holds its own: later namespaces bring theirs
-	// as they are registered
-	context.namespaces.attachRoot({ element })
-	return element
-}
-
-// ── Child ────────────────────────────────────────────────────────────────────
-
-function createChildElement(params: {
-	context: RecordElementContext
-	record: AnyRawRecord
-	parent: XmlElement
-}): XmlElement {
-	const { context, record, parent } = params
-	const { declareNamespaces, withDatabaseIds } = context
-	const element = createElementOf({ context, record, parent })
-	addRecordAttributes({ context, element, attributes: record.attributes })
-	if (declareNamespaces) materializeRequiredAndFixedAttributes({ context, element, record })
-	if (withDatabaseIds) {
-		setAttribute({ element, qualifiedName: TEMP_IDB_ID_ATTRIBUTE_NAME, value: record.id })
-	}
-	if (declareNamespaces) writeXsiType({ context, element })
-	return element
+	if (declareNamespaces) grown = writeXsiType({ settings, table: grown, element })
+	return { element, table: grown }
 }
 
 /**
@@ -80,41 +59,49 @@ function createChildElement(params: {
  * literally, in no namespace.
  */
 function createElementOf(params: {
-	context: RecordElementContext
+	settings: RecordElementSettings
+	table: NamespaceTable
 	record: AnyRawRecord
 	parent: XmlElement | undefined
-}): XmlElement {
-	const { context, record, parent } = params
+}): RecordElement {
+	const { settings, table, record, parent } = params
 	const { namespace, tagName } = record
-	if (!context.declareNamespaces) {
-		const isDefaultNamespace = namespace.uri === context.config.namespaces.default.uri
+	if (!settings.declareNamespaces) {
+		const isDefaultNamespace = namespace.uri === settings.config.namespaces.default.uri
 		const isPrefixed = !isDefaultNamespace && !!namespace.prefix
-		return createXmlElement({
+		const element = createXmlElement({
 			namespaceURI: null,
 			qualifiedName: isPrefixed ? `${namespace.prefix}:${tagName}` : tagName,
 			parent,
 		})
+		return { element, table }
 	}
-	const prefix = context.namespaces.declareOnRoot({
+	const registration = registerNamespace({
+		table,
+		config: settings.config,
 		uri: namespace.uri,
 		storedPrefix: namespace.prefix,
 	})
-	return createXmlElement({
+	const { prefix } = registration
+	const element = createXmlElement({
 		namespaceURI: namespace.uri,
 		qualifiedName: prefix ? `${prefix}:${tagName}` : tagName,
 		parent,
 	})
+	return { element, table: registration.table }
 }
 
 // ── Attributes ───────────────────────────────────────────────────────────────
 
 /** The record's own attributes, in its order; namespace declarations are the writer's, not the record's. */
 function addRecordAttributes(params: {
-	context: RecordElementContext
+	settings: RecordElementSettings
+	table: NamespaceTable
 	element: XmlElement
 	attributes: AnyAttribute[]
-}): void {
-	const { context, element, attributes } = params
+}): NamespaceTable {
+	const { settings, element, attributes } = params
+	let { table } = params
 	for (const attribute of attributes) {
 		// a record from another source (an earlier store, a hand-built list) may still hold one: never written
 		if (isNamespaceDeclaration(attribute)) continue
@@ -125,12 +112,20 @@ function addRecordAttributes(params: {
 		}
 		const localName = extractLocalName(attribute.name)
 		// without namespace declarations the prefixed name is written literally
-		if (!context.declareNamespaces) {
+		if (!settings.declareNamespaces) {
 			setAttribute({ element, qualifiedName: `${attribute.namespace.prefix}:${localName}`, value })
 			continue
 		}
-		setQualifiedAttribute({ context, element, namespace: attribute.namespace, localName, value })
+		table = setQualifiedAttribute({
+			settings,
+			table,
+			element,
+			namespace: attribute.namespace,
+			localName,
+			value,
+		})
 	}
+	return table
 }
 
 /**
@@ -139,28 +134,35 @@ function addRecordAttributes(params: {
  * namespace's alias prefix.
  */
 function setQualifiedAttribute(params: {
-	context: RecordElementContext
+	settings: RecordElementSettings
+	table: NamespaceTable
 	element: XmlElement
 	namespace: Namespace
 	localName: string
 	value: string
-}): void {
-	const { context, element, namespace, localName, value } = params
+}): NamespaceTable {
+	const { settings, table, element, namespace, localName, value } = params
 	if (namespace.uri === '') {
 		setAttribute({ element, qualifiedName: localName, value })
-		return
+		return table
 	}
-	const chosen = context.namespaces.declareOnRoot({
+	const { config } = settings
+	const chosen = registerNamespace({
+		table,
+		config,
 		uri: namespace.uri,
 		storedPrefix: namespace.prefix,
 	})
-	const prefix = chosen || context.namespaces.defaultAlias({ storedPrefix: namespace.prefix })
+	const written = chosen.prefix
+		? chosen
+		: registerDefaultAlias({ table: chosen.table, config, storedPrefix: namespace.prefix })
 	setAttributeNS({
 		element,
 		namespaceURI: namespace.uri,
-		qualifiedName: `${prefix}:${localName}`,
+		qualifiedName: `${written.prefix}:${localName}`,
 		value,
 	})
+	return written.table
 }
 
 /**
@@ -169,16 +171,18 @@ function setQualifiedAttribute(params: {
  * element in another namespace than the declaration of its tag is not that declaration's element: nothing is added.
  */
 function materializeRequiredAndFixedAttributes(params: {
-	context: RecordElementContext
+	settings: RecordElementSettings
+	table: NamespaceTable
 	element: XmlElement
 	record: AnyRawRecord
-}): void {
-	const { context, element, record } = params
-	const { config } = context
+}): NamespaceTable {
+	const { settings, element, record } = params
+	const { config } = settings
+	let { table } = params
 	// as declared under this parent: what a homonym requires differs from one parent to another; an element in
 	// another namespace than that declaration's is not its element
 	const definition = resolveDefinition({ dialecteConfig: config, record })
-	if (!definition || definition.namespace.uri !== record.namespace.uri) return
+	if (!definition || definition.namespace.uri !== record.namespace.uri) return table
 
 	for (const [attributeName, attribute] of Object.entries(definition.attributes.details)) {
 		const value = resolveSchemaAttributeValue({
@@ -196,8 +200,9 @@ function materializeRequiredAndFixedAttributes(params: {
 		if (exists) continue
 
 		if (attribute.namespace && attribute.namespace.prefix) {
-			setQualifiedAttribute({
-				context,
+			table = setQualifiedAttribute({
+				settings,
+				table,
 				element,
 				namespace: attribute.namespace,
 				localName,
@@ -207,6 +212,7 @@ function materializeRequiredAndFixedAttributes(params: {
 			setAttribute({ element, qualifiedName: localName, value })
 		}
 	}
+	return table
 }
 
 // ── xsi:type ─────────────────────────────────────────────────────────────────
@@ -218,28 +224,36 @@ function materializeRequiredAndFixedAttributes(params: {
  * element in no namespace (where no default is in force), else as stored. A value whose prefix core cannot read is
  * written as stored, and declares nothing.
  */
-function writeXsiType(params: { context: RecordElementContext; element: XmlElement }): void {
-	const { context, element } = params
+function writeXsiType(params: {
+	settings: RecordElementSettings
+	table: NamespaceTable
+	element: XmlElement
+}): NamespaceTable {
+	const { settings, table, element } = params
+	const { config } = settings
 	const value = getAttributeNS({ element, namespaceURI: XSI_NAMESPACE.uri, localName: 'type' })
-	if (value === null) return
+	if (value === null) return table
 	const name = xsiTypeNameOf({
 		value,
-		namespaceOf: storedNamespaceLookup({ dialecteConfig: context.config }),
+		namespaceOf: storedNamespaceLookup({ dialecteConfig: config }),
 	})
-	if (name === undefined) return
-	if (name.namespace === '' && element.namespaceURI !== '') return
+	if (name === undefined) return table
+	if (name.namespace === '' && element.namespaceURI !== '') return table
 
-	const prefix = valuePrefixOf({ context, element, uri: name.namespace })
-	const xsiPrefix = context.namespaces.declareOnRoot({
+	const valuePrefix = valuePrefixOf({ settings, table, element, uri: name.namespace })
+	const xsi = registerNamespace({
+		table: valuePrefix.table,
+		config,
 		uri: XSI_NAMESPACE.uri,
 		storedPrefix: XSI_NAMESPACE.prefix,
 	})
 	setAttributeNS({
 		element,
 		namespaceURI: XSI_NAMESPACE.uri,
-		qualifiedName: `${xsiPrefix}:type`,
-		value: prefix ? `${prefix}:${name.local}` : name.local,
+		qualifiedName: `${xsi.prefix}:type`,
+		value: valuePrefix.prefix ? `${valuePrefix.prefix}:${name.local}` : name.local,
 	})
+	return xsi.table
 }
 
 /**
@@ -247,16 +261,19 @@ function writeXsiType(params: { context: RecordElementContext; element: XmlEleme
  * (the dialecte's default) and another default is in force on the element, where the default namespace's alias is.
  */
 function valuePrefixOf(params: {
-	context: RecordElementContext
+	settings: RecordElementSettings
+	table: NamespaceTable
 	element: XmlElement
 	uri: string
-}): string {
-	const { context, element, uri } = params
-	const prefix = context.namespaces.declareOnRoot({ uri, storedPrefix: undefined })
-	if (prefix !== '' || uri === '') return prefix
+}): NamespaceRegistration {
+	const { settings, table, element, uri } = params
+	const { config } = settings
+	const registration = registerNamespace({ table, config, uri, storedPrefix: undefined })
+	if (registration.prefix !== '' || uri === '') return registration
 	// the default in force on the element as written: the closest unprefixed element's, itself or an ancestor
 	const inForce = lookupNamespaceURI({ element, prefix: null })
-	return inForce === uri ? '' : context.namespaces.defaultAlias({ storedPrefix: undefined })
+	if (inForce === uri) return registration
+	return registerDefaultAlias({ table: registration.table, config, storedPrefix: undefined })
 }
 
 // ── Type guards ──────────────────────────────────────────────────────────────
