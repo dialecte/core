@@ -1,7 +1,11 @@
 import { hasAttribute, hasAttributeNS, setAttribute, setAttributeNS } from './xml-element'
-import { XML_NAMESPACE_URI } from './xml-writer.constants'
 
-import { XMLNS_NAMESPACE_URI, XSD_NAMESPACE_URI, XSI_NAMESPACE } from '@/helpers/constant'
+import {
+	XML_NAMESPACE_URI,
+	XMLNS_NAMESPACE_URI,
+	XSD_NAMESPACE_URI,
+	XSI_NAMESPACE,
+} from '@/helpers/constant'
 import { extractLocalName, resolveDefinition, resolveSchemaAttributeValue } from '@/utils'
 import { ENGINE_XSD_PREFIX } from '@/utils/xsi-type.constants'
 

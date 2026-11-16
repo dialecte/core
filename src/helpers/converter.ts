@@ -1,12 +1,6 @@
-import { assertNotNamespaceDeclaration } from './assert-not-namespace-declaration'
+import { readAttributeInput } from './attribute-input'
 
-import { throwDialecteError } from '@/errors'
-import {
-	extractLocalName,
-	invariant,
-	resolveNamespaceByPrefix,
-	resolveNamespaceByScope,
-} from '@/utils'
+import { invariant } from '@/utils'
 
 import type { Ref, RefOrRecord } from '@/document'
 import type {
@@ -229,10 +223,8 @@ function declaredAttributeNamespace(params: {
  *
  * This mirrors the generated schema keys and XML export, so a namespaced attribute
  * read from a parsed document (stored by local name + namespace) ends up under the
- * same name it would have when created in-session. An `xmlns`/`xmlns:*` declaration
- * throws: a record holds none. A namespace given as a registered *scope* string (a config key such
- * as `ext`) is resolved to its full `Namespace`. A prefixed name or an unresolvable
- * scope throws.
+ * same name it would have when created in-session. The input is read by `readAttributeInput`
+ * (an `xmlns`/`xmlns:*` declaration, an unknown namespace key or an unknown name prefix throws).
  */
 function canonicalizeAttributeName(params: {
 	attribute: { name: string; value: unknown; namespace?: Namespace | string }
@@ -240,67 +232,13 @@ function canonicalizeAttributeName(params: {
 	tagName: string
 }): { name: string; value: unknown; namespace?: Namespace } {
 	const { attribute, dialecteConfig, tagName } = params
-
-	assertNotNamespaceDeclaration({ attribute, tagName })
-
-	// A namespace supplied as a registered-scope string (config key or prefix) is
-	// resolved to its full Namespace; an unknown scope is an authoring error.
-	let namespace: Namespace | undefined
-	if (typeof attribute.namespace === 'string') {
-		namespace = resolveNamespaceByScope(dialecteConfig, attribute.namespace)
-		if (!namespace) {
-			throwDialecteError('UNKNOWN_NAMESPACE_PREFIX', {
-				detail: `Unknown namespace '${attribute.namespace}' on attribute '${attribute.name}' — use a registered namespace key or pass a full { name, namespace: { prefix, uri } }.`,
-				ref: { tagName },
-			})
-		}
-	} else {
-		namespace = attribute.namespace
-	}
-
-	// Resolve the namespace: carried on the attribute, else inferred from a prefixed
-	// name via the config's declared namespaces (consumers can't extend that config,
-	// so an unresolvable prefix is a caller error, not a silent drop).
-	const colonIndex = attribute.name.indexOf(':')
-	if (!namespace && colonIndex !== -1) {
-		const prefix = attribute.name.slice(0, colonIndex)
-		namespace = resolveNamespaceByPrefix(dialecteConfig, prefix)
-		if (!namespace) {
-			throwDialecteError('UNKNOWN_NAMESPACE_PREFIX', {
-				detail: `Unknown namespace prefix '${prefix}' on attribute '${attribute.name}' — pass it explicitly as { name, namespace: { prefix, uri } }.`,
-				ref: { tagName },
-			})
-		}
-	}
-
-	// A namespace the dialecte declares is stored under the dialecte's prefix, whatever prefix a document bound to it
-	// (`x:cA` with x bound to ext's URI is `ext:cA`): the name every typed lookup, filter and write uses.
-	if (namespace && namespace.prefix) {
-		namespace = dialecteNamespaceOf({ dialecteConfig, uri: namespace.uri }) ?? namespace
-	}
-
-	// Non-default namespace → always prefixed. Default/unprefixed keep their name verbatim.
-	if (namespace && namespace.prefix) {
-		return {
-			...attribute,
-			name: `${namespace.prefix}:${extractLocalName(attribute.name)}`,
-			namespace,
-		}
-	}
-	return namespace === attribute.namespace
-		? { ...attribute, namespace }
-		: { ...attribute, namespace }
-}
-
-/** The namespace the dialecte declares for a URI, under a prefix: `undefined` for its default one or another URI. */
-function dialecteNamespaceOf(params: {
-	dialecteConfig: AnyDialecteConfig
-	uri: string
-}): Namespace | undefined {
-	const { dialecteConfig, uri } = params
-	return (Object.values(dialecteConfig.namespaces) as Namespace[]).find(
-		(namespace) => namespace.uri === uri && namespace.prefix !== '',
-	)
+	const { name, namespace } = readAttributeInput({
+		dialecteConfig,
+		attribute,
+		tagName,
+		authored: false,
+	})
+	return { ...attribute, name, namespace }
 }
 
 /**

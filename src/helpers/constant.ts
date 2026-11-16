@@ -15,6 +15,12 @@ export const XSI_NAMESPACE = {
 /** The namespace of XML Schema itself: its built-in types (`xs:string`, `xs:anyType`, ...). */
 export const XSD_NAMESPACE_URI = 'http://www.w3.org/2001/XMLSchema'
 
+/** The namespace of the `xml:` prefix, bound everywhere without a declaration. */
+export const XML_NAMESPACE_URI = 'http://www.w3.org/XML/1998/namespace'
+
+/** The XML namespace under its `xml` prefix, bound in every document without a declaration. */
+export const XML_NAMESPACE = { prefix: 'xml', uri: XML_NAMESPACE_URI }
+
 /** The namespace of the `xmlns` / `xmlns:p` declarations themselves. */
 export const XMLNS_NAMESPACE_URI = 'http://www.w3.org/2000/xmlns/'
 

@@ -3,9 +3,6 @@ import type { NamespaceScope } from './xml-element.types'
 /** The XML declaration every written document starts with, unless asked without one. */
 export const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>'
 
-/** The namespace of the `xml:` prefix, bound everywhere without a declaration. */
-export const XML_NAMESPACE_URI = 'http://www.w3.org/XML/1998/namespace'
-
 /** The line break of the formatted layout. */
 export const LINE_SEPARATOR = '\r\n'
 

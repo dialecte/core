@@ -6,15 +6,10 @@ import {
 	qualifiedNameOf,
 	serializeStartTag,
 } from './xml-element'
-import {
-	EMPTY_SCOPE,
-	INDENTATION,
-	LINE_SEPARATOR,
-	XML_DECLARATION,
-	XML_NAMESPACE_URI,
-} from './xml-writer.constants'
+import { EMPTY_SCOPE, INDENTATION, LINE_SEPARATOR, XML_DECLARATION } from './xml-writer.constants'
 
 import { assertXmlCharacters } from '@/helpers/assert-xml-characters'
+import { XML_NAMESPACE_URI } from '@/helpers/constant'
 import { trimXmlWhitespace } from '@/utils/xml-whitespace'
 
 import type { RecordElement, RecordElementSettings } from './record-element.types'

@@ -7,10 +7,9 @@ import {
 	NO_PREFIXES,
 	TEXT_ESCAPED,
 	TEXT_ESCAPED_ALL,
-	XML_NAMESPACE_URI,
 } from './xml-writer.constants'
 
-import { XMLNS_NAMESPACE_URI } from '@/helpers/constant'
+import { XML_NAMESPACE_URI, XMLNS_NAMESPACE_URI } from '@/helpers/constant'
 
 import type {
 	GeneratedPrefixes,

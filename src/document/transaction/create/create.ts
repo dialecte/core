@@ -1,10 +1,9 @@
 import { stageOperation, stageOperations } from '../stage-operations'
 
 import { getRecord } from '@/document'
-import { throwDialecteError } from '@/errors'
 import { assertNoFixedViolation, assertXsiTypeAdmitted, standardizeRecord } from '@/helpers'
-import { assertNotNamespaceDeclaration } from '@/helpers/assert-not-namespace-declaration'
-import { extractLocalName, invariant } from '@/utils'
+import { readAttributeInput } from '@/helpers/attribute-input'
+import { invariant } from '@/utils'
 import { assertXsiTypePrefixKnown } from '@/utils/xsi-type'
 
 import type { AddChildParams, ChildAttributesOf } from './create.types'
@@ -54,7 +53,7 @@ export async function stageAddChild<
 	} = params
 	const { id, tagName, attributes, namespace, value } = childParams
 
-	assertAuthoredAttributeNamesAreLocal({ attributes, tagName })
+	assertAuthoredAttributeNamesAreLocal({ dialecteConfig, attributes, tagName })
 
 	const parentRecord = await getRecord({ context, ref: parentRef })
 	invariant(parentRecord, {
@@ -132,40 +131,22 @@ function assertChildRecordWritable(params: {
 }
 
 /**
- * Guard the authoring boundary: in the full-object form, an author supplies a
- * *local* name plus a `namespace`, and dialecte derives the stored `prefix:local`
- * name. A prefix baked into the name is ambiguous (which wins, name or namespace?)
- * so we reject it loudly rather than silently re-deriving. A namespace
- * declaration is refused earlier, by attribute name canonicalization. The value-object form keeps its canonical (possibly
- * prefixed) keys — those are the generated, discoverable names — so it is not checked.
- *
- * Exception: a prefixed name whose `namespace.prefix` already agrees with it is not
- * ambiguous — it is the canonical stored form (every namespaced attribute is stamped
- * `prefix:local` at standardize time), so a clone replaying an already-standardized
- * `RawRecord` through this same param shape must pass unchanged.
+ * Guard the authoring boundary: in the full-object form, an author supplies a *local* name plus a `namespace`, and
+ * dialecte derives the stored `prefix:local` name; each input is read by `readAttributeInput` as authored (a prefix
+ * baked into the name refused unless it is the canonical form, a namespace declaration or an unknown namespace key
+ * refused). The value-object form keeps its canonical (possibly prefixed) keys - the generated, discoverable names -
+ * so it is not checked here.
  */
 function assertAuthoredAttributeNamesAreLocal<
 	GenericConfig extends AnyDialecteConfig,
 	GenericChildElement extends ElementsOf<GenericConfig>,
 >(params: {
+	dialecteConfig: GenericConfig
 	attributes: ChildAttributesOf<GenericConfig, GenericChildElement> | undefined
 	tagName: GenericChildElement
 }): void {
-	const { attributes, tagName } = params
+	const { dialecteConfig, attributes, tagName } = params
 	if (!attributes || !Array.isArray(attributes)) return
-
-	for (const attribute of attributes) {
-		const { name, namespace } = attribute
-		assertNotNamespaceDeclaration({ attribute, tagName })
-		if (!name.includes(':')) continue
-
-		const isConsistentCanonicalForm =
-			typeof namespace === 'object' && namespace?.prefix === name.slice(0, name.indexOf(':'))
-		if (isConsistentCanonicalForm) continue
-
-		throwDialecteError('PREFIXED_ATTRIBUTE_NAME', {
-			detail: `Attribute '${name}' on '${tagName}' is prefixed — pass a local name plus its namespace instead: { name: '${extractLocalName(name)}', namespace }.`,
-			ref: { tagName },
-		})
-	}
+	for (const attribute of attributes)
+		readAttributeInput({ dialecteConfig, attribute, tagName, authored: true })
 }
