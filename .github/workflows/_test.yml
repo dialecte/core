@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'pr: the browser tests a change selects; release: the whole suite in the browser with the store contract full table'
+        description: 'pr: the browser tests the change selects against the pull request base; full: the whole suite in the browser with the store contract full table (the merge queue)'
         type: choice
-        options: [pr, release]
-        default: release
+        options: [pr, full]
+        default: full
   workflow_call:
     inputs:
       mode:
-        description: 'pr: the browser tests a change selects; release: the whole suite in the browser with the store contract full table'
+        description: 'pr: the browser tests the change selects against the pull request base; full: the whole suite in the browser with the store contract full table (the merge queue)'
         type: string
         required: true
 
@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 'latest'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Restore node_modules cache
@@ -56,7 +56,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 'latest'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Restore node_modules cache
@@ -86,5 +86,5 @@ jobs:
         run: npm run test:scope -- --base origin/${{ github.base_ref }} --shard=${{ matrix.shard }}/${{ strategy.job-total }} --passWithNoTests --retry=1
 
       - name: Run the whole suite in the browser, the store contract's full table on every store
-        if: inputs.mode == 'release'
+        if: inputs.mode == 'full'
         run: npm run test:browser:release -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --retry=1

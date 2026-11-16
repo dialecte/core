@@ -1,15 +1,12 @@
 name: Publish @dialecte/core
 
+# A push to main is the merge queue's merge of a tree ci.yml already tested: it builds and publishes, never tests again.
+# Only the commit that changes the version publishes it (_check-npm-version.yml). No concurrency group: every push runs
+# to its end, a pending run is never replaced by a later one's.
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
-    # a push of the docs alone deploys them (deploy-docs.yml) and has nothing to test or publish
-    paths-ignore:
-      - 'doc/**'
-      - '.vitepress/**'
-      - '.github/workflows/deploy-docs.yml'
 
 jobs:
   install:
@@ -21,13 +18,6 @@ jobs:
     needs: install
     uses: ./.github/workflows/_build.yml
 
-  test:
-    name: Run Tests
-    needs: install
-    uses: ./.github/workflows/_test.yml
-    with:
-      mode: release
-
   version:
     name: Check Version
     uses: ./.github/workflows/_check-npm-version.yml
@@ -36,25 +26,12 @@ jobs:
     name: Extract Version
     uses: ./.github/workflows/_extract-version.yml
 
-  lint:
-    name: Lint Code
-    needs: install
-    uses: ./.github/workflows/_lint.yml
-
-  type-perf:
-    name: Type Performance Gate
-    needs: install
-    uses: ./.github/workflows/_type-perf.yml
-
   deploy:
     name: Publish to NPM
     if: needs.version.outputs.version_changed == 'true'
     needs:
       - build
-      - test
       - version
-      - lint
-      - type-perf
     uses: ./.github/workflows/_publish.yml
 
   create-release-tag:

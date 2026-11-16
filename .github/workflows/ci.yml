@@ -1,0 +1,70 @@
+name: ci
+
+# Every change before main: a pull request runs every check with the browser tests its change selects (a fast answer on
+# each push), a merge queue entry (and a manual run) every check with the whole browser suite and the store contract's
+# full table, on top of main and the lots ahead of it. A push to main is the queue's merge of a tree this workflow
+# already tested: publish.yml builds and publishes it.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  merge_group:
+
+# a new push of a pull request cancels the run it supersedes; queue runs always finish
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  install:
+    name: Install Dependencies
+    uses: ./.github/workflows/_install.yml
+
+  build:
+    name: Build Project
+    needs: install
+    uses: ./.github/workflows/_build.yml
+
+  check:
+    name: Check
+    needs: install
+    uses: ./.github/workflows/_check.yml
+
+  type-perf:
+    name: Type Gates
+    needs: install
+    uses: ./.github/workflows/_type-perf.yml
+
+  docs:
+    name: Docs Build
+    needs: install
+    uses: ./.github/workflows/_docs.yml
+
+  test:
+    name: Run Tests
+    needs: install
+    uses: ./.github/workflows/_test.yml
+    with:
+      mode: ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
+
+  # the one check the ruleset requires: green only when every check of this run passed (none skipped)
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs:
+      - build
+      - check
+      - type-perf
+      - docs
+      - test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every check passed
+        run: |
+          echo "build=${{ needs.build.result }} check=${{ needs.check.result }} type-perf=${{ needs.type-perf.result }} docs=${{ needs.docs.result }} test=${{ needs.test.result }}"
+          test "${{ needs.build.result }}" = success
+          test "${{ needs.check.result }}" = success
+          test "${{ needs.type-perf.result }}" = success
+          test "${{ needs.docs.result }}" = success
+          test "${{ needs.test.result }}" = success

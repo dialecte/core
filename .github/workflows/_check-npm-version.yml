@@ -4,10 +4,13 @@ on:
   workflow_call:
     outputs:
       version_changed:
-        description: 'Whether the deployed package version has changed'
+        description: 'Whether this push changed the package version and npm does not have it yet'
         value: ${{ jobs.check.outputs.version_changed }}
 
 jobs:
+  # Only the commit that changes the version publishes it: its version differs from the main it was pushed onto
+  # (the push's `before`), and npm does not have it yet (a re-run after a publish does nothing). Two pushes landing
+  # close together never both publish, and a release is never published from a later commit.
   check:
     name: Get Deployed Version
     runs-on: ubuntu-24.04
@@ -17,28 +20,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Extract Current Version
-        id: current_version
-        run: |
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "Current version: $CURRENT_VERSION"
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Fetch NPM Version
-        id: npm_version
-        run: |
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          PUBLISHED_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || echo "0.0.0")
-          echo "Latest published version: $PUBLISHED_VERSION"
-          echo "npm_version=$PUBLISHED_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Compare Versions
+      - name: Read the versions
         id: compare_versions
         run: |
-          if [ "${{ steps.npm_version.outputs.npm_version }}" != "${{ steps.current_version.outputs.current_version }}" ]; then
-            echo "Version has changed: ${{ steps.npm_version.outputs.npm_version }} -> ${{ steps.current_version.outputs.current_version }}"
-            echo "version_changed=true" >> $GITHUB_OUTPUT
+          git fetch --depth=1 origin "${{ github.event.before }}"
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          PREVIOUS_VERSION=$(git show "${{ github.event.before }}:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PUBLISHED_VERSION=$(npm view "$PACKAGE_NAME@$CURRENT_VERSION" version 2>/dev/null || true)
+          echo "version $PREVIOUS_VERSION -> $CURRENT_VERSION, on npm: ${PUBLISHED_VERSION:-no}"
+          if [ "$PREVIOUS_VERSION" != "$CURRENT_VERSION" ] && [ "$PUBLISHED_VERSION" != "$CURRENT_VERSION" ]; then
+            echo "version_changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Version unchanged"
-            echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "version_changed=false" >> "$GITHUB_OUTPUT"
           fi

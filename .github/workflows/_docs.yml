@@ -1,13 +1,14 @@
-name: _lint
+name: _docs
 
 on:
   workflow_dispatch:
   workflow_call:
 
 jobs:
-  lint:
+  # the docs site builds: a broken page or link is caught before main (deploy-docs.yml publishes it after the merge)
+  docs:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -15,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 'latest'
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Restore node_modules cache
@@ -24,8 +25,5 @@ jobs:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
 
-      - name: Linting
-        run: npm run lint:check
-
-      - name: Format Check
-        run: npm run format:check
+      - name: Build the docs
+        run: npm run doc:build
