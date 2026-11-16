@@ -174,7 +174,9 @@ await doc.transaction(async (tx) => {
 	// Create a custom element
 	const child = await tx.any.addChild(parentRef, {
 		tagName: 'Private',
-		attributes: { type: 'custom', xmlns: 'http://example.com/private' },
+		// its namespace on the element: a record holds no xmlns declaration (the export writes it on the root)
+		namespace: { prefix: 'p', uri: 'http://example.com/private' },
+		attributes: { type: 'custom' },
 	})
 
 	// Update it

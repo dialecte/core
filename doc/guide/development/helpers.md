@@ -183,7 +183,7 @@ const clean = stripAttributes(record, ['aA_1', 'aA_2'])
 
 Read the attributes of a record you already hold, the way [`query.getAttribute(s)`](/api/query#reading-from-a-record) reads them, with no query: synchronous, for code that has a record but no query - an import pass (`afterImport` works in memory, with no store reads), or a pure composer shared between an import pass and a query. `query.getAttribute(s)` itself resolves the record, then reads it through these.
 
-Same options, same results as the query: `namespace` scope, `defaults` fill (default `'optional'`), `''` for an absent attribute, `fullObject: true` for the attribute objects. Namespace declarations are left out of the value object only: `fullObject: true` returns the stored attributes as they are, a declaration a parsed document carries included (stored by its prefix, in the xmlns namespace) - as the query does. The schema values come from the `dialecteConfig` passed.
+Same options, same results as the query: `namespace` scope, `defaults` fill (default `'optional'`), `''` for an absent attribute, `fullObject: true` for the attribute objects. `fullObject: true` returns the stored attributes as they are - as the query does. A record holds no namespace declaration: import drops them, a write refuses them. The schema values come from the `dialecteConfig` passed.
 
 ```ts
 import { readAttribute, readAttributes } from '@dialecte/core/helpers'
@@ -243,7 +243,7 @@ Every attribute is stored under one predictable name, whether it arrived from a 
 - **Default namespace → bare local name**, no `namespace` object: `aA`, `aAA_1`, `root`.
 - **Any non-default namespace → `prefix:local`**, with a `namespace` object: `ext:cA`, `ext:cAA_1`, `ext:root`.
 - **The prefix is the dialecte's** for a namespace it declares, whatever prefix a document bound to it: `<A xmlns:x="…DEV-EXT" x:cA="v"/>` is stored, read, filtered and exported as `ext:cA`. A namespace the dialecte does not declare keeps the document's prefix (`foo:bar`) - an `update` takes it back by that name (the record holds its namespace); an `addChild` needs the array form with `{ prefix, uri }`, and `deepClone` copies it as it is.
-- **Namespace declarations are no attributes**: reads leave them out, as parsed (`xmlns:foo`, stored under its prefix) or written.
+- **Namespace declarations are no attributes**: import drops them, a write given `xmlns` / `xmlns:*` is refused with `NAMESPACE_DECLARATION_NOT_ALLOWED`, and the export declares the namespaces the records use on the root.
 
 A prefixed name is used only when a namespace applies, so a non-default attribute never collides with a bare default one (e.g. `root` and `ext:root` coexist on the `Root` element). This matches the generated schema keys and XML export, so read/write by the same name regardless of how the record was produced.
 

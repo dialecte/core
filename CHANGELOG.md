@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Namespace declarations are no longer stored: every record already names its own namespace, an `xsi:type` value is now
+stored resolved, and the export declares what the records use on the root. Breaking: exports move and drop declarations,
+stored `xsi:type` values change form, writes refuse `xmlns` attributes and unknown `xsi:type` prefixes. Documents stored
+by an earlier core are not migrated: export them with that version and import the file again.
+
+### Changed
+
+- **Breaking** - export: every namespace the written records use (element names, attribute names, `xsi:type` values)
+  is declared on the written root - the document's root or a fragment's start element - and nowhere below it, except
+  the default namespace's `xmlns=""` / `xmlns="..."` where an element leaves or re-enters it. Order: `xmlns`,
+  `xmlns:xsi`, the dialecte's namespaces in config order, the others by URI, then the root's attributes. One prefix
+  per URI: the dialecte's for its namespaces, `xs` for XSD, else the first stored one, `ns<k>` for a namespace known
+  only from an `xsi:type` value or a subtree default; a clash renames `<prefix>2`. The one second prefix: the
+  dialecte's default namespace also takes an alias, declared on the root, for what cannot be written unprefixed in it
+  (an attribute of that namespace, an `xsi:type` value where another default is in force), so no name or value changes
+  namespace on export; the alias is the attribute's stored prefix when free (its stored name survives an export and a
+  re-import), else `ns<k>`. A declaration no record uses is no longer exported. An `xs:` value whose prefix the file
+  declared on an ancestor is now bound (it was written unbound).
+
+  ```xml
+  <!-- before -->
+  <Root xmlns="urn:d" xmlns:xsi="...">
+    <Part><Value xmlns:ns1="http://www.w3.org/2001/XMLSchema" xsi:type="ns1:integer"/></Part>
+  </Root>
+  <!-- after -->
+  <Root xmlns="urn:d" xmlns:xsi="..." xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    <Part><Value xsi:type="xs:integer"/></Part>
+  </Root>
+  ```
+
+- **Breaking** - import stores no `xmlns` / `xmlns:*` attribute on any record:
+  `getAttributes(ref, { fullObject: true })` and `readAttributes` no longer list declarations. An unprefixed element
+  under a subtree default namespace (or `xmlns=""`) is stored in that namespace (it was stored in the dialecte's
+  default).
+- **Breaking** - a stored `xsi:type` value takes one form that needs no declaration: `local` (the dialecte's default
+  namespace), `prefix:local` (another dialecte namespace), `xs:local` (XSD, whatever prefix the file used), Clark
+  `{uri}local` (any other namespace; `{}local` in no namespace). A value whose prefix the file binds nowhere is kept
+  as written. A record's own declarations are no longer read. An unprefixed value in a file that declares no default
+  namespace names the dialecte's default, as its unprefixed elements do.
+- **Breaking** - `getSnapshot({ declareNamespaces: false })` writes a stored Clark `xsi:type` value literally
+  (`{urn:f}Kind`, `{}Kind`), where it wrote the value as the file had it.
+- **Breaking** - `addChild`, `update`, `deepClone` and an `afterStandardizedRecord` hook given an `xmlns` / `xmlns:*`
+  attribute (or a namespace object of the `xmlns` prefix) are refused with the new `NAMESPACE_DECLARATION_NOT_ALLOWED`
+  (`D3013`). On `addChild` and `update`, an `xsi:type` written with a prefix outside the engine's table (the
+  dialecte's prefixes, `xs`), or a malformed Clark value, is refused with `UNKNOWN_NAMESPACE_PREFIX`, before the type
+  is judged; `deepClone` copies stored values as they are (on an element the dialecte declares, its type is still
+  judged). `xs:integer` written on an element whose file declared `xs` on an ancestor is now admitted.
+
 ## [0.11.0] - 2026-11-13
 
 An import names every step from the file to the ready document - waiting, storing, indexing, the dialecte's own steps, checking, applying, finishing - so a progress bar never sits on a finished file: `afterImport` gets `{ report, signal }`, `project.import` tells each file with its place and `onFile`, and the SQLite store tells again the phase it was in after an index build. Breaking at the type level in two places: code that calls a session's `afterImport` itself passes it a context, and a `switch` that was exhaustive over `progress.phase` handles the new phases. The engine wire, the hub protocol and the storage kinds registry are bumped, so library copies of 0.10 and 0.11 do not share an engine. Core pins `@dialecte/cli` 0.6.0; the skills name tiers and procedures, never a host's tool, and the repository commits a tool-neutral `AGENTS.md`.

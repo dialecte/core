@@ -58,7 +58,50 @@ Import and export use one consistent namespace form (the same records serialize 
 - **Elements** — an element's namespace is resolved per parent→child context, so a local name declared in more than one namespace (bare `A` under one parent, `ext:A` under another) serializes correctly under each parent. See [Element namespaces](/guide/development/helpers#element-namespaces).
 - **Foreign elements** — an element whose local name matches a schema element but carries a namespace the config does not declare (a private/vendor element) is kept verbatim on import: its namespace and attributes survive the round-trip untouched.
 
-`xmlns` / `xmlns:*` declarations are hoisted to the root element automatically during export.
+- **Namespace declarations** — no record holds an `xmlns` / `xmlns:*` attribute. Import reads each declaration where
+  it stands (it decides the namespace of the names and `xsi:type` values below it), then drops it; a write
+  (`addChild`, `update`, `deepClone`, an `afterStandardizedRecord` hook) given one is refused with
+  `NAMESPACE_DECLARATION_NOT_ALLOWED`.
+- **`xsi:type`** — stored in one form that needs no declaration: the local name for a type of the dialecte's default
+  namespace (`tDD_1A`), the dialecte's prefix for one of its other namespaces (`ext:tDD_1A`), `xs:` for an XSD
+  built-in (`xs:integer`, whatever prefix the file bound to XSD), and the Clark name for any other namespace
+  (`{urn:f}Kind`; `{}Kind` for a type in no namespace). A value whose prefix the file binds nowhere is kept as written
+  (`t:Kind`): the import does not fail, validation reports it. In a file that declares no default namespace, an
+  unprefixed value names the dialecte's default, as the unprefixed elements do. On `addChild` and `update`, a value in
+  one of these forms is accepted; another prefix, or a malformed Clark name, is refused with
+  `UNKNOWN_NAMESPACE_PREFIX`. `deepClone` copies the stored values as they are (on an element the dialecte declares,
+  its type is still judged).
+
+Export declares every namespace the written records use (element names, attribute names, `xsi:type` values) on the
+written root - the document's root, or a fragment's start element - and nowhere below it, in a fixed order: `xmlns`,
+`xmlns:xsi`, the dialecte's namespaces in its config order, then the others by URI; the root's own attributes follow.
+Each URI gets one prefix: the dialecte's own for its namespaces, `xs` for XSD, otherwise the prefix the first record
+using it was stored with, `ns1`, `ns2`... for a namespace known only from an `xsi:type` value or from an unprefixed
+subtree default; a prefix already taken by another URI is renamed `<prefix>2`, `<prefix>3`... The dialecte's default
+namespace may also take one alias on the root, for what cannot be written unprefixed in it: an attribute of that
+namespace (an unprefixed attribute is in no namespace), or an `xsi:type` value on an element where another default is
+in force. The alias is the first such attribute's stored prefix when it is free, so its stored name survives an export
+and a re-import, else `ns<k>`. A declaration the file had and no record uses is not exported. The only declarations
+below the written root are the default namespace's: `xmlns=""` on an element in no namespace under a default, and
+`xmlns="<default>"` on a default-namespace element under one in no namespace (a default has no prefix).
+
+```xml
+<!-- imported -->
+<Root xmlns="urn:d" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:unused="urn:u">
+	<Part xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:f="urn:f">
+		<Value xsi:type="xs:integer">5</Value>
+		<f:Note/>
+	</Part>
+</Root>
+<!-- exported -->
+<Root xmlns="urn:d" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:f="urn:f">
+	<Part>
+		<Value xsi:type="xs:integer">5</Value>
+		<f:Note/>
+	</Part>
+</Root>
+```
 
 ---
 

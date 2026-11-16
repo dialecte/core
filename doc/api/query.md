@@ -456,7 +456,7 @@ const fullAttrs = await doc.query.getAttributes(ref, { fullObject: true })
 // → FullAttributeObject[]
 ```
 
-Unscoped, `getAttributes(ref)` returns every attribute under the name it is stored by - unprefixed in the default namespace, `prefix:local` otherwise, `xsi:type` included - the object a write takes back. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the array of full attribute objects. The value objects leave namespace declarations (`xmlns:*`) out; the `fullObject` array is the stored attributes as they are, a declaration a parsed document carries included (stored by its prefix, in the xmlns namespace).
+Unscoped, `getAttributes(ref)` returns every attribute under the name it is stored by - unprefixed in the default namespace, `prefix:local` otherwise, `xsi:type` included - the object a write takes back. Pass `{ namespace }` to read one namespace's attributes (local-keyed), or `{ fullObject: true }` for the array of full attribute objects. The `fullObject` array is the stored attributes as they are; a record holds no namespace declaration (import drops them, a write refuses them).
 
 #### Reading from a record
 
