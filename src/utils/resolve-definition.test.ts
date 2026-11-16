@@ -198,29 +198,6 @@ const typeCases: Record<string, TypeCase> = {
 		record: record({ parent: 'ByNamespace', namespace: other, attributes: [xsiType('o:tExt')] }),
 		expected: 'type',
 	},
-	'its prefix bound on the record itself, as parsed -> the same type': {
-		record: record({
-			parent: 'ByNamespace',
-			namespace: other,
-			attributes: [
-				xsiType('x:tExt'),
-				{
-					name: 'x',
-					value: 'urn:other',
-					namespace: { prefix: 'xmlns', uri: 'http://www.w3.org/2000/xmlns/' },
-				},
-			],
-		}),
-		expected: 'type',
-	},
-	'its prefix bound on the record itself, as created -> the same type': {
-		record: record({
-			parent: 'ByNamespace',
-			namespace: other,
-			attributes: [xsiType('x:tExt'), { name: 'xmlns:x', value: 'urn:other' }],
-		}),
-		expected: 'type',
-	},
 	"an unprefixed name -> a type of the dialecte's default namespace": {
 		record: record({ parent: 'ByNamespace', namespace: other, attributes: [xsiType('tDefault')] }),
 		expected: 'type',
@@ -319,8 +296,10 @@ describe('resolveDefinition', () => {
 
 	it('refuses a ref: it carries no parent, so it would silently read the union', () => {
 		const ref = { tagName: 'AAA_1', id: 'aaa1-1' }
-		// @ts-expect-error a ref is resolved to its record first, with query.getDefinition(ref)
-		const fromRef = () => resolveDefinition({ dialecteConfig: config, record: ref })
+		function fromRef() {
+			// @ts-expect-error a ref is resolved to its record first, with query.getDefinition(ref)
+			return resolveDefinition({ dialecteConfig: config, record: ref })
+		}
 		expect(fromRef).toBeTypeOf('function')
 	})
 })

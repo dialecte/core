@@ -1,4 +1,5 @@
 import { createRecordElement } from './record-element'
+import { RootNamespaces } from './root-namespaces'
 import {
 	escapeCompactTextValue,
 	escapeTextValue,
@@ -23,9 +24,10 @@ import type { AnyRawRecord } from '@/types'
 
 /**
  * Write records as XML text, element by element in document order, with no DOM, as `XMLSerializer` writes the same
- * elements: formatted (4 spaces, CRLF, a text value on its element's line) or compact. The root start tag is only
- * complete once every element is written (the namespaces the document needs are declared on it as they are met), so
- * the writer hands the body as it goes (`take`) and the head (declaration and root start tag) at the end (`head`).
+ * elements: formatted (4 spaces, CRLF, a text value on its element's line) or compact. Every namespace the records
+ * use is declared on the written root, and only there (but `xmlns=""` on an element in no namespace under a default):
+ * the root start tag is only complete once every element is written, so the writer hands the body as it goes
+ * (`take`) and the head (declaration and root start tag) at the end (`head`).
  */
 export class XmlWriter {
 	private readonly context: RecordElementContext
@@ -34,10 +36,8 @@ export class XmlWriter {
 	private readonly openElements: OpenElement[] = []
 	private body: string[] = []
 	private root: OpenElement | undefined
-	/** The root's bindings as they stand: its declarations grow while its descendants are written. */
-	private readonly rootBindings = new Map<string, string>()
-	private readonly rootScope: NamespaceScope = { bindings: this.rootBindings, parent: undefined }
-	private rootAttributeCount = -1
+	/** The root's bindings: the namespaces registered so far, all declared on the root at the end. */
+	private readonly rootScope: NamespaceScope
 	/** The prefixes generated for the elements below the root, numbered across the document */
 	private readonly prefixes: GeneratedPrefixes = { next: 1 }
 	/** A line break and the indentation of each level, made once */
@@ -50,8 +50,9 @@ export class XmlWriter {
 			declareNamespaces,
 			withDatabaseIds,
 			documentRoot,
-			rootElement: undefined,
+			namespaces: new RootNamespaces({ config, documentRoot }),
 		}
+		this.rootScope = { bindings: this.context.namespaces.bindings, parent: undefined }
 		this.indent = params.indent ?? true
 		this.includeXmlDeclaration = params.includeXmlDeclaration ?? true
 	}
@@ -79,7 +80,6 @@ export class XmlWriter {
 		}
 
 		if (parent) {
-			this.refreshRootScope()
 			const { text: startTag, scope } = serializeStartTag({
 				element,
 				scope: parent.scope,
@@ -114,8 +114,11 @@ export class XmlWriter {
 	head(): string {
 		const root = this.root
 		if (!root) return ''
+		const declarations = this.context.declareNamespaces
+			? this.context.namespaces.declarations()
+			: []
 		const { text: startTag } = serializeStartTag({
-			element: root.element,
+			element: { ...root.element, attributes: [...declarations, ...root.element.attributes] },
 			scope: EMPTY_SCOPE,
 			prefixes: { next: 1 },
 		})
@@ -123,26 +126,6 @@ export class XmlWriter {
 			? XML_DECLARATION + (this.indent ? LINE_SEPARATOR : '')
 			: ''
 		return declaration + startTag + (root.empty ? '/>' : '>')
-	}
-
-	/** Bring the root's bindings up to date: the root gains declarations while its descendants are written. */
-	private refreshRootScope(): void {
-		const root = this.root
-		if (!root) return
-		const attributeCount = root.element.attributes.length
-		if (attributeCount === this.rootAttributeCount) return
-		this.rootAttributeCount = attributeCount
-		const { scope, generated } = serializeStartTag({
-			element: root.element,
-			scope: EMPTY_SCOPE,
-			prefixes: { next: 1 },
-		})
-		// a prefix the root declares for one of its attributes may be numbered otherwise once the root gains
-		// declarations: its descendants never rely on it, they declare what they need
-		this.rootBindings.clear()
-		for (const [prefix, uri] of scope.bindings) {
-			if (!generated.has(prefix)) this.rootBindings.set(prefix, uri)
-		}
 	}
 
 	private writeText(params: { text: string; owner: OpenElement }): void {

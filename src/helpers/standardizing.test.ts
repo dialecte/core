@@ -1,7 +1,9 @@
+// dialecte-allow test-file-long: over 400 lines before this lot; the split by behaviour is a logged follow-up
 import { standardizeRecord } from './standardizing'
 
 import { describe, expect, it } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import {
 	DIALECTE_TEST_NAMESPACES,
 	TEST_DIALECTE_CONFIG,
@@ -503,6 +505,38 @@ describe('standardizeRecord', () => {
 
 			expect(hookCalled).toBe(true)
 			expect(result.value).toBe('from hook')
+		})
+
+		it('refuses a hook record carrying a namespace declaration', () => {
+			const hooks = {
+				afterStandardizedRecord: <C extends AnyDialecteConfig, E extends ElementsOf<C>>({
+					record,
+				}: {
+					record: RawRecord<C, E>
+				}): RawRecord<C, E> => ({
+					...record,
+					attributes: [...record.attributes, { name: 'xmlns:g', value: 'urn:g' }],
+				}),
+			}
+
+			function standardizeWithHook() {
+				return standardizeRecord({
+					record: { tagName: 'AA_1', attributes: { aAA_1: 'v' } },
+					dialecteConfig: config,
+					hooks,
+				})
+			}
+
+			const thrown = (() => {
+				try {
+					standardizeWithHook()
+				} catch (error) {
+					return error
+				}
+			})()
+			const refusal = toDialecteError(thrown)
+			expect(refusal?.key).toBe('NAMESPACE_DECLARATION_NOT_ALLOWED')
+			expect(refusal?.detail).toContain('xmlns:g')
 		})
 
 		it('re-applies canonical attribute order after the hook', () => {

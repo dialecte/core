@@ -1,5 +1,6 @@
+import { assertNotNamespaceDeclaration } from './assert-not-namespace-declaration'
+
 import { throwDialecteError } from '@/errors'
-import { XMLNS_NAMESPACE_URI } from '@/helpers/constant'
 import {
 	extractLocalName,
 	invariant,
@@ -228,8 +229,8 @@ function declaredAttributeNamespace(params: {
  *
  * This mirrors the generated schema keys and XML export, so a namespaced attribute
  * read from a parsed document (stored by local name + namespace) ends up under the
- * same name it would have when created in-session. `xmlns`/`xmlns:*` declarations are
- * left verbatim. A namespace given as a registered *scope* string (a config key such
+ * same name it would have when created in-session. An `xmlns`/`xmlns:*` declaration
+ * throws: a record holds none. A namespace given as a registered *scope* string (a config key such
  * as `ext`) is resolved to its full `Namespace`. A prefixed name or an unresolvable
  * scope throws.
  */
@@ -239,6 +240,8 @@ function canonicalizeAttributeName(params: {
 	tagName: string
 }): { name: string; value: unknown; namespace?: Namespace } {
 	const { attribute, dialecteConfig, tagName } = params
+
+	assertNotNamespaceDeclaration({ attribute, tagName })
 
 	// A namespace supplied as a registered-scope string (config key or prefix) is
 	// resolved to its full Namespace; an unknown scope is an authoring error.
@@ -261,26 +264,23 @@ function canonicalizeAttributeName(params: {
 	const colonIndex = attribute.name.indexOf(':')
 	if (!namespace && colonIndex !== -1) {
 		const prefix = attribute.name.slice(0, colonIndex)
-		if (prefix !== 'xmlns') {
-			namespace = resolveNamespaceByPrefix(dialecteConfig, prefix)
-			if (!namespace) {
-				throwDialecteError('UNKNOWN_NAMESPACE_PREFIX', {
-					detail: `Unknown namespace prefix '${prefix}' on attribute '${attribute.name}' — pass it explicitly as { name, namespace: { prefix, uri } }.`,
-					ref: { tagName },
-				})
-			}
+		namespace = resolveNamespaceByPrefix(dialecteConfig, prefix)
+		if (!namespace) {
+			throwDialecteError('UNKNOWN_NAMESPACE_PREFIX', {
+				detail: `Unknown namespace prefix '${prefix}' on attribute '${attribute.name}' — pass it explicitly as { name, namespace: { prefix, uri } }.`,
+				ref: { tagName },
+			})
 		}
 	}
 
 	// A namespace the dialecte declares is stored under the dialecte's prefix, whatever prefix a document bound to it
 	// (`x:cA` with x bound to ext's URI is `ext:cA`): the name every typed lookup, filter and write uses.
-	if (namespace && namespace.prefix && namespace.uri !== XMLNS_NAMESPACE_URI) {
+	if (namespace && namespace.prefix) {
 		namespace = dialecteNamespaceOf({ dialecteConfig, uri: namespace.uri }) ?? namespace
 	}
 
-	// Non-default namespace → always prefixed. Default/unprefixed and xmlns declarations
-	// keep their name verbatim.
-	if (namespace && namespace.prefix && namespace.prefix !== 'xmlns') {
+	// Non-default namespace → always prefixed. Default/unprefixed keep their name verbatim.
+	if (namespace && namespace.prefix) {
 		return {
 			...attribute,
 			name: `${namespace.prefix}:${extractLocalName(attribute.name)}`,

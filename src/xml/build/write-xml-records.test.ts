@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: over 400 lines before this lot; the split by behaviour is a logged follow-up
 import { writeXmlRecords } from './write-xml-records'
 import { XmlWriter } from './xml-writer'
 
@@ -452,42 +453,43 @@ describe('writeXmlRecords', () => {
 					}),
 				],
 			},
-			'a qualified root attribute -> declared inline, or moved once a child declares it': {
-				expected: {
-					formatted: crlf([
-						'<?xml version="1.0" encoding="UTF-8"?>',
-						'<Root xmlns="http://dialecte.dev/XML/DEFAULT" root="1" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" ext:root="2" b="x">',
-						'    <A aA="x"/>',
-						'</Root>',
-					]),
-					compact:
-						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" root="1" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" ext:root="2" b="x"><A aA="x"/></Root>',
-				},
-				records: [
-					record({
-						id: 'root-1',
-						tagName: 'Root',
-						attributes: [
-							{ name: 'root', value: '1' },
-							{ name: 'root', value: '2', namespace: NS.ext },
-							{ name: 'b', value: 'x' },
-						],
-						children: [ref({ id: 'a-1', tagName: 'A' })],
-					}),
-					childRecord({ id: 'a-1', tagName: 'A', attributes: [{ name: 'aA', value: 'x' }] }),
-				],
-			},
-			'a qualified root attribute declared again by a descendant -> one declaration, after the root attributes':
+			'a qualified root attribute -> its namespace declared on the root, before the root attributes':
 				{
 					expected: {
 						formatted: crlf([
 							'<?xml version="1.0" encoding="UTF-8"?>',
-							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" ext:root="2" b="x" xmlns:ext="http://dialecte.dev/XML/DEV-EXT">',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" root="1" ext:root="2" b="x">',
+							'    <A aA="x"/>',
+							'</Root>',
+						]),
+						compact:
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" root="1" ext:root="2" b="x"><A aA="x"/></Root>',
+					},
+					records: [
+						record({
+							id: 'root-1',
+							tagName: 'Root',
+							attributes: [
+								{ name: 'root', value: '1' },
+								{ name: 'root', value: '2', namespace: NS.ext },
+								{ name: 'b', value: 'x' },
+							],
+							children: [ref({ id: 'a-1', tagName: 'A' })],
+						}),
+						childRecord({ id: 'a-1', tagName: 'A', attributes: [{ name: 'aA', value: 'x' }] }),
+					],
+				},
+			'a qualified root attribute declared again by a descendant -> one declaration, before the root attributes':
+				{
+					expected: {
+						formatted: crlf([
+							'<?xml version="1.0" encoding="UTF-8"?>',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" ext:root="2" b="x">',
 							'    <ext:AA_3 aAA_3="v" ext:aAA_3=""/>',
 							'</Root>',
 						]),
 						compact:
-							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" ext:root="2" b="x" xmlns:ext="http://dialecte.dev/XML/DEV-EXT"><ext:AA_3 aAA_3="v" ext:aAA_3=""/></Root>',
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" ext:root="2" b="x"><ext:AA_3 aAA_3="v" ext:aAA_3=""/></Root>',
 					},
 					records: [
 						record({
@@ -507,18 +509,18 @@ describe('writeXmlRecords', () => {
 						}),
 					],
 				},
-			'an unprefixed element of a foreign namespace -> default re-declared around it': {
+			'an unprefixed element of a foreign namespace -> written under a root prefix ns1': {
 				expected: {
 					formatted: crlf([
 						'<?xml version="1.0" encoding="UTF-8"?>',
-						'<Root xmlns="http://dialecte.dev/XML/DEFAULT">',
-						'    <F xmlns="urn:foreign">',
-						'        <G xmlns="http://dialecte.dev/XML/DEFAULT"/>',
-						'    </F>',
+						'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ns1="urn:foreign">',
+						'    <ns1:F>',
+						'        <G/>',
+						'    </ns1:F>',
 						'</Root>',
 					]),
 					compact:
-						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT"><F xmlns="urn:foreign"><G xmlns="http://dialecte.dev/XML/DEFAULT"/></F></Root>',
+						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ns1="urn:foreign"><ns1:F><G/></ns1:F></Root>',
 				},
 				records: [
 					rootOf(['f-1']),
@@ -531,17 +533,17 @@ describe('writeXmlRecords', () => {
 					childRecord({ id: 'g-1', tagName: 'G', parentId: 'f-1', parentTag: 'F' }),
 				],
 			},
-			'a prefix bound to another namespace by a descendant -> re-declared on it': {
+			'a prefix bound to another namespace by a descendant -> renamed ext2 on the root': {
 				expected: {
 					formatted: crlf([
 						'<?xml version="1.0" encoding="UTF-8"?>',
-						'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT">',
+						'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:ext2="urn:other">',
 						'    <ext:AA_3 ext:aAA_3=""/>',
-						'    <ext:O xmlns:ext="urn:other"/>',
+						'    <ext2:O/>',
 						'</Root>',
 					]),
 					compact:
-						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT"><ext:AA_3 ext:aAA_3=""/><ext:O xmlns:ext="urn:other"/></Root>',
+						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:ext2="urn:other"><ext:AA_3 ext:aAA_3=""/><ext2:O/></Root>',
 				},
 				records: [
 					rootOf(['aa3-1', 'o-1']),
@@ -549,17 +551,17 @@ describe('writeXmlRecords', () => {
 					childRecord({ id: 'o-1', tagName: 'O', namespace: { prefix: 'ext', uri: 'urn:other' } }),
 				],
 			},
-			'a qualified root attribute and a child re-binding its prefix -> one declaration per prefix':
+			'a qualified root attribute and a child re-binding its prefix -> the dialecte prefix kept, the other namespace renamed ext2':
 				{
 					expected: {
 						formatted: crlf([
 							'<?xml version="1.0" encoding="UTF-8"?>',
-							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ns1="http://dialecte.dev/XML/DEV-EXT" ns1:root="2" xmlns:ext="urn:other">',
-							'    <ext:O/>',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:ext2="urn:other" ext:root="2">',
+							'    <ext2:O/>',
 							'</Root>',
 						]),
 						compact:
-							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ns1="http://dialecte.dev/XML/DEV-EXT" ns1:root="2" xmlns:ext="urn:other"><ext:O/></Root>',
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:ext2="urn:other" ext:root="2"><ext2:O/></Root>',
 					},
 					records: [
 						record({
@@ -575,17 +577,17 @@ describe('writeXmlRecords', () => {
 						}),
 					],
 				},
-			"an element re-binding a prefix holds an attribute of the prefix's first namespace -> a generated prefix for the attribute":
+			"an element re-binding a prefix holds an attribute of the prefix's first namespace -> the dialecte prefix for the attribute, the element renamed ext2":
 				{
 					expected: {
 						formatted: crlf([
 							'<?xml version="1.0" encoding="UTF-8"?>',
-							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="urn:other">',
-							'    <ext:O xmlns:ns1="http://dialecte.dev/XML/DEV-EXT" ns1:cA="v"/>',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:ext2="urn:other">',
+							'    <ext2:O ext:cA="v"/>',
 							'</Root>',
 						]),
 						compact:
-							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="urn:other"><ext:O xmlns:ns1="http://dialecte.dev/XML/DEV-EXT" ns1:cA="v"/></Root>',
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:ext2="urn:other"><ext2:O ext:cA="v"/></Root>',
 					},
 					records: [
 						rootOf(['o-1']),
@@ -597,17 +599,17 @@ describe('writeXmlRecords', () => {
 						}),
 					],
 				},
-			'an attribute whose prefix is unbound while another prefix binds its namespace -> its own prefix declared':
+			'an attribute whose prefix is unbound while another prefix binds its namespace -> written with the dialecte prefix ext':
 				{
 					expected: {
 						formatted: crlf([
 							'<?xml version="1.0" encoding="UTF-8"?>',
-							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:alias="http://dialecte.dev/XML/DEV-EXT">',
-							'    <ext:AA_3 alias:q="v" ext:aAA_3=""/>',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT">',
+							'    <ext:AA_3 ext:q="v" ext:aAA_3=""/>',
 							'</Root>',
 						]),
 						compact:
-							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:alias="http://dialecte.dev/XML/DEV-EXT"><ext:AA_3 alias:q="v" ext:aAA_3=""/></Root>',
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT"><ext:AA_3 ext:q="v" ext:aAA_3=""/></Root>',
 					},
 					records: [
 						rootOf(['aa3-1']),
@@ -621,18 +623,18 @@ describe('writeXmlRecords', () => {
 						}),
 					],
 				},
-			'a fixed qualified root attribute -> written on the root once a descendant declares its namespace':
+			'a fixed qualified root attribute -> written on the root once a descendant uses its namespace':
 				{
 					expected: {
 						formatted: crlf([
 							'<?xml version="1.0" encoding="UTF-8"?>',
-							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" root="8" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" ext:root="9">',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" root="8" ext:root="9">',
 							'    <A aA="x"/>',
 							'    <ext:AA_3 ext:aAA_3=""/>',
 							'</Root>',
 						]),
 						compact:
-							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" root="8" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" ext:root="9"><A aA="x"/><ext:AA_3 ext:aAA_3=""/></Root>',
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" root="8" ext:root="9"><A aA="x"/><ext:AA_3 ext:aAA_3=""/></Root>',
 					},
 					records: [
 						record({
@@ -649,12 +651,12 @@ describe('writeXmlRecords', () => {
 				expected: {
 					formatted: crlf([
 						'<?xml version="1.0" encoding="UTF-8"?>',
-						'<Root xmlns="http://dialecte.dev/XML/DEFAULT" root="1" xmlns:ext="http://dialecte.dev/XML/DEV-EXT">',
+						'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" root="1">',
 						'    <ext:AA_3 aAA_3="val" ext:aAA_3=""/>',
 						'</Root>',
 					]),
 					compact:
-						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" root="1" xmlns:ext="http://dialecte.dev/XML/DEV-EXT"><ext:AA_3 aAA_3="val" ext:aAA_3=""/></Root>',
+						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" root="1"><ext:AA_3 aAA_3="val" ext:aAA_3=""/></Root>',
 				},
 				records: [
 					record({
@@ -748,10 +750,10 @@ describe('writeXmlRecords', () => {
 				expected: {
 					formatted: crlf([
 						'<?xml version="1.0" encoding="UTF-8"?>',
-						'<ext:AA_3 xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns="http://dialecte.dev/XML/DEV-EXT" aAA_3="x" ext:cA="e"/>',
+						'<ext:AA_3 xmlns:ext="http://dialecte.dev/XML/DEV-EXT" aAA_3="x" ext:cA="e"/>',
 					]),
 					compact:
-						'<?xml version="1.0" encoding="UTF-8"?><ext:AA_3 xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns="http://dialecte.dev/XML/DEV-EXT" aAA_3="x" ext:cA="e"/>',
+						'<?xml version="1.0" encoding="UTF-8"?><ext:AA_3 xmlns:ext="http://dialecte.dev/XML/DEV-EXT" aAA_3="x" ext:cA="e"/>',
 				},
 				records: [
 					rootOf(['a-1']),
@@ -949,16 +951,16 @@ describe('writeXmlRecords', () => {
 					childRecord({ id: 'aa1-1', tagName: 'AA_1', parentId: 'a-1', parentTag: 'A' }),
 				],
 			},
-			'xml:space="preserve" -> the subtree as written': {
+			'xml:space="preserve" -> the subtree as written, xml never declared': {
 				expected: {
 					formatted: crlf([
 						'<?xml version="1.0" encoding="UTF-8"?>',
-						'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:xml="http://www.w3.org/XML/1998/namespace">',
+						'<Root xmlns="http://dialecte.dev/XML/DEFAULT">',
 						'    <A aA="x" xml:space="preserve"><AA_1 aAA_1=""><AAA_1 aAAA_1=""/></AA_1></A>',
 						'</Root>',
 					]),
 					compact:
-						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:xml="http://www.w3.org/XML/1998/namespace"><A aA="x" xml:space="preserve"><AA_1 aAA_1=""><AAA_1 aAAA_1=""/></AA_1></A></Root>',
+						'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT"><A aA="x" xml:space="preserve"><AA_1 aAA_1=""><AAA_1 aAAA_1=""/></AA_1></A></Root>',
 				},
 				records: [
 					rootOf(['a-1']),
@@ -1061,12 +1063,12 @@ describe('writeXmlRecords', () => {
 				expected: {
 					formatted: crlf([
 						'<?xml version="1.0" encoding="UTF-8"?>',
-						'<A xmlns="http://dialecte.dev/XML/DEFAULT" aA="v" ext:cA="e" xmlns:ext="http://dialecte.dev/XML/DEV-EXT">',
+						'<A xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" aA="v" ext:cA="e">',
 						'    <ext:AA_3 ext:aAA_3=""/>',
 						'</A>',
 					]),
 					compact:
-						'<?xml version="1.0" encoding="UTF-8"?><A xmlns="http://dialecte.dev/XML/DEFAULT" aA="v" ext:cA="e" xmlns:ext="http://dialecte.dev/XML/DEV-EXT"><ext:AA_3 ext:aAA_3=""/></A>',
+						'<?xml version="1.0" encoding="UTF-8"?><A xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" aA="v" ext:cA="e"><ext:AA_3 ext:aAA_3=""/></A>',
 				},
 				records: [
 					rootOf(['a-1']),
@@ -1191,19 +1193,19 @@ describe('writeXmlRecords', () => {
 					}),
 				],
 			},
-			'an xsi:type of the default namespace under a foreign default -> a free prefix declared on the element':
+			'an xsi:type of the default namespace under a foreign default -> written unprefixed, the foreign namespace under a root prefix ns1':
 				{
 					expected: {
 						formatted: crlf([
 							'<?xml version="1.0" encoding="UTF-8"?>',
-							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
-							'    <F xmlns="urn:foreign">',
-							'        <G xsi:type="ns1:tSomething" xmlns:ns1="http://dialecte.dev/XML/DEFAULT"/>',
-							'    </F>',
+							'<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ns1="urn:foreign">',
+							'    <ns1:F>',
+							'        <ns1:G xsi:type="tSomething"/>',
+							'    </ns1:F>',
 							'</Root>',
 						]),
 						compact:
-							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><F xmlns="urn:foreign"><G xsi:type="ns1:tSomething" xmlns:ns1="http://dialecte.dev/XML/DEFAULT"/></F></Root>',
+							'<?xml version="1.0" encoding="UTF-8"?><Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ns1="urn:foreign"><ns1:F><ns1:G xsi:type="tSomething"/></ns1:F></Root>',
 					},
 					records: [
 						rootOf(['f-1']),

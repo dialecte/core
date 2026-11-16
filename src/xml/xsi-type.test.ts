@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: over 400 lines before this lot; the split by behaviour is a logged follow-up
 import { describe, expect } from 'vitest'
 
 import { matchesAttributeFilter } from '@/document'
@@ -467,10 +468,10 @@ describe('xsi:type - one stored form', () => {
 
 		runTestCases.generic<TestCase>(
 			{
-				'its canonical form → matches': {
+				'its canonical form, the prefix bound only by a declaration on the record → no match': {
 					record: storedAsWritten,
 					xsiType: 'tDD_1A',
-					expected: true,
+					expected: false,
 				},
 				'another type → no match': {
 					record: storedAsWritten,
@@ -510,7 +511,7 @@ describe('xsi:type - one stored form', () => {
 					attributes: [xsiType('ext:tDD_1A')],
 					expected: { clark: `{${EXT_URI}}tDD_1A`, namespace: EXT_URI, local: 'tDD_1A' },
 				},
-				'prefix bound on the record → read there': {
+				'prefix bound only on the record → none, not read there': {
 					attributes: [
 						xsiType('p:tDD_1A'),
 						{
@@ -519,7 +520,7 @@ describe('xsi:type - one stored form', () => {
 							namespace: { prefix: 'xmlns', uri: 'http://www.w3.org/2000/xmlns/' },
 						},
 					],
-					expected: { clark: `{${DEFAULT_URI}}tDD_1A`, namespace: DEFAULT_URI, local: 'tDD_1A' },
+					expected: undefined,
 				},
 				'prefix bound nowhere → none': { attributes: [xsiType('q:tDD_1A')], expected: undefined },
 				'no xsi:type → none': { attributes: [], expected: undefined },
@@ -629,11 +630,12 @@ describe('xsi:type - one stored form', () => {
 				attributes: [{ name: 'aDD_1', value: 's' }, xsiType('tDD_1')],
 				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
 			},
-			'a prefix bound nowhere → XSI_TYPE_NOT_ADMITTED': {
+			'a prefix bound nowhere → UNKNOWN_NAMESPACE_PREFIX': {
 				sourceXml,
 				tagName: 'DD_1',
 				attributes: [{ name: 'aDD_1', value: 's' }, xsiType('q:tDD_1A')],
-				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+				refusedWith: 'UNKNOWN_NAMESPACE_PREFIX',
+				unexpectedQueries: ['//default:DD_1'],
 			},
 			'a local name the default namespace lacks → XSI_TYPE_NOT_ADMITTED, never read as another namespace type':
 				{

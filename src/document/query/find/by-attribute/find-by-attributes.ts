@@ -110,10 +110,10 @@ function matchesXsiType(params: {
 	const actual = canonicalXsiType({
 		dialecteConfig,
 		value: attribute.value,
-		namespaceOf: storedNamespaceLookup({ dialecteConfig, attributes: record.attributes }),
+		namespaceOf: storedNamespaceLookup({ dialecteConfig }),
 	})
 	// the filter's as XML reads it: unprefixed is the default namespace, a dialecte prefix its namespace
-	const namespaceOf = storedNamespaceLookup({ dialecteConfig, attributes: [] })
+	const namespaceOf = storedNamespaceLookup({ dialecteConfig })
 	const values = (Array.isArray(expected) ? expected : [expected]).filter(
 		(value): value is string => typeof value === 'string',
 	)

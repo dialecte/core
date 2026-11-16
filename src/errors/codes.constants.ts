@@ -261,6 +261,15 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/transaction#addchild`,
 		},
 	},
+	NAMESPACE_DECLARATION_NOT_ALLOWED: {
+		code: 'D3013',
+		message: 'A namespace declaration cannot be written as an attribute',
+		explanation: {
+			when: 'A write gave an attribute named `xmlns` or `xmlns:<prefix>`: a document declares its namespaces on export, from what its records use.',
+			fix: 'Remove the declaration; give the name its namespace in full: `{ name, namespace: { prefix, uri } }`.',
+			docs: `${CORE_DOCS_URL}/api/transaction#addchild`,
+		},
+	},
 	PREFIXED_ATTRIBUTE_NAME: {
 		code: 'D3007',
 		message:

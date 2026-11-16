@@ -155,22 +155,6 @@ describe('parseXmlFile', () => {
 					expect(a.attributes.map((attr) => attr.name)).toEqual(['bA'])
 				},
 			},
-			'xmlns declarations survive standardization on the root record': {
-				file: xmlFile(
-					`<Root xmlns="${NS.default.uri}" xmlns:ext="${NS.ext.uri}"><A aA="x" /></Root>`,
-				),
-				assertRecords: (records) => {
-					const root = records.find((r) => r.tagName === 'Root')!
-					const xmlnsDefault = root.attributes.find((attr) => attr.name === 'xmlns')
-					const xmlnsExt = root.attributes.find(
-						(attr) => attr.namespace?.prefix === 'xmlns' && attr.name === 'ext',
-					)
-					// Both declarations are qualified attributes and must be preserved so
-					// extensions (e.g. openscd) can still resolve namespace prefixes.
-					expect(xmlnsDefault?.namespace?.uri).toBe('http://www.w3.org/2000/xmlns/')
-					expect(xmlnsExt?.namespace?.uri).toBe('http://www.w3.org/2000/xmlns/')
-				},
-			},
 			'foreign-namespace element whose local name matches a schema element is not standardized': {
 				// `foreign:A` shares the local name `A` with a schema element but lives in a
 				// namespace the config does not declare, so it must pass through unchanged: the
@@ -340,7 +324,7 @@ describe('parseXmlFile', () => {
 					file: xmlFile(minimalXml('<A xmlns:x="urn:&#11;" x:a="1"/>')),
 					expectError: {
 						key: 'PARSE_ERROR',
-						detailIncludes: 'The attribute x of <A> holds U+000B',
+						detailIncludes: 'The attribute xmlns:x of <A> holds U+000B',
 					},
 				},
 			'a reference to U+0001 in an attribute value → PARSE_ERROR naming the attribute': {

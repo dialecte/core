@@ -9,7 +9,7 @@ import {
 	toFullAttributeArray,
 } from '@/helpers'
 import { invariant } from '@/utils'
-import { isXsiTypeAttribute } from '@/utils/xsi-type'
+import { assertXsiTypePrefixKnown, isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { UpdateParams } from './update.types'
 import type { Context, Query, Ref } from '@/document'
@@ -95,6 +95,7 @@ export async function stageUpdate<
 	// Write-path guard, when the update names another type or none: one the element may take, and nothing left that
 	// the new type does not admit.
 	if (touchesXsiType) {
+		assertXsiTypePrefixKnown({ dialecteConfig, record: updatedRecord })
 		assertXsiTypeAdmitted({ dialecteConfig, record: updatedRecord })
 		assertXsiTypeChangeLeavesNothing({
 			dialecteConfig,

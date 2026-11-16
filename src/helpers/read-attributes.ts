@@ -82,8 +82,8 @@ function resolveStoredAttributeName(params: {
  * query: synchronous, for an import pass or a pure composer. `query.getAttributes`
  * itself delegates to it once it has the record. Values are plain strings: for typed reads use the query.
  *
- * Namespace declarations are left out of the value object; `fullObject: true` returns the stored attributes as they
- * are, a declaration a document carries included (stored by its prefix, in the xmlns namespace).
+ * `fullObject: true` returns the stored attributes as they are. A record holds no namespace declaration: import
+ * drops them, a write refuses them.
  *
  * Reads the record as you hold it. Inside a transaction use `tx.getAttributes`, which sees the transaction's staged
  * writes: a record held from before a write still reads its old values here.

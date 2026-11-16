@@ -9,6 +9,7 @@ import { XSI_NAMESPACE } from '@/helpers/constant'
 import { isNamespaceAllowedByWildcard, resolveDefinition } from '@/utils'
 import { BYTE_ORDER_MARK } from '@/utils/xml-characters.constants'
 import { trimXmlWhitespace } from '@/utils/xml-whitespace'
+import { canonicalXsiType } from '@/utils/xsi-type'
 
 import type { XmlAttribute } from '../xml'
 import type {
@@ -86,25 +87,22 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 			: [child.namespace.uri]
 	}
 
-	/** The element as a record resolving reads it: its attributes, the xsi:type prefix bound where it is in scope. */
+	/** The element as a record resolving reads it: its attributes, xsi:type stored as import stores it (resolved in scope). */
 	function asRecord(params: { element: XmlElement; parentLocalName: string | undefined }) {
 		const { element, parentLocalName } = params
 		const attributes: AnyAttribute[] = element.attrs.map((attribute) => ({
 			name: qualifiedNameOf(attribute),
-			value: attribute.value,
+			value: isXsiType(attribute)
+				? canonicalXsiType({
+						dialecteConfig,
+						value: attribute.value,
+						namespaceOf: (prefix) => element.namespaceForPrefix(prefix) ?? undefined,
+					})
+				: attribute.value,
 			...(attribute.namespaceUri
 				? { namespace: { prefix: attribute.prefix, uri: attribute.namespaceUri } }
 				: {}),
 		}))
-		const xsiType = element.attrs.find(
-			(attribute) =>
-				attribute.namespaceUri === XSI_NAMESPACE.uri && attribute.name === XSI_TYPE_ATTRIBUTE_NAME,
-		)?.value
-		const colon = xsiType?.indexOf(':') ?? -1
-		const prefix = xsiType !== undefined && colon !== -1 ? xsiType.slice(0, colon) : ''
-		const bound = xsiType === undefined ? null : element.namespaceForPrefix(prefix)
-		if (bound !== null)
-			attributes.push({ name: prefix ? `xmlns:${prefix}` : 'xmlns', value: bound })
 		return {
 			tagName: element.name,
 			parent: parentLocalName ? { id: '', tagName: parentLocalName } : null,
@@ -323,6 +321,11 @@ export function createXmlSchemaAssertions(params: CreateXmlSchemaAssertionsParam
 /** The name as the document writes it: `prefix:name`, or `name` without a prefix. */
 function qualifiedNameOf(node: XmlElement | XmlAttribute): string {
 	return node.prefix ? `${node.prefix}:${node.name}` : node.name
+}
+
+/** Whether the attribute is xsi:type. */
+function isXsiType(attribute: XmlAttribute): boolean {
+	return attribute.namespaceUri === XSI_NAMESPACE.uri && attribute.name === XSI_TYPE_ATTRIBUTE_NAME
 }
 
 /** The element children of an element, in document order. */

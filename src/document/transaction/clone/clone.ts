@@ -111,6 +111,7 @@ async function cloneRecursively<
 			attributes: transformedRecord.attributes,
 			value: transformedRecord.value,
 		},
+		copiesStoredValues: true,
 	})
 
 	const source = toRef(record) as CloneMapping<GenericConfig>['source']

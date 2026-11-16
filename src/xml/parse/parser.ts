@@ -1,4 +1,3 @@
-import { isSaxQualifiedTag } from './guards'
 import { ParseSession } from './parse-session'
 import { SAX_PARSER_OPTIONS } from './parser.constants'
 
@@ -138,7 +137,8 @@ function handleOpenTag(params: {
 			rootElementName: dialecteConfig.rootElementName,
 		})
 
-	const namespace = getElementNamespace(node, state.defaultNamespace)
+	const documentDefault = state.defaultNamespace
+	const namespace = getElementNamespace({ element: node, defaultNamespace: documentDefault })
 
 	const id = getElementId({ attributes: node.attributes, useCustomRecordsIds, tagName })
 	const filteredAttributes = getFilteredAttributes({
@@ -146,11 +146,13 @@ function handleOpenTag(params: {
 		useCustomRecordsIds,
 	})
 
+	assertDeclaredNamespacesCharacters({ attributes: node.attributes, tagName })
+
 	// the xsi:type value read with the namespaces in scope here (an ancestor's bindings too), stored canonical
 	const attributes = withCanonicalXsiType({
 		dialecteConfig,
 		attributes: getElementAttributes(filteredAttributes),
-		namespaceOf: (prefix) => node.ns[prefix],
+		namespaceOf: (prefix) => namespaceInScope({ node, prefix, documentDefault }),
 	})
 	const parent = getParent(state.stack)
 
@@ -324,47 +326,79 @@ function getDefaultNamespace(params: {
 	return defaultNamespace
 }
 
-function getElementNamespace(
-	element: sax.Tag | sax.QualifiedTag,
-	defaultNamespace: Namespace,
-): Namespace {
-	if (isSaxQualifiedTag(element))
-		return {
-			prefix: element.prefix,
-			uri: element.uri,
-		}
-	return defaultNamespace
+/**
+ * The namespace an element is in, as resolved where it stands: a prefixed name takes its prefix's binding; an
+ * unprefixed one the default namespace in scope (`xmlns="urn:f"` on a subtree, no namespace under `xmlns=""`). A
+ * document that declares no default at all keeps its unprefixed elements in the dialecte's default namespace.
+ */
+function getElementNamespace(params: {
+	element: sax.QualifiedTag
+	defaultNamespace: Namespace
+}): Namespace {
+	const { element, defaultNamespace } = params
+	// sax refuses a prefix bound nowhere: a prefixed name always has its namespace
+	if (element.prefix) return { prefix: element.prefix, uri: element.uri }
+	const inScope: string | undefined = element.ns['']
+	if (inScope === undefined) return defaultNamespace
+	return { prefix: '', uri: inScope }
 }
 
 function getElementAttributes(
 	attributes: sax.QualifiedAttribute[],
 ): (AnyAttribute | AnyQualifiedAttribute)[] {
-	// namespace declarations (xmlns attributes) are kept on import: an extension may need them while it imports;
-	// the export filters them out and declares the namespaces the written elements use itself
+	// namespace declarations (xmlns, xmlns:*) are no attribute of a record, the root's included: the xsi:type value
+	// is resolved with them in scope (withCanonicalXsiType), and the export declares the namespaces it writes itself
 
-	return attributes.map((attribute) => {
-		const namespace =
-			!!attribute.prefix && !!attribute.uri
-				? {
-						prefix: attribute.prefix,
-						uri: attribute.uri,
-					}
-				: undefined
+	return attributes
+		.filter((attribute) => attribute.prefix !== 'xmlns')
+		.map((attribute) => {
+			const namespace =
+				!!attribute.prefix && !!attribute.uri
+					? {
+							prefix: attribute.prefix,
+							uri: attribute.uri,
+						}
+					: undefined
 
-		// xmlns="..." has prefix='xmlns' and local='': use 'xmlns' as key instead of ''
-		const attributeName =
-			attribute.prefix === 'xmlns' && attribute.local === ''
-				? 'xmlns'
-				: namespace
-					? attribute.local
-					: attribute.name
+			return {
+				name: namespace ? attribute.local : attribute.name,
+				value: attribute.value,
+				...(namespace && { namespace }),
+			}
+		})
+}
 
-		return {
-			name: attributeName,
-			value: attribute.value,
-			...(namespace && { namespace }),
-		}
-	})
+/** A declaration is stored nowhere, but its URI is written like any attribute value: one XML does not allow fails the file. */
+function assertDeclaredNamespacesCharacters(params: {
+	attributes: Record<string, sax.QualifiedAttribute>
+	tagName: string
+}): void {
+	const { attributes, tagName } = params
+	for (const attribute of Object.values(attributes)) {
+		if (attribute.prefix !== 'xmlns') continue
+		const character = notXmlCharacterOf({ text: attribute.value })
+		if (!character) continue
+		throwNotXmlCharacter({
+			character,
+			// the name as the file wrote it: `xmlns` or `xmlns:<prefix>`
+			where: `The attribute ${attribute.name} of <${tagName}>`,
+		})
+	}
+}
+
+/**
+ * The namespace a prefix names where the element stands, for a QName value: the in-scope bindings; the default
+ * namespace, when a document declares none, is the one its unprefixed elements take (the dialecte's).
+ */
+function namespaceInScope(params: {
+	node: sax.QualifiedTag
+	prefix: string
+	documentDefault: Namespace
+}): string | undefined {
+	const { node, prefix, documentDefault } = params
+	const bound: string | undefined = node.ns[prefix]
+	if (bound !== undefined || prefix !== '') return bound
+	return documentDefault.uri
 }
 
 function getParent(stack: AnyRawRecord[]): AnyRelationship | null {
@@ -403,6 +437,8 @@ function getFilteredAttributes(params: {
 	const { attributes, useCustomRecordsIds } = params
 
 	if (useCustomRecordsIds)
-		return Object.values(attributes).filter((attr) => attr.name !== CUSTOM_RECORD_ID_ATTRIBUTE)
+		return Object.values(attributes).filter(
+			(attribute) => attribute.name !== CUSTOM_RECORD_ID_ATTRIBUTE,
+		)
 	return Object.values(attributes)
 }

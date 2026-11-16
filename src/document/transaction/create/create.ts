@@ -3,12 +3,15 @@ import { stageOperation, stageOperations } from '../stage-operations'
 import { getRecord } from '@/document'
 import { throwDialecteError } from '@/errors'
 import { assertNoFixedViolation, assertXsiTypeAdmitted, standardizeRecord } from '@/helpers'
+import { assertNotNamespaceDeclaration } from '@/helpers/assert-not-namespace-declaration'
 import { extractLocalName, invariant } from '@/utils'
+import { assertXsiTypePrefixKnown } from '@/utils/xsi-type'
 
 import type { AddChildParams, ChildAttributesOf } from './create.types'
 import type { Context, Query, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
+	AnyRawRecord,
 	AttributeInputOf,
 	AttributesValueObjectOf,
 	ElementsOf,
@@ -34,8 +37,21 @@ export async function stageAddChild<
 	query: Query<GenericConfig>
 	parentRef: Ref<GenericConfig, GenericElement>
 	params: AddChildParams<GenericConfig, GenericElement, GenericChildElement>
+	/**
+	 * The attributes are a stored record's, copied as they are (a clone): their xsi:type value is not judged as an
+	 * authored one. For records read from the store only. Default `false`.
+	 */
+	copiesStoredValues?: boolean
 }): Promise<RawRecord<GenericConfig, GenericChildElement>> {
-	const { dialecteConfig, hooks, context, query, parentRef, params: childParams } = params
+	const {
+		dialecteConfig,
+		hooks,
+		context,
+		query,
+		parentRef,
+		params: childParams,
+		copiesStoredValues = false,
+	} = params
 	const { id, tagName, attributes, namespace, value } = childParams
 
 	assertAuthoredAttributeNamesAreLocal({ attributes, tagName })
@@ -67,14 +83,7 @@ export async function stageAddChild<
 		},
 	})
 
-	// Write-path guard: reject an authored value that violates a schema `fixed`.
-	assertNoFixedViolation({
-		dialecteConfig,
-		record: childRecord,
-		attributes: childRecord.attributes,
-	})
-	// Write-path guard: an abstract type is named, and only a type the element may take.
-	assertXsiTypeAdmitted({ dialecteConfig, record: childRecord })
+	assertChildRecordWritable({ dialecteConfig, record: childRecord, copiesStoredValues })
 
 	stageOperation({
 		context,
@@ -107,11 +116,27 @@ export async function stageAddChild<
 }
 
 /**
+ * The write-path guards of a new child: no authored value violates a schema `fixed`; an authored xsi:type prefix is
+ * one the engine table binds (a copied value stays as stored, even one import kept as written); an abstract type is
+ * named, and only a type the element may take.
+ */
+function assertChildRecordWritable(params: {
+	dialecteConfig: AnyDialecteConfig
+	record: AnyRawRecord
+	copiesStoredValues: boolean
+}): void {
+	const { dialecteConfig, record, copiesStoredValues } = params
+	assertNoFixedViolation({ dialecteConfig, record, attributes: record.attributes })
+	if (!copiesStoredValues) assertXsiTypePrefixKnown({ dialecteConfig, record })
+	assertXsiTypeAdmitted({ dialecteConfig, record })
+}
+
+/**
  * Guard the authoring boundary: in the full-object form, an author supplies a
  * *local* name plus a `namespace`, and dialecte derives the stored `prefix:local`
  * name. A prefix baked into the name is ambiguous (which wins, name or namespace?)
- * so we reject it loudly rather than silently re-deriving. `xmlns`/`xmlns:*`
- * declarations are exempt. The value-object form keeps its canonical (possibly
+ * so we reject it loudly rather than silently re-deriving. A namespace
+ * declaration is refused earlier, by attribute name canonicalization. The value-object form keeps its canonical (possibly
  * prefixed) keys — those are the generated, discoverable names — so it is not checked.
  *
  * Exception: a prefixed name whose `namespace.prefix` already agrees with it is not
@@ -131,8 +156,8 @@ function assertAuthoredAttributeNamesAreLocal<
 
 	for (const attribute of attributes) {
 		const { name, namespace } = attribute
-		const isXmlnsDeclaration = name === 'xmlns' || name.startsWith('xmlns:')
-		if (isXmlnsDeclaration || !name.includes(':')) continue
+		assertNotNamespaceDeclaration({ attribute, tagName })
+		if (!name.includes(':')) continue
 
 		const isConsistentCanonicalForm =
 			typeof namespace === 'object' && namespace?.prefix === name.slice(0, name.indexOf(':'))

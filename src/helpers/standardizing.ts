@@ -1,3 +1,4 @@
+import { assertNotNamespaceDeclaration } from './assert-not-namespace-declaration'
 import { toFullAttributeArray } from './converter'
 
 import { isNamespaceAllowedByWildcard, orderAttributesBySequence } from '@/utils'
@@ -84,7 +85,7 @@ export function standardizeRecord<
 	// where a default or fixed value is declared the empty overrides it, so it is kept and
 	// read and exported as written.
 	// Schema-sequence attributes kept by that rule, plus any qualified
-	// attribute (foreign-namespace or xmlns/xmlns:*), are retained; unqualified
+	// attribute (foreign-namespace; a record holds no xmlns/xmlns:* declaration), are retained; unqualified
 	// non-schema attributes are dropped, unless the element's attribute wildcard allows
 	// attributes in no namespace (`##any`, `##local`). Missing required/fixed/default attributes are
 	// NOT synthesized here: schema values are materialized on export (required + fixed)
@@ -109,10 +110,16 @@ export function standardizeRecord<
 	// Two-rule convention: a default-namespace attribute is stored bare (no
 	// namespace object). A caller may pass the default namespace explicitly (e.g.
 	// a parsed record keyed by local name + default namespace); drop it so created
-	// and imported forms of the same attribute are byte-identical.
+	// and imported forms of the same attribute are byte-identical. A prefixed name in the
+	// default namespace's URI (`d:foo` with d bound to it) is another attribute: an
+	// unprefixed attribute is in no namespace, so it keeps its namespace.
 	const defaultNamespaceUri = dialecteConfig.namespaces.default.uri
 	const canonicalAttributes = keptAttributes.map((attribute) => {
-		if ('namespace' in attribute && attribute.namespace?.uri === defaultNamespaceUri) {
+		if (
+			'namespace' in attribute &&
+			attribute.namespace?.uri === defaultNamespaceUri &&
+			!attribute.namespace.prefix
+		) {
 			const { namespace: _defaultNamespace, ...bare } = attribute
 			return bare as typeof attribute
 		}
@@ -146,6 +153,9 @@ export function standardizeRecord<
 		// re-apply canonical ordering to keep records order-comparable regardless
 		// of where the hook placed things. See [[attribute-rules]].
 		// the hook may also set xsi:type: stored canonical like any other
+		for (const attribute of standardizedRecord.attributes) {
+			assertNotNamespaceDeclaration({ attribute, tagName })
+		}
 		standardizedRecord = {
 			...standardizedRecord,
 			attributes: orderAttributesBySequence(
@@ -169,6 +179,6 @@ function canonicalXsiTypeOf<
 	return withCanonicalXsiType({
 		dialecteConfig,
 		attributes,
-		namespaceOf: storedNamespaceLookup({ dialecteConfig, attributes }),
+		namespaceOf: storedNamespaceLookup({ dialecteConfig }),
 	})
 }
