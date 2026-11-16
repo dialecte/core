@@ -1,18 +1,17 @@
+import { XSD_BUILTIN_BASES } from './xsd-builtins.constants'
 import { resolveXsiType } from './xsi-type'
 
-import type { ResolvableRecord } from './resolve-definition.types'
+import { XSD_NAMESPACE_URI } from '@/helpers/constant'
+
+import type { DefinitionConfig, ResolvableRecord } from './resolve-definition.types'
 import type {
-	AnyDialecteConfig,
 	ContentDefinition,
 	DeclarationDefinition,
 	ElementDefinition,
 	ResolvedDefinition,
 } from '@/types'
 
-export type { ResolvableRecord } from './resolve-definition.types'
-
-/** What resolving reads of a dialecte: its definition, its types and its namespaces. */
-type DefinitionConfig = Pick<AnyDialecteConfig, 'definition' | 'types' | 'namespaces'>
+export type { DefinitionConfig, ResolvableRecord } from './resolve-definition.types'
 
 /**
  * The definition that applies to a record - the one rule every reader of the definition follows.
@@ -66,19 +65,63 @@ export function admittedXsiTypes(params: {
 	record: ResolvableRecord
 	parentDefinition?: DeclarationDefinition
 }): readonly string[] {
-	const { dialecteConfig, record, parentDefinition } = params
-	const tagLevel = dialecteConfig.definition[record.tagName]
-	if (tagLevel === undefined) return []
-	const declaration = declarationOf({ dialecteConfig, record, tagLevel, parentDefinition })
-	const candidates =
-		declaration === tagLevel
-			? [tagLevel, ...Object.values(tagLevel.declarations ?? {})]
-			: [declaration]
-	const admitted = candidates.flatMap((candidate) => [
+	const admitted = declarationCandidates(params).flatMap((candidate) => [
 		...(candidate.type === undefined || candidate.abstractType ? [] : [candidate.type]),
 		...(candidate.variants ?? []),
 	])
 	return [...new Set(admitted)]
+}
+
+/**
+ * Whether the record may name a type (Clark name) with xsi:type: one `admittedXsiTypes` lists, or an XSD built-in
+ * derived from the declared type when that is a built-in itself (`anyType` takes every built-in). A built-in on a
+ * declaration of a complex type is not admitted. The one rule the write path and the value guard judge xsi:type by.
+ *
+ * @intent check an xsi:type value before writing it, judge a type choice the way a write does
+ */
+export function isXsiTypeAdmitted(params: {
+	dialecteConfig: DefinitionConfig
+	record: ResolvableRecord
+	parentDefinition?: DeclarationDefinition
+	typeName: string
+}): boolean {
+	const { typeName } = params
+	if (admittedXsiTypes(params).includes(typeName)) return true
+	return declarationCandidates(params).some(
+		(candidate) =>
+			candidate.type !== undefined && isBuiltinDerivedFrom({ typeName, base: candidate.type }),
+	)
+}
+
+/** Whether a type is an XSD built-in derived (in any number of steps, or itself) from another XSD built-in. */
+function isBuiltinDerivedFrom(params: { typeName: string; base: string }): boolean {
+	const prefix = `{${XSD_NAMESPACE_URI}}`
+	const { typeName, base } = params
+	if (!typeName.startsWith(prefix) || !base.startsWith(prefix)) return false
+	return derivesFrom({ local: typeName.slice(prefix.length), base: base.slice(prefix.length) })
+}
+
+/** Whether a built-in (local name) is the base or derives from it along `XSD_BUILTIN_BASES`; an unknown name derives from nothing. */
+function derivesFrom(params: { local: string; base: string }): boolean {
+	const { local, base } = params
+	if (local === base) return local === 'anyType' || XSD_BUILTIN_BASES[local] !== undefined
+	const parent = XSD_BUILTIN_BASES[local]
+	return parent !== undefined && derivesFrom({ local: parent, base })
+}
+
+/** The declarations whose admitted types count: the one under the parent, or every one where it is left open. */
+function declarationCandidates(params: {
+	dialecteConfig: DefinitionConfig
+	record: ResolvableRecord
+	parentDefinition?: DeclarationDefinition
+}): readonly DeclarationDefinition[] {
+	const { dialecteConfig, record, parentDefinition } = params
+	const tagLevel = dialecteConfig.definition[record.tagName]
+	if (tagLevel === undefined) return []
+	const declaration = declarationOf({ dialecteConfig, record, tagLevel, parentDefinition })
+	return declaration === tagLevel
+		? [tagLevel, ...Object.values(tagLevel.declarations ?? {})]
+		: [declaration]
 }
 
 /** The declaration of the tag that applies under the record's parent; the tag level when none is decided. */

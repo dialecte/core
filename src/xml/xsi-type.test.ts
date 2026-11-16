@@ -2,9 +2,15 @@
 import { describe, expect } from 'vitest'
 
 import { matchesAttributeFilter } from '@/document'
-import { CUSTOM_RECORD_ID_ATTRIBUTE, XMLNS_XSI_NAMESPACE, XSI_NAMESPACE } from '@/helpers/constant'
+import {
+	CUSTOM_RECORD_ID_ATTRIBUTE,
+	XMLNS_XSI_NAMESPACE,
+	XSD_NAMESPACE_URI,
+	XSI_NAMESPACE,
+} from '@/helpers/constant'
 import {
 	DIALECTE_TEST_NAMESPACES,
+	createTestRunner,
 	runTestCases,
 	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
@@ -12,7 +18,7 @@ import {
 	XMLNS_EXT_NAMESPACE,
 } from '@/test'
 import { selectFirstNode, withXmlDocument } from '@/test/xml'
-import { admittedXsiTypes, resolveXsiType } from '@/utils'
+import { admittedXsiTypes, isXsiTypeAdmitted, resolveXsiType } from '@/utils'
 
 import type {
 	ActParams,
@@ -35,6 +41,19 @@ const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESP
 const DEFAULT_URI = DIALECTE_TEST_NAMESPACES.default.uri
 const EXT_URI = DIALECTE_TEST_NAMESPACES.ext.uri
 const EXT = DIALECTE_TEST_NAMESPACES.ext
+
+const XSD_PREFIX = `{${XSD_NAMESPACE_URI}}`
+
+/** The test dialecte with AAAA_2 declared with the XSD built-in type `local` (it has none in the schema). */
+function withAAAA_2Typed(local: string): TestDialecteConfig {
+	return {
+		...TEST_DIALECTE_CONFIG,
+		definition: {
+			...TEST_DIALECTE_CONFIG.definition,
+			AAAA_2: { ...TEST_DIALECTE_CONFIG.definition.AAAA_2, type: `${XSD_PREFIX}${local}` },
+		},
+	} as unknown as TestDialecteConfig
+}
 
 /**
  * The xsi:type values the types offer for DD_1: the stored literals. Some cases below hand the runtime another form of
@@ -120,6 +139,16 @@ describe('xsi:type - one stored form', () => {
 					`,
 					expectedQueries: ['//default:DD_1[@xsi:type="tDD_1A"][@dDD_1="2"]'],
 				},
+			'an XSD built-in on a complex-typed element → loaded as it is (a write would refuse it)': {
+				sourceXml: /* xml */ `
+					<Root ${ns} xmlns:xs="${XSD_NAMESPACE_URI}">
+						<D aD="d">
+							<DD_2 xsi:type="xs:string" aDD_2="p"/>
+						</D>
+					</Root>
+				`,
+				expectedQueries: ['//default:DD_2[@xsi:type="xs:string"][@aDD_2="p"]'],
+			},
 		}
 
 		runTestCases.withExport<TestCase>({
@@ -593,6 +622,222 @@ describe('xsi:type - one stored form', () => {
 		)
 	})
 
+	describe('isXsiTypeAdmitted', () => {
+		type TestCase = BaseTestCase & {
+			tagName: 'DD_1' | 'DD_2'
+			typeName: string
+			expected: boolean
+		}
+
+		runTestCases.generic<TestCase>(
+			{
+				'the concrete declared type → admitted': {
+					tagName: 'DD_2',
+					typeName: `{${DEFAULT_URI}}tDD_2`,
+					expected: true,
+				},
+				'a variant of the declared type → admitted': {
+					tagName: 'DD_2',
+					typeName: `{${DEFAULT_URI}}tDD_2A`,
+					expected: true,
+				},
+				'the abstract declared type → not admitted': {
+					tagName: 'DD_1',
+					typeName: `{${DEFAULT_URI}}tDD_1`,
+					expected: false,
+				},
+				'xs:string on a complex-typed declaration → not admitted': {
+					tagName: 'DD_2',
+					typeName: `{${XSD_NAMESPACE_URI}}string`,
+					expected: false,
+				},
+				'xs:anyType on a complex-typed declaration → not admitted': {
+					tagName: 'DD_2',
+					typeName: `{${XSD_NAMESPACE_URI}}anyType`,
+					expected: false,
+				},
+				'a type of another element → not admitted': {
+					tagName: 'DD_2',
+					typeName: `{${DEFAULT_URI}}tDD_1A`,
+					expected: false,
+				},
+			},
+			(testCase) => {
+				const record = {
+					tagName: testCase.tagName,
+					attributes: [],
+					parent: { id: 'd', tagName: 'D' as const },
+				}
+				expect(
+					isXsiTypeAdmitted({
+						dialecteConfig: TEST_DIALECTE_CONFIG,
+						record,
+						typeName: testCase.typeName,
+					}),
+				).toBe(testCase.expected)
+			},
+		)
+	})
+
+	describe('isXsiTypeAdmitted - built-in derivation', () => {
+		type TestCase = BaseTestCase & {
+			/** The tag and the built-in its declaration carries: AAAA_2 typed `declared`, DDD_2 untyped (anyType). */
+			tagName: 'AAAA_2' | 'DDD_2'
+			declared?: string
+			typeName: string
+			expected: boolean
+		}
+
+		runTestCases.generic<TestCase>(
+			{
+				'xs:decimal under xs:decimal → admitted': {
+					tagName: 'AAAA_2',
+					declared: 'decimal',
+					typeName: `${XSD_PREFIX}decimal`,
+					expected: true,
+				},
+				'xs:byte under xs:decimal (several steps down) → admitted': {
+					tagName: 'AAAA_2',
+					declared: 'decimal',
+					typeName: `${XSD_PREFIX}byte`,
+					expected: true,
+				},
+				'xs:decimal under xs:integer (a base, not a derivation) → not admitted': {
+					tagName: 'AAAA_2',
+					declared: 'integer',
+					typeName: `${XSD_PREFIX}decimal`,
+					expected: false,
+				},
+				'xs:anyType under xs:decimal → not admitted': {
+					tagName: 'AAAA_2',
+					declared: 'decimal',
+					typeName: `${XSD_PREFIX}anyType`,
+					expected: false,
+				},
+				'xs:string on an untyped (anyType) declaration → admitted': {
+					tagName: 'DDD_2',
+					typeName: `${XSD_PREFIX}string`,
+					expected: true,
+				},
+				'an unknown type of the dialecte namespace on an untyped declaration → not admitted': {
+					tagName: 'DDD_2',
+					typeName: `{${DEFAULT_URI}}tUnknown`,
+					expected: false,
+				},
+			},
+			(testCase) => {
+				const record = {
+					tagName: testCase.tagName,
+					attributes: [],
+					parent: {
+						id: 'p',
+						tagName: testCase.tagName === 'AAAA_2' ? ('AAA_1' as const) : ('DD_2' as const),
+					},
+				}
+				expect(
+					isXsiTypeAdmitted({
+						dialecteConfig:
+							testCase.declared === undefined
+								? TEST_DIALECTE_CONFIG
+								: withAAAA_2Typed(testCase.declared),
+						record,
+						typeName: testCase.typeName,
+					}),
+				).toBe(testCase.expected)
+			},
+		)
+	})
+
+	describe('isXsiTypeAdmitted - a tag declared two ways', () => {
+		type TestCase = BaseTestCase & {
+			parent: 'P1' | 'P2'
+			typeName: string
+			expected: boolean
+		}
+
+		// Poly is declared with xs:decimal under P1 and with xs:string under P2
+		const none = { prefix: '', uri: '' }
+		const content = {
+			attributes: { sequence: [], details: {} },
+			children: { sequence: [], details: {} },
+		}
+		function holder(tag: string, declaration: string) {
+			return {
+				...content,
+				tag,
+				namespace: none,
+				parents: [],
+				children: {
+					sequence: ['Poly'],
+					details: { Poly: { declarations: { '': [declaration] } } },
+				},
+			}
+		}
+		const definition = {
+			P1: holder('P1', '1'),
+			P2: holder('P2', '2'),
+			Poly: {
+				...content,
+				tag: 'Poly',
+				namespace: none,
+				parents: ['P1', 'P2'],
+				declarations: {
+					'1': { ...content, namespace: none, type: `${XSD_PREFIX}decimal` },
+					'2': { ...content, namespace: none, type: `${XSD_PREFIX}string` },
+				},
+			},
+		}
+		const dialecteConfig = {
+			...TEST_DIALECTE_CONFIG,
+			definition,
+		} as unknown as Parameters<typeof isXsiTypeAdmitted>[0]['dialecteConfig']
+
+		runTestCases.generic<TestCase>(
+			{
+				'xs:integer under the parent whose declaration is decimal → admitted': {
+					parent: 'P1',
+					typeName: `${XSD_PREFIX}integer`,
+					expected: true,
+				},
+				'xs:integer under the parent whose declaration is string → not admitted': {
+					parent: 'P2',
+					typeName: `${XSD_PREFIX}integer`,
+					expected: false,
+				},
+				'xs:token under the parent whose declaration is string → admitted': {
+					parent: 'P2',
+					typeName: `${XSD_PREFIX}token`,
+					expected: true,
+				},
+				'xs:token under the parent whose declaration is decimal → not admitted': {
+					parent: 'P1',
+					typeName: `${XSD_PREFIX}token`,
+					expected: false,
+				},
+			},
+			(testCase) => {
+				const { parent, typeName, expected } = testCase
+				expect({
+					ofRecordParent: isXsiTypeAdmitted({
+						dialecteConfig,
+						record: { tagName: 'Poly', attributes: [], parent: { id: 'p', tagName: parent } },
+						typeName,
+					}),
+					// the parent given as its definition, the record carrying none
+					ofParentDefinition: isXsiTypeAdmitted({
+						dialecteConfig,
+						record: { tagName: 'Poly', attributes: [], parent: null },
+						parentDefinition: definition[parent],
+						typeName,
+					}),
+				}).toEqual({
+					ofRecordParent: expected,
+					ofParentDefinition: expected,
+				})
+			},
+		)
+	})
+
 	describe('write rules - create', () => {
 		type TestCase = BaseXmlTestCase & {
 			tagName: 'DD_1' | 'DD_2' | 'DD_3'
@@ -666,6 +911,26 @@ describe('xsi:type - one stored form', () => {
 				attributes: [{ name: 'aDD_2', value: 'p' }, xsiType('tDD_2')],
 				expectedQueries: ['//default:DD_2[@xsi:type="tDD_2"]'],
 			},
+			'a built-in on a complex-typed element → XSI_TYPE_NOT_ADMITTED': {
+				sourceXml,
+				tagName: 'DD_2',
+				attributes: [{ name: 'aDD_2', value: 'p' }, xsiType(`{${XSD_NAMESPACE_URI}}string`)],
+				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+				unexpectedQueries: ['//default:DD_2[@xsi:type]'],
+			},
+			'anyType on a complex-typed element → XSI_TYPE_NOT_ADMITTED': {
+				sourceXml,
+				tagName: 'DD_2',
+				attributes: [{ name: 'aDD_2', value: 'p' }, xsiType(`{${XSD_NAMESPACE_URI}}anyType`)],
+				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+				unexpectedQueries: ['//default:DD_2[@xsi:type]'],
+			},
+			'an extension of the declared complex type → accepted': {
+				sourceXml,
+				tagName: 'DD_2',
+				attributes: [{ name: 'aDD_2', value: 'p' }, xsiType('tDD_2A')],
+				expectedQueries: ['//default:DD_2[@xsi:type="tDD_2A"]'],
+			},
 			'a concrete declared type, no xsi:type → accepted': {
 				sourceXml,
 				tagName: 'DD_2',
@@ -679,10 +944,8 @@ describe('xsi:type - one stored form', () => {
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
 			const written = source.transaction(async (tx) => {
-				await tx.addChild({ tagName: 'D', id: 'd' }, {
-					tagName: testCase.tagName,
-					attributes: testCase.attributes,
-				} as never)
+				const child = { tagName: testCase.tagName, attributes: testCase.attributes } as never
+				await tx.addChild({ tagName: 'D', id: 'd' }, child)
 			})
 			if (testCase.refusedWith === undefined) await written
 			else await expect(written).rejects.toMatchObject({ cause: { key: testCase.refusedWith } })
@@ -692,8 +955,118 @@ describe('xsi:type - one stored form', () => {
 		runTestCases.withExport<TestCase>({ testCases, act })
 	})
 
+	describe('write rules - create, through ensureChild', () => {
+		type TestCase = BaseXmlTestCase & {
+			tagName: 'DD_2'
+			attributes: { name: string; value: string; namespace?: Namespace }[]
+			/** The key of the error the write is refused with. */
+			refusedWith: string
+		}
+
+		const sourceXml = /* xml */ `
+			<Root ${ns}>
+				<D ${CUSTOM_RECORD_ID_ATTRIBUTE}="d" aD="d"/>
+			</Root>
+		`
+		/** An xsi:type attribute in the array form of a write: the local name, its namespace. */
+		function xsiType(value: string): { name: string; value: string; namespace: Namespace } {
+			return { name: 'type', value, namespace: XSI_NAMESPACE }
+		}
+
+		const testCases: TestCases<TestCase> = {
+			'a built-in on a complex-typed element, through ensureChild → XSI_TYPE_NOT_ADMITTED': {
+				sourceXml,
+				tagName: 'DD_2',
+				attributes: [{ name: 'aDD_2', value: 'p' }, xsiType(`{${XSD_NAMESPACE_URI}}string`)],
+				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+				unexpectedQueries: ['//default:DD_2[@xsi:type]'],
+			},
+		}
+
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
+			const written = source.transaction(async (tx) => {
+				const child = { tagName: testCase.tagName, attributes: testCase.attributes } as never
+				await tx.ensureChild({ tagName: 'D', id: 'd' }, child)
+			})
+			await expect(written).rejects.toMatchObject({ cause: { key: testCase.refusedWith } })
+			return {}
+		}
+
+		runTestCases.withExport<TestCase>({ testCases, act })
+	})
+
+	describe('write rules - built-in types', () => {
+		type TestCase = BaseXmlTestCase & {
+			parent: { tagName: 'AAA_1' | 'DD_2'; id: string }
+			tagName: 'AAAA_2' | 'DDD_2'
+			attributes: { name: string; value: string; namespace?: Namespace }[]
+			refusedWith?: string
+		}
+		// AAAA_2 declared with the built-in type xs:decimal; DDD_2 has no type (anyType)
+		const dialecteConfig = withAAAA_2Typed('decimal')
+		const sourceXml = /* xml */ `
+			<Root ${ns}>
+				<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a" aA="X">
+					<AA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="aa1" aAA_1="n">
+						<AAA_1 ${CUSTOM_RECORD_ID_ATTRIBUTE}="aaa1" aAAA_1="abc" />
+					</AA_1>
+				</A>
+				<D aD="d">
+					<DD_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="dd2" aDD_2="p" />
+				</D>
+			</Root>
+		`
+		function xsiType(local: string): { name: string; value: string; namespace: Namespace } {
+			return { name: 'type', value: `{${XSD_NAMESPACE_URI}}${local}`, namespace: XSI_NAMESPACE }
+		}
+
+		const testCases: TestCases<TestCase> = {
+			'a built-in derived from the declared built-in → accepted': {
+				sourceXml,
+				parent: { tagName: 'AAA_1', id: 'aaa1' },
+				tagName: 'AAAA_2',
+				attributes: [{ name: 'aAAAA_2', value: '1' }, xsiType('integer')],
+				expectedQueries: [`//default:AAAA_2[@aAAAA_2="1"][@xsi:type="xs:integer"]`],
+			},
+			'a built-in not derived from the declared built-in → XSI_TYPE_NOT_ADMITTED': {
+				sourceXml,
+				parent: { tagName: 'AAA_1', id: 'aaa1' },
+				tagName: 'AAAA_2',
+				attributes: [{ name: 'aAAAA_2', value: '1' }, xsiType('string')],
+				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+			},
+			'a built-in on an element of no type (anyType) → accepted': {
+				sourceXml,
+				parent: { tagName: 'DD_2', id: 'dd2' },
+				tagName: 'DDD_2',
+				attributes: [xsiType('string')],
+				expectedQueries: [`//default:DDD_2[@xsi:type="xs:string"]`],
+			},
+		}
+
+		createTestRunner({ dialecteConfig }).withExport<TestCase>({
+			testCases,
+			async act({ source, testCase }) {
+				const written = source.transaction(async (tx) => {
+					await tx.any.addChild(testCase.parent, {
+						tagName: testCase.tagName,
+						attributes: testCase.attributes,
+					})
+				})
+				if (testCase.refusedWith === undefined) await written
+				else await expect(written).rejects.toMatchObject({ cause: { key: testCase.refusedWith } })
+				return {}
+			},
+		})
+	})
+
 	describe('write rules - update', () => {
 		type TestCase = BaseXmlTestCase & {
+			/** The element updated, id `s`; DD_1 when absent. */
+			tagName?: 'DD_1' | 'DD_2'
 			attributes: Record<string, string | undefined>
 			refusedWith?: string
 			/** What the refusal names: the attributes and children the new type does not admit. */
@@ -728,6 +1101,32 @@ describe('xsi:type - one stored form', () => {
 					sourceXml: square,
 					attributes: { 'xsi:type': 'tDD_1C' },
 					refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+				},
+			'a built-in on a complex-typed element → XSI_TYPE_NOT_ADMITTED': {
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<D aD="d">
+							<DD_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" aDD_2="p"/>
+						</D>
+					</Root>
+				`,
+				tagName: 'DD_2',
+				attributes: { 'xsi:type': `{${XSD_NAMESPACE_URI}}string` },
+				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+				unexpectedQueries: ['//default:DD_2[@xsi:type]'],
+			},
+			'a stored built-in the element may not take, another attribute updated → accepted, xsi:type untouched':
+				{
+					sourceXml: /* xml */ `
+						<Root ${ns} xmlns:xs="${XSD_NAMESPACE_URI}">
+							<D aD="d">
+								<DD_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" xsi:type="xs:string" aDD_2="p"/>
+							</D>
+						</Root>
+					`,
+					tagName: 'DD_2',
+					attributes: { aDD_2: 'renamed' },
+					expectedQueries: ['//default:DD_2[@xsi:type="xs:string"][@aDD_2="renamed"]'],
 				},
 			'xsi:type removed where the declared type is abstract → XSI_TYPE_REQUIRED': {
 				sourceXml: square,
@@ -778,7 +1177,10 @@ describe('xsi:type - one stored form', () => {
 			testCase,
 		}: ActParams<TestDialecteConfig, TestCase>): Promise<ActResult> {
 			const written = source.transaction(async (tx) => {
-				await tx.update({ tagName: 'DD_1', id: 's' }, { attributes: testCase.attributes } as never)
+				await tx.update(
+					{ tagName: testCase.tagName ?? 'DD_1', id: 's' } as never,
+					{ attributes: testCase.attributes } as never,
+				)
 			})
 			if (testCase.refusedWith === undefined) {
 				await written
@@ -793,6 +1195,51 @@ describe('xsi:type - one stored form', () => {
 		}
 
 		runTestCases.withExport<TestCase>({ testCases, act })
+	})
+
+	describe('write rules - update, built-in types', () => {
+		type TestCase = BaseXmlTestCase & { xsiType: string; refusedWith?: string }
+
+		// AAAA_2 declared with the built-in type xs:decimal
+		const sourceXml = /* xml */ `
+			<Root ${ns}>
+				<A aA="X">
+					<AA_1 aAA_1="n">
+						<AAA_1 aAAA_1="abc">
+							<AAAA_2 ${CUSTOM_RECORD_ID_ATTRIBUTE}="s" aAAAA_2="1"/>
+						</AAA_1>
+					</AA_1>
+				</A>
+			</Root>
+		`
+
+		const testCases: TestCases<TestCase> = {
+			'a built-in derived from the declared built-in → accepted': {
+				sourceXml,
+				xsiType: `${XSD_PREFIX}integer`,
+				expectedQueries: [`//default:AAAA_2[@xsi:type="xs:integer"]`],
+			},
+			'a built-in not derived from the declared built-in → XSI_TYPE_NOT_ADMITTED': {
+				sourceXml,
+				xsiType: `${XSD_PREFIX}string`,
+				refusedWith: 'XSI_TYPE_NOT_ADMITTED',
+			},
+		}
+
+		createTestRunner({ dialecteConfig: withAAAA_2Typed('decimal') }).withExport<TestCase>({
+			testCases,
+			async act({ source, testCase }) {
+				const written = source.transaction(async (tx) => {
+					await tx.any.update(
+						{ tagName: 'AAAA_2', id: 's' },
+						{ attributes: { 'xsi:type': testCase.xsiType } },
+					)
+				})
+				if (testCase.refusedWith === undefined) await written
+				else await expect(written).rejects.toMatchObject({ cause: { key: testCase.refusedWith } })
+				return {}
+			},
+		})
 	})
 
 	describe('xsi:type in the object form of addChild', () => {

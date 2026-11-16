@@ -1,6 +1,5 @@
 import { throwDialecteError } from '@/errors'
-import { XSD_NAMESPACE_URI } from '@/helpers/constant'
-import { admittedXsiTypes, resolveDefinition } from '@/utils/resolve-definition'
+import { admittedXsiTypes, isXsiTypeAdmitted, resolveDefinition } from '@/utils/resolve-definition'
 import { isXsiTypeAttribute, resolveXsiType } from '@/utils/xsi-type'
 
 import type { AnyAttribute, AnyDialecteConfig, AnyRelationship } from '@/types'
@@ -8,10 +7,10 @@ import type { ResolvableRecord } from '@/utils'
 
 /**
  * Reject a write whose element names no type where its declared type is abstract, or names a type it may not take:
- * neither its declared type (when named, not abstract) nor one of its variants, or a value whose prefix is bound
- * nowhere. Runs on the WRITE path (`addChild`, `ensureChild`, clone, `update`) - never on import: a document is
- * loaded as it is, validation reports it. A built-in XSD type is not judged: the definition does not list the
- * built-in hierarchy.
+ * neither its declared type (when named, not abstract), nor one of its variants, nor - under a built-in declared
+ * type - a built-in derived from it; or a value whose prefix is bound nowhere. Runs on the WRITE path (`addChild`,
+ * `ensureChild`, clone, `update`) - never on import: a document is loaded as it is, validation reports it. The rule
+ * is `isXsiTypeAdmitted`'s, the value guard's too.
  *
  * @internal write-path guard core runs on every addChild, ensureChild, deepClone and update
  */
@@ -36,11 +35,10 @@ export function assertXsiTypeAdmitted(params: {
 	if (resolveDefinition({ dialecteConfig, record }) === undefined) return
 
 	const named = resolveXsiType({ dialecteConfig, record })
-
-	if (named?.namespace === XSD_NAMESPACE_URI) return
+	if (named !== undefined && isXsiTypeAdmitted({ dialecteConfig, record, typeName: named.clark }))
+		return
 
 	const admitted = admittedXsiTypes({ dialecteConfig, record })
-	if (named !== undefined && admitted.includes(named.clark)) return
 
 	throwDialecteError('XSI_TYPE_NOT_ADMITTED', {
 		detail: `'${record.tagName}' may not name the type '${String(attribute.value)}' with xsi:type; it admits ${admitted.join(', ') || 'none'}.`,

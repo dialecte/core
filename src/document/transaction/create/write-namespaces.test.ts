@@ -40,6 +40,25 @@ const updateSource = /* xml */ `
 	</Root>
 `
 
+/** The built-in xsi:type rows start from a DD_2 under a D: DDD_2, its child, is of no declared type (anyType). */
+const createDddSource = /* xml */ `
+	<Root ${ns}>
+		<D ${customId}="d" aD="d">
+			<DD_2 ${customId}="dd" aDD_2="p"/>
+		</D>
+	</Root>
+`
+/** The document the built-in update rows start from: a DDD_2 under a DD_2 under a D, no xsi:type. */
+const updateDddSource = /* xml */ `
+	<Root ${ns}>
+		<D aD="d">
+			<DD_2 aDD_2="p">
+				<DDD_2 ${customId}="s"/>
+			</DD_2>
+		</D>
+	</Root>
+`
+
 type Tx = Parameters<
 	Parameters<ActParams<TestDialecteConfig, BaseXmlTestCase>['source']['transaction']>[0]
 >[0]
@@ -69,7 +88,7 @@ async function captureRefusal(params: {
 /** The xsi:type values the document's records of a tag store, in store order. */
 async function storedXsiTypes(params: {
 	source: ActParams<TestDialecteConfig, BaseXmlTestCase>['source']
-	tagName: 'DD_1' | 'DD_2'
+	tagName: 'DD_1' | 'DD_2' | 'DDD_2'
 }): Promise<(string | undefined)[]> {
 	const records = await params.source.query.getRecordsByTagName(params.tagName)
 	return records.map((record) => {
@@ -84,16 +103,13 @@ describe('write - an XSD built-in xsi:type', () => {
 	type CreateCase = StoredCase & { attributes: { name: string; value: string }[] }
 	const createCases: TestCases<CreateCase> = {
 		'xs:integer on a create, xs declared on no record → admitted, stored xs:integer': {
-			sourceXml: createSource,
-			attributes: [{ name: 'aDD_2', value: 'p' }, xsiType('xs:integer')],
+			sourceXml: createDddSource,
+			attributes: [xsiType('xs:integer')],
 			expectedStored: ['xs:integer'],
 		},
 		'the XSD Clark name of integer on a create → admitted, stored xs:integer': {
-			sourceXml: createSource,
-			attributes: [
-				{ name: 'aDD_2', value: 'p' },
-				xsiType('{http://www.w3.org/2001/XMLSchema}integer'),
-			],
+			sourceXml: createDddSource,
+			attributes: [xsiType('{http://www.w3.org/2001/XMLSchema}integer')],
 			expectedStored: ['xs:integer'],
 		},
 	}
@@ -102,12 +118,12 @@ describe('write - an XSD built-in xsi:type', () => {
 		act: async ({ source, testCase }) => {
 			await source.transaction(async (tx) => {
 				// the attributes are plain strings built per case: the typed overloads cannot take them
-				await tx.addChild({ tagName: 'D', id: 'd' }, {
-					tagName: 'DD_2',
+				await tx.addChild({ tagName: 'DD_2', id: 'dd' }, {
+					tagName: 'DDD_2',
 					attributes: testCase.attributes,
 				} as never)
 			})
-			const stored = await storedXsiTypes({ source, tagName: 'DD_2' })
+			const stored = await storedXsiTypes({ source, tagName: 'DDD_2' })
 			expect(stored).toEqual(testCase.expectedStored)
 		},
 	})
@@ -118,7 +134,9 @@ describe('write - an XSD built-in xsi:type', () => {
 			sourceXml: /* xml */ `
 				<Root ${ns} xmlns:xs="http://www.w3.org/2001/XMLSchema">
 					<D aD="d">
-						<DD_2 ${customId}="s" aDD_2="p"/>
+						<DD_2 aDD_2="p">
+							<DDD_2 ${customId}="s"/>
+						</DD_2>
 					</D>
 				</Root>
 			`,
@@ -126,7 +144,7 @@ describe('write - an XSD built-in xsi:type', () => {
 			expectedStored: ['xs:integer'],
 		},
 		'the XSD Clark name of integer on an update → admitted, stored xs:integer': {
-			sourceXml: updateSource,
+			sourceXml: updateDddSource,
 			attributes: { 'xsi:type': '{http://www.w3.org/2001/XMLSchema}integer' },
 			expectedStored: ['xs:integer'],
 		},
@@ -135,9 +153,9 @@ describe('write - an XSD built-in xsi:type', () => {
 		testCases: updateCases,
 		act: async ({ source, testCase }) => {
 			await source.transaction(async (tx) => {
-				await tx.update({ tagName: 'DD_2', id: 's' }, { attributes: testCase.attributes } as never)
+				await tx.update({ tagName: 'DDD_2', id: 's' }, { attributes: testCase.attributes } as never)
 			})
-			const stored = await storedXsiTypes({ source, tagName: 'DD_2' })
+			const stored = await storedXsiTypes({ source, tagName: 'DDD_2' })
 			expect(stored).toEqual(testCase.expectedStored)
 		},
 	})

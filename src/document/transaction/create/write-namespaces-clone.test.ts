@@ -18,11 +18,11 @@ const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${XMLNS_EXT_NAMESP
 
 type StoredCase = BaseXmlTestCase & { expectedStored: (string | undefined)[] }
 
-/** The xsi:type values the document's DD_2 records store, in store order. */
+/** The xsi:type values the document's DDD_2 records store, in store order. */
 async function storedXsiTypes(params: {
 	source: ActParams<TestDialecteConfig, BaseXmlTestCase>['source']
 }): Promise<(string | undefined)[]> {
-	const records = await params.source.query.getRecordsByTagName('DD_2')
+	const records = await params.source.query.getRecordsByTagName('DDD_2')
 	return records.map((record) => {
 		const value = record.attributes.find(isXsiTypeAttribute)?.value
 		return typeof value === 'string' ? value : undefined
@@ -31,14 +31,18 @@ async function storedXsiTypes(params: {
 
 describe('deepClone - stored xsi:type values', () => {
 	const cloneCases: TestCases<StoredCase> = {
-		'a DD_2 holding a stored xs:integer, cloned under another D of the same document → the clone holds xs:integer':
+		'a DDD_2 holding a stored xs:integer, cloned under another DD_2 of the same document → the clone holds xs:integer':
 			{
 				sourceXml: /* xml */ `
 					<Root ${ns} xmlns:xs="http://www.w3.org/2001/XMLSchema">
 						<D ${customId}="src" aD="source">
-							<DD_2 ${customId}="s" xsi:type="xs:integer" aDD_2="p"/>
+							<DD_2 aDD_2="p">
+								<DDD_2 ${customId}="s" xsi:type="xs:integer"/>
+							</DD_2>
 						</D>
-						<D ${customId}="dst" aD="target"/>
+						<D ${customId}="other" aD="target">
+							<DD_2 ${customId}="dst" aDD_2="q"/>
+						</D>
 					</Root>
 				`,
 				expectedStored: ['xs:integer', 'xs:integer'],
@@ -48,9 +52,9 @@ describe('deepClone - stored xsi:type values', () => {
 	runTestCases.withoutExport<StoredCase>({
 		testCases: cloneCases,
 		act: async ({ source, testCase }) => {
-			const tree = await source.query.getTree({ tagName: 'DD_2', id: 's' })
+			const tree = await source.query.getTree({ tagName: 'DDD_2', id: 's' })
 			await source.transaction(async (tx) => {
-				if (tree) await tx.deepClone({ tagName: 'D', id: 'dst' }, tree)
+				if (tree) await tx.deepClone({ tagName: 'DD_2', id: 'dst' }, tree)
 			})
 			const stored = await storedXsiTypes({ source })
 			expect(stored).toEqual(testCase.expectedStored)
@@ -60,18 +64,22 @@ describe('deepClone - stored xsi:type values', () => {
 
 describe('deepClone - into another document', () => {
 	const cloneCases: TestCases<StoredCase> = {
-		'a DD_2 holding a stored xs:integer, cloned into a second document → the clone holds xs:integer, the export parses':
+		'a DDD_2 holding a stored xs:integer, cloned into a second document → the clone holds xs:integer, the export parses':
 			{
 				sourceXml: /* xml */ `
 					<Root ${ns} xmlns:xs="http://www.w3.org/2001/XMLSchema">
 						<D ${customId}="src" aD="source">
-							<DD_2 ${customId}="s" xsi:type="xs:integer" aDD_2="p"/>
+							<DD_2 aDD_2="p">
+								<DDD_2 ${customId}="s" xsi:type="xs:integer"/>
+							</DD_2>
 						</D>
 					</Root>
 				`,
 				targetXml: /* xml */ `
 					<Root ${ns}>
-						<D ${customId}="dst" aD="target"/>
+						<D ${customId}="other" aD="target">
+							<DD_2 ${customId}="dst" aDD_2="q"/>
+						</D>
 					</Root>
 				`,
 				expectedStored: ['xs:integer'],
@@ -82,9 +90,9 @@ describe('deepClone - into another document', () => {
 		testCases: cloneCases,
 		act: async ({ project, source, target, testCase }) => {
 			if (target === undefined) throw new Error('the case holds a targetXml')
-			const tree = await source.query.getTree({ tagName: 'DD_2', id: 's' })
+			const tree = await source.query.getTree({ tagName: 'DDD_2', id: 's' })
 			await target.transaction(async (tx) => {
-				if (tree) await tx.deepClone({ tagName: 'D', id: 'dst' }, tree)
+				if (tree) await tx.deepClone({ tagName: 'DD_2', id: 'dst' }, tree)
 			})
 			const stored = await storedXsiTypes({ source: target })
 			expect(stored).toEqual(testCase.expectedStored)
