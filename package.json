@@ -138,6 +138,11 @@
 					"run": "npx vitest run --changed --project node --project node-indexeddb",
 					"counts": "tests",
 					"changedOnly": true
+				},
+				{
+					"name": "rules",
+					"run": "dialecte rules",
+					"scoped": true
 				}
 			],
 			"full": [
@@ -162,6 +167,11 @@
 					"name": "browser tests",
 					"run": "npm run test:scope",
 					"counts": "tests",
+					"scoped": true
+				},
+				{
+					"name": "rules",
+					"run": "dialecte rules",
 					"scoped": true
 				}
 			],

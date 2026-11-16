@@ -64,17 +64,19 @@ Tests first, red before green, co-located with the code.
 - Every step: `npx dialecte tdd red` then `npx dialecte tdd green` for its cases, the tests related to the
   touched files, `npm run check`, and `npx dialecte rules` on the touched files.
 - Every behaviour: `npx dialecte gate --fast`.
-- Every lot: `npx dialecte gate --full` once, before the hand-over (`npx dialecte gate --help` prints the
-  configured steps).
-- A change to the public API or a visible behaviour also updates the docs under `doc/`, adds a
-  `## [Unreleased]` entry to `CHANGELOG.md`, and updates the skills under `skills/` that describe it
-  (`npm run skills:generate`, then `npm run skills:check`), in the same change.
+- Every lot: the merge queue runs the full suite once (every check, the whole browser suite with the store
+  contract's full table); each push of its pull request runs every check with the browser tests the change selects.
+  `ci-ok` is the check the queue waits for (`npx dialecte gate --help` prints the local steps).
+- A change to the public API or a visible behaviour also updates the docs under `doc/`, adds a changelog fragment
+  `changes/<lot>.md` (`### Added` / `Changed` / `Fixed` ... as in `CHANGELOG.md`), and updates the skills under
+  `skills/` that describe it (`npm run skills:generate`, then `npm run skills:check`), in the same change; only a
+  release edits `CHANGELOG.md` (`dialecte changelog release <version>`, cli 0.8.0 or later, folds the fragments).
 
 ## Stations
 
 In a lot, each station changes only what its role may change (the role rule in `dialecte-lot`): reviewers change
 nothing; the test station changes tests, test data and stub production code; the implementer changes production
-code in scope and the CHANGELOG; only the lot session deletes.
+code in scope and the changelog fragment; only the lot session deletes.
 
 ## Never
 
