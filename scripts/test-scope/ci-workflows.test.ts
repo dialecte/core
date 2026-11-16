@@ -130,21 +130,35 @@ describe('the publish workflow', () => {
 		expect(workflowText({ name: 'publish.yml' })).not.toContain('concurrency:')
 	})
 
-	it('publishes and tags only when the version check says the version changed', () => {
-		for (const job of ['deploy', 'create-release-tag'])
-			expect(jobBlock({ name: 'publish.yml', job }), job).toContain(
-				"\n    if: needs.version.outputs.version_changed == 'true'\n",
-			)
+	it('publishes only when the version check says publish, under the dist-tag it gives', () => {
+		const deploy = jobBlock({ name: 'publish.yml', job: 'deploy' })
+		expect(deploy).toContain("\n    if: needs.version.outputs.publish == 'true'\n")
+		expect(deploy).toContain('\n    with:\n      dist-tag: ${{ needs.version.outputs.dist_tag }}\n')
 	})
 
-	it('only the commit that changes the version publishes it: its version differs from the main it was pushed onto and npm lacks it', () => {
+	it('tags after the publish, or alone when npm has the version and its tag is missing; never after a failure', () => {
+		expect(jobBlock({ name: 'publish.yml', job: 'create-release-tag' })).toContain(
+			"\n    if: ${{ !cancelled() && !failure() && needs.version.outputs.tag == 'true' }}\n",
+		)
+	})
+
+	it('_publish.yml publishes under the dist-tag it is given, with id-token write', () => {
+		const publish = workflowText({ name: '_publish.yml' })
+		expect(publish).toContain('\n      id-token: write\n')
+		expect(publish).toContain('\n      dist-tag:\n        required: true\n        type: string\n')
+		expect(publish).toContain('run: npm publish --access public --tag "${{ inputs.dist-tag }}"\n')
+	})
+
+	for (const name of ['_publish.yml', '_tag-release.yml']) {
+		it(`${name} is called by publish.yml only: no workflow_dispatch, which skips the guard`, () => {
+			expect(triggerBlock({ name })).not.toContain('workflow_dispatch')
+		})
+	}
+
+	it('_check-npm-version.yml runs the decision script and hides no error', () => {
 		const check = workflowText({ name: '_check-npm-version.yml' })
-		expect(check).toContain(
-			'PREVIOUS_VERSION=$(git show "${{ github.event.before }}:package.json" | node -p "JSON.parse(require(\'fs\').readFileSync(0, \'utf8\')).version")',
-		)
-		expect(check).toContain(
-			'if [ "$PREVIOUS_VERSION" != "$CURRENT_VERSION" ] && [ "$PUBLISHED_VERSION" != "$CURRENT_VERSION" ]; then',
-		)
+		expect(check).toContain('node scripts/publish-guard/run-publish-decision.ts\n')
+		expect(check).not.toContain('2>/dev/null')
 	})
 
 	it('the tag waits for the publish: no tag without a published version', () => {
