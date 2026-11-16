@@ -40,6 +40,9 @@ export const ELEMENT_NAMES = [
 	'DD_1',
 	'DD_2',
 	'DD_3',
+	'E',
+	'EE_1',
+	'EE_2',
 	'Root',
 ] as const
 
@@ -81,7 +84,10 @@ export const CHILDREN = {
 	DD_1: ['DDD_1'],
 	DD_2: ['DDD_2', 'DDD_3'],
 	DD_3: [],
-	Root: ['A', 'B', 'C', 'D'],
+	E: ['EE_1', 'EE_2'],
+	EE_1: [],
+	EE_2: [],
+	Root: ['A', 'B', 'C', 'D', 'E'],
 } as const
 
 export const PARENTS = {
@@ -122,6 +128,9 @@ export const PARENTS = {
 	DD_1: ['D'],
 	DD_2: ['D'],
 	DD_3: ['D'],
+	E: ['Root'],
+	EE_1: ['E'],
+	EE_2: ['E'],
 	Root: [],
 } as const
 
@@ -163,6 +172,9 @@ export const DESCENDANTS = {
 	DD_1: ['DDD_1'],
 	DD_2: ['DDD_2', 'DDD_3'],
 	DD_3: [],
+	E: ['EE_1', 'EE_2'],
+	EE_1: [],
+	EE_2: [],
 	Root: [
 		'A',
 		'AAAA_1',
@@ -201,6 +213,9 @@ export const DESCENDANTS = {
 		'DD_1',
 		'DD_2',
 		'DD_3',
+		'E',
+		'EE_1',
+		'EE_2',
 	],
 } as const
 
@@ -242,6 +257,9 @@ export const ANCESTORS = {
 	DD_1: ['D', 'Root'],
 	DD_2: ['D', 'Root'],
 	DD_3: ['D', 'Root'],
+	E: ['Root'],
+	EE_1: ['E', 'Root'],
+	EE_2: ['E', 'Root'],
 	Root: [],
 } as const
 
@@ -258,6 +276,8 @@ export const SINGLETON_ELEMENTS = [
 	'D',
 	'DDD_1',
 	'DD_1',
+	'E',
+	'EE_1',
 	'Root',
 ] as const
 
@@ -463,6 +483,21 @@ const ATTRIBUTES_BY_TAG = {
 		'ext:bDD_3': '' as string,
 		'ext:cDD_3': '' as string,
 	} as AttributesOf<'DD_3'>,
+	E: {
+		aE: '' as string,
+		bE: '' as string,
+		'ext:cE': '' as string,
+	} as AttributesOf<'E'>,
+	EE_1: {
+		aEE_1: '' as string,
+		bEE_1: '' as string,
+		'ext:cEE_1': '' as string,
+	} as AttributesOf<'EE_1'>,
+	EE_2: {
+		aEE_2: '' as string,
+		bEE_2: '' as string,
+		'ext:cEE_2': '' as string,
+	} as AttributesOf<'EE_2'>,
 	Root: {
 		'ext:root': '' as string,
 		root: '' as string,
@@ -595,11 +630,16 @@ export const ATTRIBUTES = {
 			DDD_2: ATTRIBUTES_BY_TAG.DDD_2,
 			DDD_3: ATTRIBUTES_BY_TAG.DDD_3,
 		},
+		E: {
+			EE_1: ATTRIBUTES_BY_TAG.EE_1,
+			EE_2: ATTRIBUTES_BY_TAG.EE_2,
+		},
 		Root: {
 			A: ATTRIBUTES_BY_TAG.A,
 			B: ATTRIBUTES_BY_TAG.B,
 			C: ATTRIBUTES_BY_TAG.C,
 			D: ATTRIBUTES_BY_TAG.D,
+			E: ATTRIBUTES_BY_TAG.E,
 		},
 	} satisfies AttributesByParent,
 } as const
@@ -642,5 +682,8 @@ export const REQUIRED_ATTRIBUTES = {
 	DD_1: ['aDD_1'],
 	DD_2: ['aDD_2'],
 	DD_3: ['ext:aDD_3'],
+	E: ['aE'],
+	EE_1: ['aEE_1'],
+	EE_2: ['aEE_2'],
 	Root: [],
 } as const satisfies Record<AvailableElement, readonly string[]>

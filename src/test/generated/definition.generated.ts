@@ -1368,8 +1368,10 @@ export const DEFINITION = {
 			'{http://dialecte.dev/XML/DEFAULT}tDigits',
 			'{http://dialecte.dev/XML/DEFAULT}tEnum',
 			'{http://dialecte.dev/XML/DEFAULT}tFixedLen',
+			'{http://dialecte.dev/XML/DEFAULT}tIntegerOrQName',
 			'{http://dialecte.dev/XML/DEFAULT}tName',
 			'{http://dialecte.dev/XML/DEFAULT}tNonEmpty',
+			'{http://dialecte.dev/XML/DEFAULT}tNotation',
 			'{http://dialecte.dev/XML/DEFAULT}tPattern',
 			'{http://dialecte.dev/XML/DEFAULT}tPercent',
 			'{http://dialecte.dev/XML/DEV-EXT}tDD_1A',
@@ -1482,6 +1484,99 @@ export const DEFINITION = {
 		},
 		type: '{http://dialecte.dev/XML/DEV-EXT}tDD_3',
 	},
+	E: {
+		tag: 'E',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['Root'],
+		attributes: {
+			sequence: ['aE', 'bE', 'ext:cE'],
+			details: {
+				aE: { required: true },
+				bE: {},
+				'ext:cE': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: ['EE_1', 'EE_2'],
+			details: {},
+		},
+		contentModel: {
+			kind: 'sequence',
+			minOccurs: 1,
+			maxOccurs: 1,
+			particles: [
+				{ kind: 'element', name: 'EE_1', minOccurs: 1, maxOccurs: 1 },
+				{ kind: 'element', name: 'EE_2', maxOccurs: 2 },
+			],
+		},
+	},
+	EE_1: {
+		tag: 'EE_1',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['E'],
+		attributes: {
+			sequence: ['aEE_1', 'bEE_1', 'ext:cEE_1'],
+			details: {
+				aEE_1: {
+					required: true,
+					type: { builtin: 'QName' },
+				},
+				bEE_1: {
+					type: {
+						builtin: 'NOTATION',
+						facets: {
+							enumeration: [
+								'{http://dialecte.dev/XML/DEFAULT}nEE_1',
+								'{http://dialecte.dev/XML/DEFAULT}nEE_2',
+							],
+						},
+					},
+				},
+				'ext:cEE_1': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+					type: {
+						list: { builtin: 'QName' },
+					},
+				},
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+	},
+	EE_2: {
+		tag: 'EE_2',
+		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
+		global: true,
+		parents: ['E'],
+		attributes: {
+			sequence: ['aEE_2', 'bEE_2', 'ext:cEE_2'],
+			details: {
+				aEE_2: {
+					required: true,
+					type: {
+						union: [{ builtin: 'integer' }, { builtin: 'QName' }],
+					},
+				},
+				bEE_2: {},
+				'ext:cEE_2': {
+					namespace: { prefix: 'ext', uri: 'http://dialecte.dev/XML/DEV-EXT' },
+				},
+			},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: { builtin: 'QName' },
+		},
+	},
 	Root: {
 		tag: 'Root',
 		namespace: { prefix: '', uri: 'http://dialecte.dev/XML/DEFAULT' },
@@ -1499,7 +1594,7 @@ export const DEFINITION = {
 			},
 		},
 		children: {
-			sequence: ['A', 'B', 'C', 'D'],
+			sequence: ['A', 'B', 'C', 'D', 'E'],
 			details: {},
 		},
 		contentModel: {
@@ -1511,6 +1606,7 @@ export const DEFINITION = {
 				{ kind: 'element', name: 'B', maxOccurs: 1 },
 				{ kind: 'element', name: 'C', maxOccurs: 1 },
 				{ kind: 'element', name: 'D', maxOccurs: 1 },
+				{ kind: 'element', name: 'E', maxOccurs: 1 },
 			],
 		},
 		constraints: [
@@ -1713,6 +1809,21 @@ export const TYPES = {
 			},
 		},
 	},
+	'{http://dialecte.dev/XML/DEFAULT}tIntegerOrQName': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				union: [{ builtin: 'integer' }, { builtin: 'QName' }],
+			},
+		},
+	},
 	'{http://dialecte.dev/XML/DEFAULT}tName': {
 		attributes: {
 			sequence: [],
@@ -1744,6 +1855,27 @@ export const TYPES = {
 				facets: {
 					pattern: [['[^\\t\\n\\r ]+']],
 					minLength: 1,
+				},
+			},
+		},
+	},
+	'{http://dialecte.dev/XML/DEFAULT}tNotation': {
+		attributes: {
+			sequence: [],
+			details: {},
+		},
+		children: {
+			sequence: [],
+			details: {},
+		},
+		textContent: {
+			type: {
+				builtin: 'NOTATION',
+				facets: {
+					enumeration: [
+						'{http://dialecte.dev/XML/DEFAULT}nEE_1',
+						'{http://dialecte.dev/XML/DEFAULT}nEE_2',
+					],
 				},
 			},
 		},

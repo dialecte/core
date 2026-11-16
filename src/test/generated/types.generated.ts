@@ -206,8 +206,10 @@ export type AttributesDDD_2 =
 	| AttributesDDD_2_tDigits
 	| AttributesDDD_2_tEnum
 	| AttributesDDD_2_tFixedLen
+	| AttributesDDD_2_tIntegerOrQName
 	| AttributesDDD_2_tName
 	| AttributesDDD_2_tNonEmpty
+	| AttributesDDD_2_tNotation
 	| AttributesDDD_2_tPattern
 	| AttributesDDD_2_tPercent
 	| AttributesDDD_2_ExtTDD_1A
@@ -386,6 +388,25 @@ export type AttributesDDD_2_tFixedLen = {
 	'ext:dDD_3'?: undefined
 }
 
+export type AttributesDDD_2_tIntegerOrQName = {
+	'xsi:type': 'tIntegerOrQName'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
 export type AttributesDDD_2_tName = {
 	'xsi:type': 'tName'
 	aDD_1?: undefined
@@ -407,6 +428,25 @@ export type AttributesDDD_2_tName = {
 
 export type AttributesDDD_2_tNonEmpty = {
 	'xsi:type': 'tNonEmpty'
+	aDD_1?: undefined
+	bDD_1?: undefined
+	dDD_1?: undefined
+	'ext:cDD_1'?: undefined
+	eDD_1?: undefined
+	fDD_1?: undefined
+	aDD_2?: undefined
+	bDD_2?: undefined
+	'ext:cDD_2'?: undefined
+	dDD_2?: undefined
+	'ext:dDD_1'?: undefined
+	'ext:aDD_3'?: undefined
+	'ext:bDD_3'?: undefined
+	'ext:cDD_3'?: undefined
+	'ext:dDD_3'?: undefined
+}
+
+export type AttributesDDD_2_tNotation = {
+	'xsi:type': 'tNotation'
 	aDD_1?: undefined
 	bDD_1?: undefined
 	dDD_1?: undefined
@@ -614,6 +654,24 @@ export type AttributesDD_3 = {
 	'ext:cDD_3'?: string
 }
 
+export type AttributesE = {
+	aE: string
+	bE?: string
+	'ext:cE'?: string
+}
+
+export type AttributesEE_1 = {
+	aEE_1: string
+	bEE_1?: string
+	'ext:cEE_1'?: string
+}
+
+export type AttributesEE_2 = {
+	aEE_2: string
+	bEE_2?: string
+	'ext:cEE_2'?: string
+}
+
 export type AttributesRoot = {
 	'ext:root'?: string
 	root?: string
@@ -657,6 +715,9 @@ export type AttributesMap = {
 	DD_1: AttributesDD_1
 	DD_2: AttributesDD_2
 	DD_3: AttributesDD_3
+	E: AttributesE
+	EE_1: AttributesEE_1
+	EE_2: AttributesEE_2
 	Root: AttributesRoot
 }
 
@@ -786,11 +847,16 @@ export type AttributesByParent = {
 		DDD_2: AttributesDDD_2
 		DDD_3: AttributesDDD_3
 	}
+	E: {
+		EE_1: AttributesEE_1
+		EE_2: AttributesEE_2
+	}
 	Root: {
 		A: AttributesA
 		B: AttributesB
 		C: AttributesC
 		D: AttributesD
+		E: AttributesE
 	}
 }
 

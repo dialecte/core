@@ -11,6 +11,8 @@ selector)
     Branch C → children config (choice, xs:any, fixed attr, simpleContent textContent, documentation)
     Branch D → xsi:type variants (abstract type, concrete type, blocked derivation, anyType, a variant
 in the ext namespace sharing a local name, one only the ext namespace has, an element without attributes)
+    Branch E → QName-typed values (xs:QName, NOTATION, a list of QNames, QName text, a union with a
+QName member)
 
   Convention:
     _1 = required (minOccurs=1)
@@ -18,6 +20,7 @@ in the ext namespace sharing a local name, one only the ext namespace has, an el
     _3 = maxOccurs=3
     Attributes: a{NAME} (required), b{NAME} (optional), c{NAME} (optional, ext namespace);
     d/e/f{NAME}: declared by an xsi:type variant only (branch D)
+    Branch E has no _3 element: its ext case is the qualified attribute ext:cEE_1
 
   Namespace rules:
     _3 suffix elements → ext namespace (http://dialecte.dev/XML/DEV-EXT)
@@ -104,6 +107,7 @@ in the ext namespace sharing a local name, one only the ext namespace has, an el
 				<xs:element ref="B" minOccurs="0" />
 				<xs:element ref="C" minOccurs="0" />
 				<xs:element ref="D" minOccurs="0" />
+				<xs:element ref="E" minOccurs="0" />
 			</xs:sequence>
 			<xs:attribute name="root" type="xs:string" default="1" />
 			<xs:attribute ref="ext:root" default="2" />
@@ -524,5 +528,60 @@ in the ext namespace sharing a local name, one only the ext namespace has, an el
 
 	<!-- DDD_2: no type - anyType, any attribute, any child; every named type is a variant (leaf) -->
 	<xs:element name="DDD_2" />
+
+	<!-- ================================================================== -->
+	<!-- Branch E — QName-typed values                                      -->
+	<!-- ================================================================== -->
+
+	<xs:notation name="nEE_1" public="nEE_1" />
+	<xs:notation name="nEE_2" public="nEE_2" />
+
+	<!-- a NOTATION type must enumerate the notations it admits -->
+	<xs:simpleType name="tNotation">
+		<xs:restriction base="xs:NOTATION">
+			<xs:enumeration value="dflt:nEE_1" />
+			<xs:enumeration value="dflt:nEE_2" />
+		</xs:restriction>
+	</xs:simpleType>
+
+	<!-- the first member that admits the literal decides: 12 is an integer, p:x a QName -->
+	<xs:simpleType name="tIntegerOrQName">
+		<xs:union memberTypes="xs:integer xs:QName" />
+	</xs:simpleType>
+
+	<!-- E: two QName-valued children -->
+	<xs:element name="E">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element ref="EE_1" />
+				<xs:element ref="EE_2" minOccurs="0" maxOccurs="2" />
+			</xs:sequence>
+			<xs:attribute name="aE" type="xs:string" use="required" />
+			<xs:attribute name="bE" type="xs:string" />
+			<xs:attribute ref="ext:cE" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- EE_1: a QName, a NOTATION, a list of QNames (ext, qualified) (leaf) -->
+	<xs:element name="EE_1">
+		<xs:complexType>
+			<xs:attribute name="aEE_1" type="xs:QName" use="required" />
+			<xs:attribute name="bEE_1" type="tNotation" />
+			<xs:attribute ref="ext:cEE_1" />
+		</xs:complexType>
+	</xs:element>
+
+	<!-- EE_2: QName text, a union with a QName member (leaf) -->
+	<xs:element name="EE_2">
+		<xs:complexType>
+			<xs:simpleContent>
+				<xs:extension base="xs:QName">
+					<xs:attribute name="aEE_2" type="tIntegerOrQName" use="required" />
+					<xs:attribute name="bEE_2" type="xs:string" />
+					<xs:attribute ref="ext:cEE_2" />
+				</xs:extension>
+			</xs:simpleContent>
+		</xs:complexType>
+	</xs:element>
 
 </xs:schema>

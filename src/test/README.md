@@ -44,6 +44,15 @@ Variant-only attributes take the next letters: `dDD_1` (required, tDD_1A), `eDD_
 `mm`, tDD_1B), `ext:dDD_1` (ext:tDD_1A, qualified). Two leaves break the a/b/c rule on purpose: `DDD_2` has no type
 (anyType: any attribute, any child) and `ext:DDD_3` has no attribute at all.
 
+### Branch E - QName-typed values
+
+One level, no `_3` element (its ext case is the qualified attribute `ext:cEE_1`):
+
+```
+E → EE_1 (aEE_1 xs:QName, bEE_1 NOTATION over dflt:nEE_1 / dflt:nEE_2, ext:cEE_1 a list of xs:QName)
+    EE_2 (maxOccurs 2; text xs:QName, aEE_2 a union of xs:integer then xs:QName)
+```
+
 ## Attributes
 
 Each element has **3 attributes** prefixed with lowercase letters:

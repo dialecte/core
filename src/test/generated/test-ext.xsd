@@ -185,6 +185,19 @@
 	<xs:attribute name="cDD_3" type="xs:string" />
 	<xs:attribute name="cDDD_1" type="xs:string" />
 
+	<!-- ================================================================== -->
+	<!-- Branch E — QName-typed values                                      -->
+	<!-- ================================================================== -->
+
+	<xs:attribute name="cE" type="xs:string" />
+	<!-- a list of QNames, each item resolved on its own -->
+	<xs:attribute name="cEE_1">
+		<xs:simpleType>
+			<xs:list itemType="xs:QName" />
+		</xs:simpleType>
+	</xs:attribute>
+	<xs:attribute name="cEE_2" type="xs:string" />
+
 	<!-- tDD_1A: a variant of dflt:tDD_1 sharing dflt:tDD_1A's local name; its attribute is qualified -->
 	<xs:complexType name="tDD_1A">
 		<xs:complexContent>
