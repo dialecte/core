@@ -7,4 +7,6 @@ export * from './project'
 export * from './store'
 export * from './xml'
 
+export type { ValidateValueParams, ValueIssue, ValueIssueReason } from './validation'
+
 export type * from './types'

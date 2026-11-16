@@ -11,6 +11,7 @@ import {
 } from './get/attribute'
 import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } from './get/record'
 import { getSnapshot } from './snapshot'
+import { ValidateQuery } from './validate'
 
 import { toRef } from '@/helpers'
 import { NOOP_PERF } from '@/perf'
@@ -63,6 +64,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	protected documentId: string
 	protected _perf: Perf
 	private _any?: AnyQuery<GenericConfig>
+	private _validate?: ValidateQuery<GenericConfig>
 
 	constructor(
 		store: Store,
@@ -85,6 +87,13 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 
 	get any(): AnyQuery<GenericConfig> {
 		return (this._any ??= new AnyQuery(() => this.context, this.dialecteConfig))
+	}
+
+	//== Validation namespace
+
+	/** What the schema says of values, on the state this query sees (a transaction's staged writes included): `validate.value(...)`. */
+	get validate(): ValidateQuery<GenericConfig> {
+		return (this._validate ??= new ValidateQuery(() => this.context, this.dialecteConfig))
 	}
 
 	//== Context

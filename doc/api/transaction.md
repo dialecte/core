@@ -6,7 +6,7 @@ description: API reference for Transaction — extends Query with atomic mutatio
 
 `Transaction` extends [Query](/api/query) with mutation methods. It is created by `doc.transaction()` and scoped to a single unit of work. All operations are staged in memory and committed atomically when the callback returns.
 
-Inside a transaction, all Query methods are available and **see staged changes** — reads overlay staged operations on top of store data.
+Inside a transaction, all Query methods are available and **see staged changes** — reads overlay staged operations on top of store data. That includes [`tx.validate.value`](/api/query#validate-value): a value checked under a parent the transaction just added.
 
 ## Mutation methods
 

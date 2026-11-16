@@ -539,7 +539,7 @@
 				"turn an attribute value object into an attribute array",
 				"canonicalize attribute names before a write"
 			],
-			"declaredAt": "src/helpers/converter.ts:167"
+			"declaredAt": "src/helpers/converter.ts:161"
 		},
 		{
 			"path": "@dialecte/core/helpers.toRawRecord",
@@ -552,7 +552,7 @@
 				"strip a record to its stored fields",
 				"pass a record where a raw record is expected"
 			],
-			"declaredAt": "src/helpers/converter.ts:35"
+			"declaredAt": "src/helpers/converter.ts:29"
 		},
 		{
 			"path": "@dialecte/core/helpers.toRef",
@@ -562,7 +562,7 @@
 			"signature": "<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: Ref<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: ParentRelationship<GenericConfig, GenericElement> | ChildRelationship<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: RawRecord<GenericConfig, GenericElement> | TrackedRecord<GenericConfig, GenericElement> | TreeRecord<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>\n<GenericConfig extends AnyDialecteConfig, GenericElement extends ElementsOf<GenericConfig>>(input: RefOrRecord<GenericConfig, GenericElement> | undefined) => Ref<GenericConfig, GenericElement>",
 			"summary": "Convert a Ref, ParentRelationship, ChildRelationship, or Record to a Ref. ParentsOf/ChildrenOf are subsets of ElementsOf by design, so this is semantically safe.",
 			"intents": ["get the ref of a record or a relationship", "pass a ref to a query"],
-			"declaredAt": "src/helpers/converter.ts:312"
+			"declaredAt": "src/helpers/converter.ts:250"
 		},
 		{
 			"path": "@dialecte/core/helpers.toTrackedRecord",
@@ -575,7 +575,7 @@
 				"give a raw record a change status",
 				"pass a raw or tree record where a tracked record is expected"
 			],
-			"declaredAt": "src/helpers/converter.ts:113"
+			"declaredAt": "src/helpers/converter.ts:107"
 		},
 		{
 			"path": "@dialecte/core/helpers.toTreeRecord",
@@ -588,7 +588,7 @@
 				"turn a record into a tree node",
 				"build a tree record from a raw or tracked record"
 			],
-			"declaredAt": "src/helpers/converter.ts:139"
+			"declaredAt": "src/helpers/converter.ts:133"
 		},
 		{
 			"path": "@dialecte/core/helpers.widen",
@@ -601,7 +601,7 @@
 				"pass a per-element record or ref to an API typed with the element union",
 				"fix an invariance type error on a record or ref"
 			],
-			"declaredAt": "src/helpers/converter.ts:74"
+			"declaredAt": "src/helpers/converter.ts:68"
 		},
 		{
 			"path": "@dialecte/core/sqlite.adoptHubPort",
@@ -829,7 +829,7 @@
 				"list the xsi:type values an element may take",
 				"offer type choices for an element"
 			],
-			"declaredAt": "src/utils/resolve-definition.ts:64"
+			"declaredAt": "src/utils/resolve-definition.ts:63"
 		},
 		{
 			"path": "@dialecte/core/utils.canonicalXsiType",
@@ -982,6 +982,19 @@
 			"declaredAt": "src/utils/attribute-rules.ts:77"
 		},
 		{
+			"path": "@dialecte/core/utils.isXsiTypeAdmitted",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { dialecteConfig: DefinitionConfig; record: ResolvableRecord; parentDefinition?: DeclarationDefinition; typeName: string; }) => boolean",
+			"summary": "Whether the record may name a type (Clark name) with xsi:type: one `admittedXsiTypes` lists, or an XSD built-in derived from the declared type when that is a built-in itself (`anyType` takes every built-in). A built-in on a declaration of a complex type is not admitted. The one rule the write path and the value guard judge xsi:type by.",
+			"intents": [
+				"check an xsi:type value before writing it",
+				"judge a type choice the way a write does"
+			],
+			"declaredAt": "src/utils/resolve-definition.ts:82"
+		},
+		{
 			"path": "@dialecte/core/utils.orderAttributesBySequence",
 			"root": "export",
 			"entry": "@dialecte/core/utils",
@@ -1027,7 +1040,7 @@
 				"know what an element may hold under its parent",
 				"walk definitions top-down"
 			],
-			"declaredAt": "src/utils/resolve-definition.ts:31"
+			"declaredAt": "src/utils/resolve-definition.ts:30"
 		},
 		{
 			"path": "@dialecte/core/utils.resolveNamespaceByPrefix",
@@ -1106,6 +1119,16 @@
 			"declaredAt": "src/utils/save-to-disk.ts:17"
 		},
 		{
+			"path": "@dialecte/core/utils.validateValue",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: ValidateValueParams) => ValueIssue | undefined",
+			"summary": "Whether a simple value is one its datatype admits; the first refusing step says why. Whitespace first (the built-in's, tightened by a `whiteSpace` facet), then the built-in's lexical and value space, a list's items, a union's first accepting member, then the type's own facets. Returns why the value is refused, as plain data, or `undefined` when it is admitted.",
+			"intents": ["check a value against its XSD datatype", "built-in", "facets", "list and union"],
+			"declaredAt": "src/validation/value/validate-value.ts:23"
+		},
+		{
 			"path": "@dialecte/core/utils.valuePatterns",
 			"root": "export",
 			"entry": "@dialecte/core/utils",
@@ -1163,7 +1186,7 @@
 				"find the enclosing element of a tag",
 				"build a path from the root"
 			],
-			"declaredAt": "src/document/query/main.ts:390",
+			"declaredAt": "src/document/query/main.ts:399",
 			"example": "const ancestors = await query.findAncestors(aa1)\n// [A, Root]"
 		},
 		{
@@ -1177,7 +1200,7 @@
 				"look up an element by an identifying attribute",
 				"filter one tag's elements by attribute"
 			],
-			"declaredAt": "src/document/query/main.ts:600",
+			"declaredAt": "src/document/query/main.ts:609",
 			"example": "const records = await query.findByAttributes({\n  tagName: 'A',\n  attributes: { aA: 'val' },\n})"
 		},
 		{
@@ -1190,7 +1213,7 @@
 				"collect descendants of given tag names under an element",
 				"find nested elements at any depth below a scope"
 			],
-			"declaredAt": "src/document/query/main.ts:329",
+			"declaredAt": "src/document/query/main.ts:338",
 			"example": "// All descendants\nconst all = await query.findDescendants(a)\n// Specific collect\nconst { AA_1 } = await query.findDescendants(a, { collect: 'AA_1' })"
 		},
 		{
@@ -1205,7 +1228,7 @@
 				"read a namespaced attribute",
 				"read an attribute with its schema default"
 			],
-			"declaredAt": "src/document/query/main.ts:475",
+			"declaredAt": "src/document/query/main.ts:484",
 			"example": "const val = await query.getAttribute(a, { name: 'aA' })\nconst cA = await query.getAttribute(a, { name: 'cA', namespace: 'ext' })"
 		},
 		{
@@ -1220,7 +1243,7 @@
 				"destructure several attributes at once",
 				"read attributes of one namespace"
 			],
-			"declaredAt": "src/document/query/main.ts:525",
+			"declaredAt": "src/document/query/main.ts:534",
 			"example": "const { aA, 'ext:cA': cA } = await query.getAttributes(a)"
 		},
 		{
@@ -1230,7 +1253,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement> | undefined>",
 			"summary": "Get the first direct child of an element matching a given tag name; it looks one level down only.",
 			"intents": ["get one direct child by tag name", "check whether a child exists"],
-			"declaredAt": "src/document/query/main.ts:245",
+			"declaredAt": "src/document/query/main.ts:254",
 			"example": "const aa1 = await query.getChild(a, 'AA_1')"
 		},
 		{
@@ -1240,7 +1263,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement>[]>",
 			"summary": "Get all direct children of an element matching a given tag name; it looks one level down only, no recursion.",
 			"intents": ["list direct children of one tag name", "iterate one level below an element"],
-			"declaredAt": "src/document/query/main.ts:270",
+			"declaredAt": "src/document/query/main.ts:279",
 			"example": "const children = await query.getChildren(a, 'AA_1')"
 		},
 		{
@@ -1254,7 +1277,7 @@
 				"list allowed attributes or enumeration values",
 				"know what an xsi:type lets an element hold"
 			],
-			"declaredAt": "src/document/query/main.ts:205",
+			"declaredAt": "src/document/query/main.ts:214",
 			"example": "const definition = await query.getDefinition(p)\ndefinition?.attributes.details.type?.type?.facets?.enumeration // as declared under p's parent"
 		},
 		{
@@ -1268,7 +1291,7 @@
 				"get document metadata",
 				"find which config a document uses"
 			],
-			"declaredAt": "src/document/query/main.ts:132",
+			"declaredAt": "src/document/query/main.ts:141",
 			"example": "const { name, extension } = await query.getDocumentInfo()"
 		},
 		{
@@ -1282,7 +1305,7 @@
 				"resolve a ref or parent/child relationship to its record",
 				"refresh a record"
 			],
-			"declaredAt": "src/document/query/main.ts:184",
+			"declaredAt": "src/document/query/main.ts:193",
 			"example": "const a = await query.getRecord({ tagName: 'A', id: knownId })"
 		},
 		{
@@ -1295,7 +1318,7 @@
 				"load several elements by ref at once",
 				"resolve a list of children or relationships in one batched read"
 			],
-			"declaredAt": "src/document/query/main.ts:224",
+			"declaredAt": "src/document/query/main.ts:233",
 			"example": "const [a1, a2] = await query.getRecords([ref1, ref2])"
 		},
 		{
@@ -1308,7 +1331,7 @@
 				"list every element of a tag in the whole document",
 				"scan all elements of one type regardless of position"
 			],
-			"declaredAt": "src/document/query/main.ts:295",
+			"declaredAt": "src/document/query/main.ts:304",
 			"example": "const records = await query.getRecordsByTagName('A')"
 		},
 		{
@@ -1318,7 +1341,7 @@
 			"signature": "() => Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>>>",
 			"summary": "Get the root element of the document.",
 			"intents": ["get the root element", "start a walk from the top of the document"],
-			"declaredAt": "src/document/query/main.ts:155",
+			"declaredAt": "src/document/query/main.ts:164",
 			"example": "const root = await query.getRoot()"
 		},
 		{
@@ -1332,7 +1355,7 @@
 				"read staged changes as XML or as a tree",
 				"show what a prepared transaction would produce"
 			],
-			"declaredAt": "src/document/query/main.ts:441",
+			"declaredAt": "src/document/query/main.ts:450",
 			"example": "const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))\nconst { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })"
 		},
 		{
@@ -1347,7 +1370,7 @@
 				"project a filtered tree with select or omit",
 				"read a subtree to copy it with deepClone"
 			],
-			"declaredAt": "src/document/query/main.ts:413",
+			"declaredAt": "src/document/query/main.ts:422",
 			"example": "const tree = await query.getTree(a)"
 		},
 		{
@@ -1451,6 +1474,19 @@
 				"time a callback without flooding the timeline"
 			],
 			"declaredAt": "src/perf/perf.types.ts:65"
+		},
+		{
+			"path": "doc.query.validate.value",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericParent extends ElementsOf<GenericConfig>, GenericChild extends ChildrenOf<GenericConfig, GenericParent>>(params: ValidateFormValueParams<GenericConfig, GenericParent, GenericChild>) => Promise<ValueIssue | undefined>",
+			"summary": "Whether a value may be written to an attribute (or, without `attribute`, the text) of a child, as the child is declared under `parent` - before it exists. Reads the parent once, nothing else: every prefix resolves through the dialecte's namespaces (`xs` for XSD, `xml:` always bound; an xsi:type Clark name `{uri}local` as itself), as the write path reads it. `attribute` takes the write path's two forms: a value-object key or `{ name, namespace }`. A QName value whose prefix the dialecte does not declare is not judged yet (`undefined`).",
+			"intents": [
+				"check a form value before writing it",
+				"validate an attribute or text value against the schema",
+				"why is this value refused"
+			],
+			"declaredAt": "src/document/query/validate/validate-query.ts:45"
 		},
 		{
 			"path": "doc.subscribe",

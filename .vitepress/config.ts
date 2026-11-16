@@ -56,6 +56,7 @@ export default withMermaid(
 							{ text: 'Implementing a store', link: '/guide/development/implementing-a-store' },
 							{ text: 'Helpers', link: '/guide/development/helpers' },
 							{ text: 'Utils', link: '/guide/development/utils' },
+							{ text: 'Validation', link: '/guide/development/validation' },
 							{ text: 'Type Performance', link: '/guide/development/type-performance' },
 							{ text: 'Delivering with agents', link: '/guide/development/delivering-with-agents' },
 						],

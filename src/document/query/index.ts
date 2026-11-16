@@ -1,5 +1,6 @@
 export { Query } from './main'
 export { AnyQuery } from './any'
+export * from './validate'
 export * from './get'
 export * from './find'
 export * from './snapshot'

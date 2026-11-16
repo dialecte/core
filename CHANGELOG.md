@@ -12,6 +12,14 @@ stored resolved, and the export declares what the records use on the root. Break
 stored `xsi:type` values change form, writes refuse `xmlns` attributes and unknown `xsi:type` prefixes. Documents stored
 by an earlier core are not migrated: export them with that version and import the file again.
 
+### Added
+
+- **`validateValue({ value, type, namespaces? })`** in `@dialecte/core/utils`: whether a value is one its `DataType` admits, as an XSD validator says it - whitespace (the built-in's, tightened by a `whiteSpace` facet), the built-in's lexical and value space (every XSD built-in: names with the XML name characters, so `été` is a `Name`; integers of any size; float and double with `INF` and `NaN`; dates, times and durations; binary data counted in octets; QNames resolved through the namespaces given), a list's items, a union's first accepting member, then the facets in order: enumeration, pattern, lengths, ranges, digits. Enumeration and ranges compare in value space (`1.0` is `1`, the same instant in two offsets is one value, a QName compares its resolved name); an order left indeterminate (a value with an offset against one without, `P1M` against `P30D`) refuses the value. Pure and synchronous, it runs in Node unchanged; it returns a `ValueIssue` - `{ reason, actual, expected?, facet? }`, plain data - or `undefined`.
+- **`query.validate.value({ parent, tagName, xsiType?, attribute?, value })`** and **`tx.validate.value`** (which sees the staged writes), the first verb of a `validate` namespace built lazily like `query.any`: whether a value may be written to an attribute - or the text - of a child under a parent, the child read as declared under that parent before it exists; `xsiType` reads the child as the type it names (its text judged as an admitted XSD built-in it names), and an `xsi:type` value - a QName or a Clark name `{uri}local` - must name a type the declaration admits. For a wildcard attribute the `xml:` prefix is always bound. It reads the parent once and no ancestor: every prefix resolves through the dialecte's namespaces (`xs` for XSD, `xml:` always bound; an xsi:type Clark name as itself, a QName value in Clark form refused as `datatype`), as the write path reads it - an `xsi:type` value and the `xsiType` param by one reader. A QName value whose prefix the dialecte does not declare is not judged yet. `attribute` takes the write path's two forms, read by its own reader and refused with its keys: a typed value-object key (`'ext:cA'`, `'xsi:type'`; a prefix the dialecte does not declare throws `UNKNOWN_NAMESPACE_PREFIX`) or the full-object form `{ name, namespace }` (a prefixed local name throws `PREFIXED_ATTRIBUTE_NAME`, an unknown namespace key `UNKNOWN_NAMESPACE_PREFIX`); an undeclared attribute throws `INVALID_ATTRIBUTE`, a child the parent cannot hold `INVALID_PARENT_CHILD`.
+- `isXsiTypeAdmitted` in `@dialecte/core/utils`: the one rule the write path and `validate.value` judge an xsi:type by.
+- `DefinitionConfig` type in `@dialecte/core/utils`: the part of a dialecte config resolving a definition reads (`definition`, `types`, `namespaces`), the config `isXsiTypeAdmitted` and the value guard take.
+- `ValueIssue`, `ValueIssueReason`, `ValidateValueParams`, `ValidateQuery` (the class behind `query.validate` / `tx.validate`) and `ValidateFormValueParams` (`validate.value`'s params) exported from the package root; `XML_NAMESPACE_URI` and `XML_NAMESPACE` (`{ prefix: 'xml', uri }`) from `@dialecte/core/helpers`.
+
 ### Changed
 
 - **Breaking** - export: every namespace the written records use (element names, attribute names, `xsi:type` values)
@@ -56,6 +64,14 @@ by an earlier core are not migrated: export them with that version and import th
   judged). `xs:integer` written on an element whose file declared `xs` on an ancestor is now admitted.
 - **Breaking** - `ParseSession` is no longer exported. Nothing replaces it for a consumer: `parseXmlFile` and
   `runImport` keep the children a parse resolves across batches themselves.
+- **Breaking** on the write path (`addChild`, `ensureChild`, clone, `update`): an xsi:type naming an XSD built-in is judged like any other type. On an element of a complex type it is refused with `XSI_TYPE_NOT_ADMITTED` (`xs:string`, `xs:anyType`); under a built-in declared type it must be a built-in derived from it (`xs:integer` under `xs:decimal`, not `xs:string`); an element of no type (`anyType`) still takes every built-in. Before, every type of the XSD namespace was let through. A document is still loaded as it is.
+- `addChild` / `ensureChild` in the full-object form report an unknown namespace key (`UNKNOWN_NAMESPACE_PREFIX`) before the parent is read: an input with an unknown key under a missing parent throws `UNKNOWN_NAMESPACE_PREFIX`, not `ELEMENT_NOT_FOUND`.
+- `addChild`, `ensureChild` and `update` take an `xml:` attribute (`xml:lang`, `xml:space`) by its key in the value-object form: the `xml` prefix is bound in every document, it threw `UNKNOWN_NAMESPACE_PREFIX`. The write path and `validate.value` read an attribute input by one reader.
+- **Breaking** for library copies: the storage kinds registry is bumped (`STORAGE_KINDS_VERSION` 3), because `query.validate` joins the Query shape the Store contract reaches; a copy of 0.11 does not share a storage kind with this one.
+
+### Performance
+
+- `valuePatterns` compiles each pattern level once and returns the same `RegExp` on the next call.
 
 ## [0.11.0] - 2026-11-13
 

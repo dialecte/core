@@ -13,10 +13,12 @@ import {
 	admittedXsiTypes,
 	resolveXsiType,
 	canonicalXsiType,
+	isXsiTypeAdmitted,
 	resolveSchemaAttributeValue,
 	isSchemaDefaultValue,
 	enumeratedValues,
 	valuePatterns,
+	validateValue,
 	extractLocalName,
 	resolveNamespaceByPrefix,
 	resolveNamespaceByScope,
@@ -114,10 +116,16 @@ A document writes an `xsi:type` value as a qualified name - `Block`, `plc:Block`
 Import reads the prefix with the namespaces in scope at the element, an ancestor's bindings included. The value keeps what XML says it means, whoever writes it - a file or code: an unprefixed name is in the default namespace, so `tTriangle` where only `ext:tTriangle` exists stays `tTriangle` and validation reports it. Export declares the prefix the value uses, and when an element in another namespace re-binds it where the value stands, writes the value with a prefix bound to its namespace there.
 
 ```ts
-import { admittedXsiTypes, canonicalXsiType, resolveXsiType } from '@dialecte/core/utils'
+import {
+	admittedXsiTypes,
+	canonicalXsiType,
+	isXsiTypeAdmitted,
+	resolveXsiType,
+} from '@dialecte/core/utils'
 
 resolveXsiType({ dialecteConfig, record }) // { clark: '{uri}tSquare', namespace: 'uri', local: 'tSquare' }
 admittedXsiTypes({ dialecteConfig, record }) // the Clark names it may name: its declared type (unless abstract), its variants
+isXsiTypeAdmitted({ dialecteConfig, record, typeName }) // those, or a built-in derived from a built-in declared type
 canonicalXsiType({ dialecteConfig, value: 'e:tSquare', namespaceOf }) // 'ext:tSquare' - the stored form of a written value
 ```
 
@@ -128,10 +136,10 @@ Writes check the type an element names (`addChild`, `ensureChild`, a clone, an `
 | Write                                                                                                                                                                                             | Refused with                               |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | an element whose declared type is abstract, without `xsi:type`                                                                                                                                    | `XSI_TYPE_REQUIRED` (`D3009`)              |
-| a type that is neither the declared one (when not abstract) nor one of its variants, or a prefix bound nowhere                                                                                    | `XSI_TYPE_NOT_ADMITTED` (`D3010`)          |
+| a type `isXsiTypeAdmitted` refuses - neither the declared one (when not abstract), nor one of its variants, nor a built-in derived from a built-in declared type - or a prefix bound nowhere      | `XSI_TYPE_NOT_ADMITTED` (`D3010`)          |
 | an update naming another type while attributes or children the new type does not admit remain - clear the attributes in the same update, delete the children first; the error's `meta` names them | `XSI_TYPE_CHANGE_LEAVES_CONTENT` (`D3011`) |
 
-A built-in XSD type (`xs:token`, ...) is not judged: the definition does not list the built-in hierarchy. An update that leaves `xsi:type` alone is never refused for it, so an imported record naming a type it may not take can still be edited. A fixed value is judged on the type the record names once updated.
+A built-in XSD type is judged like any other: refused on an element of a complex type, admitted under a built-in declared type when derived from it (`xs:integer` under `xs:decimal`), and on an element of no type (`anyType`). An update that leaves `xsi:type` alone is never refused for it, so an imported record naming a type it may not take can still be edited. A fixed value is judged on the type the record names once updated.
 
 Filters (`findByAttributes`, `findDescendants`, `getTree` `where`, `omit`, `ensureChild`) compare `xsi:type` as the type it names: `{ 'xsi:type': 'tSquare' }`, `{ 'xsi:type': 'ext:tSquare' }` and the Clark name each find what they name, a record stored by an earlier core with the document's own prefix included.
 
@@ -323,13 +331,24 @@ enumeratedValues(definition.attributes.details.aA?.type) // readonly string[]
 
 ### `valuePatterns`
 
-The patterns of a datatype's own levels, one `RegExp` per level: each anchored to the whole value, compiled with the `u` flag, the level's patterns joined as alternatives. A value is valid when it matches every one. `[]` without patterns.
+The patterns of a datatype's own levels, one `RegExp` per level: each anchored to the whole value, compiled with the `u` flag, the level's patterns joined as alternatives - once per level, the same `RegExp` is returned on the next call. A value is valid when it matches every one. `[]` without patterns.
 
 ```ts
 import { valuePatterns } from '@dialecte/core/utils'
 
 const patterns = valuePatterns(definition.attributes.details.aA?.type) // readonly RegExp[]
 const isValid = patterns.every((pattern) => pattern.test(value))
+```
+
+### `validateValue`
+
+Whether a value is one its `DataType` admits - built-in, list, union and every facet, compared in value space. Returns a `ValueIssue` or `undefined`. See [Validation](/guide/development/validation).
+
+```ts
+import { validateValue } from '@dialecte/core/utils'
+
+validateValue({ value: '1.234', type: definition.attributes.details.aAAAA_2.type })
+// { reason: 'digits', actual: '1.234', expected: 2, facet: 'fractionDigits' }
 ```
 
 ---

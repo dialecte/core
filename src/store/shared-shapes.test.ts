@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: one suite over one set of module-level state (WATCHED, SHARED_SHAPES, the package root); main already carries it at 416 lines, this lot added one watched line
 import { execFileSync } from 'node:child_process'
 import {
 	chmodSync,
@@ -48,6 +49,7 @@ const WATCHED = import.meta.glob([
 	// the types of the document queries the dialecte's hooks and configs reach, declared beside their code
 	'../document/query/any/any-query.ts',
 	'../document/query/main.ts',
+	'../document/query/validate/validate-query.ts',
 	'../document/types.ref.ts',
 ])
 

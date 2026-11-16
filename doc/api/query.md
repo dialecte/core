@@ -520,6 +520,26 @@ const compiled = parseOmit({ omit, dialecteConfig }) // the omit entries split f
 const pruned = applyOmit({ tree, omit, dialecteConfig }) // the tree without the omitted descendants; the root is never dropped
 ```
 
+## Validation namespace — `query.validate`
+
+What the schema says of a value, on the state the query sees (a transaction's staged writes included); nothing is stored.
+
+### validate.value
+
+Whether a value may be written to an attribute - or, without `attribute`, the text - of a `tagName` child under `parent`, the child read as declared under that parent. It need not exist; the parent is read once and no ancestor. Every prefix resolves through the dialecte's namespaces (`xs` for XSD, `xml:` always bound; an xsi:type Clark name `{uri}local` as itself, a QName value's refused), as the write path reads it; a QName value whose prefix the dialecte does not declare is not judged yet (`undefined`). `attribute` takes the write path's two forms: a typed value-object key (`'aA'`, `'ext:cA'`, `'xsi:type'`) or the full-object form `{ name, namespace }` (a local name with a `Namespace` or a config key, or the canonical `prefix:local` with its `Namespace`).
+
+```ts
+const issue = await doc.query.validate.value({
+	parent: { tagName: 'A', id: 'a1' },
+	tagName: 'AA_2',
+	attribute: 'aAA_2',
+	value: '150',
+})
+// { reason: 'range', actual: '150', expected: '100', facet: 'maxInclusive' }
+```
+
+Returns a `ValueIssue` or `undefined` (admitted, or not typed). Throws `ELEMENT_NOT_FOUND`, `INVALID_PARENT_CHILD`, `UNKNOWN_NAMESPACE_PREFIX` (a key prefix or namespace key the dialecte does not declare), `PREFIXED_ATTRIBUTE_NAME` (a prefixed local name in the object form) - the write path's keys - or `INVALID_ATTRIBUTE` for a wrong argument. See [Validation](/guide/development/validation#form-guard-query-validate-value).
+
 ## Untyped namespace — `query.any`
 
 The `any` namespace exposes the full Query surface without `ElementsOf` / `ChildrenOf` type constraints. Use it for custom/private elements (xs:any), dynamic contexts, or call sites where the element type is a union or unknown.
