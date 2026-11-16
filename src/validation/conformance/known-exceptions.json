@@ -1,0 +1,118 @@
+{
+	"libxml2Wasm": "0.7.2",
+	"rows": [
+		{
+			"id": "1",
+			"value": "",
+			"type": {
+				"builtin": "NMTOKENS"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:NMTOKENS\"/></xs:simpleType>",
+			"core": "length",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "2",
+			"value": "  ",
+			"type": {
+				"builtin": "NMTOKENS"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:NMTOKENS\"/></xs:simpleType>",
+			"core": "length",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "3",
+			"value": "",
+			"type": {
+				"builtin": "IDREFS"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:IDREFS\"/></xs:simpleType>",
+			"core": "length",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "4",
+			"value": "http://[::1",
+			"type": {
+				"builtin": "anyURI"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:anyURI\"/></xs:simpleType>",
+			"core": "admitted",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "5",
+			"value": "2026-10-21T20:00:00",
+			"type": {
+				"builtin": "dateTime",
+				"facets": {
+					"minInclusive": "2026-10-21T12:00:00Z"
+				}
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:dateTime\"><xs:minInclusive value=\"2026-10-21T12:00:00Z\"/></xs:restriction></xs:simpleType>",
+			"core": "range",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "6",
+			"value": "logo",
+			"type": {
+				"builtin": "ENTITY"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:ENTITY\"/></xs:simpleType>",
+			"core": "admitted",
+			"reason": "capability-gap"
+		},
+		{
+			"id": "7",
+			"value": "2024-01-01",
+			"type": {
+				"builtin": "base64Binary"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:base64Binary\"/></xs:simpleType>",
+			"core": "datatype",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "8",
+			"value": "4294967296",
+			"type": {
+				"builtin": "gYear"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:gYear\"/></xs:simpleType>",
+			"core": "admitted",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "9",
+			"value": "[",
+			"type": {
+				"builtin": "anyURI"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:anyURI\"/></xs:simpleType>",
+			"core": "admitted",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "10",
+			"value": "1e",
+			"type": {
+				"builtin": "float"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:float\"/></xs:simpleType>",
+			"core": "datatype",
+			"reason": "xsd-rule"
+		},
+		{
+			"id": "11",
+			"value": "1e",
+			"type": {
+				"builtin": "double"
+			},
+			"xsd": "<xs:simpleType name=\"t\"><xs:restriction base=\"xs:double\"/></xs:simpleType>",
+			"core": "datatype",
+			"reason": "xsd-rule"
+		}
+	]
+}

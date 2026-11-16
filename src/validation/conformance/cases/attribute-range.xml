@@ -1,0 +1,67 @@
+<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" xmlns:dev="http://dialecte.dev/XML/DEV" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:foo="urn:foo" dev:db-id="root" root="r" ext:root="2">
+	<A dev:db-id="a1" aA="ABC" bA="x" ext:cA="c">
+		<AA_1 dev:db-id="aa1" aAA_1="a name" bAA_1="  kept as is  " ext:cAA_1="c">
+			<AAA_1 dev:db-id="aaa1" aAAA_1="abc" bAAA_1="b">
+				<AAAA_1 dev:db-id="aaaa1" aAAAA_1="t" foo:any="1" ext:cAAAA_2="lax">mixed text</AAAA_1>
+				<AAAA_2 dev:db-id="aaaa2" aAAAA_2="123.45"/>
+				<AAAA_2 dev:db-id="aaaa3" aAAAA_2="-0.5"/>
+				<ext:AAAA_3 dev:db-id="aaaa4" ext:aAAAA_3="12345678"/>
+			</AAA_1>
+			<AAA_2 dev:db-id="aaa2" aAAA_2="xyz">
+				<AAAA_1 dev:db-id="aaaa5" aAAAA_1="t"/>
+			</AAA_2>
+			<ext:AAA_3 dev:db-id="aaa3" ext:aAAA_3="def">
+				<AAAA_1 dev:db-id="aaaa6" aAAAA_1="t"/>
+			</ext:AAA_3>
+		</AA_1>
+		<AA_2 dev:db-id="aa2" aAA_2="150">
+			<AAA_1 dev:db-id="aaa4" aAAA_1="ghi">
+				<AAAA_1 dev:db-id="aaaa7" aAAAA_1="t"/>
+			</AAA_1>
+		</AA_2>
+		<AA_2 dev:db-id="aa3" aAA_2="0">
+			<AAA_1 dev:db-id="aaa5" aAAA_1="jkl">
+				<AAAA_1 dev:db-id="aaaa8" aAAAA_1="t"/>
+			</AAA_1>
+		</AA_2>
+		<ext:AA_3 dev:db-id="aa4" ext:aAA_3="a" ext:bAA_3="  collapsed   value ">
+			<AAA_1 dev:db-id="aaa6" aAAA_1="mno">
+				<AAAA_1 dev:db-id="aaaa9" aAAAA_1="t"/>
+			</AAA_1>
+		</ext:AA_3>
+	</A>
+	<B dev:db-id="b1" aB="b" bB="b" ext:cB="c">
+		<BB_1 dev:db-id="bb1" aBB_1="k1" bBB_1="k2">
+			<BBB_1 dev:db-id="bbb1" aBBB_1="b" bBBB_1="true">
+				<BBBB_1 dev:db-id="bbbb1" aBBBB_1="u1" bBBBB_1="v">nonblank</BBBB_1>
+				<BBBB_2 dev:db-id="bbbb2" aBBBB_2="p"/>
+			</BBB_1>
+			<BBB_2 dev:db-id="bbb2" aBBB_2="b">
+				<BBBB_1 dev:db-id="bbbb3" aBBBB_1="u2">x</BBBB_1>
+			</BBB_2>
+		</BB_1>
+	</B>
+	<C dev:db-id="c1" aC="c">
+		<CC_1 dev:db-id="cc1" aCC_1="fixed_val" bCC_1="b">
+			<CCC_1 dev:db-id="ccc1" aCCC_1="c">
+				<CCCC_1 dev:db-id="cccc1" aCCCC_1="t">a token</CCCC_1>
+				<CCCC_2 dev:db-id="cccc2" aCCCC_2="p"/>
+			</CCC_1>
+		</CC_1>
+		<ext:CC_3 dev:db-id="cc3" ext:aCC_3="c">
+			<CCC_1 dev:db-id="ccc2" aCCC_1="c">
+				<CCCC_1 dev:db-id="cccc3" aCCCC_1="t">t</CCCC_1>
+			</CCC_1>
+		</ext:CC_3>
+	</C>
+	<D dev:db-id="d1" aD="d" ext:cD="c">
+		<DD_1 dev:db-id="dd1" xsi:type="tDD_1A" aDD_1="a" dDD_1="d">
+			<DDD_1 dev:db-id="ddd1" aDDD_1="a"/>
+		</DD_1>
+		<DD_2 dev:db-id="dd2" xsi:type="tDD_2A" aDD_2="a" dDD_2="d">
+			<DDD_2 dev:db-id="ddd2" anything="1">any text</DDD_2>
+			<ext:DDD_3 dev:db-id="ddd3"/>
+		</DD_2>
+		<ext:DD_3 dev:db-id="dd3" ext:aDD_3="a"/>
+	</D>
+</Root>

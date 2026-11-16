@@ -3,16 +3,34 @@
 import { restoreConsoleAfterEngineLoad } from './engine-console'
 
 import {
+	ParseOption,
 	XmlAttribute,
+	XmlBufferInputProvider,
 	XmlCData,
 	XmlComment,
 	XmlDocument,
 	XmlElement,
 	XmlParseError,
 	XmlText,
+	XmlValidateError,
+	XsdValidator,
+	xmlRegisterInputProvider,
 } from 'libxml2-wasm'
 
 // The engine has bound its console writers while loading: the console is the caller's own again.
 restoreConsoleAfterEngineLoad()
 
-export { XmlAttribute, XmlCData, XmlComment, XmlDocument, XmlElement, XmlParseError, XmlText }
+export {
+	ParseOption,
+	XmlAttribute,
+	XmlBufferInputProvider,
+	XmlCData,
+	XmlComment,
+	XmlDocument,
+	XmlElement,
+	XmlParseError,
+	XmlText,
+	XmlValidateError,
+	XsdValidator,
+	xmlRegisterInputProvider,
+}

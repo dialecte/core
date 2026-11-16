@@ -32,6 +32,7 @@
 		"src/test/fixtures/scripts/**",
 		"src/store/contract/**",
 		"src/store/sqlite/bench/**",
-		"src/project/io/bench/**"
+		"src/project/io/bench/**",
+		"src/validation/conformance/**"
 	]
 }
