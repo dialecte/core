@@ -1,5 +1,5 @@
 ---
-description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, getChildrenOfEach, findAncestors, findAncestorsOfEach, getTree, getSnapshot, and filtering utilities.
+description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, findDescendantsOfEach, getChildrenOfEach, findAncestors, findAncestorsOfEach, getTree, getSnapshot, and filtering utilities.
 ---
 
 # Query
@@ -208,9 +208,29 @@ const results = await doc.query.findDescendants(ref, {
 
 **omit** shares the same `OmitEntry` type as `getTree.omit` (see above).
 
-**Order:** the groups are keyed by tag name; the records of a group come in no guaranteed order (the store's own; it is not guaranteed to be document order). For descendants in document order, walk a [`getTree`](#gettree) result.
+**Order:** the groups are keyed by tag name. Under an element that is not the document root, a flat collect (string or array) answers each group in id order; under the document root, and for the path form, the records of a group come in the store's own order. Neither is document order: for descendants in document order, walk a [`getTree`](#gettree) result.
 
-**Reads:** a flat collect reads the candidates of each tag name from the store's tag index, then climbs each candidate's parent chain, each ancestor read once per call; the path form reads level by level. Once a call has issued more store reads (by id or by tag name) than one whole-document read is worth for this document - its record count times a per-record cost measured on IndexedDB, and never before 128 reads - it reads the document once and serves the rest from memory. A large collect therefore costs one `getByDocumentId`, never one read per ancestor step. A flat collect under the document root with no `omit` climbs nothing: it relies on every record of a document lying under its root. The dev perf counters `core::store::get`, `core::store::getByTagName`, `core::store::count` and `core::store::getByDocumentId` show which path a call took.
+**Reads:** under an element that is not the document root, a flat collect reads the subtree top-down: the element, then one store `getMany` per level, following only the children that can hold a collected tag - a child whose tag is collected, or whose definition's descendants hold a collected tag. Content the definition does not list is followed: an element it does not know, the content of an xs:any child or of a transparent element; a collected tag the definition does not know makes the walk follow every branch. An unconditionally omitted tag is never read, a record a conditional `omit` matches is neither collected nor followed. Records moved are the branches that can hold a collected tag, calls the depth of the subtree. A descendant placed where the definition allows no such tag, under elements the definition knows, is not found there.
+
+Under the document root, a flat collect reads the records of each tag name from the store's tag index, climbing their parent chains only when `omit` is given (it relies on every record of a document lying under its root). The path form reads level by level. Both switch to one whole-document read once a call has issued more store reads (by id or by tag name) than that read is worth for this document - its record count times a per-record cost measured on IndexedDB, and never before 128 reads. The dev perf counters `core::store::get`, `core::store::getMany`, `core::store::getByTagName`, `core::store::count` and `core::store::getByDocumentId` show which path a call took.
+
+The element itself is answered when its own tag is collected and it matches; an element whose tag is unconditionally omitted answers nothing.
+
+### findDescendantsOfEach
+
+What `findDescendants` answers for each element given, one answer per input position, in the input order, with the same options (`FindDescendantsParams`) applied under each element.
+
+```ts
+const [underA1, underB1] = await doc.query.findDescendantsOfEach([a1, b1], { collect: 'AAA_1' })
+// [{ AAA_1: TrackedRecord[] }, { AAA_1: [] }]
+```
+
+**Reads:** the elements in one `getMany` (staged operations first, as `findDescendants` reads its element), then, for a flat collect under elements that are not the document root, one `getMany` per level over every element's subtree at once, as described for [`findDescendants`](#finddescendants). Sixteen scopes of a 1,008-record slice: 6 store reads and 1,008 records, against 96 reads for one `findDescendants` call per scope. A path collect, and a flat collect under the document root, read per element as `findDescendants` does.
+
+- A record under two elements given (nested scopes) is answered for both.
+- The same element given several times is answered at each position; each position after the first gets its own shallow copy of a record.
+- A ref that names no element answers empty groups at its position.
+- `query.any.findDescendantsOfEach(refsOrRecords)` takes no options: each element collects every descendant tag its own tag may hold, as `query.any.findDescendants`.
 
 #### FilterAttributes
 
@@ -602,20 +622,21 @@ const matches = await doc.query.any.findByAttributes({
 
 ### Type signatures
 
-| Method                | Params                                                                | Return                                     |
-| --------------------- | --------------------------------------------------------------------- | ------------------------------------------ |
-| `getRecord`           | `AnyRef`                                                              | `AnyTrackedRecord \| undefined`            |
-| `getRecords`          | `AnyRef[]`                                                            | `(AnyTrackedRecord \| undefined)[]`        |
-| `getChild`            | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord \| undefined`            |
-| `getChildren`         | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord[]`                       |
-| `getChildrenOfEach`   | `AnyRefOrRecord[], { tagName: string }`                               | `AnyTrackedRecord[][]`                     |
-| `getRecordsByTagName` | `tagName: string`                                                     | `AnyTrackedRecord[]`                       |
-| `getAttribute`        | `AnyRefOrRecord, { name, namespace?, fullObject? }`                   | `string \| AnyAttribute \| undefined`      |
-| `getAttributes`       | `AnyRefOrRecord, { namespace?, fullObject? }`                         | `Record<string, string> \| AnyAttribute[]` |
-| `getTree`             | `AnyRefOrRecord`                                                      | `AnyTreeRecord \| undefined`               |
-| `findAncestors`       | `AnyRefOrRecord`                                                      | `AnyTrackedRecord[]`                       |
-| `findDescendants`     | `AnyRefOrRecord`                                                      | `Record<string, AnyTrackedRecord[]>`       |
-| `findByAttributes`    | `{ tagName: string, attributes: Record<string, string \| string[]> }` | `AnyTrackedRecord[]`                       |
+| Method                  | Params                                                                | Return                                     |
+| ----------------------- | --------------------------------------------------------------------- | ------------------------------------------ |
+| `getRecord`             | `AnyRef`                                                              | `AnyTrackedRecord \| undefined`            |
+| `getRecords`            | `AnyRef[]`                                                            | `(AnyTrackedRecord \| undefined)[]`        |
+| `getChild`              | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord \| undefined`            |
+| `getChildren`           | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord[]`                       |
+| `getChildrenOfEach`     | `AnyRefOrRecord[], { tagName: string }`                               | `AnyTrackedRecord[][]`                     |
+| `getRecordsByTagName`   | `tagName: string`                                                     | `AnyTrackedRecord[]`                       |
+| `getAttribute`          | `AnyRefOrRecord, { name, namespace?, fullObject? }`                   | `string \| AnyAttribute \| undefined`      |
+| `getAttributes`         | `AnyRefOrRecord, { namespace?, fullObject? }`                         | `Record<string, string> \| AnyAttribute[]` |
+| `getTree`               | `AnyRefOrRecord`                                                      | `AnyTreeRecord \| undefined`               |
+| `findAncestors`         | `AnyRefOrRecord`                                                      | `AnyTrackedRecord[]`                       |
+| `findDescendants`       | `AnyRefOrRecord`                                                      | `Record<string, AnyTrackedRecord[]>`       |
+| `findDescendantsOfEach` | `AnyRefOrRecord[]`                                                    | `Record<string, AnyTrackedRecord[]>[]`     |
+| `findByAttributes`      | `{ tagName: string, attributes: Record<string, string \| string[]> }` | `AnyTrackedRecord[]`                       |
 
 ::: tip
 `query.any` mirrors every public Query method except `getRoot` (always typed), `getDocumentInfo` (no element typing involved), and `findByAttributes` filter type narrowing (accepts `Record<string, string | string[]>` instead of `FilterAttributes`).
