@@ -1,7 +1,13 @@
 import { NOOP_PROGRESS_REPORTER } from '../progress'
 import { createStagedOperations } from '../staged-operations'
 import { AnyQuery } from './any'
-import { findAncestors, findAncestorsOfEach, findByAttributes, findDescendants } from './find'
+import {
+	findAncestors,
+	findAncestorsOfEach,
+	findByAttributes,
+	findDescendants,
+	findDescendantsOfEach,
+} from './find'
 import { getDefinition, getTree } from './get'
 import {
 	getAttribute,
@@ -341,18 +347,20 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Find all descendants of an element, grouped by tag name, in no guaranteed order: walk a `getTree`
+	 * Find all descendants of an element, grouped by tag name, never in document order: walk a `getTree`
 	 * result for document order.
 	 *
-	 * The groups are keyed by tag name; the records of a group come in the store's own order, which is
-	 * not document order.
+	 * The groups are keyed by tag name. Under an element that is not the document root, a flat collect
+	 * answers each group in id order; under the document root, and for the path form, in the store's own
+	 * order.
 	 *
-	 * Reads: a flat collect reads each tag name's candidates from the store's tag index and
-	 * climbs their parent chains, each ancestor read once per call; the path form reads level
-	 * by level. Once a call has issued more store reads than one whole-document read is worth for
-	 * this document (never before 128), it reads the document once and serves the rest from
-	 * memory - a large collect costs one `getByDocumentId`, never one read per ancestor step. A
-	 * flat collect under the document root with no `omit` climbs nothing.
+	 * Reads: under an element that is not the document root, a flat collect reads the subtree top-down,
+	 * one store read per level, only the branches that can hold a collected tag (content the definition
+	 * does not list - an unknown element, xs:any content, a transparent element - is followed). Under the
+	 * document root it reads each tag name's records from the store's tag index (climbing their parent
+	 * chains when `omit` is given). The path form reads level by level; once a call has issued more store
+	 * reads than one whole-document read is worth for this document (never before 128), it reads the
+	 * document once and serves the rest from memory. For many elements at once, `findDescendantsOfEach`.
 	 *
 	 * @intent collect descendants of given tag names under an element, find nested elements at any depth below a scope
 	 *
@@ -411,6 +419,31 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 			ref,
 			options,
 		})
+	}
+
+	/**
+	 * What `findDescendants` answers for each element given, in one walk: one store read for the elements, then one
+	 * per level over every element's subtree at once.
+	 *
+	 * @intent collect descendants under many scope elements at once
+	 *
+	 * @param refsOrRecords - The scope elements, in any order, repeats allowed.
+	 * @param options - Collect spec and optional omit list, as `findDescendants` takes them, applied under each element.
+	 * @returns One answer per input position, in the input order, each shaped as `findDescendants` answers.
+	 *
+	 * @example
+	 * ```ts
+	 * const [underA1, underB1] = await query.findDescendantsOfEach([a1, b1], { collect: 'AAA_1' })
+	 * ```
+	 */
+	async findDescendantsOfEach<
+		GenericElement extends ElementsOf<GenericConfig>,
+		GenericCollect extends Collect<GenericConfig, GenericElement>,
+	>(
+		refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>,
+		options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>,
+	): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>[]> {
+		return findDescendantsOfEach({ context: this.context, refsOrRecords, options })
 	}
 
 	/**
