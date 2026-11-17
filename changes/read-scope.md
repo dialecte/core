@@ -1,0 +1,9 @@
+### Added
+
+- One read scope per public query verb call. A read verb of `doc.query` (core's own methods and the query verbs of every extension module) called outside a scope runs on a scoped child of its query; every call nested in it shares that scope, which closes when the call settles. Core's store reads (`getRecord`, `getRecords`, `getRecordsByTagName`, `findByAttributes`, whole-document reads, snapshots) ask the scope first and the store only for what it lacks, so a verb that reads the same records several times reads them once. Answers are copies; records are never frozen. Two unrelated calls on one query, even concurrent, never share a scope, and a query kept past its call opens a fresh one. A transaction (and a prepared transaction's `query`) never uses one. Every write the Project makes or folds in (a commit, a prepared commit, an undo, a redo, a removal, an import, a change of another realm, a resync, a write refused with its connection lost) empties the document's scopes right after the store write lands, and a store answer of another document version empties them too. A scope opens only over a store that answers `readVersioned`; elsewhere reads go to the store as before. Scenario "one verb call over the leaves of a subtree" (the one-fetch reads inside one call): 224 `getMany` moving 224 records → 22 moving 22 once the store answers versioned reads.
+
+### Changed
+
+- `Context` is `QueryContext | CachedContext`, told apart by `kind` (`'query'` or `'transaction'`); a query context carries `readScope`, a transaction context none. `isTransactionContext` reads `kind`. A context built by hand names its `kind`.
+- `STORAGE_KINDS_VERSION` 7 -> 8: the shared shape records the new `Context`.
+- A snapshot's whole-document read is counted in the dev perf tallies (`core::store::getByDocumentId` and its records moved), as every other store read of the query layer.
