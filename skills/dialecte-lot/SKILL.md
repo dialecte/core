@@ -80,7 +80,8 @@ wrong.
 Before the test station, the plan holds what the tests will pin; a gap found by a reviewer costs a round.
 
 - **Discovery first**, before any test or code: list what already covers the concept with the whole cli
-  surface - `dialecte ask` for each open question (it answers a question; it does not list what covers a concept), `api find` and the API index, `explain`, `schema`, `fixture`, `standard find` / `show`, the
+  surface - `dialecte ask` for each open question (it answers a question; it does not list what covers a
+  concept), `api find` and the API index, `explain`, `schema`, `fixture`, `standard find` / `show`, the
   package skills - then a code search for what they do not index. The list goes into the lot's `decisions.md`,
   each hit reused or with why not; a shared read found wrong is fixed in place, never forked. Reviewers check the
   diff against that list. The list records evidence: it never limits what a station may use.
