@@ -8,6 +8,7 @@ import { commitTransaction } from './commit'
 import { stageAddChild } from './create'
 import { stageDelete } from './delete'
 import { stageEnsureChild } from './ensure'
+import { stageMove } from './move'
 import { stageUpdate } from './update'
 
 import { toRef } from '@/helpers'
@@ -18,8 +19,10 @@ import type { DocumentState } from '../types'
 import type { Context, StagedOperations } from '../types'
 import type { CloneResult } from './clone'
 import type { AddChildParams } from './create'
+import type { MoveParams } from './move'
+import type { MovePointer } from './move/move.types'
 import type { UpdateParams } from './update'
-import type { RefOrRecord } from '@/document'
+import type { Ref, RefOrRecord } from '@/document'
 import type { Perf } from '@/perf'
 import type { Store } from '@/store'
 import type {
@@ -245,6 +248,44 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 			ref: toRef(refOrRecord),
 			hooks: this.hooks,
 			query: this,
+		})
+	}
+
+	/**
+	 * Move an element and its subtree under another parent of the same document, or to another place among
+	 * its siblings. Record ids are kept: only the element's `parent` and both parents' `children` change.
+	 * The element goes right before `before` (a child of the new parent with the element's tag) or, without
+	 * `before`, after the new parent's last child with that tag. A move to the place it holds stages nothing.
+	 * Refused: the root, a new parent that may not hold the tag or holds as many of it as it may, a new parent
+	 * inside the moved subtree, a `before` that is no child of the new parent with that tag. Core follows no
+	 * reference: a dialecte that keeps references or paths updates them at its commit.
+	 *
+	 * @intent cut and paste inside a document, re-parent an element, move a subtree under another parent, reorder an element among its siblings
+	 *
+	 * @param refOrRecord - The element to move (ref, record, or relationship).
+	 * @param params - `parent`, the new parent; `before`, the sibling to move it before.
+	 * @returns The moved element's record, under its new parent.
+	 *
+	 * @example
+	 * ```ts
+	 * await tx.move(aa1, { parent: otherA })
+	 * ```
+	 */
+	async move<
+		GenericElement extends ChildrenOf<GenericConfig, GenericParent>,
+		GenericParent extends ElementsOf<GenericConfig>,
+	>(
+		refOrRecord: MovePointer<GenericConfig, GenericElement>,
+		params: MoveParams<GenericConfig, GenericElement, GenericParent>,
+	): Promise<RawRecord<GenericConfig, GenericElement>> {
+		return stageMove({
+			context: this.context,
+			ref: toRef(refOrRecord as Ref<GenericConfig, GenericElement>),
+			parentRef: toRef(params.parent as Ref<GenericConfig, GenericParent>),
+			beforeRef:
+				params.before === undefined
+					? undefined
+					: toRef(params.before as Ref<GenericConfig, GenericElement>),
 		})
 	}
 

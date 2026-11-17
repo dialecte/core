@@ -3,13 +3,14 @@ import { stageDeepClone } from '../clone'
 import { stageAddChild } from '../create'
 import { stageDelete } from '../delete'
 import { stageEnsureChild } from '../ensure'
+import { stageMove } from '../move'
 import { stageUpdate } from '../update'
 
 import { toRef } from '@/helpers'
 
 import type { AddChildParams } from '../create'
 import type { UpdateParams } from '../update'
-import type { AnyAddChildParams, AnyUpdateParams } from './any.types'
+import type { AnyAddChildParams, AnyMoveParams, AnyUpdateParams } from './any.types'
 import type { Query, Context, AnyRefOrRecord, Ref } from '@/document'
 import type {
 	AnyDialecteConfig,
@@ -101,6 +102,18 @@ export class AnyTransaction<
 			ref: toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
 			hooks: this.hooks,
 			query: this.query,
+		}) as Promise<AnyRawRecord>
+	}
+
+	async move(refOrRecord: AnyRefOrRecord, params: AnyMoveParams): Promise<AnyRawRecord> {
+		return stageMove({
+			context: this.getContext(),
+			ref: toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
+			parentRef: toRef(params.parent) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
+			beforeRef:
+				params.before === undefined
+					? undefined
+					: (toRef(params.before) as Ref<GenericConfig, ElementsOf<GenericConfig>>),
 		}) as Promise<AnyRawRecord>
 	}
 

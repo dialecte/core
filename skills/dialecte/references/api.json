@@ -1828,7 +1828,7 @@
 				"insert a child with attributes",
 				"build new content in a transaction"
 			],
-			"declaredAt": "src/document/transaction/main.ts:137",
+			"declaredAt": "src/document/transaction/main.ts:140",
 			"example": "const aRecord = await tx.addChild(root, {\n  tagName: 'A',\n  attributes: { name: 'aA1' },\n})"
 		},
 		{
@@ -1843,7 +1843,7 @@
 				"paste a tree read with getTree",
 				"map old ids to new ids"
 			],
-			"declaredAt": "src/document/transaction/main.ts:267",
+			"declaredAt": "src/document/transaction/main.ts:308",
 			"example": "const tree = await tx.getTree(aa1) // an AA_1 to copy\nconst { record, mappings } = await tx.deepClone(a, tree) // under an A"
 		},
 		{
@@ -1853,7 +1853,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>>",
 			"summary": "Delete an element and its entire subtree.",
 			"intents": ["remove an element", "delete a subtree", "prune a child from its parent"],
-			"declaredAt": "src/document/transaction/main.ts:240",
+			"declaredAt": "src/document/transaction/main.ts:243",
 			"example": "const parentRecord = await tx.delete(aRecord)"
 		},
 		{
@@ -1867,8 +1867,23 @@
 				"make sure a singleton container exists before adding under it",
 				"add a child without duplicating it"
 			],
-			"declaredAt": "src/document/transaction/main.ts:180",
+			"declaredAt": "src/document/transaction/main.ts:183",
 			"example": "const a = await tx.ensureChild(root, {\n  tagName: 'A',\n  attributes: {},\n})"
+		},
+		{
+			"path": "tx.move",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ChildrenOf<GenericConfig, GenericParent>, GenericParent extends ElementsOf<GenericConfig>>(refOrRecord: MovePointer<GenericConfig, GenericElement>, params: MoveParams<GenericConfig, GenericElement, GenericParent>) => Promise<RawRecord<GenericConfig, GenericElement>>",
+			"summary": "Move an element and its subtree under another parent of the same document, or to another place among its siblings. Record ids are kept: only the element's `parent` and both parents' `children` change. The element goes right before `before` (a child of the new parent with the element's tag) or, without `before`, after the new parent's last child with that tag. A move to the place it holds stages nothing. Refused: the root, a new parent that may not hold the tag or holds as many of it as it may, a new parent inside the moved subtree, a `before` that is no child of the new parent with that tag. Core follows no reference: a dialecte that keeps references or paths updates them at its commit.",
+			"intents": [
+				"cut and paste inside a document",
+				"re-parent an element",
+				"move a subtree under another parent",
+				"reorder an element among its siblings"
+			],
+			"declaredAt": "src/document/transaction/main.ts:274",
+			"example": "await tx.move(aa1, { parent: otherA })"
 		},
 		{
 			"path": "tx.progress.endPlan",
@@ -1913,7 +1928,7 @@
 				"rename an element through its name attribute",
 				"set an element's text value"
 			],
-			"declaredAt": "src/document/transaction/main.ts:213",
+			"declaredAt": "src/document/transaction/main.ts:216",
 			"example": "await tx.update(root, {\n  attributes: { name: 'aA1', desc: 'new element' },\n})"
 		}
 	]

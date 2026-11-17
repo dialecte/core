@@ -210,9 +210,9 @@ export const ERROR_CATALOG = {
 		code: 'D3001',
 		message: 'Invalid parent-child relationship',
 		explanation: {
-			when: 'Not raised by core itself: a dialecte or app code raises it when an element is placed under a parent the schema does not admit.',
-			fix: "Read the parent's children in the definition (`query.getDefinition`) and add the element under an admitted parent.",
-			docs: `${CORE_DOCS_URL}/api/transaction#addchild`,
+			when: "`tx.move` was given a new parent whose definition does not hold the moved element's tag; a dialecte or app code raises it too when an element is placed under a parent the schema does not admit.",
+			fix: "Read the parent's children in the definition (`query.getDefinition`) and place the element under an admitted parent.",
+			docs: `${CORE_DOCS_URL}/api/transaction#move`,
 		},
 	},
 	INVALID_ATTRIBUTE: {
@@ -226,11 +226,38 @@ export const ERROR_CATALOG = {
 	},
 	PROTECTED_ROOT: {
 		code: 'D3003',
-		message: 'Root element cannot be deleted',
+		message: 'Root element cannot be deleted or moved',
 		explanation: {
-			when: "A transaction tried to delete the document's root element.",
-			fix: "Delete the root's children instead, or remove the whole document with `project.removeDocument`.",
+			when: "A transaction tried to delete or move the document's root element.",
+			fix: "Delete or move the root's children instead, or remove the whole document with `project.removeDocument`.",
 			docs: `${CORE_DOCS_URL}/api/transaction#delete`,
+		},
+	},
+	MAX_OCCURRENCES_REACHED: {
+		code: 'D3014',
+		message: 'The parent already holds as many children of that tag as it may',
+		explanation: {
+			when: "`tx.move` was given a new parent that already holds the most children of the moved element's tag its definition allows (`maxOccurs`).",
+			fix: 'Move or delete one of those children first, or choose another parent.',
+			docs: `${CORE_DOCS_URL}/api/transaction#move`,
+		},
+	},
+	MOVE_INTO_OWN_SUBTREE: {
+		code: 'D3015',
+		message: 'An element cannot be moved under itself or one of its descendants',
+		explanation: {
+			when: '`tx.move` was given a new parent that is the moved element or lies inside its subtree.',
+			fix: 'Choose a parent outside the moved subtree.',
+			docs: `${CORE_DOCS_URL}/api/transaction#move`,
+		},
+	},
+	MOVE_BEFORE_NOT_SIBLING: {
+		code: 'D3016',
+		message: 'The element to move before is no child of the new parent with the same tag',
+		explanation: {
+			when: "`tx.move` was given a `before` that is not a child of the new parent with the moved element's tag.",
+			fix: "Pass as `before` a child of the new parent with the moved element's tag, or leave it out to place the element after the last one.",
+			docs: `${CORE_DOCS_URL}/api/transaction#move`,
 		},
 	},
 	REQUIRED_ATTRIBUTE_MISSING: {
