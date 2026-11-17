@@ -5,4 +5,4 @@
 
 ### Changed
 
-- `query.findAncestors` walks through `findAncestorsOfEach` for its one element: same answers, and in dev perf counters each store read is now one `core::store::getMany` per level instead of one `core::store::get` (records read unchanged, the start element still read from its ref).
+- `query.findAncestors` walks through `findAncestorsOfEach` for its one element: same answers, and in dev perf counters each store read is now one `core::store::getMany` per level instead of one `core::store::get` (records read unchanged, the start element still read from its ref). Scenario benches: the per-leaf ancestors scenario goes from 192 `get` to 192 `getMany`, the one-fetch scenario from 224 `get` + 16 `getMany` to 32 `get` + 208 `getMany`; calls and records moved are the same in number (a one-element walk reads one level at a time either way).
