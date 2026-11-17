@@ -68,7 +68,7 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
 <!-- dialecte-skills:generated core-methods -->
 
 - Query (`doc.query`, also on `tx`): `findAncestors`, `findAncestorsOfEach`, `findByAttributes`, `findDescendants`, `getAttribute`, `getAttributes`, `getChild`, `getChildren`, `getChildrenOfEach`, `getDefinition`, `getDocumentInfo`, `getRecord`, `getRecords`, `getRecordsByTagName`, `getRoot`, `getSnapshot`, `getTree`
-- Transaction only (`tx`): `addChild`, `clearRecordCache`, `clearStagedOperations`, `commit`, `deepClone`, `delete`, `ensureChild`, `finishStaging`, `getStagedOperations`, `update`
+- Transaction only (`tx`): `addChild`, `clearRecordCache`, `clearStagedOperations`, `commit`, `deepClone`, `delete`, `ensureChild`, `finishStaging`, `getStagedOperations`, `move`, `update`
 - Document: `close`, `destroy`, `prepare`, `subscribe`, `transaction`
 - Project: `addBlob`, `attachBlob`, `close`, `createChannel`, `destroy`, `detachBlob`, `export`, `exportBlob`, `getBlob`, `getBlobsByDocument`, `getBlobsByRecord`, `getDatabaseInstance`, `getDocument`, `getDocumentConfig`, `getDocumentStatus`, `getDocuments`, `getStandaloneBlobs`, `import`, `importFile`, `initEmptyDocument`, `open`, `openDocument`, `queryAll`, `queryFirst`, `redo`, `removeBlob`, `removeDocument`, `undo`
 

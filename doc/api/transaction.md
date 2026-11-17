@@ -130,6 +130,63 @@ Returns `Promise<RawRecord<Config, ParentElement>>` — the updated parent recor
 Define `beforeDelete` to clear or delete elements that reference the deleted subtree before it is removed.
 :::
 
+### move
+
+Moves an element and its subtree under another parent of the same document, or to another place among its
+siblings. Nothing is copied: record ids are kept, and only the element's `parent` and both parents' `children`
+change. The subtree comes along, its records untouched.
+
+```ts
+await doc.transaction(async (tx) => {
+	// under another parent, after its last child of the same tag
+	await tx.move(aa2, { parent: otherA })
+	// right before a sibling of the same tag
+	const moved = await tx.move(aa2, { parent: otherA, before: firstAA2 })
+	// moved: RawRecord<Config, 'AA_2'>, its parent the new one
+})
+```
+
+Returns `Promise<RawRecord<Config, Element>>` — the moved element's record, under its new parent.
+
+**Position.** Among the siblings of the same tag, as the export writes children in the definition's order:
+`before` names a child of the new parent with the element's tag, and the element goes right before it; without
+`before`, it goes right after the new parent's last child of that tag, or last when there is none. Under the same
+parent, a move is a reorder; a move to the place the element holds (`before` the element itself included) stages
+nothing.
+
+**Staged.** Three `updated` operations (the element, its old parent, its new parent), one for a reorder. They fold
+with the other writes of the transaction as any update does: a move back to where the element was leaves no parent
+change at commit, and a move of an element created in the same transaction commits it as created under its new
+parent. Reads inside the transaction see the new tree, and undo restores the parent and both children orders.
+
+**Refused**, with nothing staged:
+
+| Case                                                                                        | Key                       |
+| ------------------------------------------------------------------------------------------- | ------------------------- |
+| the element or the new parent not found, or deleted earlier in the transaction              | `ELEMENT_NOT_FOUND`       |
+| the root element                                                                            | `PROTECTED_ROOT`          |
+| a new parent whose definition does not hold the element's tag (a wildcard parent holds any) | `INVALID_PARENT_CHILD`    |
+| a new parent already holding as many children of that tag as it may                         | `MAX_OCCURRENCES_REACHED` |
+| a new parent that is the element or one of its descendants                                  | `MOVE_INTO_OWN_SUBTREE`   |
+| a `before` that is no child of the new parent with the element's tag                        | `MOVE_BEFORE_NOT_SIBLING` |
+
+The types refuse a new parent whose tag may not hold the element's tag, and a `before` of another tag. A required child
+leaving its old parent is not refused, as with `delete`. Core checks the tag only: it does not check a wildcard's
+namespace constraints, nor the moved element's own declaration under its new parent; a dialecte checks those.
+
+`move` calls no hook and follows no reference: core is identity-agnostic. A dialecte that keeps references, paths or
+derived names in sync detects the moved elements at its commit (an updated record whose parent changed) and updates
+them there.
+
+#### MoveParams
+
+| Field    | Type                                            | Description                                                                |
+| -------- | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| `parent` | a ref, record or relationship of the parent tag | The new parent                                                             |
+| `before` | a ref, record or relationship of the moved tag  | A child of the new parent with the element's tag, to place it right before |
+
+The element itself is passed the same way: anything carrying its own `tagName` and `id`.
+
 ### deepClone
 
 Clones a tree record (with its entire subtree) as a new child of a parent element. All IDs are regenerated.
@@ -188,6 +245,9 @@ await doc.transaction(async (tx) => {
 	const tree = await tx.any.getTree(child)
 	const { record, mappings } = await tx.any.deepClone(otherParent, tree)
 
+	// Move it under another parent
+	await tx.any.move(child, { parent: otherParent })
+
 	// Delete
 	await tx.any.delete(child)
 })
@@ -201,6 +261,7 @@ await doc.transaction(async (tx) => {
 | `ensureChild` | `AnyRefOrRecord, AnyAddChildParams` | `AnyTrackedRecord \| AnyRawRecord` |
 | `update`      | `AnyRefOrRecord, AnyUpdateParams`   | `AnyRawRecord`                     |
 | `delete`      | `AnyRefOrRecord`                    | `AnyRawRecord`                     |
+| `move`        | `AnyRefOrRecord, AnyMoveParams`     | `AnyRawRecord`                     |
 | `deepClone`   | `AnyRefOrRecord, AnyTreeRecord`     | `CloneResult`                      |
 
 #### AnyAddChildParams
@@ -212,6 +273,13 @@ await doc.transaction(async (tx) => {
 | `namespace`  | `Namespace`                                | Override the element's namespace |
 | `value`      | `string`                                   | Text content                     |
 | `id`         | `string`                                   | Explicit ID (testing only)       |
+
+#### AnyMoveParams
+
+| Field    | Type             | Description                                                     |
+| -------- | ---------------- | --------------------------------------------------------------- |
+| `parent` | `AnyRefOrRecord` | The new parent                                                  |
+| `before` | `AnyRefOrRecord` | A child of the new parent with the element's tag, placed before |
 
 #### AnyUpdateParams
 

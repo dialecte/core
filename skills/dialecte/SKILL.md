@@ -183,6 +183,7 @@ multiplies.
 | `tx.deepClone`     | per node: beforeClone → afterStandardizedRecord → afterCreated                                                                                        |
 | `tx.update`        | afterStandardizedRecord → afterUpdated (not fired for a no-op update)                                                                                 |
 | `tx.delete`        | beforeDelete (subtree still readable) → cascade → parent update staged → afterDelete                                                                  |
+| `tx.move`          | none (no hook): a dialecte detects the moved records at its commit                                                                                    |
 | end of transaction | your callback → beforeCommit → commit                                                                                                                 |
 | import             | beforeImport(xml) → per record, at its closing tag (children before parent): afterStandardizedRecord → beforeImportRecord → store write → afterImport |
 
