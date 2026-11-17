@@ -123,7 +123,7 @@ what the station records for the hand-over card).
    these rules, or a human) read the diff against the previous version before hand-over. Self-review
    re-reads your own intent and misses weakened assertions and unusable types.
 6. **Land it** by the repository's flow. **CI-first** (main only through the merge queue: its
-   `.github/workflows/ci.yml` runs on `merge_group`; today the cli and core): commit on the lot branch through the
+   `.github/workflows/ci.yml` runs on `merge_group` with a `ci-ok` job; today the cli and core): commit on the lot branch through the
    hook (never `--no-verify`), then `npx dialecte lot land <id> --draft`, and report the draft pull request; never
    a hand-over, a rehearsal or a merge-of-main commit, never queue it (`dialecte-lot` references/ci-first.md).
    **Hand-over** (every other repository): `npx dialecte handover write <lots.json>`: the agent writes only the

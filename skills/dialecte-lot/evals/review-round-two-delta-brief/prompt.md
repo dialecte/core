@@ -5,7 +5,7 @@ timeout_seconds: 600
 allowed_tools: [Read, Glob, Grep, Skill, Write]
 ---
 
-I orchestrate a lot of @dialecte/core (worktree /work/core-engine-client, branch feat/engine-client, base 3af413f; hand-over folder /work/\_commit-plan/engine-client-2026-10-30/). Round 1 of the review (Station 3) came back with four findings:
+I orchestrate a lot of @dialecte/nsd (worktree /work/nsd-engine-client, branch feat/engine-client, base 3af413f; hand-over folder /work/\_commit-plan/engine-client-2026-10-30/). Round 1 of the review (Station 3) came back with four findings:
 
 - F1 `src/store/engine/hub.ts:88` - a port closed during `settleImport` leaves the import lock held forever (blocking)
 - F2 `src/store/engine/hub.test.ts:140` - the timeout test asserts on the error message only, any throw passes it (should fix)

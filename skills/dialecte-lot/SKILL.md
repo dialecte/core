@@ -33,11 +33,12 @@ the package's bar (node-tier tests, the JSDoc of every public function, its docs
 folder and rewrites nothing.
 
 **Which flow lands the lot** is decided first, from the repository: a **CI-first** repository - main only through
-the merge queue, its `.github/workflows/ci.yml` running on `merge_group` (today the cli and core) - lands the lot
+the merge queue, its `.github/workflows/ci.yml` running on `merge_group` with a `ci-ok` job (today the cli and core) - lands the lot
 by committing on its branch through the hook and `npx dialecte lot land <id> --draft`; CI runs the suite there, so
 Stations 5 and 6 below become that landing, and no hand-over, rehearsal or merge lot is made:
 [references/ci-first.md](references/ci-first.md). Every other repository lands through the hand-over below. The
-cli does not tell them apart yet (its `next:` names `handover write` in both): the repository decides, not that line.
+repository decides, not the cli's `next:` line, which names `handover write` in both (cli 0.8.1 and older also
+allow the hand-over verbs in a CI-first repository; newer versions refuse them and name `lot land`).
 
 ## The stations
 
