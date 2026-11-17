@@ -244,6 +244,20 @@ const staged: StoreContractCases = {
 				expect(answers.reads).toEqual(oneReadOf(store))
 			},
 		},
+	'an update staged removing the queried attribute of a committed record → it is gone': {
+		act: async ({ store }) => {
+			const answers = await answersBothWays({
+				store,
+				seeded: COMMITTED,
+				staging: (stage) =>
+					stage({ status: 'updated', record: recordWith({ id: 'c', attributes: [] }) }),
+				attributes: { aA: 'v' },
+			})
+			expect(answers.withLookup).toEqual(['x:unchanged'])
+			expect(answers.withLookup).toEqual(answers.withoutLookup)
+			expect(answers.reads).toEqual(oneReadOf(store))
+		},
+	},
 }
 
 const filters: StoreContractCases = {

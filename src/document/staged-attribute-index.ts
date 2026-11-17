@@ -1,3 +1,5 @@
+import { idsInEvery } from '@/utils/ids-in-every'
+
 import type { StagedOperations } from './types'
 import type { AttributeLookup } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
@@ -21,6 +23,5 @@ export function stagedIdsMatching<GenericConfig extends AnyDialecteConfig>(param
 		const byValue = byName.get(name)
 		return new Set(values.flatMap((value) => [...(byValue?.get(value) ?? [])]))
 	})
-	const [smallest, ...others] = [...matched].sort((left, right) => left.size - right.size)
-	return new Set([...smallest!].filter((id) => others.every((ids) => ids.has(id))))
+	return new Set(idsInEvery(matched))
 }

@@ -187,7 +187,7 @@ export interface Store {
 	/**
 	 * Optional. The records of one tag whose stored attributes match: for each entry, the record holds an attribute of
 	 * that name whose stored value is one of `values` (every entry, any of its values). In id order, one row per
-	 * record. Exact on stored strings; no namespace, type or default handling: any attribute of that name counts. A
+	 * record. A lookup needs at least one entry: none answers nothing. Exact on stored strings; no namespace, type or default handling: any attribute of that name counts. A
 	 * store without it is read by tag and filtered by the query layer, which re-checks every answer either way.
 	 */
 	getByAttributes?(params: AttributeLookup): Promise<AnyRawRecord[]>

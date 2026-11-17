@@ -1,3 +1,5 @@
+import { idsInEvery } from '@/utils/ids-in-every'
+
 import type { AttributeLookup } from '../store.types'
 import type { RecordTable, TagAttributeMap, TagIds } from './types'
 import type { AnyRawRecord } from '@/types'
@@ -62,8 +64,7 @@ export function createRecordTable(): RecordTable {
 			tagMap.set(name, byValue)
 			return new Set(values.flatMap((value) => [...(byValue.get(value) ?? [])]))
 		})
-		const [smallest, ...others] = [...matched].sort((left, right) => left.size - right.size)
-		return [...smallest!].filter((id) => others.every((ids) => ids.has(id))).sort()
+		return idsInEvery(matched).sort()
 	}
 
 	return {

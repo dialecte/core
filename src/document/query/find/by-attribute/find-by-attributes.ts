@@ -9,7 +9,7 @@ import { canonicalQNameValue, storedNamespaceLookup } from '@/utils/qname-value'
 import { canonicalXsiType, isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { Context, FilterAttributes } from '@/document'
-import type { AttributeLookup } from '@/store'
+import type { AttributeLookup, Store } from '@/store'
 import type {
 	AnyDialecteConfig,
 	AnyRawRecord,
@@ -48,8 +48,15 @@ export async function findByAttributes<
 		attributes: attributes as Record<string, unknown> | undefined,
 	})
 	if (filter.kind === 'unmatchable') return []
-	if (filter.kind === 'pushed' && context.store.getByAttributes) {
-		return findByPushedAttributes({ context, tagName, attributes, pushed: filter.attributes })
+	const getByAttributes = context.store.getByAttributes?.bind(context.store)
+	if (filter.kind === 'pushed' && getByAttributes) {
+		return findByPushedAttributes({
+			context,
+			getByAttributes,
+			tagName,
+			attributes,
+			pushed: filter.attributes,
+		})
 	}
 
 	const candidateRecords = await getRecordsByTagName({ context, tagName })
@@ -77,13 +84,15 @@ async function findByPushedAttributes<
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
 	context: Context<GenericConfig>
+	/** The store's lookup, bound to it. */
+	getByAttributes: NonNullable<Store['getByAttributes']>
 	tagName: GenericElement
 	attributes: FilterAttributes<GenericConfig, GenericElement>
 	pushed: AttributeLookup['attributes']
 }): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
-	const { context, tagName, attributes, pushed } = params
+	const { context, getByAttributes, tagName, attributes, pushed } = params
 	context.perf.count('core::store::getByAttributes')
-	const stored = (await context.store.getByAttributes!({
+	const stored = (await getByAttributes({
 		documentId: context.documentId,
 		tagName,
 		attributes: pushed,

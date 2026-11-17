@@ -7,6 +7,9 @@
 		"findByAttributes, one call per value": {
 			"getByAttributes": 16
 		},
+		"findByAttributes, one call with a list of values": {
+			"getByAttributes": 1
+		},
 		"findAncestors of each leaf": {
 			"getMany": 192,
 			"records.getMany": 192

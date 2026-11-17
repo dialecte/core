@@ -1,3 +1,4 @@
+import { STORE_ATTRIBUTE_QUERY_CONTRACT } from './store-contract.attribute-query.cases'
 import { commit, makeDocument, makeRecord } from './store-contract.fixtures'
 
 import { expect } from 'vitest'
@@ -168,6 +169,13 @@ const lookups: StoreContractCases = {
 			).resolves.toEqual(['same', 'twice'])
 		},
 	},
+	'no attribute entry → nothing (a lookup needs at least one)': {
+		needs: ['attribute-lookup'],
+		act: async ({ store }) => {
+			await seed({ store, records: SEEDED })
+			await expect(idsOf({ store, attributes: [] })).resolves.toEqual([])
+		},
+	},
 	'the same value given twice → each record once': {
 		needs: ['attribute-lookup'],
 		act: async ({ store }) => {
@@ -279,8 +287,12 @@ const afterWrites: StoreContractCases = {
 	},
 }
 
-/** The attribute lookup of a store that has one: exact on stored strings, in id order, kept on every write path. */
-export const STORE_ATTRIBUTE_LOOKUP_CONTRACT: StoreContractGroups = {
+/**
+ * The attribute lookup of a store that has one (exact on stored strings, in id order, kept on every write path), and
+ * `findByAttributes` over any store: the same records in the same order, with its lookup or without.
+ */
+export const STORE_ATTRIBUTE_CONTRACT: StoreContractGroups = {
 	'attribute lookups': lookups,
 	'attribute lookups after writes': afterWrites,
+	...STORE_ATTRIBUTE_QUERY_CONTRACT,
 }
