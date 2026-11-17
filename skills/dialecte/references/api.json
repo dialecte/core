@@ -1190,6 +1190,20 @@
 			"example": "const ancestors = await query.findAncestors(aa1)\n// [A, Root]"
 		},
 		{
+			"path": "doc.query.findAncestorsOfEach",
+			"root": "q",
+			"otherRoutes": [],
+			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>, options?: FindAncestorsOptions<GenericConfig>) => Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[][]>",
+			"summary": "The ancestors of each element, in one read per ancestor level: ancestors shared by several elements are read once. A record given is used as given (its `parent` is followed, it is not read again); a ref is read, all refs in one read.",
+			"intents": [
+				"find the ancestors of many elements at once",
+				"build paths for a list of elements",
+				"group elements by an ancestor"
+			],
+			"declaredAt": "src/document/query/main.ts:424",
+			"example": "const [ofAaa1, ofBbb1] = await query.findAncestorsOfEach([aaa1, bbb1], { order: 'top-down' })\n// [[Root, A, AA_1], [Root, B, BB_1]]"
+		},
+		{
 			"path": "doc.query.findByAttributes",
 			"root": "q",
 			"otherRoutes": [],
@@ -1200,7 +1214,7 @@
 				"look up an element by an identifying attribute",
 				"filter one tag's elements by attribute"
 			],
-			"declaredAt": "src/document/query/main.ts:609",
+			"declaredAt": "src/document/query/main.ts:633",
 			"example": "const records = await query.findByAttributes({\n  tagName: 'A',\n  attributes: { aA: 'val' },\n})"
 		},
 		{
@@ -1228,7 +1242,7 @@
 				"read a namespaced attribute",
 				"read an attribute with its schema default"
 			],
-			"declaredAt": "src/document/query/main.ts:484",
+			"declaredAt": "src/document/query/main.ts:508",
 			"example": "const val = await query.getAttribute(a, { name: 'aA' })\nconst cA = await query.getAttribute(a, { name: 'cA', namespace: 'ext' })"
 		},
 		{
@@ -1243,7 +1257,7 @@
 				"destructure several attributes at once",
 				"read attributes of one namespace"
 			],
-			"declaredAt": "src/document/query/main.ts:534",
+			"declaredAt": "src/document/query/main.ts:558",
 			"example": "const { aA, 'ext:cA': cA } = await query.getAttributes(a)"
 		},
 		{
@@ -1355,7 +1369,7 @@
 				"read staged changes as XML or as a tree",
 				"show what a prepared transaction would produce"
 			],
-			"declaredAt": "src/document/query/main.ts:450",
+			"declaredAt": "src/document/query/main.ts:474",
 			"example": "const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))\nconst { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })"
 		},
 		{
@@ -1370,7 +1384,7 @@
 				"project a filtered tree with select or omit",
 				"read a subtree to copy it with deepClone"
 			],
-			"declaredAt": "src/document/query/main.ts:422",
+			"declaredAt": "src/document/query/main.ts:446",
 			"example": "const tree = await query.getTree(a)"
 		},
 		{

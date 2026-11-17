@@ -1,4 +1,4 @@
-import { findAncestors, findByAttributes, findDescendants } from '../find'
+import { findAncestors, findAncestorsOfEach, findByAttributes, findDescendants } from '../find'
 import { getDefinition, getTree } from '../get'
 import {
 	getAttribute,
@@ -170,6 +170,14 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 			context: this.getContext(),
 			ref: toRef(refOrRecord) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
 		}) as Promise<AnyTrackedRecord[]>
+	}
+
+	/** The ancestors of each element, bottom-up, one list per input position: one read per ancestor level, a record given used as given. */
+	async findAncestorsOfEach(refsOrRecords: AnyRefOrRecord[]): Promise<AnyTrackedRecord[][]> {
+		return findAncestorsOfEach({
+			context: this.getContext(),
+			refsOrRecords: refsOrRecords as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>[],
+		}) as Promise<AnyTrackedRecord[][]>
 	}
 
 	async findByAttributes(params: {
