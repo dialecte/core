@@ -9,7 +9,14 @@ import {
 	getAttributeFullObject,
 	getAttributesFullObject,
 } from './get/attribute'
-import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } from './get/record'
+import {
+	getRecord,
+	getRecords,
+	getRecordsByTagName,
+	getChild,
+	getChildren,
+	getChildrenOfEach,
+} from './get/record'
 import { getSnapshot } from './snapshot'
 import { ValidateQuery } from './validate'
 
@@ -285,6 +292,31 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	): Promise<TrackedRecord<GenericConfig, GenericChildElement>[]> {
 		if (!refOrRecord) return []
 		return getChildren({ context: this.context, ref: toRef(refOrRecord), tagName })
+	}
+
+	/**
+	 * The children of a given tag of each parent, looked up through transparent elements as `getChildren` does, in at
+	 * most three reads whatever the number of parents; a record given is used as given (no re-read).
+	 *
+	 * @intent read the children of many elements at once, list siblings of many elements
+	 *
+	 * @param refsOrRecords - The parent elements, in any order, repeats allowed.
+	 * @param params.tagName - The child element type to look for.
+	 * @returns One list of children per input position, in the input order; `[]` for a parent that does not exist.
+	 *
+	 * @example
+	 * ```ts
+	 * const [ofA1, ofA2] = await query.getChildrenOfEach([a1, a2], { tagName: 'AA_1' })
+	 * ```
+	 */
+	async getChildrenOfEach<
+		GenericElement extends ElementsOf<GenericConfig>,
+		GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>,
+	>(
+		refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>,
+		params: { tagName: GenericChildElement },
+	): Promise<TrackedRecord<GenericConfig, GenericChildElement>[][]> {
+		return getChildrenOfEach({ context: this.context, refsOrRecords, tagName: params.tagName })
 	}
 
 	/**
