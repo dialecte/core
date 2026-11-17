@@ -137,7 +137,21 @@ export const IN_PAGE_IMPORT_REASON =
 	'this store imports in the page itself: no engine to end mid-import, short of the page'
 
 /** The parts of the port a leg may have pending (the others a case needs are set-ups or differences). */
-export const STORE_CONTRACT_FEATURES = ['history', 'blobs', 'import', 'export'] as const
+export const STORE_CONTRACT_FEATURES = [
+	'history',
+	'blobs',
+	'import',
+	'export',
+	'attribute-lookup',
+] as const
+
+/** Why the SQLite legs have no `getByAttributes` yet: the query layer reads the tag and filters it meanwhile. */
+export const SQLITE_ATTRIBUTE_LOOKUP_PENDING =
+	'the SQLite engine answers attribute lookups once it keeps an attribute index; the query layer reads the tag and filters it meanwhile'
+
+/** Why the IndexedDB leg has no `getByAttributes`: it reads in the page, so a lookup in the store would save nothing. */
+export const INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING =
+	'IndexedDB reads in the page already: the query layer reads the tag and filters it, as an in-store filter would'
 
 /**
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no

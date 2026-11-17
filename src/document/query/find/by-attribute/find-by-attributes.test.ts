@@ -2,9 +2,11 @@ import { matchesAttributeFilter } from './find-by-attributes'
 
 import { describe, expect } from 'vitest'
 
+import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers/constant'
 import {
 	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
+	XMLNS_DEV_NAMESPACE,
 	createTestRecord,
 	runTestCases,
 } from '@/test'
@@ -141,6 +143,65 @@ describe('findByAttributes', () => {
 	}
 
 	runTestCases.withExport({ testCases, act })
+})
+
+const VALUES_SOURCE_XML = /* xml */ `
+	<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}>
+		<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a3" aA="v3"/>
+		<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a1" aA="v1"/>
+		<A ${CUSTOM_RECORD_ID_ATTRIBUTE}="a2" aA="v2"/>
+	</Root>
+`
+
+type ValuesTestCase = BaseXmlTestCase & { values: string[]; expectedIds: string[] }
+
+describe('findByAttributes - a list of values after the import', () => {
+	const testCases: TestCases<ValuesTestCase> = {
+		'a list of values → each element holding one, in id order': {
+			sourceXml: VALUES_SOURCE_XML,
+			values: ['v3', 'v1', 'none'],
+			expectedIds: ['a1', 'a3'],
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, ValuesTestCase>): Promise<void> {
+		const found = await source.query.findByAttributes({
+			tagName: 'A',
+			attributes: { aA: testCase.values },
+		})
+		expect(found.map((record) => record.id)).toEqual(testCase.expectedIds)
+	}
+
+	runTestCases.withoutExport({ testCases, act })
+})
+
+describe('findByAttributes - tx.update, then the lookup in the same transaction', () => {
+	const testCases: TestCases<ValuesTestCase & { updated: string }> = {
+		'an element updated to the value → found with the others, in id order': {
+			sourceXml: VALUES_SOURCE_XML,
+			updated: 'a2',
+			values: ['v', 'v1'],
+			expectedIds: ['a1', 'a2'],
+		},
+	}
+
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TestDialecteConfig, ValuesTestCase & { updated: string }>): Promise<void> {
+		let ids: string[] = []
+		await source.transaction(async function updateThenLookUp(tx) {
+			await tx.update({ tagName: 'A', id: testCase.updated }, { attributes: { aA: 'v' } })
+			const found = await tx.findByAttributes({ tagName: 'A', attributes: { aA: testCase.values } })
+			ids = found.map((record) => record.id)
+		})
+		expect(ids).toEqual(testCase.expectedIds)
+	}
+
+	runTestCases.withoutExport({ testCases, act })
 })
 
 describe('findByAttributes - a QName-typed attribute', () => {

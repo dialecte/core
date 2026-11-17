@@ -1,3 +1,5 @@
+import { recordStagedOperation } from '../staged-operations'
+
 import { toRawRecord } from '@/helpers'
 import { assertXmlCharacters } from '@/helpers/assert-xml-characters'
 import { invariant } from '@/utils'
@@ -49,8 +51,7 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 			oldRecord: undefined,
 			newRecord: rawRecord,
 		}
-		context.stagedOperations.log.push(operation)
-		context.stagedOperations.byId.set(rawRecord.id, operation)
+		recordStagedOperation({ stagedOperations: context.stagedOperations, operation })
 	} else if (status === 'updated') {
 		invariant(rawOldRecord && rawNewRecord, {
 			detail: 'Old record and new record are required for updated',
@@ -62,8 +63,7 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 			oldRecord: rawOldRecord,
 			newRecord: rawNewRecord,
 		}
-		context.stagedOperations.log.push(operation)
-		context.stagedOperations.byId.set(rawNewRecord.id, operation)
+		recordStagedOperation({ stagedOperations: context.stagedOperations, operation })
 	} else if (status === 'deleted' && rawRecord) {
 		invariant(rawRecord, {
 			detail: 'Record is required for deleted',
@@ -74,8 +74,7 @@ export function stageOperation<GenericConfig extends AnyDialecteConfig>(params: 
 			oldRecord: rawRecord,
 			newRecord: undefined,
 		}
-		context.stagedOperations.log.push(operation)
-		context.stagedOperations.byId.set(rawRecord.id, operation)
+		recordStagedOperation({ stagedOperations: context.stagedOperations, operation })
 	}
 }
 

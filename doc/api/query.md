@@ -239,6 +239,8 @@ const results = await doc.query.findByAttributes({
 // TrackedRecord<Config, 'AA_1'>[]
 ```
 
+A list of values matches any of them, and is one lookup however long: `{ uuid: ids }` finds every element of the tag whose `uuid` is in `ids` in one store call, instead of one call per id. On a store that looks records up by attribute (the in-memory store), the plain attributes of the filter are matched in the store and only the matches are read; elsewhere the tag is read and filtered. The answer is the same either way, staged writes of a transaction included.
+
 An `xsi:type` filter compares the type the record names, whatever form either side writes it in: a local name, the dialecte's prefix, or a Clark name (see [`xsi:type` values](/guide/development/utils#xsi-type-values)). For an element that may take another type, the filter is typed per member: an attribute only a variant has needs no type named (`{ side: '2' }`), but is refused beside a type that does not have it ([the types of such an element](/guide/development/utils#the-types-of-an-element-that-may-take-another-type)).
 
 ## Tree queries

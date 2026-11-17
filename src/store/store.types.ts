@@ -184,6 +184,14 @@ export interface Store {
 	/** Get many records by id in one call, ordered like `ids`; a missing id yields `undefined`. */
 	getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]>
 
+	/**
+	 * Optional. The records of one tag whose stored attributes match: for each entry, the record holds an attribute of
+	 * that name whose stored value is one of `values` (every entry, any of its values). In id order, one row per
+	 * record. A lookup needs at least one entry: none answers nothing. Exact on stored strings; no namespace, type or default handling: any attribute of that name counts. A
+	 * store without it is read by tag and filtered by the query layer, which re-checks every answer either way.
+	 */
+	getByAttributes?(params: AttributeLookup): Promise<AnyRawRecord[]>
+
 	// --- Import ---
 
 	/**
@@ -447,6 +455,14 @@ export type ExportFileResult = {
 	filename: string
 	/** The timings of the export's stages, on the clock of the realm that ran it; with perf on only */
 	perf?: PerfSnapshot
+}
+
+/** What `Store.getByAttributes` looks up: the records of one tag of a document holding every entry's attribute with one of its values. */
+export type AttributeLookup = {
+	documentId: string
+	tagName: string
+	/** Every entry must match (AND); an entry matches an attribute of its name holding any of its values (OR). */
+	attributes: ReadonlyArray<{ name: string; values: ReadonlyArray<string> }>
 }
 
 /** What became of a write asked by its id. */

@@ -1,4 +1,4 @@
-import type { DistributiveOmit } from '../store.types'
+import type { AttributeLookup, DistributiveOmit } from '../store.types'
 import type { ChangeLogEntry, StoreNotice } from '../store.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentRecord, ProjectChannelMessage } from '@/project/types'
@@ -80,7 +80,15 @@ export type ReadonlyRecordTable = {
 	records: () => Iterable<AnyRawRecord>
 	/** The ids of the tag's records, in id order (UTF-16 code units, as every list read answers) */
 	idsOfTag: (tagName: string) => readonly string[]
+	/**
+	 * The ids of the tag's records holding, for every entry, an attribute of its name with one of its values, in id
+	 * order: answered from the tag's attribute map, each (tag, name) pair built the first time it is asked
+	 */
+	idsOfAttributes: (params: Omit<AttributeLookup, 'documentId'>) => readonly string[]
 }
+
+/** The ids of one tag's records by attribute name, then by value: the pairs asked so far, until the tag's next write. */
+export type TagAttributeMap = Map<string, Map<string, Set<string>>>
 
 /** The ids of one tag of a document, and those ids in id order once a read asked for them, until the tag's next write. */
 export type TagIds = { ids: Set<string>; sorted: readonly string[] | undefined }

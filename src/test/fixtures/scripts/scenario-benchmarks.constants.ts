@@ -28,4 +28,5 @@ export const RECORDED_STORE_READS: ReadonlySet<PropertyKey> = new Set([
 	'getMany',
 	'getByTagNameInDocument',
 	'getByDocumentId',
+	'getByAttributes',
 ])

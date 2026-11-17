@@ -28,14 +28,26 @@ export type ExtendedDocument<
  * Staged writes of a transaction.
  *
  * `log` is the ordered write history — the source of truth for commit merge,
- * overlay, and the id-less singleton scan. `byId` is a derived index giving
- * O(1) access to the latest operation for a given record id. The two views are
- * held together so they can never desync.
+ * overlay, and the id-less singleton scan. `byId`, `byAttribute` and `appended`
+ * are derived indexes (the latest operation per id, its attribute values, its
+ * place after a tag's stored records), all written by `recordStagedOperation`
+ * only, so they can never desync.
  */
 export type StagedOperations<GenericConfig extends AnyDialecteConfig> = {
 	log: Operation<GenericConfig>[]
 	byId: Map<string, Operation<GenericConfig>>
+	/** The attribute values of the records staged as created or updated, by their last operation. */
+	byAttribute: StagedAttributeIndex
+	/**
+	 * Where a tag read puts each id after the store's records of the tag, as replaying the log does: a create of an id
+	 * not staged before, or a write after a staged delete, takes the next place; an update of a stored record takes
+	 * none (it keeps the store's place); a delete removes the id's place.
+	 */
+	appended: Map<string, number>
 }
+
+/** The ids whose last staged operation holds a record of that tag with that attribute value: tag -> name -> value -> ids. */
+export type StagedAttributeIndex = Map<string, Map<string, Map<string, Set<string>>>>
 
 /**
  * Context passed to methods.

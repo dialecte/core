@@ -42,6 +42,12 @@ export async function measureScenarios(params: {
 			return lookUpEachValue({ document })
 		},
 	})
+	scenarios['findByAttributes, one call with a list of values'] = await measure({
+		document,
+		run: function lookupOfAllValues() {
+			return lookUpAllValues({ document })
+		},
+	})
 	scenarios['findAncestors of each leaf'] = await measure({
 		document,
 		run: function ancestors() {
@@ -112,6 +118,15 @@ async function lookUpEachValue(params: { document: ScenarioDocument }): Promise<
 			attributes: { [SCENARIO_LEAF_ATTRIBUTE]: `value-${index}` },
 		})
 	}
+}
+
+/** The same values as `lookUpEachValue`, looked up in one call with a list. */
+async function lookUpAllValues(params: { document: ScenarioDocument }): Promise<void> {
+	const values = Array.from({ length: SCENARIO_ELEMENTS }, (_, index) => `value-${index}`)
+	await params.document.query.any.findByAttributes({
+		tagName: SCENARIO_LEAF_TAG,
+		attributes: { [SCENARIO_LEAF_ATTRIBUTE]: values },
+	})
 }
 
 async function ancestorsOfEach(params: {
