@@ -1,5 +1,7 @@
 import { getChildrenOfEach } from './get-children-of-each'
 
+import { toRef } from '@/helpers'
+
 import type { Context, RefOrRecord } from '@/document'
 import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@/types'
 
@@ -10,8 +12,8 @@ import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@
  * looks through those wrapper elements to find matching children one level deeper.
  *
  * Returns an empty array when the parent does not exist or has no matching children.
- * The reads are `getChildrenOfEach`'s with one parent: a record given is used as given, so the
- * query passes a ref to have the parent read (inside a transaction, its staged version).
+ * The reads are `getChildrenOfEach`'s with one parent, given as a ref: a record given is read again
+ * (inside a transaction, its staged version), as before the batch verb.
  *
  * @internal the context-level read behind `doc.query.getChildren`; callers use the query
  */
@@ -25,6 +27,6 @@ export async function getChildren<
 	tagName: GenericChildElement
 }): Promise<TrackedRecord<GenericConfig, GenericChildElement>[]> {
 	const { context, ref, tagName } = params
-	const [children] = await getChildrenOfEach({ context, refsOrRecords: [ref], tagName })
+	const [children] = await getChildrenOfEach({ context, refsOrRecords: [toRef(ref)], tagName })
 	return children ?? []
 }

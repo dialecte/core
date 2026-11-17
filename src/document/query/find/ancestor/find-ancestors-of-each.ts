@@ -1,11 +1,14 @@
 import { getRecords } from '../../get/record'
+import { isRecordGiven } from '../../get/record/is-record-given'
+import { readUnknownRecords } from '../../get/record/read-unknown-records'
 
 import { toRef } from '@/helpers'
 
+import type { KnownRecords } from '../../get/record/known-records.types'
 import type { FindAncestorsOptions } from './find-ancestor.types'
-import type { KnownRecords, ParentLink, WalkStart } from './find-ancestors-of-each.types'
+import type { ParentLink, WalkStart } from './find-ancestors-of-each.types'
 import type { Context, Ref, RefOrRecord } from '@/document'
-import type { AnyDialecteConfig, DialecteRecord, ElementsOf, TrackedRecord } from '@/types'
+import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 
 /**
  * The ancestors of each element given, read one ancestor level at a time.
@@ -54,7 +57,7 @@ export async function findAncestorsOfEach<
 	const handedOut = new Set<string>()
 	while (frontier.length > 0) {
 		const links = frontier.map(({ parent }) => parent)
-		const found = await readUnknown({ context, links, known })
+		const found = await readUnknownRecords({ context, links, known })
 		for (const [id, record] of found) known.set(id, record)
 		const next: typeof frontier = []
 
@@ -113,36 +116,4 @@ async function readStarts<
 		read.set(record.id, record)
 	}
 	return { starts, read }
-}
-
-/** Reads, in one `getRecords`, the links whose id `known` does not hold yet; answers the records found, by id. */
-async function readUnknown<GenericConfig extends AnyDialecteConfig>(params: {
-	context: Context<GenericConfig>
-	links: ParentLink<GenericConfig>[]
-	known: KnownRecords<GenericConfig>
-}): Promise<KnownRecords<GenericConfig>> {
-	const { context, links, known } = params
-	const found: KnownRecords<GenericConfig> = new Map()
-	const unknownById = new Map<string, ParentLink<GenericConfig>>()
-	for (const link of links) {
-		if (!known.has(link.id)) unknownById.set(link.id, link)
-	}
-	if (unknownById.size === 0) return found
-
-	const refs = [...unknownById.values()] as Ref<GenericConfig, ElementsOf<GenericConfig>>[]
-	const records = await getRecords({ context, refs })
-	for (const record of records) {
-		if (record) found.set(record.id, record)
-	}
-	return found
-}
-
-/** Whether an input is a record rather than a ref or a relationship: only a record carries a `parent` (a relationship is a tag name and an id). */
-function isRecordGiven<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
->(
-	refOrRecord: RefOrRecord<GenericConfig, GenericElement>,
-): refOrRecord is DialecteRecord<GenericConfig, GenericElement> {
-	return 'parent' in refOrRecord
 }

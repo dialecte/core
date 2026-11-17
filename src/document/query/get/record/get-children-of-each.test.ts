@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	TEST_DIALECTE_CONFIG,
@@ -23,6 +24,14 @@ const TRANSPARENT_CONFIG = {
 } as unknown as TestDialecteConfig
 
 const transparentRunner = createTestRunner({ dialecteConfig: TRANSPARENT_CONFIG })
+
+/** AA_1 and AAA_1 are transparent: a wrapper inside a wrapper, looked through one level only. */
+const NESTED_TRANSPARENT_CONFIG = {
+	...TEST_DIALECTE_CONFIG,
+	transparentElements: ['AA_1', 'AAA_1'] as const,
+} as unknown as TestDialecteConfig
+
+const nestedTransparentRunner = createTestRunner({ dialecteConfig: NESTED_TRANSPARENT_CONFIG })
 
 type TestCase = BaseXmlTestCase & {
 	inputs: AnyRefOrRecord[]
@@ -168,6 +177,21 @@ describe('getChildrenOfEach', () => {
 						['x1', 'x2'],
 					],
 				},
+			'a record given with a direct child of the tag and a wrapper → the direct child only': {
+				sourceXml: wrappedXml,
+				inputs: [
+					// an AAA_1 straight under an A: a child list no document may hold, given as a record
+					{
+						...createTestRecord({ type: 'tracked', record: { tagName: 'A', id: 'given' } }),
+						children: [
+							{ tagName: 'AAA_1', id: 'x1' },
+							{ tagName: 'AA_1', id: 'w2' },
+						],
+					} as AnyRefOrRecord,
+				],
+				tagName: 'AAA_1',
+				expected: [['x1']],
+			},
 			'the transparent tag itself asked → the direct wrappers, not looked through': {
 				sourceXml: wrappedXml,
 				inputs: [a2, a3],
@@ -196,5 +220,97 @@ describe('getChildrenOfEach', () => {
 		}
 
 		runTestCases.withoutExport({ testCases: opaqueCases, act })
+	})
+
+	describe('a wrapper inside a wrapper', () => {
+		const testCases: TestCases<TestCase> = {
+			'a parent whose wrapper holds only another wrapper → [], one level only': {
+				sourceXml: /* xml */ `
+					<Root ${ns}>
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="w1" aAA_1="v">
+								<AAA_1 ${customId}="w2" aAAA_1="v">
+									<AAAA_1 ${customId}="deep" aAAAA_1="v" />
+								</AAA_1>
+							</AA_1>
+						</A>
+					</Root>
+				`,
+				inputs: [a1],
+				tagName: 'AAAA_1',
+				expected: [[]],
+			},
+		}
+
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			const answer = await answerOf({ document: source, testCase })
+			expect(answer).toEqual(testCase.expected)
+		}
+
+		nestedTransparentRunner.withoutExport({ testCases, act })
+	})
+
+	describe('each position gets its own records', () => {
+		type CopyCase = BaseXmlTestCase & { inputs: AnyRefOrRecord[] }
+
+		const testCases: TestCases<CopyCase> = {
+			'the same parent twice → equal children, distinct objects': {
+				sourceXml: xml,
+				inputs: [a1, a1],
+			},
+		}
+
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, CopyCase>): Promise<void> {
+			const lists = await source.query.any.getChildrenOfEach(testCase.inputs, { tagName: 'AA_1' })
+
+			expect(lists[0]).toEqual(lists[1])
+			expect(lists[0]?.[0]).toBeDefined()
+			expect(lists[0]?.[0]).not.toBe(lists[1]?.[0])
+		}
+
+		runTestCases.withoutExport({ testCases, act })
+	})
+
+	describe('a child named under another tag than its record', () => {
+		type MismatchCase = BaseXmlTestCase & { inputs: AnyRefOrRecord[] }
+
+		const testCases: TestCases<MismatchCase> = {
+			'a record given naming the stored a1 as an AA_1, a1 read in the same call → ELEMENT_TAGNAME_MISMATCH':
+				{
+					sourceXml: xml,
+					inputs: [
+						a1,
+						createTestRecord({
+							type: 'tracked',
+							record: { tagName: 'A', id: 'given', children: [{ tagName: 'AA_1', id: 'a1' }] },
+						}),
+					],
+				},
+		}
+
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, MismatchCase>): Promise<void> {
+			let thrown: unknown
+			await source.query.any
+				.getChildrenOfEach(testCase.inputs, { tagName: 'AA_1' })
+				.catch((error: unknown) => {
+					thrown = error
+				})
+
+			expect(toDialecteError(thrown)).toMatchObject({
+				key: 'ELEMENT_TAGNAME_MISMATCH',
+				meta: { id: 'a1', expectedTagName: 'AA_1', actualTagName: 'A' },
+			})
+		}
+
+		runTestCases.withoutExport({ testCases, act })
 	})
 })

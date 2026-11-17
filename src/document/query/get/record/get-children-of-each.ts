@@ -1,31 +1,25 @@
 import { getRecords } from './get-records'
+import { isRecordGiven } from './is-record-given'
+import { readUnknownRecords } from './read-unknown-records'
 
+import { throwDialecteError } from '@/errors'
 import { toRef } from '@/helpers'
 
-import type {
-	ChildLink,
-	ChildLookup,
-	KnownRecords,
-	ParentChildren,
-} from './get-children-of-each.types'
-import type { Context, Ref, RefOrRecord } from '@/document'
-import type {
-	AnyDialecteConfig,
-	ChildrenOf,
-	DialecteRecord,
-	ElementsOf,
-	TrackedRecord,
-} from '@/types'
+import type { ChildLookup, ParentChildren } from './get-children-of-each.types'
+import type { KnownRecords, RecordLink } from './known-records.types'
+import type { Context, RefOrRecord } from '@/document'
+import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@/types'
 
 /**
  * The children of a given tag of each parent given, looked up through transparent elements as `getChildren` does.
  *
  * A record given is used as given: its `children` are followed and it is not read again. The refs are read together
- * in one `getRecords`. Then one `getRecords` reads the direct children of the tag of every parent, and the transparent
- * wrappers (`dialecteConfig.transparentElements`) of the parents that have none directly; one more reads the children
- * of the tag inside those wrappers. Staged operations and the transaction cache answer first, as `getRecords` resolves
- * them. A record already read in this call is not read again; a record answered at several positions is a shallow copy
- * at each one after the first.
+ * in one `getRecords` (a ref without an id costs its own `getByTagName`, as in `getRecords`). Then one `getRecords`
+ * reads the direct children of the tag of every parent, and the transparent wrappers
+ * (`dialecteConfig.transparentElements`) of the parents that have none directly; one more reads the children of the
+ * tag inside those wrappers, one level only. Staged operations and the transaction cache answer first, as
+ * `getRecords` resolves them. A record already read in this call is not read again; a record answered at several
+ * positions is a shallow copy at each one after the first.
  *
  * Returns one list per input position, in input order, each in the order of its parent's children; a parent that names
  * no element answers `[]`.
@@ -34,6 +28,9 @@ import type {
  * is a record, none for the wrappers' children when no parent needs them).
  *
  * @internal the context-level read behind `doc.query.getChildrenOfEach`; callers use the query
+ *
+ * @throws {@link DialecteError} `ELEMENT_TAGNAME_MISMATCH` when a parent names a child under another tag than its
+ * record, as `getRecords` does.
  */
 export async function getChildrenOfEach<
 	GenericConfig extends AnyDialecteConfig,
@@ -50,25 +47,29 @@ export async function getChildrenOfEach<
 	const { parents, read } = await readParents({ context, refsOrRecords })
 	const lookups = parents.map((parent) => lookupOf({ parent, tagName, transparentElements }))
 	const firstLinks = lookups.flatMap(({ direct, wrappers }) => [...direct, ...wrappers])
-	const firstFound = await readMissing({ context, known: read, links: firstLinks })
+	const firstFound = await readUnknownRecords({ context, known: read, links: firstLinks })
 	const firstKnown: KnownRecords<GenericConfig> = new Map([...read, ...firstFound])
 
 	const childLinks = lookups.map(({ direct, wrappers }) =>
 		direct.length > 0
 			? direct
 			: wrappers.flatMap((wrapper) =>
-					childrenOfTag({ record: firstKnown.get(wrapper.id), tagName }),
+					childrenOfTag({ record: knownRecordOf({ known: firstKnown, link: wrapper }), tagName }),
 				),
 	)
-	const secondFound = await readMissing({ context, known: firstKnown, links: childLinks.flat() })
+	const secondFound = await readUnknownRecords({
+		context,
+		known: firstKnown,
+		links: childLinks.flat(),
+	})
 	const known: KnownRecords<GenericConfig> = new Map([...firstKnown, ...secondFound])
 
 	// the first position to answer a record takes the record read, every later one a copy of it
 	const handedOut = new Set<string>()
 	return childLinks.map((links) =>
 		links.flatMap((link) => {
-			const record = known.get(link.id)
-			if (!record || record.tagName !== tagName) return []
+			const record = knownRecordOf({ known, link })
+			if (!record) return []
 			const answer = handedOut.has(record.id) ? { ...record } : record
 			handedOut.add(record.id)
 			return [answer as TrackedRecord<GenericConfig, GenericChildElement>]
@@ -99,9 +100,31 @@ function lookupOf(params: {
 function childrenOfTag<GenericConfig extends AnyDialecteConfig>(params: {
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined
 	tagName: string
-}): ChildLink[] {
+}): RecordLink[] {
 	const { record, tagName } = params
 	return record ? record.children.filter((child) => child.tagName === tagName) : []
+}
+
+/**
+ * The record read for a link, `undefined` when none was found.
+ *
+ * @throws {@link DialecteError} `ELEMENT_TAGNAME_MISMATCH` when the link names another tag than the record read for
+ * its id (a record read earlier in the call, which `getRecords` did not check against this link).
+ */
+function knownRecordOf<GenericConfig extends AnyDialecteConfig>(params: {
+	known: KnownRecords<GenericConfig>
+	link: RecordLink
+}): TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined {
+	const { known, link } = params
+	const record = known.get(link.id)
+	if (record && record.tagName !== link.tagName) {
+		throwDialecteError('ELEMENT_TAGNAME_MISMATCH', {
+			detail: `Expected tagName '${link.tagName}', got '${record.tagName}' for id '${link.id}'`,
+			ref: link,
+			meta: { id: link.id, expectedTagName: link.tagName, actualTagName: record.tagName },
+		})
+	}
+	return record
 }
 
 /**
@@ -125,44 +148,17 @@ async function readParents<
 	const refPositions = [...refsOrRecords.keys()].filter(
 		(position) => !isRecordGiven(refsOrRecords[position]),
 	)
-	const read: KnownRecords<GenericConfig> = new Map()
-	if (refPositions.length === 0) return { parents, read }
+	if (refPositions.length === 0) return { parents, read: new Map() }
 
 	const records = await getRecords({
 		context,
 		refs: refPositions.map((position) => toRef(refsOrRecords[position])),
 	})
 	for (const [index, record] of records.entries()) {
-		if (!record) continue
-		parents[refPositions[index]] = { children: record.children }
-		read.set(record.id, record)
+		if (record) parents[refPositions[index]] = { children: record.children }
 	}
-	return { parents, read }
-}
-
-/** Reads, in one `getRecords`, the links whose id `known` does not hold yet; answers the records found, by id. */
-async function readMissing<GenericConfig extends AnyDialecteConfig>(params: {
-	context: Context<GenericConfig>
-	known: KnownRecords<GenericConfig>
-	links: ChildLink[]
-}): Promise<KnownRecords<GenericConfig>> {
-	const { context, known, links } = params
-	const missing = new Map(
-		links.filter((link) => !known.has(link.id)).map((link) => [link.id, link] as const),
+	const read: KnownRecords<GenericConfig> = new Map(
+		records.flatMap((record) => (record ? [[record.id, record] as const] : [])),
 	)
-	if (missing.size === 0) return new Map()
-
-	const refs = [...missing.values()] as Ref<GenericConfig, ElementsOf<GenericConfig>>[]
-	const records = await getRecords({ context, refs })
-	return new Map(records.flatMap((record) => (record ? [[record.id, record] as const] : [])))
-}
-
-/** Whether an input is a record rather than a ref or a relationship: only a record carries a `parent` (a relationship is a tag name and an id). */
-function isRecordGiven<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
->(
-	refOrRecord: RefOrRecord<GenericConfig, GenericElement>,
-): refOrRecord is DialecteRecord<GenericConfig, GenericElement> {
-	return 'parent' in refOrRecord
+	return { parents, read }
 }

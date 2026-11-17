@@ -296,9 +296,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 
 	/**
 	 * The children of a given tag of each parent, looked up through transparent elements as `getChildren` does, in at
-	 * most three reads whatever the number of parents; a record given is used as given (no re-read).
+	 * most three reads whatever the number of parents; a record given is used as given (no re-read). A parent
+	 * ref without an id costs its own `getByTagName`.
 	 *
-	 * @intent read the children of many elements at once, list siblings of many elements
+	 * @intent read the children of many elements at once, the children of each of many parents
 	 *
 	 * @param refsOrRecords - The parent elements, in any order, repeats allowed.
 	 * @param params.tagName - The child element type to look for.

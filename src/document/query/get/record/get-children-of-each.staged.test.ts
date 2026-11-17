@@ -102,6 +102,15 @@ describe('getChildrenOfEach - inside a transaction, the staged records answer', 
 			tagName: 'AAA_1',
 			expected: [['0-0-0-0-4:created']],
 		},
+		'a staged deleted parent given as a ref → [] at its position': {
+			sourceXml: xml,
+			stage: async (tx) => {
+				await tx.delete(a1)
+			},
+			inputs: [a1, a2],
+			tagName: 'AAA_1',
+			expected: [[], ['x1:unchanged']],
+		},
 		'a staged deleted wrapper → nothing found through it': {
 			sourceXml: xml,
 			stage: async (tx) => {
