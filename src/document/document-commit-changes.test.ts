@@ -257,3 +257,102 @@ describe('a move between parents is in the changes', () => {
 
 	runTestCases.withoutExport({ testCases: moveDeleteCases, act: actMoveDelete })
 })
+
+describe('each record appears once, in its final list, as the commit merges its writes', () => {
+	type TestCase = BaseXmlTestCase & {
+		write: (tx: TestTransaction) => Promise<void>
+		expected: unknown
+	}
+
+	const mergeXml = /* xml */ `
+		<Root ${ns} ${customId}="root">
+			<A ${customId}="a" aA="kept">
+				<AA_1 ${customId}="aa1" aAA_1="one"><AAA_1 ${customId}="aaa1" aAAA_1="abc"/></AA_1>
+				<AA_2 ${customId}="aa2" aAA_2="two" />
+			</A>
+		</Root>
+	`
+	const aaa1 = { tagName: 'AAA_1', id: 'aaa1' } as const
+	const aa2 = { tagName: 'AA_2', id: 'aa2' } as const
+	const updatedA = { id: 'a', tagName: 'A', parentId: 'root' }
+	const updatedAA1 = { id: 'aa1', tagName: 'AA_1', parentId: 'a' }
+	const updatedAA2 = { id: 'aa2', tagName: 'AA_2', parentId: 'a' }
+
+	const testCases: TestCases<TestCase> = {
+		'create + update in one transaction -> created only, not updated': {
+			sourceXml: mergeXml,
+			write: async (tx) => {
+				const added = await tx.addChild(
+					{ tagName: 'A', id: 'a' },
+					{ tagName: 'AA_2', attributes: { aAA_2: '5' } },
+				)
+				await tx.update(added, { attributes: { bAA_2: 'then updated' } })
+			},
+			expected: { created: [{ tagName: 'AA_2', parentId: 'a' }], updated: [updatedA], deleted: [] },
+		},
+		'update + update -> one updated': {
+			sourceXml: mergeXml,
+			write: async (tx) => {
+				await tx.update(aa2, { attributes: { bAA_2: 'first' } })
+				await tx.update(aa2, { attributes: { bAA_2: 'second' } })
+			},
+			expected: { created: [], updated: [updatedAA2], deleted: [] },
+		},
+		'update + delete -> deleted only, with the parent it had before the transaction': {
+			sourceXml: mergeXml,
+			write: async (tx) => {
+				await tx.update(aaa1, { attributes: { aAAA_1: 'def' } })
+				await tx.delete(aaa1)
+			},
+			expected: {
+				created: [],
+				updated: [updatedAA1],
+				deleted: [{ id: 'aaa1', tagName: 'AAA_1', parentId: 'aa1' }],
+			},
+		},
+		'create + delete -> absent from every list': {
+			sourceXml: mergeXml,
+			write: async (tx) => {
+				const added = await tx.addChild(aa2, { tagName: 'AAA_1', attributes: { aAAA_1: 'ghi' } })
+				await tx.delete(added)
+			},
+			// its parent's children changed twice: one update of the parent
+			expected: { created: [], updated: [updatedAA2], deleted: [] },
+		},
+		'move + update of the same record -> one updated, under its new parent': {
+			sourceXml: mergeXml,
+			write: async (tx) => {
+				await tx.move(aaa1, { parent: aa2 })
+				await tx.update(aaa1, { attributes: { aAAA_1: 'def' } })
+			},
+			expected: {
+				created: [],
+				updated: [updatedAA1, updatedAA2, { id: 'aaa1', tagName: 'AAA_1', parentId: 'aa2' }],
+				deleted: [],
+			},
+		},
+	}
+
+	async function act({ project, source, testCase }: ActParams<TestDialecteConfig, TestCase>) {
+		const heard = commitsHeard({ project: project as unknown as Project<AnyDialecteConfig> })
+		await source.transaction(testCase.write)
+		const commit = await firstCommit({ heard })
+		expect(withoutCreatedIds(sortedById(commit.changes))).toEqual(testCase.expected)
+		expect(idsTwice(commit.changes)).toEqual([])
+	}
+
+	runTestCases.withoutExport({ testCases, act })
+})
+
+/** The ids found in more than one place across `created`, `updated` and `deleted`. */
+function idsTwice(changes: CommitMessage['changes']): string[] {
+	if ('unknown' in changes) return []
+	const ids = [...changes.created, ...changes.updated, ...changes.deleted].map(
+		function idOf(record) {
+			return record.id
+		},
+	)
+	return ids.filter(function seenBefore(id, index) {
+		return ids.indexOf(id) !== index
+	})
+}

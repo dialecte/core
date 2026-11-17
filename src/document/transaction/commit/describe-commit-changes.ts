@@ -12,6 +12,7 @@ import type {
  * What one commit changed, from its merged writes, in the order given: each record's id, tag and parent id (after the
  * write for created and updated, before it for deleted). Past `COMMIT_CHANGES_MAX` refs in all, `{ unknown: true }`.
  * A move between parents stages the moved record and both parents, so all three are in `updated`.
+ * The writes are the merged operations (`mergeOperations`), so each record appears once, in its final list.
  */
 export function describeCommitChanges(params: CommitWrites): CommitChanges | UnknownCommitChanges {
 	const { creates, updates, deletes } = params
