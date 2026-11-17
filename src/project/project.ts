@@ -7,6 +7,7 @@ import { buildDocumentState, reconcileDocumentState } from './state'
 import { isImporting, openableDocuments } from './state/document-lifecycle'
 
 import { Document } from '@/document'
+import { READ_SCOPE_VOIDING_MESSAGES } from '@/document/query/read-scope/read-scope.constants'
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
@@ -166,6 +167,13 @@ export class Project<
 
 	/** The imports queued and not settled yet, the one running included: what a close says it waits for. */
 	private readonly importsInFlight = new Set<{ fileName: string }>()
+
+	/**
+	 * Each document's read epoch, shared by every Document of the id (an id kept once seen, so a document removed and
+	 * imported again never meets an epoch it had): moved right after each write of the document lands or is folded in,
+	 * which empties every read scope of it. Not on the observable state, so moving it wakes nothing.
+	 */
+	private readonly readEpochs = new Map<string, number>()
 
 	/**
 	 * The Project's `open`, `close` and `destroy`, one at a time in the order called: each runs once the one
@@ -396,6 +404,7 @@ export class Project<
 	/** Changes may have been missed: the registry, each document's history read again, every document's view woken. */
 	private async resync(): Promise<void> {
 		if (this.closing) return
+		this.voidReadScopes()
 		let documentIds: string[] = []
 		try {
 			await this.refreshState()
@@ -622,6 +631,10 @@ export class Project<
 	 */
 	private onChannelMessage(message: ProjectChannelMessage | undefined): void {
 		if (this.closing) return
+		// a change of another realm to a document's records: what any read scope of the document held is gone
+		if (message && READ_SCOPE_VOIDING_MESSAGES.has(message.type) && 'documentId' in message) {
+			this.voidReadScopes(message.documentId)
+		}
 		switch (message?.type) {
 			case 'document-updated':
 				this.trackBroadcastWork({
@@ -714,6 +727,18 @@ export class Project<
 		if (!record || this.closing) return
 		entry.record = record
 		this.signalStateChange(documentId, true)
+	}
+
+	/** A document's read epoch now. */
+	private readEpochOf(documentId: string): number {
+		return this.readEpochs.get(documentId) ?? 0
+	}
+
+	/** Every read scope of the document (of each document the project holds, with none given) drops what it held. */
+	private voidReadScopes(documentId?: string): void {
+		const documentIds =
+			documentId === undefined ? Array.from(this.state.documents.keys()) : [documentId]
+		for (const id of documentIds) this.readEpochs.set(id, this.readEpochOf(id) + 1)
 	}
 
 	/** Recompute canUndo/canRedo for a document from the store's history. */
@@ -845,6 +870,7 @@ export class Project<
 				hooks: this.hooks as DialecteHooks<AnyDialecteConfig> | undefined,
 			})
 
+			this.voidReadScopes(result.documentId)
 			this.state.documents.set(result.documentId, result.documentState)
 			this.broadcast({
 				type: 'init-empty-document',
@@ -865,6 +891,7 @@ export class Project<
 	async removeDocument(documentId: string): Promise<void> {
 		return this.counted(async () => {
 			await this.writeOrReadAgain({ write: () => this.store.removeDocument(documentId) })
+			this.voidReadScopes(documentId)
 			this.state.documents.delete(documentId)
 			this.broadcast({ type: 'document-removed', documentId, timestamp: Date.now() })
 		})
@@ -989,6 +1016,7 @@ export class Project<
 			throw await this.lostImportError({ store, thrown, writeId })
 		}
 		if (result.perf) this.perf.merge({ report: result.perf, prefix: 'store' })
+		this.voidReadScopes(result.record.id)
 		this.state.documents.set(result.record.id, buildDocumentState(result.record))
 		this.broadcast({
 			type: 'document-imported',
@@ -1017,6 +1045,8 @@ export class Project<
 			await write()
 		} catch (thrown) {
 			if (!isConnectionLost({ thrown })) throw thrown
+			// it may have landed: nothing a read scope held of it is trusted
+			this.voidReadScopes(documentId)
 			await this.refreshState().catch(ignoreReadFailure)
 			if (this.announcing) this.postToldChanges({})
 			if (documentId !== undefined) {
@@ -1054,6 +1084,7 @@ export class Project<
 			return entry.record.writeId === writeId
 		})
 		if (landed) {
+			this.voidReadScopes(landed.record.id)
 			this.broadcast({
 				type: 'document-imported',
 				documentId: landed.record.id,
@@ -1155,6 +1186,8 @@ export class Project<
 			signalStateChange: (terminal) => {
 				if (this.isCurrentOpen({ opened })) this.signalStateChange(documentId, terminal)
 			},
+			readEpoch: () => this.readEpochOf(documentId),
+			voidReadScopes: () => this.voidReadScopes(documentId),
 			// a commit of this open is waited for by its close; one of an open that closed writes to its closed store
 			startWrite: () => {
 				if (!this.isCurrentOpen({ opened })) return endNothing
@@ -1216,6 +1249,7 @@ export class Project<
 			})
 
 			await this.writeOrReadAgain({ documentId, write: () => this.store.undo(documentId) })
+			this.voidReadScopes(documentId)
 			// Update local state deterministically (the channel echo would do this
 			// too, but asynchronously) before announcing.
 			const timestamp = Date.now()
@@ -1242,6 +1276,7 @@ export class Project<
 			})
 
 			await this.writeOrReadAgain({ documentId, write: () => this.store.redo(documentId) })
+			this.voidReadScopes(documentId)
 			const timestamp = Date.now()
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)

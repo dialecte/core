@@ -282,7 +282,9 @@ describe('getRecord', () => {
 						dialecteConfig: TEST_DIALECTE_CONFIG,
 						documentId: source.documentId,
 					})),
+					kind: 'query' as const,
 					recordCache: undefined,
+					readScope: undefined,
 				}
 
 				const record = await getRecord({ context, ref: { tagName: 'A', id: 'a1' } })

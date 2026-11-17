@@ -1,12 +1,19 @@
 import { findAncestors } from '../find'
 import { getRecord, indexStagedDeletesByParent, overlayAllStaged } from '../get'
+import { readThroughScope } from '../read-scope/read-through-scope'
 
 import { toRef } from '@/helpers'
 import { invariant } from '@/utils'
 
 import type { CollectedSnapshot } from './snapshot.types'
 import type { Context, Ref } from '@/document'
-import type { AnyDialecteConfig, AnyTrackedRecord, ElementsOf, TrackedRecord } from '@/types'
+import type {
+	AnyDialecteConfig,
+	AnyRawRecord,
+	AnyTrackedRecord,
+	ElementsOf,
+	TrackedRecord,
+} from '@/types'
 
 /**
  * Collect the scope-bounded, hooks-applied record set for a snapshot.
@@ -140,7 +147,10 @@ async function collectFullDocument<GenericConfig extends AnyDialecteConfig>(para
 }): Promise<CollectedSnapshot> {
 	const { context, includeDeleted = false } = params
 
-	const rawRecords = await context.store.getByDocumentId(context.documentId)
+	const rawRecords = (await readThroughScope({
+		context,
+		read: { member: 'getByDocumentId', args: [context.documentId] },
+	})) as AnyRawRecord[]
 	const { live, deleted } = overlayAllStaged({
 		rawRecords,
 		stagedOperations: context.stagedOperations,

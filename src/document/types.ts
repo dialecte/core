@@ -1,6 +1,7 @@
 import type { Document } from './document'
 import type { ProgressReporter, DocumentProgress } from './progress/progress.types'
 import type { Query } from './query'
+import type { ReadScope } from './query/read-scope/read-scope.types'
 import type { OperationsSummary } from './transaction/commit/summarize-operations.types'
 import type { ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { ExtensionModules, MergedExtensions } from './types.extensions'
@@ -49,30 +50,44 @@ export type StagedOperations<GenericConfig extends AnyDialecteConfig> = {
 /** The ids whose last staged operation holds a record of that tag with that attribute value: tag -> name -> value -> ids. */
 export type StagedAttributeIndex = Map<string, Map<string, Map<string, Set<string>>>>
 
-/**
- * Context passed to methods.
- *
- * Owned and built by Query, exposed as `this.context` for subclasses.
- * recordCache is only present inside a Transaction — Query passes undefined
- * so reads always hit the store directly (no staleness risk).
- */
-export type Context<GenericConfig extends AnyDialecteConfig> = {
+/** What every context of the query layer carries. */
+type ContextBase<GenericConfig extends AnyDialecteConfig> = {
 	readonly store: Store
 	readonly dialecteConfig: GenericConfig
 	readonly documentId: string
-	readonly recordCache: Map<string, AnyRawRecord> | undefined
 	readonly stagedOperations: StagedOperations<GenericConfig>
 	readonly progress: ProgressReporter
 	readonly perf: Perf
 }
 
 /**
- * Narrowed Context that has an active cache — only true inside a Transaction.
+ * A Query's context: no record cache, and the read scope of the public verb call it runs in, if any (repeated store
+ * reads inside one call answered from it; see `readThroughScope`).
+ */
+export type QueryContext<GenericConfig extends AnyDialecteConfig> = ContextBase<GenericConfig> & {
+	readonly kind: 'query'
+	readonly recordCache: undefined
+	readonly readScope: ReadScope | undefined
+}
+
+/**
+ * A Transaction's context: its record cache, never a read scope (a transaction reads its own staged state).
  * Use isTransactionContext() to narrow before cache reads/writes.
  */
-export type CachedContext<GenericConfig extends AnyDialecteConfig> = Context<GenericConfig> & {
+export type CachedContext<GenericConfig extends AnyDialecteConfig> = ContextBase<GenericConfig> & {
+	readonly kind: 'transaction'
 	readonly recordCache: Map<string, AnyRawRecord>
+	readonly readScope?: undefined
 }
+
+/**
+ * Context passed to methods.
+ *
+ * Owned and built by Query (or Transaction), exposed as `this.context` for subclasses.
+ */
+export type Context<GenericConfig extends AnyDialecteConfig> =
+	| QueryContext<GenericConfig>
+	| CachedContext<GenericConfig>
 
 //== Document types
 

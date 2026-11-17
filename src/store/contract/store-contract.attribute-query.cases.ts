@@ -72,6 +72,7 @@ function contextOver(params: { store: Store; perf: Perf }): Context<TestDialecte
 		store,
 		dialecteConfig: TEST_DIALECTE_CONFIG,
 		documentId: DOCUMENT_ID,
+		kind: 'transaction',
 		recordCache: new Map(),
 		stagedOperations: createStagedOperations<TestDialecteConfig>(),
 		progress: NOOP_PROGRESS_REPORTER,

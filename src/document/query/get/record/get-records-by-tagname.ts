@@ -1,4 +1,4 @@
-import { countRecordsMoved } from './count-records-moved'
+import { readThroughScope } from '../../read-scope/read-through-scope'
 import { overlayStaged } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
@@ -24,12 +24,10 @@ export async function getRecordsByTagName<
 	tagName: GenericElement
 }): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
 	const { context, tagName } = params
-	context.perf.count('core::store::getByTagName')
-	const rawRecords = (await context.store.getByTagNameInDocument(
-		tagName,
-		context.documentId,
-	)) as RawRecord<GenericConfig, GenericElement>[]
-	countRecordsMoved({ perf: context.perf, member: 'getByTagName', records: rawRecords })
+	const rawRecords = (await readThroughScope({
+		context,
+		read: { member: 'getByTagNameInDocument', args: [tagName, context.documentId] },
+	})) as RawRecord<GenericConfig, GenericElement>[]
 
 	for (const record of rawRecords) {
 		if (isTransactionContext(context)) context.recordCache.set(record.id, record)

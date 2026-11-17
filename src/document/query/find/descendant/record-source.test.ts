@@ -87,6 +87,7 @@ async function createSourceContext(
 	await store.bulkWrite(DOCUMENT_ID, { creates: records })
 	const perf = createPerf({ enabled: true })
 	const context = {
+		kind: 'query',
 		store,
 		dialecteConfig: TEST_DIALECTE_CONFIG,
 		documentId: DOCUMENT_ID,
@@ -133,7 +134,8 @@ describe('record source - store reads', () => {
 		const source = createRecordSource({ context })
 
 		for (const index of tags.keys()) {
-			expect((await source.get(ref('AA_1', `r${index}`)))?.status).toBe('created')
+			const record = await source.get(ref('AA_1', `r${index}`))
+			expect(record?.status).toBe('created')
 		}
 
 		expect(counted(perf, 'core::store::get')).toBe(0)

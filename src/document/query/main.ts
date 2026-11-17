@@ -23,6 +23,8 @@ import {
 	getChildren,
 	getChildrenOfEach,
 } from './get/record'
+import { SCOPED_QUERY_METHODS } from './read-scope/read-scope.constants'
+import { openReadScopeOf, scopeReadMethods } from './read-scope/run-in-read-scope'
 import { getSnapshot } from './snapshot'
 import { ValidateQuery } from './validate'
 
@@ -99,14 +101,22 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	//== Untyped namespace
 
 	get any(): AnyQuery<GenericConfig> {
-		return (this._any ??= new AnyQuery(() => this.context, this.dialecteConfig))
+		// built per instance: a scoped child of this query reads through its own scope
+		if (!Object.hasOwn(this, '_any') || !this._any) {
+			this._any = new AnyQuery(() => this.context, this.dialecteConfig)
+		}
+		return this._any
 	}
 
 	//== Validation namespace
 
 	/** What the schema says of values, on the state this query sees (a transaction's staged writes included): `validate.value(...)`. */
 	get validate(): ValidateQuery<GenericConfig> {
-		return (this._validate ??= new ValidateQuery(() => this.context, this.dialecteConfig))
+		// built per instance: a scoped child of this query reads through its own scope
+		if (!Object.hasOwn(this, '_validate') || !this._validate) {
+			this._validate = new ValidateQuery(() => this.context, this.dialecteConfig)
+		}
+		return this._validate
 	}
 
 	//== Context
@@ -126,6 +136,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 */
 	protected get context(): Context<GenericConfig> {
 		return {
+			kind: 'query',
+			readScope: openReadScopeOf(this),
 			store: this.store,
 			dialecteConfig: this.dialecteConfig,
 			documentId: this.documentId,
@@ -709,3 +721,6 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		return findByAttributes({ context: this.context, ...params })
 	}
 }
+
+// Each public read verb runs in a read scope: the store reads nested in one call are answered once.
+scopeReadMethods({ prototype: Query.prototype, names: SCOPED_QUERY_METHODS })

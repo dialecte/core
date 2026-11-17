@@ -1,11 +1,13 @@
 import { bindExtensions } from './bind-extensions'
 import { Query } from './query'
+import { attachReadScopeWiring } from './query/read-scope/run-in-read-scope'
 import { Transaction } from './transaction'
 import { summarizeOperations } from './transaction/commit/summarize-operations'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { ignoreReadFailure, isConnectionLost, wasNotApplied } from '@/store/lost-write'
 
+import type { ReadScopeWiring, VersionedStore } from './query/read-scope/read-scope.types'
 import type { PreparedTransaction, DocumentState } from './types'
 import type { AllExtensions, ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { Perf } from '@/perf'
@@ -84,6 +86,15 @@ export class Document<
 	 */
 	private startWrite: () => () => void
 
+	/**
+	 * Move the document's read epoch (provided by the owning Project, shared by every Document of the id): every read
+	 * scope of the document drops what it held. Called right after a write of this Document lands.
+	 */
+	private voidReadScopes: () => void
+
+	/** What each Query this Document builds carries to open read scopes. */
+	private readScopeWiring: ReadScopeWiring
+
 	/** Track concurrent transactions to manage loading flag */
 	private activeTransactions = 0
 
@@ -102,6 +113,8 @@ export class Document<
 			subscribeState: (callback: (terminal: boolean) => void) => () => void
 			signalStateChange: (terminal: boolean) => void
 			startWrite: () => () => void
+			readEpoch: () => number
+			voidReadScopes: () => void
 		},
 	) {
 		this.store = store
@@ -117,6 +130,13 @@ export class Document<
 		this.subscribe = project.subscribeState
 		this.signalStateChange = project.signalStateChange
 		this.startWrite = project.startWrite
+		this.voidReadScopes = project.voidReadScopes
+		this.readScopeWiring = {
+			documentId,
+			epochOf: project.readEpoch,
+			bindQueryExtensions: (target) =>
+				bindExtensions(this.extensionsRegistry?.query, target) as Record<string, unknown>,
+		}
 	}
 
 	//== Query access (read-only, no mutations exposed)
@@ -155,7 +175,12 @@ export class Document<
 	}
 
 	get query(): Query<GenericConfig> & QueryExtensions<GenericExtension> {
-		return this.withQueryExtensions(this.createQuery())
+		const query = this.withQueryExtensions(this.createQuery())
+		// a read scope serves only answers it can date: a store without versioned reads gets none
+		if (typeof (this.store as Partial<VersionedStore>).readVersioned === 'function') {
+			attachReadScopeWiring({ query, wiring: this.readScopeWiring })
+		}
+		return query
 	}
 
 	//== Transaction scope
@@ -211,6 +236,7 @@ export class Document<
 
 			await transaction.finishStaging()
 			await transaction.commit()
+			this.voidReadScopes()
 			// Refresh canUndo/canRedo on the shared entry locally (mirrors
 			// Project.undo/redo) so state is correct synchronously — no channel
 			// echo required.
@@ -249,6 +275,7 @@ export class Document<
 	 */
 	private async readAgainAfterLoss(params: { thrown: unknown }): Promise<void> {
 		if (!isConnectionLost(params) || wasNotApplied(params)) return
+		this.voidReadScopes()
 		await this.refreshHistoryStatus().catch(ignoreReadFailure)
 		this.broadcast({ type: 'commit', documentId: this.documentId, timestamp: Date.now() })
 	}
@@ -327,6 +354,7 @@ export class Document<
 
 				try {
 					await tx.commit()
+					this.voidReadScopes()
 					// Refresh canUndo/canRedo locally so the shared entry is correct
 					// synchronously — no channel echo required.
 					await this.refreshHistoryStatus()
