@@ -76,12 +76,16 @@ export function withQNameAAAA_2(facets?: { enumeration: string[] }): TestDialect
 	} as unknown as TestDialecteConfig
 }
 
-/** The store reads the validation made since the last reset: every `core::store::*` read counter (not the writes). */
+/**
+ * The store reads the validation made since the last reset: every `core::store::*` read counter (not the writes,
+ * not the records the reads moved, `core::store::records.*`).
+ */
 export function storeReads(document: Document<TestDialecteConfig>): number {
 	return Object.entries(document.perf.report())
 		.filter(
 			([key]) =>
 				key.startsWith('core::store::') &&
+				!key.startsWith('core::store::records.') &&
 				!['core::store::commit', 'core::store::bulkWrite'].includes(key),
 		)
 		.reduce((total, [, entry]) => total + (entry.count ?? 0), 0)

@@ -1,3 +1,4 @@
+import { countRecordsMoved } from './count-records-moved'
 import { overlayAllStaged } from './staged-lookup'
 
 import type { Context } from '@/document'
@@ -15,6 +16,7 @@ export async function loadLiveRecords<GenericConfig extends AnyDialecteConfig>(
 ): Promise<Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>> {
 	context.perf.count('core::store::getByDocumentId')
 	const rawRecords = await context.store.getByDocumentId(context.documentId)
+	countRecordsMoved({ perf: context.perf, member: 'getByDocumentId', records: rawRecords })
 	const { live } = overlayAllStaged({
 		rawRecords,
 		stagedOperations: context.stagedOperations,

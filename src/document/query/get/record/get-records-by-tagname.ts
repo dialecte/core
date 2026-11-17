@@ -1,3 +1,4 @@
+import { countRecordsMoved } from './count-records-moved'
 import { overlayStaged } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
@@ -28,6 +29,7 @@ export async function getRecordsByTagName<
 		tagName,
 		context.documentId,
 	)) as RawRecord<GenericConfig, GenericElement>[]
+	countRecordsMoved({ perf: context.perf, member: 'getByTagName', records: rawRecords })
 
 	for (const record of rawRecords) {
 		if (isTransactionContext(context)) context.recordCache.set(record.id, record)

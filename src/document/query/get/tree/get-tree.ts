@@ -5,7 +5,9 @@ import {
 	isOmitted,
 	shouldStopTraversal,
 } from '../../tree-filter'
+import { countRecordsMoved } from '../record/count-records-moved'
 import { loadLiveRecords } from '../record/load-live-records'
+import { CONFIG_KEYS } from './get-tree.constants'
 
 import { matchesAttributeFilter } from '@/document'
 import { toTreeRecord } from '@/helpers'
@@ -105,6 +107,7 @@ async function loadSubtreeRecords<
 
 	context.perf.count('core::store::get')
 	const rootRaw = await context.store.get(ref.id, context.documentId)
+	countRecordsMoved({ perf: context.perf, member: 'get', records: [rootRaw] })
 	if (!rootRaw) return map
 
 	let frontier = [rootRaw]
@@ -118,6 +121,7 @@ async function loadSubtreeRecords<
 		if (childIds.length === 0) break
 		context.perf.count('core::store::getMany')
 		const children = await context.store.getMany(childIds, context.documentId)
+		countRecordsMoved({ perf: context.perf, member: 'getMany', records: children })
 		const next: typeof frontier = []
 		for (const child of children) {
 			if (!child) continue
@@ -282,8 +286,6 @@ function shouldFetchChildRef<GenericConfig extends AnyDialecteConfig>(params: {
 	}
 	return true
 }
-
-const CONFIG_KEYS = new Set(['where', 'recursive'])
 
 function getSelectElementKeys<GenericConfig extends AnyDialecteConfig>(
 	select: TreeSelect<GenericConfig, ElementsOf<GenericConfig>>,
