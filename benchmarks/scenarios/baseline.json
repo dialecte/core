@@ -26,10 +26,10 @@
 			"records.getByDocumentId": 8189
 		},
 		"one fetch over the leaves of a subtree": {
-			"get": 32,
-			"getMany": 208,
-			"records.get": 32,
-			"records.getMany": 208
+			"get": 16,
+			"getMany": 224,
+			"records.get": 16,
+			"records.getMany": 224
 		},
 		"rename rewriting references in one transaction": {
 			"commit": 1,

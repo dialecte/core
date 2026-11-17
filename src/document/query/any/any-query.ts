@@ -6,7 +6,14 @@ import {
 	getAttributeFullObject,
 	getAttributesFullObject,
 } from '../get/attribute'
-import { getRecord, getRecords, getRecordsByTagName, getChild, getChildren } from '../get/record'
+import {
+	getRecord,
+	getRecords,
+	getRecordsByTagName,
+	getChild,
+	getChildren,
+	getChildrenOfEach,
+} from '../get/record'
 import { getSnapshot } from '../snapshot'
 
 import { toRef } from '@/helpers'
@@ -73,6 +80,20 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 			ref: toRef(parent) as Ref<GenericConfig, ElementsOf<GenericConfig>>,
 			tagName: tagName as ElementsOf<GenericConfig>,
 		})
+	}
+
+	/** The children of a tag of each parent, through transparent elements, one list per input position: at most three reads, a record given used as given. */
+	async getChildrenOfEach(
+		refsOrRecords: ReadonlyArray<AnyRefOrRecord>,
+		params: { tagName: string },
+	): Promise<AnyTrackedRecord[][]> {
+		return getChildrenOfEach({
+			context: this.getContext(),
+			refsOrRecords: refsOrRecords as ReadonlyArray<
+				RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>
+			>,
+			tagName: params.tagName as ElementsOf<GenericConfig>,
+		}) as Promise<AnyTrackedRecord[][]>
 	}
 
 	async getRecordsByTagName(tagName: string): Promise<AnyTrackedRecord[]> {
