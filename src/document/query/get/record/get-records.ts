@@ -1,3 +1,4 @@
+import { countRecordsMoved } from './count-records-moved'
 import { getRecord, trackStoredRecord } from './get-record'
 import { getLatestStagedRecord } from './staged-lookup'
 
@@ -116,6 +117,7 @@ async function readFromStore<
 		context.perf.count('core::query::getRecord.miss')
 	})
 	const raws = await context.store.getMany(ids, context.documentId)
+	countRecordsMoved({ perf: context.perf, member: 'getMany', records: raws })
 
 	const rawById = new Map<string, RawRecord<GenericConfig, ElementsOf<GenericConfig>>>()
 	for (const [index, id] of ids.entries()) {

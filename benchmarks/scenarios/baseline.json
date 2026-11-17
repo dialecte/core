@@ -1,0 +1,45 @@
+{
+	"fixture": {
+		"records": 8189,
+		"elementsPerScenario": 16
+	},
+	"scenarios": {
+		"findByAttributes, one call per value": {
+			"getByTagName": 16,
+			"records.getByTagName": 8192
+		},
+		"findAncestors of each leaf": {
+			"get": 192,
+			"records.get": 192
+		},
+		"findDescendants under each scope root": {
+			"count": 16,
+			"get": 7696,
+			"getByDocumentId": 16,
+			"getByTagName": 16,
+			"records.get": 7696,
+			"records.getByDocumentId": 131024,
+			"records.getByTagName": 8192
+		},
+		"getTree with a narrow select": {
+			"getByDocumentId": 1,
+			"records.getByDocumentId": 8189
+		},
+		"one fetch over the leaves of a subtree": {
+			"get": 224,
+			"getMany": 16,
+			"records.get": 224,
+			"records.getMany": 16
+		},
+		"rename rewriting references in one transaction": {
+			"commit": 1,
+			"getByTagName": 1,
+			"records.getByTagName": 512
+		}
+	},
+	"fetchRepeats": {
+		"moved": 240,
+		"distinct": 38,
+		"repeated": 202
+	}
+}

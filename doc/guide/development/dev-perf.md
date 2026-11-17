@@ -88,6 +88,23 @@ On `sqlite` storage the import runs in the engine's worker, on the engine's cloc
 | `store::import::commit` | tally | one import transaction committed (the import commits in time-capped transactions)         |
 | `store::import::index`  | span  | one index built on the document's table (the edits of other views wait while it is built) |
 
+## Store reads
+
+Each store read of the query layer is tallied twice: its call, and the records it moved. A read through a worker
+costs per record it moves (decoded and copied), so the second tally tells the cost the first one hides.
+
+| Name                            | Kind  | What                                                                        |
+| ------------------------------- | ----- | --------------------------------------------------------------------------- |
+| `core::store::<member>`         | tally | one call of the store's `get`, `getMany`, `getByTagName`, `getByDocumentId` |
+| `core::store::records.<member>` | tally | the records that call answered (an id the store does not hold moves none)   |
+
+`core::store::count` and `core::store::commit` count calls only.
+
+The scenario benches (`src/test/fixtures/scripts/scenario-benchmarks.ts`) run lookups, ancestor walks, descendant
+collects, a narrow tree, a rename-like transaction and one view-like fetch on the generated stress fixture, and freeze
+each scenario's tallies in `benchmarks/scenarios/baseline.json`; a change that moves a count writes the new counts
+in that file, so its diff shows them before and after.
+
 ## Export stages
 
 Each store export is measured the same way and merged under `store::` (a `Project.export` that makes two store exports

@@ -1,3 +1,4 @@
+import { countRecordsMoved } from './count-records-moved'
 import { getLatestStagedRecord } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
@@ -57,6 +58,7 @@ export async function getRecord<
 				ref.tagName,
 				context.documentId,
 			)) as RawRecord<GenericConfig, GenericElement>[]
+			countRecordsMoved({ perf: context.perf, member: 'getByTagName', records })
 			raw = records[0]
 			if (raw && isTransactionContext(context)) {
 				context.recordCache.set(raw.id, raw)
@@ -75,6 +77,7 @@ export async function getRecord<
 			raw = (await context.store.get(ref.id, context.documentId)) as
 				| RawRecord<GenericConfig, GenericElement>
 				| undefined
+			countRecordsMoved({ perf: context.perf, member: 'get', records: [raw] })
 			if (raw && isTransactionContext(context)) context.recordCache.set(ref.id, raw)
 		}
 	}
