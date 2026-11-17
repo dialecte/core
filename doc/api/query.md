@@ -1,5 +1,5 @@
 ---
-description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, findAncestors, getTree, getSnapshot, and filtering utilities.
+description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, findAncestors, findAncestorsOfEach, getTree, getSnapshot, and filtering utilities.
 ---
 
 # Query
@@ -138,6 +138,21 @@ const ancestors = await doc.query.findAncestors(ref, {
 | `depth`         | `number`                    | Maximum number of ancestors to collect. Default: unlimited.                                                 |
 | `stopAtTagName` | `ElementName`               | Stop walking after collecting the first ancestor with this tag name.                                        |
 | `order`         | `'bottom-up' \| 'top-down'` | Result order. `'bottom-up'` (default): `[parent, grandparent, …, root]`. `'top-down'`: `[root, …, parent]`. |
+
+### findAncestorsOfEach
+
+The ancestors of many elements at once: one list per input position, in the input order, each as `findAncestors` would answer it. Takes the same options (`FindAncestorsOptions`), applied to each element.
+
+```ts
+const [ofAaa1, ofBbb1] = await doc.query.findAncestorsOfEach([aaa1, bbb1], { order: 'top-down' })
+// [[Root, A, AA_1], [Root, B, BB_1]]
+```
+
+**Reads:** one store read per ancestor level, not one per level per element. The refs given are read together in one `getMany`; then the parents of each level not read yet in this call are read in one `getMany` (staged operations and the transaction cache answer first, as for `getRecords`). An ancestor shared by several elements is read once, and each list gets its own shallow copy of it (nested arrays shared). For 1,000 leaves four levels deep: 5 store reads, 1,112 records. The dev perf counter `core::store::getMany` counts those calls.
+
+- A **record** given is used as given: its `parent` is followed and it is not read again. Pass a ref to have the element read (inside a transaction, its staged version).
+- A ref that names no element answers `[]` at its position.
+- The same element given several times answers the same list at each position, read once.
 
 ## Finding descendants
 

@@ -1,7 +1,7 @@
 import { NOOP_PROGRESS_REPORTER } from '../progress'
 import { createStagedOperations } from '../staged-operations'
 import { AnyQuery } from './any'
-import { findAncestors, findByAttributes, findDescendants } from './find'
+import { findAncestors, findAncestorsOfEach, findByAttributes, findDescendants } from './find'
 import { getDefinition, getTree } from './get'
 import {
 	getAttribute,
@@ -402,6 +402,30 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
 		if (!refOrRecord) return []
 		return findAncestors({ context: this.context, ref: toRef(refOrRecord), options })
+	}
+
+	/**
+	 * The ancestors of each element, in one read per ancestor level: ancestors shared by several elements are read
+	 * once. A record given is used as given (its `parent` is followed, it is not read again); a ref is read, all
+	 * refs in one read.
+	 *
+	 * @intent find the ancestors of many elements at once, build paths for a list of elements, group elements by an ancestor
+	 *
+	 * @param refsOrRecords - The starting elements (not included in results), in any order, repeats allowed.
+	 * @param options - Depth limit, stop-at tag name (inclusive) and order, applied to each element as `findAncestors` does.
+	 * @returns One ancestor list per input position, in the input order; `[]` for a ref that names no element.
+	 *
+	 * @example
+	 * ```ts
+	 * const [ofAaa1, ofBbb1] = await query.findAncestorsOfEach([aaa1, bbb1], { order: 'top-down' })
+	 * // [[Root, A, AA_1], [Root, B, BB_1]]
+	 * ```
+	 */
+	async findAncestorsOfEach<GenericElement extends ElementsOf<GenericConfig>>(
+		refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>,
+		options?: FindAncestorsOptions<GenericConfig>,
+	): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[][]> {
+		return findAncestorsOfEach({ context: this.context, refsOrRecords, options })
 	}
 
 	/**

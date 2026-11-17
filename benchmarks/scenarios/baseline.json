@@ -9,8 +9,8 @@
 			"records.getByTagName": 8192
 		},
 		"findAncestors of each leaf": {
-			"get": 192,
-			"records.get": 192
+			"getMany": 192,
+			"records.getMany": 192
 		},
 		"findDescendants under each scope root": {
 			"count": 16,
@@ -26,10 +26,10 @@
 			"records.getByDocumentId": 8189
 		},
 		"one fetch over the leaves of a subtree": {
-			"get": 224,
-			"getMany": 16,
-			"records.get": 224,
-			"records.getMany": 16
+			"get": 32,
+			"getMany": 208,
+			"records.get": 32,
+			"records.getMany": 208
 		},
 		"rename rewriting references in one transaction": {
 			"commit": 1,
