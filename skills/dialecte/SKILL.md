@@ -170,7 +170,8 @@ multiplies.
   and `getTree(ref, { select: { where } })` take attribute filters - do not collect everything and
   filter in JS.
 - `findDescendants` groups by tag and is NOT in document order; use `getTree` when order matters.
-- `getTree` loads the whole document unless it is a committed read with an `id` and a `depth`;
+- `getTree` reads only the branches it can keep when a `select`, a tag-only `omit` or a `depth` prunes (staged
+  writes included), else the whole document once; narrow with `select` rather than filter the tree in JS;
   and it **unwraps transparent elements by default** (the config's `transparentElements`: their
   children are lifted into the parent) - pass `unwrap` explicitly when you walk or copy them.
 - Prefer one pass that gathers what several steps need over re-reading the same records.
