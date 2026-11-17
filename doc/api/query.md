@@ -148,7 +148,7 @@ const [ofAaa1, ofBbb1] = await doc.query.findAncestorsOfEach([aaa1, bbb1], { ord
 // [[Root, A, AA_1], [Root, B, BB_1]]
 ```
 
-**Reads:** one store read per ancestor level, not one per level per element. The refs given are read together in one `getMany`; then the parents of each level not read yet in this call are read in one `getMany` (staged operations and the transaction cache answer first, as for `getRecords`). An ancestor shared by several elements is read once, and each list gets its own copy of it. For 1,000 leaves four levels deep: 5 store reads, 1,112 records. The dev perf counter `core::store::getMany` counts those calls.
+**Reads:** one store read per ancestor level, not one per level per element. The refs given are read together in one `getMany`; then the parents of each level not read yet in this call are read in one `getMany` (staged operations and the transaction cache answer first, as for `getRecords`). An ancestor shared by several elements is read once, and each list gets its own shallow copy of it (nested arrays shared). For 1,000 leaves four levels deep: 5 store reads, 1,112 records. The dev perf counter `core::store::getMany` counts those calls.
 
 - A **record** given is used as given: its `parent` is followed and it is not read again. Pass a ref to have the element read (inside a transaction, its staged version).
 - A ref that names no element answers `[]` at its position.
