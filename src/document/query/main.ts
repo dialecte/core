@@ -443,7 +443,11 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 		refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>,
 		options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>,
 	): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>[]> {
-		return findDescendantsOfEach({ context: this.context, refsOrRecords, options })
+		return findDescendantsOfEach<GenericConfig, GenericElement, GenericCollect>({
+			context: this.context,
+			refsOrRecords,
+			options,
+		})
 	}
 
 	/**

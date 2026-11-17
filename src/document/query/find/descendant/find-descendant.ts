@@ -28,6 +28,10 @@ export async function findDescendants<
 	options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>
 }): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>> {
 	const { context, ref, options } = params
-	const [answer] = await findDescendantsOfEach({ context, refsOrRecords: [ref], options })
+	const [answer] = await findDescendantsOfEach<GenericConfig, GenericElement, GenericCollect>({
+		context,
+		refsOrRecords: [ref],
+		options,
+	})
 	return answer
 }

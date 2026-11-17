@@ -61,12 +61,15 @@ export async function findDescendantsOfEach<
 }): Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>[]> {
 	const { context, refsOrRecords, options } = params
 	if (!options) {
-		return collectAllOfEach({ context, refsOrRecords }) as Promise<
-			FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>[]
-		>
+		const answers = await collectAllOfEach({ context, refsOrRecords })
+		return answers as unknown as FindDescendantsReturn<
+			GenericConfig,
+			GenericElement,
+			GenericCollect
+		>[]
 	}
 
-	const collectSpec = parseCollect(options.collect)
+	const collectSpec = parseCollect<GenericConfig, GenericElement>(options.collect)
 	const omitSpec = parseOmitEntries({ omit: options.omit, dialecteConfig: context.dialecteConfig })
 	const scopes = await readScopes({ context, refsOrRecords })
 	const answers = scopes.map(() => emptyGroups<GenericConfig>(collectSpec))
@@ -97,14 +100,12 @@ export async function findDescendantsOfEach<
 			: []
 	await Promise.all([...walks, ...eachAlone])
 
-	return answers.map(
-		(collected) =>
-			buildResult(collected) as FindDescendantsReturn<
-				GenericConfig,
-				GenericElement,
-				GenericCollect
-			>,
-	)
+	const results = answers.map((collected) => buildResult<GenericConfig>(collected))
+	return results as unknown as FindDescendantsReturn<
+		GenericConfig,
+		GenericElement,
+		GenericCollect
+	>[]
 }
 
 /**
@@ -156,14 +157,16 @@ async function collectAllOfEach<
 	await Promise.all(
 		[...positionsByTag].map(async function collectAllOfTag([tagName, positions]) {
 			const collect = [...(descendants[tagName] ?? [])] as Collect<GenericConfig, GenericElement>
-			const ofTag = await findDescendantsOfEach({
+			const ofTag = (await findDescendantsOfEach<
+				GenericConfig,
+				GenericElement,
+				Collect<GenericConfig, GenericElement>
+			>({
 				context,
 				refsOrRecords: positions.map((position) => refsOrRecords[position]),
 				options: { collect },
-			})
-			for (const [index, position] of positions.entries()) {
-				answers[position] = ofTag[index] as Record<string, AnyTracked<GenericConfig>[]>
-			}
+			})) as unknown as Record<string, AnyTracked<GenericConfig>[]>[]
+			for (const [index, position] of positions.entries()) answers[position] = ofTag[index]
 		}),
 	)
 	return answers
