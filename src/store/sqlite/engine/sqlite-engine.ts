@@ -4,6 +4,7 @@ import {
 	readFilteredRecords,
 	readIndexedRecords,
 	readPairStates,
+	sweepAttributeIndexes,
 } from './attribute-index'
 import { createAttributeIndexBuilder } from './attribute-index-build'
 import { ATTRIBUTE_PAIR_STATE } from './attribute-index.constants'
@@ -159,6 +160,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					db,
 					work: function sweepUnfinishedImports() {
 						deleteUnfinishedImports({ db })
+						// what an older core or a tool left of an attribute index: whole, or nothing
+						sweepAttributeIndexes({ db })
 					},
 				})
 			},

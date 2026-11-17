@@ -1,5 +1,6 @@
 import {
 	ATTRIBUTE_BUILD_ROWS_PER_SLICE,
+	ATTRIBUTE_INDEX_NAME,
 	ATTRIBUTE_INDEX_PREFIX,
 	ATTRIBUTE_INDEX_TRIGGERS,
 	ATTRIBUTE_PAIR_STATE,
@@ -197,6 +198,42 @@ export function markAttributePairReady(params: {
 export function dropAttributeIndex(params: { db: Database; seq: number }): void {
 	const { db, seq } = params
 	dropIndexTables({ db, tables: attributeIndexTablesOf({ seq }) })
+}
+
+/**
+ * Every attribute index of the file made whole or removed, in the caller's transaction (the engine's start, before
+ * any call). An index is whole when its record table, its three tables and its four triggers are all there; any other
+ * one loses its triggers first, then its tables: a trigger left over a dropped table would refuse every write to the
+ * records, and tables left without their record table (an older core's removal) are kept by nothing. A pair of an
+ * index removed is built again on its next lookup.
+ */
+export function sweepAttributeIndexes(params: { db: Database }): void {
+	const { db } = params
+	const held = new Set(
+		db
+			.selectValues("SELECT name FROM sqlite_schema WHERE type IN ('table', 'trigger')")
+			.map(String),
+	)
+	const numbers = new Set<number>()
+	for (const name of held) {
+		const seq = ATTRIBUTE_INDEX_NAME.exec(name)?.[1]
+		if (seq !== undefined) numbers.add(Number(seq))
+	}
+	for (const seq of numbers) {
+		const tables = attributeIndexTablesOf({ seq })
+		const whole = [
+			tables.records,
+			tables.names,
+			tables.rows,
+			tables.keys,
+			...ATTRIBUTE_INDEX_TRIGGERS.map((trigger) => `${tables.triggers}${trigger}`),
+		]
+		if (whole.every((part) => held.has(part))) continue
+		for (const name of held) {
+			if (name.startsWith(tables.triggers)) db.exec(`DROP TRIGGER ${name}`)
+		}
+		dropIndexTables({ db, tables })
+	}
 }
 
 /** The index tables of that number the file holds, dropped: none is dropped that is not there (no statement for it). */
