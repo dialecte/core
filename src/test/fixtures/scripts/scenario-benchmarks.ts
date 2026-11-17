@@ -161,7 +161,7 @@ async function fetchLeaves(params: {
 	}
 }
 
-/** One transaction looks the references up once, then rewrites the first of them, as a rename does. */
+/** One transaction looks the references up once, then rewrites `SCENARIO_ELEMENTS` of them, as a rename does. */
 async function rewriteReferences(params: { document: ScenarioDocument }): Promise<void> {
 	await params.document.transaction(async function rewrite(tx) {
 		const references = await tx.any.findByAttributes({

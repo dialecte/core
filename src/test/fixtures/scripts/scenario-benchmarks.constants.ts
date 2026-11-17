@@ -7,7 +7,7 @@ export const SCENARIO_FIXTURE_BYTES = 400_000
 /** How many elements a scenario works on (values looked up, leaves, scope roots, references rewritten). */
 export const SCENARIO_ELEMENTS = 16
 
-/** The deepest elements of the first block: 512 records, ten ancestors each. */
+/** The deepest elements of the first block: 512 records at depth 10 of it, twelve ancestors each (the block's ten, its root and the document root). */
 export const SCENARIO_LEAF_TAG = 'DDDDDDDDDDD_1'
 
 /** The leaf tag's attribute the lookups and the rename read and write. */

@@ -17,8 +17,11 @@ describe('records moved per store read', () => {
 		getByDocumentId: number
 	}
 	type TestCase = BaseXmlTestCase & {
-		/** The one read under test, on the source document's query. */
-		read: (query: Document<TestDialecteConfig>['query']) => Promise<unknown>
+		/**
+		 * The read under test, on the source document: its query, or a transaction. A case that stages
+		 * writes first resets the tally after them, so only the reads are counted.
+		 */
+		read: (source: Document<TestDialecteConfig>) => Promise<unknown>
 		expected: RecordsMoved
 	}
 
@@ -37,18 +40,18 @@ describe('records moved per store read', () => {
 	const testCases: TestCases<TestCase> = {
 		'getRecord of a stored id → one record moved by get': {
 			sourceXml,
-			read: (query) => query.getRecord({ tagName: 'A', id: 'a1' }),
+			read: (source) => source.query.getRecord({ tagName: 'A', id: 'a1' }),
 			expected: { ...none, get: 1 },
 		},
 		'getRecord of an id the store does not hold → nothing moved': {
 			sourceXml,
-			read: (query) => query.getRecord({ tagName: 'A', id: 'missing' }),
+			read: (source) => source.query.getRecord({ tagName: 'A', id: 'missing' }),
 			expected: none,
 		},
 		'getRecords of three ids, one missing → the two found moved by getMany': {
 			sourceXml,
-			read: (query) =>
-				query.getRecords([
+			read: (source) =>
+				source.query.getRecords([
 					{ tagName: 'A', id: 'a1' },
 					{ tagName: 'A', id: 'missing' },
 					{ tagName: 'A', id: 'a2' },
@@ -57,29 +60,45 @@ describe('records moved per store read', () => {
 		},
 		'getRecordsByTagName → every record of the tag moved by getByTagName': {
 			sourceXml,
-			read: (query) => query.getRecordsByTagName('A'),
+			read: (source) => source.query.getRecordsByTagName('A'),
 			expected: { ...none, getByTagName: 2 },
 		},
 		'getRecord of a ref without id → every record of its tag moved by getByTagName': {
 			sourceXml,
-			read: (query) => query.getRecord({ tagName: 'A' }),
+			read: (source) => source.query.getRecord({ tagName: 'A' }),
 			expected: { ...none, getByTagName: 2 },
 		},
 		'a whole-document getTree → every record of the document moved by getByDocumentId': {
 			sourceXml,
-			read: (query) => query.getTree({ tagName: 'Root', id: 'root' }),
+			read: (source) => source.query.getTree({ tagName: 'Root', id: 'root' }),
 			expected: { ...none, getByDocumentId: 5 },
 		},
 		'a getTree of depth 1 → the root by get, its three children by getMany': {
 			sourceXml,
-			read: (query) => query.getTree({ tagName: 'Root', id: 'root' }, { depth: 1 }),
+			read: (source) => source.query.getTree({ tagName: 'Root', id: 'root' }, { depth: 1 }),
 			expected: { ...none, get: 1, getMany: 3 },
 		},
+		'a transaction staging a third A, reading a1 twice then the tag → a1 once by get (then cached), the two stored A by getByTagName':
+			{
+				sourceXml,
+				read: (source) =>
+					source.transaction(async function readAfterStaging(tx) {
+						await tx.addChild(
+							{ tagName: 'Root', id: 'root' },
+							{ tagName: 'A', attributes: { aA: 'v' } },
+						)
+						source.perf.reset()
+						await tx.getRecord({ tagName: 'A', id: 'a1' })
+						await tx.getRecord({ tagName: 'A', id: 'a1' })
+						await tx.getRecordsByTagName('A')
+					}),
+				expected: { ...none, getByTagName: 2, get: 1 },
+			},
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
 		source.perf.reset()
-		await testCase.read(source.query)
+		await testCase.read(source)
 		const report = source.perf.report()
 		expect({
 			get: report['core::store::records.get']?.count ?? 0,
