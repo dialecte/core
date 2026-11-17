@@ -79,3 +79,27 @@ describe('read scope, nested calls', () => {
 		])
 	})
 })
+
+// A scope travels on the query object its call runs on: two Documents of one document never reach the same one.
+describe('read scope, across Documents', () => {
+	const projects: Array<{ destroy: () => Promise<void> }> = []
+	afterEach(async () => {
+		await Promise.all(projects.map((project) => project.destroy()))
+		projects.length = 0
+	})
+
+	it('two Documents of one document in one realm → each call its own scope, nothing shared', async () => {
+		const log: VersionedReadLog = []
+		const store = versionedStore({ store: inMemoryTestStore({ name: crypto.randomUUID() }), log })
+		const { project, document, first } = await openScopedProject({ store, log, sourceXml: XML })
+		projects.push(project)
+		const other = project.openDocument(document.documentId)
+
+		await Promise.all([document.query.probe.readTwice(first), other.query.probe.readTwice(first)])
+
+		expect(log).toEqual([
+			{ member: 'get', first: first.id },
+			{ member: 'get', first: first.id },
+		])
+	})
+})

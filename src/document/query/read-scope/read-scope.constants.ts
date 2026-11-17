@@ -1,5 +1,5 @@
 import type { StoreReadMember } from '../get/record/count-records-moved.types'
-import type { ReadScope, ReadScopeWiring, VersionedReadMember } from './read-scope.types'
+import type { VersionedReadMember } from './read-scope.types'
 
 /** The dev perf tally of each store read member: `core::store::<tally>` and `core::store::records.<tally>`. */
 export const STORE_READ_TALLY: Record<VersionedReadMember, StoreReadMember> = {
@@ -42,11 +42,8 @@ export const READ_SCOPE_VOIDING_MESSAGES: ReadonlySet<string> = new Set([
 	'document-imported',
 ])
 
-// The two registries below are filled at run time, not constants; they live here because a module-level value of the
-// query layer has its place in a constants file. Held weakly: a query let go takes its scope with it.
+/** Where a query a Document built carries its read-scope wiring (inherited by each scoped child of it). */
+export const READ_SCOPE_WIRING_KEY = Symbol('dialecte.readScopeWiring')
 
-/** The wiring each Query a Document built carries, and each scoped child of it. */
-export const READ_SCOPE_WIRINGS = new WeakMap<object, ReadScopeWiring>()
-
-/** The scope each scoped child runs in. */
-export const READ_SCOPES = new WeakMap<object, ReadScope>()
+/** Where a scoped child carries the scope it runs in. */
+export const READ_SCOPE_KEY = Symbol('dialecte.readScope')
