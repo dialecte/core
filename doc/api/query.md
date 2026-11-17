@@ -1,5 +1,5 @@
 ---
-description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, findAncestors, findAncestorsOfEach, getTree, getSnapshot, and filtering utilities.
+description: API reference for the Query class — read-only access to a dialecte store. Documents getRoot, getRecord, getRecordsByTagName, findChildren, findDescendants, getChildrenOfEach, findAncestors, findAncestorsOfEach, getTree, getSnapshot, and filtering utilities.
 ---
 
 # Query
@@ -110,6 +110,23 @@ For dynamic or untyped contexts, use [`query.any`](#untyped-namespace-query-any)
 ```ts
 const child = await doc.query.any.getChild(a, 'AAA_1')
 ```
+
+### getChildrenOfEach
+
+The children of one tag of many parents at once: one list per input position, in the input order, each as `getChildren` would answer it, transparent elements included.
+
+```ts
+const [ofA1, ofA2] = await doc.query.getChildrenOfEach([a1, a2], { tagName: 'AA_1' })
+// [[AA_1 of a1, …], [AA_1 of a2, …]]
+```
+
+**Reads:** at most three store reads, whatever the number of parents. The refs given are read together in one `getMany`. Then one `getMany` reads the direct children of the tag of every parent, together with the transparent wrappers of the parents that have none directly; one more reads the children of the tag inside those wrappers, only when some parent needs it. Staged operations and the transaction cache answer first, as for `getRecords`. A record read once in the call is not read again, and a record answered at several positions is a copy at each one after the first. For 1,000 parents each with one transparent wrapper: 3 store reads, 3,000 records. The dev perf counters `core::store::getMany` and `core::store::records.getMany` count them.
+
+- A **record** given is used as given: its `children` are followed and it is not read again. Pass a ref to have the parent read (inside a transaction, its staged version).
+- A parent that does not exist answers `[]` at its position.
+- The same parent given several times answers the same children at each position, read once.
+
+`getChildren` makes the same reads for its one parent, and keeps reading the parent from its ref, so a record read before a staged change still answers its staged children.
 
 ## Finding ancestors
 
@@ -588,6 +605,7 @@ const matches = await doc.query.any.findByAttributes({
 | `getRecords`          | `AnyRef[]`                                                            | `(AnyTrackedRecord \| undefined)[]`        |
 | `getChild`            | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord \| undefined`            |
 | `getChildren`         | `AnyRefOrRecord, tagName: string`                                     | `AnyTrackedRecord[]`                       |
+| `getChildrenOfEach`   | `AnyRefOrRecord[], { tagName: string }`                               | `AnyTrackedRecord[][]`                     |
 | `getRecordsByTagName` | `tagName: string`                                                     | `AnyTrackedRecord[]`                       |
 | `getAttribute`        | `AnyRefOrRecord, { name, namespace?, fullObject? }`                   | `string \| AnyAttribute \| undefined`      |
 | `getAttributes`       | `AnyRefOrRecord, { namespace?, fullObject? }`                         | `Record<string, string> \| AnyAttribute[]` |
