@@ -23,8 +23,10 @@
 			"records.getMany": 992
 		},
 		"getTree with a narrow select": {
-			"getByDocumentId": 1,
-			"records.getByDocumentId": 8189
+			"get": 1,
+			"getMany": 11,
+			"records.get": 1,
+			"records.getMany": 1024
 		},
 		"one fetch over the leaves of a subtree": {
 			"get": 16,

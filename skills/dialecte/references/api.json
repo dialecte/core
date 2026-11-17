@@ -1401,7 +1401,7 @@
 			"root": "q",
 			"otherRoutes": [],
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options?: GetTreeParams<GenericConfig, GenericElement>) => Promise<TreeRecord<GenericConfig, GenericElement> | undefined>",
-			"summary": "Build a full tree structure from an element down. It loads the whole document unless it is a committed read with an id and a depth.",
+			"summary": "Build a full tree structure from an element down. It reads only the branches it can keep when a `select`, a tag-only `omit` or a `depth` prunes (one read per level), else the whole document once.",
 			"intents": [
 				"read a subtree in document order",
 				"walk children recursively",
