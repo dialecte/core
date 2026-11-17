@@ -386,4 +386,10 @@ export const GET_TREE_CASES: TestCases<GetTreeCase<TestDialecteConfig>> = {
 			],
 		},
 	},
+	'singleton ref without id - the root by its tag, select narrows its children': {
+		sourceXml: /* xml */ `<Root ${ns}><A ${customId}="a1" aA="v" /><B ${customId}="b1" aB="v" /></Root>`,
+		ref: { tagName: 'Root' },
+		options: { select: { B: true } },
+		expectedShape: { tagName: 'Root', tree: [{ tagName: 'B', tree: [] }] },
+	},
 }

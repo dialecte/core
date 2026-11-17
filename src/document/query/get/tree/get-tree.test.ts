@@ -4,6 +4,7 @@ import { TRANSPARENT_CASES, TRANSPARENT_CONFIG } from './get-tree.transparent.fi
 
 import { describe, expect } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
 	XMLNS_DEFAULT_NAMESPACE,
@@ -17,7 +18,7 @@ import type {
 	RecursiveTestDialecteConfig,
 	TransparentTestDialecteConfig,
 } from './get-tree.fixtures.types'
-import type { GetTreeParams, Ref } from '@/document'
+import type { Document, GetTreeParams, Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { AnyDialecteConfig, AnyTreeRecord, ElementsOf } from '@/types'
 
@@ -71,4 +72,42 @@ describe('getTree - transparent elements', () => {
 	createTestRunner<TransparentTestDialecteConfig>({
 		dialecteConfig: TRANSPARENT_CONFIG,
 	}).withoutExport({ testCases: TRANSPARENT_CASES, act: readsExpectedShape })
+})
+
+describe('getTree - a ref naming another tag than its record', () => {
+	type TestCase = BaseXmlTestCase & {
+		read: (source: Document<TestDialecteConfig>) => Promise<unknown>
+	}
+
+	const sourceXml = /* xml */ `
+		<Root ${ns}>
+			<A ${customId}="a1" aA="v" />
+		</Root>
+	`
+	const mismatched = { tagName: 'B', id: 'a1' } as const
+
+	const testCases: Record<string, TestCase> = {
+		'B named by the id of an A, with a select → ELEMENT_NOT_FOUND': {
+			sourceXml,
+			read: (source) => source.query.getTree(mismatched, { select: { BB_1: true } }),
+		},
+		'B named by the id of a staged A, with a select → ELEMENT_NOT_FOUND': {
+			sourceXml,
+			read: (source) =>
+				source.transaction(async function readStagedMismatch(tx) {
+					await tx.update({ tagName: 'A', id: 'a1' }, { attributes: { aA: 'w' } })
+					return tx.getTree(mismatched, { select: { BB_1: true } })
+				}),
+		},
+	}
+
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const error = await testCase.read(source).then(
+			() => undefined,
+			(thrown: unknown) => toDialecteError(thrown),
+		)
+		expect(error?.key).toEqual('ELEMENT_NOT_FOUND')
+	}
+
+	runTestCases.withoutExport({ testCases, act })
 })

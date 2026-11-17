@@ -6,7 +6,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { TreeShape } from './get-tree.fixtures.types'
-import type { GetTreeParams, Transaction } from '@/document'
+import type { GetTreeParams, Ref, Transaction } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { AnyTreeRecord, ElementsOf } from '@/types'
 
@@ -106,6 +106,67 @@ describe('getTree - inside a transaction, read level by level with the staged re
 		const report = source.perf.report()
 		expect({
 			shape: toShape(tree as AnyTreeRecord),
+			wholeDocumentReads: report['core::store::getByDocumentId']?.count ?? 0,
+		}).toEqual(testCase.expected)
+	}
+
+	runTestCases.withoutExport({ testCases, act, dev: { perf: true } })
+})
+
+describe('getTree - inside a transaction, moved and new elements read level by level', () => {
+	type TestCase = BaseXmlTestCase & {
+		stage: (tx: Transaction<TestDialecteConfig>) => Promise<void>
+		reads: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>[]
+		options: GetTreeParams<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
+		expected: { shapes: TreeShape[]; wholeDocumentReads: number }
+	}
+
+	const testCases: TestCases<TestCase> = {
+		'a child moved from a1 to a2 → read under a2 only, no whole-document read': {
+			sourceXml: xml,
+			stage: async (tx) => {
+				await tx.any.move({ tagName: 'AA_2', id: 'aa2' }, { parent: { tagName: 'A', id: 'a2' } })
+			},
+			reads: [a1, { tagName: 'A', id: 'a2' }],
+			options: { select: { AA_2: true } },
+			expected: {
+				shapes: [
+					{ tagName: 'A', tree: [] },
+					{ tagName: 'A', tree: [leaf('AA_2'), leaf('AA_2')] },
+				],
+				wholeDocumentReads: 0,
+			},
+		},
+		'a new A with a child, read with a select → its staged subtree, no whole-document read': {
+			sourceXml: xml,
+			stage: async (tx) => {
+				await tx.addChild(
+					{ tagName: 'Root' },
+					{ tagName: 'A', id: '0-0-0-0-2', attributes: { aA: 'v' } },
+				)
+				await tx.addChild(
+					{ tagName: 'A', id: '0-0-0-0-2' },
+					{ tagName: 'AA_2', id: '0-0-0-0-3', attributes: { aAA_2: 'v' } },
+				)
+			},
+			reads: [{ tagName: 'A', id: '0-0-0-0-2' }],
+			options: { select: { AA_2: true } },
+			expected: {
+				shapes: [{ tagName: 'A', tree: [leaf('AA_2')] }],
+				wholeDocumentReads: 0,
+			},
+		},
+	}
+
+	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+		const trees = await source.transaction(async function readStaged(tx) {
+			await testCase.stage(tx)
+			source.perf.reset()
+			return Promise.all(testCase.reads.map((ref) => tx.getTree(ref, testCase.options)))
+		})
+		const report = source.perf.report()
+		expect({
+			shapes: trees.map((tree) => toShape(tree as AnyTreeRecord)),
 			wholeDocumentReads: report['core::store::getByDocumentId']?.count ?? 0,
 		}).toEqual(testCase.expected)
 	}
