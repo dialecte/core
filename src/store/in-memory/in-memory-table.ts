@@ -13,7 +13,9 @@ export function createRecordTable(): RecordTable {
 		const { id, tagName } = params
 		const tag = byTag.get(tagName)
 		if (!tag?.ids.delete(id)) return
-		tag.sorted = undefined
+		// a tag whose last id went keeps no entry: it reads as a tag never written
+		if (tag.ids.size === 0) byTag.delete(tagName)
+		else tag.sorted = undefined
 	}
 
 	function put(record: AnyRawRecord): void {

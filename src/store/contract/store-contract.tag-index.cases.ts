@@ -1,4 +1,13 @@
-import { commit, makeDocument, makeRecord, scribble } from './store-contract.fixtures'
+import { CONTRACT_SESSION_FAIL_VALUE, CONTRACT_SESSION_TAG } from './store-contract.constants'
+import {
+	commit,
+	contractFile,
+	expectRejectsWith,
+	makeDocument,
+	makeRecord,
+	scribble,
+} from './store-contract.fixtures'
+import { holdContractImport, untilHeld } from './store-contract.import-session'
 
 import { expect } from 'vitest'
 
@@ -40,10 +49,12 @@ async function seedTags(params: { store: Store }): Promise<void> {
 }
 
 const tagOrder: StoreContractCases = {
-	'a bulk write creating out of id order, then one deleting → the tag in id order, the deleted gone':
+	'the tag read, then a bulk write creating out of id order, then one deleting → the tag in id order, the deleted gone':
 		{
 			act: async ({ store }) => {
 				await seedTags({ store })
+				const seeded = await idsByTag({ store, tags: ['A'] })
+				expect(seeded).toEqual({ A: ['c', 'm'] })
 				await store.bulkWrite(DOCUMENT_ID, {
 					creates: [makeRecord({ id: 'z', tagName: 'A' }), makeRecord({ id: 'a', tagName: 'A' })],
 				})
@@ -103,6 +114,39 @@ const tagOrder: StoreContractCases = {
 			expect(tags).toEqual({ A: ['m'], B: ['c', 'x'] })
 		},
 	},
+	'the tag read, then a bulk write creating a taken id → refused, the tag as it was': {
+		act: async ({ store }) => {
+			await seedTags({ store })
+			const before = await idsByTag({ store, tags: ['A', 'B'] })
+			await expectRejectsWith({
+				action: store.bulkWrite(DOCUMENT_ID, {
+					creates: [makeRecord({ id: 'a', tagName: 'A' }), makeRecord({ id: 'm', tagName: 'B' })],
+				}),
+				key: 'STORE_DUPLICATE_ID',
+			})
+			const after = await idsByTag({ store, tags: ['A', 'B'] })
+			expect(after).toEqual(before)
+		},
+	},
+	'the tag read, then a commit creating and updating a record the document does not hold → refused, the tag as it was':
+		{
+			needs: ['history'],
+			act: async ({ store }) => {
+				await seedTags({ store })
+				const before = await idsByTag({ store, tags: ['A'] })
+				await expectRejectsWith({
+					action: commit({
+						store,
+						documentId: DOCUMENT_ID,
+						creates: [makeRecord({ id: 'a', tagName: 'A' })],
+						updates: [makeRecord({ id: 'absent', tagName: 'A' })],
+					}),
+					key: 'STORE_RECORD_NOT_FOUND',
+				})
+				const after = await idsByTag({ store, tags: ['A'] })
+				expect(after).toEqual(before)
+			},
+		},
 	'a removed document registered again → its tags answer nothing': {
 		act: async ({ store }) => {
 			await seedTags({ store })
@@ -112,6 +156,69 @@ const tagOrder: StoreContractCases = {
 			expect(tags).toEqual({ A: [], B: [] })
 		},
 	},
+}
+
+/** The ids of the session's tag in the document, by a tag read and by a read of the whole document (id order). */
+async function importedTagIds(params: {
+	store: Store
+	documentId: string
+}): Promise<{ byTag: string[]; inIdOrder: string[] }> {
+	const { store, documentId } = params
+	const tagged = await store.getByTagNameInDocument(CONTRACT_SESSION_TAG, documentId)
+	const all = await store.getByDocumentId(documentId)
+	return {
+		byTag: tagged.map((record) => record.id),
+		inIdOrder: all
+			.filter((record) => record.tagName === CONTRACT_SESSION_TAG)
+			.map((record) => record.id),
+	}
+}
+
+const afterImports: StoreContractCases = {
+	"an import, then an import that fails → the tag in id order; the failed document's tag answers nothing":
+		{
+			needs: ['import'],
+			act: async ({ store }) => {
+				const imported = await store.importFile({
+					file: contractFile({ body: '<B aB="B2"/><B aB="B0"/><B aB="B1"/>' }),
+				})
+				const importedTag = await importedTagIds({ store, documentId: imported.record.id })
+				const hold = holdContractImport()
+				const importing = store.importFile({
+					file: contractFile({
+						body: `<B aB="B0" bB="${hold.value}"/><B aB="B1" bB="${CONTRACT_SESSION_FAIL_VALUE}"/>`,
+					}),
+				})
+				try {
+					await untilHeld({ hold, importing })
+					const documents = await store.getDocuments()
+					const failing = documents.find((document) => document.id !== imported.record.id)
+					hold.release()
+					await expectRejectsWith({ action: importing, key: 'IMPORT_FAILED' })
+					const failedTag = await store.getByTagNameInDocument(
+						CONTRACT_SESSION_TAG,
+						failing?.id ?? 'not-registered',
+					)
+					const importedTagAfter = await importedTagIds({ store, documentId: imported.record.id })
+					expect({
+						importedCount: importedTag.byTag.length,
+						importedTag,
+						failingSeen: failing !== undefined,
+						failedTag,
+						importedTagAfter,
+					}).toEqual({
+						importedCount: 3,
+						importedTag: { byTag: importedTag.inIdOrder, inIdOrder: importedTag.inIdOrder },
+						failingSeen: true,
+						failedTag: [],
+						importedTagAfter: importedTag,
+					})
+				} finally {
+					hold.release()
+					await importing.catch(() => undefined)
+				}
+			},
+		},
 }
 
 /** A record of A with a qualified attribute, a parent and a child, beside its child of B. */
@@ -161,5 +268,6 @@ const qualifiedValues: StoreContractCases = Object.fromEntries(
 /** The tag index of a store: every write path keeps a tag's answer, in id order; an answer is the caller's own. */
 export const STORE_TAG_INDEX_CONTRACT: StoreContractGroups = {
 	'tag reads in id order after every write': tagOrder,
+	'tag reads after imports': afterImports,
 	'records are values, deep': qualifiedValues,
 }

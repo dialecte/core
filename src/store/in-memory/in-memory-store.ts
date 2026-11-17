@@ -902,7 +902,10 @@ export class InMemoryStore implements Store {
 	): Promise<AnyRawRecord[]> {
 		// the tag's ids, in id order: a read walks the tag, never the document
 		const table = this.readTable(documentId)
-		return table.idsOfTag(tagName).map((id) => cloneRecord({ record: table.get(id)! }))
+		return table.idsOfTag(tagName).flatMap(function copyOf(id) {
+			const record = table.get(id)
+			return record ? [cloneRecord({ record })] : []
+		})
 	}
 
 	private async getManyUnguarded(
