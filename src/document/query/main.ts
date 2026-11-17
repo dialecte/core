@@ -422,8 +422,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * What `findDescendants` answers for each element given, in one walk: one store read for the elements, then one
-	 * per level over every element's subtree at once.
+	 * What `findDescendants` answers for each element given, in one walk: a record given used as given, the refs in one
+	 * store read, then one read per level over every element's subtree at once.
 	 *
 	 * @intent collect descendants under many scope elements at once
 	 *

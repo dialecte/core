@@ -225,7 +225,7 @@ const [underA1, underB1] = await doc.query.findDescendantsOfEach([a1, b1], { col
 // [{ AAA_1: TrackedRecord[] }, { AAA_1: [] }]
 ```
 
-**Reads:** the elements in one `getMany` (staged operations first, as `findDescendants` reads its element), then, for a flat collect under elements that are not the document root, one `getMany` per level over every element's subtree at once, as described for [`findDescendants`](#finddescendants). Sixteen scopes of a 1,008-record slice: 6 store reads and 1,008 records, against 96 reads for one `findDescendants` call per scope. A path collect, and a flat collect under the document root, read per element as `findDescendants` does.
+**Reads:** a record given is used as given (its `children` are followed, it is not read again; pass a ref to have it read, inside a transaction its staged version); the refs in one `getMany`. Then, for a flat collect under elements that are not the document root, one `getMany` per level over every element's subtree at once, as described for [`findDescendants`](#finddescendants). Sixteen scope records over 992 descendants: 5 store reads and 992 records, against 96 reads and 1,008 records for one `findDescendants` call per scope. A path collect, and a flat collect under the document root, read per element as `findDescendants` does.
 
 - A record under two elements given (nested scopes) is answered for both.
 - The same element given several times is answered at each position; each position after the first gets its own shallow copy of a record.

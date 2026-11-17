@@ -19,8 +19,8 @@
 			"records.getMany": 1008
 		},
 		"findDescendantsOfEach over the scope roots": {
-			"getMany": 6,
-			"records.getMany": 1008
+			"getMany": 5,
+			"records.getMany": 992
 		},
 		"getTree with a narrow select": {
 			"getByDocumentId": 1,

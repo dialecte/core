@@ -1,4 +1,6 @@
 import { getRecords } from '../../get/record'
+import { isRecordGiven } from '../../get/record/is-record-given'
+import { readUnknownRecords } from '../../get/record/read-unknown-records'
 import { collectUnderOne } from './collect-under-one'
 import {
 	buildResult,
@@ -11,6 +13,7 @@ import {
 
 import { toRef } from '@/helpers'
 
+import type { KnownRecords, RecordLink } from '../../get/record/known-records.types'
 import type {
 	CollectedGroups,
 	CollectSpecification,
@@ -24,14 +27,14 @@ import type {
 	WalkNode,
 	WalkScope,
 } from './find-descendants-of-each.types'
-import type { Context, Ref, RefOrRecord } from '@/document'
+import type { Context, RefOrRecord } from '@/document'
 import type { AnyDialecteConfig, ElementsOf } from '@/types'
 
 /**
  * What `findDescendants` answers for each element given, one answer per input position, in the input order.
  *
- * Every element is read by its ref, all in one `getRecords` (staged operations first, as `findDescendants` reads
- * its scope). A flat collect under elements that are not the document root then reads top-down, one `getRecords`
+ * A record given is used as given (its `children` are followed, it is not read again); the refs are read together
+ * in one `getRecords` (staged operations first). A flat collect under elements that are not the document root then reads top-down, one `getRecords`
  * per level over every element's subtree at once, following only the children that can hold a collected tag (see
  * {@link createFollowCheck}); an unconditionally omitted tag is never read, a record a conditional `omit` matches
  * is neither collected nor followed. A record under two elements given (nested scopes) is answered for both; an
@@ -41,7 +44,7 @@ import type { AnyDialecteConfig, ElementsOf } from '@/types'
  *
  * Without options, each element collects every descendant tag its own tag may hold, as `findDescendants` does.
  *
- * Perf: one `core::store::getMany` for the elements, then at most one per level of the deepest subtree walked;
+ * Perf: one `core::store::getMany` for the refs (none when every input is a record), then at most one per level of the deepest subtree walked;
  * no `get`, tag read or whole-document read for a flat collect under a non-root.
  *
  * @internal the context-level read behind `doc.query.findDescendantsOfEach`; callers use the query
@@ -64,10 +67,7 @@ export async function findDescendantsOfEach<
 
 	const collectSpec = parseCollect(options.collect)
 	const omitSpec = parseOmitEntries({ omit: options.omit, dialecteConfig: context.dialecteConfig })
-	const refs = refsOrRecords.map(
-		(refOrRecord) => toRef(refOrRecord) as Ref<GenericConfig, GenericElement>,
-	)
-	const scopes = await getRecords({ context, refs })
+	const scopes = await readScopes({ context, refsOrRecords })
 	const answers = scopes.map(() => emptyGroups<GenericConfig>(collectSpec))
 
 	const walked: WalkScope<GenericConfig>[] = []
@@ -101,6 +101,34 @@ export async function findDescendantsOfEach<
 				GenericCollect
 			>,
 	)
+}
+
+/**
+ * The scope of each input position: a record given as given, the refs read together in one `getRecords`; `undefined`
+ * for a ref that names no element.
+ */
+async function readScopes<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(params: {
+	context: Context<GenericConfig>
+	refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>
+}): Promise<(AnyTracked<GenericConfig> | undefined)[]> {
+	const { context, refsOrRecords } = params
+	const scopes: (AnyTracked<GenericConfig> | undefined)[] = refsOrRecords.map((refOrRecord) =>
+		isRecordGiven(refOrRecord) ? (refOrRecord as AnyTracked<GenericConfig>) : undefined,
+	)
+	const refPositions = [...refsOrRecords.keys()].filter(
+		(position) => !isRecordGiven(refsOrRecords[position]),
+	)
+	if (refPositions.length === 0) return scopes
+
+	const records = await getRecords({
+		context,
+		refs: refPositions.map((position) => toRef(refsOrRecords[position])),
+	})
+	for (const [index, record] of records.entries()) scopes[refPositions[index]] = record
+	return scopes
 }
 
 /** Without options: each element collects every tag its own tag may hold, one walk per tag name of the elements. */
@@ -160,25 +188,26 @@ async function walkTopDown<GenericConfig extends AnyDialecteConfig>(params: {
 		collected: new Set(targets.keys()),
 	})
 	const nodes = new Map<string, WalkNode<GenericConfig>>()
+	/** Every record this walk holds, kept or omitted: never read twice. */
+	const known: KnownRecords<GenericConfig> = new Map()
 
 	let frontier: WalkNode<GenericConfig>[] = []
 	for (const { position, record } of scopes) {
-		const known = nodes.get(record.id)
-		if (known) {
-			known.scopeOf.push(position)
+		const given = nodes.get(record.id)
+		if (given) {
+			given.scopeOf.push(position)
 			continue
 		}
 		const node: WalkNode<GenericConfig> = { record, scopeOf: [position] }
 		nodes.set(record.id, node)
+		known.set(record.id, record)
 		// an unconditionally omitted scope tag holds nothing: the climb stopped at it
 		if (!omitSpec.unconditional.has(record.tagName)) frontier.push(node)
 	}
 
 	while (frontier.length > 0) {
-		const toRead = new Map<
-			string,
-			{ parentId: string; ref: Ref<GenericConfig, ElementsOf<GenericConfig>> }
-		>()
+		const links: RecordLink[] = []
+		const parentOf = new Map<string, string>()
 		for (const node of frontier) {
 			for (const child of node.record.children ?? []) {
 				if (omitSpec.unconditional.has(child.tagName)) continue
@@ -189,17 +218,22 @@ async function walkTopDown<GenericConfig extends AnyDialecteConfig>(params: {
 					if (!isOmitted({ record: scope.record, omitSpec })) scope.parentId = node.record.id
 					continue
 				}
-				toRead.set(child.id, { parentId: node.record.id, ref: toRef(child) })
+				links.push(child)
+				parentOf.set(child.id, node.record.id)
 			}
 		}
-		if (toRead.size === 0) break
+		if (links.length === 0) break
 
-		const reads = [...toRead.values()]
-		const records = await getRecords({ context, refs: reads.map(({ ref }) => ref) })
+		const found = await readUnknownRecords({ context, links, known })
+		for (const [id, record] of found) known.set(id, record)
 		const next: WalkNode<GenericConfig>[] = []
-		for (const [index, record] of records.entries()) {
-			if (!record || isOmitted({ record, omitSpec })) continue
-			const node: WalkNode<GenericConfig> = { record, scopeOf: [], parentId: reads[index].parentId }
+		for (const record of found.values()) {
+			if (isOmitted({ record, omitSpec })) continue
+			const node: WalkNode<GenericConfig> = {
+				record,
+				scopeOf: [],
+				parentId: parentOf.get(record.id),
+			}
 			nodes.set(record.id, node)
 			if (follows(record.tagName)) next.push(node)
 		}
