@@ -10,6 +10,8 @@ const ALLOWED: Readonly<Record<string, string>> = {
 		'the namespaces any declaration of the tag uses, to keep the one a record was read in',
 	'/src/helpers/converter.ts':
 		'the namespace an attribute name is declared in - one wherever it appears',
+	'/src/document/query/find/descendant/find-descendants-of-each.ts':
+		'whether a tag may hold xs:any content, decided on a child ref before it is read: the tag level, the union of its declarations',
 }
 
 const SOURCES = import.meta.glob<string>(['/src/**/*.ts', '!/src/**/*.test.ts', '!/src/test/**'], {

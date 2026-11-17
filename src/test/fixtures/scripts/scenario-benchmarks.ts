@@ -60,6 +60,12 @@ export async function measureScenarios(params: {
 			return descendantsUnderEach({ document, scopeRoots })
 		},
 	})
+	scenarios['findDescendantsOfEach over the scope roots'] = await measure({
+		document,
+		run: function descendantsOfEach() {
+			return descendantsUnderAll({ document, scopeRoots })
+		},
+	})
 	scenarios['getTree with a narrow select'] = await measure({
 		document,
 		run: function narrowTree() {
@@ -150,6 +156,16 @@ async function descendantsUnderEach(params: {
 			collect: SCENARIO_LEAF_TAG as never,
 		})
 	}
+}
+
+/** The same flat collect under every scope root in one call. */
+async function descendantsUnderAll(params: {
+	document: ScenarioDocument
+	scopeRoots: AnyTrackedRecord[]
+}): Promise<void> {
+	await params.document.query.findDescendantsOfEach(params.scopeRoots as never, {
+		collect: SCENARIO_LEAF_TAG as never,
+	})
 }
 
 /** The document root with one branch of the first block selected, two levels deep. */

@@ -1,4 +1,5 @@
 export { findDescendants } from './find-descendant'
+export { findDescendantsOfEach } from './find-descendants-of-each'
 export type {
 	Collect,
 	CollectArrayEntry,

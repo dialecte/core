@@ -15,13 +15,12 @@
 			"records.getMany": 192
 		},
 		"findDescendants under each scope root": {
-			"count": 16,
-			"get": 7696,
-			"getByDocumentId": 16,
-			"getByTagName": 16,
-			"records.get": 7696,
-			"records.getByDocumentId": 131024,
-			"records.getByTagName": 8192
+			"getMany": 96,
+			"records.getMany": 1008
+		},
+		"findDescendantsOfEach over the scope roots": {
+			"getMany": 5,
+			"records.getMany": 992
 		},
 		"getTree with a narrow select": {
 			"getByDocumentId": 1,

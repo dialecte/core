@@ -6,7 +6,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { Collect, FindDescendantsParams } from './find-descendant.types'
-import type { Ref } from '@/document'
+import type { Document, Query, Ref, Transaction } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { ElementsOf } from '@/types'
 
@@ -58,10 +58,10 @@ function deepA(params: { aaa1: 'v' | 'skip' } = { aaa1: 'v' }): string {
 }
 
 /**
- * How many store reads a collect costs. The climb up the parent chain is kept for a few
- * candidates (each ancestor read once), and gives way to ONE whole-document read once it has
- * cost more than that read would: a collect never issues one `store.get` per ancestor step
- * per candidate. Each case runs one way or the other, and the result is the same either way.
+ * How many store reads a collect costs. A flat collect under a scope that is not the document root reads
+ * top-down, one store read per level (no by-id read, no whole-document read); under the document root it is the
+ * tag read alone. A path collect fetches level by level and gives way to ONE whole-document read once that has
+ * cost more than the read would. The result is the same either way.
  */
 describe('findDescendants - store reads', () => {
 	type TestCase = BaseXmlTestCase & {
@@ -78,67 +78,54 @@ describe('findDescendants - store reads', () => {
 		documentReads: number
 		/** Upper bound on the by-id reads (`store.get`) the collect may issue. */
 		recordReadsAtMost: number
-		/**
-		 * Run the collect inside a transaction after these staged, uncommitted writes: a record
-		 * of the last collected tag created under `createUnder` (the collect must return it,
-		 * marked `created`), `delete` deleted, `update` updated.
-		 */
-		stage?: {
-			createUnder?: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
-			delete?: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
-			update?: {
-				ref: Ref<TestDialecteConfig, ElementsOf<TestDialecteConfig>>
-				attributes: Record<string, string>
-			}
-		}
 	}
 
 	const testCases: Record<string, TestCase> = {
-		'300 candidates one level under the root → one document read, no climb per candidate': {
-			sourceXml: wideA(300),
-			ref: { tagName: 'A', id: 'a1' },
-			options: { collect: 'AAA_1' },
-			expectedCounts: { AAA_1: 300 },
-			documentReads: 1,
-			recordReadsAtMost: READS_UP_TO_THE_SWITCH,
-		},
-		'4 candidates three levels under a deep root → climbs, no document read, shared ancestors read once':
+		'a flat collect of 300 under a non-root scope → read top-down: no by-id read, no document read':
+			{
+				sourceXml: wideA(300),
+				ref: { tagName: 'A', id: 'a1' },
+				options: { collect: 'AAA_1' },
+				expectedCounts: { AAA_1: 300 },
+				documentReads: 0,
+				recordReadsAtMost: 0,
+			},
+		'4 candidates three levels under a deep scope → read top-down: no by-id read, no document read':
 			{
 				sourceXml: deepA(),
 				ref: { tagName: 'A', id: 'a1' },
 				options: { collect: 'AAAA_1' },
 				expectedCounts: { AAAA_1: 4 },
 				documentReads: 0,
-				// the root, then one read per distinct ancestor between root and candidates: aaa1, aaa2, aa1
-				recordReadsAtMost: 4,
+				recordReadsAtMost: 0,
 			},
-		'omit with where on the path, 300 candidates → the document read honours it': {
+		'omit with where on the path, 300 candidates → the walk honours it': {
 			sourceXml: wideA(300),
 			ref: { tagName: 'A', id: 'a1' },
 			options: { collect: 'AAA_1', omit: [{ AA_1: { where: { aAA_1: 'skip' } } }] },
 			expectedCounts: { AAA_1: 150 },
 			expectedIds: { present: ['aaa1', 'aaa299'], absent: ['aaa2', 'aaa300'] },
-			documentReads: 1,
-			recordReadsAtMost: READS_UP_TO_THE_SWITCH,
+			documentReads: 0,
+			recordReadsAtMost: 0,
 		},
-		'omit with where on the path, 4 candidates → the climb honours it': {
+		'omit with where on the path, 4 candidates → the walk honours it': {
 			sourceXml: deepA({ aaa1: 'skip' }),
 			ref: { tagName: 'A', id: 'a1' },
 			options: { collect: 'AAAA_1', omit: [{ AAA_1: { where: { aAAA_1: 'skip' } } }] },
 			expectedCounts: { AAAA_1: 2 },
 			expectedIds: { present: ['aaaa3', 'aaaa4'], absent: ['aaaa1', 'aaaa2'] },
 			documentReads: 0,
-			recordReadsAtMost: 4,
+			recordReadsAtMost: 0,
 		},
-		'unconditional omit of the tag between root and candidates, 300 candidates → none': {
-			sourceXml: wideA(300),
-			ref: { tagName: 'A', id: 'a1' },
-			options: { collect: 'AAA_1', omit: ['AA_1'] },
-			expectedCounts: { AAA_1: 0 },
-			// decided on the parent refs alone: no climb, no document read
-			documentReads: 0,
-			recordReadsAtMost: 1,
-		},
+		'unconditional omit of the tag between scope and candidates, 300 candidates → none, nothing read below the scope':
+			{
+				sourceXml: wideA(300),
+				ref: { tagName: 'A', id: 'a1' },
+				options: { collect: 'AAA_1', omit: ['AA_1'] },
+				expectedCounts: { AAA_1: 0 },
+				documentReads: 0,
+				recordReadsAtMost: 0,
+			},
 		'document root, no omit, 300 candidates → the tag read alone, nothing climbed': {
 			sourceXml: wideA(300),
 			ref: { tagName: 'Root', id: 'root' },
@@ -165,111 +152,152 @@ describe('findDescendants - store reads', () => {
 			// the root, aa1, aaa1, aaa2 and the 4 leaves
 			recordReadsAtMost: 8,
 		},
-		'staged create and delete, 300 candidates, document read in use → created found, deleted gone':
-			{
+	}
+
+	type Collected = {
+		result: Record<string, { id: string; status: string }[]>
+		report: Record<string, { count?: number }>
+	}
+
+	async function collect(params: {
+		document: Document<TestDialecteConfig>
+		query: Query<TestDialecteConfig>
+		testCase: TestCase
+	}): Promise<Collected> {
+		const { document, query, testCase } = params
+		document.perf.reset()
+		const result = (await query.findDescendants(
+			testCase.ref,
+			testCase.options,
+		)) as Collected['result']
+		return { result, report: document.perf.report() }
+	}
+
+	/** The collect's answer and reads against the case, `created` of its records marked created. */
+	function assertCollected(params: {
+		collected: Collected
+		testCase: TestCase
+		created: number
+	}): void {
+		const { collected, testCase, created } = params
+		const { result, report } = collected
+		for (const [tagName, count] of Object.entries(testCase.expectedCounts)) {
+			expect(result[tagName] ?? [], `expected ${tagName} count`).toHaveLength(count)
+		}
+		const records = Object.values(result).flat()
+		const ids = new Set(records.map(({ id }) => id))
+		for (const id of testCase.expectedIds?.present ?? []) {
+			expect(ids.has(id), `${id} collected`).toBe(true)
+		}
+		for (const id of testCase.expectedIds?.absent ?? []) {
+			expect(ids.has(id), `${id} not collected`).toBe(false)
+		}
+		expect(
+			records.filter(({ status }) => status === 'created'),
+			'the staged records',
+		).toHaveLength(created)
+		expect(report['core::store::getByDocumentId']?.count ?? 0, 'document reads').toBe(
+			testCase.documentReads,
+		)
+		expect(report['core::store::get']?.count ?? 0, 'by-id reads').toBeLessThanOrEqual(
+			testCase.recordReadsAtMost,
+		)
+	}
+
+	describe('committed records', () => {
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			const collected = await collect({ document: source, query: source.query, testCase })
+			assertCollected({ collected, testCase, created: 0 })
+		}
+
+		runTestCases.withoutExport({ testCases, act, dev: { perf: true } })
+	})
+
+	/** The collect runs inside a transaction after the case's staged, uncommitted writes. */
+	describe('staged records', () => {
+		type StagedCase = TestCase & {
+			stage: (tx: Transaction<TestDialecteConfig>) => Promise<void>
+			/** How many of the collected records the stage created. */
+			created: number
+		}
+
+		const stagedCases: Record<string, StagedCase> = {
+			'staged create and delete, 300 candidates → created found, deleted gone': {
 				sourceXml: wideA(300),
 				ref: { tagName: 'A', id: 'a1' },
 				options: { collect: 'AAA_1' },
-				stage: {
-					createUnder: { tagName: 'AA_1', id: 'aa1' },
-					delete: { tagName: 'AAA_1', id: 'aaa2' },
+				stage: async (tx) => {
+					await tx.addChild(
+						{ tagName: 'AA_1', id: 'aa1' },
+						{ tagName: 'AAA_1', attributes: { aAAA_1: 'v' } },
+					)
+					await tx.delete({ tagName: 'AAA_1', id: 'aaa2' })
 				},
+				created: 1,
 				expectedCounts: { AAA_1: 300 },
 				expectedIds: { present: ['aaa1', 'aaa3'], absent: ['aaa2'] },
-				documentReads: 1,
-				recordReadsAtMost: READS_UP_TO_THE_SWITCH,
+				documentReads: 0,
+				recordReadsAtMost: 0,
 			},
-		'staged create and delete, 4 candidates, climbing → created found, deleted gone': {
-			sourceXml: deepA(),
-			ref: { tagName: 'A', id: 'a1' },
-			options: { collect: 'AAAA_1' },
-			stage: {
-				createUnder: { tagName: 'AAA_1', id: 'aaa1' },
-				delete: { tagName: 'AAAA_1', id: 'aaaa4' },
+			'staged create and delete, 4 candidates → created found, deleted gone': {
+				sourceXml: deepA(),
+				ref: { tagName: 'A', id: 'a1' },
+				options: { collect: 'AAAA_1' },
+				stage: async (tx) => {
+					await tx.addChild(
+						{ tagName: 'AAA_1', id: 'aaa1' },
+						{ tagName: 'AAAA_1', attributes: { aAAAA_1: 'v' } },
+					)
+					await tx.delete({ tagName: 'AAAA_1', id: 'aaaa4' })
+				},
+				created: 1,
+				expectedCounts: { AAAA_1: 4 },
+				expectedIds: { present: ['aaaa1', 'aaaa2', 'aaaa3'], absent: ['aaaa4'] },
+				documentReads: 0,
+				recordReadsAtMost: 0,
 			},
-			expectedCounts: { AAAA_1: 4 },
-			expectedIds: { present: ['aaaa1', 'aaaa2', 'aaaa3'], absent: ['aaaa4'] },
-			documentReads: 0,
-			recordReadsAtMost: 4,
-		},
-		// aa299 is read after the switch (custom ids come in key order: aaa1, aaa10, aaa100...), so
-		// only the staged overlay of the document read can tell it is now omitted
-		'staged update makes an ancestor omitted, 300 candidates → the document read sees it': {
-			sourceXml: wideA(300),
-			ref: { tagName: 'A', id: 'a1' },
-			options: { collect: 'AAA_1', omit: [{ AA_1: { where: { aAA_1: 'skip' } } }] },
-			stage: { update: { ref: { tagName: 'AA_1', id: 'aa299' }, attributes: { aAA_1: 'skip' } } },
-			expectedCounts: { AAA_1: 149 },
-			expectedIds: { present: ['aaa1', 'aaa297'], absent: ['aaa299'] },
-			documentReads: 1,
-			recordReadsAtMost: READS_UP_TO_THE_SWITCH,
-		},
-		'staged update makes an ancestor omitted, 4 candidates → the climb sees it': {
-			sourceXml: deepA(),
-			ref: { tagName: 'A', id: 'a1' },
-			options: { collect: 'AAAA_1', omit: [{ AAA_1: { where: { aAAA_1: 'skip' } } }] },
-			stage: { update: { ref: { tagName: 'AAA_1', id: 'aaa1' }, attributes: { aAAA_1: 'skip' } } },
-			expectedCounts: { AAAA_1: 2 },
-			expectedIds: { present: ['aaaa3', 'aaaa4'], absent: ['aaaa1', 'aaaa2'] },
-			documentReads: 0,
-			recordReadsAtMost: 4,
-		},
-	}
-
-	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
-		const collectedTag = Object.keys(testCase.expectedCounts).at(
-			-1,
-		) as ElementsOf<TestDialecteConfig>
-
-		async function collectAndAssert(query: typeof source.query): Promise<void> {
-			source.perf.reset()
-			const result = (await query.findDescendants(testCase.ref, testCase.options)) as Record<
-				string,
-				{ id: string; status: string }[]
-			>
-			for (const [tagName, count] of Object.entries(testCase.expectedCounts)) {
-				expect(result[tagName] ?? [], `expected ${tagName} count`).toHaveLength(count)
-			}
-			const ids = new Set(Object.values(result).flatMap((group) => group.map(({ id }) => id)))
-			for (const id of testCase.expectedIds?.present ?? []) {
-				expect(ids.has(id), `${id} collected`).toBe(true)
-			}
-			for (const id of testCase.expectedIds?.absent ?? []) {
-				expect(ids.has(id), `${id} not collected`).toBe(false)
-			}
-			if (testCase.stage?.createUnder) {
-				expect(
-					(result[collectedTag] ?? []).filter(({ status }) => status === 'created'),
-					'the staged record',
-				).toHaveLength(1)
-			}
-			const report = source.perf.report()
-			expect(report['core::store::getByDocumentId']?.count ?? 0, 'document reads').toBe(
-				testCase.documentReads,
-			)
-			expect(report['core::store::get']?.count ?? 0, 'by-id reads').toBeLessThanOrEqual(
-				testCase.recordReadsAtMost,
-			)
+			'staged update makes an ancestor omitted, 300 candidates → the walk sees it': {
+				sourceXml: wideA(300),
+				ref: { tagName: 'A', id: 'a1' },
+				options: { collect: 'AAA_1', omit: [{ AA_1: { where: { aAA_1: 'skip' } } }] },
+				stage: async (tx) => {
+					await tx.update({ tagName: 'AA_1', id: 'aa299' }, { attributes: { aAA_1: 'skip' } })
+				},
+				created: 0,
+				expectedCounts: { AAA_1: 149 },
+				expectedIds: { present: ['aaa1', 'aaa297'], absent: ['aaa299'] },
+				documentReads: 0,
+				recordReadsAtMost: 0,
+			},
+			'staged update makes an ancestor omitted, 4 candidates → the walk sees it': {
+				sourceXml: deepA(),
+				ref: { tagName: 'A', id: 'a1' },
+				options: { collect: 'AAAA_1', omit: [{ AAA_1: { where: { aAAA_1: 'skip' } } }] },
+				stage: async (tx) => {
+					await tx.update({ tagName: 'AAA_1', id: 'aaa1' }, { attributes: { aAAA_1: 'skip' } })
+				},
+				created: 0,
+				expectedCounts: { AAAA_1: 2 },
+				expectedIds: { present: ['aaaa3', 'aaaa4'], absent: ['aaaa1', 'aaaa2'] },
+				documentReads: 0,
+				recordReadsAtMost: 0,
+			},
 		}
 
-		const { stage } = testCase
-		if (!stage) {
-			await collectAndAssert(source.query)
-			return
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, StagedCase>): Promise<void> {
+			const collected = await source.transaction(async (tx) => {
+				await testCase.stage(tx)
+				return collect({ document: source, query: tx, testCase })
+			})
+			assertCollected({ collected, testCase, created: testCase.created })
 		}
-		await source.transaction(async (tx) => {
-			if (stage.createUnder) {
-				await tx.addChild(
-					stage.createUnder as never,
-					{ tagName: collectedTag, attributes: { [`a${collectedTag}`]: 'v' } } as never,
-				)
-			}
-			if (stage.delete) await tx.delete(stage.delete as never)
-			if (stage.update)
-				await tx.update(stage.update.ref as never, { attributes: stage.update.attributes } as never)
-			await collectAndAssert(tx as unknown as typeof source.query)
-		})
-	}
 
-	runTestCases.withoutExport({ testCases, act, dev: { perf: true } })
+		runTestCases.withoutExport({ testCases: stagedCases, act, dev: { perf: true } })
+	})
 })
