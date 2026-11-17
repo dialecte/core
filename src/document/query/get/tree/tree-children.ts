@@ -38,9 +38,9 @@ export function childRefsToRead<GenericConfig extends AnyDialecteConfig>(params:
 }): RecordLink[] {
 	const { record, select, shaping } = params
 	if (!record.children?.length) return []
-	const selectKeys = select ? selectKeysOf({ record, select, shaping }) : undefined
+	const selectKeys = select ? selectKeysOf<GenericConfig>({ record, select, shaping }) : undefined
 	return record.children.filter((childRef) =>
-		isReadable({ tagName: childRef.tagName, selectKeys, shaping }),
+		isReadable<GenericConfig>({ tagName: childRef.tagName, selectKeys, shaping }),
 	)
 }
 
@@ -60,7 +60,7 @@ export function keptChildren<GenericConfig extends AnyDialecteConfig>(params: {
 	const nonOmitted = children.filter(
 		(child) => !isOmitted({ record: child, compiledOmit: shaping.compiledOmit }),
 	)
-	return resolveChildSelect({
+	return resolveChildSelect<GenericConfig>({
 		filterConfig: shaping.compiledOmit.dialecteConfig,
 		children: nonOmitted,
 		select,
@@ -134,14 +134,24 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 
 		// Auto-recursion: child has same tagName as parent and is self-recursive per config
 		if (entry === undefined && child.tagName === record.tagName) {
-			const resolved = resolveAutoRecursion({ child, select, dialecteConfig, filterConfig })
+			const resolved = resolveAutoRecursion<GenericConfig>({
+				child,
+				select,
+				dialecteConfig,
+				filterConfig,
+			})
 			if (resolved) return [resolved]
 		}
 
 		if (entry === undefined || entry === false) return []
 		if (entry === true) return [{ record: child, select: undefined }]
 
-		const resolved = resolveNestedSelect({ child, entry, parentRecord: record, filterConfig })
+		const resolved = resolveNestedSelect<GenericConfig>({
+			child,
+			entry,
+			parentRecord: record,
+			filterConfig,
+		})
 		return resolved ? [resolved] : []
 	})
 }

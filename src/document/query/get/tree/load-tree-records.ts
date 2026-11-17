@@ -40,7 +40,7 @@ export async function loadTreeRecords<
 	const prunes =
 		select !== undefined || depth !== undefined || shaping.compiledOmit.unconditional.size > 0
 	if (!prunes) {
-		const recordsById = await loadLiveRecords(context)
+		const recordsById = await loadLiveRecords<GenericConfig>(context)
 		return { root: rootIn({ recordsById, ref }), recordsById }
 	}
 
@@ -52,7 +52,7 @@ export async function loadTreeRecords<
 		select,
 		remainingDepth: depth ?? Number.POSITIVE_INFINITY,
 	}
-	const recordsById = await readLevels({
+	const recordsById = await readLevels<GenericConfig>({
 		context,
 		frontier: [rootNode],
 		known: new Map([[root.id, rootNode.record]]),
@@ -70,7 +70,7 @@ async function readRoot<
 	ref: Ref<GenericConfig, GenericElement>
 }): Promise<TrackedRecord<GenericConfig, GenericElement> | undefined> {
 	try {
-		return await getRecord(params)
+		return await getRecord<GenericConfig, GenericElement>(params)
 	} catch (error) {
 		if (toDialecteError(error)?.key === 'ELEMENT_TAGNAME_MISMATCH') return undefined
 		throw error
@@ -87,7 +87,7 @@ async function readLevels<GenericConfig extends AnyDialecteConfig>(params: {
 	const { context, frontier, known, shaping } = params
 	const expanding = frontier
 		.filter((node) =>
-			expandsChildren({
+			expandsChildren<GenericConfig>({
 				record: node.record,
 				remainingDepth: node.remainingDepth,
 				compiledOmit: shaping.compiledOmit,
@@ -95,15 +95,15 @@ async function readLevels<GenericConfig extends AnyDialecteConfig>(params: {
 		)
 		.map((node) => ({
 			node,
-			links: childRefsToRead({ record: node.record, select: node.select, shaping }),
+			links: childRefsToRead<GenericConfig>({ record: node.record, select: node.select, shaping }),
 		}))
 	const links = expanding.flatMap((entry) => entry.links)
 	if (links.length === 0) return known
 
-	const found = await readUnknownRecords({ context, links, known })
+	const found = await readUnknownRecords<GenericConfig>({ context, links, known })
 	const nextKnown: KnownRecords<GenericConfig> = new Map([...known, ...found])
 	const nextFrontier = expanding.flatMap(({ node, links: nodeLinks }) =>
-		keptChildren({
+		keptChildren<GenericConfig>({
 			record: node.record,
 			children: nodeLinks.flatMap((link) => {
 				const child = nextKnown.get(link.id)
@@ -113,7 +113,7 @@ async function readLevels<GenericConfig extends AnyDialecteConfig>(params: {
 			shaping,
 		}).map((kept) => ({ ...kept, remainingDepth: node.remainingDepth - 1 })),
 	)
-	return readLevels({ context, frontier: nextFrontier, known: nextKnown, shaping })
+	return readLevels<GenericConfig>({ context, frontier: nextFrontier, known: nextKnown, shaping })
 }
 
 /** The requested root in a whole-document read: by id, or the first record of its tag for a singleton. */

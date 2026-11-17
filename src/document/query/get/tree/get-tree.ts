@@ -44,13 +44,19 @@ export async function getTree<
 		transparentElements,
 	}
 
-	const { root, recordsById } = await loadTreeRecords({ context, ref, select, depth, shaping })
+	const { root, recordsById } = await loadTreeRecords<GenericConfig, GenericElement>({
+		context,
+		ref,
+		select,
+		depth,
+		shaping,
+	})
 	invariant(root, {
 		detail: 'No record found for provided ref',
 		key: 'ELEMENT_NOT_FOUND',
 	})
 
-	const tree = buildNode({
+	const tree = buildNode<GenericConfig>({
 		recordsById,
 		record: root as TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>,
 		select,
@@ -86,22 +92,27 @@ function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 	const { recordsById, record, select, shaping, remainingDepth } = params
 
 	// Stop at the depth boundary (keep the node, drop its subtree) or an omit scope=children match.
-	if (!expandsChildren({ record, remainingDepth, compiledOmit: shaping.compiledOmit })) {
+	if (
+		!expandsChildren<GenericConfig>({ record, remainingDepth, compiledOmit: shaping.compiledOmit })
+	) {
 		return toTreeRecord({ record })
 	}
 
-	const children = childRefsToRead({ record, select, shaping }).flatMap((childRef) => {
-		const child = recordsById.get(childRef.id)
-		return child ? [child] : []
-	})
-	const childTrees = keptChildren({ record, children, select, shaping }).map((kept) =>
-		buildNode({
-			recordsById,
-			record: kept.record,
-			select: kept.select,
-			shaping,
-			remainingDepth: remainingDepth - 1,
-		}),
+	const children = childRefsToRead<GenericConfig>({ record, select, shaping }).flatMap(
+		(childRef) => {
+			const child = recordsById.get(childRef.id)
+			return child ? [child] : []
+		},
+	)
+	const childTrees = keptChildren<GenericConfig>({ record, children, select, shaping }).map(
+		(kept) =>
+			buildNode<GenericConfig>({
+				recordsById,
+				record: kept.record,
+				select: kept.select,
+				shaping,
+				remainingDepth: remainingDepth - 1,
+			}),
 	)
 
 	return toTreeRecord({ record, tree: childTrees })
