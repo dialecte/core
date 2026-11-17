@@ -1199,7 +1199,7 @@
 				"find the enclosing element of a tag",
 				"build a path from the root"
 			],
-			"declaredAt": "src/document/query/main.ts:481",
+			"declaredAt": "src/document/query/main.ts:484",
 			"example": "const ancestors = await query.findAncestors(aa1)\n// [A, Root]"
 		},
 		{
@@ -1213,7 +1213,7 @@
 				"build paths for a list of elements",
 				"group elements by an ancestor"
 			],
-			"declaredAt": "src/document/query/main.ts:506",
+			"declaredAt": "src/document/query/main.ts:509",
 			"example": "const [ofAaa1, ofBbb1] = await query.findAncestorsOfEach([aaa1, bbb1], { order: 'top-down' })\n// [[Root, A, AA_1], [Root, B, BB_1]]"
 		},
 		{
@@ -1228,7 +1228,7 @@
 				"filter one tag's elements by attribute",
 				"look up many elements by a list of values in one call"
 			],
-			"declaredAt": "src/document/query/main.ts:717",
+			"declaredAt": "src/document/query/main.ts:720",
 			"example": "const records = await query.findByAttributes({\n  tagName: 'A',\n  attributes: { aA: 'val' },\n})"
 		},
 		{
@@ -1241,7 +1241,7 @@
 				"collect descendants of given tag names under an element",
 				"find nested elements at any depth below a scope"
 			],
-			"declaredAt": "src/document/query/main.ts:391",
+			"declaredAt": "src/document/query/main.ts:394",
 			"example": "// All descendants\nconst all = await query.findDescendants(a)\n// Specific collect\nconst { AA_1 } = await query.findDescendants(a, { collect: 'AA_1' })"
 		},
 		{
@@ -1251,7 +1251,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericCollect extends Collect<GenericConfig, GenericElement>>(refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>, options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>) => Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>[]>",
 			"summary": "What `findDescendants` answers for each element given, in one walk: a record given used as given, the refs in one store read, then one read per level over every element's subtree at once.",
 			"intents": ["collect descendants under many scope elements at once"],
-			"declaredAt": "src/document/query/main.ts:451",
+			"declaredAt": "src/document/query/main.ts:454",
 			"example": "const [underA1, underB1] = await query.findDescendantsOfEach([a1, b1], { collect: 'AAA_1' })"
 		},
 		{
@@ -1266,7 +1266,7 @@
 				"read a namespaced attribute",
 				"read an attribute with its schema default"
 			],
-			"declaredAt": "src/document/query/main.ts:590",
+			"declaredAt": "src/document/query/main.ts:593",
 			"example": "const val = await query.getAttribute(a, { name: 'aA' })\nconst cA = await query.getAttribute(a, { name: 'cA', namespace: 'ext' })"
 		},
 		{
@@ -1281,7 +1281,7 @@
 				"destructure several attributes at once",
 				"read attributes of one namespace"
 			],
-			"declaredAt": "src/document/query/main.ts:640",
+			"declaredAt": "src/document/query/main.ts:643",
 			"example": "const { aA, 'ext:cA': cA } = await query.getAttributes(a)"
 		},
 		{
@@ -1291,7 +1291,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement> | undefined>",
 			"summary": "Get the first direct child of an element matching a given tag name; it looks one level down only.",
 			"intents": ["get one direct child by tag name", "check whether a child exists"],
-			"declaredAt": "src/document/query/main.ts:279",
+			"declaredAt": "src/document/query/main.ts:282",
 			"example": "const aa1 = await query.getChild(a, 'AA_1')"
 		},
 		{
@@ -1301,7 +1301,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement>[]>",
 			"summary": "Get all direct children of an element matching a given tag name; it looks one level down only, no recursion.",
 			"intents": ["list direct children of one tag name", "iterate one level below an element"],
-			"declaredAt": "src/document/query/main.ts:304",
+			"declaredAt": "src/document/query/main.ts:307",
 			"example": "const children = await query.getChildren(a, 'AA_1')"
 		},
 		{
@@ -1314,7 +1314,7 @@
 				"read the children of many elements at once",
 				"the children of each of many parents"
 			],
-			"declaredAt": "src/document/query/main.ts:331",
+			"declaredAt": "src/document/query/main.ts:334",
 			"example": "const [ofA1, ofA2] = await query.getChildrenOfEach([a1, a2], { tagName: 'AA_1' })"
 		},
 		{
@@ -1328,7 +1328,7 @@
 				"list allowed attributes or enumeration values",
 				"know what an xsi:type lets an element hold"
 			],
-			"declaredAt": "src/document/query/main.ts:239",
+			"declaredAt": "src/document/query/main.ts:242",
 			"example": "const definition = await query.getDefinition(p)\ndefinition?.attributes.details.type?.type?.facets?.enumeration // as declared under p's parent"
 		},
 		{
@@ -1342,7 +1342,7 @@
 				"get document metadata",
 				"find which config a document uses"
 			],
-			"declaredAt": "src/document/query/main.ts:166",
+			"declaredAt": "src/document/query/main.ts:169",
 			"example": "const { name, extension } = await query.getDocumentInfo()"
 		},
 		{
@@ -1356,7 +1356,7 @@
 				"resolve a ref or parent/child relationship to its record",
 				"refresh a record"
 			],
-			"declaredAt": "src/document/query/main.ts:218",
+			"declaredAt": "src/document/query/main.ts:221",
 			"example": "const a = await query.getRecord({ tagName: 'A', id: knownId })"
 		},
 		{
@@ -1369,7 +1369,7 @@
 				"load several elements by ref at once",
 				"resolve a list of children or relationships in one batched read"
 			],
-			"declaredAt": "src/document/query/main.ts:258",
+			"declaredAt": "src/document/query/main.ts:261",
 			"example": "const [a1, a2] = await query.getRecords([ref1, ref2])"
 		},
 		{
@@ -1382,7 +1382,7 @@
 				"list every element of a tag in the whole document",
 				"scan all elements of one type regardless of position"
 			],
-			"declaredAt": "src/document/query/main.ts:355",
+			"declaredAt": "src/document/query/main.ts:358",
 			"example": "const records = await query.getRecordsByTagName('A')"
 		},
 		{
@@ -1392,7 +1392,7 @@
 			"signature": "() => Promise<TrackedRecord<GenericConfig, RootElementOf<GenericConfig>>>",
 			"summary": "Get the root element of the document.",
 			"intents": ["get the root element", "start a walk from the top of the document"],
-			"declaredAt": "src/document/query/main.ts:189",
+			"declaredAt": "src/document/query/main.ts:192",
 			"example": "const root = await query.getRoot()"
 		},
 		{
@@ -1406,7 +1406,7 @@
 				"read staged changes as XML or as a tree",
 				"show what a prepared transaction would produce"
 			],
-			"declaredAt": "src/document/query/main.ts:556",
+			"declaredAt": "src/document/query/main.ts:559",
 			"example": "const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))\nconst { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })"
 		},
 		{
@@ -1421,7 +1421,7 @@
 				"project a filtered tree with select or omit",
 				"read a subtree to copy it with deepClone"
 			],
-			"declaredAt": "src/document/query/main.ts:528",
+			"declaredAt": "src/document/query/main.ts:531",
 			"example": "const tree = await query.getTree(a)"
 		},
 		{

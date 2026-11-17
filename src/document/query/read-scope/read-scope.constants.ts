@@ -42,6 +42,9 @@ export const READ_SCOPE_VOIDING_MESSAGES: ReadonlySet<string> = new Set([
 	'document-imported',
 ])
 
+// The two registries below are filled at run time, not constants; they live here because a module-level value of the
+// query layer has its place in a constants file. Held weakly: a query let go takes its scope with it.
+
 /** The wiring each Query a Document built carries, and each scoped child of it. */
 export const READ_SCOPE_WIRINGS = new WeakMap<object, ReadScopeWiring>()
 

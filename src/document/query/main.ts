@@ -100,6 +100,9 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 
 	//== Untyped namespace
 
+	// `any.*` and `validate.*` open no read scope of their own: called on a query outside a verb call they read the
+	// store as before; called inside one (on its scoped query) they read through that call's scope.
+
 	get any(): AnyQuery<GenericConfig> {
 		// built per instance: a scoped child of this query reads through its own scope
 		if (!Object.hasOwn(this, '_any') || !this._any) {

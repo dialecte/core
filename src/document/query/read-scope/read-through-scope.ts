@@ -8,6 +8,7 @@ import type {
 	ReadScope,
 	ScopedReadValue,
 	StoreVersion,
+	VersionedAnswer,
 	VersionedRead,
 	VersionedStore,
 } from './read-scope.types'
@@ -16,10 +17,19 @@ import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 /**
  * One store read of the query layer, through the read scope of the call it runs in. Outside a scope (a transaction,
  * a query no Document wired, a store without `readVersioned`, a scope whose call settled) the store answers as it
- * always did. In a scope, what the call read before is answered again as copies; the rest is read with the store's
- * version and kept. A moved read epoch (a write the Project made or folded) or another version drops what the scope
- * held; an answer that comes back after the epoch moved is returned and not kept. Counts `core::store::<member>` and
- * its records moved per store call, `core::query::readScope.hit` per answer the scope gave.
+ * always did.
+ *
+ * In a scope, a call sees a snapshot of what it already read until a miss or a told change: what it read before is
+ * answered again as copies, the rest is read with the store's version and kept. A told change (the read epoch moved:
+ * a write the Project made or folded in) empties the scope; a miss answered at another version than the scope's
+ * resets it to that answer (a newer count, or another engine), while an older answer is returned and not kept, as is
+ * an answer that comes back after the epoch moved. A list read partly from the scope is never mixed with a later
+ * moment: it is read again whole. Counts `core::store::<member>` and its records moved per store call,
+ * `core::query::readScope.hit` per answer the scope gave.
+ *
+ * `findDescendants` keeps its own per-call record memo (`createRecordSource`) while a built-in store answers no
+ * versioned reads (the local IndexedDB store opens no scope); it goes once every built-in store answers
+ * `readVersioned`, this scope then answering the repeats.
  *
  * @internal the one reader behind every store read of the query layer
  */
@@ -124,9 +134,14 @@ function listAnswer(params: { scope: ReadScope; ids: string[] }): {
 }
 
 /**
- * The store read for what the scope lacks (a by-id list: its ids not held), kept unless the epoch moved meanwhile.
- * Another version than the scope's drops what it held first; a list answered partly from what was dropped is read
- * again whole, so one answer never mixes two versions.
+ * The store read for what the scope lacks (a by-id list: its ids not held), kept when it is of the scope's moment:
+ * - the epoch moved or the call settled while it was read: returned, not kept (a list answered partly from the scope
+ *   is read again whole, so it never holds records the move emptied);
+ * - an older version than the scope's (the same engine, a lower count): returned, not kept (a partial list read again
+ *   whole);
+ * - a newer version, or another engine's: what the scope held is dropped and the answer kept (a partial list read
+ *   again whole first);
+ * - the scope reset by another read meanwhile, to this answer's version: a partial list read again whole.
  */
 // dialecte-allow argument-mutation: the scope is the call's own state, filled by its reads
 async function readAndKeep(params: {
@@ -138,23 +153,41 @@ async function readAndKeep(params: {
 }): Promise<ScopedReadValue> {
 	const { context, scope, store, read, heldIds } = params
 	const epoch = scope.epoch
+	const versionAtStart = scope.version
 	const asked = askedRead({ read, heldIds })
-	context.perf.count(`core::store::${STORE_READ_TALLY[asked.member]}`)
-	const answer = await store.readVersioned({ documentId: scope.documentId, read: asked })
-	const value = answer.value
-	tallyRecords({ context, read: asked, value })
+	const partial = asked !== read
+	const answer = await askStore({ context, scope, store, read: asked })
 
-	if (scope.closed || scope.epochOf() !== epoch) {
-		return asked === read ? value : mergedById({ scope, read, asked, value })
+	const moved = scope.closed || scope.epochOf() !== epoch
+	const order = versionOrder({ held: scope.version, answered: answer.version })
+	if (moved || order === 'older') {
+		if (!partial) return answer.value
+		const whole = await askStore({ context, scope, store, read })
+		return whole.value
 	}
-	if (!sameVersion({ held: scope.version, answered: answer.version })) {
-		const mixed = heldIds.size > 0
+	if (order === 'newer') {
 		dropHeld({ scope })
 		scope.version = answer.version
-		if (mixed) return readAndKeep({ ...params, heldIds: new Set() })
+		if (partial) return readAndKeep({ ...params, heldIds: new Set() })
+	} else if (partial && scope.version !== versionAtStart) {
+		return readAndKeep({ ...params, heldIds: new Set() })
 	}
-	keepAnswer({ scope, read: asked, value })
+	keepAnswer({ scope, read: asked, value: answer.value })
 	return heldAnswer({ scope, read }).value
+}
+
+/** One versioned read of the store, counted. */
+async function askStore(params: {
+	context: Context<AnyDialecteConfig>
+	scope: ReadScope
+	store: VersionedStore
+	read: VersionedRead
+}): Promise<VersionedAnswer> {
+	const { context, scope, store, read } = params
+	context.perf.count(`core::store::${STORE_READ_TALLY[read.member]}`)
+	const answer = await store.readVersioned({ documentId: scope.documentId, read })
+	tallyRecords({ context, read, value: answer.value })
+	return answer
 }
 
 /** The read asked of the store: a by-id list without the ids held. */
@@ -164,21 +197,6 @@ function askedRead(params: { read: VersionedRead; heldIds: ReadonlySet<string> }
 	const [ids, documentId] = read.args
 	const missing = [...new Set(ids.filter((id) => !heldIds.has(id)))]
 	return { member: 'getMany', args: [missing, documentId] }
-}
-
-/** A by-id list answered from the held records and the store's answer for the rest, neither kept. */
-function mergedById(params: {
-	scope: ReadScope
-	read: VersionedRead
-	asked: VersionedRead
-	value: ScopedReadValue
-}): ScopedReadValue {
-	const { scope, read, asked, value } = params
-	if (read.member !== 'getMany' || asked.member !== 'getMany') return value
-	const answered = new Map(asked.args[0].map((id, index) => [id, (value as AnyRawRecord[])[index]]))
-	return read.args[0].map((id) =>
-		answered.has(id) ? answered.get(id) : copyOf(scope.records.get(id)),
-	)
 }
 
 /** The store's answer held by the scope, by id and under the read that answered it. */
@@ -223,9 +241,18 @@ function attributeKey(params: {
 	return JSON.stringify([tagName, attributes])
 }
 
-function sameVersion(params: { held: StoreVersion | undefined; answered: StoreVersion }): boolean {
+/**
+ * How an answer's version stands to the scope's: the same moment, newer (a higher count of the same engine, any
+ * count of another engine, or the scope has none yet) or older (a lower count of the same engine).
+ */
+function versionOrder(params: {
+	held: StoreVersion | undefined
+	answered: StoreVersion
+}): 'same' | 'newer' | 'older' {
 	const { held, answered } = params
-	return held !== undefined && held.engineId === answered.engineId && held.count === answered.count
+	if (held === undefined || held.engineId !== answered.engineId) return 'newer'
+	if (answered.count === held.count) return 'same'
+	return answered.count > held.count ? 'newer' : 'older'
 }
 
 /** A record of the scope as a caller gets it: its own copy, so changing it changes neither the scope nor another answer. */
