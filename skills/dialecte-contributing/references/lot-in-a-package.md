@@ -22,6 +22,12 @@ With the fast gate, run `npx dialecte rules` from the package root and fix every
 every warning ([code-rules.md](code-rules.md)). The implement report's `Gates:` line adds
 `rules <n errors, m warnings>`.
 
+**In a CI-first repository** (the cli, core: `.github/workflows/ci.yml` runs on `merge_group`) CI runs the suite,
+the docs build, the type bench and the contrib steps on every push: locally a lot runs only `npm run check` and
+`npx dialecte rules` on its touched files, and Stations 5 and 6 below are replaced by the landing of `dialecte-lot`
+references/ci-first.md (commit on the lot branch through the hook, `lot land <id> --draft`). Station 0's mutation
+switch and Station 2's `rules` still apply.
+
 ## Station 5 - `dialecte contrib` after the full gate
 
 From `@dialecte/cli` 0.3.0, once `gate --full` is green, run `npx dialecte contrib`: `rules` on the files changed

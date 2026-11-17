@@ -2,6 +2,11 @@
 
 # Landing a change: commit-by-lots, human runs it
 
+**This page is the hand-over flow**, for a repository whose main is not CI-first (a dialecte, create). In a
+**CI-first** repository - its `.github/workflows/ci.yml` runs on `merge_group`, main only through the merge queue:
+today the cli and core - none of it applies: the lot commits on its own branch through the hook and lands with
+`npx dialecte lot land <id> --draft` (`dialecte-lot` references/ci-first.md). No lots file, no rehearsal, no merge lot.
+
 The agent prepares; a human reviews and commits. The agent never runs `git commit`, never pushes,
 and never touches a repo's index (`git add`, `git checkout --`, `git stash`) while a hand-over
 script may be waiting or running in the human's terminal.

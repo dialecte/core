@@ -32,6 +32,13 @@ styling) stays under the app's process and never enters the lot. An extension me
 the package's bar (node-tier tests, the JSDoc of every public function, its docs), so that promoting it moves the
 folder and rewrites nothing.
 
+**Which flow lands the lot** is decided first, from the repository: a **CI-first** repository - main only through
+the merge queue, its `.github/workflows/ci.yml` running on `merge_group` (today the cli and core) - lands the lot
+by committing on its branch through the hook and `npx dialecte lot land <id> --draft`; CI runs the suite there, so
+Stations 5 and 6 below become that landing, and no hand-over, rehearsal or merge lot is made:
+[references/ci-first.md](references/ci-first.md). Every other repository lands through the hand-over below. The
+cli does not tell them apart yet (its `next:` names `handover write` in both): the repository decides, not that line.
+
 ## The stations
 
 | #   | Station     | Who                         | Tier                                                        | Reads                                                                                                | Leaves                                                                                                   |
@@ -151,7 +158,8 @@ every new or changed case red then green (or unchanged), the flags and deleted c
 
 **Checks run per step, not at the end of the lot**: the other tests related to the touched files (`vitest
 related` or `--changed <base>`), `check` (its type-check covers the tests) and, in a dialecte package, `dialecte
-rules` on the touched files. The whole suite runs once, at `gate --full`. After any edit of a test (a test-review
+rules` on the touched files. The whole suite runs once, at `gate --full` - in a CI-first repository, in CI
+([references/ci-first.md](references/ci-first.md)). After any edit of a test (a test-review
 return included, a type-only one too), the test station takes `tdd red` again before `tdd green`: a case greened
 over an unproven edit ends up accepted, not proven.
 
@@ -404,6 +412,10 @@ it from a test-first red (it flags `red after green` only when the case already 
 
 ## Station 6 - hand over
 
+**In a CI-first repository this station is the landing** of [references/ci-first.md](references/ci-first.md):
+commit on the lot branch through the hook, `npx dialecte lot land <id> --draft`, report the pull request. Nothing
+below applies there. In a hand-over repository:
+
 Write only the lots file and run
 `npx dialecte handover write <lots.json>`: it writes the hand-over folder and prints its card. Never a
 hand-written script, nor a file per commit. When the repository has a commit hook (`core.hooksPath`),
@@ -531,9 +543,12 @@ given host starts a session, spawns an agent, loads a skill and wakes you: [refe
 - Skip the red step (`tdd red` from the test station), the test review, the review, or the cap.
 - Let the implement station edit a test after its red, or prove a red by breaking the code afterwards.
 - Name a model in a brief or a skill (name the tier), or down-tier a correctness review to save tokens.
-- Commit, push, stage, or merge.
+- Commit, push, stage, or merge - in a hand-over repository. In a CI-first one, commit only on the lot's branch in
+  its worktree, through the hook, and push only through `lot land <id> --draft`; never queue, `lot approve`, mark a
+  pull request ready or merge ([references/ci-first.md](references/ci-first.md)).
 - `git stash` (one stash is shared by every worktree and session) and any git command that writes the index
-  (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`; the one exception is the `git rm` of a review round's throwaway worktree). To compare with the base, read it with
+  (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`; the exceptions: the `git rm` of a review round's throwaway worktree, and in a CI-first repository the `git add` of the lot's own files right before its Station 6 commit and the
+  rebase of its branch after a landing conflict, [references/ci-first.md](references/ci-first.md)). To compare with the base, read it with
   `git show <base>:<file>` or run it in a throwaway worktree; your own tree stays as it is.
 - Edit, move or remove any file under a repository's `.git` folder by hand - a lock, a config, a receipt, a
   worktree's folder - even one your own run left, even when a refusal says "delete it and its lock". A stuck

@@ -24,7 +24,9 @@ load only what their brief names: a skill-eval run compares texts of a skill, so
 configuration names and the grader none, blind to which text produced a run.
 
 **Never, every station**: commit, stage (`git add`), push, merge, `git stash`, `git reset`, `git restore`,
-`git checkout --`, `rm`; nothing outside the worktree the brief names. The brief is the agent's whole context.
+`git checkout --`, `rm`; nothing outside the worktree the brief names. The brief is the agent's whole context. In a
+CI-first repository the commit and the landing of Station 6 are the lot owner's (the implementer playing every
+station, or the orchestrator), never a station agent's ([ci-first.md](ci-first.md)).
 
 ### test-writer
 
