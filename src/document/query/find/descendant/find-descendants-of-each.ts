@@ -12,6 +12,7 @@ import {
 } from './descendant-spec'
 
 import { toRef } from '@/helpers'
+import { compareById } from '@/store/compare-by-id'
 
 import type { KnownRecords, RecordLink } from '../../get/record/known-records.types'
 import type {
@@ -88,10 +89,13 @@ export async function findDescendantsOfEach<
 			}),
 		)
 	}
-	if (walked.length > 0 && collectSpec.mode === 'flat') {
-		await walkTopDown({ context, scopes: walked, collectSpec, omitSpec, answers })
-	}
-	await Promise.all(eachAlone)
+	const walks =
+		collectSpec.mode === 'flat'
+			? distinctScopeWalks({ scopes: walked }).map((scopes) =>
+					walkTopDown({ context, scopes, collectSpec, omitSpec, answers }),
+				)
+			: []
+	await Promise.all([...walks, ...eachAlone])
 
 	return answers.map(
 		(collected) =>
@@ -170,6 +174,32 @@ async function collectAllOfEach<
 // ============================================================================
 
 /**
+ * The scopes split into walks whose scopes have distinct ids. An element given again with other content (a record read
+ * at another time than its ref) walks apart, so each position answers from the record it gave; an element given again
+ * with the same content shares the walk. One walk in the usual call.
+ */
+function distinctScopeWalks<GenericConfig extends AnyDialecteConfig>(params: {
+	scopes: WalkScope<GenericConfig>[]
+}): WalkScope<GenericConfig>[][] {
+	const walks: { scopes: WalkScope<GenericConfig>[]; contentById: Map<string, string> }[] = []
+	for (const scope of params.scopes) {
+		const { id } = scope.record
+		const content = JSON.stringify([scope.record.attributes, scope.record.children])
+		const walk = walks.find(({ contentById }) => {
+			const held = contentById.get(id)
+			return held === undefined || held === content
+		})
+		if (walk) {
+			walk.scopes.push(scope)
+			walk.contentById.set(id, content)
+		} else {
+			walks.push({ scopes: [scope], contentById: new Map([[id, content]]) })
+		}
+	}
+	return walks.map(({ scopes }) => scopes)
+}
+
+/**
  * Reads the subtrees of every scope at once, one `getRecords` per level, and fills each scope's answer. Each
  * record is read once, however many scopes hold it; a scope reached by another scope's walk is linked to it, so
  * what lies under it counts for both.
@@ -183,6 +213,8 @@ async function walkTopDown<GenericConfig extends AnyDialecteConfig>(params: {
 }): Promise<void> {
 	const { context, scopes, collectSpec, omitSpec, answers } = params
 	const targets = targetsByTag({ targets: collectSpec.targets, omitSpec })
+	// every collected tag unconditionally omitted: nothing to read
+	if (targets.size === 0) return
 	const follows = createFollowCheck({
 		dialecteConfig: context.dialecteConfig,
 		collected: new Set(targets.keys()),
@@ -255,10 +287,8 @@ function fillAnswers<GenericConfig extends AnyDialecteConfig>(params: {
 	const scopesAbove = createScopesAbove({ nodes })
 	const handedOut = new Set<string>()
 
-	const sorted = [...nodes.values()].sort((left, right) =>
-		left.record.id < right.record.id ? -1 : left.record.id > right.record.id ? 1 : 0,
-	)
-	for (const { record } of sorted) {
+	const sorted = [...nodes.values()].map(({ record }) => record).sort(compareById)
+	for (const record of sorted) {
 		const filters = targets.get(record.tagName)
 		if (!filters || isOmitted({ record, omitSpec })) continue
 		const matches = filters.some((where) =>

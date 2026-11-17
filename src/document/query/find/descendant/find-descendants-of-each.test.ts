@@ -4,7 +4,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { Collect, FindDescendantsParams } from './find-descendant.types'
-import type { Query, RefOrRecord } from '@/document'
+import type { Document, Query, RefOrRecord } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { ElementsOf } from '@/types'
 
@@ -86,6 +86,44 @@ async function answersOf(params: {
 		seen.add(record)
 	}
 	return { answers: idsOf({ results, sorted: params.sorted }), shared }
+}
+
+/** aa1's AAA_2 through a record of aa1 read before `added` was committed under it, and through its ref. */
+async function staleAndFresh(params: {
+	document: Document<TestDialecteConfig>
+	added: {
+		tagName: 'AAA_2'
+		id: `${string}-${string}-${string}-${string}-${string}`
+		attributes: { aAAA_2: string }
+	}
+}): Promise<string[][]> {
+	const { document, added } = params
+	const stale = await document.query.getRecord(aa1)
+	await document.transaction(async function addUnderAa1(tx) {
+		await tx.addChild(aa1, added)
+	})
+	const results = (await document.query.findDescendantsOfEach([stale as Input, aa1], {
+		collect: 'AAA_2',
+	} as Options)) as Record<string, { id: string }[]>[]
+	return results.map((groups) => groups.AAA_2.map(({ id }) => id))
+}
+
+/** `query.any`'s answer per position, its non-empty groups only, and the ids answered at two positions by one object. */
+async function anyAnswersOf(params: {
+	document: Document<TestDialecteConfig>
+	inputs: Input[]
+}): Promise<{ answers: Answer[]; shared: string[] }> {
+	const results = await params.document.query.any.findDescendantsOfEach(params.inputs)
+	const nonEmpty = results.map((groups) =>
+		Object.fromEntries(Object.entries(groups).filter(([, records]) => records.length > 0)),
+	)
+	const seen = new Set<object>()
+	const shared: string[] = []
+	for (const record of nonEmpty.flatMap((groups) => Object.values(groups).flat())) {
+		if (seen.has(record)) shared.push(record.id)
+		seen.add(record)
+	}
+	return { answers: idsOf({ results: nonEmpty, sorted: false }), shared }
 }
 
 describe('findDescendantsOfEach - answers', () => {
@@ -203,6 +241,71 @@ describe('findDescendantsOfEach - answers', () => {
 					sorted: testCase.anyOrder === true,
 				}),
 			).resolves.toEqual({ answers: testCase.expected, shared: [] })
+		}
+
+		runTestCases.withoutExport({ testCases, act })
+	})
+
+	describe('a record given is used as given', () => {
+		type TestCase = BaseXmlTestCase & {
+			/** An AAA_2 committed under aa1 after the record of aa1 was read. */
+			added: {
+				tagName: 'AAA_2'
+				id: `${string}-${string}-${string}-${string}-${string}`
+				attributes: { aAAA_2: string }
+			}
+			expected: string[][]
+		}
+
+		const testCases: TestCases<TestCase> = {
+			'a record read before a child was committed under it, and its ref → the record its own children, the ref the new one too':
+				{
+					sourceXml: xml,
+					added: { tagName: 'AAA_2', id: '0-0-0-0-1', attributes: { aAAA_2: 'v' } },
+					expected: [['aaa2'], ['0-0-0-0-1', 'aaa2']],
+				},
+		}
+
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			await expect(staleAndFresh({ document: source, added: testCase.added })).resolves.toEqual(
+				testCase.expected,
+			)
+		}
+
+		runTestCases.withoutExport({ testCases, act })
+	})
+
+	describe('query.any collects every descendant tag of each element', () => {
+		type TestCase = BaseXmlTestCase & {
+			inputs: Input[]
+			/** Each position's non-empty groups, ids in id order. */
+			expected: Answer[]
+		}
+
+		const testCases: TestCases<TestCase> = {
+			'two tag names, one element given twice → each element its own tags, the repeat answered again':
+				{
+					sourceXml: xml,
+					inputs: [aa1, b1, aa1],
+					expected: [
+						{ AAA_1: ['aaa1'], AAA_2: ['aaa2'], AAAA_1: ['aaaa3', 'aaaa5'], AAAA_2: ['aaaa2'] },
+						{ BB_1: ['bb1'], BBB_1: ['bbb1'] },
+						{ AAA_1: ['aaa1'], AAA_2: ['aaa2'], AAAA_1: ['aaaa3', 'aaaa5'], AAAA_2: ['aaaa2'] },
+					],
+				},
+		}
+
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+			await expect(anyAnswersOf({ document: source, inputs: testCase.inputs })).resolves.toEqual({
+				answers: testCase.expected,
+				shared: [],
+			})
 		}
 
 		runTestCases.withoutExport({ testCases, act })

@@ -29,8 +29,26 @@ const xml = /* xml */ `
 	</Root>
 `
 
+/** Two AA_1 under A, the first holding aaa1 (over aaaa1) and aaa2 (over aaaa2), the second empty: a move target. */
+const twoBranchesXml = /* xml */ `
+	<Root ${ns}>
+		<A ${customId}="a1" aA="v">
+			<AA_1 ${customId}="aa1" aAA_1="v">
+				<AAA_1 ${customId}="aaa1" aAAA_1="v">
+					<AAAA_1 ${customId}="aaaa1" aAAAA_1="v" />
+				</AAA_1>
+				<AAA_2 ${customId}="aaa2" aAAA_2="v">
+					<AAAA_1 ${customId}="aaaa2" aAAAA_1="v" />
+				</AAA_2>
+			</AA_1>
+			<AA_1 ${customId}="aa2" aAA_1="v" />
+		</A>
+	</Root>
+`
+
 const a1 = { tagName: 'A', id: 'a1' } as const
 const aa1 = { tagName: 'AA_1', id: 'aa1' } as const
+const aa2 = { tagName: 'AA_1', id: 'aa2' } as const
 const b1 = { tagName: 'B', id: 'b1' } as const
 
 /** Each position's AAAA_1 then BBB_1 as `id:status`, collected inside a transaction after the staged writes. */
@@ -108,6 +126,35 @@ describe('findDescendantsOfEach - inside a transaction', () => {
 			omit: [{ AAA_2: { where: { aAAA_2: 'skip' } } }],
 			expected: [['aaaa1:unchanged']],
 		},
+		'a record moved into a scope with its subtree → answered there': {
+			sourceXml: twoBranchesXml,
+			stage: async (tx) => {
+				await tx.move({ tagName: 'AAA_1', id: 'aaa1' }, { parent: aa2 })
+			},
+			inputs: [aa2],
+			expected: [['aaaa1:unchanged']],
+		},
+		'a record moved out of a scope with its subtree → gone from it': {
+			sourceXml: twoBranchesXml,
+			stage: async (tx) => {
+				await tx.move({ tagName: 'AAA_1', id: 'aaa1' }, { parent: aa2 })
+			},
+			inputs: [aa1],
+			expected: [['aaaa2:unchanged']],
+		},
+		'a move between two scopes nested in a third → each inner scope its new subtree, the outer one both':
+			{
+				sourceXml: twoBranchesXml,
+				stage: async (tx) => {
+					await tx.move({ tagName: 'AAA_1', id: 'aaa1' }, { parent: aa2 })
+				},
+				inputs: [a1, aa1, aa2],
+				expected: [
+					['aaaa1:unchanged', 'aaaa2:unchanged'],
+					['aaaa2:unchanged'],
+					['aaaa1:unchanged'],
+				],
+			},
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {

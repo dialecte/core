@@ -120,6 +120,24 @@ describe('findDescendantsOfEach - content the definition does not list', () => {
 				collect: 'Unlisted',
 				expected: [['unlisted1', 'unlisted2']],
 			},
+			'a collected tag where the definition allows it nowhere, under a scope and under the document root → found under the root only (the walk prunes on the definition)':
+				{
+					sourceXml: /* xml */ `
+					<Root ${ns} ${customId}="root">
+						<A ${customId}="a1" aA="v">
+							<AA_1 ${customId}="aa1" aAA_1="v">
+								<BBB_1 ${customId}="bbb1" aBBB_1="v" />
+							</AA_1>
+						</A>
+					</Root>
+				`,
+					inputs: [
+						{ tagName: 'Root', id: 'root' },
+						{ tagName: 'A', id: 'a1' },
+					],
+					collect: 'BBB_1',
+					expected: [['bbb1'], []],
+				},
 		}
 
 		runTestCases.withoutExport({ testCases, act })

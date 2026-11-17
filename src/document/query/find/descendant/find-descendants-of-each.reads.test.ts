@@ -86,6 +86,22 @@ async function collectAndCount(params: {
 	return { found, reads: readsOf({ document }) }
 }
 
+/** Reads the scopes as records first, then collects under the records given, counting only the collect's reads. */
+async function collectUnderRecordsAndCount(params: {
+	document: Document<TestDialecteConfig>
+	testCase: { inputs: { tagName: string; id: string }[]; collect: string }
+}): Promise<{ found: number; reads: Reads }> {
+	const { document, testCase } = params
+	const records = await document.query.getRecords(testCase.inputs as never)
+	document.perf.reset()
+	const results = (await document.query.findDescendantsOfEach(
+		records as never,
+		{ collect: testCase.collect } as never,
+	)) as Record<string, unknown[]>[]
+	const found = results.reduce((total, groups) => total + groups[testCase.collect].length, 0)
+	return { found, reads: readsOf({ document }) }
+}
+
 /**
  * A flat collect under scopes that are not the document root reads top-down: the scopes in one store read, then one
  * read per level over every scope's frontier, only the children that can hold a collected tag. No tag read, no
@@ -147,4 +163,38 @@ describe('findDescendantsOfEach - store reads', () => {
 	}
 
 	runTestCases.withoutExport({ testCases, act, dev: { perf: true } })
+
+	describe('records given', () => {
+		type RecordsCase = BaseXmlTestCase & {
+			inputs: { tagName: string; id: string }[]
+			collect: string
+			expected: { found: number; reads: Reads }
+		}
+
+		const recordsCases: TestCases<RecordsCase> = {
+			'a hundred scope records given → no read of the scopes, one read for the level below': {
+				sourceXml: forestXml(),
+				inputs: hundredAaa,
+				collect: 'AAAA_1',
+				expected: { found: 200, reads: { getMany: 1, records: 200, ...noOtherRead } },
+			},
+			'ten scope records given → one read per level below them, none for the scopes': {
+				sourceXml: forestXml(),
+				inputs: tenAa,
+				collect: 'AAAA_1',
+				expected: { found: 200, reads: { getMany: 2, records: 100 + 200, ...noOtherRead } },
+			},
+		}
+
+		async function act({
+			source,
+			testCase,
+		}: ActParams<TestDialecteConfig, RecordsCase>): Promise<void> {
+			await expect(collectUnderRecordsAndCount({ document: source, testCase })).resolves.toEqual(
+				testCase.expected,
+			)
+		}
+
+		runTestCases.withoutExport({ testCases: recordsCases, act, dev: { perf: true } })
+	})
 })
