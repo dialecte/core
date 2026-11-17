@@ -8,7 +8,7 @@ import type { AnyDialecteConfig, ElementsOf } from '@/types'
  * Reads, in one `getRecords`, the links whose id `known` does not hold yet (each id once); answers the
  * records found, by id. No read when every link is known.
  *
- * @internal shared by the batch reads (`getChildrenOfEach`, `findAncestorsOfEach`)
+ * @internal shared by the batch reads (`getChildrenOfEach`, `findAncestorsOfEach`, `getTree`)
  */
 export async function readUnknownRecords<GenericConfig extends AnyDialecteConfig>(params: {
 	context: Context<GenericConfig>

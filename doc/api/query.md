@@ -308,7 +308,11 @@ const tree = await doc.query.getTree(ref, {
 
 An unexpanded node keeps its `children` refs but returns an empty `tree`, so a collapsed branch is distinguishable from a leaf — exactly what a lazy / expand-on-demand UI needs.
 
-A bounded depth reads only the levels it needs (one batched store read per level) instead of the whole document, so a shallow expand on a large document is milliseconds rather than seconds. This scoped read only applies to a committed read (no pending staged writes) with a concrete `id`; inside a transaction with pending writes, or for a singleton ref without an `id`, `getTree` reads the whole document instead so the result stays correct.
+A bounded depth reads only the levels it needs (one batched store read per level) instead of the whole document, so a shallow expand on a large document is milliseconds rather than seconds, inside a transaction with pending writes too (staged records answer first).
+
+#### Reads
+
+`getTree` reads level by level and decides for each child, from its tag alone, before reading it: the `select` keys at that level (auto-recursion and the transparent elements it sees through included), a tag-only `omit` and `depth`. A branch it cannot keep is never read; `where` and an `omit` with `where` are checked once the child is read, before its own children are. A singleton ref without an `id` reads its root by its tag name first. With no `select`, no tag-only `omit` and no `depth`, nothing prunes and `getTree` reads the whole document once. Narrow with `select` or `omit` rather than filter the returned tree.
 
 ```ts
 const root = await doc.query.getTree(ref, { depth: 1 }) // node + direct children
