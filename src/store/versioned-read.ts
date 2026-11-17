@@ -5,10 +5,10 @@ import { invariant } from '@/utils'
 import type { StoreVersion, VersionedAnswer, VersionedRead, VersionedReads } from './store.types'
 
 /**
- * One read member's answer and the document's version, read in the same step: the member is started (a store whose
- * reads run synchronously up to their answer has read by then), then the version is read before anything else can run,
- * so a write landing after the read is never paired with its answer. Only for a store whose read members read before
- * their first await. A member that is not a read is refused `ASSERTION_FAILED`, nothing run.
+ * Only for a store whose read members read before their first await; never for one that awaits first. One read
+ * member's answer and the document's version, read in the same step: the member is started (such a store has read by
+ * then), then the version is read before anything else can run, so a write landing after the read is never paired with
+ * its answer. A member that is not a read is refused `ASSERTION_FAILED`, nothing run.
  *
  * @intent implement Store.readVersioned in a custom store, answer a read with the document version of the same moment
  */

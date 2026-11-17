@@ -1,10 +1,18 @@
-import { expectRejectsWith, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
+import {
+	contractFile,
+	expectRejectsWith,
+	makeDocument,
+	makeRecord,
+} from '../../contract/store-contract.fixtures'
+import { createContractRuntime } from '../../contract/store-contract.import-session'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
 import type { SqliteEngine } from './engine.types'
+import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { StoreVersion, VersionedRead } from '@/store/store.types'
+import type { AfterImportResult } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /** The databases a case opened, closed after it (an in-memory file goes with its last connection). */
@@ -45,6 +53,67 @@ async function compareAcross(params: {
 	const after = await versionOf({ engine: next })
 	next.close()
 	return { sameEngine: after.engineId === before.engineId, sameCount: after.count === before.count }
+}
+
+/**
+ * The contract's runtime with a session that keeps the ids of the `B` records it is handed, tells `reached` after the
+ * parse, waits for `released`, then answers the writes `writesOf` makes of those ids.
+ */
+function runtimeWritingAfterHold(params: {
+	reached: () => void
+	released: Promise<void>
+	writesOf: (ids: string[]) => AfterImportResult
+}): StoreRuntime {
+	const { reached, released, writesOf } = params
+	return {
+		...createContractRuntime(),
+		hooks: {
+			createImportSession: function createHeldSession() {
+				const ids: string[] = []
+				return {
+					recordTagNames: ['B'],
+					beforeImportRecord: function keepId({ record }) {
+						ids.push(record.id)
+					},
+					afterImport: async function writeAfterRelease() {
+						reached()
+						await released
+						return writesOf(ids)
+					},
+				}
+			},
+		},
+	}
+}
+
+/**
+ * An import whose session holds after the parse, then writes: the version of its document read while held, and once
+ * the import is done.
+ */
+async function versionsAcrossImport(params: {
+	writesOf: (ids: string[]) => AfterImportResult
+}): Promise<{ during: StoreVersion; after: StoreVersion }> {
+	const { keeper } = await openMemoryFile({ opened })
+	const reached = Promise.withResolvers<void>()
+	const released = Promise.withResolvers<void>()
+	const runtime = runtimeWritingAfterHold({
+		reached: reached.resolve,
+		released: released.promise,
+		writesOf: params.writesOf,
+	})
+	const engine = await startEngine({ db: keeper, runtime })
+	const file = contractFile({ body: '<B aB="B0"/><B aB="B1"/>' })
+	const importing = engine.importFile({ file, writeId: 'w-1', clientId: 'c-1' })
+	importing.catch(() => undefined)
+	await reached.promise
+	const [listed] = await engine.getDocuments()
+	const read: VersionedRead = { member: 'getByDocumentId', args: [listed!.id] }
+	const during = await engine.readVersioned({ documentId: listed!.id, read })
+	released.resolve()
+	await importing
+	const after = await engine.readVersioned({ documentId: listed!.id, read })
+	engine.close()
+	return { during: during.version, after: after.version }
 }
 
 describe('the SQLite engine reads with the document version', () => {
@@ -93,5 +162,27 @@ describe('the SQLite engine reads with the document version', () => {
 		})
 		await expect(engine.getDocument(DOCUMENT_ID)).resolves.toBeDefined()
 		engine.close()
+	})
+
+	describe('an import whose session writes after a read', () => {
+		type ImportCase = { writesOf: (ids: string[]) => AfterImportResult }
+		const importCases: Record<string, ImportCase> = {
+			'its session creates a record → the version after it is another': {
+				writesOf: () => ({ creates: [makeRecord({ id: 'made', tagName: 'B' })] }),
+			},
+			'its session patches a record → the version after it is another': {
+				writesOf: (ids) => ({ updates: [{ recordId: ids[0]!, value: 'patched' }] }),
+			},
+			'its session deletes a record → the version after it is another': {
+				writesOf: (ids) => ({ deletes: [ids[0]!] }),
+			},
+		}
+
+		for (const [description, importCase] of Object.entries(importCases)) {
+			it(description, async () => {
+				const { during, after } = await versionsAcrossImport({ writesOf: importCase.writesOf })
+				expect(after).not.toEqual(during)
+			})
+		}
 	})
 })

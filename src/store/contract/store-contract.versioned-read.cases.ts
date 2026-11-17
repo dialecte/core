@@ -181,7 +181,7 @@ const versionedReads: StoreContractCases = {
 			expect(distinct({ versions })).toBe(3)
 		},
 	},
-	'an import made ready → a version other than the one read while it ran': {
+	"an import's writes after a read → a version other than the one read while it ran": {
 		needs: ['versioned-read', 'import'],
 		act: async ({ store }) => {
 			const hold = holdContractImport()

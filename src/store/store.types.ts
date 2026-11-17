@@ -495,6 +495,7 @@ export type VersionedRead = {
 /**
  * A document's version as a store answers it with a read: `engineId` names what keeps the count (drawn again when it
  * starts again, so a count started over is never taken for an older one), `count` the writes it has taken since.
+ * Versions are compared for equality only, never ordered: another version says the document changed, not which is newer.
  */
 export type StoreVersion = { engineId: string; count: number }
 
