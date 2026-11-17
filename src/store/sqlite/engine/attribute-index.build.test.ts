@@ -57,7 +57,7 @@ function isExact(params: { db: Database; seq: number }): boolean {
 }
 
 describe('a pair whose build fails', () => {
-	it('the file full after the first slice → the pair left building, the lookups answered by filter, a write lands, no new try by that engine; the next engine builds it, exact', async () => {
+	it('the file full after the first slice → the pair left building, the lookups answered by filter, a write lands, no new try by that engine; the next lookup after a start queues the build again (lazy), exact', async () => {
 		const file = await openMemoryFile({ opened })
 		const db = file.connect()
 		let seq = 0

@@ -217,6 +217,8 @@ describe('the attribute index after each write path', () => {
 	}
 })
 
+// an import writes into a record table of its own, made fresh: no index trigger fires there, so it is no write path here
+
 /**
  * Raw writes of a connection that registers nothing (an older core, a tool): rows whose attributes are not JSON,
  * JSON `null`, a list of non-objects, objects without a name or with a `null`, number or boolean value; a replace,

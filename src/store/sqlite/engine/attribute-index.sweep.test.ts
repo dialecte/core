@@ -71,12 +71,12 @@ async function builtThenClosed(): Promise<{
 function indexTriggersOf(params: { db: Database; seq: number }): string[] {
 	const { db, seq } = params
 	const { triggers } = attributeIndexTablesOf({ seq })
+	// a prefix, not a LIKE pattern: `_` would also match the triggers of `xatr_11_`
 	return db
-		.selectValues(
-			"SELECT name FROM sqlite_schema WHERE type = 'trigger' AND name LIKE ? ORDER BY name",
-			[`${triggers}%`],
-		)
-		.map((name) => String(name).slice(triggers.length))
+		.selectValues("SELECT name FROM sqlite_schema WHERE type = 'trigger' ORDER BY name")
+		.map(String)
+		.filter((name) => name.startsWith(triggers))
+		.map((name) => name.slice(triggers.length))
 }
 
 /** The ids of A holding k="1" the engine answers. */
@@ -176,6 +176,72 @@ describe('the attribute indexes swept when an engine starts', () => {
 			return { states, fromIndex: await holdersOf(engine) }
 		}
 		await expect(keptWhole()).resolves.toEqual({ states: { 'A.k': 'ready' }, fromIndex: [] })
+	})
+
+	it('a broken index numbered 1 beside a whole one numbered 11 → only the broken one swept, the whole one still ready and read', async () => {
+		const file = await openMemoryFile({ opened })
+		const first = file.connect()
+		const engine = await startEngine({ db: first })
+		const ids = Array.from({ length: 11 }, (_, index) => `doc-${index + 1}`)
+		for (const id of ids) {
+			await engine.registerDocument(makeDocument({ id }))
+			await engine.bulkWrite(id, { creates: SEEDED })
+			await engine.getByAttributes({
+				documentId: id,
+				tagName: 'A',
+				attributes: [{ name: 'k', values: ['1'] }],
+			})
+			await untilPairsReady({ db: first, seq: seqOf({ db: first, documentId: id }), pairs: 1 })
+		}
+		const broken = seqOf({ db: first, documentId: 'doc-1' })
+		const whole = seqOf({ db: first, documentId: 'doc-11' })
+		engine.close()
+		async function sideBySide(): Promise<Record<string, unknown>> {
+			const { names, rows, keys } = attributeIndexTablesOf({ seq: broken })
+			file.connect().exec(`DROP TABLE ${rows}; DROP TABLE ${keys}; DROP TABLE ${names}`)
+			const db = file.connect()
+			const next = await startEngine({ db })
+			const atStart = {
+				broken: indexTriggersOf({ db, seq: broken }),
+				whole: indexTriggersOf({ db, seq: whole }),
+				states: pairStatesOf({ db, seq: whole }),
+			}
+			// the whole index's rows taken away: a lookup that answers nothing read the index
+			db.exec(`DELETE FROM ${attributeIndexTablesOf({ seq: whole }).rows}`)
+			const records = await next.getByAttributes({
+				documentId: 'doc-11',
+				tagName: 'A',
+				attributes: [{ name: 'k', values: ['1'] }],
+			})
+			return { numbers: [broken, whole], atStart, fromIndex: records.length }
+		}
+		await expect(sideBySide()).resolves.toEqual({
+			numbers: [1, 11],
+			atStart: {
+				broken: [],
+				whole: [...ATTRIBUTE_INDEX_TRIGGERS].sort(),
+				states: { 'A.k': 'ready' },
+			},
+			fromIndex: 0,
+		})
+	})
+
+	it('a trigger a tool named like an index trigger, with a space in its name → left as it is, the engine starts and writes', async () => {
+		const { plain, seq, restart } = await builtThenClosed()
+		async function foreignTrigger(): Promise<Record<string, unknown>> {
+			plain.exec(
+				`CREATE TRIGGER "xatr_3_x y" AFTER INSERT ON ${TABLE_RECORD_PREFIX}${seq} BEGIN SELECT 1; END`,
+			)
+			const { engine, db } = await restart()
+			await engine.bulkWrite(DOCUMENT_ID, {
+				creates: [makeRecord({ id: 'n', tagName: 'A', attributes: [{ name: 'k', value: '1' }] })],
+			})
+			return {
+				foreign: db.selectValue("SELECT count(*) FROM sqlite_schema WHERE name = 'xatr_3_x y'"),
+				answer: await holdersOf(engine),
+			}
+		}
+		await expect(foreignTrigger()).resolves.toEqual({ foreign: 1, answer: ['c', 'n', 'x'] })
 	})
 })
 
