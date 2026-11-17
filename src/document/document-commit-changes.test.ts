@@ -1,9 +1,9 @@
 import { describeCommitChanges, mergeOperations } from './transaction/commit'
-import { COMMIT_CHANGES_MAX } from './transaction/commit/describe-commit-changes.constants'
 
 import { describe, expect, onTestFinished, vi } from 'vitest'
 
 import { CUSTOM_RECORD_ID_ATTRIBUTE, toRawRecord } from '@/helpers'
+import { COMMIT_CHANGES_MAX } from '@/project/project.constants'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, runTestCases } from '@/test'
 
 import type { Project } from '@/project'
@@ -59,7 +59,7 @@ async function firstCommit(params: { heard: CommitMessage[] }): Promise<CommitMe
 
 /** The changes as they read when every list is sorted by id: the order a commit's merge gives is not the contract. */
 function sortedById(changes: CommitMessage['changes']): CommitMessage['changes'] {
-	if (changes === undefined || 'unknown' in changes) return changes
+	if ('unknown' in changes) return changes
 	return {
 		created: [...changes.created].sort(byId),
 		updated: [...changes.updated].sort(byId),
@@ -83,7 +83,7 @@ const expectedThree = {
 }
 
 function withoutCreatedIds(changes: CommitMessage['changes']): unknown {
-	if (changes === undefined || 'unknown' in changes) return changes
+	if ('unknown' in changes) return changes
 	return {
 		...changes,
 		created: changes.created.map(function withoutId({ tagName, parentId }) {
@@ -188,4 +188,72 @@ describe('a commit past the cap', () => {
 	}
 
 	runTestCases.withoutExport({ testCases, act })
+})
+
+describe('a move between parents is in the changes', () => {
+	const moveXml = /* xml */ `
+		<Root ${ns} ${customId}="root">
+			<A ${customId}="a" aA="kept">
+				<AA_1 ${customId}="aa1" aAA_1="one"><AAA_1 ${customId}="aaa1" aAAA_1="abc"/></AA_1>
+				<AA_2 ${customId}="aa2" aAA_2="two" />
+			</A>
+		</Root>
+	`
+	const moved = { tagName: 'AAA_1', id: 'aaa1' } as const
+	const target = { tagName: 'AA_2', id: 'aa2' } as const
+
+	const moveCases: TestCases<BaseXmlTestCase> = {
+		'tx.move under another parent -> the moved record (its new parent) and both parents in updated':
+			{
+				sourceXml: moveXml,
+			},
+	}
+
+	async function actMove({ project, source }: ActParams<TestDialecteConfig, BaseXmlTestCase>) {
+		const heard = commitsHeard({ project: project as unknown as Project<AnyDialecteConfig> })
+		await source.transaction(async (tx) => {
+			await tx.move(moved, { parent: target })
+		})
+		const commit = await firstCommit({ heard })
+		expect(sortedById(commit.changes)).toEqual({
+			created: [],
+			updated: [
+				{ id: 'aa1', tagName: 'AA_1', parentId: 'a' },
+				{ id: 'aa2', tagName: 'AA_2', parentId: 'a' },
+				{ id: 'aaa1', tagName: 'AAA_1', parentId: 'aa2' },
+			],
+			deleted: [],
+		})
+	}
+
+	runTestCases.withoutExport({ testCases: moveCases, act: actMove })
+
+	const moveDeleteCases: TestCases<BaseXmlTestCase> = {
+		'tx.move then delete in one transaction -> deleted with its original parent, both parents updated':
+			{
+				sourceXml: moveXml,
+			},
+	}
+
+	async function actMoveDelete({
+		project,
+		source,
+	}: ActParams<TestDialecteConfig, BaseXmlTestCase>) {
+		const heard = commitsHeard({ project: project as unknown as Project<AnyDialecteConfig> })
+		await source.transaction(async (tx) => {
+			await tx.move(moved, { parent: target })
+			await tx.delete(moved)
+		})
+		const commit = await firstCommit({ heard })
+		expect(sortedById(commit.changes)).toEqual({
+			created: [],
+			updated: [
+				{ id: 'aa1', tagName: 'AA_1', parentId: 'a' },
+				{ id: 'aa2', tagName: 'AA_2', parentId: 'a' },
+			],
+			deleted: [{ id: 'aaa1', tagName: 'AAA_1', parentId: 'aa1' }],
+		})
+	}
+
+	runTestCases.withoutExport({ testCases: moveDeleteCases, act: actMoveDelete })
 })

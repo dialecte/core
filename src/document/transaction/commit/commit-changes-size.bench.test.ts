@@ -1,10 +1,10 @@
 import { describeCommitChanges } from './describe-commit-changes'
-import { COMMIT_CHANGES_MAX } from './describe-commit-changes.constants'
 
 import { describe, expect, it } from 'vitest'
 
-import type { PlacedRecord } from './describe-commit-changes.types'
-import type { ProjectChannelMessage } from '@/project/types'
+import { COMMIT_CHANGES_MAX } from '@/project/project.constants'
+
+import type { PlacedRecord, ProjectChannelMessage } from '@/project/types'
 
 /** A commit message at the cap stays well under this many bytes as JSON. */
 const MESSAGE_AT_CAP_BUDGET_BYTES = 1024 * 1024

@@ -68,15 +68,20 @@ function commitsHeard(params: { project: Project<AnyDialecteConfig> }): CommitMe
 	return heard
 }
 
-async function openWithDocument(params: { store: Store }) {
-	const name = `commit-changes-${crypto.randomUUID()}`
+async function openOn(params: { store: Store; name: string }): Promise<Project<AnyDialecteConfig>> {
 	const project = await new Project({
 		configs: { default: CONFIG },
 		storage: { type: 'custom', store: params.store },
-	}).open(name)
+	}).open(params.name)
 	onTestFinished(function closeProject() {
 		return project.close()
 	})
+	return project
+}
+
+async function openWithDocument(params: { store: Store; name?: string }) {
+	const name = params.name ?? `commit-changes-${crypto.randomUUID()}`
+	const project = await openOn({ store: params.store, name })
 	const xml = `<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${customId}="root"><B ${customId}="b"/></Root>`
 	const { documentId } = await project.importFile(new File([xml], 'source.xml'), {
 		useCustomRecordsIds: true,
@@ -112,7 +117,7 @@ describe('commit changes not known', () => {
 		})
 	})
 
-	it('undo, redo and a store announcement of a commit, undo, redo, bulk write -> { unknown: true }', async () => {
+	it('undo and redo -> { unknown: true }', async () => {
 		const store = new InMemoryStore('undo-redo', { runtime: RUNTIME })
 		made.push(store)
 		const { project, documentId, doc } = await openWithDocument({ store })
@@ -128,5 +133,45 @@ describe('commit changes not known', () => {
 				{ unknown: true },
 			])
 		})
+	})
+
+	it('prepare().commit() refused with its connection lost, maybe applied -> { unknown: true }', async () => {
+		const name = `lost-prepared-${crypto.randomUUID()}`
+		const { project, doc } = await openWithDocument({
+			store: losingStore({ name, outcome: 'refused' }),
+		})
+		const heard = commitsHeard({ project })
+		const prepared = await doc.prepare(async (tx) => {
+			await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'changed' } })
+		})
+
+		await expect(prepared.commit()).rejects.toThrow()
+
+		await vi.waitFor(function lossHeard() {
+			expect(heard.map((message) => message.changes)).toEqual([{ unknown: true }])
+		})
+	})
+
+	it('another connection’s commit, told by the store -> heard through the Project as { unknown: true }', async () => {
+		const name = `two-connections-${crypto.randomUUID()}`
+		const writerStore = new InMemoryStore(name, { runtime: RUNTIME })
+		const listenerStore = new InMemoryStore(name, { runtime: RUNTIME })
+		// destroyed after the case once the listener's connection is closed: a store is not destroyed while another
+		// connection holds the project
+		made.push(writerStore)
+		const writer = await openWithDocument({ store: writerStore, name })
+		const listener = await openOn({ store: listenerStore, name })
+		try {
+			await listener.getDocumentStatus(writer.documentId)
+			const heard = commitsHeard({ project: listener })
+
+			await updateB({ doc: writer.doc })
+
+			await vi.waitFor(function toldHeard() {
+				expect(heard.map((message) => message.changes)).toEqual([{ unknown: true }])
+			})
+		} finally {
+			await listener.close()
+		}
 	})
 })

@@ -1,7 +1,12 @@
-import { COMMIT_CHANGES_MAX } from './describe-commit-changes.constants'
+import { COMMIT_CHANGES_MAX } from '@/project/project.constants'
 
-import type { CommitWrites, PlacedRecord } from './describe-commit-changes.types'
-import type { ChangedRecord, CommitChanges, UnknownCommitChanges } from '@/project/types'
+import type {
+	ChangedRecord,
+	CommitChanges,
+	CommitWrites,
+	PlacedRecord,
+	UnknownCommitChanges,
+} from '@/project/types'
 
 /**
  * What one commit changed, from its merged writes, in the order given: each record's id, tag and parent id (after the

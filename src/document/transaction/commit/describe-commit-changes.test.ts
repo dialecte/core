@@ -1,10 +1,15 @@
 import { describeCommitChanges } from './describe-commit-changes'
-import { COMMIT_CHANGES_MAX } from './describe-commit-changes.constants'
 
 import { describe, expect, it } from 'vitest'
 
-import type { CommitWrites, PlacedRecord } from './describe-commit-changes.types'
-import type { CommitChanges, UnknownCommitChanges } from '@/project/types'
+import { COMMIT_CHANGES_MAX } from '@/project/project.constants'
+
+import type {
+	CommitChanges,
+	CommitWrites,
+	PlacedRecord,
+	UnknownCommitChanges,
+} from '@/project/types'
 
 function placed(params: { id: string; tagName: string; parentId: string | null }): PlacedRecord {
 	const { id, tagName, parentId } = params

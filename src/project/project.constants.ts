@@ -10,3 +10,9 @@ export const CLOSE_WAIT_REPORT_MS = 10_000
  * runs on, a store written beside the Project, a long open, never hold an unbounded list.
  */
 export const CHANGES_HELD_MAX = 256
+
+/**
+ * The most refs a commit message tells: past it, its changes are `{ unknown: true }` (a view patching that many
+ * records reads again anyway, and the message crossing a BroadcastChannel stays bounded).
+ */
+export const COMMIT_CHANGES_MAX = 5_000
