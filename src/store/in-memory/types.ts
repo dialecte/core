@@ -25,8 +25,8 @@ export type InMemoryStoreOptions = {
 /** What the in-memory stores of one project hold, the same for each instance of that project in a realm. */
 export type InMemoryState = {
 	documents: Map<string, DocumentRecord>
-	/** The records of each document, by record table name. */
-	records: Map<string, Map<string, AnyRawRecord>>
+	/** The records of each document, by record table name, with the ids of each of its tags. */
+	records: Map<string, RecordTable>
 	changelog: Map<string, ChangeLogEntry[]>
 	/** The sequence number of each document's last applied changelog entry. */
 	heads: Map<string, number>
@@ -43,7 +43,7 @@ export type InMemoryState = {
 /** A state as read: what a project with no state reads as, and all a placeholder store reads. */
 export type ReadonlyInMemoryState = {
 	documents: ReadonlyMap<string, DocumentRecord>
-	records: ReadonlyMap<string, ReadonlyMap<string, AnyRawRecord>>
+	records: ReadonlyMap<string, ReadonlyRecordTable>
 	changelog: ReadonlyMap<string, readonly ChangeLogEntry[]>
 	heads: ReadonlyMap<string, number>
 	discardedCommits: ReadonlyMap<string, ReadonlySet<string>>
@@ -58,3 +58,29 @@ export type InMemoryListener = { connection: object; listener: (notice: StoreNot
 
 /** A project event as an in-memory store announces it, its timestamp added when told. */
 export type InMemoryChange = DistributiveOmit<ProjectChannelMessage, 'timestamp'>
+
+/**
+ * The records of one document by id, and the ids of each tag it holds: every write goes through `put` and `drop`,
+ * so the tag index never misses one. A tag's ids are sorted once, then kept until that tag's next write.
+ */
+export type RecordTable = ReadonlyRecordTable & {
+	/** Hold the record, under its tag (out of the tag it had, when another one) */
+	put: (record: AnyRawRecord) => void
+	/** Forget the record of the id, out of its tag; an id not held changes nothing */
+	drop: (id: string) => void
+}
+
+/** The reads of a document's records: what a placeholder store, and a document not in the store, read. */
+export type ReadonlyRecordTable = {
+	get: (id: string) => AnyRawRecord | undefined
+	has: (id: string) => boolean
+	/** How many records it holds */
+	size: () => number
+	/** Every record held, in no order */
+	records: () => Iterable<AnyRawRecord>
+	/** The ids of the tag's records, in id order (UTF-16 code units, as every list read answers) */
+	idsOfTag: (tagName: string) => readonly string[]
+}
+
+/** The ids of one tag of a document, and those ids in id order once a read asked for them, until the tag's next write. */
+export type TagIds = { ids: Set<string>; sorted: readonly string[] | undefined }

@@ -243,6 +243,10 @@ export const NODE_BENCH_TEST_FILES: readonly TierOnlyTestFile[] = [
 		path: 'src/test/xml/xml-assert.bench.test.ts',
 		why: 'the XML assertions on a generated 5 MB file, in node: the budget of a node test run',
 	},
+	{
+		path: 'src/store/in-memory/in-memory-tag-read.bench.test.ts',
+		why: 'the in-memory tag read on a generated 50 MB file, in node: a read of the tag, never of the document',
+	},
 ]
 
 /**
