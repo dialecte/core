@@ -13,6 +13,7 @@ export const FILLED_PARTS = [
 	'review',
 	'risk',
 	'overlaps',
+	'depends',
 	'issue',
 	'checklist',
 ] as const

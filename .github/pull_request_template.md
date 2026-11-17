@@ -28,6 +28,10 @@
 
 <!-- dialecte:overlaps -->
 
+### Depends on
+
+<!-- dialecte:depends -->
+
 ### Issue
 
 <!-- dialecte:issue -->
