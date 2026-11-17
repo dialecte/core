@@ -1,8 +1,12 @@
 name: _publish
 
 on:
-  workflow_dispatch:
   workflow_call:
+    inputs:
+      # the npm dist-tag to publish under: latest, or next for a pre-release
+      dist-tag:
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -45,4 +49,6 @@ jobs:
         run: ls -la dist
 
       - name: Publish to npm
-        run: npm publish --access public
+        env:
+          DIST_TAG: ${{ inputs.dist-tag }}
+        run: npm publish --access public --tag "$DIST_TAG"

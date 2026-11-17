@@ -3,34 +3,45 @@ name: _check-npm-version
 on:
   workflow_call:
     outputs:
-      version_changed:
-        description: 'Whether this push changed the package version and npm does not have it yet'
-        value: ${{ jobs.check.outputs.version_changed }}
+      publish:
+        description: 'Whether this push publishes its version to npm'
+        value: ${{ jobs.check.outputs.publish }}
+      dist_tag:
+        description: 'The npm dist-tag the version is published under: latest, or next for a pre-release'
+        value: ${{ jobs.check.outputs.dist_tag }}
+      tag:
+        description: 'Whether this push pushes the release tag: after the publish, or alone when npm has the version and its tag is missing'
+        value: ${{ jobs.check.outputs.tag }}
 
 jobs:
-  # Only the commit that changes the version publishes it: its version differs from the main it was pushed onto
-  # (the push's `before`), and npm does not have it yet (a re-run after a publish does nothing). Two pushes landing
-  # close together never both publish, and a release is never published from a later commit.
+  # Only a push that changes the version acts: its version differs from the main it was pushed onto (the push's
+  # `before`); any other push decides from git alone and never asks npm. A version npm lacks is published when it is
+  # above npm's latest (a pre-release: above next too, published under next); a lower or equal one, or a release tag
+  # without its version on npm, fails the run. A version npm has is never published again: when its release tag is
+  # missing, the push tags its own commit. A failed npm or git lookup fails the run (scripts/publish-guard/run-publish-decision.ts decides).
+  # A merge-queue batch lands as one push: its head is published, which may be a later commit than the one that changed
+  # the version. The ruleset keeps the queue at one entry per merge (max_entries_to_merge: 1), so the head is that
+  # commit.
   check:
     name: Get Deployed Version
     runs-on: ubuntu-24.04
     outputs:
-      version_changed: ${{ steps.compare_versions.outputs.version_changed }}
+      publish: ${{ steps.decide.outputs.publish }}
+      dist_tag: ${{ steps.decide.outputs.dist_tag }}
+      tag: ${{ steps.decide.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Read the versions
-        id: compare_versions
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Decide
+        id: decide
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
-          git fetch --depth=1 origin "${{ github.event.before }}"
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          PREVIOUS_VERSION=$(git show "${{ github.event.before }}:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-          PUBLISHED_VERSION=$(npm view "$PACKAGE_NAME@$CURRENT_VERSION" version 2>/dev/null || true)
-          echo "version $PREVIOUS_VERSION -> $CURRENT_VERSION, on npm: ${PUBLISHED_VERSION:-no}"
-          if [ "$PREVIOUS_VERSION" != "$CURRENT_VERSION" ] && [ "$PUBLISHED_VERSION" != "$CURRENT_VERSION" ]; then
-            echo "version_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "version_changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          git fetch --depth=1 origin "$BEFORE"
+          node scripts/publish-guard/run-publish-decision.ts
