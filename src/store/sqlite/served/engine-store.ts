@@ -10,6 +10,7 @@ import { throwIfExportAborted } from '@/project/io/run-export'
 import { changesOfProject, tellListeners } from '@/utils/tell-listener'
 
 import type {
+	AttributeLookup,
 	ChangeLogEntry,
 	ExportFileParams,
 	ExportFileResult,
@@ -215,6 +216,10 @@ export class EngineStore implements Store {
 
 	async getByTagNameInDocument(tagName: string, documentId: string): Promise<AnyRawRecord[]> {
 		return this.call('getByTagNameInDocument', tagName, documentId)
+	}
+
+	async getByAttributes(params: AttributeLookup): Promise<AnyRawRecord[]> {
+		return this.call('getByAttributes', params)
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {

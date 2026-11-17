@@ -1,4 +1,5 @@
 import { sameJsonValue } from '../../same-json-value'
+import { dropAttributeIndex } from './attribute-index'
 import { deleteBlobsOf } from './blobs'
 import {
 	DOCUMENT_COLUMN_LIST,
@@ -169,7 +170,9 @@ export function documentTablesOf(params: {
 /** Everything of a document, its registry row last: one function for every removal. */
 function purgeDocument(params: { db: Database; documentId: string; seq: number }): void {
 	const { db, documentId, seq } = params
+	// the record table first: its triggers, which write to the attribute index, go with it
 	db.exec(`DROP TABLE ${recordTableOfSeq({ seq })}`)
+	dropAttributeIndex({ db, seq })
 	deleteHistoryOf({ db, documentId, table: historyTableOfSeq({ seq }) })
 	deleteBlobsOf({ db, documentId })
 	db.exec({ sql: `DELETE FROM ${TABLE_DOCUMENTS} WHERE seq = ?`, bind: [seq] })

@@ -1,5 +1,13 @@
 import { isLosslessTextInstalled } from '../sqlite-text'
 import {
+	attributeIndexTablesOf,
+	readFilteredRecords,
+	readIndexedRecords,
+	readPairStates,
+} from './attribute-index'
+import { createAttributeIndexBuilder } from './attribute-index-build'
+import { ATTRIBUTE_PAIR_STATE } from './attribute-index.constants'
+import {
 	deleteBlob,
 	readBlob,
 	readBlobEntries,
@@ -178,6 +186,19 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const importing: RunningImport = { window: undefined, ended: undefined }
 	/** Set by `close()`: every call refused from then on, an import resumed after it aborted first. */
 	const state = { closed: false, broken: false }
+	/** The pairs of the attribute indexes a lookup asked for, built in the background (never while an import runs). */
+	const attributeBuilds = createAttributeIndexBuilder({
+		db,
+		write: function writeAttributeIndex(work) {
+			writeInTransaction({ detail: 'The attribute index could not be built', work })
+		},
+		isClosed: function isEngineClosed() {
+			return state.closed
+		},
+		giveWayTo: runningImportEnd,
+		sliceMs: engineOptions.reclaimSliceMs,
+		onStep: onWork,
+	})
 
 	const blobMembers: Omit<EngineBlobMembers, EngineChangeMember> &
 		Pick<EngineChangeMembers, 'attachBlob' | 'detachBlob' | 'removeBlob'> = {
@@ -393,6 +414,33 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				work: function readByTag() {
 					const table = recordTableOf({ db, documentId })
 					return table ? readRecordsByTag({ db, table, tagName }) : []
+				},
+			})
+		},
+		/**
+		 * Read from the document's attribute index when every pair asked is `ready`; otherwise filtered in SQL, the pairs
+		 * not registered queued for a build in the background (never in this call).
+		 */
+		getByAttributes: async function getByAttributes(lookup) {
+			refuseClosed({ state, name })
+			const { documentId, tagName, attributes } = lookup
+			return asReadFailure({
+				detail: `The ${tagName} records of document "${documentId}" by attribute`,
+				work: function readByAttributes() {
+					const document = documentTablesOf({ db, documentId })
+					if (!document || attributes.length === 0) return []
+					if (attributes.some((entry) => entry.values.length === 0)) return []
+					if (document.status !== 'ready') {
+						return readFilteredRecords({ db, table: document.records, tagName, attributes })
+					}
+					const tables = attributeIndexTablesOf({ seq: document.seq })
+					const names = [...new Set(attributes.map((entry) => entry.name))]
+					const states = readPairStates({ db, tables, tagName, names })
+					const unbuilt = names.filter((entry) => states.get(entry) !== ATTRIBUTE_PAIR_STATE.ready)
+					if (unbuilt.length === 0) return readIndexedRecords({ db, tables, tagName, attributes })
+					// a pair an earlier engine left `building` is built again here: no build of it runs any more
+					attributeBuilds.queue({ documentId, tagName, names: unbuilt })
+					return readFilteredRecords({ db, table: document.records, tagName, attributes })
 				},
 			})
 		},

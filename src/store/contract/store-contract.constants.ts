@@ -145,10 +145,6 @@ export const STORE_CONTRACT_FEATURES = [
 	'attribute-lookup',
 ] as const
 
-/** Why the SQLite legs have no `getByAttributes` yet: the query layer reads the tag and filters it meanwhile. */
-export const SQLITE_ATTRIBUTE_LOOKUP_PENDING =
-	'the SQLite engine answers attribute lookups once it keeps an attribute index; the query layer reads the tag and filters it meanwhile'
-
 /** Why the IndexedDB leg has no `getByAttributes`: it reads in the page, so a lookup in the store would save nothing. */
 export const INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING =
 	'IndexedDB reads in the page already: the query layer reads the tag and filters it, as an in-store filter would'
@@ -236,6 +232,14 @@ export const TRANSPORT_CASES: readonly TransportCase[] = [
 		group: 'blobs',
 		description: 'getStandaloneBlobs returns the blobs attached to nothing',
 		reaches: 'getStandaloneBlobs',
+	},
+	{
+		table: 'store',
+		group: 'attribute lookups',
+		// quotes, a backslash, unicode and a 10,000-character value cross the wire as given
+		description:
+			'values with quotes, a backslash, unicode, a very long one → each matched exactly, not by case or prefix',
+		reaches: 'getByAttributes',
 	},
 ]
 

@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: one suite over one engine pair and its member table; main carries it at 787 lines, this lot added the one member it reaches
 import {
 	contractFile,
 	expectRejectsWith,
@@ -231,6 +232,13 @@ const MEMBER_ACTS: MemberActs = {
 	},
 	getByTagNameInDocument: function getByTagNameInDocument(store) {
 		return store.getByTagNameInDocument('A', 'doc-1')
+	},
+	getByAttributes: function getByAttributes(store) {
+		return store.getByAttributes({
+			documentId: 'doc-1',
+			tagName: 'A',
+			attributes: [{ name: 'a', values: ['1'] }],
+		})
 	},
 	getMany: function getMany(store) {
 		return store.getMany(['r1'], 'doc-1')
