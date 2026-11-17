@@ -16,7 +16,6 @@ import {
 	IN_PROCESS_ENGINE_REASON,
 	INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING,
 	REALM_PAGES,
-	SQLITE_ATTRIBUTE_LOOKUP_PENDING,
 } from './store-contract.constants'
 import { makeDocument } from './store-contract.fixtures'
 import { createContractRuntime } from './store-contract.import-session'
@@ -157,7 +156,6 @@ export const sqliteInProcessStoreFactory: StoreContractFactory = {
 		return openSqliteStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
 	},
 	differs: { 'engine-end': IN_PROCESS_ENGINE_REASON, away: AWAY_UNREACHABLE_REASON },
-	pending: { 'attribute-lookup': SQLITE_ATTRIBUTE_LOOKUP_PENDING },
 	fillStorage: async function fillSqliteFile({ store }) {
 		await fillInProcessFile({ name: store.name, dialecteId: TEST_DIALECTE.id })
 	},
@@ -196,7 +194,6 @@ export function createSqliteWorkerStoreFactory(params: {
 }): StoreContractFactory {
 	const { called } = params
 	return {
-		pending: { 'attribute-lookup': SQLITE_ATTRIBUTE_LOOKUP_PENDING },
 		// its engine ended with the view (a crash), another tab destroys the project through a worker of its own
 		destroyWhileAway: async function destroyWhileWorkerAway({ store, remake }) {
 			await endContractEngine({ project: store.name })
@@ -402,7 +399,6 @@ export function createSqliteHubStoreFactory(params: {
 	const { called } = params
 	return {
 		name: 'EngineStore hub',
-		pending: { 'attribute-lookup': SQLITE_ATTRIBUTE_LOOKUP_PENDING },
 		createNamed: async function createNamedHubStore({ name }) {
 			const realm = await joinContractHub()
 			return openHubStore({ name, realm, called })

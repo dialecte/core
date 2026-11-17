@@ -48,13 +48,19 @@ export async function findByAttributes<
 		attributes: attributes as Record<string, unknown> | undefined,
 	})
 	if (filter.kind === 'unmatchable') return []
+	// a value list matched through a set built once for the call, never searched again per record
+	const listsAsSets = valueListsAsSets({
+		dialecteConfig: context.dialecteConfig,
+		tagName,
+		attributes,
+	})
 	const getByAttributes = context.store.getByAttributes?.bind(context.store)
 	if (filter.kind === 'pushed' && getByAttributes) {
 		return findByPushedAttributes({
 			context,
 			getByAttributes,
 			tagName,
-			attributes,
+			attributes: listsAsSets,
 			pushed: filter.attributes,
 		})
 	}
@@ -67,7 +73,7 @@ export async function findByAttributes<
 			matchesAttributeFilter({
 				dialecteConfig: context.dialecteConfig,
 				record,
-				attributeFilter: attributes,
+				attributeFilter: listsAsSets,
 			})
 		) {
 			matching.push(record)
@@ -121,7 +127,7 @@ async function findByPushedAttributes<
 /**
  * Checks if a record's attributes match the given filter criteria.
  * - Multiple attributes: AND logic (all must match)
- * - Array values: OR logic (matches if attribute equals any value)
+ * - Array values (or a set of them): OR logic (matches if attribute equals any value)
  * - Undefined values: ignored (attribute removed from filter)
  * - `xsi:type`: compared as the type it names, whatever form the filter writes it in (local name, dialecte prefix,
  *   Clark name) or the record holds it in
@@ -162,7 +168,9 @@ export function matchesAttributeFilter<
 
 		if (actualValue === '') return false
 
-		if (Array.isArray(expectedValues)) {
+		if (expectedValues instanceof Set) {
+			if (!expectedValues.has(actualValue)) return false
+		} else if (Array.isArray(expectedValues)) {
 			if (!expectedValues.some((expected) => actualValue === expected)) {
 				return false
 			}
@@ -172,6 +180,28 @@ export function matchesAttributeFilter<
 	}
 
 	return true
+}
+
+/**
+ * The filter with each value list of a plain attribute (not `xsi:type`, not QName-typed for the tag: those are read
+ * per record) as a set, for `matchesAttributeFilter` to look a value up in once per record.
+ */
+function valueListsAsSets<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(params: {
+	dialecteConfig: GenericConfig
+	tagName: GenericElement
+	attributes: FilterAttributes<GenericConfig, GenericElement>
+}): FilterAttributes<GenericConfig, GenericElement> {
+	const { dialecteConfig, tagName, attributes } = params
+	if (!attributes) return attributes
+	const qualifiedAttributes = qualifiedNameAttributesOf({ dialecteConfig, tagName })
+	const entries = Object.entries(attributes).map(function asSetWhenPlain([name, expected]) {
+		const plain = name !== 'xsi:type' && !qualifiedAttributes.has(name)
+		return [name, plain && Array.isArray(expected) ? new Set(expected) : expected]
+	})
+	return Object.fromEntries(entries) as FilterAttributes<GenericConfig, GenericElement>
 }
 
 /** Whether the type the record names with xsi:type is one the filter names: both read in the form core stores. */

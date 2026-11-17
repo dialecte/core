@@ -1,4 +1,5 @@
 import { sameJsonValue } from '../../same-json-value'
+import { dropAttributeIndex } from './attribute-index'
 import { deleteBlobsOf } from './blobs'
 import {
 	DOCUMENT_COLUMN_LIST,
@@ -21,7 +22,7 @@ import type { Database, SqlValue } from '@sqlite.org/sqlite-wasm'
 
 /**
  * Register a document and create its record table without indexes and its history-rows table, in the
- * caller's transaction; answers the row's number and the record table. An id already registered is refused with
+ * caller's transaction (index tables left under its number by an older core dropped first); answers the row's number and the record table. An id already registered is refused with
  * `STORE_DUPLICATE_ID`, the registered one left as it was, then a value that is not JSON with
  * `STORE_VALUE_NOT_JSON`, then a path that is not valid or not the document's with `DOCUMENT_PATH_INVALID`, then a
  * place another document holds with `DOCUMENT_PATH_TAKEN`.
@@ -44,6 +45,8 @@ export function insertDocument(params: { db: Database; document: DocumentRecord 
 	})
 	const seq = Number(db.selectValue('SELECT last_insert_rowid()'))
 	const table = recordTableOfSeq({ seq })
+	// a number given again may find index tables an older core's removal left: none belongs to this document
+	dropAttributeIndex({ db, seq })
 	createRecordTable({ db, table })
 	createHistoryRowsTable({ db, table: historyTableOfSeq({ seq }) })
 	return { seq, table }
@@ -169,7 +172,9 @@ export function documentTablesOf(params: {
 /** Everything of a document, its registry row last: one function for every removal. */
 function purgeDocument(params: { db: Database; documentId: string; seq: number }): void {
 	const { db, documentId, seq } = params
+	// the record table first: its triggers, which write to the attribute index, go with it
 	db.exec(`DROP TABLE ${recordTableOfSeq({ seq })}`)
+	dropAttributeIndex({ db, seq })
 	deleteHistoryOf({ db, documentId, table: historyTableOfSeq({ seq }) })
 	deleteBlobsOf({ db, documentId })
 	db.exec({ sql: `DELETE FROM ${TABLE_DOCUMENTS} WHERE seq = ?`, bind: [seq] })

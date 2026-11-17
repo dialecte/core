@@ -103,7 +103,7 @@ export type EngineLifeSignal = {
 	type: (typeof ENGINE_SIGNAL)['heartbeat'] | (typeof ENGINE_SIGNAL)['busy']
 }
 
-/** The port members an engine serves, with the port's own signatures. */
+/** The port members an engine serves, with the port's own signatures (an optional one of the port included). */
 export type EngineMember =
 	| 'registerDocument'
 	| 'getDocument'
@@ -114,6 +114,7 @@ export type EngineMember =
 	| 'getByDocumentId'
 	| 'count'
 	| 'getByTagNameInDocument'
+	| 'getByAttributes'
 	| 'getMany'
 	| 'bulkWrite'
 	| 'getWriteOutcome'
@@ -178,7 +179,7 @@ export type EngineChangeMembers = {
  * reads, bulk writes, write outcomes, history; and a commit, its progress listener an argument of its own.
  */
 export type EngineMembers = Omit<
-	Pick<Store, EngineMember> & EngineBlobMembers,
+	Required<Pick<Store, EngineMember>> & EngineBlobMembers,
 	EngineChangeMember
 > &
 	EngineChangeMembers & {
