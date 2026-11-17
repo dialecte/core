@@ -240,6 +240,12 @@ const MEMBER_ACTS: MemberActs = {
 			attributes: [{ name: 'a', values: ['1'] }],
 		})
 	},
+	readVersioned: function readVersioned(store) {
+		return store.readVersioned({
+			documentId: 'doc-1',
+			read: { member: 'get', args: ['r1', 'doc-1'] },
+		})
+	},
 	getMany: function getMany(store) {
 		return store.getMany(['r1'], 'doc-1')
 	},

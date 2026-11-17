@@ -143,11 +143,20 @@ export const STORE_CONTRACT_FEATURES = [
 	'import',
 	'export',
 	'attribute-lookup',
+	'versioned-read',
 ] as const
 
 /** Why the IndexedDB leg has no `getByAttributes`: it reads in the page, so a lookup in the store would save nothing. */
 export const INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING =
 	'IndexedDB reads in the page already: the query layer reads the tag and filters it, as an in-store filter would'
+
+/** Why the IndexedDB leg has no `readVersioned`: it keeps no document version, so what reads through it keeps nothing between reads. */
+export const INDEXEDDB_VERSIONED_READ_PENDING =
+	'IndexedDB keeps no document version (its history head can come back to an older value): a read scope does not open on it, reads go to the store each time'
+
+/** Why the in-memory leg has no `readVersioned` yet: the read scope lot adds it with the scope that reads through it. */
+export const IN_MEMORY_VERSIONED_READ_PENDING =
+	'the in-memory store gains its versioned read with the query read scope that consumes it'
 
 /**
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
@@ -240,6 +249,13 @@ export const TRANSPORT_CASES: readonly TransportCase[] = [
 		description:
 			'values with quotes, a backslash, unicode, a very long one → each matched exactly, not by case or prefix',
 		reaches: 'getByAttributes',
+	},
+	{
+		table: 'store',
+		group: 'versioned reads',
+		description:
+			'each read member → its own answer, all with the version of the unchanged document',
+		reaches: 'readVersioned',
 	},
 ]
 

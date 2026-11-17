@@ -1,3 +1,4 @@
+import type { VERSIONED_READ_MEMBERS } from './versioned-read.constants'
 import type { Diagnostic } from '@/diagnostics'
 import type { PerfSnapshot } from '@/perf'
 import type { DocumentRecord, DocumentUpdates, ProjectChannelMessage } from '@/project/types'
@@ -191,6 +192,18 @@ export interface Store {
 	 * store without it is read by tag and filtered by the query layer, which re-checks every answer either way.
 	 */
 	getByAttributes?(params: AttributeLookup): Promise<AnyRawRecord[]>
+
+	/**
+	 * Optional. One read member's answer and the document's version, read in the same step (never beside it: a version
+	 * read apart could be paired with an older answer, or with the other of two answers in flight). Two answers of equal
+	 * versions are of an unchanged document; every write that changes what a read answers - here or through another
+	 * connection, an undo, a redo, a removal, an import - gives a version never answered before. A store without it
+	 * keeps no version: what reads through it keeps nothing between two reads.
+	 */
+	readVersioned?<GenericRead extends VersionedRead>(params: {
+		documentId: string
+		read: GenericRead
+	}): Promise<VersionedAnswer<GenericRead['member']>>
 
 	// --- Import ---
 
@@ -463,6 +476,32 @@ export type AttributeLookup = {
 	tagName: string
 	/** Every entry must match (AND); an entry matches an attribute of its name holding any of its values (OR). */
 	attributes: ReadonlyArray<{ name: string; values: ReadonlyArray<string> }>
+}
+
+/** The read members a store may answer with the document's version (`Store.readVersioned`). */
+export type VersionedReadMember = (typeof VERSIONED_READ_MEMBERS)[number]
+
+/** Those members as a store serves them. */
+export type VersionedReads = Required<Pick<Store, VersionedReadMember>>
+
+/** One call of a read member as plain data (it crosses a port as it is): the member and its arguments. */
+export type VersionedRead = {
+	[GenericMember in VersionedReadMember]: {
+		member: GenericMember
+		args: Parameters<VersionedReads[GenericMember]>
+	}
+}[VersionedReadMember]
+
+/**
+ * A document's version as a store answers it with a read: `engineId` names what keeps the count (drawn again when it
+ * starts again, so a count started over is never taken for an older one), `count` the writes it has taken since.
+ */
+export type StoreVersion = { engineId: string; count: number }
+
+/** A read member's answer and the document's version of the same moment. */
+export type VersionedAnswer<GenericMember extends VersionedReadMember = VersionedReadMember> = {
+	value: Awaited<ReturnType<VersionedReads[GenericMember]>>
+	version: StoreVersion
 }
 
 /** What became of a write asked by its id. */

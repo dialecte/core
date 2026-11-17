@@ -246,6 +246,7 @@ async function writeCreates(params: {
 			},
 		})
 		counts.set(documentId, (counts.get(documentId) ?? 0) + records.length)
+		params.params.onChanged({ documentId })
 		onWritten?.(records.length)
 		await commitAtCap({ params: params.params, documentId })
 	}
@@ -285,6 +286,7 @@ async function writeChanges(params: {
 				})
 			},
 		})
+		params.params.onChanged({ documentId })
 		onWritten?.(patches.length)
 		await commitAtCap({ params: params.params, documentId })
 	}
@@ -303,6 +305,7 @@ async function writeChanges(params: {
 			},
 		})
 		counts.set(documentId, (counts.get(documentId) ?? 0) - deleted)
+		params.params.onChanged({ documentId })
 		onWritten?.(ids.length)
 		await commitAtCap({ params: params.params, documentId })
 	}
