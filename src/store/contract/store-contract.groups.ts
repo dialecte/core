@@ -1,4 +1,6 @@
 import { STORE_ANNOUNCE_CONTRACT } from './store-contract.announce.cases'
+import { STORE_ATTRIBUTE_LOOKUP_CONTRACT } from './store-contract.attribute-lookup.cases'
+import { STORE_ATTRIBUTE_QUERY_CONTRACT } from './store-contract.attribute-query.cases'
 import { STORE_CONTRACT } from './store-contract.cases'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_MOVE_CONTRACT } from './store-contract.move.cases'
@@ -16,7 +18,13 @@ import type {
 /** Every group of the contract with its table, in the order the cases run. */
 export function contractGroups(): StoreContractGroup[] {
 	const tables: Record<StoreContractTable, Record<string, StoreContractCases>> = {
-		store: { ...STORE_CONTRACT, ...STORE_TAG_INDEX_CONTRACT, ...STORE_MOVE_CONTRACT },
+		store: {
+			...STORE_CONTRACT,
+			...STORE_TAG_INDEX_CONTRACT,
+			...STORE_MOVE_CONTRACT,
+			...STORE_ATTRIBUTE_LOOKUP_CONTRACT,
+			...STORE_ATTRIBUTE_QUERY_CONTRACT,
+		},
 		announce: STORE_ANNOUNCE_CONTRACT,
 		export: STORE_EXPORT_CONTRACT,
 		path: STORE_PATH_CONTRACT,

@@ -15,8 +15,9 @@ import { TEST_DIALECTE, createTestProject } from '@/test'
 import type { ReadLog } from './scenario-benchmarks.types'
 
 // The store calls and records moved of each scenario on the generated stress fixture, frozen in
-// benchmarks/scenarios/baseline.json: a change that moves a count shows it in that file's diff. The counts
-// do not depend on the store (the query layer counts them), so the in-memory store serves.
+// benchmarks/scenarios/baseline.json: a change that moves a count shows it in that file's diff. The query layer
+// counts them; they are the in-memory store's (a lookup it answers with getByAttributes, a store without that
+// member answers with a tag read).
 describe('scenario benches', () => {
 	it(
 		'each scenario on the generated stress fixture → its store calls and records moved equal the frozen baseline',

@@ -27,7 +27,7 @@ export function getLatestStagedRecord<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
-	stagedOperations: StagedOperations<GenericConfig>
+	stagedOperations: Pick<StagedOperations<GenericConfig>, 'log' | 'byId'>
 	tagName: GenericElement
 	id?: string
 }): TrackedRecord<GenericConfig, GenericElement> | undefined {
@@ -157,7 +157,7 @@ export function overlayStaged<
  */
 export function overlayAllStaged<GenericConfig extends AnyDialecteConfig>(params: {
 	rawRecords: AnyRawRecord[]
-	stagedOperations: StagedOperations<GenericConfig>
+	stagedOperations: Pick<StagedOperations<GenericConfig>, 'log' | 'byId'>
 	includeDeleted?: boolean
 }): { live: Map<string, AnyTrackedRecord>; deleted: AnyTrackedRecord[] } {
 	const { rawRecords, stagedOperations, includeDeleted = false } = params

@@ -1,3 +1,4 @@
+import type { AttributeLookup } from '@/store'
 import type { AnyDialecteConfig, AttributesOf, AttributesValueObjectOf, ElementsOf } from '@/types'
 
 /**
@@ -40,3 +41,12 @@ type SeveralTypesFilterOf<GenericAttributes> = {
 		? Array<NonNullable<GenericAttributes[K]>>
 		: GenericAttributes[K] | Array<GenericAttributes[K]>
 }
+
+/**
+ * How `findByAttributes` reads a filter: the attributes a store's lookup can answer (`pushed`), nothing it can
+ * (`kept`: the tag read and filtered), or an entry no value can match (`unmatchable`: no record).
+ */
+export type PushedFilter =
+	| { kind: 'pushed'; attributes: AttributeLookup['attributes'] }
+	| { kind: 'kept' }
+	| { kind: 'unmatchable' }

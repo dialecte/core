@@ -5,8 +5,7 @@
 	},
 	"scenarios": {
 		"findByAttributes, one call per value": {
-			"getByTagName": 16,
-			"records.getByTagName": 8192
+			"getByAttributes": 16
 		},
 		"findAncestors of each leaf": {
 			"getMany": 192,
@@ -33,8 +32,8 @@
 		},
 		"rename rewriting references in one transaction": {
 			"commit": 1,
-			"getByTagName": 1,
-			"records.getByTagName": 512
+			"getByAttributes": 1,
+			"records.getByAttributes": 512
 		}
 	},
 	"fetchRepeats": {

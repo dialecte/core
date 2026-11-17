@@ -45,6 +45,7 @@ import { tellSessionWritten } from '@/store/import-progress/import-progress'
 
 import type {
 	Store,
+	AttributeLookup,
 	ChangeLogEntry,
 	ExportFileParams,
 	ExportFileResult,
@@ -292,6 +293,17 @@ export class InMemoryStore implements Store {
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {
 		await this.guardOpen()
 		return this.getManyUnguarded(ids, documentId)
+	}
+
+	async getByAttributes(params: AttributeLookup): Promise<AnyRawRecord[]> {
+		await this.guardOpen()
+		const { documentId, ...lookup } = params
+		// the tag's attribute map answers the ids, in id order: only the answer is copied
+		const table = this.readTable(documentId)
+		return table.idsOfAttributes(lookup).flatMap(function copyOf(id) {
+			const record = table.get(id)
+			return record ? [cloneRecord({ record })] : []
+		})
 	}
 
 	// --- Import ---

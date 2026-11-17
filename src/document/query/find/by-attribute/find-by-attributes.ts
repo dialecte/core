@@ -1,13 +1,19 @@
-import { getRecordsByTagName } from '@/document'
+import { pushedFilterOf } from './pushed-filter'
+import { stagedAnswerOf } from './staged-answer'
+
+import { getRecordsByTagName, isTransactionContext } from '@/document'
+import { countRecordsMoved } from '@/document/query/get/record/count-records-moved'
 import { declaredAttributeTypeOf, declaredDefinitionOf } from '@/utils/qname-definition'
 import { qualifiedNameAttributesOf, readsQualifiedNames } from '@/utils/qname-typed'
 import { canonicalQNameValue, storedNamespaceLookup } from '@/utils/qname-value'
 import { canonicalXsiType, isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { Context, FilterAttributes } from '@/document'
+import type { AttributeLookup } from '@/store'
 import type {
 	AnyDialecteConfig,
 	AnyRawRecord,
+	RawRecord,
 	ResolvedDefinition,
 	TrackedRecord,
 	ElementsOf,
@@ -18,6 +24,11 @@ import type {
  * Find elements by tagName and attributes.
  * Core primitive for all query operations.
  * Returns all records matching tagName and attributes - no scope filtering.
+ *
+ * The plain attributes of the filter (`pushedFilterOf`) go to the store's attribute lookup when it has one, a list of
+ * values in the same call; the staged writes are laid over its answer from the staged indexes. A store without the
+ * lookup, or a filter with nothing to push, reads the tag and filters it. Either way the same records, in the same
+ * order.
  *
  * @internal the context-level read behind `doc.query.findByAttributes`; callers use the query
  */
@@ -30,6 +41,16 @@ export async function findByAttributes<
 	attributes: FilterAttributes<GenericConfig, GenericElement>
 }): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
 	const { context, tagName, attributes } = params
+
+	const filter = pushedFilterOf({
+		dialecteConfig: context.dialecteConfig,
+		tagName,
+		attributes: attributes as Record<string, unknown> | undefined,
+	})
+	if (filter.kind === 'unmatchable') return []
+	if (filter.kind === 'pushed' && context.store.getByAttributes) {
+		return findByPushedAttributes({ context, tagName, attributes, pushed: filter.attributes })
+	}
 
 	const candidateRecords = await getRecordsByTagName({ context, tagName })
 
@@ -47,6 +68,45 @@ export async function findByAttributes<
 	}
 
 	return matching
+}
+
+/** The store's lookup of the pushed attributes, one call, with the staged writes laid over it. */
+// dialecte-allow argument-mutation: a transaction's record cache is filled by its reads, as a tag read fills it
+async function findByPushedAttributes<
+	GenericConfig extends AnyDialecteConfig,
+	GenericElement extends ElementsOf<GenericConfig>,
+>(params: {
+	context: Context<GenericConfig>
+	tagName: GenericElement
+	attributes: FilterAttributes<GenericConfig, GenericElement>
+	pushed: AttributeLookup['attributes']
+}): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
+	const { context, tagName, attributes, pushed } = params
+	context.perf.count('core::store::getByAttributes')
+	const stored = (await context.store.getByAttributes!({
+		documentId: context.documentId,
+		tagName,
+		attributes: pushed,
+	})) as RawRecord<GenericConfig, GenericElement>[]
+	countRecordsMoved({ perf: context.perf, member: 'getByAttributes', records: stored })
+
+	if (isTransactionContext(context)) {
+		for (const record of stored) context.recordCache.set(record.id, record)
+	}
+
+	return stagedAnswerOf({
+		stagedOperations: context.stagedOperations,
+		tagName,
+		matches: function matchesFilter(record) {
+			return matchesAttributeFilter({
+				dialecteConfig: context.dialecteConfig,
+				record,
+				attributeFilter: attributes,
+			})
+		},
+		pushed,
+		stored,
+	})
 }
 
 /**

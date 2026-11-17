@@ -98,3 +98,61 @@ runTestCases.generic(testCases, (testCase) => {
 	)
 	expect({ tags, size: table.size() }).toEqual(testCase.expected)
 })
+
+/** A write of a record of A holding `k`, or a lookup of A by `k` (it builds and keeps the pair until A's next write). */
+type LookupStep =
+	| { put: [id: string, k: string, tagName?: string] }
+	| { drop: string }
+	| { lookUp: string[] }
+
+type LookupCase = BaseTestCase & { steps: LookupStep[]; values: string[]; expected: string[] }
+
+function withK(params: { id: string; k: string; tagName: string }): AnyRawRecord {
+	const { id, k, tagName } = params
+	return { ...recordOf({ id, tagName }), attributes: [{ name: 'k', value: k }] }
+}
+
+function lookUp(params: { table: RecordTable; values: string[] }): string[] {
+	const { table, values } = params
+	return [...table.idsOfAttributes({ tagName: 'A', attributes: [{ name: 'k', values }] })]
+}
+
+const lookupCases: Record<string, LookupCase> = {
+	'a lookup, then a put changing the value -> found by the new value, not the old': {
+		steps: [{ put: ['a', '1'] }, { put: ['b', '1'] }, { lookUp: ['1'] }, { put: ['a', '2'] }],
+		values: ['1'],
+		expected: ['b'],
+	},
+	'a lookup, then a drop -> the dropped id gone': {
+		steps: [{ put: ['b', '1'] }, { put: ['a', '1'] }, { lookUp: ['1'] }, { drop: 'a' }],
+		values: ['1'],
+		expected: ['b'],
+	},
+	'a lookup, then a put moving a record to B -> gone from A': {
+		steps: [{ put: ['a', '1'] }, { put: ['b', '1'] }, { lookUp: ['1'] }, { put: ['a', '1', 'B'] }],
+		values: ['1'],
+		expected: ['b'],
+	},
+	'a lookup, then a put of a new record -> found, in id order': {
+		steps: [{ put: ['c', '1'] }, { lookUp: ['1'] }, { put: ['a', '1'] }],
+		values: ['1', '9'],
+		expected: ['a', 'c'],
+	},
+}
+
+/** The steps run on a fresh table, then the lookup of the case's values. */
+function answerAfterSteps(testCase: LookupCase): string[] {
+	const table = createRecordTable()
+	for (const step of testCase.steps) {
+		if ('put' in step) {
+			const [id, k, tagName = 'A'] = step.put
+			table.put(withK({ id, k, tagName }))
+		} else if ('drop' in step) table.drop(step.drop)
+		else lookUp({ table, values: step.lookUp })
+	}
+	return lookUp({ table, values: testCase.values })
+}
+
+runTestCases.generic(lookupCases, (testCase) => {
+	expect(answerAfterSteps(testCase)).toEqual(testCase.expected)
+})

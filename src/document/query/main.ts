@@ -647,10 +647,12 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	//== Find queries
 
 	/**
-	 * Find records of one tag matching specific attribute values; it scans every element of that tag in
-	 * the document.
+	 * Find records of one tag matching specific attribute values: every attribute given (AND), any value of a list
+	 * (OR). A list of values is one lookup, however long. A store that looks records up by attribute matches the plain
+	 * attributes itself and reads only the matches; elsewhere every element of the tag is read and filtered. Same
+	 * answer either way.
 	 *
-	 * @intent find elements by attribute value, look up an element by an identifying attribute, filter one tag's elements by attribute
+	 * @intent find elements by attribute value, look up an element by an identifying attribute, filter one tag's elements by attribute, look up many elements by a list of values in one call
 	 *
 	 * @param params - Tag name and attribute filter criteria.
 	 * @returns All matching tracked records.

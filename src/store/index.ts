@@ -23,6 +23,7 @@ export type {
 	StoreResync,
 	WriteOutcome,
 	WriteSessionControl,
+	AttributeLookup,
 } from './store.types'
 export { IMPORT_PROGRESS_INTERVAL_MS } from './import-progress/import-progress.constants'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'

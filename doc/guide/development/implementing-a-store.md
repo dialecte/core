@@ -68,6 +68,10 @@ class MyStore implements Store {
 - `ExportSource` is the store's `getDocument`, `count`, `getMany`, `getByTagNameInDocument`, plus `getExportVersion` - how many writes the document has taken (`undefined` once it is not registered or not `ready`). A write during the export restarts it once; a second one fails it `EXPORT_CONFLICT`.
 - A `StoreRuntime` is `{ configs, defaultConfigKey, hooks?, perf?, dialecteVersion? }` (the version only for a store that runs the dialecte elsewhere and checks it runs that one, as SQLite does): build it from the dialecte's declaration (`DIALECTE.configs`, `DIALECTE.defaultConfigKey`). A store on the page shares the project's hooks instance (hand the same one to the `Project`'s `hooks`); a store apart, in a worker, makes its own with `DIALECTE.createHooks()`.
 
+## Looking records up by attribute (optional)
+
+`getByAttributes({ documentId, tagName, attributes })` lets the store answer `findByAttributes` without handing over the whole tag: `attributes` is a list of `{ name, values }`, and the answer is the records of the tag holding, for every entry, an attribute of that name with one of its values - in id order, one row per record, compared as stored strings (no namespace, type or default handling: any attribute of that name counts). The query layer pushes only the attributes it can compare that way (not `xsi:type`, not a QName-typed attribute, never `''`), lays the transaction's staged writes over the answer and checks every record against the whole filter again, so an answer holding more than the filter keeps is harmless, one missing a match is a bug. A list of values is one call. A store without the member is read by tag and filtered, with the same records in the same order. `inMemory` has it (an attribute map per tag, built for each attribute name the first time it is asked and dropped at the tag's next write); `local` and `sqlite` do not yet. The store contract's `attribute-lookup` cases run on every leg that has it; a leg without it marks the feature `pending`.
+
 ## Telling changes
 
 A Project must hear every change of its project, made by any connection. Two ways:
