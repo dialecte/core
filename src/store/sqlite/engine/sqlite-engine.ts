@@ -593,6 +593,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 						},
 					})
 					counts.delete(documentId)
+					attributeBuilds.forget({ documentId })
 				},
 			})
 		} finally {

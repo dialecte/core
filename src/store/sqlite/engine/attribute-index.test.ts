@@ -8,9 +8,12 @@ import {
 	seqOf,
 	untilPairsReady,
 } from './attribute-index.fixtures'
+import { TABLE_HISTORY_ROWS_PREFIX } from './engine.constants'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
+
+import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
 import type { SqliteEngine } from './engine.types'
 import type { AttributeLookup } from '@/store/store.types'
@@ -174,9 +177,64 @@ describe('the attribute index of a document', () => {
 		})
 	})
 
-	it('the engine’s connection → recursive triggers off (a replaced row is never deleted through a delete trigger)', async () => {
-		const { db } = await engineHolding({ records: [] })
-		expect(Number(db.selectValue('PRAGMA recursive_triggers'))).toBe(0)
+	it('index tables an older purge left behind, their table number taken by a new document → never read; the new document’s lookups exact, its pairs built again', async () => {
+		const { engine, db, seq } = await engineHolding({ records: SEEDED })
+		async function reusedNumber(): Promise<Record<string, unknown>> {
+			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
+			await untilPairsReady({ db, seq, pairs: 1 })
+			// an older core's removal: the record and history tables and the row go, the index tables stay
+			db.exec(
+				`DROP TABLE ${TABLE_RECORD_PREFIX}${seq}; DROP TABLE ${TABLE_HISTORY_ROWS_PREFIX}${seq}; ` +
+					`DELETE FROM ${TABLE_DOCUMENTS} WHERE seq = ${seq}`,
+			)
+			await engine.registerDocument(makeDocument({ id: 'doc-2' }))
+			await engine.bulkWrite('doc-2', {
+				creates: [
+					recordWith('n', [{ name: 'k', value: '1' }]),
+					recordWith('o', [{ name: 'k', value: '2' }]),
+				],
+			})
+			function lookUp(): Promise<string[]> {
+				return idsOf({ engine, documentId: 'doc-2', attributes: [{ name: 'k', values: ['1'] }] })
+			}
+			const again = seqOf({ db, documentId: 'doc-2' })
+			const first = await lookUp()
+			await untilPairsReady({ db, seq: again, pairs: 1 })
+			return {
+				sameNumber: again === seq,
+				first,
+				built: await lookUp(),
+				rows: indexRowsOf({ db, seq: again }),
+			}
+		}
+		await expect(reusedNumber()).resolves.toEqual({
+			sameNumber: true,
+			first: ['n'],
+			built: ['n'],
+			rows: [
+				['A', 'k', '1', 'n'],
+				['A', 'k', '2', 'o'],
+			],
+		})
+	})
+
+	it('a record table whose index triggers are gone (made again by an older core) → its index tables never read, the lookups exact, the pair built again', async () => {
+		const { engine, db, seq } = await engineHolding({ records: SEEDED })
+		async function withoutTriggers(): Promise<Record<string, unknown>> {
+			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
+			await untilPairsReady({ db, seq, pairs: 1 })
+			const { triggers } = attributeIndexTablesOf({ seq })
+			for (const trigger of ['beforeInsert', 'afterInsert', 'afterDelete', 'afterUpdate']) {
+				db.exec(`DROP TRIGGER ${triggers}${trigger}`)
+			}
+			// written while nothing keeps the index: its rows say nothing of these
+			await engine.bulkWrite(DOCUMENT_ID, {
+				creates: [recordWith('n', [{ name: 'k', value: '1' }])],
+				deletes: ['x'],
+			})
+			return { answer: await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] }) }
+		}
+		await expect(withoutTriggers()).resolves.toEqual({ answer: ['c', 'n'] })
 	})
 
 	it('the document removed after a pair was built → its index tables gone with it; registered again → no index, its lookups answer its own records', async () => {

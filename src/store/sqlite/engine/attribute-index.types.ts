@@ -49,4 +49,6 @@ export type AttributeBuildContext = {
 export type AttributeIndexBuilder = {
 	/** Queue the builds of these pairs (a pair queued or failed since the engine started is left). */
 	queue: (params: { documentId: string; tagName: string; names: readonly string[] }) => void
+	/** The document removed: its queued builds dropped, its failed ones forgotten (one registered again builds anew). */
+	forget: (params: { documentId: string }) => void
 }

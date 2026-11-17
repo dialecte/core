@@ -1,6 +1,7 @@
 import {
 	ATTRIBUTE_BUILD_ROWS_PER_SLICE,
 	ATTRIBUTE_INDEX_PREFIX,
+	ATTRIBUTE_INDEX_TRIGGERS,
 	ATTRIBUTE_PAIR_STATE,
 	ITEM_NAME,
 	ITEM_VALUE,
@@ -34,7 +35,8 @@ export function attributeIndexTablesOf(params: { seq: number }): AttributeIndexT
 
 /**
  * The state of each of these attribute names paired with the tag in the index (none for a pair never registered,
- * nor for a document without an index yet).
+ * nor for a document without an index: one whose record table lacks the index's triggers has none, whatever
+ * tables of that number are left).
  */
 export function readPairStates(params: {
 	db: Database
@@ -43,11 +45,8 @@ export function readPairStates(params: {
 	names: readonly string[]
 }): Map<string, AttributePairState> {
 	const { db, tables, tagName, names } = params
-	const held = db.selectValue('SELECT 1 FROM sqlite_schema WHERE type = ? AND name = ?', [
-		'table',
-		tables.keys,
-	])
-	if (held === undefined) return new Map()
+	// tables without their triggers (an older core removed the document they were made for) are no index
+	if (!hasIndexTriggers({ db, tables })) return new Map()
 	const rows = db.selectArrays(
 		`SELECT n.text, k.state FROM ${tables.keys} k ` +
 			`JOIN ${tables.names} t ON t.nid = k.tagId JOIN ${tables.names} n ON n.nid = k.nameId ` +
@@ -197,11 +196,19 @@ export function markAttributePairReady(params: {
  */
 export function dropAttributeIndex(params: { db: Database; seq: number }): void {
 	const { db, seq } = params
-	const tables = attributeIndexTablesOf({ seq })
-	db.exec(
-		`DROP TABLE IF EXISTS ${tables.rows}; DROP TABLE IF EXISTS ${tables.keys}; ` +
-			`DROP TABLE IF EXISTS ${tables.names};`,
-	)
+	dropIndexTables({ db, tables: attributeIndexTablesOf({ seq }) })
+}
+
+/** The index tables of that number the file holds, dropped: none is dropped that is not there (no statement for it). */
+function dropIndexTables(params: { db: Database; tables: AttributeIndexTables }): void {
+	const { db, tables } = params
+	const held = db
+		.selectValues(
+			"SELECT name FROM sqlite_schema WHERE type = 'table' AND name IN (SELECT value FROM json_each(?))",
+			[JSON.stringify([tables.rows, tables.keys, tables.names])],
+		)
+		.map(String)
+	for (const table of held) db.exec(`DROP TABLE ${table}`)
 }
 
 /** The items of an attributes column as `a`: none when the column is not JSON (a trigger never refuses a write). */
@@ -225,6 +232,21 @@ function keysOf(params: { tables: AttributeIndexTables; source: IndexKeysSource 
 	)
 }
 
+/**
+ * Whether the record table has every trigger of its index. Triggers go with their record table, and are made before
+ * any pair is registered: index tables of that number without them were left by an older core's removal of another
+ * document, and are kept by nothing.
+ */
+function hasIndexTriggers(params: { db: Database; tables: AttributeIndexTables }): boolean {
+	const { db, tables } = params
+	const names = ATTRIBUTE_INDEX_TRIGGERS.map((trigger) => `${tables.triggers}${trigger}`)
+	const held = db.selectValue(
+		"SELECT count(*) FROM sqlite_schema WHERE type = 'trigger' AND tbl_name = ? AND name IN (SELECT value FROM json_each(?))",
+		[tables.records, JSON.stringify(names)],
+	)
+	return Number(held) === names.length
+}
+
 /** Whether a record row's tag has a registered pair, SQL. */
 function registeredTag(params: { tables: AttributeIndexTables; tag: string }): string {
 	const { tables, tag } = params
@@ -234,7 +256,7 @@ function registeredTag(params: { tables: AttributeIndexTables; tag: string }): s
 	)
 }
 
-/** The rows of `keys` gone from the index. */
+/** The rows of `keys` gone from the index, each found by its primary key. */
 function deleteKeys(params: { tables: AttributeIndexTables; keys: string }): string {
 	const { tables, keys } = params
 	return `DELETE FROM ${tables.rows} WHERE (tagId, nameId, value, recRow) IN (${keys});`
@@ -250,7 +272,8 @@ function insertKeys(params: { tables: AttributeIndexTables; keys: string }): str
  * The index's tables and triggers, when the document has none yet. The triggers are pure SQL and refuse nothing: a
  * replaced row's rows go before its new row is written (`INSERT OR REPLACE` deletes it without a delete trigger
  * while `recursive_triggers` is off), a new row's rows are added, a deleted row's removed, an update changing the
- * attributes or the tag moves them.
+ * attributes or the tag moves them: the old version's rows deleted, the new one's added (computing only the rows
+ * that differ, with `EXCEPT`, measured slower: each version's rows computed twice cost more than the writes saved).
  */
 function createIndexTables(params: { db: Database; tables: AttributeIndexTables }): void {
 	const { db, tables } = params
@@ -275,6 +298,8 @@ function createIndexTables(params: { db: Database; tables: AttributeIndexTables 
 	})
 	const newTag = registeredTag({ tables, tag: 'NEW.tagName' })
 	const oldTag = registeredTag({ tables, tag: 'OLD.tagName' })
+	// tables of this number without the triggers are another document's leftovers: dropped, made anew
+	if (!hasIndexTriggers({ db, tables })) dropIndexTables({ db, tables })
 	db.exec(
 		`CREATE TABLE IF NOT EXISTS ${tables.names} (nid INTEGER PRIMARY KEY, text TEXT NOT NULL UNIQUE);` +
 			`CREATE TABLE IF NOT EXISTS ${tables.rows} (tagId INTEGER NOT NULL, nameId INTEGER NOT NULL, ` +
@@ -291,6 +316,7 @@ function createIndexTables(params: { db: Database; tables: AttributeIndexTables 
 			`CREATE TRIGGER IF NOT EXISTS ${triggers}afterUpdate AFTER UPDATE OF attributes, tagName ON ${records} ` +
 			'WHEN (OLD.attributes IS NOT NEW.attributes OR OLD.tagName IS NOT NEW.tagName) ' +
 			`AND (${oldTag} OR ${newTag}) ` +
-			`BEGIN ${deleteKeys({ tables, keys: oldRow })} ${insertKeys({ tables, keys: newRow })} END;`,
+			`BEGIN ${deleteKeys({ tables, keys: oldRow })} ` +
+			`${insertKeys({ tables, keys: newRow })} END;`,
 	)
 }

@@ -58,6 +58,13 @@ export function createAttributeIndexBuilder(context: AttributeBuildContext): Att
 	}
 
 	return {
+		forget: function forget({ documentId }) {
+			for (const key of [...pending.keys(), ...failed]) {
+				if (JSON.parse(key)[0] !== documentId) continue
+				pending.delete(key)
+				failed.delete(key)
+			}
+		},
 		queue: function queue({ documentId, tagName, names }) {
 			for (const name of names) {
 				const key = JSON.stringify([documentId, tagName, name])

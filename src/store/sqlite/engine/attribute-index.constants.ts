@@ -26,9 +26,19 @@ export const ATTRIBUTE_PAIR_STATE = {
  */
 export const ATTRIBUTE_BUILD_ROWS_PER_SLICE = 2000
 
+/** The triggers of a record table that keep its index, each named `xatr_<seq>_<trigger>`. */
+export const ATTRIBUTE_INDEX_TRIGGERS = [
+	'beforeInsert',
+	'afterInsert',
+	'afterDelete',
+	'afterUpdate',
+] as const
+
 /**
  * An attributes item's name and value, as SQL over `json_each(...) a`: none for an item that is not an object (the
- * `CASE` keeps `->>` from reading an item that is not JSON text).
+ * `CASE` keeps `->>` from reading an item that is not JSON text). A value that is not a JSON string (a number, a
+ * boolean) becomes text in the index's TEXT column (`1` -> `'1'`), where the filter compares it as SQL reads it; core
+ * writes every attribute value as a string, so the two never differ on what it stores.
  */
 export const ITEM_NAME = "(CASE WHEN a.type = 'object' THEN a.value->>'name' END)"
 export const ITEM_VALUE = "(CASE WHEN a.type = 'object' THEN a.value->>'value' END)"
