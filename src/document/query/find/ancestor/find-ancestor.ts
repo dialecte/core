@@ -1,4 +1,4 @@
-import { getRecord } from '../../get/record'
+import { findAncestorsOfEach } from './find-ancestors-of-each'
 
 import type { FindAncestorsOptions } from './find-ancestor.types'
 import type { Context, Ref } from '@/document'
@@ -8,9 +8,12 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  *
  * Returns ancestors bottom-up: [parent, grandparent, …, root] by default.
  * Pass `order: 'top-down'` to get [root, …, grandparent, parent] instead.
- * The starting record is NOT included.
+ * The starting record is NOT included; it is read from its ref (staged operations first), so a staged move answers
+ * its new parents.
  * When `stopAtTagName` is set, the walk stops after collecting that element (inclusive).
  * When `depth` is set, at most that many ancestors are returned.
+ *
+ * Perf: the walk of `findAncestorsOfEach` for one element: one `core::store::getMany` per level read from the store.
  *
  * @internal the context-level read behind `doc.query.findAncestors`; callers use the query
  */
@@ -23,27 +26,6 @@ export async function findAncestors<
 	options?: FindAncestorsOptions<GenericConfig>
 }): Promise<TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[]> {
 	const { context, ref, options } = params
-	const maxDepth = options?.depth ?? Infinity
-	const stopAtTagName = options?.stopAtTagName
-	const order = options?.order ?? 'bottom-up'
-
-	const ancestors: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[] = []
-
-	let current: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined =
-		await getRecord({ context, ref })
-
-	while (current?.parent && ancestors.length < maxDepth) {
-		const parentRef = current.parent as Ref<GenericConfig, ElementsOf<GenericConfig>>
-		const parentRecord: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined =
-			await getRecord({ context, ref: parentRef })
-		if (!parentRecord) break
-
-		ancestors.push(parentRecord)
-
-		if (stopAtTagName && parentRecord.tagName === stopAtTagName) break
-
-		current = parentRecord
-	}
-
-	return order === 'top-down' ? ancestors.reverse() : ancestors
+	const [ancestors] = await findAncestorsOfEach({ context, refsOrRecords: [ref], options })
+	return ancestors
 }

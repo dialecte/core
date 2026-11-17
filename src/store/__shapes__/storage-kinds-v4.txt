@@ -40,7 +40,7 @@ AnyDialecteConfig {
 AnyQuery<GenericConfig extends AnyDialecteConfig> {
   dialecteConfig: GenericConfig
   findAncestors: (refOrRecord: AnyRefOrRecord | undefined) => Promise<AnyTrackedRecord[]>
-  findAncestorsOfEach: (refsOrRecords: AnyRefOrRecord[]) => Promise<AnyTrackedRecord[][]>
+  findAncestorsOfEach: (refsOrRecords: readonly AnyRefOrRecord[]) => Promise<AnyTrackedRecord[][]>
   findByAttributes: (params: { tagName: string; attributes: Record<string, string | string[]>; }) => Promise<AnyTrackedRecord[]>
   findDescendants: (refOrRecord: AnyRefOrRecord | undefined) => Promise<Record<string, AnyTrackedRecord[]>>
   getAttribute: { (refOrRecord: AnyRefOrRecord | undefined, params: { name: string; namespace?: string | undefined; fullObject?: false | undefined; defaults?: AttributeDefaults | undefined; }): Promise<string>; (refOrRecord: AnyRefOrRecord | undefined, params: { name: string; namespace?: string | undefined; fullObject: true; defaults?: AttributeDefaults | undefined; }): Promise<AnyAttribute | undefined>; }

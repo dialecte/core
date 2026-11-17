@@ -1,5 +1,7 @@
 import { getRecords } from '../../get/record'
 
+import { toRef } from '@/helpers'
+
 import type { FindAncestorsOptions } from './find-ancestor.types'
 import type { KnownRecords, ParentLink, WalkStart } from './find-ancestors-of-each.types'
 import type { Context, Ref, RefOrRecord } from '@/document'
@@ -11,8 +13,9 @@ import type { AnyDialecteConfig, DialecteRecord, ElementsOf, TrackedRecord } fro
  * A record given is used as given: its `parent` is followed and it is not read again. The refs are read
  * together in one `getRecords`. Then each level's parents not read yet in this call are read in one
  * `getRecords` (staged operations and the transaction cache first, as `getRecords` resolves them), until
- * every chain stops at its `depth`, at its `stopAtTagName` element (included) or at the root. An ancestor
- * shared by several elements is read once; each position gets its own copy of it.
+ * every chain stops at its `depth`, at its `stopAtTagName` element (included) or at the root. A parent
+ * cycle (a corrupt store) ends its chain once the chain is as long as the records read. An ancestor
+ * shared by several elements is read once; each position gets its own shallow copy of it.
  *
  * Returns one list per input position, in input order, bottom-up unless `order: 'top-down'`; a ref that
  * names no element answers `[]`.
@@ -57,7 +60,8 @@ export async function findAncestorsOfEach<
 
 		for (const { position, parent } of frontier) {
 			const record = known.get(parent.id)
-			if (!record) continue
+			// a chain holds distinct records, all read in this call: one as long as what was read repeats one, a parent cycle
+			if (!record || chains[position].length >= known.size) continue
 			chains[position].push(handedOut.has(record.id) ? { ...record } : record)
 			handedOut.add(record.id)
 
@@ -98,7 +102,7 @@ async function readStarts<
 			continue
 		}
 		refPositions.push(position)
-		refs.push(toPlainRef(refOrRecord))
+		refs.push(toRef(refOrRecord))
 	}
 	if (refs.length === 0) return { starts, read }
 
@@ -133,7 +137,7 @@ async function readUnknown<GenericConfig extends AnyDialecteConfig>(params: {
 	return found
 }
 
-/** Whether an input is a record (it carries its `parent`) rather than a ref or a relationship. */
+/** Whether an input is a record rather than a ref or a relationship: only a record carries a `parent` (a relationship is a tag name and an id). */
 function isRecordGiven<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
@@ -141,17 +145,4 @@ function isRecordGiven<
 	refOrRecord: RefOrRecord<GenericConfig, GenericElement>,
 ): refOrRecord is DialecteRecord<GenericConfig, GenericElement> {
 	return 'parent' in refOrRecord
-}
-
-/** The tag name and id of a ref or a relationship, without anything else it carries. */
-function toPlainRef<
-	GenericConfig extends AnyDialecteConfig,
-	GenericElement extends ElementsOf<GenericConfig>,
->(
-	refOrRelationship: RefOrRecord<GenericConfig, GenericElement>,
-): Ref<GenericConfig, GenericElement> {
-	return { tagName: refOrRelationship.tagName, id: refOrRelationship.id } as Ref<
-		GenericConfig,
-		GenericElement
-	>
 }

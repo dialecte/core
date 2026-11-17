@@ -172,11 +172,18 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		}) as Promise<AnyTrackedRecord[]>
 	}
 
-	/** The ancestors of each element, bottom-up, one list per input position: one read per ancestor level, a record given used as given. */
-	async findAncestorsOfEach(refsOrRecords: AnyRefOrRecord[]): Promise<AnyTrackedRecord[][]> {
+	/**
+	 * The ancestors of each element, one list per input position: one read per ancestor level, a record given used as
+	 * given. Bottom-up, no options, as `findAncestors` here; `query.findAncestorsOfEach` takes them.
+	 */
+	async findAncestorsOfEach(
+		refsOrRecords: ReadonlyArray<AnyRefOrRecord>,
+	): Promise<AnyTrackedRecord[][]> {
 		return findAncestorsOfEach({
 			context: this.getContext(),
-			refsOrRecords: refsOrRecords as RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>[],
+			refsOrRecords: refsOrRecords as ReadonlyArray<
+				RefOrRecord<GenericConfig, ElementsOf<GenericConfig>>
+			>,
 		}) as Promise<AnyTrackedRecord[][]>
 	}
 
