@@ -235,7 +235,7 @@ export class Document<
 			const result = await fn(transaction)
 
 			await transaction.finishStaging()
-			await transaction.commit()
+			const changes = await transaction.commit()
 			this.voidReadScopes()
 			// Refresh canUndo/canRedo on the shared entry locally (mirrors
 			// Project.undo/redo) so state is correct synchronously — no channel
@@ -245,6 +245,7 @@ export class Document<
 				type: 'commit',
 				documentId: this.documentId,
 				timestamp: this.state.lastUpdate ?? Date.now(),
+				changes,
 			})
 			transaction.clearStagedOperations()
 			transaction.clearRecordCache()
@@ -271,13 +272,19 @@ export class Document<
 
 	/**
 	 * A commit refused with its connection lost may have landed (its outcome `running` or `unknown`): the document's
-	 * history is read again and the change the store told of it posted. One known not to have landed changed nothing.
+	 * history is read again and the change the store told of it posted, its changes unknown. One known not to have
+	 * landed changed nothing.
 	 */
 	private async readAgainAfterLoss(params: { thrown: unknown }): Promise<void> {
 		if (!isConnectionLost(params) || wasNotApplied(params)) return
 		this.voidReadScopes()
 		await this.refreshHistoryStatus().catch(ignoreReadFailure)
-		this.broadcast({ type: 'commit', documentId: this.documentId, timestamp: Date.now() })
+		this.broadcast({
+			type: 'commit',
+			documentId: this.documentId,
+			timestamp: Date.now(),
+			changes: { unknown: true },
+		})
 	}
 
 	/**
@@ -353,7 +360,7 @@ export class Document<
 				this.state.loading = true
 
 				try {
-					await tx.commit()
+					const changes = await tx.commit()
 					this.voidReadScopes()
 					// Refresh canUndo/canRedo locally so the shared entry is correct
 					// synchronously — no channel echo required.
@@ -362,6 +369,7 @@ export class Document<
 						type: 'commit',
 						documentId: this.documentId,
 						timestamp: this.state.lastUpdate ?? Date.now(),
+						changes,
 					})
 
 					tx.clearStagedOperations()

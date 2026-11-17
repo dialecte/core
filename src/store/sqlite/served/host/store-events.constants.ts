@@ -9,7 +9,7 @@ import type { BlobAttachment, BlobRecord } from '@/types'
  * What a member's success announces, from its arguments and its answer; a member left out announces nothing, and
  * neither does one whose answer says it changed nothing (`false`: an undo with nothing to undo, an unknown document
  * removed or updated, an empty bulk write, a blob attached where it is or detached where it is not, an unknown blob
- * removed).
+ * removed). A commit, an undo, a redo or a bulk write tells its changes unknown.
  */
 export const STORE_EVENT_OF_MEMBER: StoreEventOf = {
 	registerDocument: function documentRegistered({ args }) {
@@ -26,16 +26,26 @@ export const STORE_EVENT_OF_MEMBER: StoreEventOf = {
 			: undefined
 	},
 	bulkWrite: function recordsWritten({ args, value }) {
-		return changed({ value }) ? { type: 'commit', documentId: args[0] as string } : undefined
+		return changed({ value })
+			? { type: 'commit', documentId: args[0] as string, changes: { unknown: true } }
+			: undefined
 	},
 	commit: function committed({ args }) {
-		return { type: 'commit', documentId: (args[0] as { documentId: string }).documentId }
+		return {
+			type: 'commit',
+			documentId: (args[0] as { documentId: string }).documentId,
+			changes: { unknown: true },
+		}
 	},
 	undo: function undone({ args, value }) {
-		return changed({ value }) ? { type: 'commit', documentId: args[0] as string } : undefined
+		return changed({ value })
+			? { type: 'commit', documentId: args[0] as string, changes: { unknown: true } }
+			: undefined
 	},
 	redo: function redone({ args, value }) {
-		return changed({ value }) ? { type: 'commit', documentId: args[0] as string } : undefined
+		return changed({ value })
+			? { type: 'commit', documentId: args[0] as string, changes: { unknown: true } }
+			: undefined
 	},
 	importFile: function imported({ value }) {
 		return { type: 'document-imported', documentId: (value as ImportFileResult).record.id }

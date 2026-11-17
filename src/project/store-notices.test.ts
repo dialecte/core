@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: main already carries it at 836 lines; this lot only adds the commit message's now required `changes` to two message literals
 import { Project } from './project'
 import { CHANGES_HELD_MAX } from './project.constants'
 
@@ -598,7 +599,12 @@ function commitsTold(params: { tell: (notice: StoreNotice) => void; count: numbe
 	for (let index = 0; index < params.count; index += 1) {
 		params.tell({
 			type: 'change',
-			message: { type: 'commit', documentId: 'unknown', timestamp: index },
+			message: {
+				type: 'commit',
+				documentId: 'unknown',
+				timestamp: index,
+				changes: { unknown: true },
+			},
 			own: false,
 		})
 	}
@@ -697,7 +703,12 @@ describe('an open a close was called after', () => {
 			during: async function closedWhileOpening() {
 				tell({
 					type: 'change',
-					message: { type: 'commit', documentId: 'unknown', timestamp: 1 },
+					message: {
+						type: 'commit',
+						documentId: 'unknown',
+						timestamp: 1,
+						changes: { unknown: true },
+					},
 					own: false,
 				})
 				closing = project.close()

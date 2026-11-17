@@ -451,7 +451,7 @@ export class InMemoryStore implements Store {
 		})
 		await this.bulkWriteUnguarded(documentId, ops)
 		const writes = (ops.creates?.length ?? 0) + (ops.updates?.length ?? 0) + deleting.length
-		if (writes > 0) this.announce({ type: 'commit', documentId })
+		if (writes > 0) this.announce({ type: 'commit', documentId, changes: { unknown: true } })
 	}
 
 	async commit(params: {
@@ -526,7 +526,7 @@ export class InMemoryStore implements Store {
 			parts: [creates.length, updates.length, deletes.length],
 		})
 		// announced once its progress is told, as the engine does
-		this.announce({ type: 'commit', documentId })
+		this.announce({ type: 'commit', documentId, changes: { unknown: true } })
 	}
 
 	// --- History ---
@@ -552,7 +552,7 @@ export class InMemoryStore implements Store {
 
 		state.heads.set(documentId, head - 1)
 		bumpVersion({ state, documentId })
-		this.announce({ type: 'commit', documentId })
+		this.announce({ type: 'commit', documentId, changes: { unknown: true } })
 	}
 
 	async redo(documentId: string): Promise<void> {
@@ -576,7 +576,7 @@ export class InMemoryStore implements Store {
 
 		state.heads.set(documentId, next)
 		bumpVersion({ state, documentId })
-		this.announce({ type: 'commit', documentId })
+		this.announce({ type: 'commit', documentId, changes: { unknown: true } })
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {

@@ -1,3 +1,4 @@
+import { describeCommitChanges } from './describe-commit-changes'
 import { mergeOperations } from './merge-operations'
 
 import { NOOP_PERF } from '@/perf'
@@ -6,9 +7,14 @@ import { isConnectionLost, lostWriteError, outcomeAfterLoss } from '@/store/lost
 import type { ProgressReporter } from '@/document/progress'
 import type { DocumentState } from '@/document/types'
 import type { Perf } from '@/perf'
+import type { CommitChanges, UnknownCommitChanges } from '@/project/types'
 import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, Operation } from '@/types'
 
+/**
+ * Write the merged staged operations as one commit and answer what it changed (`describeCommitChanges` over the
+ * writes it handed the store); a commit lost with its connection whose outcome reads `applied` answers the same.
+ */
 export async function commitTransaction<GenericConfig extends AnyDialecteConfig>(params: {
 	stagedOperations: Operation<GenericConfig>[]
 	store: Store
@@ -16,13 +22,18 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	documentState: DocumentState
 	progress: ProgressReporter
 	perf?: Perf
-}): Promise<void> {
+}): Promise<CommitChanges | UnknownCommitChanges> {
 	const { stagedOperations, store, documentId, documentState, progress, perf = NOOP_PERF } = params
 
 	perf.start('core::commit')
 	perf.start('core::commit::merge')
 	const { creates, updates, deletes } = mergeOperations(stagedOperations)
 	perf.stop('core::commit::merge')
+	const writes = {
+		creates: creates.map((op) => op.newRecord),
+		updates: updates.map((op) => op.newRecord),
+		deletes: deletes.map((op) => op.oldRecord),
+	}
 
 	const totalOperations = creates.length + updates.length + deletes.length
 
@@ -48,9 +59,9 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 			await store.commit({
 				documentId,
 				writeId,
-				creates: creates.map((op) => op.newRecord),
-				updates: updates.map((op) => op.newRecord),
-				deletes: deletes.map((op) => op.oldRecord.id),
+				creates: writes.creates,
+				updates: writes.updates,
+				deletes: writes.deletes.map((record) => record.id),
 				onProgress: (current) => {
 					advanceTo(current)
 				},
@@ -72,4 +83,5 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	documentState.lastUpdate = Date.now()
 	progress.endPlan()
 	perf.stop('core::commit')
+	return describeCommitChanges(writes)
 }
