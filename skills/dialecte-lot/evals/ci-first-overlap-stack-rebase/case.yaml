@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: ci-first-overlap-stack-rebase
+expected_outcome: |
+  The overlap is solved by narrowing the scope to the files the lot touches (the brief's scope, or `lot scope`), not
+  by `--overlap-ok` on the agent's own; `--overlap-ok --by --reason` only with the orchestrator's go. The lot that
+  needs 0188's unmerged branch starts stacked: `lot start <brief> --on 0188-cli-find-each`. Every command runs the
+  repository's pinned cli (`npx dialecte`), never `@latest`. After the rebase, the stale green is fixed with
+  `npx dialecte tdd green --base 9f3e2a1` and the commit is made again through the hook, never with `--no-verify`.

@@ -1,0 +1,9 @@
+schema_version: '1.1'
+name: ci-first-lands-with-lot-land
+expected_outcome: |
+  core is CI-first (main only through the merge queue), so the lot does not hand over: no lots.json, no
+  `handover write` or `handover run --rehearse`, whatever `lot status` prints. The lot is committed on its own branch
+  in its worktree through the commit hook (never `--no-verify`), then `npx dialecte lot land 0190-core-depth --draft`
+  rebases it onto main, pushes it and opens the draft pull request; no merge-of-main commit. CI runs the suite, so no
+  `gate --full` or `contrib` locally. The report names the pull request; queueing stays with the person or the
+  orchestrator: no `lot approve`, `gh pr ready`, `gh pr merge`, and no `lot land` without `--draft`.

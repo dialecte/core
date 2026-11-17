@@ -117,13 +117,18 @@ what the station records for the hand-over card).
    checks them on the changed files.
 4. **Gates** (below): `gate --fast` and `npx dialecte rules` per step (fix every `rules` error before the
    review), `gate --full` once per lot, then `dialecte contrib` (`@dialecte/cli` 0.3.0); docs + CHANGELOG if the
-   surface changed.
+   surface changed. In a CI-first repository (step 6) only `npm run check` and `npx dialecte rules` on the touched
+   files run locally: CI runs the rest on every push.
 5. **Independent review**: have a fresh reviewer (a sub-agent with only the spec, the diff and
    these rules, or a human) read the diff against the previous version before hand-over. Self-review
    re-reads your own intent and misses weakened assertions and unusable types.
-6. **Hand over** through `npx dialecte handover write <lots.json>`: the agent writes only the lots file, the
-   command writes the hand-over folder and prints the card the user gets
-   ([references/landing-changes.md](references/landing-changes.md)). The agent never commits or pushes.
+6. **Land it** by the repository's flow. **CI-first** (main only through the merge queue: its
+   `.github/workflows/ci.yml` runs on `merge_group` with a `ci-ok` job; today the cli and core): commit on the lot branch through the
+   hook (never `--no-verify`), then `npx dialecte lot land <id> --draft`, and report the draft pull request; never
+   a hand-over, a rehearsal or a merge-of-main commit, never queue it (`dialecte-lot` references/ci-first.md).
+   **Hand-over** (every other repository): `npx dialecte handover write <lots.json>`: the agent writes only the
+   lots file, the command writes the hand-over folder and prints the card the user gets
+   ([references/landing-changes.md](references/landing-changes.md)); the agent never commits or pushes.
 
 Run as a `dialecte-lot` lot, each station gains the package's own steps: [references/lot-in-a-package.md](references/lot-in-a-package.md)
 (the mutation switch, `dialecte rules`, `dialecte contrib`, `mutants status`, merges onto a moved main).
@@ -160,7 +165,8 @@ In a package whose vitest config has a `node` project (core), a test runs in one
 
 Run it with `npx dialecte gate --fast` while iterating and `npx dialecte gate --full` once per lot,
 from the package root; before the branch merges, also the whole suite in the browser (step 4
-below). The gate runs each step below unfiltered and judges it on its exit code and on the counts
+below). In a CI-first repository (the cli, core) CI runs all of it: locally only `npm run check` and
+`npx dialecte rules` on the touched files (`dialecte-lot` references/ci-first.md). The gate runs each step below unfiltered and judges it on its exit code and on the counts
 the step printed (a test step that counts no test fails), prints one line per step,
 restores the generated docs the package declares after the docs build, and refuses to run while a
 hand-over script holds the repository. With `--fast`, a change that touches no test (a doc edit)
@@ -226,7 +232,8 @@ or the steps by hand:
 5. `npm run doc:build` - the VitePress docs build. From cli 0.3.0 a dialecte package
    (`"dialecte": { "profile": "contributor" }`) runs it, with the type bench, the code rules and the release
    check, in `npx dialecte contrib` after a green `gate --full` and before the hand-over, whose `contrib`
-   guard refuses a tree without a green record of it.
+   guard refuses a tree without a green record of it. In a CI-first repository CI runs the docs build, not
+   `contrib`.
 6. `npm run skills:generate`, then `npm run skills:check` - every change, not only one that touches a skill:
    the check fails on a name, path or script a skill cites that no longer exists, and on a public function
    without its JSDoc summary and `@intent` (below). The scripts run the package's pinned cli; with a pin
@@ -355,7 +362,8 @@ during import (import is in-memory two-pass by design, see the hooks rules in th
 - Edit a `*.generated.ts` file (regenerate with `dialecte-create`).
 - Add a domain rule to core because it was convenient.
 - Restate a registry or the definition by hand (see code-rules).
-- Commit, push, or touch a repo's git index while a hand-over script may be running.
+- Commit, push, or touch a repo's git index while a hand-over script may be running; in a CI-first repository,
+  commit or push anywhere but the lot's branch, or push outside `lot land --draft`.
 - Name a tool that consumes the package in a committed file or message ([code-rules](references/code-rules.md)).
 - Leave a known improvement as a "note for later" without doing it or explaining why you cannot.
 

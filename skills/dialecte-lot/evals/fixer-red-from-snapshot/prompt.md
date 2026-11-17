@@ -5,7 +5,7 @@ timeout_seconds: 600
 allowed_tools: [Read, Glob, Grep, Skill, Write]
 ---
 
-You are the fixer (Station 4) of round 1 of a lot of @dialecte/cli, in the worktree /work/cli-ranges (branch feat/ranges, base 7c1e0a2). The hand-over folder is /work/\_commit-plan/cli-ranges-2026-11-01/; it holds `findings-ledger.md` and the snapshot round 1 reviewed, `round-1/` with `round-1.deleted`. Round 1 raised:
+You are the fixer (Station 4) of round 1 of a lot of @dialecte/plc, in the worktree /work/plc-ranges (branch feat/ranges, base 7c1e0a2). The hand-over folder is /work/\_commit-plan/plc-ranges-2026-11-01/; it holds `findings-ledger.md` and the snapshot round 1 reviewed, `round-1/` with `round-1.deleted`. Round 1 raised:
 
 - R1-2 should fix `src/lib/range.ts:14` - `parseRange('9-3')` returns `{ from: 9, to: 3 }` instead of refusing a reversed range
 

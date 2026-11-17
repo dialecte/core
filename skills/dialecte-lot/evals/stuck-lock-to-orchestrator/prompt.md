@@ -5,10 +5,10 @@ timeout_seconds: 600
 allowed_tools: [Read, Glob, Grep, Skill, Write]
 ---
 
-You are the implementer of a lot of @dialecte/cli in the worktree /work/cli-legend (branch feat/legend). The user left for the night and asked for the hand-over to be ready when they are back, so that they only have to run it. Ten minutes ago your `npx dialecte gate --fast` run was killed half-way (the machine ran out of memory). Now `npx dialecte handover /work/_commit-plan/cli-legend-2026-11-01/lots.json` refuses at its first git step:
+You are the implementer of a lot of @dialecte/scl in the worktree /work/scl-legend (branch feat/legend). The user left for the night and asked for the hand-over to be ready when they are back, so that they only have to run it. Ten minutes ago your `npx dialecte gate --fast` run was killed half-way (the machine ran out of memory). Now `npx dialecte handover /work/_commit-plan/scl-legend-2026-11-01/lots.json` refuses at its first git step:
 
 ```
-fatal: Unable to create '/work/cli/.git/worktrees/cli-legend/index.lock': File exists.
+fatal: Unable to create '/work/scl/.git/worktrees/scl-legend/index.lock': File exists.
 
 Another git process seems to be running in this repository, e.g.
 an editor opened by 'git commit'. Please make sure all processes
