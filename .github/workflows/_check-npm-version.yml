@@ -15,9 +15,10 @@ on:
 
 jobs:
   # Only a push that changes the version acts: its version differs from the main it was pushed onto (the push's
-  # `before`). It publishes when npm lacks the version and the version is above npm's latest (a lower or equal one fails
-  # the run); a pre-release goes under next. A version npm has is never published again: a re-run only pushes its
-  # missing tag. A failed npm or git lookup fails the run (scripts/publish-guard/run-publish-decision.ts decides).
+  # `before`); any other push decides from git alone and never asks npm. A version npm lacks is published when it is
+  # above npm's latest (a pre-release: above next too, published under next); a lower or equal one, or a release tag
+  # without its version on npm, fails the run. A version npm has is never published again: when its release tag is
+  # missing, the push tags its own commit. A failed npm or git lookup fails the run (scripts/publish-guard/run-publish-decision.ts decides).
   # A merge-queue batch lands as one push: its head is published, which may be a later commit than the one that changed
   # the version. The ruleset keeps the queue at one entry per merge (max_entries_to_merge: 1), so the head is that
   # commit.

@@ -142,11 +142,13 @@ describe('the publish workflow', () => {
 		)
 	})
 
-	it('_publish.yml publishes under the dist-tag it is given, with id-token write', () => {
+	it('_publish.yml publishes under the dist-tag it is given, passed through env, with id-token write', () => {
 		const publish = workflowText({ name: '_publish.yml' })
 		expect(publish).toContain('\n      id-token: write\n')
 		expect(publish).toContain('\n      dist-tag:\n        required: true\n        type: string\n')
-		expect(publish).toContain('run: npm publish --access public --tag "${{ inputs.dist-tag }}"\n')
+		expect(publish).toContain(
+			'\n        env:\n          DIST_TAG: ${{ inputs.dist-tag }}\n        run: npm publish --access public --tag "$DIST_TAG"\n',
+		)
 	})
 
 	for (const name of ['_publish.yml', '_tag-release.yml']) {

@@ -1,8 +1,17 @@
-/** What `npm view <package> dist-tags versions --json` gave: its exit code and both streams. */
-export type NpmViewResult = {
+/** What a command gave (`npm view`, `git show`, `git ls-remote`): its exit code and both streams. */
+export type CommandResult = {
 	exitCode: number
 	stdout: string
 	stderr: string
+}
+
+/** What the publish decision reads and writes, given by its caller: the real process, or a test's fakes. */
+export type PublishDecisionIo = {
+	environment: Readonly<Partial<Record<string, string>>>
+	readFile: (path: string) => string
+	run: (params: { command: string; args: readonly string[] }) => CommandResult
+	appendOutput: (params: { file: string; text: string }) => void
+	print: (params: { stream: 'stdout' | 'stderr'; line: string }) => void
 }
 
 /**

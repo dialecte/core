@@ -1,20 +1,27 @@
 /**
- * The publish guard's decision for a push to main, as pure functions: `_check-npm-version.yml` runs it through
- * `scripts/publish-guard/run-publish-decision.ts`, which gathers the facts.
+ * The publish guard's decision for a push to main: `_check-npm-version.yml` runs
+ * `scripts/publish-guard/run-publish-decision.ts`, which gives `runPublishDecision` the real process. Everything here
+ * reads and writes only through the io it is given.
  */
-import { NPM_NOT_FOUND, SEMVER } from './publish-decision.constants.ts'
+import {
+	LS_REMOTE_FOUND,
+	LS_REMOTE_MISSING,
+	NPM_NOT_FOUND,
+	SEMVER,
+} from './publish-decision.constants.ts'
 
 import type {
+	CommandResult,
 	DistTag,
-	NpmViewResult,
 	PublishDecision,
+	PublishDecisionIo,
 	PublishFacts,
 	RegistryState,
 	SemVer,
 } from './publish-decision.types.ts'
 
 /** What npm answered: read, absent on a first publish (E404), failed on any other error. */
-export function readNpmView(result: NpmViewResult): RegistryState {
+export function readNpmView(result: CommandResult): RegistryState {
 	if (result.exitCode !== 0) {
 		if (NPM_NOT_FOUND.test(result.stdout) || NPM_NOT_FOUND.test(result.stderr))
 			return { kind: 'absent' }
@@ -33,31 +40,40 @@ export function readNpmView(result: NpmViewResult): RegistryState {
 
 /**
  * Publish, tag only, skip or refuse. Only the push that changes the version acts. A version npm has is never published
- * again: its missing tag is pushed when npm's tag for it names it (a re-run after the publish), else nothing. A new
- * version must be above npm's latest; a pre-release goes under next.
+ * again: when its release tag is missing, the push tags its own commit, the one that brings that version (a re-run of
+ * the release push, or a revert to a published version whose tag was lost). A release tag without its version on npm is
+ * refused. A new version must be above npm's latest, and a pre-release above npm's next too; a pre-release goes under
+ * next.
  */
 export function decidePublish(facts: PublishFacts): PublishDecision {
 	const { previousVersion, currentVersion, registry, tagExists } = facts
+	if (previousVersion === currentVersion) return unchangedDecision(currentVersion)
 	if (registry.kind === 'failed')
 		return { action: 'refuse', reason: `npm view failed: ${registry.reason}` }
-	if (previousVersion === currentVersion)
-		return { action: 'skip', reason: `version unchanged (${currentVersion})` }
 	const current = parseSemVer(currentVersion)
 	if (current === undefined)
 		return { action: 'refuse', reason: `${currentVersion} is not a semver version` }
+	if (registry.kind === 'present' && registry.versions.includes(currentVersion)) {
+		return tagExists
+			? { action: 'skip', reason: `npm has ${currentVersion} and its release tag` }
+			: { action: 'tag', reason: `npm has ${currentVersion}, its release tag is missing` }
+	}
+	if (tagExists) {
+		return {
+			action: 'refuse',
+			reason: `the release tag of ${currentVersion} exists but npm lacks the version`,
+		}
+	}
 	const distTag: DistTag = current.prerelease.length > 0 ? 'next' : 'latest'
 	if (registry.kind === 'absent')
 		return { action: 'publish', distTag, reason: `first publish of ${currentVersion}` }
-	if (registry.versions.includes(currentVersion))
-		return decidePublished({ registry, currentVersion, distTag, tagExists })
-	const latest = registry.distTags.latest
-	const latestVersion = latest === undefined ? undefined : parseSemVer(latest)
-	if (
-		latest !== undefined &&
-		(latestVersion === undefined || compareSemVer(current, latestVersion) <= 0)
-	) {
-		return { action: 'refuse', reason: `${currentVersion} is not above npm's latest ${latest}` }
-	}
+	const floors: readonly DistTag[] = distTag === 'next' ? ['latest', 'next'] : ['latest']
+	const refusal = floors
+		.map((floor) =>
+			floorRefusal({ current, currentVersion, floor, floorVersion: registry.distTags[floor] }),
+		)
+		.find((reason) => reason !== undefined)
+	if (refusal !== undefined) return { action: 'refuse', reason: refusal }
 	return {
 		action: 'publish',
 		distTag,
@@ -65,24 +81,119 @@ export function decidePublish(facts: PublishFacts): PublishDecision {
 	}
 }
 
-/** A version npm has: tag it when its tag is missing and npm's tag for it names it, else nothing. */
-function decidePublished(params: {
-	registry: Extract<RegistryState, { kind: 'present' }>
-	currentVersion: string
-	distTag: DistTag
-	tagExists: boolean
-}): PublishDecision {
-	const { registry, currentVersion, distTag, tagExists } = params
-	if (!tagExists && registry.distTags[distTag] === currentVersion) {
-		return {
-			action: 'tag',
-			reason: `npm has ${currentVersion} under ${distTag}, its release tag is missing`,
-		}
-	}
-	return { action: 'skip', reason: `npm has ${currentVersion}` }
+/** git ls-remote --exit-code: the tag found (0) or missing (2); any other exit throws with git's reason. */
+export function lsRemoteState(result: { exitCode: number; stderr: string }): 'found' | 'missing' {
+	if (result.exitCode === LS_REMOTE_FOUND) return 'found'
+	if (result.exitCode === LS_REMOTE_MISSING) return 'missing'
+	throw new Error(`git ls-remote exited ${result.exitCode}: ${result.stderr.trim()}`)
 }
 
-/** The parts of a semver version, or undefined when it is not one. */
+/** The step outputs of a decision: dist_tag only when it publishes. */
+export function outputsOf(decision: PublishDecision): string {
+	const publish = decision.action === 'publish'
+	const distTag = decision.action === 'publish' ? `dist_tag=${decision.distTag}\n` : ''
+	const tag = publish || decision.action === 'tag'
+	return `publish=${publish}\n${distTag}tag=${tag}\n`
+}
+
+/**
+ * The push's decision through the io it is given: the version before the push (from BEFORE) against the current one;
+ * npm and the release tag are asked only when the version changed. Prints the decision; a refusal returns 1 with no
+ * outputs written, anything else writes the outputs and returns 0. A missing BEFORE or GITHUB_OUTPUT, an unreadable
+ * package.json or a failed git command throws.
+ */
+export function runPublishDecision(io: PublishDecisionIo): number {
+	const before = io.environment.BEFORE ?? ''
+	const outputFile = io.environment.GITHUB_OUTPUT ?? ''
+	if (before === '' || outputFile === '') throw new Error('BEFORE and GITHUB_OUTPUT must be set')
+	const current = readPackage(io.readFile('package.json'))
+	const previous = readPackage(
+		stdoutOf({ io, command: 'git', args: ['show', `${before}:package.json`] }),
+	)
+	const decision =
+		previous.version === current.version
+			? unchangedDecision(current.version)
+			: decidePublish({
+					previousVersion: previous.version,
+					currentVersion: current.version,
+					registry: readNpmView(
+						io.run({
+							command: 'npm',
+							args: ['view', current.name, 'dist-tags', 'versions', '--json'],
+						}),
+					),
+					tagExists: tagOnOrigin({ io, tag: releaseTagOf(current) }) === 'found',
+				})
+	io.print({
+		stream: decision.action === 'refuse' ? 'stderr' : 'stdout',
+		line: `${current.name} ${previous.version} -> ${current.version}: ${decision.action} (${decision.reason})`,
+	})
+	if (decision.action === 'refuse') return 1
+	io.appendOutput({ file: outputFile, text: outputsOf(decision) })
+	return 0
+}
+
+/** A push that leaves the version as it was: nothing to publish or tag, npm not asked. */
+function unchangedDecision(version: string): PublishDecision {
+	return { action: 'skip', reason: `version unchanged (${version})` }
+}
+
+/** The refusal of a version not above npm's dist-tag, or undefined; a dist-tag npm lacks sets no floor. */
+function floorRefusal(params: {
+	current: SemVer
+	currentVersion: string
+	floor: DistTag
+	floorVersion: string | undefined
+}): string | undefined {
+	const { current, currentVersion, floor, floorVersion } = params
+	if (floorVersion === undefined) return undefined
+	const parsed = parseSemVer(floorVersion)
+	if (parsed === undefined) return `npm's ${floor} ${floorVersion} is not a semver version`
+	return compareSemVer(current, parsed) > 0
+		? undefined
+		: `${currentVersion} is not above npm's ${floor} ${floorVersion}`
+}
+
+/** The release tag of a package version: `<name without scope>@v<version>`, as `_tag-release.yml` names it. */
+function releaseTagOf(packageJson: { name: string; version: string }): string {
+	return `${packageJson.name.replace(/.*\//, '')}@v${packageJson.version}`
+}
+
+/** Whether origin has the release tag. */
+function tagOnOrigin(params: { io: PublishDecisionIo; tag: string }): 'found' | 'missing' {
+	return lsRemoteState(
+		params.io.run({
+			command: 'git',
+			args: ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/${params.tag}`],
+		}),
+	)
+}
+
+/** The command's stdout, or an error naming the command and its stderr. */
+function stdoutOf(params: {
+	io: PublishDecisionIo
+	command: string
+	args: readonly string[]
+}): string {
+	const result = params.io.run({ command: params.command, args: params.args })
+	if (result.exitCode !== 0) {
+		throw new Error(
+			`${params.command} ${params.args.join(' ')} exited ${result.exitCode}: ${result.stderr.trim()}`,
+		)
+	}
+	return result.stdout
+}
+
+/** The name and version of a package.json text. */
+function readPackage(text: string): { name: string; version: string } {
+	const parsed = parseJson(text)
+	if (!isRecord(parsed) || typeof parsed.name !== 'string' || typeof parsed.version !== 'string') {
+		throw new Error('package.json lacks a name or a version')
+	}
+	return { name: parsed.name, version: parsed.version }
+}
+
+/** The parts of a semver version, or undefined when it is not one (leading zeros included). */
 function parseSemVer(version: string): SemVer | undefined {
 	const match = SEMVER.exec(version)
 	if (match === null) return undefined
@@ -125,7 +236,7 @@ function comparePrereleasePart(params: {
 }
 
 /** npm's error as `<code>: <summary>`, else its stderr, else the exit code. */
-function npmErrorReason(result: NpmViewResult): string {
+function npmErrorReason(result: CommandResult): string {
 	const parsed = parseJson(result.stdout)
 	const error = isRecord(parsed) ? parsed.error : undefined
 	if (isRecord(error) && typeof error.code === 'string' && typeof error.summary === 'string') {

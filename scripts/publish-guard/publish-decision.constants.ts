@@ -1,5 +1,9 @@
-/** major.minor.patch, an optional pre-release and an optional build (ignored by the order). */
-export const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/
+/**
+ * major.minor.patch, an optional pre-release and an optional build (ignored by the order); a number never starts with 0
+ * unless it is 0.
+ */
+export const SEMVER =
+	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 
 /** npm's code for a package it does not have, in the JSON error `npm view --json` prints. */
 export const NPM_NOT_FOUND = /"code"\s*:\s*"E404"/
