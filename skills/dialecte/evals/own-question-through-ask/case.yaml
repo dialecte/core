@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: own-question-through-ask
+expected_outcome: |
+  Each question goes through `dialecte ask` before the person: the structural ones answer from the definition
+  (rung 1); the standard one reaches the documents and goes on with `ask pack`, independent readers whose reports
+  `ask verdict` checks, then the person only when the ladder says so, whose answer is recorded with `ask answer`
+  so nobody asks it twice. Nothing is decided from the agent's own memory of the standard.

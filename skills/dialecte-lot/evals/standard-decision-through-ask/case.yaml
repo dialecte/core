@@ -1,0 +1,8 @@
+schema_version: '1.1'
+name: standard-decision-through-ask
+expected_outcome: |
+  The decision goes through the cli's ask: `dialecte ask "<question>" --decision` with the lot (`--lot <its id>`);
+  `ask pack` writes the reader briefs; independent standard-tier readers (three at high) report with cited lines;
+  `ask verdict` checks the cites and agreement; at high the adjudicator (strong tier, `ask verdict --adjudicator`);
+  no agreement goes to the person through `lot answer`; the fact and the ask folder keep the result for later
+  lots; the committed text states the behaviour without quoting or citing the standard.
