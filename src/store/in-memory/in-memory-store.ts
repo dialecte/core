@@ -20,6 +20,7 @@ import { recordTableName } from '../store.constants'
 import { toStoredRecords } from '../stored-record'
 import { removeUnfinishedImports } from '../unfinished-imports'
 import { writeOutcomeOf } from '../write-outcome'
+import { cloneRecord } from './clone-record'
 import {
 	announceInMemoryChange,
 	bumpVersion,
@@ -34,6 +35,7 @@ import {
 	OPEN_IN_MEMORY_CONNECTIONS,
 } from './in-memory-state.constants'
 import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
+import { createRecordTable } from './in-memory-table'
 
 import { throwDialecteError } from '@/errors'
 import { runExport } from '@/project/io/run-export'
@@ -59,6 +61,8 @@ import type {
 	InMemoryState,
 	InMemoryStoreOptions,
 	ReadonlyInMemoryState,
+	ReadonlyRecordTable,
+	RecordTable,
 } from './types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentRecord, DocumentUpdates } from '@/project/types'
@@ -69,7 +73,7 @@ import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/ty
  * is written.
  */
 function guardNoDuplicate(params: {
-	table: ReadonlyMap<string, AnyRawRecord>
+	table: ReadonlyRecordTable
 	creates: AnyRawRecord[]
 	documentId: string
 }): void {
@@ -265,12 +269,14 @@ export class InMemoryStore implements Store {
 
 	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
 		await this.guardOpen()
-		return structuredClone(this.readTable(documentId).get(id))
+		const record = this.readTable(documentId).get(id)
+		return record && cloneRecord({ record })
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
 		await this.guardOpen()
-		return structuredClone([...this.readTable(documentId).values()].sort(compareById))
+		const records = [...this.readTable(documentId).records()].sort(compareById)
+		return records.map((record) => cloneRecord({ record }))
 	}
 
 	async count(documentId: string): Promise<number> {
@@ -404,14 +410,14 @@ export class InMemoryStore implements Store {
 		const updates = toStoredRecords({ records: params.updates })
 
 		bumpVersion({ state, documentId })
-		for (const record of creates) table.set(record.id, record)
-		for (const record of updates) table.set(record.id, record)
+		for (const record of creates) table.put(record)
+		for (const record of updates) table.put(record)
 		// the deleted records as they are at this step: one the commit created or updated is kept so
 		const deletedSnapshots = deletes.flatMap((id) => {
 			const record = table.get(id)
 			return record ? [record] : []
 		})
-		for (const id of deletes) table.delete(id)
+		for (const id of deletes) table.drop(id)
 
 		// Changelog, in the state the records went to; the undone entries are discarded, their ids kept
 		const { heads, changelog, discardedCommits } = state
@@ -465,9 +471,9 @@ export class InMemoryStore implements Store {
 		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
 
-		for (const record of deletes) table.set(record.id, record)
-		for (const u of updates) table.set(u.before.id, u.before)
-		for (const record of creates) table.delete(record.id)
+		for (const record of deletes) table.put(record)
+		for (const update of updates) table.put(update.before)
+		for (const record of creates) table.drop(record.id)
 
 		state.heads.set(documentId, head - 1)
 		bumpVersion({ state, documentId })
@@ -489,9 +495,9 @@ export class InMemoryStore implements Store {
 		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
 
-		for (const record of creates) table.set(record.id, record)
-		for (const u of updates) table.set(u.after.id, u.after)
-		for (const record of deletes) table.delete(record.id)
+		for (const record of creates) table.put(record)
+		for (const update of updates) table.put(update.after)
+		for (const record of deletes) table.drop(record.id)
 
 		state.heads.set(documentId, next)
 		bumpVersion({ state, documentId })
@@ -657,7 +663,7 @@ export class InMemoryStore implements Store {
 		const document = toJsonCopy({ value: file })
 		assertDocumentPlace({ document, documents: [...state.documents.values()] })
 		state.documents.set(file.id, document)
-		state.records.set(recordTableName(file.id), new Map())
+		state.records.set(recordTableName(file.id), createRecordTable())
 		state.blobData.set(file.id, new Map())
 	}
 
@@ -758,18 +764,18 @@ export class InMemoryStore implements Store {
 		})
 
 		for (const record of creates) {
-			table.set(record.id, record)
+			table.put(record)
 		}
 
 		for (const patch of updates) {
 			const record = table.get(patch.recordId)
 			if (!record) continue
-			table.set(patch.recordId, applyRecordPatch({ record, patch }))
+			table.put(applyRecordPatch({ record, patch }))
 		}
 
 		if (ops.deletes) {
 			for (const id of ops.deletes) {
-				table.delete(id)
+				table.drop(id)
 			}
 		}
 		bumpVersion({ state, documentId })
@@ -792,7 +798,7 @@ export class InMemoryStore implements Store {
 	}
 
 	/** The records of a document; a document that is not in the store reads empty. */
-	private readTable(documentId: string): ReadonlyMap<string, AnyRawRecord> {
+	private readTable(documentId: string): ReadonlyRecordTable {
 		return this.readState().records.get(recordTableName(documentId)) ?? EMPTY_TABLE
 	}
 
@@ -802,7 +808,7 @@ export class InMemoryStore implements Store {
 	 */
 	private writeTarget(documentId: string): {
 		state: InMemoryState
-		table: Map<string, AnyRawRecord>
+		table: RecordTable
 	} {
 		const state = this.writeState()
 		const table = state?.records.get(recordTableName(documentId))
@@ -887,18 +893,16 @@ export class InMemoryStore implements Store {
 	}
 
 	private async countUnguarded(documentId: string): Promise<number> {
-		return this.readTable(documentId).size
+		return this.readTable(documentId).size()
 	}
 
 	private async getByTagNameInDocumentUnguarded(
 		tagName: string,
 		documentId: string,
 	): Promise<AnyRawRecord[]> {
-		const results: AnyRawRecord[] = []
-		for (const record of this.readTable(documentId).values()) {
-			if (record.tagName === tagName) results.push(record)
-		}
-		return structuredClone(results.sort(compareById))
+		// the tag's ids, in id order: a read walks the tag, never the document
+		const table = this.readTable(documentId)
+		return table.idsOfTag(tagName).map((id) => cloneRecord({ record: table.get(id)! }))
 	}
 
 	private async getManyUnguarded(
@@ -906,7 +910,10 @@ export class InMemoryStore implements Store {
 		documentId: string,
 	): Promise<(AnyRawRecord | undefined)[]> {
 		const table = this.readTable(documentId)
-		return structuredClone(ids.map((id) => table.get(id)))
+		return ids.map(function copyOf(id) {
+			const record = table.get(id)
+			return record && cloneRecord({ record })
+		})
 	}
 
 	private guardWritable(): void {
