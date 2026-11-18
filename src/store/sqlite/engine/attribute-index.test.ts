@@ -4,9 +4,8 @@ import {
 	indexRowsOf,
 	indexTablesHeldOf,
 	pairStatesOf,
-	recomputedIndexRowsOf,
 	seqOf,
-	untilPairsReady,
+	assertPairsReady,
 } from './attribute-index.fixtures'
 import { TABLE_HISTORY_ROWS_PREFIX } from './engine.constants'
 import { openMemoryFile, startEngine } from './engine.fixtures'
@@ -68,22 +67,19 @@ const SEEDED: AnyRawRecord[] = [
 ]
 
 describe('the attribute index of a document', () => {
-	it('the first lookup of a pair → answered at once, nothing registered yet; the pair then built in the background, and the next lookup read from the index', async () => {
+	it('the first lookup of a pair → built in the call, ready once it has answered; the next lookup read from the index', async () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		async function firstThenBuilt(): Promise<Record<string, unknown>> {
 			const first = await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			const atAnswer = pairStatesOf({ db, seq })
-			await untilPairsReady({ db, seq, pairs: 1 })
 			const built = pairStatesOf({ db, seq })
 			const exact = indexRowsOf({ db, seq })
 			// the index's rows taken away: a lookup that still answers did not read the index
 			db.exec(`DELETE FROM ${attributeIndexTablesOf({ seq }).rows}`)
 			const fromIndex = await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			return { first, atAnswer, built, exact, fromIndex }
+			return { first, built, exact, fromIndex }
 		}
 		await expect(firstThenBuilt()).resolves.toEqual({
 			first: ['c', 'x'],
-			atAnswer: {},
 			built: { 'A.k': 'ready' },
 			exact: [
 				['A', 'k', '1', 'c'],
@@ -94,7 +90,7 @@ describe('the attribute index of a document', () => {
 		})
 	})
 
-	it('two entries on pairs built and not built → answered by filter while one is not ready, from the index once both are; the same records', async () => {
+	it('two entries on pairs built and not built → the one not built built in the call, both ready once it has answered; the same records', async () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		const both: AttributeLookup['attributes'] = [
 			{ name: 'k', values: ['1'] },
@@ -102,11 +98,10 @@ describe('the attribute index of a document', () => {
 		]
 		async function eachPhase(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
 			const oneReady = await idsOf({ engine, attributes: both })
-			await untilPairsReady({ db, seq, pairs: 2 })
+			const states = pairStatesOf({ db, seq })
 			const bothReady = await idsOf({ engine, attributes: both })
-			return { oneReady, bothReady, states: pairStatesOf({ db, seq }) }
+			return { oneReady, bothReady, states }
 		}
 		await expect(eachPhase()).resolves.toEqual({
 			oneReady: ['x'],
@@ -131,7 +126,7 @@ describe('the attribute index of a document', () => {
 		})
 		async function builtThenLookedUp(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			return {
 				rows: indexRowsOf({ db, seq }),
 				answer: await idsOf({
@@ -181,7 +176,7 @@ describe('the attribute index of a document', () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		async function reusedNumber(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			// an older core's removal: the record and history tables and the row go, the index tables stay
 			db.exec(
 				`DROP TABLE ${TABLE_RECORD_PREFIX}${seq}; DROP TABLE ${TABLE_HISTORY_ROWS_PREFIX}${seq}; ` +
@@ -199,7 +194,7 @@ describe('the attribute index of a document', () => {
 			}
 			const again = seqOf({ db, documentId: 'doc-2' })
 			const first = await lookUp()
-			await untilPairsReady({ db, seq: again, pairs: 1 })
+			assertPairsReady({ db, seq: again, pairs: 1 })
 			return {
 				sameNumber: again === seq,
 				first,
@@ -222,7 +217,7 @@ describe('the attribute index of a document', () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		async function withoutTriggers(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			const { triggers } = attributeIndexTablesOf({ seq })
 			for (const trigger of ['beforeInsert', 'afterInsert', 'afterDelete', 'afterUpdate']) {
 				db.exec(`DROP TRIGGER ${triggers}${trigger}`)
@@ -241,7 +236,7 @@ describe('the attribute index of a document', () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		async function removedThenAgain(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			await engine.removeDocument(DOCUMENT_ID)
 			const afterRemoval = indexTablesHeldOf({ db, seq })
 			await engine.registerDocument(makeDocument())
@@ -259,49 +254,6 @@ describe('the attribute index of a document', () => {
 			afterRemoval: [],
 			heldAgain: [],
 			answer: ['n'],
-		})
-	})
-
-	it('a tag of 5,000 records built in slices, written to between two slices → answered meanwhile, the index exact once ready', async () => {
-		const db = (await openMemoryFile({ opened })).connect()
-		// every slice gives the queue a turn
-		const engine = await startEngine({ db, options: { reclaimSliceMs: 0 } })
-		await engine.registerDocument(makeDocument())
-		const records = Array.from({ length: 5_000 }, (_, index) =>
-			recordWith(`r${String(index).padStart(4, '0')}`, [{ name: 'k', value: String(index % 7) }]),
-		)
-		await engine.bulkWrite(DOCUMENT_ID, { creates: records })
-		const seq = seqOf({ db, documentId: DOCUMENT_ID })
-		async function writtenWhileBuilding(): Promise<Record<string, unknown>> {
-			await idsOf({ engine, attributes: [{ name: 'k', values: ['3'] }] })
-			for (let turn = 0; pairStatesOf({ db, seq })['A.k'] !== 'building'; turn += 1) {
-				if (turn > 10_000) throw new Error('the pair was never registered')
-				await new Promise((resolve) => setTimeout(resolve))
-			}
-			await engine.bulkWrite(DOCUMENT_ID, {
-				creates: [recordWith('new', [{ name: 'k', value: '3' }])],
-				updates: [
-					{ recordId: 'r4999', attributes: [{ name: 'k', value: '3' }] },
-					{ recordId: 'r0003', attributes: [{ name: 'k', value: '9' }] },
-				],
-				deletes: ['r0010'],
-			})
-			const meanwhile = await idsOf({ engine, attributes: [{ name: 'k', values: ['3'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
-			const ready = await idsOf({ engine, attributes: [{ name: 'k', values: ['3'] }] })
-			return {
-				sameAnswer: JSON.stringify(meanwhile) === JSON.stringify(ready),
-				answered: ready.length,
-				exact:
-					JSON.stringify(indexRowsOf({ db, seq })) ===
-					JSON.stringify(recomputedIndexRowsOf({ db, seq })),
-			}
-		}
-		// 714 records hold 3 (index % 7), one fewer (r0003), two more (new, r4999); r0010 holds 3, deleted
-		await expect(writtenWhileBuilding()).resolves.toEqual({
-			sameAnswer: true,
-			answered: 714,
-			exact: true,
 		})
 	})
 })

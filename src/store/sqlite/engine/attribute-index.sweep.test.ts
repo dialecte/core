@@ -7,7 +7,7 @@ import {
 	pairStatesOf,
 	recomputedIndexRowsOf,
 	seqOf,
-	untilPairsReady,
+	assertPairsReady,
 } from './attribute-index.fixtures'
 import { TABLE_HISTORY_ROWS_PREFIX } from './engine.constants'
 import { openMemoryFile, startEngine, untilNoFreePages } from './engine.fixtures'
@@ -55,7 +55,7 @@ async function builtThenClosed(): Promise<{
 		tagName: 'A',
 		attributes: [{ name: 'k', values: ['1'] }],
 	})
-	await untilPairsReady({ db: first, seq, pairs: 1 })
+	assertPairsReady({ db: first, seq, pairs: 1 })
 	engine.close()
 	return {
 		plain: file.connect(),
@@ -127,7 +127,7 @@ describe('the attribute indexes swept when an engine starts', () => {
 				deletes: ['x'],
 			})
 			const first = await holdersOf(engine)
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			return {
 				triggersAtStart,
 				first,
@@ -156,7 +156,7 @@ describe('the attribute indexes swept when an engine starts', () => {
 				tables: indexTablesHeldOf({ db, seq }),
 			}
 			const first = await holdersOf(engine)
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			return { atStart, first, triggers: indexTriggersOf({ db, seq }) }
 		}
 		await expect(halfTriggered()).resolves.toEqual({
@@ -191,7 +191,7 @@ describe('the attribute indexes swept when an engine starts', () => {
 				tagName: 'A',
 				attributes: [{ name: 'k', values: ['1'] }],
 			})
-			await untilPairsReady({ db: first, seq: seqOf({ db: first, documentId: id }), pairs: 1 })
+			assertPairsReady({ db: first, seq: seqOf({ db: first, documentId: id }), pairs: 1 })
 		}
 		const broken = seqOf({ db: first, documentId: 'doc-1' })
 		const whole = seqOf({ db: first, documentId: 'doc-11' })
@@ -265,7 +265,7 @@ describe('the record rows the index points at', () => {
 		const seq = seqOf({ db, documentId: DOCUMENT_ID })
 		async function reclaimed(): Promise<Record<string, unknown>> {
 			await holdersOf(engine)
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			await engine.bulkWrite(DOCUMENT_ID, { deletes: ['x'] })
 			await engine.removeDocument('bulky')
 			await untilNoFreePages({ db })

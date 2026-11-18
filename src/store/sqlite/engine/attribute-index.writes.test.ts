@@ -3,7 +3,7 @@ import {
 	indexRowsOf,
 	recomputedIndexRowsOf,
 	seqOf,
-	untilPairsReady,
+	assertPairsReady,
 } from './attribute-index.fixtures'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
@@ -196,7 +196,7 @@ describe('the attribute index after each write path', () => {
 			async function builtThenWritten(): Promise<Record<string, unknown>> {
 				await lookUp('A')
 				await lookUp('B')
-				await untilPairsReady({ db, seq, pairs: 2 })
+				assertPairsReady({ db, seq, pairs: 2 })
 				await writes(engine)
 				const held = indexRowsOf({ db, seq }).map((row) => JSON.stringify(row))
 				const recomputed = recomputedIndexRowsOf({ db, seq }).map((row) => JSON.stringify(row))
@@ -258,7 +258,7 @@ describe('the attribute index and a connection that registers nothing', () => {
 					attributes: [{ name: 'k', values: ['1'] }],
 				})
 			}
-			await untilPairsReady({ db, seq, pairs: 2 })
+			assertPairsReady({ db, seq, pairs: 2 })
 			engine.close()
 			const plain = file.connect()
 			plain.exec(plainWritesOf({ rec: `${TABLE_RECORD_PREFIX}${seq}` }))

@@ -195,18 +195,25 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const importing: RunningImport = { window: undefined, ended: undefined }
 	/** Set by `close()`: every call refused from then on, an import resumed after it aborted first. */
 	const state = { closed: false, broken: false }
-	/** The pairs of the attribute indexes a lookup asked for, built in the background (never while an import runs). */
+	/** The pairs of the attribute indexes a lookup asked for, built in that lookup (never while an import runs). */
 	const attributeBuilds = createAttributeIndexBuilder({
 		db,
 		write: function writeAttributeIndex(work) {
-			writeInTransaction({ detail: 'The attribute index could not be built', work })
+			try {
+				writeInTransaction({ detail: 'The attribute index could not be built', work })
+			} catch (thrown) {
+				// a rollback that failed too left the connection inside the build's transaction: the engine breaks
+				breakIfStranded()
+				throw thrown
+			}
 		},
-		isClosed: function isEngineClosed() {
-			return state.closed
+		isGivenUp: function isSpaceOrIoFailure(thrown) {
+			// a broken engine answers nothing more: its lookup is refused, never filtered on a closed connection
+			if (state.broken) return false
+			const code = sqliteCodeOf({ thrown })
+			const { SQLITE_FULL, SQLITE_IOERR, SQLITE_NOMEM } = sqlite3.capi
+			return code === SQLITE_FULL || code === SQLITE_IOERR || code === SQLITE_NOMEM
 		},
-		giveWayTo: runningImportEnd,
-		sliceMs: engineOptions.reclaimSliceMs,
-		onStep: onWork,
 	})
 
 	const blobMembers: Omit<EngineBlobMembers, EngineChangeMember> &
@@ -427,8 +434,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			})
 		},
 		/**
-		 * Read from the document's attribute index when every pair asked is `ready`; otherwise filtered in SQL, the pairs
-		 * not registered queued for a build in the background (never in this call).
+		 * Read from the document's attribute index when every pair asked is `ready`; the pairs not `ready` are built in
+		 * this call first (one write), unless an import runs or their build failed in this engine: then filtered in SQL.
 		 */
 		getByAttributes: async function getByAttributes(lookup) {
 			refuseClosed({ state, name })
@@ -447,8 +454,11 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					const states = readPairStates({ db, tables, tagName, names })
 					const unbuilt = names.filter((entry) => states.get(entry) !== ATTRIBUTE_PAIR_STATE.ready)
 					if (unbuilt.length === 0) return readIndexedRecords({ db, tables, tagName, attributes })
-					// a pair an earlier engine left `building` is built again here: no build of it runs any more
-					attributeBuilds.queue({ documentId, tagName, names: unbuilt })
+					// a pair an earlier engine left `building` is finished here; an import's window is never settled for a build
+					const built =
+						runningImportEnd() === undefined &&
+						attributeBuilds.build({ documentId, tables, tagName, names: unbuilt })
+					if (built) return readIndexedRecords({ db, tables, tagName, attributes })
 					return readFilteredRecords({ db, table: document.records, tagName, attributes })
 				},
 			})
@@ -885,8 +895,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	}
 
 	/**
-	 * A connection an import left inside a transaction takes no write again: every later one would fail to begin, and
-	 * the next import's end would commit the stranded rows. The engine closes and says so (`onBroken`): its host
+	 * A connection an import or an index build left inside a transaction takes no write again: every later one would
+	 * fail to begin, and the next import's end would commit the stranded rows. The engine closes and says so (`onBroken`): its host
 	 * starts the next engine on the file.
 	 */
 	function breakIfStranded(): void {

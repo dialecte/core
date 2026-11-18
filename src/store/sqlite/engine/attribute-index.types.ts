@@ -24,31 +24,27 @@ export type IndexKeysSource = {
 	where?: string
 }
 
-/** A pair of a document's index asked by a lookup and not `ready`: built in the background. */
-export type AttributePairBuild = {
-	documentId: string
-	tagName: string
-	name: string
-}
-
 /** What the engine gives its builds of index pairs. */
 export type AttributeBuildContext = {
 	db: Database
-	/** A write of the engine's own in one durable transaction, once the import that runs is settled. */
+	/** A write of the engine's own in one durable transaction (a build runs only while no import's window is open). */
 	write: (work: () => void) => void
-	isClosed: () => boolean
-	/** The end of the import that runs: no slice until it has ended. */
-	giveWayTo: () => Promise<void> | undefined
-	/** How long the slices run before the calls waiting get a turn. */
-	sliceMs: number
-	/** Called after each slice: the engine is alive, whoever waits on it. */
-	onStep?: () => void
+	/** Whether a failed build is one the engine gives up on (the file full, an I/O error, no memory): any other is thrown. */
+	isGivenUp: (thrown: unknown) => boolean
 }
 
-/** The engine's builds of index pairs, run one at a time in the background, never inside a call. */
+/** The engine's builds of index pairs, each made inside the lookup that asks for it. */
 export type AttributeIndexBuilder = {
-	/** Queue the builds of these pairs (a pair queued or failed since the engine started is left). */
-	queue: (params: { documentId: string; tagName: string; names: readonly string[] }) => void
-	/** The document removed: its queued builds dropped, its failed ones forgotten (one registered again builds anew). */
+	/**
+	 * The pairs registered, built over the whole tag and marked `ready` in one transaction; whether they were. A
+	 * build that fails is rolled back and its pairs are not tried again until the engine starts again.
+	 */
+	build: (params: {
+		documentId: string
+		tables: AttributeIndexTables
+		tagName: string
+		names: readonly string[]
+	}) => boolean
+	/** The document removed: its failed pairs forgotten (one registered again builds anew). */
 	forget: (params: { documentId: string }) => void
 }

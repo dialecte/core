@@ -1,15 +1,11 @@
 import { contractFile, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import { createContractRuntime } from '../../contract/store-contract.import-session'
-import {
-	indexRowsOf,
-	pairStatesOf,
-	recomputedIndexRowsOf,
-	seqOf,
-	untilPairsReady,
-} from './attribute-index.fixtures'
+import { indexRowsOf, pairStatesOf, recomputedIndexRowsOf, seqOf } from './attribute-index.fixtures'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { toDialecteError } from '@/errors'
 
 import type { SqliteEngine } from './engine.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
@@ -23,11 +19,12 @@ const opened: Database[] = []
 const holds: (() => void)[] = []
 
 afterEach(() => {
+	vi.restoreAllMocks()
 	for (const release of holds.splice(0)) release()
 	for (const db of opened.splice(0)) db.close()
 })
 
-/** 5,000 records of A, `r0000`..`r4999`, each holding k = its number modulo 7: three build slices. */
+/** 5,000 records of A, `r0000`..`r4999`, each holding k = its number modulo 7. */
 const MANY = Array.from({ length: 5_000 }, (_, index) =>
 	makeRecord({
 		id: `r${String(index).padStart(4, '0')}`,
@@ -57,28 +54,17 @@ function isExact(params: { db: Database; seq: number }): boolean {
 }
 
 describe('a pair whose build fails', () => {
-	it('the file full after the first slice → the pair left building, the lookups answered by filter, a write lands, no new try by that engine; the next lookup after a start queues the build again (lazy), exact', async () => {
+	it('the file full at the first lookup → the build rolled back, nothing registered, the lookups answered by filter, a write lands, no new try by that engine; the next engine builds it in its first lookup, exact', async () => {
 		const file = await openMemoryFile({ opened })
 		const db = file.connect()
-		let seq = 0
-		let armed = false
-		const engine = await startEngine({
-			db,
-			options: { reclaimSliceMs: 0 },
-			// after the slice that registered the pair: the file may grow no more
-			onWork: function capOnceBuilding() {
-				if (!armed || pairStatesOf({ db, seq })['A.k'] !== 'building') return
-				armed = false
-				db.exec(`PRAGMA max_page_count = ${Number(db.selectValue('PRAGMA page_count'))}`)
-			},
-		})
+		const engine = await startEngine({ db })
 		await engine.registerDocument(makeDocument())
 		await engine.bulkWrite(DOCUMENT_ID, { creates: MANY })
-		seq = seqOf({ db, documentId: DOCUMENT_ID })
-		async function refusedThenResumed(): Promise<Record<string, unknown>> {
-			armed = true
+		const seq = seqOf({ db, documentId: DOCUMENT_ID })
+		async function refusedThenBuilt(): Promise<Record<string, unknown>> {
+			// the file may grow no more: the index's pages cannot be added
+			db.exec(`PRAGMA max_page_count = ${Number(db.selectValue('PRAGMA page_count'))}`)
 			const first = await holdersOf(engine)
-			await manyTurns()
 			const afterRefusal = pairStatesOf({ db, seq })
 			db.exec('PRAGMA max_page_count = 1073741823')
 			await engine.bulkWrite(DOCUMENT_ID, {
@@ -91,31 +77,96 @@ describe('a pair whose build fails', () => {
 			engine.close()
 			const nextDb = file.connect()
 			const next = await startEngine({ db: nextDb })
-			await holdersOf(next)
-			await untilPairsReady({ db: nextDb, seq, pairs: 1 })
+			const built = await holdersOf(next)
 			return {
 				first: first.length,
 				afterRefusal,
 				meanwhile: meanwhile.length,
 				sameEngine,
-				built: (await holdersOf(next)).length,
+				nextEngine: pairStatesOf({ db: nextDb, seq }),
+				built: built.length,
 				exact: isExact({ db: nextDb, seq }),
 			}
 		}
 		// 714 hold 3 (index % 7); then one more (new), one fewer (r0003)
-		await expect(refusedThenResumed()).resolves.toEqual({
+		await expect(refusedThenBuilt()).resolves.toEqual({
 			first: 714,
-			afterRefusal: { 'A.k': 'building' },
+			afterRefusal: {},
 			meanwhile: 714,
-			sameEngine: { 'A.k': 'building' },
+			sameEngine: {},
+			nextEngine: { 'A.k': 'ready' },
 			built: 714,
 			exact: true,
 		})
 	})
 })
 
+/** A failure SQLite reports as a disk I/O error, by its result code (`SQLITE_IOERR`): one the engine gives a build up on. */
+function ioFailure(params: { sql: string }): Error {
+	return Object.assign(new Error(`${params.sql.slice(0, 40)}: disk I/O error`), { resultCode: 10 })
+}
+
+describe('a build whose rollback fails', () => {
+	it('the build and then its ROLLBACK refused with an I/O error → the connection left inside its transaction: the engine broken and told once, the lookup refused, nothing written; the next engine builds the pair, exact', async () => {
+		const file = await openMemoryFile({ opened })
+		const db = file.connect()
+		let told = 0
+		const engine = await startEngine({
+			db,
+			onBroken: function countBroken() {
+				told += 1
+			},
+		})
+		await engine.registerDocument(makeDocument())
+		await engine.bulkWrite(DOCUMENT_ID, { creates: MANY })
+		const seq = seqOf({ db, documentId: DOCUMENT_ID })
+		const armed = { failing: false }
+		const exec = db.exec.bind(db) as (...args: unknown[]) => unknown
+		vi.spyOn(db, 'exec').mockImplementation(function execUnlessArmed(...args: unknown[]) {
+			const [first] = args
+			const sql = typeof first === 'string' ? first : ((first as { sql?: string }).sql ?? '')
+			// the build's rows refused, then its rollback: SQLite rolled nothing back, the transaction stays open
+			if (armed.failing && (sql.startsWith('INSERT OR IGNORE INTO xattr_') || sql === 'ROLLBACK')) {
+				throw ioFailure({ sql })
+			}
+			return exec(...args)
+		} as typeof db.exec)
+		async function strandedThenNext(): Promise<Record<string, unknown>> {
+			armed.failing = true
+			const lookup = await holdersOf(engine).then(
+				() => 'answered',
+				(thrown: unknown) => toDialecteError(thrown)?.key,
+			)
+			armed.failing = false
+			const nextDb = file.connect()
+			const next = await startEngine({ db: nextDb })
+			const leftByTheBrokenEngine = pairStatesOf({ db: nextDb, seq })
+			const built = await holdersOf(next)
+			return {
+				told,
+				closed: !db.isOpen(),
+				lookup,
+				leftByTheBrokenEngine,
+				built: built.length,
+				nextEngine: pairStatesOf({ db: nextDb, seq }),
+				exact: isExact({ db: nextDb, seq }),
+			}
+		}
+		// 714 of the 5,000 hold 3 (index % 7)
+		await expect(strandedThenNext()).resolves.toEqual({
+			told: 1,
+			closed: true,
+			lookup: 'STORE_COMMIT_FAILED',
+			leftByTheBrokenEngine: {},
+			built: 714,
+			nextEngine: { 'A.k': 'ready' },
+			exact: true,
+		})
+	})
+})
+
 describe('a lookup while another document imports', () => {
-	it('the first lookup of a pair meanwhile → answered, nothing registered while the import runs; built once it has ended', async () => {
+	it('the first lookup of a pair meanwhile → answered by filter, nothing registered while the import runs; the first lookup after it builds the pair', async () => {
 		const reached = Promise.withResolvers<void>()
 		const released = Promise.withResolvers<void>()
 		holds.push(released.resolve)
@@ -150,8 +201,17 @@ describe('a lookup while another document imports', () => {
 			const whileImporting = pairStatesOf({ db, seq })
 			released.resolve()
 			await importing
-			await untilPairsReady({ db, seq, pairs: 1 })
-			return { during, whileImporting, after: await holdersOf(engine), exact: isExact({ db, seq }) }
+			await manyTurns()
+			const afterImport = pairStatesOf({ db, seq })
+			const after = await holdersOf(engine)
+			return {
+				during,
+				whileImporting,
+				afterImport,
+				after,
+				built: pairStatesOf({ db, seq }),
+				exact: isExact({ db, seq }),
+			}
 		}
 		const holding = [
 			'r0003',
@@ -168,7 +228,9 @@ describe('a lookup while another document imports', () => {
 		await expect(duringThenAfter()).resolves.toEqual({
 			during: holding,
 			whileImporting: {},
+			afterImport: {},
 			after: holding,
+			built: { 'A.k': 'ready' },
 			exact: true,
 		})
 	})
