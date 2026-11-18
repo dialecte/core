@@ -1,12 +1,6 @@
 import { contractFile, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import { createContractRuntime } from '../../contract/store-contract.import-session'
-import {
-	indexRowsOf,
-	pairStatesOf,
-	recomputedIndexRowsOf,
-	seqOf,
-	untilPairsReady,
-} from './attribute-index.fixtures'
+import { indexRowsOf, pairStatesOf, recomputedIndexRowsOf, seqOf } from './attribute-index.fixtures'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -57,28 +51,17 @@ function isExact(params: { db: Database; seq: number }): boolean {
 }
 
 describe('a pair whose build fails', () => {
-	it('the file full after the first slice → the pair left building, the lookups answered by filter, a write lands, no new try by that engine; the next lookup after a start queues the build again (lazy), exact', async () => {
+	it('the file full at the first lookup → the build rolled back, nothing registered, the lookups answered by filter, a write lands, no new try by that engine; the next engine builds it in its first lookup, exact', async () => {
 		const file = await openMemoryFile({ opened })
 		const db = file.connect()
-		let seq = 0
-		let armed = false
-		const engine = await startEngine({
-			db,
-			options: { reclaimSliceMs: 0 },
-			// after the slice that registered the pair: the file may grow no more
-			onWork: function capOnceBuilding() {
-				if (!armed || pairStatesOf({ db, seq })['A.k'] !== 'building') return
-				armed = false
-				db.exec(`PRAGMA max_page_count = ${Number(db.selectValue('PRAGMA page_count'))}`)
-			},
-		})
+		const engine = await startEngine({ db })
 		await engine.registerDocument(makeDocument())
 		await engine.bulkWrite(DOCUMENT_ID, { creates: MANY })
-		seq = seqOf({ db, documentId: DOCUMENT_ID })
-		async function refusedThenResumed(): Promise<Record<string, unknown>> {
-			armed = true
+		const seq = seqOf({ db, documentId: DOCUMENT_ID })
+		async function refusedThenBuilt(): Promise<Record<string, unknown>> {
+			// the file may grow no more: the index's pages cannot be added
+			db.exec(`PRAGMA max_page_count = ${Number(db.selectValue('PRAGMA page_count'))}`)
 			const first = await holdersOf(engine)
-			await manyTurns()
 			const afterRefusal = pairStatesOf({ db, seq })
 			db.exec('PRAGMA max_page_count = 1073741823')
 			await engine.bulkWrite(DOCUMENT_ID, {
@@ -91,23 +74,24 @@ describe('a pair whose build fails', () => {
 			engine.close()
 			const nextDb = file.connect()
 			const next = await startEngine({ db: nextDb })
-			await holdersOf(next)
-			await untilPairsReady({ db: nextDb, seq, pairs: 1 })
+			const built = await holdersOf(next)
 			return {
 				first: first.length,
 				afterRefusal,
 				meanwhile: meanwhile.length,
 				sameEngine,
-				built: (await holdersOf(next)).length,
+				nextEngine: pairStatesOf({ db: nextDb, seq }),
+				built: built.length,
 				exact: isExact({ db: nextDb, seq }),
 			}
 		}
 		// 714 hold 3 (index % 7); then one more (new), one fewer (r0003)
-		await expect(refusedThenResumed()).resolves.toEqual({
+		await expect(refusedThenBuilt()).resolves.toEqual({
 			first: 714,
-			afterRefusal: { 'A.k': 'building' },
+			afterRefusal: {},
 			meanwhile: 714,
-			sameEngine: { 'A.k': 'building' },
+			sameEngine: {},
+			nextEngine: { 'A.k': 'ready' },
 			built: 714,
 			exact: true,
 		})
@@ -115,7 +99,7 @@ describe('a pair whose build fails', () => {
 })
 
 describe('a lookup while another document imports', () => {
-	it('the first lookup of a pair meanwhile → answered, nothing registered while the import runs; built once it has ended', async () => {
+	it('the first lookup of a pair meanwhile → answered by filter, nothing registered while the import runs; the first lookup after it builds the pair', async () => {
 		const reached = Promise.withResolvers<void>()
 		const released = Promise.withResolvers<void>()
 		holds.push(released.resolve)
@@ -150,8 +134,17 @@ describe('a lookup while another document imports', () => {
 			const whileImporting = pairStatesOf({ db, seq })
 			released.resolve()
 			await importing
-			await untilPairsReady({ db, seq, pairs: 1 })
-			return { during, whileImporting, after: await holdersOf(engine), exact: isExact({ db, seq }) }
+			await manyTurns()
+			const afterImport = pairStatesOf({ db, seq })
+			const after = await holdersOf(engine)
+			return {
+				during,
+				whileImporting,
+				afterImport,
+				after,
+				built: pairStatesOf({ db, seq }),
+				exact: isExact({ db, seq }),
+			}
 		}
 		const holding = [
 			'r0003',
@@ -168,7 +161,9 @@ describe('a lookup while another document imports', () => {
 		await expect(duringThenAfter()).resolves.toEqual({
 			during: holding,
 			whileImporting: {},
+			afterImport: {},
 			after: holding,
+			built: { 'A.k': 'ready' },
 			exact: true,
 		})
 	})

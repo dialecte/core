@@ -2,7 +2,6 @@ import { attributeIndexTablesOf } from './attribute-index'
 import { ATTRIBUTE_PAIR_STATE } from './attribute-index.constants'
 
 import { TABLE_DOCUMENTS } from '@/store/store.constants'
-import { yieldToQueue } from '@/utils/yield-to-queue'
 
 import type { AnyAttribute } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
@@ -33,19 +32,20 @@ export function pairStatesOf(params: { db: Database; seq: number }): Record<stri
 	)
 }
 
-/** Wait, a message turn at a time, until every registered pair of the document's index is `ready`. */
+/**
+ * Every registered pair of the document's index `ready`, and at least `pairs` of them: a lookup builds its pairs in the
+ * call, so they are ready once it has answered; thrown with the states otherwise.
+ */
 export async function untilPairsReady(params: {
 	db: Database
 	seq: number
 	pairs: number
 }): Promise<void> {
 	const { db, seq, pairs } = params
-	for (let turn = 0; turn < 10_000; turn += 1) {
-		const states = Object.values(pairStatesOf({ db, seq }))
-		if (states.length >= pairs && states.every((state) => state === 'ready')) return
-		await yieldToQueue()
-	}
-	throw new Error('the index pairs were never built')
+	const states = pairStatesOf({ db, seq })
+	const values = Object.values(states)
+	if (values.length >= pairs && values.every((state) => state === 'ready')) return
+	throw new Error(`the index pairs are not built: ${JSON.stringify(states)}`)
 }
 
 /** The rows the document's index holds, sorted; a row pointing at no record names its row number. */

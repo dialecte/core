@@ -1,5 +1,4 @@
 import {
-	ATTRIBUTE_BUILD_ROWS_PER_SLICE,
 	ATTRIBUTE_INDEX_NAME,
 	ATTRIBUTE_INDEX_PREFIX,
 	ATTRIBUTE_INDEX_TRIGGERS,
@@ -139,25 +138,14 @@ export function registerAttributePair(params: {
 	return readPairStates({ db, tables, tagName, names: [name] }).get(name)!
 }
 
-/**
- * One slice of a pair's build, in the caller's transaction: the rows of the next records of the tag after the
- * record row `afterRow` (in row order, `ATTRIBUTE_BUILD_ROWS_PER_SLICE` at most). Answers the last record row
- * read, none once the tag has no record after `afterRow`.
- */
-export function buildAttributeSlice(params: {
+/** Every record of the tag added to the pair's rows, in the caller's transaction (a row held already is left). */
+export function buildAttributePair(params: {
 	db: Database
 	tables: AttributeIndexTables
 	tagName: string
 	name: string
-	afterRow: number
-}): number | undefined {
-	const { db, tables, tagName, name, afterRow } = params
-	const last = db.selectValue(
-		`SELECT max(rowid) FROM (SELECT rowid FROM ${tables.records} WHERE tagName = ? AND rowid > ? ` +
-			'ORDER BY rowid LIMIT ?)',
-		[tagName, afterRow, ATTRIBUTE_BUILD_ROWS_PER_SLICE],
-	)
-	if (last === null || last === undefined) return undefined
+}): void {
+	const { db, tables, tagName, name } = params
 	const keys = keysOf({
 		tables,
 		source: {
@@ -165,17 +153,16 @@ export function buildAttributeSlice(params: {
 			tag: 'o.tagName',
 			attributes: 'o.attributes',
 			row: 'o.rowid',
-			where: 'AND o.tagName = ? AND o.rowid > ? AND o.rowid <= ? AND n.text = ?',
+			where: 'AND o.tagName = ? AND n.text = ?',
 		},
 	})
 	db.exec({
 		sql: `INSERT OR IGNORE INTO ${tables.rows} (tagId, nameId, value, recRow) ${keys}`,
-		bind: [tagName, afterRow, Number(last), name],
+		bind: [tagName, name],
 	})
-	return Number(last)
 }
 
-/** The pair `ready` once its last slice is in, in the caller's transaction; whether it was still `building`. */
+/** The pair `ready` once its rows are in, in the caller's transaction; whether it was still `building`. */
 export function markAttributePairReady(params: {
 	db: Database
 	tables: AttributeIndexTables

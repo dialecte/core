@@ -1,5 +1,6 @@
 import { STORE_ATTRIBUTE_CONTRACT } from '../../contract/store-contract.attribute-lookup.cases'
-import { pairStatesOf, seqOf } from './attribute-index.fixtures'
+import { attributeIndexTablesOf, readFilteredRecords } from './attribute-index'
+import { seqOf } from './attribute-index.fixtures'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -12,9 +13,6 @@ import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /** The contract's own attribute-lookup groups: what the store answers, and after which writes. */
 const GROUPS = ['attribute lookups', 'attribute lookups after writes'] as const
-
-/** Message turns a lookup's pairs may take to be built on a contract fixture (a handful of records). */
-const READY_TURNS = 1_000
 
 const opened: Database[] = []
 
@@ -36,32 +34,34 @@ async function reachesIndex(params: {
 	return lookup.attributes.every((entry) => entry.values.length > 0)
 }
 
-/** Wait, a message turn at a time, until every pair the lookup asks of its tag is `ready`. */
-async function untilLookupReady(params: { db: Database; lookup: AttributeLookup }): Promise<void> {
+/** What the SQL filter answers for the lookup on the connection: the answer of a pair not built. */
+function filteredOf(params: { db: Database; lookup: AttributeLookup }): AnyRawRecord[] {
 	const { db, lookup } = params
 	const seq = seqOf({ db, documentId: lookup.documentId })
-	const pairs = lookup.attributes.map((entry) => `${lookup.tagName}.${entry.name}`)
-	for (let turn = 0; turn < READY_TURNS; turn += 1) {
-		const states = pairStatesOf({ db, seq })
-		if (pairs.every((pair) => states[pair] === 'ready')) return
-		await new Promise((resolve) => setTimeout(resolve))
-	}
-	throw new Error(`the pairs ${pairs.join(', ')} were never built`)
+	return readFilteredRecords({
+		db,
+		table: attributeIndexTablesOf({ seq }).records,
+		tagName: lookup.tagName,
+		attributes: lookup.attributes,
+	})
 }
 
 /**
- * The engine as a store for the contract's attribute cases, each lookup made twice: as asked (the SQL filter on a
- * pair not built yet), then once its pairs are ready (from the index). Both answers must be the same; the second is
- * the one the case checks.
+ * The engine as a store for the contract's attribute cases, each lookup made twice: as asked (cold: its pairs built
+ * in the call), then again (warm, from the index). Both answers must be the SQL filter's; the second is the one the
+ * case checks.
  */
 function storeOfEngine(params: { engine: SqliteEngine; db: Database }): Store {
 	const { engine, db } = params
 	async function lookUpTwice(lookup: AttributeLookup): Promise<AnyRawRecord[]> {
 		const asked = await engine.getByAttributes(lookup)
 		if (!(await reachesIndex({ engine, lookup }))) return asked
-		await untilLookupReady({ db, lookup })
+		const filtered = filteredOf({ db, lookup })
 		const fromIndex = await engine.getByAttributes(lookup)
-		expect(fromIndex, 'the index answers as the filter did').toEqual(asked)
+		expect({ cold: asked, warm: fromIndex }, 'cold and warm answer as the filter does').toEqual({
+			cold: filtered,
+			warm: filtered,
+		})
 		return fromIndex
 	}
 	return new Proxy(engine as unknown as Store, {
@@ -79,7 +79,7 @@ function storeOfEngine(params: { engine: SqliteEngine; db: Database }): Store {
 	})
 }
 
-describe('the contract’s attribute lookups on the SQLite engine, read again from the built index', () => {
+describe('the contract’s attribute lookups on the SQLite engine, cold, warm and filtered the same', () => {
 	for (const group of GROUPS) {
 		for (const [description, contractCase] of Object.entries(STORE_ATTRIBUTE_CONTRACT[group]!)) {
 			it(`${group}: ${description}`, async () => {

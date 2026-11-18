@@ -30,11 +30,20 @@ const INDEXED_LOOKUP_BUDGET_MS = 1
 /** A write of records of a tag with two pairs costs at most this many times its cost without: an index scan per row would cost hundreds. */
 const WRITE_COST_FACTOR_BUDGET = 4
 
+/** Lookups of the cold burst, made back to back on two pairs right after a write (an edit right after an import). */
+const BURST_LOOKUPS = 400
+
+/** The tag sizes the cold burst runs on. */
+const BURST_TAG_RECORDS = [20_000, 90_000] as const
+
+/** A cold burst costs at most this many times a warm burst plus the builds of its two pairs (a scan per lookup costs hundreds). */
+const COLD_BURST_FACTOR_BUDGET = 3
+
 /** The bench's setup ceiling (60,000 records written, two pairs built). */
 const BENCH_TIMEOUT_MS = 5 * 60_000
 
 // The SQLite engine's attribute lookup on a synthetic document of 60,000 records, in Node (wasm): one value looked up
-// by today's path (tag read, then filtered in JS), by the SQL filter (a pair not built yet), and from the index; the
+// by a tag read filtered in JS, by its first lookup (the pair built in it), and from the index; a cold burst of lookups; the
 // file's size before and after two pairs are built; the cost of a write of records of a tag with pairs and of one
 // without. Runs under `--mode bench` (or VITE_BENCH=1): `npm run test:perf:node`.
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
@@ -144,13 +153,11 @@ describe.skipIf(!RUN)('the SQLite attribute index on a synthetic 60,000-record d
 				const records = await engine.getByTagNameInDocument('A', DOCUMENT_ID)
 				return records.filter((record) => record.attributes.some((item) => item.value === wanted))
 			})
-			// the first lookups of the pair, answered by the SQL filter while it is built
+			// the first lookup of the pair builds it in the call, then answers from the index
 			const firstStartedAt = performance.now()
 			await engine.getByAttributes(lookup)
 			const firstMs = performance.now() - firstStartedAt
-			const buildStartedAt = performance.now()
 			await untilPairsReady({ db, seq, pairs: 1 })
-			const buildMs = performance.now() - buildStartedAt
 			await engine.getByAttributes({ ...lookup, attributes: [{ name: 'ref', values: ['ref-1'] }] })
 			await untilPairsReady({ db, seq, pairs: 2 })
 			const indexMs = await timed(() => engine.getByAttributes(lookup))
@@ -162,8 +169,7 @@ describe.skipIf(!RUN)('the SQLite attribute index on a synthetic 60,000-record d
 			}
 			console.info(
 				`[attribute-index] lookup of one uuid: tag read + JS filter ${tagReadMs.toFixed(2)} ms, ` +
-					`SQL filter (first) ${firstMs.toFixed(2)} ms, index ${indexMs.toFixed(3)} ms; ` +
-					`build of A.uuid (${INDEXED_RECORDS} records) ${buildMs.toFixed(0)} ms`,
+					`first lookup (A.uuid built in it, ${INDEXED_RECORDS} records) ${firstMs.toFixed(2)} ms, index ${indexMs.toFixed(3)} ms`,
 			)
 			console.info(
 				`[attribute-index] file ${(bytesBefore / 1048576).toFixed(2)} MiB -> ${(bytesAfter / 1048576).toFixed(2)} MiB ` +
@@ -181,6 +187,57 @@ describe.skipIf(!RUN)('the SQLite attribute index on a synthetic 60,000-record d
 		},
 		BENCH_TIMEOUT_MS,
 	)
+
+	for (const tagRecords of BURST_TAG_RECORDS) {
+		it(
+			`${BURST_LOOKUPS} lookups on two pairs right after a write, tag of ${tagRecords} records → cold under ${COLD_BURST_FACTOR_BUDGET}x warm plus the two builds`,
+			async () => {
+				const db = (await openMemoryFile({ opened })).connect()
+				const engine = await startEngine({ db })
+				await engine.registerDocument(makeDocument())
+				await engine.bulkWrite(DOCUMENT_ID, {
+					creates: [
+						...Array.from({ length: tagRecords }, (_, index) =>
+							syntheticRecord({ index, tagName: 'A' }),
+						),
+						...Array.from({ length: OTHER_RECORDS }, (_, index) =>
+							syntheticRecord({ index, tagName: 'B' }),
+						),
+					],
+				})
+				const held = await engine.getByTagNameInDocument('A', DOCUMENT_ID)
+				async function burstMs(): Promise<number> {
+					const startedAt = performance.now()
+					for (let lookup = 0; lookup < BURST_LOOKUPS; lookup += 1) {
+						const record = held[(lookup * 37) % held.length]!
+						const name = lookup % 2 === 0 ? 'uuid' : 'ref'
+						const value = record.attributes.find((attribute) => attribute.name === name)!.value
+						await engine.getByAttributes({
+							documentId: DOCUMENT_ID,
+							tagName: 'A',
+							attributes: [{ name, values: [value] }],
+						})
+					}
+					return performance.now() - startedAt
+				}
+				const firstStartedAt = performance.now()
+				await engine.getByAttributes({
+					documentId: DOCUMENT_ID,
+					tagName: 'A',
+					attributes: [{ name: 'name', values: ['name-0'] }],
+				})
+				const buildMs = performance.now() - firstStartedAt
+				const coldMs = await burstMs()
+				const warmMs = await burstMs()
+				console.info(
+					`[attribute-index] cold burst of ${BURST_LOOKUPS} lookups on 2 pairs, tag of ${tagRecords}: cold ${coldMs.toFixed(0)} ms, ` +
+						`warm ${warmMs.toFixed(0)} ms; one pair's build in its first lookup ${buildMs.toFixed(0)} ms`,
+				)
+				expect(coldMs < COLD_BURST_FACTOR_BUDGET * (warmMs + 2 * buildMs)).toBe(true)
+			},
+			BENCH_TIMEOUT_MS,
+		)
+	}
 
 	it(
 		'a merge-sized commit (5,000 records created, 5,000 updated) → timed on a document without pairs and on one with two pairs',

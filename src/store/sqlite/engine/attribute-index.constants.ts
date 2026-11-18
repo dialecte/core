@@ -20,19 +20,13 @@ export const ATTRIBUTE_INDEX_NAME = new RegExp(
 
 /**
  * Where a pair of the index stands: `building` (registered, its triggers keep the rows of every record a write
- * touches, the records written before are being added in slices), `ready` (every record of the tag has its rows: a
+ * touches, the records written before are being added), `ready` (every record of the tag has its rows: a
  * lookup reads them). A lookup of a pair not `ready` filters the tag instead.
  */
 export const ATTRIBUTE_PAIR_STATE = {
 	building: 0,
 	ready: 1,
 } as const
-
-/**
- * Records of the tag one build slice adds to a pair, in one short transaction: a pair of a 90,000-record tag builds
- * in 45 slices, the calls waiting run between them.
- */
-export const ATTRIBUTE_BUILD_ROWS_PER_SLICE = 2000
 
 /** The triggers of a record table that keep its index, each named `xatr_<seq>_<trigger>`. */
 export const ATTRIBUTE_INDEX_TRIGGERS = [
