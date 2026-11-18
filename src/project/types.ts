@@ -74,6 +74,38 @@ export type ProjectState = {
 
 // ── Channel messages ─────────────────────────────────────────────────────────
 
+/** A record a commit changed: its id, its tag and its parent's id (`null` for the root). */
+export type ChangedRecord = { id: string; tagName: string; parentId: string | null }
+
+/**
+ * What one commit changed, one ref per record: `created` and `updated` with the parent the record has after the
+ * write, `deleted` with the parent it had. A record moved under another parent is in `updated` with both parents
+ * (their children changed).
+ */
+export type CommitChanges = {
+	created: ReadonlyArray<ChangedRecord>
+	updated: ReadonlyArray<ChangedRecord>
+	deleted: ReadonlyArray<ChangedRecord>
+}
+
+/**
+ * The changes of a commit are not told (an undo or a redo, a store's announcement, a write whose connection was lost,
+ * more refs than the cap): read again what you show.
+ */
+export type UnknownCommitChanges = { unknown: true }
+
+/** A record as a commit writes it: its id, its tag and its parent (`null` for the root). */
+export type PlacedRecord = { id: string; tagName: string; parent: { id: string } | null }
+
+/**
+ * The merged writes of one commit: created and updated records as written, deleted records as they were stored.
+ */
+export type CommitWrites = {
+	creates: ReadonlyArray<PlacedRecord>
+	updates: ReadonlyArray<PlacedRecord>
+	deletes: ReadonlyArray<PlacedRecord>
+}
+
 /**
  * ProjectChannelMessage - the public event contract of a Project.
  *
@@ -86,7 +118,13 @@ export type ProjectState = {
  * Changing a member of this union is a breaking API change.
  */
 export type ProjectChannelMessage =
-	| { type: 'commit'; documentId: string; timestamp: number }
+	/** A document's records changed: `changes` tells which, or `{ unknown: true }` (read again). */
+	| {
+			type: 'commit'
+			documentId: string
+			timestamp: number
+			changes: CommitChanges | UnknownCommitChanges
+	  }
 	| { type: 'init-empty-document'; documentId: string; timestamp: number }
 	| { type: 'document-removed'; documentId: string; timestamp: number }
 	| { type: 'document-imported'; documentId: string; timestamp: number }

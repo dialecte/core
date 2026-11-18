@@ -350,7 +350,7 @@ await project.undo(documentId)
 await project.redo(documentId)
 ```
 
-Each call updates the document's shared `DocumentEntry` deterministically — `lastUpdate` plus `canUndo`/`canRedo` recomputed from the store's history — then posts a `commit` message so other tabs converge (on a store that announces its changes, `sqlite` and `inMemory`, only when the store told a change: an undo with nothing to undo posts nothing).
+Each call updates the document's shared `DocumentEntry` deterministically — `lastUpdate` plus `canUndo`/`canRedo` recomputed from the store's history — then posts a `commit` message, its `changes` `{ unknown: true }`, so other tabs converge (on a store that announces its changes, `sqlite` and `inMemory`, only when the store told a change: an undo with nothing to undo posts nothing).
 
 ## Project channel & events
 
@@ -380,7 +380,13 @@ Discriminated union; every payload carries a `timestamp`. Changing a member is a
 
 ```ts
 type ProjectChannelMessage =
-	| { type: 'commit'; documentId: string; timestamp: number }
+	// a document's records changed: which ones, or { unknown: true } (read again)
+	| {
+			type: 'commit'
+			documentId: string
+			timestamp: number
+			changes: CommitChanges | UnknownCommitChanges
+	  }
 	| { type: 'init-empty-document'; documentId: string; timestamp: number }
 	| { type: 'document-removed'; documentId: string; timestamp: number }
 	| { type: 'document-imported'; documentId: string; timestamp: number }
@@ -396,6 +402,24 @@ type ProjectChannelMessage =
 	  }
 	| { type: 'blob-removed'; blobId: string; timestamp: number }
 ```
+
+**CommitChanges**, **UnknownCommitChanges**
+
+What a commit changed, one ref per record, each list in the order the commit wrote it:
+
+```ts
+type ChangedRecord = { id: string; tagName: string; parentId: string | null }
+type CommitChanges = {
+	created: ReadonlyArray<ChangedRecord> // parentId: the parent after the write
+	updated: ReadonlyArray<ChangedRecord> // parentId: the parent after the write
+	deleted: ReadonlyArray<ChangedRecord> // parentId: the parent it had
+}
+type UnknownCommitChanges = { unknown: true }
+```
+
+- A Document's commit (`transaction`, `prepare().commit()`) tells its `changes`: every record it wrote, `beforeCommit` hook writes included; a record a child was added to or removed from is in `updated` (its `children` changed). A record moved under another parent (`tx.move`) is in `updated` with both parents.
+- `{ unknown: true }`: the changes are not told, read again what you show. So it is past 5,000 refs in one commit, for a commit refused with its connection lost that may have landed, for an undo and a redo, and for a change a store announces (another connection's commit, a bulk write). A commit lost with its connection whose outcome reads `applied` tells its changes.
+- `changes` is required: a listener handles both forms. On a store that announces its changes, the Project posts its own commit with its `changes`, the store's announcement of it is not posted twice.
 
 **ProjectChannelResync**, **ProjectChannelEvent**
 

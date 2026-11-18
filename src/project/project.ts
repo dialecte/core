@@ -1256,7 +1256,8 @@ export class Project<
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
 			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
-			this.broadcast({ type: 'commit', documentId, timestamp })
+			// what the step changed is not told yet: read again
+			this.broadcast({ type: 'commit', documentId, timestamp, changes: { unknown: true } })
 			this.signalStateChange(documentId, true)
 		})
 	}
@@ -1281,7 +1282,8 @@ export class Project<
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
 			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
-			this.broadcast({ type: 'commit', documentId, timestamp })
+			// what the step changed is not told yet: read again
+			this.broadcast({ type: 'commit', documentId, timestamp, changes: { unknown: true } })
 			this.signalStateChange(documentId, true)
 		})
 	}

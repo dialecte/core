@@ -73,18 +73,18 @@ const ANNOUNCED_CHANGES: Record<string, AnnouncedChange> = {
 	'records written in bulk → commit': {
 		seed: seedProject,
 		change: ({ store }) => store.bulkWrite(DOCUMENT_ID, { creates: [makeRecord({ id: 'r3' })] }),
-		expected: { type: 'commit', documentId: DOCUMENT_ID },
+		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
 	},
 	'a commit → commit': {
 		seed: seedProject,
 		change: ({ store }) =>
 			commit({ store, documentId: DOCUMENT_ID, creates: [makeRecord({ id: 'r3' })] }),
-		expected: { type: 'commit', documentId: DOCUMENT_ID },
+		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
 	},
 	'an undo with something to undo → commit': {
 		seed: seedProject,
 		change: ({ store }) => store.undo(DOCUMENT_ID),
-		expected: { type: 'commit', documentId: DOCUMENT_ID },
+		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
 	},
 	'a redo with something to redo → commit': {
 		seed: async function seedUndone({ store }) {
@@ -92,7 +92,7 @@ const ANNOUNCED_CHANGES: Record<string, AnnouncedChange> = {
 			await store.undo(DOCUMENT_ID)
 		},
 		change: ({ store }) => store.redo(DOCUMENT_ID),
-		expected: { type: 'commit', documentId: DOCUMENT_ID },
+		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
 	},
 	'a blob added → blob-added': {
 		seed: seedProject,
@@ -341,7 +341,8 @@ export const STORE_ANNOUNCE_CONTRACT: Record<string, StoreContractCases> = {
 								failure,
 							],
 						])
-						expect(await store.getDocument('doc-told-on')).toBeDefined()
+						const toldOn = await store.getDocument('doc-told-on')
+						expect(toldOn).toBeDefined()
 					} finally {
 						reported.mockRestore()
 					}

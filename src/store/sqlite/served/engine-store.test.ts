@@ -513,7 +513,7 @@ describe('EngineStore, the changes it tells', () => {
 			type: 'event',
 			signal: {
 				type: 'event',
-				message: { type: 'commit', documentId: 'doc-1', timestamp: 1 },
+				message: { type: 'commit', documentId: 'doc-1', timestamp: 1, changes: { unknown: true } },
 				...params,
 			},
 		}

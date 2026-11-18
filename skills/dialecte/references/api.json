@@ -1161,7 +1161,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Close the connection to the project's store, shared by every document of the project: after it, no document of this project can read or write. With a built-in store (local, in-memory), opening the project again gives a new store: documents opened before stay closed, open them again from the project. A custom store is reopened in place. To finish with the project, use `project.close`.",
 			"intents": ["close the project's database connection from a document"],
-			"declaredAt": "src/document/document.ts:443"
+			"declaredAt": "src/document/document.ts:451"
 		},
 		{
 			"path": "doc.destroy",
@@ -1173,7 +1173,7 @@
 				"delete the whole project database from a document",
 				"wipe every document of the project"
 			],
-			"declaredAt": "src/document/document.ts:455"
+			"declaredAt": "src/document/document.ts:463"
 		},
 		{
 			"path": "doc.prepare",
@@ -1186,7 +1186,7 @@
 				"ask a user to confirm an edit",
 				"dry-run a transaction"
 			],
-			"declaredAt": "src/document/document.ts:305"
+			"declaredAt": "src/document/document.ts:312"
 		},
 		{
 			"path": "doc.query.findAncestors",
@@ -1573,7 +1573,7 @@
 			"signature": "(documentId: string, file: File, attachedTo?: BlobAttachment[]) => Promise<string>",
 			"summary": "Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`. Returns the generated blob id.",
 			"intents": ["store a binary file in the project", "add an attachment owned by a document"],
-			"declaredAt": "src/project/project.ts:1297"
+			"declaredAt": "src/project/project.ts:1299"
 		},
 		{
 			"path": "project.attachBlob",
@@ -1582,7 +1582,7 @@
 			"signature": "(blobId: string, ref: BlobAttachment) => Promise<void>",
 			"summary": "Reference an existing blob from an element of a document (optionally from one of its attributes) and tell other tabs.",
 			"intents": ["link a stored file to an element", "attach a blob to a record"],
-			"declaredAt": "src/project/project.ts:1369"
+			"declaredAt": "src/project/project.ts:1371"
 		},
 		{
 			"path": "project.close",
@@ -1618,7 +1618,7 @@
 			"signature": "(blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>",
 			"summary": "Drop the reference from an element of a document to a blob; the blob itself stays stored.",
 			"intents": ["unlink a file from an element", "detach a blob from a record"],
-			"declaredAt": "src/project/project.ts:1381"
+			"declaredAt": "src/project/project.ts:1383"
 		},
 		{
 			"path": "project.export",
@@ -1646,7 +1646,7 @@
 				"save a blob to disk",
 				"read a blob with its file name"
 			],
-			"declaredAt": "src/project/project.ts:1333"
+			"declaredAt": "src/project/project.ts:1335"
 		},
 		{
 			"path": "project.getBlob",
@@ -1655,7 +1655,7 @@
 			"signature": "(blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>",
 			"summary": "Read a stored blob: its metadata entry and its binary data, or `undefined` when the id is unknown.",
 			"intents": ["read an attached file's content", "load a blob by id"],
-			"declaredAt": "src/project/project.ts:1323"
+			"declaredAt": "src/project/project.ts:1325"
 		},
 		{
 			"path": "project.getBlobsByDocument",
@@ -1664,7 +1664,7 @@
 			"signature": "(documentId: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from a document (any of their attachments points into it).",
 			"intents": ["list the files attached to a document"],
-			"declaredAt": "src/project/project.ts:1342"
+			"declaredAt": "src/project/project.ts:1344"
 		},
 		{
 			"path": "project.getBlobsByRecord",
@@ -1673,7 +1673,7 @@
 			"signature": "(documentId: string, recordRef: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from one element of a document.",
 			"intents": ["list the files attached to one element"],
-			"declaredAt": "src/project/project.ts:1351"
+			"declaredAt": "src/project/project.ts:1353"
 		},
 		{
 			"path": "project.getDatabaseInstance",
@@ -1682,7 +1682,7 @@
 			"signature": "() => ReturnType<GenericStore['getDatabaseInstance']>",
 			"summary": "Expose the store's own database object, for debugging: the Dexie instance on `local` (cast it: the type is the store's, `unknown` unless the Project's store type is given), `null` on `inMemory` and on a store with no such object.",
 			"intents": ["inspect the underlying database", "debug what the store holds"],
-			"declaredAt": "src/project/project.ts:1487"
+			"declaredAt": "src/project/project.ts:1489"
 		},
 		{
 			"path": "project.getDocument",
@@ -1730,7 +1730,7 @@
 			"signature": "() => Promise<BlobRecord[]>",
 			"summary": "The blobs of the project that no document references (no attachment).",
 			"intents": ["list unattached files", "find orphan blobs to clean up"],
-			"declaredAt": "src/project/project.ts:1360"
+			"declaredAt": "src/project/project.ts:1362"
 		},
 		{
 			"path": "project.import",
@@ -1791,7 +1791,7 @@
 			"signature": "<Result>(queryFunction: (query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>) => Promise<Result[]>) => Promise<Result[]>",
 			"summary": "Run a query function across all documents, collect and flatten results. Iterates documents sequentially; merges all non-empty arrays.",
 			"intents": ["collect results from every document", "run one query over all documents"],
-			"declaredAt": "src/project/project.ts:1429"
+			"declaredAt": "src/project/project.ts:1431"
 		},
 		{
 			"path": "project.queryFirst",
@@ -1803,7 +1803,7 @@
 				"find the first match across every document",
 				"search all documents of a project"
 			],
-			"declaredAt": "src/project/project.ts:1408"
+			"declaredAt": "src/project/project.ts:1410"
 		},
 		{
 			"path": "project.redo",
@@ -1812,7 +1812,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Re-apply the last undone transaction of a document and tell other tabs. Does nothing when there is nothing to redo.",
 			"intents": ["redo an undone change to a document"],
-			"declaredAt": "src/project/project.ts:1269"
+			"declaredAt": "src/project/project.ts:1270"
 		},
 		{
 			"path": "project.removeBlob",
@@ -1821,7 +1821,7 @@
 			"signature": "(blobId: string) => Promise<void>",
 			"summary": "Delete a blob and its binary data from the project and tell other tabs. Does nothing when the id is unknown.",
 			"intents": ["delete a stored file", "remove a blob for good"],
-			"declaredAt": "src/project/project.ts:1393"
+			"declaredAt": "src/project/project.ts:1395"
 		},
 		{
 			"path": "project.removeDocument",
@@ -1852,7 +1852,7 @@
 				"insert a child with attributes",
 				"build new content in a transaction"
 			],
-			"declaredAt": "src/document/transaction/main.ts:141",
+			"declaredAt": "src/document/transaction/main.ts:142",
 			"example": "const aRecord = await tx.addChild(root, {\n  tagName: 'A',\n  attributes: { name: 'aA1' },\n})"
 		},
 		{
@@ -1867,7 +1867,7 @@
 				"paste a tree read with getTree",
 				"map old ids to new ids"
 			],
-			"declaredAt": "src/document/transaction/main.ts:309",
+			"declaredAt": "src/document/transaction/main.ts:310",
 			"example": "const tree = await tx.getTree(aa1) // an AA_1 to copy\nconst { record, mappings } = await tx.deepClone(a, tree) // under an A"
 		},
 		{
@@ -1877,7 +1877,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>>",
 			"summary": "Delete an element and its entire subtree.",
 			"intents": ["remove an element", "delete a subtree", "prune a child from its parent"],
-			"declaredAt": "src/document/transaction/main.ts:244",
+			"declaredAt": "src/document/transaction/main.ts:245",
 			"example": "const parentRecord = await tx.delete(aRecord)"
 		},
 		{
@@ -1891,7 +1891,7 @@
 				"make sure a singleton container exists before adding under it",
 				"add a child without duplicating it"
 			],
-			"declaredAt": "src/document/transaction/main.ts:184",
+			"declaredAt": "src/document/transaction/main.ts:185",
 			"example": "const a = await tx.ensureChild(root, {\n  tagName: 'A',\n  attributes: {},\n})"
 		},
 		{
@@ -1906,7 +1906,7 @@
 				"move a subtree under another parent",
 				"reorder an element among its siblings"
 			],
-			"declaredAt": "src/document/transaction/main.ts:275",
+			"declaredAt": "src/document/transaction/main.ts:276",
 			"example": "await tx.move(aa1, { parent: otherA })"
 		},
 		{
@@ -1952,7 +1952,7 @@
 				"rename an element through its name attribute",
 				"set an element's text value"
 			],
-			"declaredAt": "src/document/transaction/main.ts:217",
+			"declaredAt": "src/document/transaction/main.ts:218",
 			"example": "await tx.update(root, {\n  attributes: { name: 'aA1', desc: 'new element' },\n})"
 		}
 	]
