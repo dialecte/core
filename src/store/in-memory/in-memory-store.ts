@@ -19,6 +19,7 @@ import {
 import { recordTableName } from '../store.constants'
 import { toStoredRecords } from '../stored-record'
 import { removeUnfinishedImports } from '../unfinished-imports'
+import { runVersionedRead } from '../versioned-read'
 import { writeOutcomeOf } from '../write-outcome'
 import { cloneRecord } from './clone-record'
 import {
@@ -55,6 +56,10 @@ import type {
 	ImportTarget,
 	WriteSessionControl,
 	StoreNotice,
+	StoreVersion,
+	VersionedAnswer,
+	VersionedRead,
+	VersionedReads,
 	WriteOutcome,
 } from '../store.types'
 import type {
@@ -133,6 +138,14 @@ export class InMemoryStore implements Store {
 	private readonly operations = createRunningOperations()
 	/** This store's own destroy while it runs: an operation started meanwhile goes on once it has ended. */
 	private destroying: Promise<void> | undefined
+	/**
+	 * What the versions this store answers count from: each state it reads gets the next id of this store (a state made
+	 * anew after a destroy counts from zero again, under another id, so its count is never taken for an older one). No
+	 * random draw: an id spends nothing a seeded id sequence counts on.
+	 */
+	private versionEngine: { state: ReadonlyInMemoryState; engineId: string } | undefined
+	/** How many states this store has read versions from. */
+	private versionEngines = 0
 
 	constructor(name: string, options?: InMemoryStoreOptions) {
 		refuseUnnamableProject({ project: name, dialecteId: options?.dialecteId })
@@ -270,14 +283,12 @@ export class InMemoryStore implements Store {
 
 	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
 		await this.guardOpen()
-		const record = this.readTable(documentId).get(id)
-		return record && cloneRecord({ record })
+		return this.getUnguarded(id, documentId)
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
 		await this.guardOpen()
-		const records = [...this.readTable(documentId).records()].sort(compareById)
-		return records.map((record) => cloneRecord({ record }))
+		return this.getByDocumentIdUnguarded(documentId)
 	}
 
 	async count(documentId: string): Promise<number> {
@@ -297,6 +308,58 @@ export class InMemoryStore implements Store {
 
 	async getByAttributes(params: AttributeLookup): Promise<AnyRawRecord[]> {
 		await this.guardOpen()
+		return this.getByAttributesUnguarded(params)
+	}
+
+	/**
+	 * One read member's answer and the document's version, read in the same step: the member reads before it awaits
+	 * anything, then the version is read. The version counts every write of the document in this store's state.
+	 */
+	async readVersioned<GenericRead extends VersionedRead>(params: {
+		documentId: string
+		read: GenericRead
+	}): Promise<VersionedAnswer<GenericRead['member']>> {
+		await this.guardOpen()
+		return runVersionedRead({
+			reads: this.unguardedReads(),
+			read: params.read,
+			versionOf: () => this.versionOf(params.documentId),
+		})
+	}
+
+	/** The read members as they read once the store is open: each reads before its first await. */
+	private unguardedReads(): VersionedReads {
+		return {
+			get: (id, documentId) => this.getUnguarded(id, documentId),
+			getMany: (ids, documentId) => this.getManyUnguarded(ids, documentId),
+			getByTagNameInDocument: (tagName, documentId) =>
+				this.getByTagNameInDocumentUnguarded(tagName, documentId),
+			getByAttributes: (lookup) => this.getByAttributesUnguarded(lookup),
+			getByDocumentId: (documentId) => this.getByDocumentIdUnguarded(documentId),
+		}
+	}
+
+	/** The document's version now: the writes it took in the state this store reads, under that state's id. */
+	private versionOf(documentId: string): StoreVersion {
+		const state = this.readState()
+		if (this.versionEngine?.state !== state) {
+			this.versionEngines += 1
+			this.versionEngine = { state, engineId: `${this.name}#${this.versionEngines}` }
+		}
+		return { engineId: this.versionEngine.engineId, count: state.versions.get(documentId) ?? 0 }
+	}
+
+	private async getUnguarded(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
+		const record = this.readTable(documentId).get(id)
+		return record && cloneRecord({ record })
+	}
+
+	private async getByDocumentIdUnguarded(documentId: string): Promise<AnyRawRecord[]> {
+		const records = [...this.readTable(documentId).records()].sort(compareById)
+		return records.map((record) => cloneRecord({ record }))
+	}
+
+	private async getByAttributesUnguarded(params: AttributeLookup): Promise<AnyRawRecord[]> {
 		const { documentId, ...lookup } = params
 		// the tag's attribute map answers the ids, in id order: only the answer is copied
 		const table = this.readTable(documentId)
@@ -748,7 +811,9 @@ export class InMemoryStore implements Store {
 		state.changelog.delete(documentId)
 		state.heads.delete(documentId)
 		state.discardedCommits.delete(documentId)
-		// the version stays: a document registered again under the id goes on from it, never back to a past value
+		// the version moves on and stays: a document registered again under the id goes on from it, never back to a value
+		// a read already answered
+		bumpVersion({ state, documentId })
 		state.blobData.delete(documentId)
 		for (const [blobId, entry] of state.blobs) {
 			if (entry.documentId === documentId) {

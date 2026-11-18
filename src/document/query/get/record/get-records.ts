@@ -1,11 +1,11 @@
-import { countRecordsMoved } from './count-records-moved'
+import { readThroughScope } from '../../read-scope/read-through-scope'
 import { getRecord, trackStoredRecord } from './get-record'
 import { getLatestStagedRecord } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
 
 import type { Context, RefOrRecord } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord } from '@/types'
+import type { AnyDialecteConfig, AnyRawRecord, ElementsOf, RawRecord, TrackedRecord } from '@/types'
 
 /**
  * Batch lookup: the records of several refs, in the order given; a missing record yields `undefined`.
@@ -112,12 +112,13 @@ async function readFromStore<
 	const ids = [...new Set(storePositions.map(({ id }) => id))]
 	if (ids.length === 0) return
 
-	context.perf.count('core::store::getMany')
 	ids.forEach(function countMiss() {
 		context.perf.count('core::query::getRecord.miss')
 	})
-	const raws = await context.store.getMany(ids, context.documentId)
-	countRecordsMoved({ perf: context.perf, member: 'getMany', records: raws })
+	const raws = (await readThroughScope({
+		context,
+		read: { member: 'getMany', args: [ids, context.documentId] },
+	})) as (AnyRawRecord | undefined)[]
 
 	const rawById = new Map<string, RawRecord<GenericConfig, ElementsOf<GenericConfig>>>()
 	for (const [index, id] of ids.entries()) {

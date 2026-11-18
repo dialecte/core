@@ -80,6 +80,12 @@ export async function measureScenarios(params: {
 		},
 	})
 	const fetchRepeats = repeatsOf({ keys: log.keys.slice(fetchStart) })
+	scenarios['one verb call over the leaves of a subtree'] = await measure({
+		document,
+		run: function fetchInOneCall() {
+			return fetchLeavesInOneCall({ document, leaves })
+		},
+	})
 	scenarios['rename rewriting references in one transaction'] = await measure({
 		document,
 		run: function rename() {
@@ -190,6 +196,17 @@ async function fetchLeaves(params: {
 		// dialecte-allow query-in-loop: the scenario measures the reads a per-leaf view load repeats
 		await query.getChildren(parent, leaf.tagName)
 	}
+}
+
+/** The reads of `fetchLeaves` made inside one extension verb call: one read scope answers the repeats. */
+async function fetchLeavesInOneCall(params: {
+	document: ScenarioDocument
+	leaves: AnyTreeRecord[]
+}): Promise<void> {
+	const query = params.document.query as unknown as {
+		scenario: { fetchLeaves: (leaves: AnyTreeRecord[]) => Promise<void> }
+	}
+	await query.scenario.fetchLeaves(params.leaves)
 }
 
 /** One transaction looks the references up once, then rewrites `SCENARIO_ELEMENTS` of them, as a rename does. */

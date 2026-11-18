@@ -5,7 +5,7 @@ import type { Store } from '@/store'
 
 /**
  * The store as it is, with every record its reads answer (`get`, `getMany`, `getByTagNameInDocument`,
- * `getByDocumentId`) appended to `log` as `<tagName>#<id>`: what a bench reads to count the records one fetch
+ * `getByDocumentId`, `getByAttributes`, and the value of a `readVersioned`) appended to `log` as `<tagName>#<id>`: what a bench reads to count the records one fetch
  * read more than once. Every other member is the store's own.
  */
 export function recordingStore(params: { store: Store; log: ReadLog }): Store {
@@ -26,7 +26,10 @@ function recordedMember(params: { target: Store; property: PropertyKey; log: Rea
 	if (!RECORDED_STORE_READS.has(property)) return bound
 	return async function recordedRead(...args: unknown[]): Promise<unknown> {
 		const answer = await bound(...args)
-		logAnswer({ log, answer })
+		logAnswer({
+			log,
+			answer: property === 'readVersioned' ? (answer as { value: unknown }).value : answer,
+		})
 		return answer
 	}
 }

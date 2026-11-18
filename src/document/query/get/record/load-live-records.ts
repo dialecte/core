@@ -1,8 +1,8 @@
-import { countRecordsMoved } from './count-records-moved'
+import { readThroughScope } from '../../read-scope/read-through-scope'
 import { overlayAllStaged } from './staged-lookup'
 
 import type { Context } from '@/document'
-import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
+import type { AnyDialecteConfig, AnyRawRecord, ElementsOf, TrackedRecord } from '@/types'
 
 /**
  * Read every record of the document once and overlay the staged operations: the in-memory
@@ -14,9 +14,10 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 export async function loadLiveRecords<GenericConfig extends AnyDialecteConfig>(
 	context: Context<GenericConfig>,
 ): Promise<Map<string, TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>>> {
-	context.perf.count('core::store::getByDocumentId')
-	const rawRecords = await context.store.getByDocumentId(context.documentId)
-	countRecordsMoved({ perf: context.perf, member: 'getByDocumentId', records: rawRecords })
+	const rawRecords = (await readThroughScope({
+		context,
+		read: { member: 'getByDocumentId', args: [context.documentId] },
+	})) as AnyRawRecord[]
 	const { live } = overlayAllStaged({
 		rawRecords,
 		stagedOperations: context.stagedOperations,

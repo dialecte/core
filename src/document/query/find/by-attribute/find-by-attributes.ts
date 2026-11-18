@@ -2,14 +2,14 @@ import { pushedFilterOf } from './pushed-filter'
 import { stagedAnswerOf } from './staged-answer'
 
 import { getRecordsByTagName, isTransactionContext } from '@/document'
-import { countRecordsMoved } from '@/document/query/get/record/count-records-moved'
+import { readThroughScope } from '@/document/query/read-scope/read-through-scope'
 import { declaredAttributeTypeOf, declaredDefinitionOf } from '@/utils/qname-definition'
 import { qualifiedNameAttributesOf, readsQualifiedNames } from '@/utils/qname-typed'
 import { canonicalQNameValue, storedNamespaceLookup } from '@/utils/qname-value'
 import { canonicalXsiType, isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { Context, FilterAttributes } from '@/document'
-import type { AttributeLookup, Store } from '@/store'
+import type { AttributeLookup } from '@/store'
 import type {
 	AnyDialecteConfig,
 	AnyRawRecord,
@@ -54,11 +54,9 @@ export async function findByAttributes<
 		tagName,
 		attributes,
 	})
-	const getByAttributes = context.store.getByAttributes?.bind(context.store)
-	if (filter.kind === 'pushed' && getByAttributes) {
+	if (filter.kind === 'pushed' && context.store.getByAttributes) {
 		return findByPushedAttributes({
 			context,
-			getByAttributes,
 			tagName,
 			attributes: listsAsSets,
 			pushed: filter.attributes,
@@ -90,20 +88,18 @@ async function findByPushedAttributes<
 	GenericElement extends ElementsOf<GenericConfig>,
 >(params: {
 	context: Context<GenericConfig>
-	/** The store's lookup, bound to it. */
-	getByAttributes: NonNullable<Store['getByAttributes']>
 	tagName: GenericElement
 	attributes: FilterAttributes<GenericConfig, GenericElement>
 	pushed: AttributeLookup['attributes']
 }): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
-	const { context, getByAttributes, tagName, attributes, pushed } = params
-	context.perf.count('core::store::getByAttributes')
-	const stored = (await getByAttributes({
-		documentId: context.documentId,
-		tagName,
-		attributes: pushed,
+	const { context, tagName, attributes, pushed } = params
+	const stored = (await readThroughScope({
+		context,
+		read: {
+			member: 'getByAttributes',
+			args: [{ documentId: context.documentId, tagName, attributes: pushed }],
+		},
 	})) as RawRecord<GenericConfig, GenericElement>[]
-	countRecordsMoved({ perf: context.perf, member: 'getByAttributes', records: stored })
 
 	if (isTransactionContext(context)) {
 		for (const record of stored) context.recordCache.set(record.id, record)

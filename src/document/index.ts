@@ -9,6 +9,7 @@ export type { ProgressReporter, DocumentProgress } from './progress'
 export type {
 	ExtendedDocument,
 	Context,
+	QueryContext,
 	CachedContext,
 	StagedOperations,
 	PreparedTransaction,

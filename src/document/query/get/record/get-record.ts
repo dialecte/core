@@ -1,4 +1,4 @@
-import { countRecordsMoved } from './count-records-moved'
+import { readThroughScope } from '../../read-scope/read-through-scope'
 import { getLatestStagedRecord } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
@@ -53,12 +53,10 @@ export async function getRecord<
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
 			context.perf.count('core::query::getRecord.miss')
-			context.perf.count('core::store::getByTagName')
-			const records = (await context.store.getByTagNameInDocument(
-				ref.tagName,
-				context.documentId,
-			)) as RawRecord<GenericConfig, GenericElement>[]
-			countRecordsMoved({ perf: context.perf, member: 'getByTagName', records })
+			const records = (await readThroughScope({
+				context,
+				read: { member: 'getByTagNameInDocument', args: [ref.tagName, context.documentId] },
+			})) as RawRecord<GenericConfig, GenericElement>[]
 			raw = records[0]
 			if (raw && isTransactionContext(context)) {
 				context.recordCache.set(raw.id, raw)
@@ -73,11 +71,10 @@ export async function getRecord<
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
 			context.perf.count('core::query::getRecord.miss')
-			context.perf.count('core::store::get')
-			raw = (await context.store.get(ref.id, context.documentId)) as
-				| RawRecord<GenericConfig, GenericElement>
-				| undefined
-			countRecordsMoved({ perf: context.perf, member: 'get', records: [raw] })
+			raw = (await readThroughScope({
+				context,
+				read: { member: 'get', args: [ref.id, context.documentId] },
+			})) as RawRecord<GenericConfig, GenericElement> | undefined
 			if (raw && isTransactionContext(context)) context.recordCache.set(ref.id, raw)
 		}
 	}

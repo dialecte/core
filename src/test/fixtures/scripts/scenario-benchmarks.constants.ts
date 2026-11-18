@@ -1,3 +1,15 @@
+import { defineDialecte } from '@/dialecte'
+import { TEST_DIALECTE } from '@/test/test-dialecte'
+
+import type { AnyTrackedRecord, AnyTreeRecord } from '@/types'
+
+/** The query a scenario verb is given: the reads `fetchLeaves` calls. */
+type ScenarioVerbQuery = {
+	getRecord: (ref: { tagName: string; id: string }) => Promise<unknown>
+	findAncestors: (record: AnyTreeRecord) => Promise<AnyTrackedRecord[]>
+	getChildren: (record: AnyTrackedRecord, tagName: string) => Promise<unknown>
+}
+
 /**
  * The generated stress fixture the scenario benches read: four blocks of the generator's shape (a binary tree of
  * depth 10 per block, about 2,000 records each), small enough for the node suite.
@@ -29,4 +41,29 @@ export const RECORDED_STORE_READS: ReadonlySet<PropertyKey> = new Set([
 	'getByTagNameInDocument',
 	'getByDocumentId',
 	'getByAttributes',
+	'readVersioned',
 ])
+
+/** Core's test dialecte with one verb that runs a whole fetch: the scenario of reads inside one call. */
+export const SCENARIO_DIALECTE = defineDialecte({
+	id: TEST_DIALECTE.id,
+	version: TEST_DIALECTE.version,
+	configs: TEST_DIALECTE.configs,
+	defaultConfigKey: TEST_DIALECTE.defaultConfigKey,
+	extensions: {
+		scenario: {
+			query: {
+				fetchLeaves: async function fetchLeavesInScope(
+					query: ScenarioVerbQuery,
+					leaves: AnyTreeRecord[],
+				) {
+					for (const leaf of leaves) {
+						await query.getRecord({ tagName: leaf.tagName, id: leaf.id })
+						const [parent] = await query.findAncestors(leaf)
+						await query.getChildren(parent, leaf.tagName)
+					}
+				},
+			},
+		},
+	},
+})

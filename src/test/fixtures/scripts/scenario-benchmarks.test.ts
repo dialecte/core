@@ -5,12 +5,16 @@ import { join } from 'node:path'
 import { generateStressXml } from '../generate-stress-fixtures'
 import { recordingStore } from './recording-store'
 import { measureScenarios } from './scenario-benchmarks'
-import { SCENARIO_BENCH_TIMEOUT_MS, SCENARIO_FIXTURE_BYTES } from './scenario-benchmarks.constants'
+import {
+	SCENARIO_BENCH_TIMEOUT_MS,
+	SCENARIO_DIALECTE,
+	SCENARIO_FIXTURE_BYTES,
+} from './scenario-benchmarks.constants'
 
 import { describe, expect, it } from 'vitest'
 
 import { InMemoryStore } from '@/store'
-import { TEST_DIALECTE, createTestProject } from '@/test'
+import { createTestProject } from '@/test'
 
 import type { ReadLog } from './scenario-benchmarks.types'
 
@@ -29,14 +33,15 @@ describe('scenario benches', () => {
 				const sourceXml = await readFile(outPath, 'utf8')
 				const log: ReadLog = { keys: [] }
 				const inMemory = new InMemoryStore(`scenario-${crypto.randomUUID()}`, {
-					dialecteId: TEST_DIALECTE.id,
+					dialecteId: SCENARIO_DIALECTE.id,
 					runtime: {
-						configs: TEST_DIALECTE.configs,
-						defaultConfigKey: TEST_DIALECTE.defaultConfigKey,
+						configs: SCENARIO_DIALECTE.configs,
+						defaultConfigKey: SCENARIO_DIALECTE.defaultConfigKey,
 					},
 				})
 				const store = recordingStore({ store: inMemory, log })
 				const { source } = await createTestProject({
+					dialecte: SCENARIO_DIALECTE,
 					sourceXml,
 					storage: { type: 'custom', store },
 					dev: { perf: true },

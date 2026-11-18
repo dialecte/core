@@ -16,7 +16,6 @@ import {
 	IN_PROCESS_ENGINE_REASON,
 	INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING,
 	INDEXEDDB_VERSIONED_READ_PENDING,
-	IN_MEMORY_VERSIONED_READ_PENDING,
 	REALM_PAGES,
 } from './store-contract.constants'
 import { makeDocument } from './store-contract.fixtures'
@@ -81,7 +80,6 @@ export const inMemoryStoreFactory: StoreContractFactory = {
 		return openInMemoryStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
 	},
 	storageUnfillable: 'an in-memory store has no storage limit',
-	pending: { 'versioned-read': IN_MEMORY_VERSIONED_READ_PENDING },
 	differs: { 'engine-end': IN_PAGE_IMPORT_REASON, away: AWAY_UNREACHABLE_REASON },
 }
 

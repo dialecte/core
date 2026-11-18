@@ -1,3 +1,5 @@
+import { runInReadScope } from './query/read-scope/run-in-read-scope'
+
 import type {
 	BoundExtensionMap,
 	ExtensionMap,
@@ -14,6 +16,9 @@ import type {
  * Groups may be nested to arbitrary depth: a value is either an extension
  * function (a leaf, bound to the instance) or a nested group (recursed into).
  * So `{ a: { aa: { getItems } } }` yields `instance.a.aa.getItems`.
+ *
+ * Each bound function runs in a read scope (`runInReadScope`): on a query a Document wired, a verb called outside a
+ * scope opens one that every call nested in it shares; elsewhere it runs on `instance` as it is.
  *
  * Returns an object mirroring the map's shape with each function bound.
  *
@@ -39,7 +44,11 @@ function bindGroup(group: Record<string, unknown>, instance: unknown): UnknownGr
 		const value = group[key]
 		bound[key] =
 			typeof value === 'function'
-				? (...args: unknown[]) => (value as (...a: unknown[]) => unknown)(instance, ...args)
+				? (...args: unknown[]) =>
+						runInReadScope({
+							instance: instance as object,
+							call: (target) => (value as (...a: unknown[]) => unknown)(target, ...args),
+						})
 				: bindGroup(value as Record<string, unknown>, instance)
 	}
 

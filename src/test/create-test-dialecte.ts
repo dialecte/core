@@ -80,6 +80,7 @@ export async function createTestContext<GenericConfig extends AnyDialecteConfig>
 	await store.open()
 	if (params.store === undefined) OPENED_CONTEXT_STORES.add(store)
 	return {
+		kind: 'transaction',
 		dialecteConfig,
 		store,
 		documentId,
