@@ -17,8 +17,9 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord, TreeRecord } from '@
  * The subtree under a ref as a `TreeRecord`, staged writes overlaid, shaped by `select`, `omit`, `unwrap` and
  * `depth`; the context-level read behind `doc.query.getTree`.
  *
- * Reads only the branches it can keep when a `select`, an unconditional `omit` or a `depth` prunes (one
- * `getRecords` per level), else the whole document once (see `loadTreeRecords`).
+ * Reads only the branches it can keep, one `getRecords` per level: a ref with an id below the document root reads
+ * its own subtree, and a `select`, an unconditional `omit` or a `depth` prunes further. The document root, or a ref
+ * without id, with nothing to prune reads the whole document once (see `loadTreeRecords`).
  *
  * @internal the context-level read behind `doc.query.getTree`; callers use the query
  */

@@ -95,6 +95,18 @@ describe('getTree - inside a transaction, read level by level with the staged re
 					wholeDocumentReads: 0,
 				},
 			},
+		'no options with staged writes → the staged subtree by levels, no whole-document read': {
+			sourceXml: xml,
+			stage: async (tx) => {
+				await tx.addChild(a1, { tagName: 'AA_2', id: '0-0-0-0-1', attributes: { aAA_2: 'v' } })
+				await tx.delete({ tagName: 'AAA_1', id: 'aaa1' })
+			},
+			options: {},
+			expected: {
+				shape: { tagName: 'A', tree: [leaf('AA_1'), leaf('AA_2'), leaf('AA_2')] },
+				wholeDocumentReads: 0,
+			},
+		},
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
@@ -156,6 +168,39 @@ describe('getTree - inside a transaction, moved and new elements read level by l
 				wholeDocumentReads: 0,
 			},
 		},
+		'a child moved from a1 to a2, no options → each subtree by levels, no whole-document read': {
+			sourceXml: xml,
+			stage: async (tx) => {
+				await tx.any.move({ tagName: 'AA_2', id: 'aa2' }, { parent: { tagName: 'A', id: 'a2' } })
+			},
+			reads: [a1, { tagName: 'A', id: 'a2' }],
+			options: {},
+			expected: {
+				shapes: [
+					{ tagName: 'A', tree: [{ tagName: 'AA_1', tree: [leaf('AAA_1')] }] },
+					{ tagName: 'A', tree: [leaf('AA_2'), leaf('AA_2')] },
+				],
+				wholeDocumentReads: 0,
+			},
+		},
+		'a new A staged, a ref without id, no options → still the first A of the document, one whole-document read':
+			{
+				sourceXml: xml,
+				stage: async (tx) => {
+					await tx.addChild(
+						{ tagName: 'Root' },
+						{ tagName: 'A', id: '0-0-0-0-2', attributes: { aA: 'v' } },
+					)
+				},
+				reads: [{ tagName: 'A' }],
+				options: {},
+				expected: {
+					shapes: [
+						{ tagName: 'A', tree: [{ tagName: 'AA_1', tree: [leaf('AAA_1')] }, leaf('AA_2')] },
+					],
+					wholeDocumentReads: 1,
+				},
+			},
 	}
 
 	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
