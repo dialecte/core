@@ -2,6 +2,7 @@ import { CONTRACT_SESSION_FAIL_VALUE, CONTRACT_SESSION_TAG } from './store-contr
 import {
 	commit,
 	contractFile,
+	deletedRef,
 	expectRejectsWith,
 	makeDocument,
 	makeRecord,
@@ -71,7 +72,7 @@ const tagOrder: StoreContractCases = {
 				store,
 				documentId: DOCUMENT_ID,
 				creates: [makeRecord({ id: 'z', tagName: 'A' }), makeRecord({ id: 'a', tagName: 'A' })],
-				deletes: ['c'],
+				deletes: [deletedRef('c')],
 			})
 			const committed = await idsByTag({ store, tags: ['A'] })
 			await store.undo(DOCUMENT_ID)

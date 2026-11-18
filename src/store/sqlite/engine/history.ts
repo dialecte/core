@@ -7,6 +7,8 @@ import {
 } from './engine.constants'
 import { recordOf } from './records'
 
+import { describeHistoryStep } from '@/document/transaction/commit/describe-commit-changes'
+import { COMMIT_CHANGES_MAX } from '@/project/project.constants'
 import { TABLE_CHANGELOG } from '@/store/store.constants'
 
 import type {
@@ -16,6 +18,7 @@ import type {
 	HistoryEntryState,
 	HistoryPart,
 } from './engine.types'
+import type { CommitChanges, PlacedRecord, UnknownCommitChanges } from '@/project/types'
 import type { ChangeLogEntry } from '@/store/store.types'
 import type { AnyRawRecord } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
@@ -288,4 +291,42 @@ export function deleteHistoryOf(params: { db: Database; documentId: string; tabl
 	const { db, documentId, table } = params
 	db.exec(`DROP TABLE ${table}`)
 	db.exec({ sql: `DELETE FROM ${TABLE_CHANGELOG} WHERE documentId = ?`, bind: [documentId] })
+}
+
+/**
+ * What a step of the entry applies, `back` (an undo) or `forward` (a redo), from the id, tag and parent of the rows it
+ * keeps: the parts the step tells read in `rowNo` order, at most one past the cap - past it `{ unknown: true }`, the
+ * rest never read.
+ */
+export function describeEntryStep(params: {
+	db: Database
+	table: string
+	entry: HistoryEntryRef
+	direction: HistoryDirection
+}): CommitChanges | UnknownCommitChanges {
+	const { db, table, entry, direction } = params
+	const updatePart = direction === 'back' ? HISTORY_PART.before : HISTORY_PART.after
+	const rows = db.selectArrays(
+		`SELECT part, id, tagName, parentId FROM ${table} WHERE entry = ? AND part IN (?, ?, ?) ` +
+			`ORDER BY rowNo LIMIT ?`,
+		[entry.id, HISTORY_PART.create, updatePart, HISTORY_PART.delete, COMMIT_CHANGES_MAX + 1],
+	)
+	if (rows.length > COMMIT_CHANGES_MAX) return { unknown: true }
+	const creates: PlacedRecord[] = []
+	const updates: PlacedRecord[] = []
+	const deletes: PlacedRecord[] = []
+	for (const [part, id, tagName, parentId] of rows) {
+		const placed: PlacedRecord = {
+			id: String(id),
+			tagName: String(tagName),
+			parent: parentId === null || parentId === undefined ? null : { id: String(parentId) },
+		}
+		if (part === HISTORY_PART.create) creates.push(placed)
+		else if (part === HISTORY_PART.delete) deletes.push(placed)
+		else updates.push(placed)
+	}
+	return describeHistoryStep({
+		images: { creates, befores: updates, afters: updates, deletes },
+		direction,
+	})
 }

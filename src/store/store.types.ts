@@ -1,7 +1,14 @@
 import type { VERSIONED_READ_MEMBERS } from './versioned-read.constants'
 import type { Diagnostic } from '@/diagnostics'
 import type { PerfSnapshot } from '@/perf'
-import type { DocumentRecord, DocumentUpdates, ProjectChannelMessage } from '@/project/types'
+import type {
+	ChangedRecord,
+	CommitChanges,
+	DocumentRecord,
+	DocumentUpdates,
+	ProjectChannelMessage,
+	UnknownCommitChanges,
+} from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, ChunkOptions, RecordPatch } from '@/types'
 
 /**
@@ -262,24 +269,32 @@ export interface Store {
 	 * (`STORE_VALUE_NOT_JSON`), then a create of an id the document holds or the commit holds twice
 	 * (`STORE_DUPLICATE_ID`, `meta.recordIds`), then an update that is not JSON. A delete of an absent
 	 * id is ignored. `writeId` is the caller's id for the commit, kept on its history entry and asked by
-	 * `getWriteOutcome`; generated when absent.
+	 * `getWriteOutcome`; generated when absent. A delete is a ref with the parent the record had: the store deletes
+	 * by its id and keeps the stored record as the history image; the ref's tag and parent only tell the change
+	 * (`describeCommitChanges` over the arguments, for a store that announces).
 	 */
 	commit(params: {
 		documentId: string
 		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
-		deletes: string[]
+		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
 	}): Promise<void>
 
 	// --- History (document-scoped) ---
 
-	/** Undo the last committed change for a document. No-op at beginning of history. */
-	undo(documentId: string): Promise<void>
+	/**
+	 * Undo the last committed change for a document: answers what the step applied (`describeHistoryStep` over the
+	 * entry's images, `back`), or `false` at the beginning of history (nothing written, nothing told).
+	 */
+	undo(documentId: string): Promise<HistoryStep | false>
 
-	/** Redo the next change for a document. No-op at end of history. */
-	redo(documentId: string): Promise<void>
+	/**
+	 * Redo the next change for a document: answers what the step applied (`describeHistoryStep`, `forward`), or
+	 * `false` at the end of history (nothing written, nothing told).
+	 */
+	redo(documentId: string): Promise<HistoryStep | false>
 
 	/** Whether undo/redo are currently available for a document */
 	getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }>
@@ -504,6 +519,9 @@ export type VersionedAnswer<GenericMember extends VersionedReadMember = Versione
 	value: Awaited<ReturnType<VersionedReads[GenericMember]>>
 	version: StoreVersion
 }
+
+/** What an undo or a redo applied: the records it created, updated and deleted, or `{ unknown: true }` past the cap. */
+export type HistoryStep = { changes: CommitChanges | UnknownCommitChanges }
 
 /** What became of a write asked by its id. */
 export type WriteOutcome = 'applied' | 'running' | 'not-applied'

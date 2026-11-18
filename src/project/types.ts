@@ -98,13 +98,28 @@ export type UnknownCommitChanges = { unknown: true }
 export type PlacedRecord = { id: string; tagName: string; parent: { id: string } | null }
 
 /**
- * The merged writes of one commit: created and updated records as written, deleted records as they were stored.
+ * The merged writes of one commit: created and updated records as written, deleted records as refs with the parent
+ * they had (as `Store.commit` receives them).
  */
 export type CommitWrites = {
 	creates: ReadonlyArray<PlacedRecord>
 	updates: ReadonlyArray<PlacedRecord>
+	deletes: ReadonlyArray<ChangedRecord>
+}
+
+/**
+ * The images a history entry keeps of one commit: the created records, the updated ones before and after it, the
+ * deleted ones as they were stored.
+ */
+export type HistoryImages = {
+	creates: ReadonlyArray<PlacedRecord>
+	befores: ReadonlyArray<PlacedRecord>
+	afters: ReadonlyArray<PlacedRecord>
 	deletes: ReadonlyArray<PlacedRecord>
 }
+
+/** Which way a history step goes: `back` reverts an entry (an undo), `forward` applies it again (a redo). */
+export type HistoryStepDirection = 'back' | 'forward'
 
 /**
  * ProjectChannelMessage - the public event contract of a Project.

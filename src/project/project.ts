@@ -1036,13 +1036,13 @@ export class Project<
 	 * it may have landed, so the project's documents (and the document's history) are read again before the refusal is
 	 * thrown - never made again. The change the store told before its connection went is posted to the listeners.
 	 */
-	private async writeOrReadAgain(params: {
-		write: () => Promise<void>
+	private async writeOrReadAgain<GenericAnswer>(params: {
+		write: () => Promise<GenericAnswer>
 		documentId?: string
-	}): Promise<void> {
+	}): Promise<GenericAnswer> {
 		const { write, documentId } = params
 		try {
-			await write()
+			return await write()
 		} catch (thrown) {
 			if (!isConnectionLost({ thrown })) throw thrown
 			// it may have landed: nothing a read scope held of it is trusted
@@ -1235,7 +1235,8 @@ export class Project<
 	// ── Undo / Redo ──────────────────────────────────────────────────────────
 
 	/**
-	 * Revert the last committed transaction of a document and tell other tabs. Does nothing when there is nothing to undo.
+	 * Revert the last committed transaction of a document and tell other tabs what it changed (the commit's inverse).
+	 * Does nothing, and tells nothing, when there is nothing to undo.
 	 *
 	 * @intent undo the last change to a document, roll back a commit
 	 */
@@ -1248,7 +1249,12 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
-			await this.writeOrReadAgain({ documentId, write: () => this.store.undo(documentId) })
+			const step = await this.writeOrReadAgain({
+				documentId,
+				write: () => this.store.undo(documentId),
+			})
+			// nothing stepped: nothing changed, nothing told
+			if (step === false) return
 			this.voidReadScopes(documentId)
 			// Update local state deterministically (the channel echo would do this
 			// too, but asynchronously) before announcing.
@@ -1256,14 +1262,14 @@ export class Project<
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
 			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
-			// what the step changed is not told yet: read again
-			this.broadcast({ type: 'commit', documentId, timestamp, changes: { unknown: true } })
+			this.broadcast({ type: 'commit', documentId, timestamp, changes: step.changes })
 			this.signalStateChange(documentId, true)
 		})
 	}
 
 	/**
-	 * Re-apply the last undone transaction of a document and tell other tabs. Does nothing when there is nothing to redo.
+	 * Re-apply the last undone transaction of a document and tell other tabs what it changed (the commit's changes).
+	 * Does nothing, and tells nothing, when there is nothing to redo.
 	 *
 	 * @intent redo an undone change to a document
 	 */
@@ -1276,14 +1282,18 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
-			await this.writeOrReadAgain({ documentId, write: () => this.store.redo(documentId) })
+			const step = await this.writeOrReadAgain({
+				documentId,
+				write: () => this.store.redo(documentId),
+			})
+			// nothing stepped: nothing changed, nothing told
+			if (step === false) return
 			this.voidReadScopes(documentId)
 			const timestamp = Date.now()
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
 			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
-			// what the step changed is not told yet: read again
-			this.broadcast({ type: 'commit', documentId, timestamp, changes: { unknown: true } })
+			this.broadcast({ type: 'commit', documentId, timestamp, changes: step.changes })
 			this.signalStateChange(documentId, true)
 		})
 	}

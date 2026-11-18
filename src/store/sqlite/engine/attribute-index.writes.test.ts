@@ -1,4 +1,4 @@
-import { makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
+import { deletedRef, makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import {
 	indexRowsOf,
 	recomputedIndexRowsOf,
@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { TABLE_RECORD_PREFIX } from '@/store/store.constants'
 
 import type { SqliteEngine } from './engine.types'
+import type { ChangedRecord } from '@/project/types'
 import type { AnyAttribute, AnyRawRecord } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
@@ -49,7 +50,7 @@ type WriteCase = {
 function commitOf(params: {
 	creates?: AnyRawRecord[]
 	updates?: AnyRawRecord[]
-	deletes?: string[]
+	deletes?: ReadonlyArray<ChangedRecord>
 }): (engine: SqliteEngine) => Promise<void> {
 	const { creates = [], updates = [], deletes = [] } = params
 	return function commitWrites(engine) {
@@ -69,7 +70,7 @@ const COMMITTED = commitOf({
 		recordWith('m', [{ name: 'k', value: '1' }]),
 		recordWith('x', [{ name: 'k', value: '3' }]),
 	],
-	deletes: ['c'],
+	deletes: [deletedRef('c')],
 })
 
 /** Records with odd attributes: a value twice, an empty value, a foreign homonym, a very long value, no attribute. */

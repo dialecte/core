@@ -154,7 +154,13 @@ describe('beforeCommit hook writes are in the changes', () => {
 		const expected = describeCommitChanges({
 			creates: creates.map((operation) => operation.newRecord),
 			updates: updates.map((operation) => operation.newRecord),
-			deletes: deletes.map((operation) => operation.oldRecord),
+			deletes: deletes.map(function refOf({ oldRecord }) {
+				return {
+					id: oldRecord.id,
+					tagName: oldRecord.tagName,
+					parentId: oldRecord.parent?.id ?? null,
+				}
+			}),
 		})
 		await prepared.commit()
 		const commit = await firstCommit({ heard })

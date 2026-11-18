@@ -36,6 +36,10 @@ function subjectOf(params: { message: ProjectChannelMessage }): Record<string, u
 
 const DOCUMENT_ID = 'doc-1'
 
+/** The refs of r2 (the seed's commit) and r3 (a case's commit): tag `A`, no parent. */
+const R2 = { id: 'r2', tagName: 'A', parentId: null }
+const R3 = { id: 'r3', tagName: 'A', parentId: null }
+
 function asProgress(): string {
 	return 'progress'
 }
@@ -79,12 +83,20 @@ const ANNOUNCED_CHANGES: Record<string, AnnouncedChange> = {
 		seed: seedProject,
 		change: ({ store }) =>
 			commit({ store, documentId: DOCUMENT_ID, creates: [makeRecord({ id: 'r3' })] }),
-		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
+		expected: {
+			type: 'commit',
+			documentId: DOCUMENT_ID,
+			changes: { created: [R3], updated: [], deleted: [] },
+		},
 	},
 	'an undo with something to undo → commit': {
 		seed: seedProject,
 		change: ({ store }) => store.undo(DOCUMENT_ID),
-		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
+		expected: {
+			type: 'commit',
+			documentId: DOCUMENT_ID,
+			changes: { created: [], updated: [], deleted: [R2] },
+		},
 	},
 	'a redo with something to redo → commit': {
 		seed: async function seedUndone({ store }) {
@@ -92,7 +104,11 @@ const ANNOUNCED_CHANGES: Record<string, AnnouncedChange> = {
 			await store.undo(DOCUMENT_ID)
 		},
 		change: ({ store }) => store.redo(DOCUMENT_ID),
-		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
+		expected: {
+			type: 'commit',
+			documentId: DOCUMENT_ID,
+			changes: { created: [R2], updated: [], deleted: [] },
+		},
 	},
 	'a blob added → blob-added': {
 		seed: seedProject,

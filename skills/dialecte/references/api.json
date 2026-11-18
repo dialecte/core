@@ -137,6 +137,26 @@
 			"declaredAt": "src/errors/errors.ts:73"
 		},
 		{
+			"path": "@dialecte/core.describeCommitChanges",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: CommitWrites) => CommitChanges | UnknownCommitChanges",
+			"summary": "What one commit changed, from its merged writes, in the order given: each record's id, tag and parent id (after the write for created and updated, before it for deleted). Past `COMMIT_CHANGES_MAX` refs in all, `{ unknown: true }`. A move between parents stages the moved record and both parents, so all three are in `updated`. The writes are the merged operations (`mergeOperations`), so each record appears once, in its final list.",
+			"intents": ["tell what a commit changed", "build a custom store's commit announcement"],
+			"declaredAt": "src/document/transaction/commit/describe-commit-changes.ts:22"
+		},
+		{
+			"path": "@dialecte/core.describeHistoryStep",
+			"root": "export",
+			"entry": "@dialecte/core",
+			"otherRoutes": [],
+			"signature": "(params: { images: HistoryImages; direction: HistoryStepDirection; }) => CommitChanges | UnknownCommitChanges",
+			"summary": "What one history step applied, from the images its entry keeps: `forward` (a redo) tells the commit again, `back` (an undo) its inverse - the deleted records created again under the parent they had, the updated ones with their parent before the commit, the created ones deleted from the parent they were created under. Past `COMMIT_CHANGES_MAX` refs, `{ unknown: true }`.",
+			"intents": ["answer what an undo or a redo applied", "in a custom store"],
+			"declaredAt": "src/document/transaction/commit/describe-commit-changes.ts:50"
+		},
+		{
 			"path": "@dialecte/core.importOutcomeOf",
 			"root": "export",
 			"entry": "@dialecte/core",
@@ -1573,7 +1593,7 @@
 			"signature": "(documentId: string, file: File, attachedTo?: BlobAttachment[]) => Promise<string>",
 			"summary": "Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`. Returns the generated blob id.",
 			"intents": ["store a binary file in the project", "add an attachment owned by a document"],
-			"declaredAt": "src/project/project.ts:1299"
+			"declaredAt": "src/project/project.ts:1309"
 		},
 		{
 			"path": "project.attachBlob",
@@ -1582,7 +1602,7 @@
 			"signature": "(blobId: string, ref: BlobAttachment) => Promise<void>",
 			"summary": "Reference an existing blob from an element of a document (optionally from one of its attributes) and tell other tabs.",
 			"intents": ["link a stored file to an element", "attach a blob to a record"],
-			"declaredAt": "src/project/project.ts:1371"
+			"declaredAt": "src/project/project.ts:1381"
 		},
 		{
 			"path": "project.close",
@@ -1618,7 +1638,7 @@
 			"signature": "(blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>",
 			"summary": "Drop the reference from an element of a document to a blob; the blob itself stays stored.",
 			"intents": ["unlink a file from an element", "detach a blob from a record"],
-			"declaredAt": "src/project/project.ts:1383"
+			"declaredAt": "src/project/project.ts:1393"
 		},
 		{
 			"path": "project.export",
@@ -1646,7 +1666,7 @@
 				"save a blob to disk",
 				"read a blob with its file name"
 			],
-			"declaredAt": "src/project/project.ts:1335"
+			"declaredAt": "src/project/project.ts:1345"
 		},
 		{
 			"path": "project.getBlob",
@@ -1655,7 +1675,7 @@
 			"signature": "(blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>",
 			"summary": "Read a stored blob: its metadata entry and its binary data, or `undefined` when the id is unknown.",
 			"intents": ["read an attached file's content", "load a blob by id"],
-			"declaredAt": "src/project/project.ts:1325"
+			"declaredAt": "src/project/project.ts:1335"
 		},
 		{
 			"path": "project.getBlobsByDocument",
@@ -1664,7 +1684,7 @@
 			"signature": "(documentId: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from a document (any of their attachments points into it).",
 			"intents": ["list the files attached to a document"],
-			"declaredAt": "src/project/project.ts:1344"
+			"declaredAt": "src/project/project.ts:1354"
 		},
 		{
 			"path": "project.getBlobsByRecord",
@@ -1673,7 +1693,7 @@
 			"signature": "(documentId: string, recordRef: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from one element of a document.",
 			"intents": ["list the files attached to one element"],
-			"declaredAt": "src/project/project.ts:1353"
+			"declaredAt": "src/project/project.ts:1363"
 		},
 		{
 			"path": "project.getDatabaseInstance",
@@ -1682,7 +1702,7 @@
 			"signature": "() => ReturnType<GenericStore['getDatabaseInstance']>",
 			"summary": "Expose the store's own database object, for debugging: the Dexie instance on `local` (cast it: the type is the store's, `unknown` unless the Project's store type is given), `null` on `inMemory` and on a store with no such object.",
 			"intents": ["inspect the underlying database", "debug what the store holds"],
-			"declaredAt": "src/project/project.ts:1489"
+			"declaredAt": "src/project/project.ts:1499"
 		},
 		{
 			"path": "project.getDocument",
@@ -1730,7 +1750,7 @@
 			"signature": "() => Promise<BlobRecord[]>",
 			"summary": "The blobs of the project that no document references (no attachment).",
 			"intents": ["list unattached files", "find orphan blobs to clean up"],
-			"declaredAt": "src/project/project.ts:1362"
+			"declaredAt": "src/project/project.ts:1372"
 		},
 		{
 			"path": "project.import",
@@ -1791,7 +1811,7 @@
 			"signature": "<Result>(queryFunction: (query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>) => Promise<Result[]>) => Promise<Result[]>",
 			"summary": "Run a query function across all documents, collect and flatten results. Iterates documents sequentially; merges all non-empty arrays.",
 			"intents": ["collect results from every document", "run one query over all documents"],
-			"declaredAt": "src/project/project.ts:1431"
+			"declaredAt": "src/project/project.ts:1441"
 		},
 		{
 			"path": "project.queryFirst",
@@ -1803,16 +1823,16 @@
 				"find the first match across every document",
 				"search all documents of a project"
 			],
-			"declaredAt": "src/project/project.ts:1410"
+			"declaredAt": "src/project/project.ts:1420"
 		},
 		{
 			"path": "project.redo",
 			"root": "project",
 			"otherRoutes": [],
 			"signature": "(documentId: string) => Promise<void>",
-			"summary": "Re-apply the last undone transaction of a document and tell other tabs. Does nothing when there is nothing to redo.",
+			"summary": "Re-apply the last undone transaction of a document and tell other tabs what it changed (the commit's changes). Does nothing, and tells nothing, when there is nothing to redo.",
 			"intents": ["redo an undone change to a document"],
-			"declaredAt": "src/project/project.ts:1270"
+			"declaredAt": "src/project/project.ts:1276"
 		},
 		{
 			"path": "project.removeBlob",
@@ -1821,7 +1841,7 @@
 			"signature": "(blobId: string) => Promise<void>",
 			"summary": "Delete a blob and its binary data from the project and tell other tabs. Does nothing when the id is unknown.",
 			"intents": ["delete a stored file", "remove a blob for good"],
-			"declaredAt": "src/project/project.ts:1395"
+			"declaredAt": "src/project/project.ts:1405"
 		},
 		{
 			"path": "project.removeDocument",
@@ -1837,9 +1857,9 @@
 			"root": "project",
 			"otherRoutes": [],
 			"signature": "(documentId: string) => Promise<void>",
-			"summary": "Revert the last committed transaction of a document and tell other tabs. Does nothing when there is nothing to undo.",
+			"summary": "Revert the last committed transaction of a document and tell other tabs what it changed (the commit's inverse). Does nothing, and tells nothing, when there is nothing to undo.",
 			"intents": ["undo the last change to a document", "roll back a commit"],
-			"declaredAt": "src/project/project.ts:1242"
+			"declaredAt": "src/project/project.ts:1243"
 		},
 		{
 			"path": "tx.addChild",

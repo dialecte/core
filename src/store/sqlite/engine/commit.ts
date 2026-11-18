@@ -6,6 +6,7 @@ import {
 	applyEntry,
 	copySnapshots,
 	deletePartRecords,
+	describeEntryStep,
 	entryToRedo,
 	entryToUndo,
 	recordEntry,
@@ -20,6 +21,7 @@ import { checkWriteId } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwRecordToUpdateNotFound } from '@/store/store-errors'
 
 import type { CommitRecordsParams, HistoryStepParams } from './engine.types'
+import type { CommitChanges, UnknownCommitChanges } from '@/project/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
 
 /**
@@ -75,7 +77,7 @@ export function commitRecords(params: CommitRecordsParams): number {
 					const added =
 						writePartRecords({ ...target, part: 'create' }) +
 						writePartRecords({ ...target, part: 'after' })
-					copySnapshots({ ...target, part: 'delete', ids: deletes })
+					copySnapshots({ ...target, part: 'delete', ids: deletes.map(idOf) })
 					return added - deletePartRecords({ ...target, part: 'delete' })
 				},
 			})
@@ -86,10 +88,13 @@ export function commitRecords(params: CommitRecordsParams): number {
 /**
  * An undo (`back`) or a redo (`forward`) of the document's history: its last applied entry reverted,
  * or its first undone one applied again, in one durable transaction once the import that runs is
- * settled. Answers how many records the document gained, or `undefined` when there was nothing to do
- * (a document not registered, the start or the end of its history): nothing written then.
+ * settled. Answers how many records the document gained and what the step changed (read from the entry's rows in
+ * the same transaction), or `undefined` when there was nothing to do (a document not registered, the start or the
+ * end of its history): nothing written then.
  */
-export function stepHistory(params: HistoryStepParams): number | undefined {
+export function stepHistory(
+	params: HistoryStepParams,
+): { gained: number; changes: CommitChanges | UnknownCommitChanges } | undefined {
 	const { sqlite3, db, documentId, direction, settle } = params
 	const found = asReadFailure({
 		detail: `The history of document "${documentId}"`,
@@ -120,7 +125,8 @@ export function stepHistory(params: HistoryStepParams): number | undefined {
 						direction,
 					})
 					setEntryState({ db, entry, state: direction === 'forward' ? 'applied' : 'undone' })
-					return gained
+					const changes = describeEntryStep({ db, table: tables.history, entry, direction })
+					return { gained, changes }
 				},
 			})
 		},

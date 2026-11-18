@@ -11,6 +11,7 @@ import {
 import {
 	commit,
 	contractFile,
+	deletedRef,
 	expectRejectsWith,
 	makeDocument,
 	makeRecord,
@@ -284,8 +285,8 @@ const KEYED_CALLS: Record<string, KeyedCall> = {
 		answers: { canUndo: false, canRedo: false },
 	},
 	getChangeLog: { call: (store) => store.getChangeLog(LONE), answers: [] },
-	undo: { call: (store) => store.undo(LONE), answers: undefined },
-	redo: { call: (store) => store.redo(LONE), answers: undefined },
+	undo: { call: (store) => store.undo(LONE), answers: false },
+	redo: { call: (store) => store.redo(LONE), answers: false },
 	getBlob: { call: (store) => store.getBlob(LONE), answers: undefined },
 	getBlobsByDocument: { call: (store) => store.getBlobsByDocument(LONE), answers: [] },
 	'getBlobsByRecord, by its document': {
@@ -328,7 +329,7 @@ const KEYED_CALLS: Record<string, KeyedCall> = {
 		meta: { documentId: TWIN, recordId: LONE },
 	},
 	'commit, a delete': {
-		call: (store) => commit({ store, documentId: TWIN, deletes: [LONE] }),
+		call: (store) => commit({ store, documentId: TWIN, deletes: [deletedRef(LONE)] }),
 		answers: undefined,
 	},
 	'addBlob, its owner': {
