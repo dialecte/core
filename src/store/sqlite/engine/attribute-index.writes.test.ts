@@ -9,6 +9,8 @@ import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { TABLE_RECORD_PREFIX } from '@/store/store.constants'
+
 import type { SqliteEngine } from './engine.types'
 import type { AnyAttribute, AnyRawRecord } from '@/types'
 import type { Database } from '@sqlite.org/sqlite-wasm'
@@ -68,6 +70,24 @@ const COMMITTED = commitOf({
 		recordWith('x', [{ name: 'k', value: '3' }]),
 	],
 	deletes: ['c'],
+})
+
+/** Records with odd attributes: a value twice, an empty value, a foreign homonym, a very long value, no attribute. */
+const ODD: AnyRawRecord[] = [
+	recordWith('o1', [
+		{ name: 'k', value: '1' },
+		{ name: 'k', value: '1' },
+	]),
+	recordWith('o2', [{ name: 'k', value: '' }]),
+	recordWith('o3', [{ name: 'k', value: '1', namespace: { prefix: 'f', uri: 'urn:f' } }]),
+	recordWith('o4', [{ name: 'k', value: 'v'.repeat(10_000) }]),
+	recordWith('o5', []),
+]
+
+/** A commit creating the odd records and giving `m` a foreign homonym holding k="1". */
+const ODD_COMMITTED = commitOf({
+	creates: ODD,
+	updates: [recordWith('m', [{ name: 'k', value: '1', namespace: { prefix: 'f', uri: 'urn:f' } }])],
 })
 
 const WRITE_CASES: Record<string, WriteCase> = {
@@ -135,6 +155,25 @@ const WRITE_CASES: Record<string, WriteCase> = {
 				}),
 			expected: { A: ['c', 'o1', 'o3', 'x'], B: ['b'] },
 		},
+	'a commit of records with odd attributes': {
+		writes: ODD_COMMITTED,
+		expected: { A: ['c', 'm', 'o1', 'o3', 'x'], B: ['b'] },
+	},
+	'a commit of records with odd attributes, then its undo': {
+		writes: async (engine) => {
+			await ODD_COMMITTED(engine)
+			await engine.undo(DOCUMENT_ID)
+		},
+		expected: { A: ['c', 'x'], B: ['b'] },
+	},
+	'a commit of records with odd attributes, its undo, then its redo': {
+		writes: async (engine) => {
+			await ODD_COMMITTED(engine)
+			await engine.undo(DOCUMENT_ID)
+			await engine.redo(DOCUMENT_ID)
+		},
+		expected: { A: ['c', 'm', 'o1', 'o3', 'x'], B: ['b'] },
+	},
 }
 
 describe('the attribute index after each write path', () => {
@@ -176,4 +215,83 @@ describe('the attribute index after each write path', () => {
 			})
 		})
 	}
+})
+
+// an import writes into a record table of its own, made fresh: no index trigger fires there, so it is no write path here
+
+/**
+ * Raw writes of a connection that registers nothing (an older core, a tool): rows whose attributes are not JSON,
+ * JSON `null`, a list of non-objects, objects without a name or with a `null`, number or boolean value; a replace,
+ * updates of the attributes and of the tag, deletes. The record table is `rec`.
+ */
+function plainWritesOf(params: { rec: string }): string {
+	const { rec } = params
+	const columns =
+		'id, tagName, nsPrefix, nsUri, value, parentId, parentTagName, attributes, children'
+	return [
+		`INSERT INTO ${rec} (id, tagName, attributes) VALUES ('p1', 'A', 'not json'), ('p2', 'A', 'null'), ('p3', 'A', '["k", 1, null]')`,
+		`INSERT INTO ${rec} (id, tagName, attributes) VALUES ('p4', 'A', '[{"value":"1"},{"name":"k","value":null},{"name":"k","value":7},{"name":"k","value":false},{"name":"k"}]')`,
+		`INSERT OR REPLACE INTO ${rec} (${columns}) SELECT id, tagName, nsPrefix, nsUri, value, parentId, parentTagName, ` +
+			`'[{"name":"k","value":"2"}]', children FROM ${rec} WHERE id = 'c'`,
+		`UPDATE ${rec} SET attributes = '[{"name":"k","value":"5"}]' WHERE id = 'x'`,
+		`UPDATE ${rec} SET tagName = 'B' WHERE id = 'm'`,
+		`UPDATE ${rec} SET tagName = 'A' WHERE id = 'z'`,
+		`UPDATE ${rec} SET attributes = 'still not json' WHERE id = 'p1'`,
+		`DELETE FROM ${rec} WHERE id IN ('b', 'p2')`,
+	].join(';')
+}
+
+describe('the attribute index and a connection that registers nothing', () => {
+	it('odd raw rows inserted, replaced, updated and deleted → every write lands, the index holds what its SQL rules give, the next engine answers from it', async () => {
+		const file = await openMemoryFile({ opened })
+		const db = file.connect()
+		const engine = await startEngine({ db })
+		await engine.registerDocument(makeDocument())
+		await engine.bulkWrite(DOCUMENT_ID, { creates: SEEDED })
+		const seq = seqOf({ db, documentId: DOCUMENT_ID })
+		async function writtenPlainly(): Promise<Record<string, unknown>> {
+			for (const tagName of ['A', 'B']) {
+				await engine.getByAttributes({
+					documentId: DOCUMENT_ID,
+					tagName,
+					attributes: [{ name: 'k', values: ['1'] }],
+				})
+			}
+			await untilPairsReady({ db, seq, pairs: 2 })
+			engine.close()
+			const plain = file.connect()
+			plain.exec(plainWritesOf({ rec: `${TABLE_RECORD_PREFIX}${seq}` }))
+			const nextDb = file.connect()
+			const next = await startEngine({ db: nextDb })
+			async function holders(tagName: string, value: string): Promise<string[]> {
+				const records = await next.getByAttributes({
+					documentId: DOCUMENT_ID,
+					tagName,
+					attributes: [{ name: 'k', values: [value] }],
+				})
+				return records.map((record) => record.id)
+			}
+			return {
+				rows: indexRowsOf({ db: nextDb, seq }),
+				A1: await holders('A', '1'),
+				A2: await holders('A', '2'),
+				B2: await holders('B', '2'),
+			}
+		}
+		// numbers and booleans become text (false -> '0'); a value null or absent, a nameless item, a non-object, an
+		// attributes text that is not JSON give no row
+		await expect(writtenPlainly()).resolves.toEqual({
+			rows: [
+				['A', 'k', '0', 'p4'],
+				['A', 'k', '1', 'z'],
+				['A', 'k', '2', 'c'],
+				['A', 'k', '5', 'x'],
+				['A', 'k', '7', 'p4'],
+				['B', 'k', '2', 'm'],
+			],
+			A1: ['z'],
+			A2: ['c'],
+			B2: ['m'],
+		})
+	})
 })

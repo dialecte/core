@@ -11,6 +11,14 @@ export const ATTRIBUTE_INDEX_PREFIX = {
 } as const
 
 /**
+ * The name of a table or a trigger of an attribute index, its record table's number captured: `xname_3`, `xattr_3`,
+ * `xkeys_3`, `xatr_3_afterInsert`.
+ */
+export const ATTRIBUTE_INDEX_NAME = new RegExp(
+	`^(?:${Object.values(ATTRIBUTE_INDEX_PREFIX).join('|')})(\\d+)(?:_|$)`,
+)
+
+/**
  * Where a pair of the index stands: `building` (registered, its triggers keep the rows of every record a write
  * touches, the records written before are being added in slices), `ready` (every record of the tag has its rows: a
  * lookup reads them). A lookup of a pair not `ready` filters the tag instead.
