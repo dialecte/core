@@ -1,6 +1,7 @@
 import { makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
 import {
 	attributeIndexTablesOf,
+	buildAttributePair,
 	readFilteredRecords,
 	registerAttributePair,
 } from './attribute-index'
@@ -135,6 +136,62 @@ describe('the first lookup of a pair builds it in the call', () => {
 			left: { 'A.k': 'building' },
 			afterLookup: { 'A.k': 'ready' },
 			answered: 714,
+			sameAnswer: true,
+			exact: true,
+		})
+	})
+
+	it("a pair a 0.12.0 engine left building halfway (rows for the first half of the tag), then writes on both halves → finished in the first lookup, the answer the filter's, the index exact", async () => {
+		const file = await openMemoryFile({ opened })
+		const db = file.connect()
+		const engine = await startEngine({ db })
+		await engine.registerDocument(makeDocument())
+		await engine.bulkWrite(DOCUMENT_ID, { creates: MANY })
+		const seq = seqOf({ db, documentId: DOCUMENT_ID })
+		const tables = attributeIndexTablesOf({ seq })
+		// what a 0.12.0 engine stopped after its first slices leaves: the pair building, rows for r0000..r2499 only
+		db.exec('BEGIN IMMEDIATE')
+		registerAttributePair({ db, tables, tagName: 'A', name: 'k' })
+		buildAttributePair({ db, tables, tagName: 'A', name: 'k' })
+		db.exec({
+			sql: `DELETE FROM ${tables.rows} WHERE recRow > (SELECT rowid FROM ${tables.records} WHERE id = ?)`,
+			bind: ['r2499'],
+		})
+		db.exec('COMMIT')
+		// writes after it, kept by the triggers: one record created, one moved to 3 and one away from 3 in each half
+		await engine.bulkWrite(DOCUMENT_ID, {
+			creates: [makeRecord({ id: 'new', tagName: 'A', attributes: [{ name: 'k', value: '3' }] })],
+			updates: [
+				{ recordId: 'r0000', attributes: [{ name: 'k', value: '3' }] },
+				{ recordId: 'r0003', attributes: [{ name: 'k', value: '9' }] },
+				{ recordId: 'r4999', attributes: [{ name: 'k', value: '3' }] },
+				{ recordId: 'r4994', attributes: [{ name: 'k', value: '9' }] },
+			],
+			deletes: ['r0010', 'r4987'],
+		})
+		engine.close()
+		const nextDb = file.connect()
+		const next = await startEngine({ db: nextDb })
+		async function finished(): Promise<Record<string, unknown>> {
+			const left = pairStatesOf({ db: nextDb, seq })
+			const answered = await holdersOf({ engine: next, values: ['3'] })
+			return {
+				left,
+				afterLookup: pairStatesOf({ db: nextDb, seq }),
+				answered: answered.length,
+				sameAnswer:
+					JSON.stringify(answered) ===
+					JSON.stringify(filteredIdsOf({ db: nextDb, seq, values: ['3'] })),
+				exact:
+					JSON.stringify(indexRowsOf({ db: nextDb, seq })) ===
+					JSON.stringify(recomputedIndexRowsOf({ db: nextDb, seq })),
+			}
+		}
+		// 714 hold 3 (index % 7); +3 (new, r0000, r4999), -4 (r0003 and r4994 moved away, r0010 and r4987 deleted)
+		await expect(finished()).resolves.toEqual({
+			left: { 'A.k': 'building' },
+			afterLookup: { 'A.k': 'ready' },
+			answered: 713,
 			sameAnswer: true,
 			exact: true,
 		})

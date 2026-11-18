@@ -36,11 +36,7 @@ export function pairStatesOf(params: { db: Database; seq: number }): Record<stri
  * Every registered pair of the document's index `ready`, and at least `pairs` of them: a lookup builds its pairs in the
  * call, so they are ready once it has answered; thrown with the states otherwise.
  */
-export async function untilPairsReady(params: {
-	db: Database
-	seq: number
-	pairs: number
-}): Promise<void> {
+export function assertPairsReady(params: { db: Database; seq: number; pairs: number }): void {
 	const { db, seq, pairs } = params
 	const states = pairStatesOf({ db, seq })
 	const values = Object.values(states)

@@ -1,5 +1,5 @@
 import { makeDocument, makeRecord } from '../../contract/store-contract.fixtures'
-import { seqOf, untilPairsReady } from './attribute-index.fixtures'
+import { seqOf, assertPairsReady } from './attribute-index.fixtures'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
 import { afterAll, describe, expect, it } from 'vitest'
@@ -42,10 +42,10 @@ const COLD_BURST_FACTOR_BUDGET = 3
 /** The bench's setup ceiling (60,000 records written, two pairs built). */
 const BENCH_TIMEOUT_MS = 5 * 60_000
 
-// The SQLite engine's attribute lookup on a synthetic document of 60,000 records, in Node (wasm): one value looked up
+// The SQLite engine's attribute lookup on a synthetic document of 60,000 records, in headless Chromium (wasm): one value looked up
 // by a tag read filtered in JS, by its first lookup (the pair built in it), and from the index; a cold burst of lookups; the
 // file's size before and after two pairs are built; the cost of a write of records of a tag with pairs and of one
-// without. Runs under `--mode bench` (or VITE_BENCH=1): `npm run test:perf:node`.
+// without. Runs under `--mode bench` (or VITE_BENCH=1), in the `perf` project: `npm run test:perf`.
 const RUN = import.meta.env.MODE === 'bench' || import.meta.env.VITE_BENCH === '1'
 
 const DOCUMENT_ID = 'doc-1'
@@ -157,9 +157,9 @@ describe.skipIf(!RUN)('the SQLite attribute index on a synthetic 60,000-record d
 			const firstStartedAt = performance.now()
 			await engine.getByAttributes(lookup)
 			const firstMs = performance.now() - firstStartedAt
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			await engine.getByAttributes({ ...lookup, attributes: [{ name: 'ref', values: ['ref-1'] }] })
-			await untilPairsReady({ db, seq, pairs: 2 })
+			assertPairsReady({ db, seq, pairs: 2 })
 			const indexMs = await timed(() => engine.getByAttributes(lookup))
 			const bytesAfter = fileBytesOf({ db })
 			const writeAfter = {
@@ -267,7 +267,7 @@ describe.skipIf(!RUN)('the SQLite attribute index on a synthetic 60,000-record d
 					attributes: [{ name, values: ['x'] }],
 				})
 			}
-			await untilPairsReady({ db, seq, pairs: 2 })
+			assertPairsReady({ db, seq, pairs: 2 })
 			const held = await engine.getByTagNameInDocument('A', plain)
 			async function commitMs(params: {
 				documentId: string

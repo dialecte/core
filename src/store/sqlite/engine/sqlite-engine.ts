@@ -199,9 +199,17 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	const attributeBuilds = createAttributeIndexBuilder({
 		db,
 		write: function writeAttributeIndex(work) {
-			writeInTransaction({ detail: 'The attribute index could not be built', work })
+			try {
+				writeInTransaction({ detail: 'The attribute index could not be built', work })
+			} catch (thrown) {
+				// a rollback that failed too left the connection inside the build's transaction: the engine breaks
+				breakIfStranded()
+				throw thrown
+			}
 		},
 		isGivenUp: function isSpaceOrIoFailure(thrown) {
+			// a broken engine answers nothing more: its lookup is refused, never filtered on a closed connection
+			if (state.broken) return false
 			const code = sqliteCodeOf({ thrown })
 			const { SQLITE_FULL, SQLITE_IOERR, SQLITE_NOMEM } = sqlite3.capi
 			return code === SQLITE_FULL || code === SQLITE_IOERR || code === SQLITE_NOMEM
@@ -887,8 +895,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	}
 
 	/**
-	 * A connection an import left inside a transaction takes no write again: every later one would fail to begin, and
-	 * the next import's end would commit the stranded rows. The engine closes and says so (`onBroken`): its host
+	 * A connection an import or an index build left inside a transaction takes no write again: every later one would
+	 * fail to begin, and the next import's end would commit the stranded rows. The engine closes and says so (`onBroken`): its host
 	 * starts the next engine on the file.
 	 */
 	function breakIfStranded(): void {

@@ -5,7 +5,7 @@ import {
 	indexTablesHeldOf,
 	pairStatesOf,
 	seqOf,
-	untilPairsReady,
+	assertPairsReady,
 } from './attribute-index.fixtures'
 import { TABLE_HISTORY_ROWS_PREFIX } from './engine.constants'
 import { openMemoryFile, startEngine } from './engine.fixtures'
@@ -126,7 +126,7 @@ describe('the attribute index of a document', () => {
 		})
 		async function builtThenLookedUp(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			return {
 				rows: indexRowsOf({ db, seq }),
 				answer: await idsOf({
@@ -176,7 +176,7 @@ describe('the attribute index of a document', () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		async function reusedNumber(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			// an older core's removal: the record and history tables and the row go, the index tables stay
 			db.exec(
 				`DROP TABLE ${TABLE_RECORD_PREFIX}${seq}; DROP TABLE ${TABLE_HISTORY_ROWS_PREFIX}${seq}; ` +
@@ -194,7 +194,7 @@ describe('the attribute index of a document', () => {
 			}
 			const again = seqOf({ db, documentId: 'doc-2' })
 			const first = await lookUp()
-			await untilPairsReady({ db, seq: again, pairs: 1 })
+			assertPairsReady({ db, seq: again, pairs: 1 })
 			return {
 				sameNumber: again === seq,
 				first,
@@ -217,7 +217,7 @@ describe('the attribute index of a document', () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		async function withoutTriggers(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			const { triggers } = attributeIndexTablesOf({ seq })
 			for (const trigger of ['beforeInsert', 'afterInsert', 'afterDelete', 'afterUpdate']) {
 				db.exec(`DROP TRIGGER ${triggers}${trigger}`)
@@ -236,7 +236,7 @@ describe('the attribute index of a document', () => {
 		const { engine, db, seq } = await engineHolding({ records: SEEDED })
 		async function removedThenAgain(): Promise<Record<string, unknown>> {
 			await idsOf({ engine, attributes: [{ name: 'k', values: ['1'] }] })
-			await untilPairsReady({ db, seq, pairs: 1 })
+			assertPairsReady({ db, seq, pairs: 1 })
 			await engine.removeDocument(DOCUMENT_ID)
 			const afterRemoval = indexTablesHeldOf({ db, seq })
 			await engine.registerDocument(makeDocument())

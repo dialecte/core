@@ -3,7 +3,9 @@ import { createContractRuntime } from '../../contract/store-contract.import-sess
 import { indexRowsOf, pairStatesOf, recomputedIndexRowsOf, seqOf } from './attribute-index.fixtures'
 import { openMemoryFile, startEngine } from './engine.fixtures'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { toDialecteError } from '@/errors'
 
 import type { SqliteEngine } from './engine.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
@@ -17,11 +19,12 @@ const opened: Database[] = []
 const holds: (() => void)[] = []
 
 afterEach(() => {
+	vi.restoreAllMocks()
 	for (const release of holds.splice(0)) release()
 	for (const db of opened.splice(0)) db.close()
 })
 
-/** 5,000 records of A, `r0000`..`r4999`, each holding k = its number modulo 7: three build slices. */
+/** 5,000 records of A, `r0000`..`r4999`, each holding k = its number modulo 7. */
 const MANY = Array.from({ length: 5_000 }, (_, index) =>
 	makeRecord({
 		id: `r${String(index).padStart(4, '0')}`,
@@ -93,6 +96,70 @@ describe('a pair whose build fails', () => {
 			sameEngine: {},
 			nextEngine: { 'A.k': 'ready' },
 			built: 714,
+			exact: true,
+		})
+	})
+})
+
+/** A failure SQLite reports as a disk I/O error, by its result code (`SQLITE_IOERR`): one the engine gives a build up on. */
+function ioFailure(params: { sql: string }): Error {
+	return Object.assign(new Error(`${params.sql.slice(0, 40)}: disk I/O error`), { resultCode: 10 })
+}
+
+describe('a build whose rollback fails', () => {
+	it('the build and then its ROLLBACK refused with an I/O error → the connection left inside its transaction: the engine broken and told once, the lookup refused, nothing written; the next engine builds the pair, exact', async () => {
+		const file = await openMemoryFile({ opened })
+		const db = file.connect()
+		let told = 0
+		const engine = await startEngine({
+			db,
+			onBroken: function countBroken() {
+				told += 1
+			},
+		})
+		await engine.registerDocument(makeDocument())
+		await engine.bulkWrite(DOCUMENT_ID, { creates: MANY })
+		const seq = seqOf({ db, documentId: DOCUMENT_ID })
+		const armed = { failing: false }
+		const exec = db.exec.bind(db) as (...args: unknown[]) => unknown
+		vi.spyOn(db, 'exec').mockImplementation(function execUnlessArmed(...args: unknown[]) {
+			const [first] = args
+			const sql = typeof first === 'string' ? first : ((first as { sql?: string }).sql ?? '')
+			// the build's rows refused, then its rollback: SQLite rolled nothing back, the transaction stays open
+			if (armed.failing && (sql.startsWith('INSERT OR IGNORE INTO xattr_') || sql === 'ROLLBACK')) {
+				throw ioFailure({ sql })
+			}
+			return exec(...args)
+		} as typeof db.exec)
+		async function strandedThenNext(): Promise<Record<string, unknown>> {
+			armed.failing = true
+			const lookup = await holdersOf(engine).then(
+				() => 'answered',
+				(thrown: unknown) => toDialecteError(thrown)?.key,
+			)
+			armed.failing = false
+			const nextDb = file.connect()
+			const next = await startEngine({ db: nextDb })
+			const leftByTheBrokenEngine = pairStatesOf({ db: nextDb, seq })
+			const built = await holdersOf(next)
+			return {
+				told,
+				closed: !db.isOpen(),
+				lookup,
+				leftByTheBrokenEngine,
+				built: built.length,
+				nextEngine: pairStatesOf({ db: nextDb, seq }),
+				exact: isExact({ db: nextDb, seq }),
+			}
+		}
+		// 714 of the 5,000 hold 3 (index % 7)
+		await expect(strandedThenNext()).resolves.toEqual({
+			told: 1,
+			closed: true,
+			lookup: 'STORE_COMMIT_FAILED',
+			leftByTheBrokenEngine: {},
+			built: 714,
+			nextEngine: { 'A.k': 'ready' },
 			exact: true,
 		})
 	})
