@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-18
+
+`getTree` reads a root below the document root level by level instead of the whole document; a SQLite attribute pair's
+first lookup builds its index in the call, so the first edits after an import no longer scan (a 90,000-record tag:
+73 s → 2 s for a burst of 400 lookups); the skills teach plain `lot land`.
+
+### Changed
+
+- `getTree` on an element below the document root (a ref with an `id`) reads only that element's subtree, one read per level, even with no `select`, `omit` or `depth`; it no longer reads the whole document. The trees are the same. The document root, or a ref without `id`, with nothing to prune still reads the whole document once.
+- The `dialecte-lot` and `dialecte-contributing` skills land a lot in a CI-first repository with plain `npx dialecte lot land <id>`, which always opens a draft pull request (the cli no longer takes `--draft`): `lot land` never queues; only `lot approve`, by a person, does.
+- The `dialecte` skill's table of cli lookups points at `references/ask-ladder.md`: an agent's own question goes through `npx @dialecte/cli ask "<question>"` before a person.
+- The `sqlite` store indexes a (tag, attribute) pair inside the first `getByAttributes` that asks for it, in one write, and answers from the index; the lookups that follow never scan the tag again. Before, a pair was indexed in background slices that got no turn while lookups ran back to back, so a burst of lookups right after an import scanned the tag each time (`attribute-index.bench.test.ts` under `npm run test:perf`, headless Chromium, wasm engine in the page, 400 lookups alternating a unique and a 100-value attribute of one tag: 16.4 s -> 0.45 s at 20,000 records, 73 s -> 2.0 s at 90,000, both pair builds included; the rest of the 90,000 figure is the answers, about 900 records per 100-value lookup). A build costs about two tag scans, once per pair per file; requests from other tabs wait behind it. While an import runs, or when the file is full, the lookup is answered by the SQL filter as before.
+
 ## [0.12.0] - 2026-11-18
 
 Large documents read in batches and through indexes (`findAncestorsOfEach`, `getChildrenOfEach`, `findDescendantsOfEach`,
