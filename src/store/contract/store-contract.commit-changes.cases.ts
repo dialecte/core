@@ -59,6 +59,14 @@ const FAMILY_UNDONE: CommitChanges = {
 	deleted: [N_UNDER_P],
 }
 
+/** A step that changed no record: a commit's history keeps no image of an id it did not hold. */
+const NOTHING_CHANGED: CommitChanges = { created: [], updated: [], deleted: [] }
+
+/** A record's ref: its id, its tag and its parent's id. */
+function refOfRecord(record: ReturnType<typeof makeRecord>): ChangedRecord {
+	return { id: record.id, tagName: record.tagName, parentId: record.parent?.id ?? null }
+}
+
 function byId(left: { id: string }, right: { id: string }): number {
 	return left.id < right.id ? -1 : left.id > right.id ? 1 : 0
 }
@@ -193,6 +201,48 @@ const ANSWERED: Record<string, StoreContractCase> = {
 			expect(stepped(undone)).toEqual({ unknown: true })
 		},
 	},
+	'an undo at exactly the cap, its refs split between creates and updates → answers every ref': {
+		act: async ({ store }) => {
+			const half = COMMIT_CHANGES_MAX / 2
+			const held = manyCreates({ count: half }).map((record) => ({
+				...record,
+				id: `u${record.id}`,
+			}))
+			await store.registerDocument(makeDocument({ id: DOCUMENT_ID }))
+			await store.bulkWrite(DOCUMENT_ID, { creates: held })
+			const created = manyCreates({ count: half })
+			const updated = held.map((record) => ({ ...record, value: 'updated' }))
+			await commit({ store, documentId: DOCUMENT_ID, creates: created, updates: updated })
+			const undone = await store.undo(DOCUMENT_ID)
+			expect(stepped(undone)).toEqual({
+				created: [],
+				updated: held.map(refOfRecord).sort(byId),
+				deleted: created.map(refOfRecord).sort(byId),
+			})
+		},
+	},
+	'a redo past the cap → answers { unknown: true }': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument({ id: DOCUMENT_ID }))
+			await commit({
+				store,
+				documentId: DOCUMENT_ID,
+				creates: manyCreates({ count: COMMIT_CHANGES_MAX + 1 }),
+			})
+			await store.undo(DOCUMENT_ID)
+			const redone = await store.redo(DOCUMENT_ID)
+			expect(stepped(redone)).toEqual({ unknown: true })
+		},
+	},
+	'a commit deleting an absent id, undone then redone → each step leaves the absent id out': {
+		act: async ({ store }) => {
+			await seedFamily({ store })
+			await commit({ store, documentId: DOCUMENT_ID, deletes: [deletedRef('x')] })
+			const undone = await store.undo(DOCUMENT_ID)
+			const redone = await store.redo(DOCUMENT_ID)
+			expect([stepped(undone), stepped(redone)]).toEqual([NOTHING_CHANGED, NOTHING_CHANGED])
+		},
+	},
 }
 
 /** A case that sees what this connection and a second one are told while `change` runs. */
@@ -259,6 +309,22 @@ const TOLD: Record<string, StoreContractCase> = {
 		change: ({ store }) => store.undo(DOCUMENT_ID),
 		check: toldToBoth({ expected: [{ unknown: true }] }),
 	}),
+	'a commit deleting an absent id, undone then redone → the commit tells it deleted, its steps leave it out':
+		toldCase({
+			seed: seedFamily,
+			change: async function commitThenStep({ store }) {
+				await commit({ store, documentId: DOCUMENT_ID, deletes: [deletedRef('x')] })
+				await store.undo(DOCUMENT_ID)
+				await store.redo(DOCUMENT_ID)
+			},
+			check: toldToBoth({
+				expected: [
+					{ created: [], updated: [], deleted: [{ id: 'x', tagName: 'A', parentId: null }] },
+					NOTHING_CHANGED,
+					NOTHING_CHANGED,
+				],
+			}),
+		}),
 	'a commit past the cap → { unknown: true }': toldCase({
 		seed: async function seedDocument({ store }) {
 			await store.registerDocument(makeDocument({ id: DOCUMENT_ID }))

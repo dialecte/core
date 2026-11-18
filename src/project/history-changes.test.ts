@@ -16,6 +16,9 @@ import type { AnyDialecteConfig } from '@/types'
 type Changes = CommitChanges | UnknownCommitChanges
 type StorageOf = (typeof SWITCH_STORAGES)[string]
 
+/** The Project's read epoch of a document: moved each time its read scopes are voided. */
+type ProjectInternals = { readEpochOf: (documentId: string) => number }
+
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 const SOURCE_XML = /* xml */ `
@@ -127,6 +130,29 @@ const CASES: Record<string, (storage: StorageOf) => Promise<void>> = {
 			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
 
 			expect({ heard, signals }).toEqual({ heard: [], signals: [] })
+		},
+	'project.undo and redo with nothing to step → the read scopes kept; a step that applied voids them':
+		async function scopesKept(storage) {
+			const name = `history-changes-${crypto.randomUUID()}`
+			const project = await openProject({ storage, name })
+			const { documentId } = await project.importFile(sourceFile(), { useCustomRecordsIds: true })
+			const internals = project as unknown as ProjectInternals
+			const before = internals.readEpochOf(documentId)
+
+			await project.undo(documentId)
+			await project.redo(documentId)
+			const afterNothing = internals.readEpochOf(documentId)
+			await project.openDocument(documentId).transaction(async (tx) => {
+				await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'changed' } })
+			})
+			const afterCommit = internals.readEpochOf(documentId)
+			await project.undo(documentId)
+			const afterUndo = internals.readEpochOf(documentId)
+
+			expect({ kept: afterNothing === before, moved: afterUndo > afterCommit }).toEqual({
+				kept: true,
+				moved: true,
+			})
 		},
 }
 

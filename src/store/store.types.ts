@@ -271,7 +271,9 @@ export interface Store {
 	 * id is ignored. `writeId` is the caller's id for the commit, kept on its history entry and asked by
 	 * `getWriteOutcome`; generated when absent. A delete is a ref with the parent the record had: the store deletes
 	 * by its id and keeps the stored record as the history image; the ref's tag and parent only tell the change
-	 * (`describeCommitChanges` over the arguments, for a store that announces).
+	 * (`describeCommitChanges` over the arguments, for a store that announces). So a delete of an absent id is told
+	 * in the commit's `deleted`, but its undo and redo leave it out (the history keeps no image of it); a commit that
+	 * creates and deletes one id is told in both lists (a Project's commit merges them away first).
 	 */
 	commit(params: {
 		documentId: string
