@@ -105,9 +105,9 @@ const keptTexts: StoreContractCases = Object.fromEntries(
 				await expectKeptAsWritten({ store, written })
 				const reopened = await reopen()
 				await expectKeptAsWritten({ store: reopened, written })
-				await reopened.undo(document.id)
+				await reopened.undo({ documentId: document.id, changeId: 'undo-1' })
 				expect(await reopened.get(record.id, document.id)).toBeUndefined()
-				await reopened.redo(document.id)
+				await reopened.redo({ documentId: document.id, changeId: 'redo-1' })
 				expect(await reopened.get(record.id, document.id)).toStrictEqual(record)
 			},
 		},
@@ -285,8 +285,8 @@ const KEYED_CALLS: Record<string, KeyedCall> = {
 		answers: { canUndo: false, canRedo: false },
 	},
 	getChangeLog: { call: (store) => store.getChangeLog(LONE), answers: [] },
-	undo: { call: (store) => store.undo(LONE), answers: false },
-	redo: { call: (store) => store.redo(LONE), answers: false },
+	undo: { call: (store) => store.undo({ documentId: LONE, changeId: 'undo-1' }), answers: false },
+	redo: { call: (store) => store.redo({ documentId: LONE, changeId: 'redo-1' }), answers: false },
 	getBlob: { call: (store) => store.getBlob(LONE), answers: undefined },
 	getBlobsByDocument: { call: (store) => store.getBlobsByDocument(LONE), answers: [] },
 	'getBlobsByRecord, by its document': {

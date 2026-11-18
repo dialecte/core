@@ -3,7 +3,7 @@ import { tellCommitProgress } from '../commit-progress'
 import { compareById } from '../compare-by-id'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
-import { checkWriteId, toJsonCopy } from '../json-values'
+import { checkCallId, newCallId, toJsonCopy } from '../json-values'
 import { isOwnImporting } from '../own-import'
 import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
@@ -456,12 +456,20 @@ export class InMemoryStore implements Store {
 		})
 		await this.bulkWriteUnguarded(documentId, ops)
 		const writes = (ops.creates?.length ?? 0) + (ops.updates?.length ?? 0) + deleting.length
-		if (writes > 0) this.announce({ type: 'commit', documentId, changes: { unknown: true } })
+		if (writes > 0) {
+			// a bulk write has no id of its caller's: one drawn here, the same on every connection told
+			this.announce({
+				type: 'commit',
+				documentId,
+				changeId: newCallId(),
+				changes: { unknown: true },
+			})
+		}
 	}
 
 	async commit(params: {
 		documentId: string
-		writeId?: string
+		writeId: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: ReadonlyArray<ChangedRecord>
@@ -469,12 +477,12 @@ export class InMemoryStore implements Store {
 	}): Promise<void> {
 		await this.guardOpen()
 		this.guardWritable()
-		const { documentId, writeId = crypto.randomUUID(), deletes, onProgress } = params
+		const { documentId, writeId, deletes, onProgress } = params
 		const { state, table } = this.writeTarget(documentId)
 		if (state.documents.get(documentId)?.status === 'importing') {
 			throwDocumentNotRegistered({ documentId, what: 'a commit' })
 		}
-		checkWriteId({ writeId })
+		checkCallId({ field: 'writeId', value: writeId })
 
 		// Nothing is written before the whole commit is known to apply, refused in the order every
 		// store answers in: an absent update, a create that is not JSON, a taken id, then an update
@@ -534,6 +542,7 @@ export class InMemoryStore implements Store {
 		this.announce({
 			type: 'commit',
 			documentId,
+			changeId: writeId,
 			changes: describeCommitChanges({ creates: params.creates, updates: params.updates, deletes }),
 		})
 	}
@@ -541,9 +550,11 @@ export class InMemoryStore implements Store {
 	// --- History ---
 
 	/** Undo the last applied entry, its parts in reverse: the deleted records back, the befores, the creates gone. */
-	async undo(documentId: string): Promise<HistoryStep | false> {
+	async undo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false> {
 		await this.guardOpen()
 		this.guardWritable()
+		const { documentId, changeId } = params
+		checkCallId({ field: 'changeId', value: changeId })
 		const state = this.writeState()
 		const head = state?.heads.get(documentId) ?? 0
 		if (!state || head === 0) return false
@@ -562,13 +573,15 @@ export class InMemoryStore implements Store {
 		state.heads.set(documentId, head - 1)
 		bumpVersion({ state, documentId })
 		const changes = describeChangeLogStep({ operations: entry.operations, direction: 'back' })
-		this.announce({ type: 'commit', documentId, changes })
-		return { changes }
+		this.announce({ type: 'commit', documentId, changeId, changes })
+		return { changeId, changes }
 	}
 
-	async redo(documentId: string): Promise<HistoryStep | false> {
+	async redo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false> {
 		await this.guardOpen()
 		this.guardWritable()
+		const { documentId, changeId } = params
+		checkCallId({ field: 'changeId', value: changeId })
 		const state = this.writeState()
 		if (!state) return false
 		const head = state.heads.get(documentId) ?? 0
@@ -588,8 +601,8 @@ export class InMemoryStore implements Store {
 		state.heads.set(documentId, next)
 		bumpVersion({ state, documentId })
 		const changes = describeChangeLogStep({ operations: entry.operations, direction: 'forward' })
-		this.announce({ type: 'commit', documentId, changes })
-		return { changes }
+		this.announce({ type: 'commit', documentId, changeId, changes })
+		return { changeId, changes }
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {

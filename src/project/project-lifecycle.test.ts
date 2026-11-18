@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: main already carries it at 976 lines; this lot only moves the counting store's undo and redo to the `{ documentId, changeId }` params
 import { xmlFile } from './import.fixtures'
 import { document } from './open-sweep.fixtures'
 import { Project } from './project'
@@ -104,14 +105,20 @@ class CountingStore extends InMemoryStore {
 		return super.removeDocument(documentId)
 	}
 
-	override async undo(documentId: string): Promise<HistoryStep | false> {
+	override async undo(params: {
+		documentId: string
+		changeId: string
+	}): Promise<HistoryStep | false> {
 		await this.passHold('undo')
-		return super.undo(documentId)
+		return super.undo(params)
 	}
 
-	override async redo(documentId: string): Promise<HistoryStep | false> {
+	override async redo(params: {
+		documentId: string
+		changeId: string
+	}): Promise<HistoryStep | false> {
 		await this.passHold('redo')
-		return super.redo(documentId)
+		return super.redo(params)
 	}
 
 	override async addBlob(entry: BlobRecord, data: Blob): Promise<void> {

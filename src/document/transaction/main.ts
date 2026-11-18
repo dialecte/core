@@ -371,12 +371,14 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * Updates documentState (loading, progress, lastCommit).
 	 * Merges operations by ID to optimize database writes.
-	 * Answers what the commit changed, for the commit message.
+	 * Writes under the caller's `writeId` (the commit message's `changeId`); answers what the commit changed, for the
+	 * commit message.
 	 *
 	 * @internal Used by Document.transaction to write staged operations to the store.
 	 */
-	async commit(): Promise<CommitChanges | UnknownCommitChanges> {
+	async commit(params: { writeId: string }): Promise<CommitChanges | UnknownCommitChanges> {
 		return commitTransaction({
+			writeId: params.writeId,
 			stagedOperations: this.stagedOperations.log,
 			store: this.store,
 			documentId: this.documentId,

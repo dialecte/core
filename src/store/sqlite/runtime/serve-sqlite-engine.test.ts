@@ -320,16 +320,16 @@ describe('an engine worker opening its project', () => {
 			},
 			'an undo → STORE_QUOTA_EXCEEDED, the history and the record as they were': {
 				prepare: (engine) => editTwice({ engine }),
-				write: (engine) => engine.undo('doc-1'),
+				write: (engine) => engine.undo({ documentId: 'doc-1', changeId: 'undo-1' }),
 				readAfter: (engine) => historyAndValue({ engine }),
 				expectedAfter: { history: { canUndo: true, canRedo: false }, value: 'second' },
 			},
 			'a redo → STORE_QUOTA_EXCEEDED, the history and the record as they were': {
 				prepare: async (engine) => {
 					await editTwice({ engine })
-					await engine.undo('doc-1')
+					await engine.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 				},
-				write: (engine) => engine.redo('doc-1'),
+				write: (engine) => engine.redo({ documentId: 'doc-1', changeId: 'redo-1' }),
 				readAfter: (engine) => historyAndValue({ engine }),
 				expectedAfter: { history: { canUndo: true, canRedo: true }, value: 'first' },
 			},

@@ -4,6 +4,7 @@ import { InMemoryStore } from './in-memory-store'
 import { describe, it, expect, beforeEach } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { newCallId } from '@/store/json-values'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
 import type { DocumentRecord } from '@/project/types'
@@ -77,6 +78,7 @@ describe('InMemoryStore (non-writable)', () => {
 			'commit',
 			() =>
 				store.commit({
+					writeId: newCallId(),
 					documentId: 'x',
 					creates: [makeRecord('r1')],
 					updates: [],
@@ -84,8 +86,8 @@ describe('InMemoryStore (non-writable)', () => {
 					onProgress: () => {},
 				}),
 		],
-		['undo', () => store.undo('x')],
-		['redo', () => store.redo('x')],
+		['undo', () => store.undo({ documentId: 'x', changeId: 'undo-1' })],
+		['redo', () => store.redo({ documentId: 'x', changeId: 'redo-1' })],
 		['addBlob', () => store.addBlob(makeBlobEntry(), new Blob(['x']))],
 		['attachBlob', () => store.attachBlob('b1', { documentId: 'd', recordRef: 'r' })],
 		['detachBlob', () => store.detachBlob('b1', { documentId: 'd', recordRef: 'r' })],

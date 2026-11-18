@@ -5,6 +5,7 @@ import { Transaction } from './transaction'
 import { summarizeOperations } from './transaction/commit/summarize-operations'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
+import { newCallId } from '@/store/json-values'
 import { ignoreReadFailure, isConnectionLost, wasNotApplied } from '@/store/lost-write'
 
 import type { ReadScopeWiring, VersionedStore } from './query/read-scope/read-scope.types'
@@ -223,6 +224,8 @@ export class Document<
 		// refused while the Project closes, before anything changed
 		const endWrite = this.startWrite()
 		let tx: (Transaction<GenericConfig> & AllExtensions<GenericExtension>) | undefined
+		// the commit's id: its history entry's writeId and its message's changeId
+		const changeId = newCallId()
 
 		try {
 			this.activeTransactions++
@@ -235,7 +238,7 @@ export class Document<
 			const result = await fn(transaction)
 
 			await transaction.finishStaging()
-			const changes = await transaction.commit()
+			const changes = await transaction.commit({ writeId: changeId })
 			this.voidReadScopes()
 			// Refresh canUndo/canRedo on the shared entry locally (mirrors
 			// Project.undo/redo) so state is correct synchronously — no channel
@@ -245,6 +248,7 @@ export class Document<
 				type: 'commit',
 				documentId: this.documentId,
 				timestamp: this.state.lastUpdate ?? Date.now(),
+				changeId,
 				changes,
 			})
 			transaction.clearStagedOperations()
@@ -257,7 +261,7 @@ export class Document<
 
 			return result
 		} catch (error) {
-			await this.readAgainAfterLoss({ thrown: error })
+			await this.readAgainAfterLoss({ thrown: error, changeId })
 			throw this.reportFailure(error)
 		} finally {
 			// the transaction's own state ended first: a subscriber that throws as it is told below never holds the
@@ -272,10 +276,10 @@ export class Document<
 
 	/**
 	 * A commit refused with its connection lost may have landed (its outcome `running` or `unknown`): the document's
-	 * history is read again and the change the store told of it posted, its changes unknown. One known not to have
-	 * landed changed nothing.
+	 * history is read again and the change the store told of it posted, its changes unknown, under the commit's id. One
+	 * known not to have landed changed nothing.
 	 */
-	private async readAgainAfterLoss(params: { thrown: unknown }): Promise<void> {
+	private async readAgainAfterLoss(params: { thrown: unknown; changeId: string }): Promise<void> {
 		if (!isConnectionLost(params) || wasNotApplied(params)) return
 		this.voidReadScopes()
 		await this.refreshHistoryStatus().catch(ignoreReadFailure)
@@ -283,6 +287,7 @@ export class Document<
 			type: 'commit',
 			documentId: this.documentId,
 			timestamp: Date.now(),
+			changeId: params.changeId,
 			changes: { unknown: true },
 		})
 	}
@@ -359,8 +364,10 @@ export class Document<
 				this.activeTransactions++
 				this.state.loading = true
 
+				// this attempt's id: one refused not-applied and committed again is another write, under another id
+				const changeId = newCallId()
 				try {
-					const changes = await tx.commit()
+					const changes = await tx.commit({ writeId: changeId })
 					this.voidReadScopes()
 					// Refresh canUndo/canRedo locally so the shared entry is correct
 					// synchronously — no channel echo required.
@@ -369,6 +376,7 @@ export class Document<
 						type: 'commit',
 						documentId: this.documentId,
 						timestamp: this.state.lastUpdate ?? Date.now(),
+						changeId,
 						changes,
 					})
 
@@ -382,7 +390,7 @@ export class Document<
 				} catch (error) {
 					// known not to have landed: the prepared commit can be made again
 					if (wasNotApplied({ thrown: error })) settled = false
-					await this.readAgainAfterLoss({ thrown: error })
+					await this.readAgainAfterLoss({ thrown: error, changeId })
 					throw this.reportFailure(error)
 				} finally {
 					this.activeTransactions--

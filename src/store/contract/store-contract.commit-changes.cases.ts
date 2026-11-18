@@ -1,5 +1,11 @@
 import { CHANGE_TOLD_WITHIN_MS } from '../sqlite/runtime/runtime.fixtures.constants'
-import { commit, deletedRef, makeDocument, makeRecord } from './store-contract.fixtures'
+import {
+	commit,
+	deletedRef,
+	expectRejectsWith,
+	makeDocument,
+	makeRecord,
+} from './store-contract.fixtures'
 
 import { expect, vi } from 'vitest'
 
@@ -120,12 +126,47 @@ function manyCreates(params: { count: number }): ReturnType<typeof makeRecord>[]
 }
 
 const ANSWERED: Record<string, StoreContractCase> = {
+	'an undo, then a redo → each answers the changeId it was given': {
+		act: async ({ store }) => {
+			await seedFamily({ store })
+			await commitFamily({ store })
+			const undone = await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-a' })
+			const redone = await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-b' })
+			expect([undone && undone.changeId, redone && redone.changeId]).toEqual(['undo-a', 'redo-b'])
+		},
+	},
+	'an undo or a redo without a changeId → refused STORE_VALUE_NOT_JSON, nothing stepped': {
+		act: async ({ store }) => {
+			await seedFamily({ store })
+			await commitFamily({ store })
+			const noId = { documentId: DOCUMENT_ID } as { documentId: string; changeId: string }
+			await expectRejectsWith({
+				action: store.undo(noId),
+				key: 'STORE_VALUE_NOT_JSON',
+				detail: /changeId is missing/,
+			})
+			const afterRefusedUndo = await store.getHistoryStatus(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			await expectRejectsWith({
+				action: store.redo(noId),
+				key: 'STORE_VALUE_NOT_JSON',
+				detail: /changeId is missing/,
+			})
+			const afterRefusedRedo = await store.getHistoryStatus(DOCUMENT_ID)
+			const created = await store.get('n', DOCUMENT_ID)
+			expect({ afterRefusedUndo, afterRefusedRedo, created }).toEqual({
+				afterRefusedUndo: { canUndo: true, canRedo: false },
+				afterRefusedRedo: { canUndo: false, canRedo: true },
+				created: undefined,
+			})
+		},
+	},
 	'an undo → answers the inverse: the deleted created again, the updated with their parent before, the created deleted':
 		{
 			act: async ({ store }) => {
 				await seedFamily({ store })
 				await commitFamily({ store })
-				const undone = await store.undo(DOCUMENT_ID)
+				const undone = await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 				expect(stepped(undone)).toEqual(FAMILY_UNDONE)
 			},
 		},
@@ -133,8 +174,8 @@ const ANSWERED: Record<string, StoreContractCase> = {
 		act: async ({ store }) => {
 			await seedFamily({ store })
 			await commitFamily({ store })
-			await store.undo(DOCUMENT_ID)
-			const redone = await store.redo(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			const redone = await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 			expect(stepped(redone)).toEqual(FAMILY_COMMITTED)
 		},
 	},
@@ -149,7 +190,7 @@ const ANSWERED: Record<string, StoreContractCase> = {
 					deletes: [deletedRef('d', { tagName: 'Z', parentId: 'elsewhere' })],
 				})
 				const afterCommit = await store.get('d', DOCUMENT_ID)
-				const step = await store.undo(DOCUMENT_ID)
+				const step = await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 				const restored = await store.get('d', DOCUMENT_ID)
 				expect({ afterCommit, undone: stepped(step), restored }).toEqual({
 					afterCommit: undefined,
@@ -177,7 +218,7 @@ const ANSWERED: Record<string, StoreContractCase> = {
 					makeRecord({ id: 'q', children: [{ id: 'm', tagName: 'A' }] }),
 				],
 			})
-			const undone = await store.undo(DOCUMENT_ID)
+			const undone = await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 			expect(stepped(undone)).toEqual({
 				created: [],
 				updated: [
@@ -197,7 +238,7 @@ const ANSWERED: Record<string, StoreContractCase> = {
 				documentId: DOCUMENT_ID,
 				creates: manyCreates({ count: COMMIT_CHANGES_MAX + 1 }),
 			})
-			const undone = await store.undo(DOCUMENT_ID)
+			const undone = await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 			expect(stepped(undone)).toEqual({ unknown: true })
 		},
 	},
@@ -213,7 +254,7 @@ const ANSWERED: Record<string, StoreContractCase> = {
 			const created = manyCreates({ count: half })
 			const updated = held.map((record) => ({ ...record, value: 'updated' }))
 			await commit({ store, documentId: DOCUMENT_ID, creates: created, updates: updated })
-			const undone = await store.undo(DOCUMENT_ID)
+			const undone = await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 			expect(stepped(undone)).toEqual({
 				created: [],
 				updated: held.map(refOfRecord).sort(byId),
@@ -229,8 +270,8 @@ const ANSWERED: Record<string, StoreContractCase> = {
 				documentId: DOCUMENT_ID,
 				creates: manyCreates({ count: COMMIT_CHANGES_MAX + 1 }),
 			})
-			await store.undo(DOCUMENT_ID)
-			const redone = await store.redo(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			const redone = await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 			expect(stepped(redone)).toEqual({ unknown: true })
 		},
 	},
@@ -238,8 +279,8 @@ const ANSWERED: Record<string, StoreContractCase> = {
 		act: async ({ store }) => {
 			await seedFamily({ store })
 			await commit({ store, documentId: DOCUMENT_ID, deletes: [deletedRef('x')] })
-			const undone = await store.undo(DOCUMENT_ID)
-			const redone = await store.redo(DOCUMENT_ID)
+			const undone = await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			const redone = await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 			expect([stepped(undone), stepped(redone)]).toEqual([NOTHING_CHANGED, NOTHING_CHANGED])
 		},
 	},
@@ -277,8 +318,8 @@ const TOLD: Record<string, StoreContractCase> = {
 			await commitFamily({ store })
 		},
 		change: async function undoThenRedo({ store }) {
-			await store.undo(DOCUMENT_ID)
-			await store.redo(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 		},
 		check: toldToBoth({ expected: [FAMILY_UNDONE, FAMILY_COMMITTED] }),
 	}),
@@ -306,7 +347,7 @@ const TOLD: Record<string, StoreContractCase> = {
 				creates: manyCreates({ count: COMMIT_CHANGES_MAX + 1 }),
 			})
 		},
-		change: ({ store }) => store.undo(DOCUMENT_ID),
+		change: ({ store }) => store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' }),
 		check: toldToBoth({ expected: [{ unknown: true }] }),
 	}),
 	'a commit deleting an absent id, undone then redone → the commit tells it deleted, its steps leave it out':
@@ -314,8 +355,8 @@ const TOLD: Record<string, StoreContractCase> = {
 			seed: seedFamily,
 			change: async function commitThenStep({ store }) {
 				await commit({ store, documentId: DOCUMENT_ID, deletes: [deletedRef('x')] })
-				await store.undo(DOCUMENT_ID)
-				await store.redo(DOCUMENT_ID)
+				await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+				await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 			},
 			check: toldToBoth({
 				expected: [

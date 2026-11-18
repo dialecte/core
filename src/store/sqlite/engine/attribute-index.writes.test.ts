@@ -127,15 +127,15 @@ const WRITE_CASES: Record<string, WriteCase> = {
 	'a commit, then its undo (records written back with INSERT OR REPLACE)': {
 		writes: async (engine) => {
 			await COMMITTED(engine)
-			await engine.undo(DOCUMENT_ID)
+			await engine.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 		},
 		expected: { A: ['c', 'x'], B: ['b'] },
 	},
 	'a commit, its undo, then its redo': {
 		writes: async (engine) => {
 			await COMMITTED(engine)
-			await engine.undo(DOCUMENT_ID)
-			await engine.redo(DOCUMENT_ID)
+			await engine.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			await engine.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 		},
 		expected: { A: ['m', 'n'], B: ['b'] },
 	},
@@ -163,15 +163,15 @@ const WRITE_CASES: Record<string, WriteCase> = {
 	'a commit of records with odd attributes, then its undo': {
 		writes: async (engine) => {
 			await ODD_COMMITTED(engine)
-			await engine.undo(DOCUMENT_ID)
+			await engine.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 		},
 		expected: { A: ['c', 'x'], B: ['b'] },
 	},
 	'a commit of records with odd attributes, its undo, then its redo': {
 		writes: async (engine) => {
 			await ODD_COMMITTED(engine)
-			await engine.undo(DOCUMENT_ID)
-			await engine.redo(DOCUMENT_ID)
+			await engine.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			await engine.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 		},
 		expected: { A: ['c', 'm', 'o1', 'o3', 'x'], B: ['b'] },
 	},

@@ -8,6 +8,7 @@ import { EngineStore } from '../engine-store'
 import { adoptHubConnection, openHubConnection } from './hub-client'
 
 import { toDialecteError } from '@/errors'
+import { newCallId } from '@/store/json-values'
 import { TEST_DIALECTE } from '@/test'
 
 import type { StoreNotice } from '../../../store.types'
@@ -93,6 +94,7 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 		commitRecord: async function commitThrough({ project, documentId, id }) {
 			const store = await storeOf({ project })
 			await store.commit({
+				writeId: newCallId(),
 				documentId,
 				creates: [makeRecord({ id })],
 				updates: [],

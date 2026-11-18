@@ -30,12 +30,32 @@ export function checkJsonValues(params: { value: unknown }): void {
 	})
 }
 
+/** The page's own uuid source, taken as this module loads: a test that swaps `crypto.randomUUID` later never feeds it. */
+const drawUuid = crypto.randomUUID.bind(crypto)
+
 /**
- * Check the id a commit is written under: kept on its history entry, it is well-formed text, as every
- * text a store keeps (`STORE_VALUE_NOT_JSON`, field `writeId`).
+ * A fresh id for a write or a history step (a commit's `writeId`, an undo's or a redo's `changeId`, a bulk write's told
+ * id): drawn from the page's own uuid source, never from a `crypto.randomUUID` a test swapped in to seed record ids, so
+ * drawing one never shifts the ids records get.
  */
-export function checkWriteId(params: { writeId: string }): void {
-	checkJsonValues({ value: { writeId: params.writeId } })
+export function newCallId(): string {
+	return drawUuid()
+}
+
+/**
+ * Check the id a write or a history step is made under (`writeId`: kept on a commit's history entry; `changeId`: told
+ * with an undo or a redo): present, and well-formed text as every text a store keeps - `STORE_VALUE_NOT_JSON` either
+ * way, its detail saying which.
+ */
+export function checkCallId(params: { field: 'writeId' | 'changeId'; value: string }): void {
+	const { field, value } = params
+	if (value === undefined || value === null) {
+		throwDialecteError('STORE_VALUE_NOT_JSON', { detail: `The ${field} is missing` })
+	}
+	if (typeof value !== 'string') {
+		throwDialecteError('STORE_VALUE_NOT_JSON', { detail: `The ${field} is not text` })
+	}
+	checkJsonValues({ value: { [field]: value } })
 }
 
 /**

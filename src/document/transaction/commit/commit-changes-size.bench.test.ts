@@ -57,6 +57,7 @@ function messageOf(params: { created: number }): {
 		type: 'commit',
 		documentId: crypto.randomUUID(),
 		timestamp: Date.now(),
+		changeId: crypto.randomUUID(),
 		changes: describeCommitChanges(writes),
 	}
 	return { message, bytes: new TextEncoder().encode(JSON.stringify(message)).length, buildMs }

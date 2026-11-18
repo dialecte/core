@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: main already carries it at 762 lines; this lot only passes the now required `writeId` to one commit
 import { contractFile, makeRecord as makeContractRecord } from '../contract/store-contract.fixtures'
 import {
 	createContractRuntime,
@@ -12,6 +13,7 @@ import Dexie from 'dexie'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { newCallId } from '@/store/json-values'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
 import type { RecordSchema } from '../store.types'
@@ -269,6 +271,7 @@ describe('DexieStore - the connection of a closed store', () => {
 		await store.open()
 		await store.registerDocument(makeFile({ id: 'file-1' }))
 		const committing = store.commit({
+			writeId: newCallId(),
 			documentId: 'file-1',
 			creates: [makeContractRecord({ id: 'r1' })],
 			updates: [],

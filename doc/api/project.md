@@ -350,7 +350,7 @@ await project.undo(documentId)
 await project.redo(documentId)
 ```
 
-Each call updates the document's shared `DocumentEntry` deterministically — `lastUpdate` plus `canUndo`/`canRedo` recomputed from the store's history — then posts a `commit` message with the step's `changes`, so other tabs converge: an undo tells the commit's inverse (the records it deleted in `created`, the records it updated with their parent before it, the records it created in `deleted`), a redo the commit's own changes. An undo or a redo with nothing to step changes nothing and posts nothing, on every store.
+Each call updates the document's shared `DocumentEntry` deterministically — `lastUpdate` plus `canUndo`/`canRedo` recomputed from the store's history — then posts a `commit` message with the step's `changes` under an id of its own (`changeId`), so other tabs converge: an undo tells the commit's inverse (the records it deleted in `created`, the records it updated with their parent before it, the records it created in `deleted`), a redo the commit's own changes. An undo or a redo with nothing to step changes nothing and posts nothing, on every store.
 
 ## Project channel & events
 
@@ -385,6 +385,8 @@ type ProjectChannelMessage =
 			type: 'commit'
 			documentId: string
 			timestamp: number
+			// one id per change: the same on the writer's copy and on every copy another tab or connection hears
+			changeId: string
 			changes: CommitChanges | UnknownCommitChanges
 	  }
 	| { type: 'init-empty-document'; documentId: string; timestamp: number }
@@ -420,6 +422,7 @@ type UnknownCommitChanges = { unknown: true }
 - A Document's commit (`transaction`, `prepare().commit()`) tells its `changes`: every record it wrote, `beforeCommit` hook writes included; a record a child was added to or removed from is in `updated` (its `children` changed). A record moved under another parent (`tx.move`) is in `updated` with both parents.
 - `{ unknown: true }`: the changes are not told, read again what you show. So it is past 5,000 refs in one commit or one undo or redo, for a commit refused with its connection lost that may have landed, and for a bulk write (its patches carry no tag). A commit lost with its connection whose outcome reads `applied` tells its changes. Another connection's commit, undo and redo, told by a store that announces, carry the same `changes` as the writer's own message.
 - `changes` is required: a listener handles both forms. On a store that announces its changes, the Project posts its own commit with its `changes`, the store's announcement of it is not posted twice.
+- `changeId` is one id per change: a Document's commit posts its `writeId` (an attempt committed again after a refusal `not-applied` is another write, under another id; a commit lost with its connection posts its `unknown` message under the same id), a Project's undo or redo an id drawn for the step, a store's bulk write one it draws. The writer's copy and every copy told or reposted to another tab or connection carry it, so a listener drops a message whose id it already applied. A commit, its undo and its redo carry three different ids.
 
 **ProjectChannelResync**, **ProjectChannelEvent**
 

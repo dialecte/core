@@ -8,6 +8,7 @@ import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@/test'
 import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 
 import type { CommitChanges, ProjectChannelMessage, UnknownCommitChanges } from './types'
+import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig } from '@/types'
 
 // The store is a switch: a commit, its undo and its redo reach a second project of the name with the writer's
@@ -18,6 +19,11 @@ type StorageOf = (typeof SWITCH_STORAGES)[string]
 
 /** The Project's read epoch of a document: moved each time its read scopes are voided. */
 type ProjectInternals = { readEpochOf: (documentId: string) => number }
+
+/** The store a project writes through: its history entries carry each commit's `writeId`. */
+function storeOf(params: { project: Project<AnyDialecteConfig> }): Store {
+	return (params.project as unknown as { store: Store }).store
+}
 
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
@@ -59,6 +65,17 @@ function commitsHeard(params: { project: Project<AnyDialecteConfig> }): Changes[
 	const channel = params.project.createChannel()
 	channel.onmessage = function keep(event: MessageEvent<ProjectChannelMessage>) {
 		if (event.data.type === 'commit') heard.push(sorted(event.data.changes))
+	}
+	listeners.push(channel)
+	return heard
+}
+
+/** The id of every commit message the project's listeners hear, in order. */
+function idsHeard(params: { project: Project<AnyDialecteConfig> }): string[] {
+	const heard: string[] = []
+	const channel = params.project.createChannel()
+	channel.onmessage = function keep(event: MessageEvent<ProjectChannelMessage>) {
+		if (event.data.type === 'commit') heard.push(event.data.changeId)
 	}
 	listeners.push(channel)
 	return heard
@@ -112,6 +129,66 @@ const CASES: Record<string, (storage: StorageOf) => Promise<void>> = {
 			const expected = [committed, inverseOf(committed), committed]
 			await vi.waitFor(function everyStepHeard() {
 				expect({ written, heard }).toEqual({ written: expected, heard: expected })
+			})
+		},
+	'a transaction → the writer and a second project hear one message with the same changeId, its history entry’s writeId':
+		async function oneIdForTheCommit(storage) {
+			const name = `history-changes-${crypto.randomUUID()}`
+			const writer = await openProject({ storage, name })
+			const { documentId } = await writer.importFile(sourceFile(), { useCustomRecordsIds: true })
+			const reader = await openProject({ storage, name })
+			const written = idsHeard({ project: writer })
+			const heard = idsHeard({ project: reader })
+
+			await writer.openDocument(documentId).transaction(async (tx) => {
+				await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'changed' } })
+			})
+
+			const [entry] = await storeOf({ project: writer }).getChangeLog(documentId)
+			await vi.waitFor(function heardOnce() {
+				expect({ written, heard }).toEqual({ written: [entry?.writeId], heard: [entry?.writeId] })
+			})
+		},
+	'a prepared commit → the writer and a second project hear one message with the same changeId, its history entry’s writeId':
+		async function oneIdForThePreparedCommit(storage) {
+			const name = `history-changes-${crypto.randomUUID()}`
+			const writer = await openProject({ storage, name })
+			const { documentId } = await writer.importFile(sourceFile(), { useCustomRecordsIds: true })
+			const reader = await openProject({ storage, name })
+			const written = idsHeard({ project: writer })
+			const heard = idsHeard({ project: reader })
+
+			const prepared = await writer.openDocument(documentId).prepare(async (tx) => {
+				await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'changed' } })
+			})
+			await prepared.commit()
+
+			const [entry] = await storeOf({ project: writer }).getChangeLog(documentId)
+			await vi.waitFor(function heardOnce() {
+				expect({ written, heard }).toEqual({ written: [entry?.writeId], heard: [entry?.writeId] })
+			})
+		},
+	'a commit, its undo, its redo → three different changeIds, each the same on the writer and a second project':
+		async function threeIds(storage) {
+			const name = `history-changes-${crypto.randomUUID()}`
+			const writer = await openProject({ storage, name })
+			const { documentId } = await writer.importFile(sourceFile(), { useCustomRecordsIds: true })
+			const reader = await openProject({ storage, name })
+			const written = idsHeard({ project: writer })
+			const heard = idsHeard({ project: reader })
+
+			await writer.openDocument(documentId).transaction(async (tx) => {
+				await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'changed' } })
+			})
+			await writer.undo(documentId)
+			await writer.redo(documentId)
+
+			await vi.waitFor(function everyStepHeard() {
+				expect(heard).toHaveLength(3)
+			})
+			expect({ same: heard, distinct: new Set(written).size }).toEqual({
+				same: written,
+				distinct: 3,
 			})
 		},
 	'project.undo and redo with nothing to step → nothing posted, no state change signalled':

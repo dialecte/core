@@ -75,9 +75,9 @@ const tagOrder: StoreContractCases = {
 				deletes: [deletedRef('c')],
 			})
 			const committed = await idsByTag({ store, tags: ['A'] })
-			await store.undo(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 			const undone = await idsByTag({ store, tags: ['A'] })
-			await store.redo(DOCUMENT_ID)
+			await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 			const redone = await idsByTag({ store, tags: ['A'] })
 			expect({ committed, undone, redone }).toEqual({
 				committed: { A: ['a', 'm', 'z'] },
@@ -96,9 +96,9 @@ const tagOrder: StoreContractCases = {
 				updates: [makeRecord({ id: 'm', tagName: 'B' })],
 			})
 			const committed = await idsByTag({ store, tags: ['A', 'B'] })
-			await store.undo(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 			const undone = await idsByTag({ store, tags: ['A', 'B'] })
-			await store.redo(DOCUMENT_ID)
+			await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 			const redone = await idsByTag({ store, tags: ['A', 'B'] })
 			expect({ committed, undone, redone }).toEqual({
 				committed: { A: ['c'], B: ['m', 'x'] },

@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: main already carries it at 411 lines; this lot only passes the now required `writeId` to each `commitTransaction` call
 import { commitTransaction } from './commit'
 
 import { describe, expect, it, vi } from 'vitest'
@@ -138,6 +139,7 @@ describe('commitTransaction', () => {
 			newRecord: createTestRecord({ record: { tagName: 'A', id: 'r1' } }),
 		}
 		await commitTransaction({
+			writeId: 'w-1',
 			stagedOperations: [op],
 			store,
 			documentId: 'f1',
@@ -160,6 +162,7 @@ describe('commitTransaction', () => {
 		const before = Date.now()
 
 		await commitTransaction({
+			writeId: 'w-1',
 			stagedOperations: [],
 			store,
 			documentId: 'f1',
@@ -176,6 +179,7 @@ describe('commitTransaction', () => {
 		const { store } = makeStore()
 
 		await commitTransaction({
+			writeId: 'w-1',
 			stagedOperations: [],
 			store,
 			documentId: 'f1',
@@ -207,6 +211,7 @@ describe('commitTransaction', () => {
 		}
 
 		await commitTransaction({
+			writeId: 'w-1',
 			stagedOperations: [created, updated, deleted],
 			store,
 			documentId: 'f1',
@@ -235,6 +240,7 @@ describe('commitTransaction', () => {
 		}
 
 		await commitTransaction({
+			writeId: 'w-1',
 			stagedOperations: [created, deleted],
 			store,
 			documentId: 'f1',
@@ -265,6 +271,7 @@ describe('commitTransaction', () => {
 		]
 
 		await commitTransaction({
+			writeId: 'w-1',
 			stagedOperations: ops,
 			store,
 			documentId: 'f1',
@@ -291,6 +298,7 @@ describe('commitTransaction', () => {
 
 		await expect(
 			commitTransaction({
+				writeId: 'w-1',
 				stagedOperations: [op],
 				store,
 				documentId: 'f1',
@@ -315,6 +323,7 @@ describe('commitTransaction', () => {
 
 		await expect(
 			commitTransaction({
+				writeId: 'w-1',
 				stagedOperations: [op],
 				store,
 				documentId: 'f1',
@@ -369,6 +378,7 @@ describe('commitTransaction', () => {
 					newRecord: createTestRecord({ record: { tagName: 'A', id: 'r1' } }),
 				}
 				const settled = await commitTransaction({
+					writeId: 'w-1',
 					stagedOperations: [op],
 					store,
 					documentId: 'doc-1',
@@ -398,6 +408,7 @@ describe('commitTransaction', () => {
 			const state = makeState()
 			await expect(
 				commitTransaction({
+					writeId: 'w-1',
 					stagedOperations: [],
 					store,
 					documentId: 'doc-1',

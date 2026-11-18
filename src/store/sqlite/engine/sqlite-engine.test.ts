@@ -411,7 +411,7 @@ describe('openSqliteEngine', () => {
 			await engine.registerDocument(makeDocument())
 			await commitOf({ documentId: 'doc-1', id: 'r1' })
 			await commitOf({ documentId: 'doc-1', id: 'r2' })
-			await engine.undo('doc-1')
+			await engine.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			await commitOf({ documentId: 'doc-1', id: 'r3' })
 			await engine.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['x'.repeat(5000)]))
 		}

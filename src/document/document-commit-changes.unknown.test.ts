@@ -5,6 +5,7 @@ import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import { Project } from '@/project'
 import { InMemoryStore } from '@/store'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@/test'
+import { createSeededRandomUuid } from '@/utils'
 
 import type { ProjectChannelMessage } from '@/project/types'
 import type { Store } from '@/store'
@@ -137,6 +138,33 @@ describe('commit changes not known', () => {
 		await vi.waitFor(function stepsHeard() {
 			expect(heard.map((message) => message.changes)).toEqual([B_UPDATED, B_UPDATED])
 		})
+	})
+
+	it('a commit, its undo and its redo under a seeded crypto.randomUUID -> none draws from it: the next record gets the first seeded id', async () => {
+		const store = new InMemoryStore('seeded-ids', { runtime: RUNTIME })
+		made.push(store)
+		const { project, documentId, doc } = await openWithDocument({ store })
+		const heard = commitsHeard({ project })
+		const page = crypto.randomUUID
+		crypto.randomUUID = createSeededRandomUuid({ seed: 0 })
+		onTestFinished(function restoreUuids() {
+			crypto.randomUUID = page
+		})
+
+		await updateB({ doc })
+		await project.undo(documentId)
+		await project.redo(documentId)
+		await doc.transaction(async (tx) => {
+			await tx.addChild({ tagName: 'B', id: 'b' }, { tagName: 'BB_1', attributes: {} })
+		})
+
+		await vi.waitFor(function fourHeard() {
+			expect(heard).toHaveLength(4)
+		})
+		const created = heard[3]!.changes
+		expect('created' in created && created.created.map((record) => record.id)).toEqual([
+			createSeededRandomUuid({ seed: 0 })(),
+		])
 	})
 
 	it('prepare().commit() refused with its connection lost, maybe applied -> { unknown: true }', async () => {

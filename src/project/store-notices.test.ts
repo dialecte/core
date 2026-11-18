@@ -10,6 +10,7 @@ import { commit, makeRecord } from '@/store/contract/store-contract.fixtures'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
+import type { ProjectChannelMessage } from './types'
 import type { Store, StoreNotice } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
 
@@ -162,6 +163,11 @@ describe('a project told by its store', () => {
 })
 
 /** What a listener of the project's channel heard, as `<type> <documentId>`; its channel closed after the case. */
+/** A record's id. */
+function idOf(record: { id: string }): string {
+	return record.id
+}
+
 function listenTo(params: { project: Project<AnyDialecteConfig> }): string[] {
 	const heard: string[] = []
 	const channel = params.project.createChannel()
@@ -197,6 +203,44 @@ async function openHeld(): Promise<{
 }
 
 describe('a change of the project’s own store that no Project call made (the store held directly)', () => {
+	it('a commit on the store, told while a transaction of the same document runs → each commit posted once, under its own writeId, with its own changes', async () => {
+		const { project, store, documentId } = await openHeld()
+		const posted: { changeId: string; created: string[] | 'unknown' }[] = []
+		let fenced = false
+		const channel = project.createChannel()
+		channel.onmessage = function hear(event: MessageEvent<ProjectChannelMessage>) {
+			const message = event.data
+			if (message.type === 'init-empty-document') fenced = true
+			if (message.type !== 'commit' || message.documentId !== documentId) return
+			const { changeId, changes } = message
+			posted.push({
+				changeId,
+				created: 'unknown' in changes ? 'unknown' : changes.created.map(idOf),
+			})
+		}
+		onTestFinished(function closeChannel() {
+			channel.close()
+		})
+		await project.openDocument(documentId).transaction(async function commitBeside(tx) {
+			await commit({ store, documentId, writeId: 'w-direct', creates: [makeRecord({ id: 'x' })] })
+			const root = await tx.getRoot()
+			await tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
+		// a fence: another document's commits, posted after all the transaction posted
+		await project.initEmptyDocument()
+		await vi.waitFor(function fenceHeard() {
+			expect(fenced).toBe(true)
+		})
+		const [, transactionEntry] = await store.getChangeLog(documentId)
+		expect(posted).toEqual([
+			{ changeId: 'w-direct', created: ['x'] },
+			{
+				changeId: transactionEntry?.writeId,
+				created: transactionEntry?.operations.creates.map(idOf),
+			},
+		])
+	})
+
 	it('a document renamed on the store → posted once to the listeners, the project’s record read again', async () => {
 		const { project, store, documentId } = await openHeld()
 		const heard = listenTo({ project })
@@ -603,6 +647,7 @@ function commitsTold(params: { tell: (notice: StoreNotice) => void; count: numbe
 				type: 'commit',
 				documentId: 'unknown',
 				timestamp: index,
+				changeId: `told-${index}`,
 				changes: { unknown: true },
 			},
 			own: false,
@@ -707,6 +752,7 @@ describe('an open a close was called after', () => {
 						type: 'commit',
 						documentId: 'unknown',
 						timestamp: 1,
+						changeId: 'told-1',
 						changes: { unknown: true },
 					},
 					own: false,

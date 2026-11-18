@@ -1,5 +1,7 @@
+// dialecte-allow test-file-long: main carries it at 380 lines; this lot's change-id expectations and its bulk-write ids case take it just past 400 - one announce table, its split by behaviour a follow-up
 import { CHANGE_TOLD_WITHIN_MS } from '../sqlite/runtime/runtime.fixtures.constants'
 import {
+	changeIdsOf,
 	commit,
 	contractFile,
 	makeBlobEntry,
@@ -8,6 +10,8 @@ import {
 } from './store-contract.fixtures'
 
 import { expect, vi } from 'vitest'
+
+import { newCallId } from '@/store/json-values'
 
 import type { Store, StoreNotice } from '../store.types'
 import type { StoreContractCase, StoreContractCases } from './store-contract.types'
@@ -77,36 +81,49 @@ const ANNOUNCED_CHANGES: Record<string, AnnouncedChange> = {
 	'records written in bulk → commit': {
 		seed: seedProject,
 		change: ({ store }) => store.bulkWrite(DOCUMENT_ID, { creates: [makeRecord({ id: 'r3' })] }),
-		expected: { type: 'commit', documentId: DOCUMENT_ID, changes: { unknown: true } },
-	},
-	'a commit → commit': {
-		seed: seedProject,
-		change: ({ store }) =>
-			commit({ store, documentId: DOCUMENT_ID, creates: [makeRecord({ id: 'r3' })] }),
 		expected: {
 			type: 'commit',
 			documentId: DOCUMENT_ID,
+			changeId: expect.any(String),
+			changes: { unknown: true },
+		},
+	},
+	'a commit → commit, its changeId its writeId': {
+		seed: seedProject,
+		change: ({ store }) =>
+			commit({
+				store,
+				documentId: DOCUMENT_ID,
+				writeId: 'w3',
+				creates: [makeRecord({ id: 'r3' })],
+			}),
+		expected: {
+			type: 'commit',
+			documentId: DOCUMENT_ID,
+			changeId: 'w3',
 			changes: { created: [R3], updated: [], deleted: [] },
 		},
 	},
-	'an undo with something to undo → commit': {
+	'an undo with something to undo → commit, the changeId given': {
 		seed: seedProject,
-		change: ({ store }) => store.undo(DOCUMENT_ID),
+		change: ({ store }) => store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' }),
 		expected: {
 			type: 'commit',
 			documentId: DOCUMENT_ID,
+			changeId: 'undo-1',
 			changes: { created: [], updated: [], deleted: [R2] },
 		},
 	},
-	'a redo with something to redo → commit': {
+	'a redo with something to redo → commit, the changeId given': {
 		seed: async function seedUndone({ store }) {
 			await seedProject({ store })
-			await store.undo(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 		},
-		change: ({ store }) => store.redo(DOCUMENT_ID),
+		change: ({ store }) => store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' }),
 		expected: {
 			type: 'commit',
 			documentId: DOCUMENT_ID,
+			changeId: 'redo-1',
 			changes: { created: [R2], updated: [], deleted: [] },
 		},
 	},
@@ -159,8 +176,10 @@ const ANNOUNCED_CHANGES: Record<string, AnnouncedChange> = {
 
 /** A call that changes nothing: no connection is told anything of it. */
 const SILENT_CALLS: Record<string, (params: { store: Store }) => Promise<unknown>> = {
-	'an undo with nothing to undo': ({ store }) => store.undo('doc-unknown'),
-	'a redo with nothing to redo': ({ store }) => store.redo(DOCUMENT_ID),
+	'an undo with nothing to undo': ({ store }) =>
+		store.undo({ documentId: 'doc-unknown', changeId: 'u' }),
+	'a redo with nothing to redo': ({ store }) =>
+		store.redo({ documentId: DOCUMENT_ID, changeId: 'r' }),
 	'an unknown document removed': ({ store }) => store.removeDocument('doc-unknown'),
 	'an unknown document updated': ({ store }) => store.updateDocument('doc-unknown', { name: 'x' }),
 	'a document updated to what it holds': ({ store }) =>
@@ -200,6 +219,7 @@ function announcedCase(params: { change: AnnouncedChange }): StoreContractCase {
 				},
 				{ timeout: CHANGE_TOLD_WITHIN_MS },
 			)
+			expect(changeIdsOf({ notices: otherNotices })).toEqual(changeIdsOf({ notices: ownNotices }))
 		},
 	}
 }
@@ -212,8 +232,8 @@ function silentCase(params: {
 		needs: ['second-connection', 'announce'],
 		act: async ({ store, connect }) => {
 			await seedProject({ store })
-			await store.undo(DOCUMENT_ID)
-			await store.redo(DOCUMENT_ID)
+			await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
+			await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 			await store.addBlob(
 				makeBlobEntry({
 					id: 'blob-seed',
@@ -255,6 +275,21 @@ export const STORE_ANNOUNCE_CONTRACT: Record<string, StoreContractCases> = {
 		}),
 	),
 	'when a change is told': {
+		'two bulk writes → told with two different changeIds (a consumer dropping a seen id keeps both)':
+			{
+				needs: ['announce'],
+				act: async ({ store }) => {
+					await seedProject({ store })
+					const notices = heard({ store })
+					await store.bulkWrite(DOCUMENT_ID, { creates: [makeRecord({ id: 'r3' })] })
+					await store.bulkWrite(DOCUMENT_ID, { creates: [makeRecord({ id: 'r4' })] })
+					const ids = changeIdsOf({ notices })
+					expect({ ids: ids.map((id) => typeof id), distinct: new Set(ids).size }).toEqual({
+						ids: ['string', 'string'],
+						distinct: 2,
+					})
+				},
+			},
 		'a commit → its progress told to its caller first, then its change announced to it': {
 			needs: ['announce'],
 			act: async ({ store }) => {
@@ -264,6 +299,7 @@ export const STORE_ANNOUNCE_CONTRACT: Record<string, StoreContractCases> = {
 					if (notice.type === 'change') told.push('change')
 				})
 				await store.commit({
+					writeId: newCallId(),
 					documentId: DOCUMENT_ID,
 					creates: [makeRecord({ id: 'r3' }), makeRecord({ id: 'r4' })],
 					updates: [],

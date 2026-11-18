@@ -19,6 +19,7 @@ import {
 import { describe, expect, it } from 'vitest'
 import { commands } from 'vitest/browser'
 
+import { newCallId } from '@/store/json-values'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
 
 import type {
@@ -144,6 +145,7 @@ function commitEvery(params: { store: EngineStore }): {
 		const sentAt = epochNow()
 		waiting = store
 			.commit({
+				writeId: newCallId(),
 				documentId: 'other',
 				creates: [],
 				updates: [otherRecord({ value: String(sent.length + 1) })],
