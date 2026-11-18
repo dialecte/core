@@ -1,6 +1,7 @@
 import { STORE_ANNOUNCE_CONTRACT } from './store-contract.announce.cases'
 import { STORE_ATTRIBUTE_CONTRACT } from './store-contract.attribute-lookup.cases'
 import { STORE_CONTRACT } from './store-contract.cases'
+import { STORE_COMMIT_CHANGES_CONTRACT } from './store-contract.commit-changes.cases'
 import { STORE_EXPORT_CONTRACT } from './store-contract.export.cases'
 import { STORE_MOVE_CONTRACT } from './store-contract.move.cases'
 import { STORE_PATH_CONTRACT } from './store-contract.path.cases'
@@ -24,6 +25,7 @@ export function contractGroups(): StoreContractGroup[] {
 			...STORE_MOVE_CONTRACT,
 			...STORE_ATTRIBUTE_CONTRACT,
 			...STORE_VERSIONED_READ_CONTRACT,
+			...STORE_COMMIT_CHANGES_CONTRACT,
 		},
 		announce: STORE_ANNOUNCE_CONTRACT,
 		export: STORE_EXPORT_CONTRACT,

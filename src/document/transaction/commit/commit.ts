@@ -1,4 +1,4 @@
-import { describeCommitChanges } from './describe-commit-changes'
+import { changedRecordOf, describeCommitChanges } from './describe-commit-changes'
 import { mergeOperations } from './merge-operations'
 
 import { NOOP_PERF } from '@/perf'
@@ -32,7 +32,7 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	const writes = {
 		creates: creates.map((op) => op.newRecord),
 		updates: updates.map((op) => op.newRecord),
-		deletes: deletes.map((op) => op.oldRecord),
+		deletes: deletes.map((op) => changedRecordOf(op.oldRecord)),
 	}
 
 	const totalOperations = creates.length + updates.length + deletes.length
@@ -61,7 +61,7 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 				writeId,
 				creates: writes.creates,
 				updates: writes.updates,
-				deletes: writes.deletes.map((record) => record.id),
+				deletes: writes.deletes,
 				onProgress: (current) => {
 					advanceTo(current)
 				},

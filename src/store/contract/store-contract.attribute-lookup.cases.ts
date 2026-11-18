@@ -1,5 +1,5 @@
 import { STORE_ATTRIBUTE_QUERY_CONTRACT } from './store-contract.attribute-query.cases'
-import { commit, makeDocument, makeRecord } from './store-contract.fixtures'
+import { commit, deletedRef, makeDocument, makeRecord } from './store-contract.fixtures'
 
 import { expect } from 'vitest'
 
@@ -237,7 +237,7 @@ const afterWrites: StoreContractCases = {
 					documentId: DOCUMENT_ID,
 					creates: [recordWith({ id: 'z', attributes: [{ name: 'k', value: '1' }] })],
 					updates: [recordWith({ id: 'c', attributes: [{ name: 'k', value: '3' }] })],
-					deletes: ['x'],
+					deletes: [deletedRef('x')],
 				})
 				const committed = await lookUp()
 				await store.undo(DOCUMENT_ID)

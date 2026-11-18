@@ -1,5 +1,6 @@
 import {
 	contractFile,
+	deletedRef,
 	expectRejectsWith,
 	makeBlobEntry,
 	makeDocument,
@@ -314,7 +315,7 @@ describe('the space an import asks for', () => {
 			writeId: 'w-empty',
 			creates: [],
 			updates: [],
-			deletes: ids,
+			deletes: ids.map((id) => deletedRef(id)),
 		})
 	}
 

@@ -1,5 +1,6 @@
 import type { ENGINE_SIGNAL } from './engine.constants'
 import type { ThrownData } from './wire/wire.types'
+import type { ChangedRecord } from '@/project/types'
 import type {
 	ExportControl,
 	ExportFileOptions,
@@ -147,23 +148,22 @@ export type EngineCommitParams = {
 	writeId: string
 	creates: AnyRawRecord[]
 	updates: AnyRawRecord[]
-	deletes: string[]
+	/** The records deleted, by ref: deleted by id, the tag and parent only telling the change. */
+	deletes: ReadonlyArray<ChangedRecord>
 }
 
 /** How far a commit is, as the port tells it: the operations written, out of all of them. */
 export type CommitProgressListener = (current: number, total: number) => void
 
 /**
- * The members whose answer says whether they changed anything (`false`: nothing to undo or redo, an unknown
- * document or blob, an update or a bulk write changing nothing, a blob attached where it is or detached from a record
- * it is not attached to): the engine announces no change then.
+ * The members whose answer says whether they changed anything (`false`: an unknown document or blob, an update or a
+ * bulk write changing nothing, a blob attached where it is or detached from a record it is not attached to): the
+ * engine announces no change then. An undo or a redo answers as the port does: what it changed, or `false`.
  */
 export type EngineChangeMember =
 	| 'updateDocument'
 	| 'removeDocument'
 	| 'bulkWrite'
-	| 'undo'
-	| 'redo'
 	| 'attachBlob'
 	| 'detachBlob'
 	| 'removeBlob'

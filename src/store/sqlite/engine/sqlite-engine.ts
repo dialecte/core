@@ -96,6 +96,7 @@ import type {
 	ExportControl,
 	ExportFileResult,
 	ExportSource,
+	HistoryStep,
 	ImportControl,
 	ImportFileResult,
 	VersionedAnswer,
@@ -737,14 +738,16 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		}
 	}
 
-	/** An undo or a redo; nothing to do at either end of the history, nor for a document not registered. */
-	/** A step of the document's history; whether there was one to take. */
+	/**
+	 * An undo or a redo: what it changed, or `false` with nothing to do (either end of the history, a document not
+	 * registered).
+	 */
 	function stepDocumentHistory(params: {
 		documentId: string
 		direction: HistoryDirection
-	}): boolean {
+	}): HistoryStep | false {
 		const { documentId, direction } = params
-		const gained = stepHistory({
+		const stepped = stepHistory({
 			sqlite3,
 			db,
 			documentId,
@@ -753,9 +756,9 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				settleImport({ importing })
 			},
 		})
-		if (gained === undefined) return false
-		noteWrite({ documentId, gained })
-		return true
+		if (stepped === undefined) return false
+		noteWrite({ documentId, gained: stepped.gained })
+		return { changes: stepped.changes }
 	}
 
 	/**

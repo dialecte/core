@@ -11,6 +11,7 @@ import { InMemoryStore } from '@/store/in-memory/in-memory-store'
 import { SQLITE_ERRORS } from '@/store/sqlite/sqlite-errors.constants'
 import { TEST_DIALECTE_CONFIG } from '@/test'
 
+import type { HistoryStep } from '@/store'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord } from '@/types'
 
 // A Project's open, close and destroy run one at a time, in the order called; an open on a Project already open
@@ -103,12 +104,12 @@ class CountingStore extends InMemoryStore {
 		return super.removeDocument(documentId)
 	}
 
-	override async undo(documentId: string): Promise<void> {
+	override async undo(documentId: string): Promise<HistoryStep | false> {
 		await this.passHold('undo')
 		return super.undo(documentId)
 	}
 
-	override async redo(documentId: string): Promise<void> {
+	override async redo(documentId: string): Promise<HistoryStep | false> {
 		await this.passHold('redo')
 		return super.redo(documentId)
 	}

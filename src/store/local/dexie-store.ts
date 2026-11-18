@@ -45,6 +45,7 @@ import {
 
 import Dexie from 'dexie'
 
+import { describeChangeLogStep } from '@/document/transaction/commit/describe-commit-changes'
 import { throwDialecteError, toDialecteError } from '@/errors'
 import { NOOP_PERF } from '@/perf'
 import { runExport } from '@/project/io/run-export'
@@ -66,9 +67,10 @@ import type {
 	RecordSchema,
 	WriteOutcome,
 } from '../store.types'
+import type { HistoryStep } from '../store.types'
 import type { DexieStoreOptions, StoredDocumentRow } from './types'
 import type { Perf } from '@/perf'
-import type { DocumentRecord, DocumentUpdates } from '@/project'
+import type { ChangedRecord, DocumentRecord, DocumentUpdates } from '@/project'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 import type { Table } from 'dexie'
@@ -528,7 +530,7 @@ export class DexieStore implements Store {
 		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
-		deletes: string[]
+		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
 		return this.operation(async () => {
@@ -538,9 +540,11 @@ export class DexieStore implements Store {
 					writeId = crypto.randomUUID(),
 					creates,
 					updates,
-					deletes,
+					deletes: deleteRefs,
 					onProgress,
 				} = params
+				// deleted by id: a ref's tag and parent only tell the change
+				const deletes = deleteRefs.map((ref) => ref.id)
 				const table = await this.writeTable(documentId)
 				const document = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
 				if (document && withStatus(document).status === 'importing') {
@@ -636,18 +640,18 @@ export class DexieStore implements Store {
 
 	// --- History ---
 
-	async undo(documentId: string): Promise<void> {
+	async undo(documentId: string): Promise<HistoryStep | false> {
 		return this.operation(async () => {
 			try {
 				await this.ensureCurrentSchema()
 				const head = await this.getHead(documentId)
-				if (head === 0) return
+				if (head === 0) return false
 
 				const entry = await this.db
 					.table<ChangeLogEntry>(TABLE_CHANGELOG)
 					.where({ documentId, sequenceNumber: head })
 					.first()
-				if (!entry) return
+				if (!entry) return false
 
 				const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 
@@ -668,13 +672,16 @@ export class DexieStore implements Store {
 					await this.setHead(documentId, head - 1)
 					await this.bumpVersion(documentId)
 				})
+				return {
+					changes: describeChangeLogStep({ operations: entry.operations, direction: 'back' }),
+				}
 			} finally {
 				this.recordCounts.delete(documentId)
 			}
 		})
 	}
 
-	async redo(documentId: string): Promise<void> {
+	async redo(documentId: string): Promise<HistoryStep | false> {
 		return this.operation(async () => {
 			try {
 				await this.ensureCurrentSchema()
@@ -685,7 +692,7 @@ export class DexieStore implements Store {
 					.table<ChangeLogEntry>(TABLE_CHANGELOG)
 					.where({ documentId, sequenceNumber: next })
 					.first()
-				if (!entry) return
+				if (!entry) return false
 
 				const table = this.db.table<AnyRawRecord>(this.resolveTableName(documentId))
 
@@ -705,6 +712,9 @@ export class DexieStore implements Store {
 					await this.setHead(documentId, next)
 					await this.bumpVersion(documentId)
 				})
+				return {
+					changes: describeChangeLogStep({ operations: entry.operations, direction: 'forward' }),
+				}
 			} finally {
 				this.recordCounts.delete(documentId)
 			}

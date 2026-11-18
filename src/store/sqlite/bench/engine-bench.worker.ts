@@ -19,6 +19,7 @@ import {
 
 import * as Comlink from 'comlink'
 
+import { changedRecordOf } from '@/document/transaction/commit/describe-commit-changes'
 import { TABLE_DOCUMENTS, TABLE_RECORD_PREFIX } from '@/store/store.constants'
 import { yieldToQueue } from '@/utils/yield-to-queue'
 
@@ -34,7 +35,7 @@ import type {
 	SubtreeEditRun,
 } from './bench.types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
-import type { DocumentRecord, DocumentStatus } from '@/project/types'
+import type { ChangedRecord, DocumentRecord, DocumentStatus } from '@/project/types'
 import type { AnyRawRecord } from '@/types'
 import type { Database, SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
 
@@ -240,7 +241,7 @@ const api: EngineBenchWorkerApi = {
 
 	historyFindSubtree: async function historyFindSubtree({ documentId, tagName }) {
 		history.subtree = await largestSubtree({ engine: openedEngine().engine, documentId, tagName })
-		return history.subtree.ids.length
+		return history.subtree.refs.length
 	},
 
 	historyEditSubtree: async function historyEditSubtree({ documentId }) {
@@ -411,23 +412,25 @@ function otherRecord(params: { value: string }): AnyRawRecord {
 	}
 }
 
-/** The subtree of the record of that tag holding the most records: its root and every id under it, level by level. */
+/** The subtree of the record of that tag holding the most records: its root and a ref of every record under it, level by level. */
 async function largestSubtree(params: {
 	engine: SqliteEngine
 	documentId: string
 	tagName: string
-}): Promise<{ root: AnyRawRecord; ids: string[] }> {
+}): Promise<{ root: AnyRawRecord; refs: ChangedRecord[] }> {
 	const { engine, documentId, tagName } = params
-	let largest: { root: AnyRawRecord; ids: string[] } | undefined
+	let largest: { root: AnyRawRecord; refs: ChangedRecord[] } | undefined
 	for (const root of await engine.getByTagNameInDocument(tagName, documentId)) {
-		const ids = [root.id]
+		const refs = [changedRecordOf(root)]
 		let level = root.children.map((child) => child.id)
 		while (level.length > 0) {
-			ids.push(...level)
-			const records = await engine.getMany(level, documentId)
-			level = records.flatMap((record) => record?.children.map((child) => child.id) ?? [])
+			const records = (await engine.getMany(level, documentId)).flatMap((record) =>
+				record ? [record] : [],
+			)
+			refs.push(...records.map(changedRecordOf))
+			level = records.flatMap((record) => record.children.map((child) => child.id))
 		}
-		if (!largest || ids.length > largest.ids.length) largest = { root, ids }
+		if (!largest || refs.length > largest.refs.length) largest = { root, refs }
 	}
 	if (!largest) throw new Error(`no ${tagName} in the document`)
 	return largest
@@ -438,7 +441,7 @@ async function editSubtree(params: {
 	engine: SqliteEngine
 	db: Database
 	documentId: string
-	subtree: { root: AnyRawRecord; ids: string[] }
+	subtree: { root: AnyRawRecord; refs: ChangedRecord[] }
 }): Promise<SubtreeEditRun> {
 	const { engine, db, documentId, subtree } = params
 	const parentId = subtree.root.parent?.id
@@ -456,14 +459,14 @@ async function editSubtree(params: {
 				writeId: `w-delete-${crypto.randomUUID()}`,
 				creates: [],
 				updates: [updated],
-				deletes: subtree.ids,
+				deletes: subtree.refs,
 			}),
 	})
 	const undoMs = await timedAsync({ work: () => engine.undo(documentId) })
 	const redoMs = await timedAsync({ work: () => engine.redo(documentId) })
 	return {
 		cacheMiB: -Number(db.selectValue('PRAGMA cache_size')) / 1024,
-		records: subtree.ids.length,
+		records: subtree.refs.length,
 		deleteMs,
 		undoMs,
 		redoMs,

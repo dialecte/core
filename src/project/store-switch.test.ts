@@ -1,18 +1,17 @@
 import { resolveStore } from '../store/resolve-store'
 import { Project } from './project'
 import { projectChannelName } from './project-channel'
+import { SWITCH_CONFIG, SWITCH_DIALECTE_ID, SWITCH_STORAGES } from './store-switch.fixtures'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CHANGE_TOLD_WITHIN_MS } from '@/store/sqlite/runtime/runtime.fixtures.constants'
-import { withSqliteStorage } from '@/store/sqlite/sqlite-storage.fixtures'
-import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
-import { testStoreFor } from '@/test/test-storage'
+import { XMLNS_DEFAULT_NAMESPACE } from '@/test'
 import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 import { selectFirstNode, withXmlDocument } from '@/test/xml'
 import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
-import type { ProjectChannelMessage, StorageParam } from './types'
+import type { ProjectChannelMessage } from './types'
 import type { Store } from '@/store'
 import type { BaseTestCase } from '@/test'
 import type { AnyDialecteConfig, DialecteHooks } from '@/types'
@@ -21,41 +20,15 @@ import type { AnyDialecteConfig, DialecteHooks } from '@/types'
 // runs on. Every case runs on every storage; a case red on one storage only is a store bug, or a difference
 // stated with its reason.
 
-const CONFIG = TEST_DIALECTE_CONFIG as unknown as AnyDialecteConfig
+const CONFIG = SWITCH_CONFIG
 
 /** The dialecte the cases' projects are of, unless a case names another. */
-const DIALECTE_ID = 'core/test'
+const DIALECTE_ID = SWITCH_DIALECTE_ID
 
 /** How a project of a case gets its storage: by its name and dialecte, the engine's hooks given (SQLite runs its own). */
-type StorageOf = (params: {
-	name: string
-	dialecteId: string
-	hooks?: DialecteHooks<AnyDialecteConfig>
-}) => Promise<StorageParam>
+type StorageOf = (typeof SWITCH_STORAGES)[string]
 
-const STORAGES: Record<string, StorageOf> = {
-	'in memory': async function inMemory() {
-		return { type: 'inMemory' }
-	},
-	'on IndexedDB': async function local() {
-		return { type: 'local' }
-	},
-	'on SQLite (the engine in this realm)': function sqliteInProcess({ name, dialecteId, hooks }) {
-		withSqliteStorage()
-		return testStoreFor({
-			storage: { type: 'sqlite' },
-			name,
-			dialecte: {
-				id: dialecteId,
-				configs: { default: CONFIG },
-				defaultConfigKey: 'default',
-				createHooks: function engineHooks() {
-					return hooks ?? {}
-				},
-			},
-		})
-	},
-}
+const STORAGES = SWITCH_STORAGES
 
 /** Why IndexedDB answers otherwise: its projects share the name's channel and database, and it tells no change itself. */
 const INDEXEDDB_ANNOUNCES_NOTHING =

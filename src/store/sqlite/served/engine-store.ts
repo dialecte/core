@@ -14,6 +14,7 @@ import type {
 	ChangeLogEntry,
 	ExportFileParams,
 	ExportFileResult,
+	HistoryStep,
 	ImportFileParams,
 	ImportFileResult,
 	Store,
@@ -32,7 +33,7 @@ import type {
 import type { EngineApi } from './engine.types'
 import type { EngineEventSignal } from './host/host.types'
 import type { WireMemberSpec } from './wire/wire.types'
-import type { DocumentRecord, DocumentUpdates } from '@/project/types'
+import type { ChangedRecord, DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
@@ -320,7 +321,7 @@ export class EngineStore implements Store {
 		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
-		deletes: string[]
+		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
 		const {
@@ -336,12 +337,12 @@ export class EngineStore implements Store {
 
 	// --- History ---
 
-	async undo(documentId: string): Promise<void> {
-		await this.call('undo', documentId)
+	async undo(documentId: string): Promise<HistoryStep | false> {
+		return this.call('undo', documentId)
 	}
 
-	async redo(documentId: string): Promise<void> {
-		await this.call('redo', documentId)
+	async redo(documentId: string): Promise<HistoryStep | false> {
+		return this.call('redo', documentId)
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {

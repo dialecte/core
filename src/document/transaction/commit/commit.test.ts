@@ -7,6 +7,7 @@ import { createDialecteError, toDialecteError } from '@/errors'
 import { createTestRecord } from '@/test'
 
 import type { DocumentState } from '@/document'
+import type { ChangedRecord } from '@/project/types'
 import type { Store, WriteOutcome } from '@/store'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyRawRecord, Operation } from '@/types'
@@ -26,7 +27,7 @@ function makeState(): DocumentState {
 type StoreCall = {
 	creates: AnyRawRecord[]
 	updates: AnyRawRecord[]
-	deletes: string[]
+	deletes: ReadonlyArray<ChangedRecord>
 	progressCalls: Array<{ current: number; total: number }>
 }
 
@@ -215,7 +216,7 @@ describe('commitTransaction', () => {
 
 		expect(calls.creates).toEqual([createTestRecord({ record: { tagName: 'A', id: 'c1' } })])
 		expect(calls.updates).toEqual([createTestRecord({ record: { tagName: 'A', id: 'u1' } })])
-		expect(calls.deletes).toEqual(['d1'])
+		expect(calls.deletes).toEqual([{ id: 'd1', tagName: 'A', parentId: null }])
 	})
 
 	it('merges create+delete on the same id into a no-op', async () => {

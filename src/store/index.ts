@@ -21,6 +21,7 @@ export type {
 	StoreChange,
 	StoreNotice,
 	StoreResync,
+	HistoryStep,
 	WriteOutcome,
 	WriteSessionControl,
 	AttributeLookup,
@@ -34,6 +35,11 @@ export { runVersionedRead } from './versioned-read'
 export { VERSIONED_READ_MEMBERS } from './versioned-read.constants'
 export { IMPORT_PROGRESS_INTERVAL_MS } from './import-progress/import-progress.constants'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'
+export {
+	describeCommitChanges,
+	describeHistoryStep,
+} from '@/document/transaction/commit/describe-commit-changes'
+export type { HistoryImages, HistoryStepDirection } from '@/project/types'
 export { registerStorageKind } from './storage-kinds'
 export type { StorageKind, StorageKindDialecte } from './storage-kinds.types'
 export {

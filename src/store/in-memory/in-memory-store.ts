@@ -38,6 +38,10 @@ import {
 import { EMPTY_STATE, EMPTY_TABLE } from './in-memory-store.constants'
 import { createRecordTable } from './in-memory-table'
 
+import {
+	describeChangeLogStep,
+	describeCommitChanges,
+} from '@/document/transaction/commit/describe-commit-changes'
 import { throwDialecteError } from '@/errors'
 import { runExport } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
@@ -51,6 +55,7 @@ import type {
 	ExportFileParams,
 	ExportFileResult,
 	ExportSource,
+	HistoryStep,
 	ImportFileParams,
 	ImportFileResult,
 	ImportTarget,
@@ -71,7 +76,7 @@ import type {
 	RecordTable,
 } from './types'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
-import type { DocumentRecord, DocumentUpdates } from '@/project/types'
+import type { ChangedRecord, DocumentRecord, DocumentUpdates } from '@/project/types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 
 /**
@@ -459,7 +464,7 @@ export class InMemoryStore implements Store {
 		writeId?: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
-		deletes: string[]
+		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
 		await this.guardOpen()
@@ -488,11 +493,11 @@ export class InMemoryStore implements Store {
 		for (const record of creates) table.put(record)
 		for (const record of updates) table.put(record)
 		// the deleted records as they are at this step: one the commit created or updated is kept so
-		const deletedSnapshots = deletes.flatMap((id) => {
+		const deletedSnapshots = deletes.flatMap(({ id }) => {
 			const record = table.get(id)
 			return record ? [record] : []
 		})
-		for (const id of deletes) table.drop(id)
+		for (const { id } of deletes) table.drop(id)
 
 		// Changelog, in the state the records went to; the undone entries are discarded, their ids kept
 		const { heads, changelog, discardedCommits } = state
@@ -525,23 +530,27 @@ export class InMemoryStore implements Store {
 			onProgress,
 			parts: [creates.length, updates.length, deletes.length],
 		})
-		// announced once its progress is told, as the engine does
-		this.announce({ type: 'commit', documentId, changes: { unknown: true } })
+		// announced once its progress is told, as the engine does; its changes from its arguments, as every store tells them
+		this.announce({
+			type: 'commit',
+			documentId,
+			changes: describeCommitChanges({ creates: params.creates, updates: params.updates, deletes }),
+		})
 	}
 
 	// --- History ---
 
 	/** Undo the last applied entry, its parts in reverse: the deleted records back, the befores, the creates gone. */
-	async undo(documentId: string): Promise<void> {
+	async undo(documentId: string): Promise<HistoryStep | false> {
 		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
 		const head = state?.heads.get(documentId) ?? 0
-		if (!state || head === 0) return
+		if (!state || head === 0) return false
 
 		const entries = state.changelog.get(documentId) ?? []
 		const entry = entries.find((e) => e.sequenceNumber === head)
-		if (!entry) return
+		if (!entry) return false
 
 		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
@@ -552,20 +561,22 @@ export class InMemoryStore implements Store {
 
 		state.heads.set(documentId, head - 1)
 		bumpVersion({ state, documentId })
-		this.announce({ type: 'commit', documentId, changes: { unknown: true } })
+		const changes = describeChangeLogStep({ operations: entry.operations, direction: 'back' })
+		this.announce({ type: 'commit', documentId, changes })
+		return { changes }
 	}
 
-	async redo(documentId: string): Promise<void> {
+	async redo(documentId: string): Promise<HistoryStep | false> {
 		await this.guardOpen()
 		this.guardWritable()
 		const state = this.writeState()
-		if (!state) return
+		if (!state) return false
 		const head = state.heads.get(documentId) ?? 0
 		const next = head + 1
 
 		const entries = state.changelog.get(documentId) ?? []
 		const entry = entries.find((e) => e.sequenceNumber === next)
-		if (!entry) return
+		if (!entry) return false
 
 		const { table } = this.writeTarget(documentId)
 		const { creates, updates, deletes } = entry.operations
@@ -576,7 +587,9 @@ export class InMemoryStore implements Store {
 
 		state.heads.set(documentId, next)
 		bumpVersion({ state, documentId })
-		this.announce({ type: 'commit', documentId, changes: { unknown: true } })
+		const changes = describeChangeLogStep({ operations: entry.operations, direction: 'forward' })
+		this.announce({ type: 'commit', documentId, changes })
+		return { changes }
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {

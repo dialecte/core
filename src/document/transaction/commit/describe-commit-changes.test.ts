@@ -1,4 +1,4 @@
-import { describeCommitChanges } from './describe-commit-changes'
+import { describeCommitChanges, describeHistoryStep } from './describe-commit-changes'
 
 import { describe, expect, it } from 'vitest'
 
@@ -7,6 +7,8 @@ import { COMMIT_CHANGES_MAX } from '@/project/project.constants'
 import type {
 	CommitChanges,
 	CommitWrites,
+	HistoryImages,
+	HistoryStepDirection,
 	PlacedRecord,
 	UnknownCommitChanges,
 } from '@/project/types'
@@ -38,7 +40,7 @@ describe('describeCommitChanges', () => {
 						placed({ id: 'a', tagName: 'A', parentId: 'root' }),
 						placed({ id: 'root', tagName: 'Root', parentId: null }),
 					],
-					deletes: [placed({ id: 'd1', tagName: 'AA_1', parentId: 'a' })],
+					deletes: [{ id: 'd1', tagName: 'AA_1', parentId: 'a' }],
 				},
 				expected: {
 					created: [
@@ -113,4 +115,76 @@ describe('describeCommitChanges', () => {
 			deleted: [],
 		})
 	})
+})
+
+/** One commit's images: c1 created under a, a updated (moved from root to b), d1 deleted from a. */
+const IMAGES: HistoryImages = {
+	creates: [placed({ id: 'c1', tagName: 'AA_1', parentId: 'a' })],
+	befores: [placed({ id: 'a', tagName: 'A', parentId: 'root' })],
+	afters: [placed({ id: 'a', tagName: 'A', parentId: 'b' })],
+	deletes: [placed({ id: 'd1', tagName: 'AA_2', parentId: 'a' })],
+}
+
+describe('describeHistoryStep', () => {
+	const cases: Record<
+		string,
+		{
+			images: HistoryImages
+			direction: HistoryStepDirection
+			expected: CommitChanges | UnknownCommitChanges
+		}
+	> = {
+		'forward (a redo) -> the commit: created as created, updated after the write, deleted with the parent it had':
+			{
+				images: IMAGES,
+				direction: 'forward',
+				expected: {
+					created: [{ id: 'c1', tagName: 'AA_1', parentId: 'a' }],
+					updated: [{ id: 'a', tagName: 'A', parentId: 'b' }],
+					deleted: [{ id: 'd1', tagName: 'AA_2', parentId: 'a' }],
+				},
+			},
+		'back (an undo) -> the inverse: the deleted created again, the updated with their parent before, the created deleted':
+			{
+				images: IMAGES,
+				direction: 'back',
+				expected: {
+					created: [{ id: 'd1', tagName: 'AA_2', parentId: 'a' }],
+					updated: [{ id: 'a', tagName: 'A', parentId: 'root' }],
+					deleted: [{ id: 'c1', tagName: 'AA_1', parentId: 'a' }],
+				},
+			},
+		'back past the cap -> { unknown: true }': {
+			images: {
+				creates: manyCreates({ count: COMMIT_CHANGES_MAX + 1 }),
+				befores: [],
+				afters: [],
+				deletes: [],
+			},
+			direction: 'back',
+			expected: { unknown: true },
+		},
+		'forward at exactly the cap -> the refs': {
+			images: {
+				creates: [],
+				befores: [],
+				afters: [],
+				deletes: manyCreates({ count: COMMIT_CHANGES_MAX }),
+			},
+			direction: 'forward',
+			expected: {
+				created: [],
+				updated: [],
+				deleted: manyCreates({ count: COMMIT_CHANGES_MAX }).map(function refOf(record) {
+					return { id: record.id, tagName: record.tagName, parentId: 'a' }
+				}),
+			},
+		},
+	}
+
+	for (const [name, { images, direction, expected }] of Object.entries(cases)) {
+		it(name, () => {
+			expect(describeHistoryStep({ images, direction })).toEqual(expected)
+		})
+	}
 })

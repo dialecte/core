@@ -4,6 +4,7 @@ import type { BenchFixture, BenchFixtureName, GcShare } from './bench-commands.t
 /** The fixtures and the GC share are the node side's (`bench-commands.types.ts`); the pages read them from here too. */
 export type { BenchFixture, BenchFixtureName, GcShare } from './bench-commands.types'
 import type { BENCH_PHASE_MESSAGE } from './bench.constants'
+import type { ChangedRecord } from '@/project/types'
 import type { ImportPhase } from '@/store/store.types'
 import type { AnyRawRecord, AnyRelationship, RecordPatch } from '@/types'
 import type { Database, SAHPoolUtil, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
@@ -564,7 +565,7 @@ export type EngineHistoryExportRun = {
 export type HistoryCellState = {
 	pool?: SAHPoolUtil
 	opened?: { engine: SqliteEngine; db: Database }
-	subtree?: { root: AnyRawRecord; ids: string[] }
+	subtree?: { root: AnyRawRecord; refs: ChangedRecord[] }
 }
 
 /** The engine bench's worker: the engine on a real OPFS pool. */

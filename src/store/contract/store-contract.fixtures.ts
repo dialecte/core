@@ -7,7 +7,7 @@ import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
 import type { ImportProgress, Store } from '../store.types'
 import type { DialecteErrorKey } from '@/errors'
-import type { DocumentRecord } from '@/project/types'
+import type { ChangedRecord, DocumentRecord } from '@/project/types'
 import type { AnyRawRecord, AnyRelationship, BlobRecord } from '@/types'
 
 export function makeDocument(overrides: Partial<DocumentRecord> = {}): DocumentRecord {
@@ -54,6 +54,15 @@ export function childRef(id: string): AnyRelationship {
 	return { id, tagName: 'A' }
 }
 
+/** The ref a commit deletes a record by: tag `A` and no parent unless given, as `makeRecord` makes it. */
+export function deletedRef(
+	id: string,
+	place: { tagName?: string; parentId?: string | null } = {},
+): ChangedRecord {
+	const { tagName = 'A', parentId = null } = place
+	return { id, tagName, parentId }
+}
+
 /** A commit of creates, updates and deletes on one document, progress ignored; its id when given. */
 export function commit(params: {
 	store: Store
@@ -61,7 +70,7 @@ export function commit(params: {
 	writeId?: string
 	creates?: AnyRawRecord[]
 	updates?: AnyRawRecord[]
-	deletes?: string[]
+	deletes?: ReadonlyArray<ChangedRecord>
 }): Promise<void> {
 	const { store, documentId, writeId, creates = [], updates = [], deletes = [] } = params
 	return store.commit({ documentId, writeId, creates, updates, deletes, onProgress: () => {} })

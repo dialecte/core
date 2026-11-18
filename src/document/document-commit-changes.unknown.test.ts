@@ -89,6 +89,13 @@ async function openWithDocument(params: { store: Store; name?: string }) {
 	return { project, documentId, doc: project.openDocument(documentId) }
 }
 
+/** What updating B tells: B updated under the root (an undo of it tells the same). */
+const B_UPDATED = {
+	created: [],
+	updated: [{ id: 'b', tagName: 'B', parentId: 'root' }],
+	deleted: [],
+}
+
 async function updateB(params: { doc: ReturnType<Project<AnyDialecteConfig>['openDocument']> }) {
 	await params.doc.transaction(async (tx) => {
 		await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'changed' } })
@@ -117,7 +124,7 @@ describe('commit changes not known', () => {
 		})
 	})
 
-	it('undo and redo -> { unknown: true }', async () => {
+	it('undo and redo -> the commit’s inverse, then its changes (no longer unknown)', async () => {
 		const store = new InMemoryStore('undo-redo', { runtime: RUNTIME })
 		made.push(store)
 		const { project, documentId, doc } = await openWithDocument({ store })
@@ -128,10 +135,7 @@ describe('commit changes not known', () => {
 		await project.redo(documentId)
 
 		await vi.waitFor(function stepsHeard() {
-			expect(heard.map((message) => message.changes)).toEqual([
-				{ unknown: true },
-				{ unknown: true },
-			])
+			expect(heard.map((message) => message.changes)).toEqual([B_UPDATED, B_UPDATED])
 		})
 	})
 
@@ -152,7 +156,7 @@ describe('commit changes not known', () => {
 		})
 	})
 
-	it('another connection’s commit, told by the store -> heard through the Project as { unknown: true }', async () => {
+	it('another connection’s commit, told by the store -> heard through the Project with the writer’s changes', async () => {
 		const name = `two-connections-${crypto.randomUUID()}`
 		const writerStore = new InMemoryStore(name, { runtime: RUNTIME })
 		const listenerStore = new InMemoryStore(name, { runtime: RUNTIME })
@@ -168,7 +172,7 @@ describe('commit changes not known', () => {
 			await updateB({ doc: writer.doc })
 
 			await vi.waitFor(function toldHeard() {
-				expect(heard.map((message) => message.changes)).toEqual([{ unknown: true }])
+				expect(heard.map((message) => message.changes)).toEqual([B_UPDATED])
 			})
 		} finally {
 			await listener.close()
