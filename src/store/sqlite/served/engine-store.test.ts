@@ -15,6 +15,7 @@ import { ENGINE_WIRE_MEMBERS } from './wire/wire.constants'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createDialecteError } from '@/errors'
+import { newCallId } from '@/store/json-values'
 import { TEST_DIALECTE } from '@/test/test-dialecte'
 
 import type { StoreNotice, WriteOutcome } from '../../store.types'
@@ -168,7 +169,7 @@ async function losingStore(params: {
 	// something for every write to change - a history both ways, a blob - so a write marked a read moves the state
 	for (const id of ['r2', 'r3']) {
 		await seeded.commit({
-			writeId: crypto.randomUUID(),
+			writeId: newCallId(),
 			documentId: 'doc-1',
 			creates: [makeRecord({ id })],
 			updates: [],
@@ -270,7 +271,7 @@ const MEMBER_ACTS: MemberActs = {
 	},
 	commit: function commit(store) {
 		return store.commit({
-			writeId: crypto.randomUUID(),
+			writeId: newCallId(),
 			documentId: 'doc-1',
 			creates: [makeRecord({ id: 'r9' })],
 			updates: [],

@@ -35,6 +35,7 @@ import { expect, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { CUSTOM_RECORD_ID_ATTRIBUTE, DIALECTE_DEV_NAMESPACE } from '@/helpers/constant'
+import { newCallId } from '@/store/json-values'
 import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
 import type { JsonWithRawJson } from '../json-values.types'
@@ -551,7 +552,7 @@ const history: StoreContractCases = {
 				await seedTwoRecords(store)
 				const reported: [number, number][] = []
 				await store.commit({
-					writeId: crypto.randomUUID(),
+					writeId: newCallId(),
 					documentId: 'doc-1',
 					creates: [makeRecord({ id: 'r3' })],
 					updates: [makeRecord({ id: 'r1', value: 'v' })],
@@ -868,7 +869,7 @@ const history: StoreContractCases = {
 					const reports = quietReports()
 					await seedTwoRecords(store)
 					await store.commit({
-						writeId: crypto.randomUUID(),
+						writeId: newCallId(),
 						documentId: 'doc-1',
 						creates: [makeRecord({ id: 'r3' })],
 						updates: [makeRecord({ id: 'r1', value: 'v' })],
@@ -928,7 +929,7 @@ const history: StoreContractCases = {
 			await seedTwoRecords(store)
 			const reads: Promise<string[]>[] = []
 			await store.commit({
-				writeId: crypto.randomUUID(),
+				writeId: newCallId(),
 				documentId: 'doc-1',
 				creates: [makeRecord({ id: 'r3' })],
 				updates: [],

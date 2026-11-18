@@ -3,6 +3,7 @@ import { OUTCOME_WAIT_MS } from './store-contract.constants'
 import { expect } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { newCallId } from '@/store/json-values'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
 import type { ImportProgress, Store, StoreNotice } from '../store.types'
@@ -75,7 +76,7 @@ export function commit(params: {
 	const {
 		store,
 		documentId,
-		writeId = crypto.randomUUID(),
+		writeId = newCallId(),
 		creates = [],
 		updates = [],
 		deletes = [],
@@ -197,7 +198,15 @@ export async function outcomeOf(params: {
 }
 
 /** The id a told commit carries (one per change, the same on every connection); none for another notice. */
-export function changeIdOf(notice: StoreNotice): string | undefined {
+export function changeIdOf(params: { notice: StoreNotice }): string | undefined {
+	const { notice } = params
 	if (notice.type !== 'change' || notice.message.type !== 'commit') return undefined
 	return notice.message.changeId
+}
+
+/** The id each notice carries, in order (`changeIdOf`). */
+export function changeIdsOf(params: { notices: StoreNotice[] }): (string | undefined)[] {
+	return params.notices.map(function idOf(notice) {
+		return changeIdOf({ notice })
+	})
 }

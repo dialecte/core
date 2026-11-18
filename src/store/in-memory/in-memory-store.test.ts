@@ -4,6 +4,7 @@ import { InMemoryStore } from './in-memory-store'
 import { describe, it, expect, beforeEach } from 'vitest'
 
 import { toDialecteError } from '@/errors'
+import { newCallId } from '@/store/json-values'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
 import type { DocumentRecord } from '@/project/types'
@@ -77,7 +78,7 @@ describe('InMemoryStore (non-writable)', () => {
 			'commit',
 			() =>
 				store.commit({
-					writeId: crypto.randomUUID(),
+					writeId: newCallId(),
 					documentId: 'x',
 					creates: [makeRecord('r1')],
 					updates: [],

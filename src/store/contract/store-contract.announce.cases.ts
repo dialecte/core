@@ -1,6 +1,7 @@
+// dialecte-allow test-file-long: main carries it at 380 lines; this lot's change-id expectations and its bulk-write ids case take it just past 400 - one announce table, its split by behaviour a follow-up
 import { CHANGE_TOLD_WITHIN_MS } from '../sqlite/runtime/runtime.fixtures.constants'
 import {
-	changeIdOf,
+	changeIdsOf,
 	commit,
 	contractFile,
 	makeBlobEntry,
@@ -9,6 +10,8 @@ import {
 } from './store-contract.fixtures'
 
 import { expect, vi } from 'vitest'
+
+import { newCallId } from '@/store/json-values'
 
 import type { Store, StoreNotice } from '../store.types'
 import type { StoreContractCase, StoreContractCases } from './store-contract.types'
@@ -216,7 +219,7 @@ function announcedCase(params: { change: AnnouncedChange }): StoreContractCase {
 				},
 				{ timeout: CHANGE_TOLD_WITHIN_MS },
 			)
-			expect(otherNotices.map(changeIdOf)).toEqual(ownNotices.map(changeIdOf))
+			expect(changeIdsOf({ notices: otherNotices })).toEqual(changeIdsOf({ notices: ownNotices }))
 		},
 	}
 }
@@ -272,6 +275,21 @@ export const STORE_ANNOUNCE_CONTRACT: Record<string, StoreContractCases> = {
 		}),
 	),
 	'when a change is told': {
+		'two bulk writes → told with two different changeIds (a consumer dropping a seen id keeps both)':
+			{
+				needs: ['announce'],
+				act: async ({ store }) => {
+					await seedProject({ store })
+					const notices = heard({ store })
+					await store.bulkWrite(DOCUMENT_ID, { creates: [makeRecord({ id: 'r3' })] })
+					await store.bulkWrite(DOCUMENT_ID, { creates: [makeRecord({ id: 'r4' })] })
+					const ids = changeIdsOf({ notices })
+					expect({ ids: ids.map((id) => typeof id), distinct: new Set(ids).size }).toEqual({
+						ids: ['string', 'string'],
+						distinct: 2,
+					})
+				},
+			},
 		'a commit → its progress told to its caller first, then its change announced to it': {
 			needs: ['announce'],
 			act: async ({ store }) => {
@@ -281,7 +299,7 @@ export const STORE_ANNOUNCE_CONTRACT: Record<string, StoreContractCases> = {
 					if (notice.type === 'change') told.push('change')
 				})
 				await store.commit({
-					writeId: crypto.randomUUID(),
+					writeId: newCallId(),
 					documentId: DOCUMENT_ID,
 					creates: [makeRecord({ id: 'r3' }), makeRecord({ id: 'r4' })],
 					updates: [],

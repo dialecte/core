@@ -335,22 +335,29 @@ describe('a project whose engine is lost during its write', () => {
 		expect(calls.commit).toBe(1)
 	})
 
-	it('on a store that tells no change, a commit whose outcome is not known → its unknown message carries the commit’s writeId', async () => {
-		const { project, store, documentId } = await openWithDocument({
-			losing: ['commit'],
-			landing: 'applied',
-			outcomeRefused: true,
-			announcing: false,
+	const lostCommitStores: Record<string, { announcing: boolean }> = {
+		'on a store that tells no change': { announcing: false },
+		'on a store that tells its changes (its told copy matched by the id)': { announcing: true },
+	}
+	for (const [storeKind, { announcing }] of Object.entries(lostCommitStores)) {
+		it(`${storeKind}, a commit whose outcome is not known → one unknown message, under the commit’s writeId`, async () => {
+			const { project, store, documentId } = await openWithDocument({
+				losing: ['commit'],
+				landing: 'applied',
+				outcomeRefused: true,
+				announcing,
+			})
+			const asked = writeIdsAsked({ store })
+			const heard = changeIdsHeard({ project })
+			const listened = heardOn({ project })
+			await settledOf({ action: project.openDocument(documentId).transaction(addOneA) })
+			const fence = await fenceOf({ project, documentId })
+			await vi.waitFor(function heardTheFence() {
+				expect(listened).toContainEqual(fence)
+			})
+			expect({ asked: asked.length, heard }).toEqual({ asked: 1, heard: asked })
 		})
-		const asked = writeIdsAsked({ store })
-		const heard = changeIdsHeard({ project })
-		await settledOf({ action: project.openDocument(documentId).transaction(addOneA) })
-		await fenceOf({ project, documentId })
-		await vi.waitFor(function heardTheCommit() {
-			expect(heard).toHaveLength(1)
-		})
-		expect({ asked: asked.length, heard }).toEqual({ asked: 1, heard: asked })
-	})
+	}
 
 	it('a prepared commit that did not land, committed again → a new writeId; one message, with the second', async () => {
 		const { project, store, documentId } = await openWithDocument({
@@ -360,12 +367,13 @@ describe('a project whose engine is lost during its write', () => {
 		})
 		const asked = writeIdsAsked({ store })
 		const heard = changeIdsHeard({ project })
+		const listened = heardOn({ project })
 		const prepared = await project.openDocument(documentId).prepare(addOneA)
 		await settledOf({ action: prepared.commit() })
 		await prepared.commit()
-		await fenceOf({ project, documentId })
-		await vi.waitFor(function heardTheCommit() {
-			expect(heard).toHaveLength(1)
+		const fence = await fenceOf({ project, documentId })
+		await vi.waitFor(function heardTheFence() {
+			expect(listened).toContainEqual(fence)
 		})
 		expect({ distinct: new Set(asked).size, heard }).toEqual({ distinct: 2, heard: [asked[1]] })
 	})

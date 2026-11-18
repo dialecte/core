@@ -163,6 +163,11 @@ describe('a project told by its store', () => {
 })
 
 /** What a listener of the project's channel heard, as `<type> <documentId>`; its channel closed after the case. */
+/** A record's id. */
+function idOf(record: { id: string }): string {
+	return record.id
+}
+
 function listenTo(params: { project: Project<AnyDialecteConfig> }): string[] {
 	const heard: string[] = []
 	const channel = params.project.createChannel()
@@ -198,14 +203,20 @@ async function openHeld(): Promise<{
 }
 
 describe('a change of the project’s own store that no Project call made (the store held directly)', () => {
-	it('a commit on the store, told while a transaction of the same document runs → each commit posted once, with its own changeId', async () => {
+	it('a commit on the store, told while a transaction of the same document runs → each commit posted once, under its own writeId, with its own changes', async () => {
 		const { project, store, documentId } = await openHeld()
-		const ids: string[] = []
+		const posted: { changeId: string; created: string[] | 'unknown' }[] = []
+		let fenced = false
 		const channel = project.createChannel()
 		channel.onmessage = function hear(event: MessageEvent<ProjectChannelMessage>) {
-			if (event.data.type === 'commit' && event.data.documentId === documentId) {
-				ids.push(event.data.changeId)
-			}
+			const message = event.data
+			if (message.type === 'init-empty-document') fenced = true
+			if (message.type !== 'commit' || message.documentId !== documentId) return
+			const { changeId, changes } = message
+			posted.push({
+				changeId,
+				created: 'unknown' in changes ? 'unknown' : changes.created.map(idOf),
+			})
 		}
 		onTestFinished(function closeChannel() {
 			channel.close()
@@ -217,13 +228,17 @@ describe('a change of the project’s own store that no Project call made (the s
 		})
 		// a fence: another document's commits, posted after all the transaction posted
 		await project.initEmptyDocument()
-		await vi.waitFor(function bothPosted() {
-			expect(ids).toHaveLength(2)
+		await vi.waitFor(function fenceHeard() {
+			expect(fenced).toBe(true)
 		})
-		expect({ first: ids[0], distinct: new Set(ids).size }).toEqual({
-			first: 'w-direct',
-			distinct: 2,
-		})
+		const [, transactionEntry] = await store.getChangeLog(documentId)
+		expect(posted).toEqual([
+			{ changeId: 'w-direct', created: ['x'] },
+			{
+				changeId: transactionEntry?.writeId,
+				created: transactionEntry?.operations.creates.map(idOf),
+			},
+		])
 	})
 
 	it('a document renamed on the store → posted once to the listeners, the project’s record read again', async () => {
