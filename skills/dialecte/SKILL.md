@@ -60,13 +60,14 @@ matching your `node_modules`) and confirm signatures in its `.d.ts`.
 the same with or without the repositories - in a few lines (`--json` for more). Run these before
 reading `node_modules`, the sources or the docs:
 
-| You need                                                        | Run                                            |
-| --------------------------------------------------------------- | ---------------------------------------------- |
-| your versions, and whether this skill is theirs (Step 0)        | `npx @dialecte/cli doctor`                     |
-| a method for what you are trying to do (reuse ladder, rung 2-4) | `npx @dialecte/cli api find "<what you need>"` |
-| its exact contract: signature, summary, routes, one call        | `npx @dialecte/cli api show <route>`           |
-| what a group holds, your own extensions included                | `npx @dialecte/cli members <expression>`       |
-| what an element may hold: parents, children, attributes         | `npx @dialecte/cli schema <Tag>`               |
+| You need                                                                    | Run                                            |
+| --------------------------------------------------------------------------- | ---------------------------------------------- |
+| your versions, and whether this skill is theirs (Step 0)                    | `npx @dialecte/cli doctor`                     |
+| a method for what you are trying to do (reuse ladder, rung 2-4)             | `npx @dialecte/cli api find "<what you need>"` |
+| its exact contract: signature, summary, routes, one call                    | `npx @dialecte/cli api show <route>`           |
+| what a group holds, your own extensions included                            | `npx @dialecte/cli members <expression>`       |
+| what an element may hold: parents, children, attributes                     | `npx @dialecte/cli schema <Tag>`               |
+| your own question, before a person ([ask ladder](references/ask-ladder.md)) | `npx @dialecte/cli ask "<question>"`           |
 
 - A `⚠️` line of `doctor` comes first: it names the command that fixes it.
 - Search by the words of your need, not by a name you imagine:

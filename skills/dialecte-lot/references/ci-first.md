@@ -45,7 +45,7 @@ CI call. Never `@latest` or another checkout's cli.
    checks the lot's tdd receipts, then its declared steps; one that does not (core today) runs its own hook script,
    `dialecte gate --hook` among it, which runs the full gate's steps - a commit there takes the suite's time, so run
    it in the background with a deadline. A hook that refuses is a finding: fix the cause, commit again.
-6. **Land as a draft**: `npx dialecte lot land <id> --draft`. It rebases onto `origin/<base>` when main moved,
+6. **Land as a draft**: `npx dialecte lot land <id>`; it always opens a draft and never queues. It rebases onto `origin/<base>` when main moved,
    pushes with a lease, opens (or updates) the draft pull request with its title and body rendered from the lot's
    records, and records it in `landing.json`. Never make a merge-of-main commit yourself: `lot land` rebases.
    - **A rebase conflict** is named and undone, nothing pushed. Rebase the lot branch yourself in its worktree:
@@ -61,7 +61,7 @@ CI call. Never `@latest` or another checkout's cli.
 The person reviews the draft and gives the go. Queueing is theirs: `lot approve <id> --by <the person>`, which marks
 the draft ready and queues it, run by them or by the orchestrator on their go (the cli accepts `--by orchestrator`
 for the cli's own lots only). The lot agent never runs `lot approve`, `gh pr ready` or
-`gh pr merge`, and never `lot land` without `--draft`.
+`gh pr merge`: `lot land` never queues; only `lot approve`, by a person, does.
 
 ## Useful verbs on the way
 
@@ -79,4 +79,4 @@ for the cli's own lots only). The lot agent never runs `lot approve`, `gh pr rea
 
 - `handover write`, `handover run` or `--rehearse`, a `lots.json` or a hand-written commit script.
 - A merge-of-main commit, a push outside `lot land`, a commit outside the lot's worktree and branch.
-- `--no-verify`, `lot approve`, `gh pr ready`, `gh pr merge`, `lot land` without `--draft`.
+- `--no-verify`, `lot approve` (a person's step: `lot land` never queues), `gh pr ready`, `gh pr merge`.

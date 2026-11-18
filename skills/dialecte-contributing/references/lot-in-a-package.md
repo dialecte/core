@@ -25,7 +25,7 @@ every warning ([code-rules.md](code-rules.md)). The implement report's `Gates:` 
 **In a CI-first repository** (the cli, core: `.github/workflows/ci.yml` runs on `merge_group` with a `ci-ok` job) CI runs the suite,
 the docs build, the type bench and the contrib steps on every push: locally a lot runs only `npm run check` and
 `npx dialecte rules` on its touched files, and Stations 5 and 6 below are replaced by the landing of `dialecte-lot`
-references/ci-first.md (commit on the lot branch through the hook, `lot land <id> --draft`). Station 0's mutation
+references/ci-first.md (commit on the lot branch through the hook, `lot land <id>`). Station 0's mutation
 switch and Station 2's `rules` still apply.
 
 ## Station 5 - `dialecte contrib` after the full gate
