@@ -77,7 +77,8 @@ describe('the first lookup of a pair builds it in the call', () => {
 			const answers: string[][] = []
 			let afterFirst: Record<string, string> = {}
 			for (let lookup = 0; lookup < BURST; lookup += 1) {
-				answers.push(await holdersOf({ engine, values: [String(lookup % 7)] }))
+				const answer = await holdersOf({ engine, values: [String(lookup % 7)] })
+				answers.push(answer)
 				if (lookup === 0) afterFirst = pairStatesOf({ db, seq })
 			}
 			const filterRuns = selects.mock.calls.filter(([sql]) => String(sql).includes(FILTER_SQL))
