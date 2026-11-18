@@ -356,3 +356,37 @@ function idsTwice(changes: CommitMessage['changes']): string[] {
 		return ids.indexOf(id) !== index
 	})
 }
+
+describe('a commit heard once, its reads voided', () => {
+	const onceCases: TestCases<BaseXmlTestCase> = {
+		'two commits, a read before and after each -> two commit messages, each its own changes, and every read after a commit sees it':
+			{ sourceXml },
+	}
+
+	async function actOnce({ project, source }: ActParams<TestDialecteConfig, BaseXmlTestCase>) {
+		const heard = commitsHeard({ project: project as unknown as Project<AnyDialecteConfig> })
+		const b = { tagName: 'B', id: 'b' } as const
+		const before = await source.query.getAttribute(b, { name: 'aB' })
+		const reads = [before]
+		for (const value of ['first', 'second']) {
+			await source.transaction(async function writeB(tx) {
+				await tx.update(b, { attributes: { aB: value } })
+			})
+			const after = await source.query.getAttribute(b, { name: 'aB' })
+			reads.push(after)
+		}
+
+		await vi.waitFor(function bothHeard() {
+			expect(heard.length).toBeGreaterThanOrEqual(2)
+		})
+		const updatedB = {
+			created: [],
+			updated: [{ id: 'b', tagName: 'B', parentId: 'root' }],
+			deleted: [],
+		}
+		expect(heard.map((message) => message.changes)).toEqual([updatedB, updatedB])
+		expect(reads).toEqual(['', 'first', 'second'])
+	}
+
+	runTestCases.withoutExport({ testCases: onceCases, act: actOnce })
+})

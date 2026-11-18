@@ -58,7 +58,14 @@ describe('read scope, void paths', () => {
 		async (type) => {
 			const { document, first, log, internals } = await open()
 			async function tell() {
-				internals.onChannelMessage({ type, documentId: document.documentId, timestamp: Date.now() })
+				// a commit's changes unknown: the others carry no changes, so the field rides along unread
+				const told = {
+					type,
+					documentId: document.documentId,
+					timestamp: Date.now(),
+					changes: { unknown: true },
+				} as ProjectChannelMessage
+				internals.onChannelMessage(told)
 			}
 
 			await document.query.probe.readRecordAround({ ref: first, write: tell })
