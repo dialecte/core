@@ -7,9 +7,9 @@ import { cloneRecord } from '@/store/in-memory/clone-record'
 import { TEST_DIALECTE_CONFIG } from '@/test'
 import { createTestHelpers } from '@/test/create-test-helpers'
 
-import type { ReadScope, VersionedRead } from './read-scope.types'
+import type { ReadScope } from './read-scope.types'
 import type { Context } from '@/document'
-import type { Store } from '@/store'
+import type { Store, VersionedRead } from '@/store'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
@@ -310,4 +310,15 @@ export function scopedContext(params: { store: Store }) {
 			epoch += 1
 		},
 	}
+}
+
+/** The store as it is, without `readVersioned`: what a store keeping no version reads like. */
+export function withoutVersionedReads(params: { store: Store }): Store {
+	return new Proxy(params.store, {
+		get: function memberOfStore(target, property) {
+			if (property === 'readVersioned') return undefined
+			const member: unknown = Reflect.get(target, property, target)
+			return typeof member === 'function' ? member.bind(target) : member
+		},
+	})
 }

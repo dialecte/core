@@ -1,4 +1,4 @@
-import type { AttributeLookup, Store } from '@/store'
+import type { Store, StoreVersion } from '@/store'
 import type { AnyRawRecord } from '@/types'
 
 /**
@@ -37,35 +37,8 @@ export type ReadScopeWiring = {
 	readonly bindQueryExtensions: (target: object) => Record<string, unknown>
 }
 
-// The port below mirrors `Store.readVersioned` of the store lot that adds it; replaced by the Store's own types once it
-// has landed.
-
-/** The read members a store may answer with the document's version. */
-export type VersionedReadMember =
-	| 'get'
-	| 'getMany'
-	| 'getByTagNameInDocument'
-	| 'getByAttributes'
-	| 'getByDocumentId'
-
-/** One call of a read member as plain data: the member and its arguments. */
-export type VersionedRead =
-	| { member: 'get'; args: [id: string, documentId: string] }
-	| { member: 'getMany'; args: [ids: string[], documentId: string] }
-	| { member: 'getByTagNameInDocument'; args: [tagName: string, documentId: string] }
-	| { member: 'getByAttributes'; args: [lookup: AttributeLookup] }
-	| { member: 'getByDocumentId'; args: [documentId: string] }
-
-/** A document's version as a store answers it with a read. */
-export type StoreVersion = { engineId: string; count: number }
-
-/** A read member's answer and the document's version of the same moment. */
-export type VersionedAnswer = { value: ScopedReadValue; version: StoreVersion }
-
-/** A store that answers versioned reads. */
-export type VersionedStore = Store & {
-	readVersioned(params: { documentId: string; read: VersionedRead }): Promise<VersionedAnswer>
-}
+/** A store that answers versioned reads (`Store.readVersioned` present). */
+export type VersionedStore = Store & Required<Pick<Store, 'readVersioned'>>
 
 /** What any read member answers: a record, absent, or a list of them. */
 export type ScopedReadValue = AnyRawRecord | undefined | (AnyRawRecord | undefined)[]

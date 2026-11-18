@@ -3,8 +3,8 @@ import { readThroughScope } from './read-through-scope'
 
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import type { VersionedRead } from './read-scope.types'
 import type { CachedContext } from '@/document'
+import type { VersionedRead } from '@/store'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyRawRecord } from '@/types'
 

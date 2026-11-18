@@ -4,14 +4,8 @@ import { STORE_READ_TALLY } from './read-scope.constants'
 import { cloneRecord } from '@/store/in-memory/clone-record'
 
 import type { Context } from '../../types'
-import type {
-	ReadScope,
-	ScopedReadValue,
-	StoreVersion,
-	VersionedAnswer,
-	VersionedRead,
-	VersionedStore,
-} from './read-scope.types'
+import type { ReadScope, ScopedReadValue, VersionedStore } from './read-scope.types'
+import type { StoreVersion, VersionedAnswer, VersionedRead } from '@/store'
 import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
 
 /**

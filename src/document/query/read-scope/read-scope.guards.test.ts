@@ -3,6 +3,7 @@ import {
 	openOtherProject,
 	openScopedProject,
 	versionedStore,
+	withoutVersionedReads,
 } from './read-scope.fixtures'
 
 import { afterEach, describe, expect, it } from 'vitest'
@@ -10,7 +11,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@/test'
 
 import type { VersionedReadLog } from './read-scope.fixtures'
-import type { Store } from '@/store'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const XML = /* xml */ `<Root ${ns}><A aA="one"/><A aA="two"/></Root>`
@@ -172,7 +172,7 @@ describe('read scope, guards', () => {
 
 	it('a store without readVersioned → the same answers, no scope', async () => {
 		const log: VersionedReadLog = []
-		const plain: Store = inMemoryTestStore({ name: crypto.randomUUID() })
+		const plain = withoutVersionedReads({ store: inMemoryTestStore({ name: crypto.randomUUID() }) })
 		const { project, document, first } = await openScopedProject({
 			store: plain,
 			log,

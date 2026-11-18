@@ -1,5 +1,5 @@
 import type { StoreReadMember } from '../get/record/count-records-moved.types'
-import type { VersionedReadMember } from './read-scope.types'
+import type { VersionedReadMember } from '@/store'
 
 /** The dev perf tally of each store read member: `core::store::<tally>` and `core::store::records.<tally>`. */
 export const STORE_READ_TALLY: Record<VersionedReadMember, StoreReadMember> = {

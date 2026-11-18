@@ -36,9 +36,9 @@
 		},
 		"one verb call over the leaves of a subtree": {
 			"get": 16,
-			"getMany": 224,
+			"getMany": 22,
 			"records.get": 16,
-			"records.getMany": 224
+			"records.getMany": 22
 		},
 		"rename rewriting references in one transaction": {
 			"commit": 1,
