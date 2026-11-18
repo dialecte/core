@@ -514,8 +514,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Build a full tree structure from an element down. It reads only the branches it can keep when a
-	 * `select`, a tag-only `omit` or a `depth` prunes (one read per level), else the whole document once.
+	 * Build a full tree structure from an element down. It reads level by level (one read per level) only the
+	 * branches it can keep: a ref with an `id` below the document root reads its own subtree, and a `select`, a
+	 * tag-only `omit` or a `depth` prunes further. The document root, or a ref without `id`, with nothing to prune
+	 * reads the whole document once.
 	 *
 	 * @intent read a subtree in document order, walk children recursively, project a filtered tree with select or omit, read a subtree to copy it with deepClone
 	 *

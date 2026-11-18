@@ -1248,7 +1248,7 @@
 				"filter one tag's elements by attribute",
 				"look up many elements by a list of values in one call"
 			],
-			"declaredAt": "src/document/query/main.ts:720",
+			"declaredAt": "src/document/query/main.ts:722",
 			"example": "const records = await query.findByAttributes({\n  tagName: 'A',\n  attributes: { aA: 'val' },\n})"
 		},
 		{
@@ -1286,7 +1286,7 @@
 				"read a namespaced attribute",
 				"read an attribute with its schema default"
 			],
-			"declaredAt": "src/document/query/main.ts:593",
+			"declaredAt": "src/document/query/main.ts:595",
 			"example": "const val = await query.getAttribute(a, { name: 'aA' })\nconst cA = await query.getAttribute(a, { name: 'cA', namespace: 'ext' })"
 		},
 		{
@@ -1301,7 +1301,7 @@
 				"destructure several attributes at once",
 				"read attributes of one namespace"
 			],
-			"declaredAt": "src/document/query/main.ts:643",
+			"declaredAt": "src/document/query/main.ts:645",
 			"example": "const { aA, 'ext:cA': cA } = await query.getAttributes(a)"
 		},
 		{
@@ -1426,7 +1426,7 @@
 				"read staged changes as XML or as a tree",
 				"show what a prepared transaction would produce"
 			],
-			"declaredAt": "src/document/query/main.ts:559",
+			"declaredAt": "src/document/query/main.ts:561",
 			"example": "const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))\nconst { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })"
 		},
 		{
@@ -1434,14 +1434,14 @@
 			"root": "q",
 			"otherRoutes": [],
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, options?: GetTreeParams<GenericConfig, GenericElement>) => Promise<TreeRecord<GenericConfig, GenericElement> | undefined>",
-			"summary": "Build a full tree structure from an element down. It reads only the branches it can keep when a `select`, a tag-only `omit` or a `depth` prunes (one read per level), else the whole document once.",
+			"summary": "Build a full tree structure from an element down. It reads level by level (one read per level) only the branches it can keep: a ref with an `id` below the document root reads its own subtree, and a `select`, a tag-only `omit` or a `depth` prunes further. The document root, or a ref without `id`, with nothing to prune reads the whole document once.",
 			"intents": [
 				"read a subtree in document order",
 				"walk children recursively",
 				"project a filtered tree with select or omit",
 				"read a subtree to copy it with deepClone"
 			],
-			"declaredAt": "src/document/query/main.ts:531",
+			"declaredAt": "src/document/query/main.ts:533",
 			"example": "const tree = await query.getTree(a)"
 		},
 		{

@@ -18,8 +18,12 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  * When a `select`, an unconditional `omit` or a `depth` can prune, reads the root by its ref (a ref without id by
  * its tag name), then the kept children level by level, one `getRecords` per level over the whole frontier: a child
  * ref is read only when its tag can be kept, and the conditional parts (`where`, an `omit` with `where`) are checked
- * once it is read, before its own children are. A child dropped is never followed. When nothing can prune, one
- * whole-document read serves the tree.
+ * once it is read, before its own children are. A child dropped is never followed. A ref with an id below the
+ * document root prunes too: the rest of the document is never read. Only when nothing prunes, on the document root
+ * or a ref without id, one whole-document read serves the tree.
+ *
+ * Outside a transaction a read by levels is several store reads, so a write landing between two levels can be seen
+ * by the deeper ones only; the one whole-document read is a single store read.
  *
  * @internal the record source of `getTree`
  */
@@ -38,7 +42,10 @@ export async function loadTreeRecords<
 }> {
 	const { context, ref, select, depth, shaping } = params
 	const prunes =
-		select !== undefined || depth !== undefined || shaping.compiledOmit.unconditional.size > 0
+		select !== undefined ||
+		depth !== undefined ||
+		shaping.compiledOmit.unconditional.size > 0 ||
+		refNamesASubtree({ context, ref })
 	if (!prunes) {
 		const recordsById = await loadLiveRecords<GenericConfig>(context)
 		return { root: rootIn({ recordsById, ref }), recordsById }
@@ -58,6 +65,20 @@ export async function loadTreeRecords<
 		...levels.flatMap((level) => [...level]),
 	])
 	return { root, recordsById }
+}
+
+/**
+ * A ref with an id whose tag is not the dialecte's root element names a subtree: reading it by levels moves only
+ * its records. Decided from the ref alone, no read. A ref without id keeps the whole-document read even below the
+ * root: there it resolves to the first record of its tag, which a read by tag name with staged records first
+ * (`getRecord`) does not always find.
+ */
+function refNamesASubtree<GenericConfig extends AnyDialecteConfig>(params: {
+	context: Context<GenericConfig>
+	ref: Ref<GenericConfig, ElementsOf<GenericConfig>>
+}): boolean {
+	const { context, ref } = params
+	return ref.id !== undefined && ref.tagName !== context.dialecteConfig.rootElementName
 }
 
 /** The root by its ref: by id, or by tag name for a singleton; a record of another tag than the ref is not it. */

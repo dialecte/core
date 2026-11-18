@@ -119,15 +119,16 @@ describe('getTree - reads only the branches it keeps', () => {
 				recordsMoved: { ...none, getByTagName: 1, getMany: 1 },
 			},
 		},
-		'an omit with where only → nothing prunes before reading, one whole-document read': {
-			sourceXml: xml,
-			ref: a1,
-			options: { omit: [{ AA_1: { where: { aAA_1: 'v' } } }] },
-			expected: {
-				shape: { tagName: 'A', tree: [leaf('AA_2'), leaf('AA_3')] },
-				recordsMoved: { ...none, getByDocumentId: 11 },
+		'an omit with where only on a subtree root → read by levels, the omitted child read, its subtree never read':
+			{
+				sourceXml: xml,
+				ref: a1,
+				options: { omit: [{ AA_1: { where: { aAA_1: 'v' } } }] },
+				expected: {
+					shape: { tagName: 'A', tree: [leaf('AA_2'), leaf('AA_3')] },
+					recordsMoved: { ...none, get: 1, getMany: 3 },
+				},
 			},
-		},
 	}
 
 	runTestCases.withoutExport({ testCases, act: readsOnlyTheKeptBranches, dev: { perf: true } })
@@ -152,6 +153,112 @@ describe('getTree - reads through transparent elements under a select', () => {
 	}).withoutExport({
 		testCases,
 		act: readsOnlyTheKeptBranches,
+		dev: { perf: true },
+	})
+})
+
+type ReadCalls = RecordsMoved
+
+type NoOptionsCase<GenericConfig extends AnyDialecteConfig> = BaseXmlTestCase & {
+	ref: Ref<GenericConfig, ElementsOf<GenericConfig>>
+	expected: { shape: TreeShape; calls: ReadCalls; recordsMoved: RecordsMoved }
+}
+
+async function readsByLevelsBelowTheDocumentRoot<GenericConfig extends AnyDialecteConfig>({
+	source,
+	testCase,
+}: ActParams<GenericConfig, NoOptionsCase<GenericConfig>>): Promise<void> {
+	source.perf.reset()
+	const tree = await source.query.getTree(testCase.ref)
+	const report = source.perf.report()
+	expect({
+		shape: toShape(tree as AnyTreeRecord),
+		calls: {
+			get: report['core::store::get']?.count ?? 0,
+			getMany: report['core::store::getMany']?.count ?? 0,
+			getByTagName: report['core::store::getByTagName']?.count ?? 0,
+			getByDocumentId: report['core::store::getByDocumentId']?.count ?? 0,
+		},
+		recordsMoved: {
+			get: report['core::store::records.get']?.count ?? 0,
+			getMany: report['core::store::records.getMany']?.count ?? 0,
+			getByTagName: report['core::store::records.getByTagName']?.count ?? 0,
+			getByDocumentId: report['core::store::records.getByDocumentId']?.count ?? 0,
+		},
+	}).toEqual(testCase.expected)
+}
+
+describe('getTree - no options: a root below the document root reads by levels', () => {
+	const testCases: TestCases<NoOptionsCase<TestDialecteConfig>> = {
+		'a subtree root by id → the root by get, one getRecords per level, only its subtree moved': {
+			sourceXml: xml,
+			ref: a1,
+			expected: {
+				shape: {
+					tagName: 'A',
+					tree: [
+						{ tagName: 'AA_1', tree: [leaf('AAA_1'), leaf('AAA_2')] },
+						leaf('AA_2'),
+						leaf('AA_3'),
+					],
+				},
+				calls: { ...none, get: 1, getMany: 2 },
+				recordsMoved: { ...none, get: 1, getMany: 5 },
+			},
+		},
+		'a leaf root by id → the root by get, no level read': {
+			sourceXml: xml,
+			ref: { tagName: 'B', id: 'b1' },
+			expected: {
+				shape: leaf('B'),
+				calls: { ...none, get: 1 },
+				recordsMoved: { ...none, get: 1 },
+			},
+		},
+		'the document root → one whole-document read': {
+			sourceXml: xml,
+			ref: { tagName: 'Root' },
+			expected: {
+				shape: {
+					tagName: 'Root',
+					tree: [
+						{
+							tagName: 'A',
+							tree: [
+								{ tagName: 'AA_1', tree: [leaf('AAA_1'), leaf('AAA_2')] },
+								leaf('AA_2'),
+								leaf('AA_3'),
+							],
+						},
+						{ tagName: 'A', tree: [{ tagName: 'AA_1', tree: [leaf('AAA_1')] }] },
+						leaf('B'),
+					],
+				},
+				calls: { ...none, getByDocumentId: 1 },
+				recordsMoved: { ...none, getByDocumentId: 11 },
+			},
+		},
+		'a ref without id below the document root → one whole-document read, the first of its tag': {
+			sourceXml: xml,
+			ref: { tagName: 'A' },
+			expected: {
+				shape: {
+					tagName: 'A',
+					tree: [
+						{ tagName: 'AA_1', tree: [leaf('AAA_1'), leaf('AAA_2')] },
+						leaf('AA_2'),
+						leaf('AA_3'),
+					],
+				},
+				calls: { ...none, getByDocumentId: 1 },
+				recordsMoved: { ...none, getByDocumentId: 11 },
+			},
+		},
+	}
+
+	runTestCases.withoutExport({
+		testCases,
+		act: readsByLevelsBelowTheDocumentRoot,
 		dev: { perf: true },
 	})
 })

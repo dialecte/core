@@ -7,9 +7,10 @@ const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
 /**
- * getTree must materialize a subtree from ONE whole-document read, not one store round-trip
- * per node. On IndexedDB the per-node path is catastrophic (17s/5MB, 143s/10MB); a single
- * bulk read + in-memory assembly is ~1s. This locks the contract.
+ * getTree on the document root with nothing to prune must materialize the tree from ONE whole-document read, not
+ * one store round-trip per node. On IndexedDB the per-node path is catastrophic (17s/5MB, 143s/10MB); a single
+ * bulk read + in-memory assembly is ~1s. This locks the contract. A root below the document root reads its subtree
+ * by levels instead (get-tree.reads.test.ts).
  */
 describe('getTree — single bulk read', () => {
 	const sourceXml = /* xml */ `
@@ -23,19 +24,21 @@ describe('getTree — single bulk read', () => {
 		</Root>
 	`
 
-	it('issues zero per-node store.get and one getByDocumentId', async () => {
+	it('the document root issues zero per-node store.get and one getByDocumentId', async () => {
 		const { project, source } = await createTestProject({ sourceXml, dev: { perf: true } })
 		try {
 			const doc = source.document
 			doc.perf.reset()
 
-			const tree = await doc.query.any.getTree({ tagName: 'A', id: 'a1' })
+			const root = await doc.query.any.getTree({ tagName: 'Root' })
 
 			const report = doc.perf.report()
 			expect(report['core::store::get']?.count ?? 0).toBe(0)
 			expect(report['core::store::getByDocumentId']?.count ?? 0).toBe(1)
 
 			// Sanity: the assembled tree is still correct.
+			expect(root?.tree.map((child) => child.tagName)).toEqual(['A'])
+			const tree = root?.tree[0]
 			expect(tree?.tagName).toBe('A')
 			expect(tree?.tree.map((child) => child.tagName).sort()).toEqual(['AA_1', 'AA_2'])
 			const aa1 = tree?.tree.find((child) => child.tagName === 'AA_1')
