@@ -1,9 +1,12 @@
-name: Publish @dialecte/core
+# Written by `dialecte ci sync` from the @dialecte/cli template: change the template, not this file.
+name: publish
 
-# A push to main is the merge queue's merge of a tree ci.yml already tested: it builds and publishes, never tests again.
-# Only the push that changes the version publishes it, above npm's latest, and tags it; a re-run pushes a missing tag
-# alone (_check-npm-version.yml). No concurrency group: every push runs to its end, a pending run is never replaced by
-# a later one's.
+# npm trusted publishing names this file (publish.yml) and its push trigger in every package: never rename it, never
+# change its trigger, or publishing stops.
+# The push to main is the queue's merge of a commit ci.yml already tested: build, then publish and tag when the
+# version changed. No test runs here. Only the push that changes the version publishes it, above npm's latest, and
+# tags it; a re-run pushes a missing tag alone (_check-npm-version.yml). No concurrency group: every push runs to its
+# end, a pending run is never replaced by a later one's.
 on:
   push:
     branches:
@@ -21,6 +24,7 @@ jobs:
 
   version:
     name: Check Version
+    needs: install
     uses: ./.github/workflows/_check-npm-version.yml
 
   extract-version:

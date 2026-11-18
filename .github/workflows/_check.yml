@@ -1,3 +1,4 @@
+# Written by `dialecte ci sync` from the @dialecte/cli template: change the template, not this file.
 name: _check
 
 on:
@@ -11,6 +12,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        # the merge commit and its parents: the released changelog check reads the base the change goes onto
+        with:
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -23,6 +27,38 @@ jobs:
         with:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+          # the install job filled it: a miss stops here, never runs without the locked dependencies
+          fail-on-cache-miss: true
 
-      - name: Check (type-check, type-check:test, lint, format)
+      - name: Check the package (its check script)
         run: npm run check
+
+      # a released CHANGELOG section stays as released: judged against the commit the change goes onto - the queue's
+      # base (fetched), else the pull request merge ref's first parent; a dispatched run has no change to judge
+      - name: Fetch the base the change goes onto
+        if: github.event_name == 'merge_group'
+        env:
+          BASE: ${{ github.event.merge_group.base_sha }}
+        run: git fetch --depth=1 origin "$BASE"
+
+      - name: Released changelog sections stay as released
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || 'HEAD^1' }}
+        run: npx --no-install dialecte changelog check --base "$BASE"
+
+      # the code rules the commit hook runs, here where --no-verify cannot skip them: over the change, against the same
+      # base
+      - name: Code rules over the change
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || 'HEAD^1' }}
+        run: npx --no-install dialecte rules --base "$BASE"
+
+      # the package's skill pages in step with its code (its skills:check script), where --no-verify cannot skip it
+      - name: Skill pages in step with the package (its skills:check script)
+        run: npm run skills:check
+
+      # the CI files in step with the template of the cli this package runs (dialecte ci sync writes them)
+      - name: CI files in step with the cli template
+        run: npx --no-install dialecte ci check

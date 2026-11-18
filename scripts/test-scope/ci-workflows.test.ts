@@ -91,16 +91,18 @@ describe('the ci workflow', () => {
 			expect(jobBlock({ name: 'ci.yml', job }), job).not.toMatch(/\n {4}if:/)
 	})
 
-	it('ci-ok runs whatever the checks gave and needs every check', () => {
+	it('ci-ok runs whatever the jobs gave and needs the install and every check', () => {
 		const ciOk = jobBlock({ name: 'ci.yml', job: 'ci-ok' })
 		expect(ciOk).toContain('\n    if: always()\n')
-		expect(ciOk).toContain(`\n    needs:\n${CHECK_JOBS.map((job) => `      - ${job}\n`).join('')}`)
+		expect(ciOk).toContain(
+			`\n    needs:\n${['install', ...CHECK_JOBS].map((job) => `      - ${job}\n`).join('')}`,
+		)
 	})
 
-	it('ci-ok is green only when every check succeeded (a skipped or cancelled check fails it)', () => {
+	it('ci-ok is green only when every job it needs succeeded (a skipped or cancelled one fails it)', () => {
 		const ciOk = jobBlock({ name: 'ci.yml', job: 'ci-ok' })
-		for (const job of CHECK_JOBS)
-			expect(ciOk, job).toContain(`\n          test "\${{ needs.${job}.result }}" = success\n`)
+		expect(ciOk).toContain("RESULTS: ${{ join(needs.*.result, ' ') }}\n")
+		expect(ciOk).toContain('for result in $RESULTS; do test "$result" = success; done\n')
 	})
 
 	it('a pull request runs the browser tests its change selects, a queue entry or a manual run the whole suite', () => {
@@ -157,9 +159,9 @@ describe('the publish workflow', () => {
 		})
 	}
 
-	it('_check-npm-version.yml runs the decision script and hides no error', () => {
+	it("_check-npm-version.yml runs the installed cli's publish decision and hides no error", () => {
 		const check = workflowText({ name: '_check-npm-version.yml' })
-		expect(check).toContain('node scripts/publish-guard/run-publish-decision.ts\n')
+		expect(check).toContain('run: npx --no-install dialecte ci publish-decision\n')
 		expect(check).not.toContain('2>/dev/null')
 	})
 
