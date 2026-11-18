@@ -1,3 +1,4 @@
+# Written by `dialecte ci sync` from the @dialecte/cli template: change the template, not this file.
 name: _check-npm-version
 
 on:
@@ -18,10 +19,10 @@ jobs:
   # `before`); any other push decides from git alone and never asks npm. A version npm lacks is published when it is
   # above npm's latest (a pre-release: above next too, published under next); a lower or equal one, or a release tag
   # without its version on npm, fails the run. A version npm has is never published again: when its release tag is
-  # missing, the push tags its own commit. A failed npm or git lookup fails the run (scripts/publish-guard/run-publish-decision.ts decides).
-  # A merge-queue batch lands as one push: its head is published, which may be a later commit than the one that changed
-  # the version. The ruleset keeps the queue at one entry per merge (max_entries_to_merge: 1), so the head is that
-  # commit.
+  # missing, the push tags its own commit. A failed npm or git lookup fails the run (`dialecte ci publish-decision`
+  # decides). A merge-queue batch lands as one push: its head is published, which may be a later commit than the one
+  # that changed the version. The ruleset keeps the queue at one entry per merge (max_entries_to_merge: 1), so the
+  # head is that commit.
   check:
     name: Get Deployed Version
     runs-on: ubuntu-24.04
@@ -38,10 +39,22 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      # the cli decides: it loads from node_modules, which the install job cached
+      - name: Restore node_modules cache
+        uses: actions/cache@v5
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+          # the install job filled it: a miss stops here, never runs without the locked dependencies
+          fail-on-cache-miss: true
+
+      - name: Fetch the commit the push started from
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: git fetch --depth=1 origin "$BEFORE"
+
       - name: Decide
         id: decide
         env:
           BEFORE: ${{ github.event.before }}
-        run: |
-          git fetch --depth=1 origin "$BEFORE"
-          node scripts/publish-guard/run-publish-decision.ts
+        run: npx --no-install dialecte ci publish-decision

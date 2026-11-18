@@ -34,7 +34,7 @@ folder and rewrites nothing.
 
 **Which flow lands the lot** is decided first, from the repository: a **CI-first** repository - main only through
 the merge queue, its `.github/workflows/ci.yml` running on `merge_group` with a `ci-ok` job (today the cli and core) - lands the lot
-by committing on its branch through the hook and `npx dialecte lot land <id> --draft`; CI runs the suite there, so
+by committing on its branch through the hook and `npx dialecte lot land <id>` (always a draft); CI runs the suite there, so
 Stations 5 and 6 below become that landing, and no hand-over, rehearsal or merge lot is made:
 [references/ci-first.md](references/ci-first.md). Every other repository lands through the hand-over below. The
 repository decides, not the cli's `next:` line, which names `handover write` in both (cli 0.8.1 and older also
@@ -415,7 +415,7 @@ it from a test-first red (it flags `red after green` only when the case already 
 ## Station 6 - hand over
 
 **In a CI-first repository this station is the landing** of [references/ci-first.md](references/ci-first.md):
-commit on the lot branch through the hook, `npx dialecte lot land <id> --draft`, report the pull request. Nothing
+commit on the lot branch through the hook, `npx dialecte lot land <id>`, report the draft pull request. Nothing
 below applies there. In a hand-over repository:
 
 Write only the lots file and run
@@ -546,7 +546,7 @@ given host starts a session, spawns an agent, loads a skill and wakes you: [refe
 - Let the implement station edit a test after its red, or prove a red by breaking the code afterwards.
 - Name a model in a brief or a skill (name the tier), or down-tier a correctness review to save tokens.
 - Commit, push, stage, or merge - in a hand-over repository. In a CI-first one, commit only on the lot's branch in
-  its worktree, through the hook, and push only through `lot land <id> --draft`; never queue, `lot approve`, mark a
+  its worktree, through the hook, and push only through `lot land <id>`; never queue, `lot approve`, mark a
   pull request ready or merge ([references/ci-first.md](references/ci-first.md)).
 - `git stash` (one stash is shared by every worktree and session) and any git command that writes the index
   (`git add`, `git rm`, `git reset`, `git restore`, `git checkout --`; the exceptions: the `git rm` of a review round's throwaway worktree, and in a CI-first repository the `git add` of the lot's own files right before its Station 6 commit and the

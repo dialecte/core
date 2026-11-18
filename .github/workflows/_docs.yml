@@ -1,3 +1,4 @@
+# Written by `dialecte ci sync` from the @dialecte/cli template: change the template, not this file.
 name: _docs
 
 on:
@@ -5,7 +6,7 @@ on:
   workflow_call:
 
 jobs:
-  # the docs site builds: a broken page or link is caught before main (deploy-docs.yml publishes it after the merge)
+  # the docs site builds: a broken page or link is caught before main
   docs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -24,6 +25,8 @@ jobs:
         with:
           path: node_modules
           key: ${{ runner.os }}-node-modules-${{ hashFiles('**/package-lock.json') }}
+          # the install job filled it: a miss stops here, never runs without the locked dependencies
+          fail-on-cache-miss: true
 
       - name: Build the docs
         run: npm run doc:build

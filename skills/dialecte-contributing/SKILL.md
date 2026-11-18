@@ -124,7 +124,7 @@ what the station records for the hand-over card).
    re-reads your own intent and misses weakened assertions and unusable types.
 6. **Land it** by the repository's flow. **CI-first** (main only through the merge queue: its
    `.github/workflows/ci.yml` runs on `merge_group` with a `ci-ok` job; today the cli and core): commit on the lot branch through the
-   hook (never `--no-verify`), then `npx dialecte lot land <id> --draft`, and report the draft pull request; never
+   hook (never `--no-verify`), then `npx dialecte lot land <id>` (it always opens a draft), and report the draft pull request; never
    a hand-over, a rehearsal or a merge-of-main commit, never queue it (`dialecte-lot` references/ci-first.md).
    **Hand-over** (every other repository): `npx dialecte handover write <lots.json>`: the agent writes only the
    lots file, the command writes the hand-over folder and prints the card the user gets
@@ -363,7 +363,7 @@ during import (import is in-memory two-pass by design, see the hooks rules in th
 - Add a domain rule to core because it was convenient.
 - Restate a registry or the definition by hand (see code-rules).
 - Commit, push, or touch a repo's git index while a hand-over script may be running; in a CI-first repository,
-  commit or push anywhere but the lot's branch, or push outside `lot land --draft`.
+  commit or push anywhere but the lot's branch, or push outside `lot land`.
 - Name a tool that consumes the package in a committed file or message ([code-rules](references/code-rules.md)).
 - Leave a known improvement as a "note for later" without doing it or explaining why you cannot.
 

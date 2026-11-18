@@ -1,9 +1,10 @@
+# Written by `dialecte ci sync` from the @dialecte/cli template: change the template, not this file.
 name: ci
 
-# Every change before main: a pull request runs every check with the browser tests its change selects (a fast answer on
-# each push), a merge queue entry (and a manual run) every check with the whole browser suite and the store contract's
-# full table, on top of main and the lots ahead of it. A push to main is the queue's merge of a tree this workflow
-# already tested: publish.yml builds and publishes it.
+# The checks: a pull request and the merge queue run every one. A pull request gets the whole answer early (the tests
+# its own _test.yml runs for mode pr, when it takes one); the queue proves the change on top of main and the changes
+# ahead of it (mode full). The push to main that the queue's merge makes is publish.yml's: it builds and publishes,
+# never tests again.
 on:
   workflow_dispatch:
   pull_request:
@@ -41,6 +42,7 @@ jobs:
     needs: install
     uses: ./.github/workflows/_docs.yml
 
+  # the repository's own tests: .github/workflows/_test.yml is not the template's
   test:
     name: Run Tests
     needs: install
@@ -48,11 +50,13 @@ jobs:
     with:
       mode: ${{ github.event_name == 'pull_request' && 'pr' || 'full' }}
 
-  # the one check the ruleset requires: green only when every check of this run passed (none skipped)
+  # the one check the ruleset requires: green only when every job of this run passed (none failed, cancelled or
+  # skipped)
   ci-ok:
     name: ci-ok
     if: always()
     needs:
+      - install
       - build
       - check
       - type-perf
@@ -60,11 +64,9 @@ jobs:
       - test
     runs-on: ubuntu-24.04
     steps:
-      - name: Every check passed
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          echo "build=${{ needs.build.result }} check=${{ needs.check.result }} type-perf=${{ needs.type-perf.result }} docs=${{ needs.docs.result }} test=${{ needs.test.result }}"
-          test "${{ needs.build.result }}" = success
-          test "${{ needs.check.result }}" = success
-          test "${{ needs.type-perf.result }}" = success
-          test "${{ needs.docs.result }}" = success
-          test "${{ needs.test.result }}" = success
+          echo "results: $RESULTS"
+          for result in $RESULTS; do test "$result" = success; done
