@@ -1,1 +1,1 @@
-The development tooling moves to @dialecte/cli 0.8.3 (a devDependency pin), its CI files follow the cli template and the type bench is re-measured if asked; nothing the package ships changes.
+The development tooling moves to @dialecte/cli 0.8.3 (a devDependency pin) and the CI files follow its template, the publish decision run by the cli; no change to the code the package ships.
