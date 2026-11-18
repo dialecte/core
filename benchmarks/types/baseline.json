@@ -1,42 +1,47 @@
 {
 	"tool": "dialecte bench",
 	"version": "core",
+	"compiler": {
+		"name": "tsgo",
+		"version": "7.0.2"
+	},
+	"checkers": 1,
 	"runs": 3,
 	"results": {
 		"whole-program (check)": {
-			"Instantiations": 201536,
-			"Types": 125352,
-			"Symbols": 306615
+			"Instantiations": 134137,
+			"Types": 71703,
+			"Symbols": 235245
 		},
 		"whole-program (emit)": {
-			"Instantiations": 200929,
-			"Types": 125311,
-			"Symbols": 306594
+			"Instantiations": 133530,
+			"Types": 71662,
+			"Symbols": 235224
 		},
 		"baseline (import)": {
-			"Instantiations": 165629,
-			"Types": 92483,
-			"Symbols": 221210
+			"Instantiations": 111649,
+			"Types": 55472,
+			"Symbols": 177281
 		},
 		"coverage: surface": {
-			"Instantiations": 169974,
-			"Types": 93631,
-			"Symbols": 222087
+			"Instantiations": 115988,
+			"Types": 56609,
+			"Symbols": 178158
 		},
 		"coverage: calls": {
-			"Instantiations": 203610,
-			"Types": 105737,
-			"Symbols": 241739
+			"Instantiations": 148670,
+			"Types": 68243,
+			"Symbols": 197551
 		},
 		"coverage: deep": {
-			"Instantiations": 167215,
-			"Types": 92978,
-			"Symbols": 221785
+			"Instantiations": 113164,
+			"Types": 55906,
+			"Symbols": 177808
 		},
 		"coverage: api": {
-			"Instantiations": 210229,
-			"Types": 106728,
-			"Symbols": 239639
+			"Instantiations": 140337,
+			"Types": 63168,
+			"Symbols": 192249
 		}
 	}
 }
