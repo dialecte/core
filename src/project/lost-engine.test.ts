@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: main already carries it at 490 lines; this lot adds the two lost-commit `changeId` cases beside the lost-commit cases they extend
 import { Project } from './project'
 
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -6,6 +7,7 @@ import { createDialecteError, toDialecteError } from '@/errors'
 import { InMemoryStore } from '@/store'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 
+import type { ProjectChannelMessage } from './types'
 import type { Transaction } from '@/document'
 import type { Store } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
@@ -168,6 +170,31 @@ async function fenceOf(params: {
 	return { type: 'blob-added', documentId: params.documentId }
 }
 
+/** The `writeId` of every commit the store is asked for, in order. */
+function writeIdsAsked(params: { store: Store }): string[] {
+	const { store } = params
+	const asked: string[] = []
+	const commit = store.commit.bind(store)
+	store.commit = function recordWriteId(commitParams) {
+		asked.push(commitParams.writeId)
+		return commit(commitParams)
+	}
+	return asked
+}
+
+/** The `changeId` of every commit message a listener of the project's channel heard; its channel closed after the case. */
+function changeIdsHeard(params: { project: Project<AnyDialecteConfig> }): string[] {
+	const heard: string[] = []
+	const channel = params.project.createChannel()
+	channel.onmessage = function hear(event: MessageEvent<ProjectChannelMessage>) {
+		if (event.data.type === 'commit') heard.push(event.data.changeId)
+	}
+	onTestFinished(function closeChannel() {
+		channel.close()
+	})
+	return heard
+}
+
 /** One `A` added under the document's root. */
 async function addOneA(tx: Transaction<AnyDialecteConfig>): Promise<void> {
 	const root = await tx.getRoot()
@@ -306,6 +333,41 @@ describe('a project whose engine is lost during its write', () => {
 		expect(settled).toMatchObject({ key: 'STORE_CONNECTION_LOST', outcome: 'unknown' })
 		await prepared.commit()
 		expect(calls.commit).toBe(1)
+	})
+
+	it('on a store that tells no change, a commit whose outcome is not known → its unknown message carries the commit’s writeId', async () => {
+		const { project, store, documentId } = await openWithDocument({
+			losing: ['commit'],
+			landing: 'applied',
+			outcomeRefused: true,
+			announcing: false,
+		})
+		const asked = writeIdsAsked({ store })
+		const heard = changeIdsHeard({ project })
+		await settledOf({ action: project.openDocument(documentId).transaction(addOneA) })
+		await fenceOf({ project, documentId })
+		await vi.waitFor(function heardTheCommit() {
+			expect(heard).toHaveLength(1)
+		})
+		expect({ asked: asked.length, heard }).toEqual({ asked: 1, heard: asked })
+	})
+
+	it('a prepared commit that did not land, committed again → a new writeId; one message, with the second', async () => {
+		const { project, store, documentId } = await openWithDocument({
+			losing: ['commit'],
+			landing: 'not-applied',
+			losses: 1,
+		})
+		const asked = writeIdsAsked({ store })
+		const heard = changeIdsHeard({ project })
+		const prepared = await project.openDocument(documentId).prepare(addOneA)
+		await settledOf({ action: prepared.commit() })
+		await prepared.commit()
+		await fenceOf({ project, documentId })
+		await vi.waitFor(function heardTheCommit() {
+			expect(heard).toHaveLength(1)
+		})
+		expect({ distinct: new Set(asked).size, heard }).toEqual({ distinct: 2, heard: [asked[1]] })
 	})
 
 	type ImportCase = {

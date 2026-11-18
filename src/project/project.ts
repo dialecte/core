@@ -11,6 +11,7 @@ import { READ_SCOPE_VOIDING_MESSAGES } from '@/document/query/read-scope/read-sc
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
 import { mergeExtensions } from '@/helpers'
 import { createPerf } from '@/perf'
+import { newCallId } from '@/store/json-values'
 import {
 	ignoreReadFailure,
 	isConnectionLost,
@@ -1249,9 +1250,11 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
+			// the step's own id: told with it, so every copy of its message is known as one change
+			const changeId = newCallId()
 			const step = await this.writeOrReadAgain({
 				documentId,
-				write: () => this.store.undo(documentId),
+				write: () => this.store.undo({ documentId, changeId }),
 			})
 			// nothing stepped: nothing changed, nothing told
 			if (step === false) return
@@ -1262,7 +1265,13 @@ export class Project<
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
 			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
-			this.broadcast({ type: 'commit', documentId, timestamp, changes: step.changes })
+			this.broadcast({
+				type: 'commit',
+				documentId,
+				timestamp,
+				changeId: step.changeId,
+				changes: step.changes,
+			})
 			this.signalStateChange(documentId, true)
 		})
 	}
@@ -1282,9 +1291,11 @@ export class Project<
 				detail: `Document "${documentId}" not registered in project "${this.name}"`,
 			})
 
+			// the step's own id: told with it, so every copy of its message is known as one change
+			const changeId = newCallId()
 			const step = await this.writeOrReadAgain({
 				documentId,
-				write: () => this.store.redo(documentId),
+				write: () => this.store.redo({ documentId, changeId }),
 			})
 			// nothing stepped: nothing changed, nothing told
 			if (step === false) return
@@ -1293,7 +1304,13 @@ export class Project<
 			documentState.lastUpdate = timestamp
 			await this.refreshHistoryStatus(documentId)
 			// posted first: a subscriber that throws fails the call, as a transaction's does, its change told all the same
-			this.broadcast({ type: 'commit', documentId, timestamp, changes: step.changes })
+			this.broadcast({
+				type: 'commit',
+				documentId,
+				timestamp,
+				changeId: step.changeId,
+				changes: step.changes,
+			})
 			this.signalStateChange(documentId, true)
 		})
 	}
@@ -1545,12 +1562,18 @@ function unsubscribeNothing(): void {}
 /** The end of a write never counted: a Document of an open that closed. */
 function endNothing(): void {}
 
-/** Whether two changes are of one thing: their type, and the document and the blob they name. */
+/**
+ * Whether two changes are one: two commit messages by their `changeId` (one id per change, whatever its document);
+ * any other by its type, and the document and the blob it names.
+ */
 function sameSubject(params: {
 	first: ProjectChannelMessage
 	second: ProjectChannelMessage
 }): boolean {
 	const { first, second } = params
+	if (first.type === 'commit' || second.type === 'commit') {
+		return first.type === 'commit' && second.type === 'commit' && first.changeId === second.changeId
+	}
 	return (
 		first.type === second.type &&
 		subjectIdOf({ message: first, field: 'documentId' }) ===

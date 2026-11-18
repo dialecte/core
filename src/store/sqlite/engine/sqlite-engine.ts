@@ -64,7 +64,7 @@ import { runExport, throwIfExportAborted } from '@/project/io/run-export'
 import { runImport } from '@/project/io/run-import'
 import { requireStoreRuntime } from '@/project/io/store-runtime'
 import { tellCommitProgress } from '@/store/commit-progress'
-import { checkJsonValues } from '@/store/json-values'
+import { checkCallId, checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwStoreClosed } from '@/store/store-errors'
 import { runVersionedRead } from '@/store/versioned-read'
 import { writeOutcomeOf } from '@/store/write-outcome'
@@ -535,13 +535,15 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			noteWrite({ documentId, gained })
 			tellCommitProgress({ onProgress, parts: [creates.length, updates.length, deletes.length] })
 		},
-		undo: async function undo(documentId) {
+		undo: async function undo({ documentId, changeId }) {
 			refuseClosed({ state, name })
-			return stepDocumentHistory({ documentId, direction: 'back' })
+			checkCallId({ field: 'changeId', value: changeId })
+			return stepDocumentHistory({ documentId, changeId, direction: 'back' })
 		},
-		redo: async function redo(documentId) {
+		redo: async function redo({ documentId, changeId }) {
 			refuseClosed({ state, name })
-			return stepDocumentHistory({ documentId, direction: 'forward' })
+			checkCallId({ field: 'changeId', value: changeId })
+			return stepDocumentHistory({ documentId, changeId, direction: 'forward' })
 		},
 		getHistoryStatus: async function getHistoryStatus(documentId) {
 			refuseClosed({ state, name })
@@ -744,9 +746,10 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	 */
 	function stepDocumentHistory(params: {
 		documentId: string
+		changeId: string
 		direction: HistoryDirection
 	}): HistoryStep | false {
-		const { documentId, direction } = params
+		const { documentId, changeId, direction } = params
 		const stepped = stepHistory({
 			sqlite3,
 			db,
@@ -758,7 +761,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		})
 		if (stepped === undefined) return false
 		noteWrite({ documentId, gained: stepped.gained })
-		return { changes: stepped.changes }
+		return { changeId, changes: stepped.changes }
 	}
 
 	/**

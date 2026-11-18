@@ -263,6 +263,7 @@ describe('an engine alive or lost', () => {
 		await yielding
 		const records = Array.from({ length: 20_000 }, (_, index) => makeRecord({ id: `r${index}` }))
 		await second.commit({
+			writeId: crypto.randomUUID(),
 			documentId: 'doc-1',
 			creates: records,
 			updates: [],

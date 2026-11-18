@@ -155,11 +155,14 @@ describe('a history step on a file that can grow no more', () => {
 		it(description, async () => {
 			const { engine, cap } = await startCappedEngine()
 			await rewriteAll({ engine, from, to })
-			if (step === 'redo') await engine.undo('doc-1')
+			if (step === 'redo') await engine.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const before = await engine.getHistoryStatus('doc-1')
 			cap()
 			await expectRejectsWith({
-				action: step === 'undo' ? engine.undo('doc-1') : engine.redo('doc-1'),
+				action:
+					step === 'undo'
+						? engine.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+						: engine.redo({ documentId: 'doc-1', changeId: 'redo-1' }),
 				key: 'STORE_QUOTA_EXCEEDED',
 				meta: { project: 'engine-test' },
 			})
@@ -206,7 +209,7 @@ describe('every write of the engine, refused for want of space', () => {
 				deletes: [],
 			})
 		}
-		await engine.undo('doc-1')
+		await engine.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 		await engine.addBlob(makeBlobEntry({ id: 'b-attached' }), new Blob(['a']))
 		await engine.attachBlob('b-attached', { documentId: 'doc-1', recordRef: 'r-w-1' })
 		await engine.addBlob(makeBlobEntry({ id: 'b-loose' }), new Blob(['b']))
@@ -225,8 +228,8 @@ describe('every write of the engine, refused for want of space', () => {
 				updates: [],
 				deletes: [],
 			}),
-		undo: (engine) => engine.undo('doc-1'),
-		redo: (engine) => engine.redo('doc-1'),
+		undo: (engine) => engine.undo({ documentId: 'doc-1', changeId: 'undo-1' }),
+		redo: (engine) => engine.redo({ documentId: 'doc-1', changeId: 'redo-1' }),
 		addBlob: (engine) => engine.addBlob(makeBlobEntry({ id: 'b-new' }), new Blob(['c'])),
 		attachBlob: (engine) =>
 			engine.attachBlob('b-loose', { documentId: 'doc-1', recordRef: 'r-w-1' }),

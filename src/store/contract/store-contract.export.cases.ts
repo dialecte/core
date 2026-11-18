@@ -100,16 +100,16 @@ const WRITES_DURING_AN_EXPORT: Record<string, WriteDuringExport> = {
 	'an undo': {
 		arrange: ({ store, documentId, edited }) => commitEdits({ store, documentId, edited }),
 		write: async ({ writer, documentId }) => {
-			await writer.undo(documentId)
+			await writer.undo({ documentId: documentId, changeId: 'undo-1' })
 		},
 	},
 	'a redo': {
 		arrange: async ({ store, documentId, edited }) => {
 			await commitEdits({ store, documentId, edited })
-			await store.undo(documentId)
+			await store.undo({ documentId: documentId, changeId: 'undo-1' })
 		},
 		write: async ({ writer, documentId }) => {
-			await writer.redo(documentId)
+			await writer.redo({ documentId: documentId, changeId: 'redo-1' })
 		},
 	},
 	'a commit through another connection': {

@@ -5,7 +5,7 @@ import { expect } from 'vitest'
 import { toDialecteError } from '@/errors'
 import { TEST_DIALECTE_CONFIG } from '@/test/config'
 
-import type { ImportProgress, Store } from '../store.types'
+import type { ImportProgress, Store, StoreNotice } from '../store.types'
 import type { DialecteErrorKey } from '@/errors'
 import type { ChangedRecord, DocumentRecord } from '@/project/types'
 import type { AnyRawRecord, AnyRelationship, BlobRecord } from '@/types'
@@ -63,7 +63,7 @@ export function deletedRef(
 	return { id, tagName, parentId }
 }
 
-/** A commit of creates, updates and deletes on one document, progress ignored; its id when given. */
+/** A commit of creates, updates and deletes on one document, progress ignored; its id when given, a fresh one otherwise. */
 export function commit(params: {
 	store: Store
 	documentId: string
@@ -72,7 +72,14 @@ export function commit(params: {
 	updates?: AnyRawRecord[]
 	deletes?: ReadonlyArray<ChangedRecord>
 }): Promise<void> {
-	const { store, documentId, writeId, creates = [], updates = [], deletes = [] } = params
+	const {
+		store,
+		documentId,
+		writeId = crypto.randomUUID(),
+		creates = [],
+		updates = [],
+		deletes = [],
+	} = params
 	return store.commit({ documentId, writeId, creates, updates, deletes, onProgress: () => {} })
 }
 
@@ -187,4 +194,10 @@ export async function outcomeOf(params: {
 	} finally {
 		clearTimeout(timer)
 	}
+}
+
+/** The id a told commit carries (one per change, the same on every connection); none for another notice. */
+export function changeIdOf(notice: StoreNotice): string | undefined {
+	if (notice.type !== 'change' || notice.message.type !== 'commit') return undefined
+	return notice.message.changeId
 }

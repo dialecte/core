@@ -794,14 +794,14 @@ describe('an engine importing files', () => {
 			},
 			'an undo': {
 				run: async (engine) => {
-					await engine.undo('other')
+					await engine.undo({ documentId: 'other', changeId: 'undo-1' })
 				},
 				expectedCount: 0,
 			},
 			'a redo': {
 				run: async (engine) => {
-					await engine.undo('other')
-					await engine.redo('other')
+					await engine.undo({ documentId: 'other', changeId: 'undo-1' })
+					await engine.redo({ documentId: 'other', changeId: 'redo-1' })
 				},
 				expectedCount: 1,
 			},

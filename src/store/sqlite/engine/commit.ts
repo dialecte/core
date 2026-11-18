@@ -17,7 +17,7 @@ import { readHeldIds, refuseTakenIds } from './records'
 import { documentTablesOf } from './registry'
 import { inWriteTransaction } from './transaction'
 
-import { checkWriteId } from '@/store/json-values'
+import { checkCallId } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwRecordToUpdateNotFound } from '@/store/store-errors'
 
 import type { CommitRecordsParams, HistoryStepParams } from './engine.types'
@@ -45,7 +45,7 @@ export function commitRecords(params: CommitRecordsParams): number {
 	if (!tables) throwDocumentNotRegistered({ documentId, what: 'records' })
 	// an import table has no unique id index yet, and nothing commits on a document before it is ready
 	if (tables.status === 'importing') throwDocumentNotRegistered({ documentId, what: 'a commit' })
-	checkWriteId({ writeId })
+	checkCallId({ field: 'writeId', value: writeId })
 	asReadFailure({
 		detail: `The records to update in document "${documentId}"`,
 		work: function checkUpdatesHeld() {

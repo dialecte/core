@@ -168,6 +168,7 @@ async function losingStore(params: {
 	// something for every write to change - a history both ways, a blob - so a write marked a read moves the state
 	for (const id of ['r2', 'r3']) {
 		await seeded.commit({
+			writeId: crypto.randomUUID(),
 			documentId: 'doc-1',
 			creates: [makeRecord({ id })],
 			updates: [],
@@ -175,7 +176,7 @@ async function losingStore(params: {
 			onProgress: ignoreProgress,
 		})
 	}
-	await seeded.undo('doc-1')
+	await seeded.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 	await seeded.addBlob(makeBlobEntry({ id: 'blob-1', documentId: 'doc-1' }), new Blob(['x']))
 	await seeded.attachBlob('blob-1', { documentId: 'doc-1', recordRef: 'r1' })
 	seeded.close()
@@ -256,10 +257,10 @@ const MEMBER_ACTS: MemberActs = {
 		return store.getWriteOutcome({ writeId: 'w-asked' })
 	},
 	undo: function undo(store) {
-		return store.undo('doc-1')
+		return store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 	},
 	redo: function redo(store) {
-		return store.redo('doc-1')
+		return store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 	},
 	getHistoryStatus: function getHistoryStatus(store) {
 		return store.getHistoryStatus('doc-1')
@@ -269,6 +270,7 @@ const MEMBER_ACTS: MemberActs = {
 	},
 	commit: function commit(store) {
 		return store.commit({
+			writeId: crypto.randomUUID(),
 			documentId: 'doc-1',
 			creates: [makeRecord({ id: 'r9' })],
 			updates: [],
@@ -513,7 +515,13 @@ describe('EngineStore, the changes it tells', () => {
 			type: 'event',
 			signal: {
 				type: 'event',
-				message: { type: 'commit', documentId: 'doc-1', timestamp: 1, changes: { unknown: true } },
+				message: {
+					type: 'commit',
+					documentId: 'doc-1',
+					timestamp: 1,
+					changeId: 'told-1',
+					changes: { unknown: true },
+				},
 				...params,
 			},
 		}

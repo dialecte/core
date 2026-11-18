@@ -263,13 +263,13 @@ export interface Store {
 	/**
 	 * Atomic commit — all-or-nothing write scoped to a document, one undoable history entry holding
 	 * the whole records before and after. Refused whole, nothing written and no entry kept: a document
-	 * not registered or still importing (`DOCUMENT_NOT_REGISTERED`), then a `writeId` that is not
+	 * not registered or still importing (`DOCUMENT_NOT_REGISTERED`), then a `writeId` missing or not
 	 * well-formed text (`STORE_VALUE_NOT_JSON`), then an update of a record the document does not hold
 	 * (`STORE_RECORD_NOT_FOUND`, `meta.recordId`), then a create that is not JSON
 	 * (`STORE_VALUE_NOT_JSON`), then a create of an id the document holds or the commit holds twice
 	 * (`STORE_DUPLICATE_ID`, `meta.recordIds`), then an update that is not JSON. A delete of an absent
-	 * id is ignored. `writeId` is the caller's id for the commit, kept on its history entry and asked by
-	 * `getWriteOutcome`; generated when absent. A delete is a ref with the parent the record had: the store deletes
+	 * id is ignored. `writeId` is the caller's id for the commit, required: kept on its history entry, asked by
+	 * `getWriteOutcome`, and told as the commit message's `changeId` by a store that announces. A delete is a ref with the parent the record had: the store deletes
 	 * by its id and keeps the stored record as the history image; the ref's tag and parent only tell the change
 	 * (`describeCommitChanges` over the arguments, for a store that announces). So a delete of an absent id is told
 	 * in the commit's `deleted`, but its undo and redo leave it out (the history keeps no image of it); a commit that
@@ -277,7 +277,7 @@ export interface Store {
 	 */
 	commit(params: {
 		documentId: string
-		writeId?: string
+		writeId: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: ReadonlyArray<ChangedRecord>
@@ -288,15 +288,18 @@ export interface Store {
 
 	/**
 	 * Undo the last committed change for a document: answers what the step applied (`describeHistoryStep` over the
-	 * entry's images, `back`), or `false` at the beginning of history (nothing written, nothing told).
+	 * entry's images, `back`) under the caller's `changeId` (a store that announces tells the step with it), or
+	 * `false` at the beginning of history (nothing written, nothing told). A `changeId` missing or not well-formed
+	 * text is refused `STORE_VALUE_NOT_JSON`, nothing stepped.
 	 */
-	undo(documentId: string): Promise<HistoryStep | false>
+	undo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false>
 
 	/**
-	 * Redo the next change for a document: answers what the step applied (`describeHistoryStep`, `forward`), or
-	 * `false` at the end of history (nothing written, nothing told).
+	 * Redo the next change for a document: answers what the step applied (`describeHistoryStep`, `forward`) under the
+	 * caller's `changeId`, or `false` at the end of history (nothing written, nothing told). A `changeId` missing or
+	 * not well-formed text is refused `STORE_VALUE_NOT_JSON`, nothing stepped.
 	 */
-	redo(documentId: string): Promise<HistoryStep | false>
+	redo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false>
 
 	/** Whether undo/redo are currently available for a document */
 	getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }>
@@ -522,8 +525,11 @@ export type VersionedAnswer<GenericMember extends VersionedReadMember = Versione
 	version: StoreVersion
 }
 
-/** What an undo or a redo applied: the records it created, updated and deleted, or `{ unknown: true }` past the cap. */
-export type HistoryStep = { changes: CommitChanges | UnknownCommitChanges }
+/**
+ * What an undo or a redo applied: the id its caller gave it (`changeId`, told with it), and the records it created,
+ * updated and deleted, or `{ unknown: true }` past the cap.
+ */
+export type HistoryStep = { changeId: string; changes: CommitChanges | UnknownCommitChanges }
 
 /** What became of a write asked by its id. */
 export type WriteOutcome = 'applied' | 'running' | 'not-applied'

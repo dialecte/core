@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: over 400 lines before this lot; this lot only moves undo and redo to `{ documentId, changeId }` and replaces the generated-writeId case by its refusal
 import { JSON_MAX_DEPTH } from '../json-values.constants'
 import {
 	CONTRACT_LEVELS_ABOVE_ATTRIBUTE_VALUE,
@@ -495,7 +496,7 @@ const bulkWrites: StoreContractCases = {
 			expect(changeLogDoc1).toEqual([])
 			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1).toEqual({ canUndo: false, canRedo: false })
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordCountDoc1 = await store.count('doc-1')
 			expect(recordCountDoc1).toBe(2)
 		},
@@ -550,6 +551,7 @@ const history: StoreContractCases = {
 				await seedTwoRecords(store)
 				const reported: [number, number][] = []
 				await store.commit({
+					writeId: crypto.randomUUID(),
 					documentId: 'doc-1',
 					creates: [makeRecord({ id: 'r3' })],
 					updates: [makeRecord({ id: 'r1', value: 'v' })],
@@ -574,7 +576,7 @@ const history: StoreContractCases = {
 				updates: [makeRecord({ id: 'r1', value: 'v' })],
 				deletes: [deletedRef('r2')],
 			})
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordR3 = await store.get('r3', 'doc-1')
 			expect(recordR3).toBeUndefined()
 			const recordR1 = await store.get('r1', 'doc-1')
@@ -593,8 +595,8 @@ const history: StoreContractCases = {
 				updates: [makeRecord({ id: 'r1', value: 'v' })],
 				deletes: [deletedRef('r2')],
 			})
-			await store.undo('doc-1')
-			await store.redo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const recordR3 = await store.get('r3', 'doc-1')
 			expect(recordR3).toEqual(makeRecord({ id: 'r3' }))
 			const recordR1 = await store.get('r1', 'doc-1')
@@ -606,14 +608,14 @@ const history: StoreContractCases = {
 	'undo at the start of history is a no-op → answers false': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
-			await expect(store.undo('doc-1')).resolves.toBe(false)
+			await expect(store.undo({ documentId: 'doc-1', changeId: 'undo-1' })).resolves.toBe(false)
 		},
 	},
 	'redo at the end of history is a no-op → answers false': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
-			await expect(store.redo('doc-1')).resolves.toBe(false)
+			await expect(store.redo({ documentId: 'doc-1', changeId: 'redo-1' })).resolves.toBe(false)
 			const recordCountDoc1 = await store.count('doc-1')
 			expect(recordCountDoc1).toBe(1)
 		},
@@ -626,10 +628,10 @@ const history: StoreContractCases = {
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
 			const historyStatusDoc1AfterCommit = await store.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1AfterCommit).toEqual({ canUndo: true, canRedo: false })
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const historyStatusDoc1AfterUndo = await store.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1AfterUndo).toEqual({ canUndo: false, canRedo: true })
-			await store.redo('doc-1')
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const historyStatusDoc1AfterRedo = await store.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1AfterRedo).toEqual({ canUndo: true, canRedo: false })
 		},
@@ -639,13 +641,13 @@ const history: StoreContractCases = {
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r2' })] })
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
 			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
 			const log = await store.getChangeLog('doc-1')
 			expect(log.map((entry) => entry.operations.creates[0]?.id)).toEqual(['r1', 'r3'])
-			await store.redo('doc-1')
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const recordR2 = await store.get('r2', 'doc-1')
 			expect(recordR2).toBeUndefined()
 		},
@@ -668,10 +670,10 @@ const history: StoreContractCases = {
 			await commit({ store, documentId: 'doc-1', deletes: [deletedRef('r1')] })
 			const recordCountAfterCommitDeletingOne = await store.count('doc-1')
 			expect(recordCountAfterCommitDeletingOne, 'after a commit deleting one').toBe(2)
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordCountAfterUndoingDelete = await store.count('doc-1')
 			expect(recordCountAfterUndoingDelete, 'after undoing the delete').toBe(3)
-			await store.redo('doc-1')
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const recordCountAfterRedoing = await store.count('doc-1')
 			expect(recordCountAfterRedoing, 'after redoing it').toBe(2)
 			await store.removeDocument('doc-1')
@@ -702,7 +704,7 @@ const history: StoreContractCases = {
 			})
 			const writeOutcome = await store.getWriteOutcome({ writeId: 'w1' })
 			expect(writeOutcome).toBe('applied')
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const writeOutcomeAfterUndo = await store.getWriteOutcome({ writeId: 'w1' })
 			expect(writeOutcomeAfterUndo).toBe('applied')
 		},
@@ -716,7 +718,7 @@ const history: StoreContractCases = {
 				writeId: 'w1',
 				creates: [makeRecord({ id: 'r1' })],
 			})
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			await commit({
 				store,
 				documentId: 'doc-1',
@@ -763,7 +765,7 @@ const history: StoreContractCases = {
 			expect(writeOutcome).toBe('not-applied')
 		},
 	},
-	'a history entry carries the id of its commit, one of its own when none was given': {
+	'a history entry carries the id of its commit': {
 		act: async ({ store }) => {
 			await store.registerDocument(makeDocument())
 			await commit({
@@ -772,19 +774,27 @@ const history: StoreContractCases = {
 				writeId: 'w1',
 				creates: [makeRecord({ id: 'r1' })],
 			})
-			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r2' })] })
-			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
-			const [given, ...generated] = (await store.getChangeLog('doc-1')).map(
-				(entry) => entry.writeId,
-			)
-			expect(given).toBe('w1')
-			expect(generated.every((writeId) => typeof writeId === 'string')).toBe(true)
-			expect(new Set(generated).size).toBe(2)
-			expect(generated).not.toContain('w1')
-			for (const writeId of generated) {
-				const writeOutcome = await store.getWriteOutcome({ writeId })
-				expect(writeOutcome).toBe('applied')
-			}
+			const writeIds = (await store.getChangeLog('doc-1')).map((entry) => entry.writeId)
+			expect(writeIds).toEqual(['w1'])
+		},
+	},
+	'a commit without a writeId → refused STORE_VALUE_NOT_JSON, nothing written, no history entry': {
+		act: async ({ store }) => {
+			await store.registerDocument(makeDocument())
+			await expectRejectsWith({
+				action: store.commit({
+					documentId: 'doc-1',
+					creates: [makeRecord({ id: 'r1' })],
+					updates: [],
+					deletes: [],
+					onProgress: () => {},
+				} as unknown as Parameters<Store['commit']>[0]),
+				key: 'STORE_VALUE_NOT_JSON',
+				detail: /writeId is missing/,
+			})
+			const written = await store.get('r1', 'doc-1')
+			const entries = await store.getChangeLog('doc-1')
+			expect({ written, entries }).toEqual({ written: undefined, entries: [] })
 		},
 	},
 	'a commit creating and deleting one id → nothing of it after the commit, its undo or its redo': {
@@ -798,10 +808,10 @@ const history: StoreContractCases = {
 			})
 			const recordAfterCommit = await store.get('r1', 'doc-1')
 			expect(recordAfterCommit, 'after the commit').toBeUndefined()
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordAfterUndo = await store.get('r1', 'doc-1')
 			expect(recordAfterUndo, 'after its undo').toBeUndefined()
-			await store.redo('doc-1')
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const recordAfterRedo = await store.get('r1', 'doc-1')
 			expect(recordAfterRedo, 'after its redo').toBeUndefined()
 			const recordCountDoc1 = await store.count('doc-1')
@@ -819,10 +829,10 @@ const history: StoreContractCases = {
 			})
 			const recordR1 = await store.get('r1', 'doc-1')
 			expect(recordR1).toBeUndefined()
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordR1AfterUndo = await store.get('r1', 'doc-1')
 			expect(recordR1AfterUndo).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
-			await store.redo('doc-1')
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const recordR1AfterRedo = await store.get('r1', 'doc-1')
 			expect(recordR1AfterRedo).toBeUndefined()
 			const recordCountDoc1 = await store.count('doc-1')
@@ -842,10 +852,10 @@ const history: StoreContractCases = {
 			})
 			const recordR1 = await store.get('r1', 'doc-1')
 			expect(recordR1?.value).toBe('last')
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordR1AfterUndo = await store.get('r1', 'doc-1')
 			expect(recordR1AfterUndo).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
-			await store.redo('doc-1')
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const recordR1AfterRedo = await store.get('r1', 'doc-1')
 			expect(recordR1AfterRedo?.value).toBe('last')
 		},
@@ -858,6 +868,7 @@ const history: StoreContractCases = {
 					const reports = quietReports()
 					await seedTwoRecords(store)
 					await store.commit({
+						writeId: crypto.randomUUID(),
 						documentId: 'doc-1',
 						creates: [makeRecord({ id: 'r3' })],
 						updates: [makeRecord({ id: 'r1', value: 'v' })],
@@ -868,7 +879,7 @@ const history: StoreContractCases = {
 					expect(recordsDoc1.map((record) => record.id)).toEqual(['r1', 'r3'])
 					const recordR1 = await store.get('r1', 'doc-1')
 					expect(recordR1?.value).toBe('v')
-					await store.undo('doc-1')
+					await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 					const recordsDoc1AfterUndo = await store.getByDocumentId('doc-1')
 					expect(recordsDoc1AfterUndo.map((record) => record.id)).toEqual(['r1', 'r2'])
 					await vi.waitFor(function reported() {
@@ -885,7 +896,7 @@ const history: StoreContractCases = {
 				await seedTwoRecords(store)
 				await commit({ store, documentId: 'doc-1', deletes: [deletedRef('r1')] })
 				await store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r1', value: 'again' })] })
-				await store.undo('doc-1')
+				await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 				const recordR1 = await store.get('r1', 'doc-1')
 				expect(recordR1).toEqual(makeRecord({ id: 'r1', tagName: 'LNode' }))
 				const recordCountDoc1 = await store.count('doc-1')
@@ -900,12 +911,12 @@ const history: StoreContractCases = {
 				await seedTwoRecords(store)
 				await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
 				await store.bulkWrite('doc-1', { deletes: ['r3'] })
-				await store.undo('doc-1')
+				await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 				const recordR3 = await store.get('r3', 'doc-1')
 				expect(recordR3).toBeUndefined()
 				const recordCountDoc1 = await store.count('doc-1')
 				expect(recordCountDoc1).toBe(2)
-				await store.redo('doc-1')
+				await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 				const recordR3AfterRedo = await store.get('r3', 'doc-1')
 				expect(recordR3AfterRedo).toEqual(makeRecord({ id: 'r3' }))
 				const recordCountDoc1AfterRedo = await store.count('doc-1')
@@ -917,6 +928,7 @@ const history: StoreContractCases = {
 			await seedTwoRecords(store)
 			const reads: Promise<string[]>[] = []
 			await store.commit({
+				writeId: crypto.randomUUID(),
 				documentId: 'doc-1',
 				creates: [makeRecord({ id: 'r3' })],
 				updates: [],
@@ -966,7 +978,7 @@ const history: StoreContractCases = {
 			expect(changeLogA).toHaveLength(1)
 			const changeLogB = await store.getChangeLog('b')
 			expect(changeLogB).toHaveLength(1)
-			await store.undo('a')
+			await store.undo({ documentId: 'a', changeId: 'undo-1' })
 			const recordRb = await store.get('rb', 'b')
 			expect(recordRb).toBeDefined()
 			const historyStatusB = await store.getHistoryStatus('b')
@@ -996,7 +1008,7 @@ const reopen: StoreContractCases = {
 			const reopened = await reopen()
 			const historyStatusDoc1 = await reopened.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
-			await reopened.undo('doc-1')
+			await reopened.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordR1 = await reopened.get('r1', 'doc-1')
 			expect(recordR1).toBeUndefined()
 		},
@@ -1233,7 +1245,7 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 				creates: [makeRecord({ id: 'b' })],
 				updates: [bBetweenCAndA],
 			})
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 		},
 		expected: ['c', 'a'],
 	},
@@ -1247,8 +1259,8 @@ const siblingOrderSteps: Record<string, SiblingOrderStep> = {
 				creates: [makeRecord({ id: 'b' })],
 				updates: [bBetweenCAndA],
 			})
-			await store.undo('doc-1')
-			await store.redo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 		},
 		expected: ['c', 'b', 'a'],
 	},
@@ -1616,7 +1628,7 @@ const rejectedWrites: StoreContractCases = {
 			await commit({ store, documentId: 'doc-1', deletes: [deletedRef('nope'), deletedRef('r1')] })
 			const [entry] = await store.getChangeLog('doc-1')
 			expect(entry.operations.deletes.map((record) => record.id)).toEqual(['r1'])
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordCountDoc1 = await store.count('doc-1')
 			expect(recordCountDoc1).toBe(2)
 		},
@@ -1831,8 +1843,8 @@ const extraFieldsDropped: StoreContractCases = Object.fromEntries(
 				const recordsDoc1 = await store.getByDocumentId('doc-1')
 				expect(recordsDoc1).toStrictEqual([kept])
 				if (needs?.includes('history')) {
-					await store.undo('doc-1')
-					await store.redo('doc-1')
+					await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+					await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 					const recordAfterRedo = await store.get(id, 'doc-1')
 					expect(recordAfterRedo).toStrictEqual(kept)
 				}
@@ -2242,8 +2254,8 @@ const absentDocument: StoreContractCases = {
 	'undo and redo of an unknown document answer false and write nothing': {
 		needs: ['history'],
 		act: async ({ store }) => {
-			await expect(store.undo('nope')).resolves.toBe(false)
-			await expect(store.redo('nope')).resolves.toBe(false)
+			await expect(store.undo({ documentId: 'nope', changeId: 'undo-1' })).resolves.toBe(false)
+			await expect(store.redo({ documentId: 'nope', changeId: 'redo-1' })).resolves.toBe(false)
 			const documents = await store.getDocuments()
 			expect(documents).toEqual([])
 		},
@@ -2258,15 +2270,15 @@ const removedDocument: StoreContractCases = {
 			await store.registerDocument(makeDocument())
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r1' })] })
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r2' })] })
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			await store.removeDocument('doc-1')
 			await store.registerDocument(makeDocument())
 			const changeLogDoc1 = await store.getChangeLog('doc-1')
 			expect(changeLogDoc1).toEqual([])
 			const historyStatusDoc1 = await store.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1).toEqual({ canUndo: false, canRedo: false })
-			await store.undo('doc-1')
-			await store.redo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const recordsDoc1 = await store.getByDocumentId('doc-1')
 			expect(recordsDoc1).toEqual([])
 			await commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r3' })] })
@@ -2283,10 +2295,10 @@ const removedDocument: StoreContractCases = {
 			await store.removeDocument('a')
 			const changeLogB = await store.getChangeLog('b')
 			expect(changeLogB).toHaveLength(1)
-			await store.undo('b')
+			await store.undo({ documentId: 'b', changeId: 'undo-1' })
 			const recordRb = await store.get('rb', 'b')
 			expect(recordRb).toBeUndefined()
-			await store.redo('b')
+			await store.redo({ documentId: 'b', changeId: 'redo-1' })
 			const recordRbAfterRedo = await store.get('rb', 'b')
 			expect(recordRbAfterRedo).toBeDefined()
 		},
@@ -2325,7 +2337,7 @@ const duringImport: StoreContractCases = {
 				await expectSessionSeen({ store, documentId: record.id, count: 1 })
 				const changeLog = await store.getChangeLog(record.id)
 				expect(changeLog).toEqual([])
-				await store.undo('b')
+				await store.undo({ documentId: 'b', changeId: 'undo-1' })
 				const recordRbAfterUndo = await store.get('rb', 'b')
 				expect(recordRbAfterUndo?.value).toBe('')
 				await expectSessionSeen({ store, documentId: record.id, count: 1 })
@@ -2926,8 +2938,8 @@ const importing: StoreContractCases = {
 						writeId: 'w-commit',
 						creates: [makeRecord({ id: 'e1' }), makeRecord({ id: 'e2' })],
 					})
-					await other.undo('edited')
-					await other.redo('edited')
+					await other.undo({ documentId: 'edited', changeId: 'undo-1' })
+					await other.redo({ documentId: 'edited', changeId: 'redo-1' })
 					hold.release()
 					await expectRejectsWith({ action: importing, key: 'IMPORT_FAILED' })
 					const documents = await store.getDocuments()
@@ -2936,7 +2948,7 @@ const importing: StoreContractCases = {
 					expect(recordsEdited.map((record) => record.id)).toEqual(['e1', 'e2'])
 					const writeOutcome = await store.getWriteOutcome({ writeId: 'w-commit' })
 					expect(writeOutcome).toBe('applied')
-					await store.undo('edited')
+					await store.undo({ documentId: 'edited', changeId: 'undo-1' })
 					const recordsEditedAfterUndo = await store.getByDocumentId('edited')
 					expect(recordsEditedAfterUndo).toEqual([])
 				} finally {
@@ -3038,7 +3050,7 @@ const oneState: StoreContractCases = {
 			expect(recordR1).toEqual(makeRecord({ id: 'r1' }))
 			const historyStatusDoc1 = await other.getHistoryStatus('doc-1')
 			expect(historyStatusDoc1).toEqual({ canUndo: true, canRedo: false })
-			await other.undo('doc-1')
+			await other.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const recordR1AfterUndo = await store.get('r1', 'doc-1')
 			expect(recordR1AfterUndo).toBeUndefined()
 			const historyStatusDoc1AfterUndo = await store.getHistoryStatus('doc-1')
@@ -3616,8 +3628,8 @@ const VALUE_READS: Record<string, ValueRead> = {
 /** Undo then redo the last commit, then read the record `id`: what the history holds of it. */
 async function throughHistory(params: { store: Store; id: string }): Promise<unknown> {
 	const { store, id } = params
-	await store.undo('doc-1')
-	await store.redo('doc-1')
+	await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+	await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 	return store.get(id, 'doc-1')
 }
 
@@ -3747,8 +3759,8 @@ const OPERATIONS_ON_A_CLOSED_STORE: Record<string, StoreOperation> = {
 	exportFile: (store) => store.exportFile({ documentId: 'doc-1' }),
 	bulkWrite: (store) => store.bulkWrite('doc-1', { creates: [makeRecord({ id: 'r9' })] }),
 	commit: (store) => commit({ store, documentId: 'doc-1', creates: [makeRecord({ id: 'r9' })] }),
-	undo: (store) => store.undo('doc-1'),
-	redo: (store) => store.redo('doc-1'),
+	undo: (store) => store.undo({ documentId: 'doc-1', changeId: 'undo-1' }),
+	redo: (store) => store.redo({ documentId: 'doc-1', changeId: 'redo-1' }),
 	getHistoryStatus: (store) => store.getHistoryStatus('doc-1'),
 	getChangeLog: (store) => store.getChangeLog('doc-1'),
 	addBlob: (store) => store.addBlob(makeBlobEntry({ id: 'b9' }), new Blob(['b9'])),
@@ -3799,7 +3811,7 @@ const OPERATIONS_IN_FLIGHT: Record<string, OperationInFlight> = {
 		},
 	},
 	undo: {
-		run: (store) => store.undo('doc-1'),
+		run: (store) => store.undo({ documentId: 'doc-1', changeId: 'undo-1' }),
 		expected: async (store) => {
 			const recordR1 = await store.get('r1', 'doc-1')
 			expect(recordR1).toBeUndefined()

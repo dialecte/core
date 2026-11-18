@@ -12,10 +12,12 @@ import type { Store } from '@/store/store.types'
 import type { AnyDialecteConfig, Operation } from '@/types'
 
 /**
- * Write the merged staged operations as one commit and answer what it changed (`describeCommitChanges` over the
+ * Write the merged staged operations as one commit under the caller's `writeId` and answer what it changed (`describeCommitChanges` over the
  * writes it handed the store); a commit lost with its connection whose outcome reads `applied` answers the same.
  */
 export async function commitTransaction<GenericConfig extends AnyDialecteConfig>(params: {
+	/** The commit's id, drawn by its caller: kept on its history entry, asked after a lost connection, never committed again. */
+	writeId: string
 	stagedOperations: Operation<GenericConfig>[]
 	store: Store
 	documentId: string
@@ -23,7 +25,15 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	progress: ProgressReporter
 	perf?: Perf
 }): Promise<CommitChanges | UnknownCommitChanges> {
-	const { stagedOperations, store, documentId, documentState, progress, perf = NOOP_PERF } = params
+	const {
+		writeId,
+		stagedOperations,
+		store,
+		documentId,
+		documentState,
+		progress,
+		perf = NOOP_PERF,
+	} = params
 
 	perf.start('core::commit')
 	perf.start('core::commit::merge')
@@ -50,8 +60,6 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 		}
 	}
 
-	// the commit's id: asked after a lost connection, never committed again
-	const writeId = crypto.randomUUID()
 	try {
 		perf.count('core::store::commit')
 		perf.start('core::store::commit')

@@ -10,6 +10,7 @@ import { commit, makeRecord } from '@/store/contract/store-contract.fixtures'
 import { TEST_DIALECTE_CONFIG, XMLNS_DEFAULT_NAMESPACE } from '@/test'
 import { quietReports, reportedFailures } from '@/utils/tell-listener.fixtures'
 
+import type { ProjectChannelMessage } from './types'
 import type { Store, StoreNotice } from '@/store'
 import type { AnyDialecteConfig } from '@/types'
 
@@ -197,6 +198,34 @@ async function openHeld(): Promise<{
 }
 
 describe('a change of the project’s own store that no Project call made (the store held directly)', () => {
+	it('a commit on the store, told while a transaction of the same document runs → each commit posted once, with its own changeId', async () => {
+		const { project, store, documentId } = await openHeld()
+		const ids: string[] = []
+		const channel = project.createChannel()
+		channel.onmessage = function hear(event: MessageEvent<ProjectChannelMessage>) {
+			if (event.data.type === 'commit' && event.data.documentId === documentId) {
+				ids.push(event.data.changeId)
+			}
+		}
+		onTestFinished(function closeChannel() {
+			channel.close()
+		})
+		await project.openDocument(documentId).transaction(async function commitBeside(tx) {
+			await commit({ store, documentId, writeId: 'w-direct', creates: [makeRecord({ id: 'x' })] })
+			const root = await tx.getRoot()
+			await tx.addChild(root, { tagName: 'A', attributes: [] })
+		})
+		// a fence: another document's commits, posted after all the transaction posted
+		await project.initEmptyDocument()
+		await vi.waitFor(function bothPosted() {
+			expect(ids).toHaveLength(2)
+		})
+		expect({ first: ids[0], distinct: new Set(ids).size }).toEqual({
+			first: 'w-direct',
+			distinct: 2,
+		})
+	})
+
 	it('a document renamed on the store → posted once to the listeners, the project’s record read again', async () => {
 		const { project, store, documentId } = await openHeld()
 		const heard = listenTo({ project })
@@ -603,6 +632,7 @@ function commitsTold(params: { tell: (notice: StoreNotice) => void; count: numbe
 				type: 'commit',
 				documentId: 'unknown',
 				timestamp: index,
+				changeId: `told-${index}`,
 				changes: { unknown: true },
 			},
 			own: false,
@@ -707,6 +737,7 @@ describe('an open a close was called after', () => {
 						type: 'commit',
 						documentId: 'unknown',
 						timestamp: 1,
+						changeId: 'told-1',
 						changes: { unknown: true },
 					},
 					own: false,

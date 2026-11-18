@@ -250,7 +250,7 @@ const api: EngineBenchWorkerApi = {
 	},
 
 	historyUndo: async function historyUndo({ documentId }) {
-		await openedEngine().engine.undo(documentId)
+		await openedEngine().engine.undo({ documentId: documentId, changeId: 'undo-1' })
 	},
 
 	historyClose: async function historyClose() {
@@ -462,8 +462,12 @@ async function editSubtree(params: {
 				deletes: subtree.refs,
 			}),
 	})
-	const undoMs = await timedAsync({ work: () => engine.undo(documentId) })
-	const redoMs = await timedAsync({ work: () => engine.redo(documentId) })
+	const undoMs = await timedAsync({
+		work: () => engine.undo({ documentId: documentId, changeId: 'undo-1' }),
+	})
+	const redoMs = await timedAsync({
+		work: () => engine.redo({ documentId: documentId, changeId: 'redo-1' }),
+	})
 	return {
 		cacheMiB: -Number(db.selectValue('PRAGMA cache_size')) / 1024,
 		records: subtree.refs.length,

@@ -240,9 +240,9 @@ const afterWrites: StoreContractCases = {
 					deletes: [deletedRef('x')],
 				})
 				const committed = await lookUp()
-				await store.undo(DOCUMENT_ID)
+				await store.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' })
 				const undone = await lookUp()
-				await store.redo(DOCUMENT_ID)
+				await store.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' })
 				const redone = await lookUp()
 				return { seeded, committed, undone, redone }
 			}

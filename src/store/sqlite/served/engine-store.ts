@@ -318,31 +318,24 @@ export class EngineStore implements Store {
 	/** The commit runs in the engine; its progress listener stays here, its ticks heard before the answer. */
 	async commit(params: {
 		documentId: string
-		writeId?: string
+		writeId: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
 	}): Promise<void> {
-		const {
-			documentId,
-			writeId = crypto.randomUUID(),
-			creates,
-			updates,
-			deletes,
-			onProgress,
-		} = params
+		const { documentId, writeId, creates, updates, deletes, onProgress } = params
 		return this.call('commit', { documentId, writeId, creates, updates, deletes }, onProgress)
 	}
 
 	// --- History ---
 
-	async undo(documentId: string): Promise<HistoryStep | false> {
-		return this.call('undo', documentId)
+	async undo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false> {
+		return this.call('undo', params)
 	}
 
-	async redo(documentId: string): Promise<HistoryStep | false> {
-		return this.call('redo', documentId)
+	async redo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false> {
+		return this.call('redo', params)
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {

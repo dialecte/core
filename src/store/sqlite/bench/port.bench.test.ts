@@ -144,6 +144,7 @@ function commitEvery(params: { store: EngineStore }): {
 		const sentAt = epochNow()
 		waiting = store
 			.commit({
+				writeId: crypto.randomUUID(),
 				documentId: 'other',
 				creates: [],
 				updates: [otherRecord({ value: String(sent.length + 1) })],

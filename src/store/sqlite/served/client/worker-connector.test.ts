@@ -335,9 +335,9 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			action: commit({ store: second, documentId: 'doc-1', creates: [makeRecord({ id: 'r2' })] }),
 			key: 'STORE_DUPLICATE_ID',
 		})
-		await second.undo('doc-1')
-		await second.redo('doc-1')
-		await second.redo('doc-1')
+		await second.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+		await second.redo({ documentId: 'doc-1', changeId: 'redo-1' })
+		await second.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 		await first.addBlob(makeBlobEntry({ id: 'b1' }), new Blob(['b']))
 		const { record } = await second.importFile({
 			file: contractFile({ body: '<A aA="1"/>' }),

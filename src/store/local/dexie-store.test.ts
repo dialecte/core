@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: main already carries it at 762 lines; this lot only passes the now required `writeId` to one commit
 import { contractFile, makeRecord as makeContractRecord } from '../contract/store-contract.fixtures'
 import {
 	createContractRuntime,
@@ -269,6 +270,7 @@ describe('DexieStore - the connection of a closed store', () => {
 		await store.open()
 		await store.registerDocument(makeFile({ id: 'file-1' }))
 		const committing = store.commit({
+			writeId: crypto.randomUUID(),
 			documentId: 'file-1',
 			creates: [makeContractRecord({ id: 'r1' })],
 			updates: [],

@@ -146,7 +146,7 @@ type DocumentEntry = DocumentState & {
 
 ### Cross-tab sync
 
-A `Document` does not own a channel. When a transaction (or a prepared commit) commits, it announces `{ type: 'commit', documentId, timestamp, changes }` - `changes` the records it created, updated and deleted, `beforeCommit` hook writes included (see [ProjectChannelMessage](/api/project#project-channel-events)) - through the owning Project (via an injected `broadcast`), which posts it on the project's channel (on a store that announces its changes, once the store told it). The Project folds the commits other views make - other tabs, iframes, other projects of it - into the shared `DocumentEntry`, keeping `lastUpdate` and `canUndo`/`canRedo` current. Open `doc.channelName` yourself to react to updates (e.g. refetch a view); see [Project channel & events](/api/project#project-channel-events).
+A `Document` does not own a channel. When a transaction (or a prepared commit) commits, it announces `{ type: 'commit', documentId, timestamp, changeId, changes }` - `changeId` the commit's `writeId`, `changes` the records it created, updated and deleted, `beforeCommit` hook writes included (see [ProjectChannelMessage](/api/project#project-channel-events)) - through the owning Project (via an injected `broadcast`), which posts it on the project's channel (on a store that announces its changes, once the store told it). The Project folds the commits other views make - other tabs, iframes, other projects of it - into the shared `DocumentEntry`, keeping `lastUpdate` and `canUndo`/`canRedo` current. Open `doc.channelName` yourself to react to updates (e.g. refetch a view); see [Project channel & events](/api/project#project-channel-events).
 
 ## subscribe
 

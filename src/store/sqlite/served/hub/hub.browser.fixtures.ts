@@ -93,6 +93,7 @@ export async function bootRealm(params: BootRealmParams): Promise<BrowserRealm> 
 		commitRecord: async function commitThrough({ project, documentId, id }) {
 			const store = await storeOf({ project })
 			await store.commit({
+				writeId: crypto.randomUUID(),
 				documentId,
 				creates: [makeRecord({ id })],
 				updates: [],

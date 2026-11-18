@@ -110,8 +110,8 @@ const versionedReads: StoreContractCases = {
 								documentId: DOCUMENT_ID,
 								creates: [makeRecord({ id: 'd' })],
 							}),
-						(target) => target.undo(DOCUMENT_ID),
-						(target) => target.redo(DOCUMENT_ID),
+						(target) => target.undo({ documentId: DOCUMENT_ID, changeId: 'undo-1' }),
+						(target) => target.redo({ documentId: DOCUMENT_ID, changeId: 'redo-1' }),
 					],
 				})
 				expect(distinct({ versions })).toBe(5)

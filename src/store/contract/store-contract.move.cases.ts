@@ -102,7 +102,7 @@ const reParentingHistory: StoreContractCases = {
 	'a re-parent commit undone → the old parent and both children orders back': {
 		act: async ({ store }) => {
 			await seedAndMove(store)
-			await store.undo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
 			const placements = await placementsOf(store)
 			expect(placements).toEqual([unmoved, unmoved, unmoved, unmoved])
 		},
@@ -110,8 +110,8 @@ const reParentingHistory: StoreContractCases = {
 	'a re-parent commit undone then redone → the move applied again': {
 		act: async ({ store }) => {
 			await seedAndMove(store)
-			await store.undo('doc-1')
-			await store.redo('doc-1')
+			await store.undo({ documentId: 'doc-1', changeId: 'undo-1' })
+			await store.redo({ documentId: 'doc-1', changeId: 'redo-1' })
 			const placements = await placementsOf(store)
 			expect(placements).toEqual([moved, moved, moved, moved])
 		},

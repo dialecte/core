@@ -133,11 +133,16 @@ export type HistoryStepDirection = 'back' | 'forward'
  * Changing a member of this union is a breaking API change.
  */
 export type ProjectChannelMessage =
-	/** A document's records changed: `changes` tells which, or `{ unknown: true }` (read again). */
+	/**
+	 * A document's records changed: `changes` tells which, or `{ unknown: true }` (read again). `changeId` is one id
+	 * per change - a commit's `writeId`, an undo's or a redo's own: the writer's copy and every told or reposted copy
+	 * carry it, so drop a message whose id you already applied.
+	 */
 	| {
 			type: 'commit'
 			documentId: string
 			timestamp: number
+			changeId: string
 			changes: CommitChanges | UnknownCommitChanges
 	  }
 	| { type: 'init-empty-document'; documentId: string; timestamp: number }

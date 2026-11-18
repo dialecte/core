@@ -2,7 +2,7 @@ import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
-import { checkWriteId, toJsonCopy } from '../json-values'
+import { checkCallId, toJsonCopy } from '../json-values'
 import { isOwnImporting } from '../own-import'
 import { refuseUnnamableProject } from '../project-name'
 import { createRunningOperations } from '../running-operations'
@@ -527,7 +527,7 @@ export class DexieStore implements Store {
 
 	async commit(params: {
 		documentId: string
-		writeId?: string
+		writeId: string
 		creates: AnyRawRecord[]
 		updates: AnyRawRecord[]
 		deletes: ReadonlyArray<ChangedRecord>
@@ -535,14 +535,7 @@ export class DexieStore implements Store {
 	}): Promise<void> {
 		return this.operation(async () => {
 			try {
-				const {
-					documentId,
-					writeId = crypto.randomUUID(),
-					creates,
-					updates,
-					deletes: deleteRefs,
-					onProgress,
-				} = params
+				const { documentId, writeId, creates, updates, deletes: deleteRefs, onProgress } = params
 				// deleted by id: a ref's tag and parent only tell the change
 				const deletes = deleteRefs.map((ref) => ref.id)
 				const table = await this.writeTable(documentId)
@@ -550,7 +543,7 @@ export class DexieStore implements Store {
 				if (document && withStatus(document).status === 'importing') {
 					throwDocumentNotRegistered({ documentId, what: 'a commit' })
 				}
-				checkWriteId({ writeId })
+				checkCallId({ field: 'writeId', value: writeId })
 
 				try {
 					await this.db.transaction(
@@ -640,8 +633,10 @@ export class DexieStore implements Store {
 
 	// --- History ---
 
-	async undo(documentId: string): Promise<HistoryStep | false> {
+	async undo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false> {
+		const { documentId, changeId } = params
 		return this.operation(async () => {
+			checkCallId({ field: 'changeId', value: changeId })
 			try {
 				await this.ensureCurrentSchema()
 				const head = await this.getHead(documentId)
@@ -673,6 +668,7 @@ export class DexieStore implements Store {
 					await this.bumpVersion(documentId)
 				})
 				return {
+					changeId,
 					changes: describeChangeLogStep({ operations: entry.operations, direction: 'back' }),
 				}
 			} finally {
@@ -681,8 +677,10 @@ export class DexieStore implements Store {
 		})
 	}
 
-	async redo(documentId: string): Promise<HistoryStep | false> {
+	async redo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false> {
+		const { documentId, changeId } = params
 		return this.operation(async () => {
+			checkCallId({ field: 'changeId', value: changeId })
 			try {
 				await this.ensureCurrentSchema()
 				const head = await this.getHead(documentId)
@@ -713,6 +711,7 @@ export class DexieStore implements Store {
 					await this.bumpVersion(documentId)
 				})
 				return {
+					changeId,
 					changes: describeChangeLogStep({ operations: entry.operations, direction: 'forward' }),
 				}
 			} finally {
