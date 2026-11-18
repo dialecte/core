@@ -19,6 +19,8 @@ import type {
 	Store,
 	StoreChange,
 	StoreNotice,
+	VersionedAnswer,
+	VersionedRead,
 	WriteOutcome,
 } from '../../store.types'
 import type {
@@ -220,6 +222,13 @@ export class EngineStore implements Store {
 
 	async getByAttributes(params: AttributeLookup): Promise<AnyRawRecord[]> {
 		return this.call('getByAttributes', params)
+	}
+
+	async readVersioned<GenericRead extends VersionedRead>(params: {
+		documentId: string
+		read: GenericRead
+	}): Promise<VersionedAnswer<GenericRead['member']>> {
+		return this.call('readVersioned', params)
 	}
 
 	async getMany(ids: string[], documentId: string): Promise<(AnyRawRecord | undefined)[]> {

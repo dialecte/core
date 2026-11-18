@@ -65,6 +65,7 @@ import { requireStoreRuntime } from '@/project/io/store-runtime'
 import { tellCommitProgress } from '@/store/commit-progress'
 import { checkJsonValues } from '@/store/json-values'
 import { throwDocumentNotRegistered, throwStoreClosed } from '@/store/store-errors'
+import { runVersionedRead } from '@/store/versioned-read'
 import { writeOutcomeOf } from '@/store/write-outcome'
 import { invariant } from '@/utils'
 import { tellListener } from '@/utils/tell-listener'
@@ -96,6 +97,8 @@ import type {
 	ExportSource,
 	ImportControl,
 	ImportFileResult,
+	VersionedAnswer,
+	VersionedRead,
 } from '@/store/store.types'
 import type { AnyRawRecord, BlobRecord, RecordPatch } from '@/types'
 import type { Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm'
@@ -177,6 +180,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	 * kept for a removed document, so one registered again under its id goes on from it.
 	 */
 	const versions = new Map<string, number>()
+	/** This engine's own id: a count started over by another engine on the file is never taken for one of this one's. */
+	const engineId = crypto.randomUUID()
 	/** The exports running, by the caller's id: each one's abort and the statement it reads through. */
 	const exports = new Map<string, RunningExport>()
 	/** How many removals the engine ran: a statement prepared on a document's table before one is prepared again. */
@@ -444,6 +449,21 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				},
 			})
 		},
+		/** The member's answer and the document's version of the same moment: the engine's reads never await before they answer. */
+		readVersioned: async function readVersioned<GenericRead extends VersionedRead>(params: {
+			documentId: string
+			read: GenericRead
+		}): Promise<VersionedAnswer<GenericRead['member']>> {
+			refuseClosed({ state, name })
+			const { documentId, read } = params
+			return runVersionedRead({
+				reads: members,
+				read,
+				versionOf: function versionNow() {
+					return { engineId, count: versions.get(documentId) ?? 0 }
+				},
+			})
+		},
 		getMany: async function getMany(ids, documentId) {
 			refuseClosed({ state, name })
 			return asReadFailure({
@@ -600,7 +620,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			// a table may be gone: what reads it through a statement of its own prepares it again, and an
 			// export of the id - which may be registered and imported again - starts again
 			removals.count += 1
-			versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
+			moveVersionOn({ documentId })
 		}
 		try {
 			// the removal asked for: its pages given back now, settling an import that runs as any write does
@@ -652,6 +672,12 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		const { documentId, gained } = params
 		const held = counts.get(documentId)
 		if (held !== undefined) counts.set(documentId, held + gained)
+		moveVersionOn({ documentId })
+	}
+
+	/** What reads of the document answer changed: its version moves on (an export reading it starts again). */
+	function moveVersionOn(params: { documentId: string }): void {
+		const { documentId } = params
 		versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
 	}
 
@@ -803,6 +829,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					signal,
 					file,
 					counts,
+					onChanged: moveVersionOn,
 					removeDocument: async function removeFailedImport({ documentId }) {
 						await removeDocumentFromFile({ documentId })
 					},

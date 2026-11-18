@@ -300,6 +300,8 @@ export type ImportTargetParams = {
 	file: File
 	/** The engine's record count per document, kept in step by the import's writes. */
 	counts: Map<string, number>
+	/** Told after each write of the import changing what reads of its document answer: the engine moves its version on. */
+	onChanged: (params: { documentId: string }) => void
 	/** The engine's removal of a document (table, row, free pages in steps): what a failed import leaves goes. */
 	removeDocument: (params: { documentId: string }) => Promise<void>
 	/** The import's transactions. */

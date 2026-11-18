@@ -115,6 +115,7 @@ export type EngineMember =
 	| 'count'
 	| 'getByTagNameInDocument'
 	| 'getByAttributes'
+	| 'readVersioned'
 	| 'getMany'
 	| 'bulkWrite'
 	| 'getWriteOutcome'

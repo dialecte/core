@@ -24,7 +24,14 @@ export type {
 	WriteOutcome,
 	WriteSessionControl,
 	AttributeLookup,
+	StoreVersion,
+	VersionedAnswer,
+	VersionedRead,
+	VersionedReadMember,
+	VersionedReads,
 } from './store.types'
+export { runVersionedRead } from './versioned-read'
+export { VERSIONED_READ_MEMBERS } from './versioned-read.constants'
 export { IMPORT_PROGRESS_INTERVAL_MS } from './import-progress/import-progress.constants'
 export { importOutcomeOf, writeOutcomeOf } from './write-outcome'
 export { registerStorageKind } from './storage-kinds'
