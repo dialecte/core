@@ -1,0 +1,5 @@
+<!-- two E elements, each holding an EE_1 whose aEE_1 is QName-typed (q:integer, f:Thing) and bEE_1 a plain string -->
+<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:dev="http://dialecte.dev/XML/DEV" xmlns:q="http://www.w3.org/2001/XMLSchema" xmlns:f="urn:f">
+	<E aE="e"><EE_1 aEE_1="q:integer" bEE_1="X"/></E>
+	<E aE="e"><EE_1 aEE_1="f:Thing" bEE_1="X"/></E>
+</Root>

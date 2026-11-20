@@ -3,6 +3,7 @@ import { getRecord, trackStoredRecord } from './get-record'
 import { getLatestStagedRecord } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
+import { noteReadsOf, readGenerationOf } from '@/document/transaction-read-cache'
 
 import type { Context, RefOrRecord } from '@/document'
 import type { AnyDialecteConfig, AnyRawRecord, ElementsOf, RawRecord, TrackedRecord } from '@/types'
@@ -115,6 +116,7 @@ async function readFromStore<
 	ids.forEach(function countMiss() {
 		context.perf.count('core::query::getRecord.miss')
 	})
+	const readAt = readGenerationOf({ context })
 	const raws = (await readThroughScope({
 		context,
 		read: { member: 'getMany', args: [ids, context.documentId] },
@@ -125,8 +127,8 @@ async function readFromStore<
 		const raw = raws[index] as RawRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined
 		if (!raw) continue
 		rawById.set(id, raw)
-		if (isTransactionContext(context)) context.recordCache.set(id, raw)
 	}
+	noteReadsOf({ context, records: [...rawById.values()], readAt })
 
 	for (const { position, id } of storePositions) {
 		const raw = rawById.get(id)

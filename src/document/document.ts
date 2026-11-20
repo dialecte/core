@@ -2,6 +2,7 @@ import { bindExtensions } from './bind-extensions'
 import { Query } from './query'
 import { attachReadScopeWiring } from './query/read-scope/run-in-read-scope'
 import { Transaction } from './transaction'
+import { wireReadEpoch } from './transaction-read-cache'
 import { summarizeOperations } from './transaction/commit/summarize-operations'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
@@ -184,6 +185,13 @@ export class Document<
 		return query
 	}
 
+	/** A transaction of this document, following its read epoch (a told change empties the transaction's read cache). */
+	private makeTransaction(): Transaction<GenericConfig> {
+		const transaction = this.createTransaction()
+		wireReadEpoch({ transaction, readEpoch: this.readScopeWiring.epochOf })
+		return transaction
+	}
+
 	//== Transaction scope
 
 	/**
@@ -233,7 +241,7 @@ export class Document<
 			this.state.error = null
 			this.signalStateChange(false)
 
-			const transaction = this.withAllExtensions(this.createTransaction())
+			const transaction = this.withAllExtensions(this.makeTransaction())
 			tx = transaction
 			const result = await fn(transaction)
 
@@ -323,7 +331,7 @@ export class Document<
 		this.state.loading = true
 		this.state.error = null
 
-		const tx = this.createTransaction()
+		const tx = this.makeTransaction()
 
 		try {
 			await fn(this.withAllExtensions(tx))

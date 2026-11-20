@@ -1,0 +1,14 @@
+<!-- ten A elements holding aA v0 to v9, and one B: the tag a transaction looks up again and again -->
+<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:dev="http://dialecte.dev/XML/DEV">
+	<A aA="v0"/>
+	<A aA="v1"/>
+	<A aA="v2"/>
+	<A aA="v3"/>
+	<A aA="v4"/>
+	<A aA="v5"/>
+	<A aA="v6"/>
+	<A aA="v7"/>
+	<A aA="v8"/>
+	<A aA="v9"/>
+	<B/>
+</Root>

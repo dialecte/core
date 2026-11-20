@@ -1,6 +1,13 @@
 import { createProgressReporter } from '../progress'
 import { Query } from '../query'
 import { createStagedOperations } from '../staged-operations'
+import {
+	createTransactionReadCache,
+	dropTransactionReadCache,
+	followReadEpoch,
+	readEpochOf,
+} from '../transaction-read-cache'
+import { TRANSACTION_READ_CACHE_PERF } from '../transaction-read-cache.constants'
 import { AnyTransaction } from './any'
 import { stageBeforeCommit } from './before-commit'
 import { stageDeepClone } from './clone'
@@ -15,6 +22,7 @@ import { toRef } from '@/helpers'
 import { NOOP_PERF } from '@/perf'
 
 import type { ProgressReporter } from '../progress'
+import type { TransactionReadCache } from '../transaction-read-cache.types'
 import type { DocumentState } from '../types'
 import type { Context, StagedOperations } from '../types'
 import type { CloneResult } from './clone'
@@ -28,7 +36,6 @@ import type { CommitChanges, UnknownCommitChanges } from '@/project/types'
 import type { Store } from '@/store'
 import type {
 	AnyDialecteConfig,
-	AnyRawRecord,
 	ChildrenOf,
 	ElementsOf,
 	Operation,
@@ -56,7 +63,8 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	/** Ordered write log + derived by-id index (kept in sync by stageOperation). */
 	protected stagedOperations: StagedOperations<GenericConfig> = createStagedOperations()
 	protected documentActivity: DocumentState
-	protected recordCache = new Map<string, AnyRawRecord>()
+	/** The stored records this transaction read (`transaction-read-cache.ts`): by id, by tag, and tags read whole. */
+	protected readCache: TransactionReadCache = createTransactionReadCache()
 	protected hooks: TransactionHooks<GenericConfig> | undefined
 	protected progressReporter: ProgressReporter
 	private _anyTx?: AnyTransaction<GenericConfig>
@@ -108,12 +116,17 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 * and the mutable staged-operations container (mutation FP functions push to it).
 	 */
 	protected override get context(): Context<GenericConfig> {
+		// every read starts here: a change told since the cache was filled (another view's commit) empties it first
+		if (followReadEpoch({ cache: this.readCache, readEpoch: readEpochOf(this) })) {
+			this.perf.count(TRANSACTION_READ_CACHE_PERF.dropped)
+		}
 		return {
 			kind: 'transaction',
 			store: this.store,
 			dialecteConfig: this.dialecteConfig,
 			documentId: this.documentId,
-			recordCache: this.recordCache,
+			recordCache: this.readCache.records,
+			readCache: this.readCache,
 			stagedOperations: this.stagedOperations,
 			progress: this.progressReporter,
 			perf: this.perf,
@@ -362,7 +375,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 * @internal Used by Document.transaction to release the record cache.
 	 */
 	clearRecordCache(): void {
-		this.recordCache.clear()
+		dropTransactionReadCache({ cache: this.readCache })
 	}
 
 	/**

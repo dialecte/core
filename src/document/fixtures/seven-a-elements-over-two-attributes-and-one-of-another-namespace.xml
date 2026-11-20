@@ -1,0 +1,10 @@
+<!-- seven A elements: values held by several records, bA absent from some, ext:cA of another namespace on two -->
+<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:dev="http://dialecte.dev/XML/DEV" xmlns:ext="http://dialecte.dev/XML/DEV-EXT">
+	<A aA="ONE" bA="X"/>
+	<A aA="TWO" bA="X"/>
+	<A aA="ONE" bA="Y"/>
+	<A aA="THREE"/>
+	<A aA="ONE" bA="X" ext:cA="Z"/>
+	<A aA="FOUR" bA="X"/>
+	<A aA="FIVE" ext:cA="Z"/>
+</Root>

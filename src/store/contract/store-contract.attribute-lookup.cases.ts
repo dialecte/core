@@ -1,5 +1,6 @@
 import { STORE_ATTRIBUTE_QUERY_CONTRACT } from './store-contract.attribute-query.cases'
 import { commit, deletedRef, makeDocument, makeRecord } from './store-contract.fixtures'
+import { STORE_READ_CACHE_CONTRACT } from './store-contract.read-cache.cases'
 
 import { expect } from 'vitest'
 
@@ -295,4 +296,5 @@ export const STORE_ATTRIBUTE_CONTRACT: StoreContractGroups = {
 	'attribute lookups': lookups,
 	'attribute lookups after writes': afterWrites,
 	...STORE_ATTRIBUTE_QUERY_CONTRACT,
+	...STORE_READ_CACHE_CONTRACT,
 }

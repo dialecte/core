@@ -16,16 +16,16 @@ import type { Perf } from '@/perf'
 import type { TestDialecteConfig } from '@/test'
 import type { AnyAttribute, AnyRawRecord } from '@/types'
 
-const DOCUMENT_ID = 'doc-1'
+export const DOCUMENT_ID = 'doc-1'
 
 /** What a case stages in its transaction, on a context over the store. */
-type Staging = (stage: Stager) => void
+export type Staging = (stage: Stager) => void
 
 /** Stage one write: a create or a delete of `record`, an update from the held version to `record`. */
 type Stager = (params: { status: 'created' | 'updated' | 'deleted'; record: AnyRawRecord }) => void
 
 /** An answer as a case compares it: each record's id and status, in the order answered. */
-type Answer = string[]
+export type Answer = string[]
 
 /** A record of tag `A` (unless another is named) holding these attributes. */
 function recordWith(params: {
@@ -39,12 +39,12 @@ function recordWith(params: {
 }
 
 /** A record of tag `A` holding `aA` with that value. */
-function withA(id: string, value: string): AnyRawRecord {
+export function withA(id: string, value: string): AnyRawRecord {
 	return recordWith({ id, attributes: [{ name: 'aA', value }] })
 }
 
 /** A record of tag `A` holding `aA="v"` and `bA` with that value. */
-function withAB(id: string, value: string): AnyRawRecord {
+export function withAB(id: string, value: string): AnyRawRecord {
 	return recordWith({
 		id,
 		attributes: [
@@ -66,7 +66,7 @@ function withoutLookup(store: Store): Store {
 }
 
 /** A transaction's context over the store: its staged writes empty, its cache on, its store reads counted. */
-function contextOver(params: { store: Store; perf: Perf }): Context<TestDialecteConfig> {
+export function contextOver(params: { store: Store; perf: Perf }): Context<TestDialecteConfig> {
 	const { store, perf } = params
 	return {
 		store,
@@ -81,7 +81,7 @@ function contextOver(params: { store: Store; perf: Perf }): Context<TestDialecte
 }
 
 /** Stage each write of `staging` on the context, an update from the version the store or an earlier write holds. */
-function stageAll(params: {
+export function stageAll(params: {
 	context: Context<TestDialecteConfig>
 	seeded: AnyRawRecord[]
 	staging: Staging
@@ -146,7 +146,7 @@ function oneReadOf(store: Store): Record<string, number> {
 		: { getByAttributes: 0, getByTagName: 1 }
 }
 
-const COMMITTED = [withA('x', 'v'), withA('c', 'v'), withA('m', 'w')]
+export const COMMITTED = [withA('x', 'v'), withA('c', 'v'), withA('m', 'w')]
 
 const staged: StoreContractCases = {
 	'a create staged → answered after the committed records, as without the lookup': {
