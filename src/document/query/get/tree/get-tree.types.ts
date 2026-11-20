@@ -42,4 +42,14 @@ export type GetTreeParams<
 	 * batched store read per level), staged writes included.
 	 */
 	depth?: number
+	/**
+	 * The ids that expand, one level each, from the root: a node opens its children only when its id is listed and
+	 * its parent opened (a listed id under a closed node is never reached), so an empty set answers the root alone.
+	 * A node not opened keeps its `children` refs with an empty `tree`, as past `depth`. The elements `unwrap` hoists
+	 * open when reached, their ids need no listing. With `depth` too, a node opens only when both allow it. Reads
+	 * one batched store read per open level (a hoisted level is one more), never the whole document. One call
+	 * rebuilds a lazy view's open frontier: an open state restored, a commit reported `unknown`, a target revealed
+	 * with its ancestors listed.
+	 */
+	expanded?: ReadonlySet<string>
 }

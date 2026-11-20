@@ -1,0 +1,22 @@
+<!-- AA_1 is transparent on the lazy tests' dialecte: a1 holds a wrapper (aa1) and a visible child (aa2), a2 a second wrapper (aa3); 13 records -->
+<Root xmlns="http://dialecte.dev/XML/DEFAULT" xmlns:dev="http://dialecte.dev/XML/DEV" xmlns:ext="http://dialecte.dev/XML/DEV-EXT" dev:db-id="root">
+	<A dev:db-id="a1" aA="v">
+		<AA_1 dev:db-id="aa1" aAA_1="wrapper">
+			<AAA_1 dev:db-id="aaa1" aAAA_1="v">
+				<AAAA_1 dev:db-id="aaaa1" aAAAA_1="v" />
+			</AAA_1>
+			<AAA_2 dev:db-id="aaa2" aAAA_2="v" />
+		</AA_1>
+		<AA_2 dev:db-id="aa2" aAA_2="v">
+			<AAA_3 dev:db-id="aaa3">
+				<AAAA_2 dev:db-id="aaaa2" aAAAA_2="v" />
+			</AAA_3>
+		</AA_2>
+	</A>
+	<A dev:db-id="a2" aA="v">
+		<AA_1 dev:db-id="aa3" aAA_1="wrapper">
+			<AAA_1 dev:db-id="aaa4" aAAA_1="v" />
+		</AA_1>
+	</A>
+	<B dev:db-id="b1" aB="v" />
+</Root>

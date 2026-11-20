@@ -1,4 +1,4 @@
-import type { GetTreeParams, Ref } from '@/document'
+import type { GetTreeParams, Ref, Transaction } from '@/document'
 import type { BaseXmlTestCase, TestDialecteConfig } from '@/test'
 import type { AnyDialecteConfig, ElementsOf } from '@/types'
 
@@ -10,6 +10,11 @@ export type GetTreeCase<GenericConfig extends AnyDialecteConfig> = BaseXmlTestCa
 	ref: Ref<GenericConfig, ElementsOf<GenericConfig>>
 	options?: GetTreeParams<GenericConfig, ElementsOf<GenericConfig>>
 	expectedShape: TreeShape
+}
+
+/** A lazy getTree case: a `depth` or `expanded` read, with staged writes pending when `stage` is given. */
+export type LazyTreeCase<GenericConfig extends AnyDialecteConfig> = GetTreeCase<GenericConfig> & {
+	stage?: (tx: Transaction<GenericConfig>) => Promise<void>
 }
 
 /** The test dialecte where AAA_1 contains AAA_1 (self-recursive). */

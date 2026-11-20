@@ -172,7 +172,8 @@ multiplies.
   filter in JS.
 - `findDescendants` groups by tag and is NOT in document order; use `getTree` when order matters.
 - `getTree` reads only the branches it can keep, level by level (staged writes included): a ref with an `id`
-  below the document root reads its own subtree, and a `select`, a tag-only `omit` or a `depth` prunes further;
+  below the document root reads its own subtree, and a `select`, a tag-only `omit`, a `depth` or `expanded`
+  (only the listed ids open, one level each: a lazy tree's open frontier in one call) prunes further;
   the document root (or a ref without `id`) with nothing to prune reads the whole document once; narrow with
   `select` rather than filter the tree in JS;
   and it **unwraps transparent elements by default** (the config's `transparentElements`: their

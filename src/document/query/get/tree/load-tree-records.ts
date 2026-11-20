@@ -1,7 +1,7 @@
 import { getRecord } from '../record/get-record'
 import { loadLiveRecords } from '../record/load-live-records'
 import { readUnknownRecords } from '../record/read-unknown-records'
-import { childRefsToRead, expandsChildren, keptChildren } from './tree-children'
+import { childRefsToRead, childReach, expandsChildren, keptChildren } from './tree-children'
 
 import { toDialecteError } from '@/errors'
 
@@ -15,12 +15,15 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  * The records a `getTree` call assembles its tree from, staged operations overlaid, with the root it asked for
  * (`undefined` when the ref names no element of its tag).
  *
- * When a `select`, an unconditional `omit` or a `depth` can prune, reads the root by its ref (a ref without id by
- * its tag name), then the kept children level by level, one `getRecords` per level over the whole frontier: a child
- * ref is read only when its tag can be kept, and the conditional parts (`where`, an `omit` with `where`) are checked
- * once it is read, before its own children are. A child dropped is never followed. A ref with an id below the
- * document root prunes too: the rest of the document is never read. Only when nothing prunes, on the document root
- * or a ref without id, one whole-document read serves the tree.
+ * When a `select`, an unconditional `omit`, a `depth` or `expanded` can prune, reads the root by its ref (a ref
+ * without id by its tag name), then the kept children level by level, one `getRecords` per level over the whole
+ * frontier: a child ref is read only when its tag can be kept, and the conditional parts (`where`, an `omit` with
+ * `where`) are checked once it is read, before its own children are. A child dropped is never followed, nor a node
+ * that does not open (past `depth`, or not listed in `expanded`): its children refs are kept, never read. A ref with
+ * an id below the document root prunes too: the rest of the document is never read. Only when nothing prunes, on
+ * the document root or a ref without id, one whole-document read serves the tree. A ref without id below the
+ * document root that prunes resolves its root by tag name, which is not always the first record of its tag the
+ * whole-document read picks (see `refNamesASubtree`): a lazy view passes ids.
  *
  * Outside a transaction a read by levels is several store reads, so a write landing between two levels can be seen
  * by the deeper ones only; the one whole-document read is a single store read.
@@ -44,6 +47,7 @@ export async function loadTreeRecords<
 	const prunes =
 		select !== undefined ||
 		depth !== undefined ||
+		shaping.expanded !== undefined ||
 		shaping.compiledOmit.unconditional.size > 0 ||
 		refNamesASubtree({ context, ref })
 	if (!prunes) {
@@ -57,7 +61,7 @@ export async function loadTreeRecords<
 	const rootNode: FrontierNode<GenericConfig> = {
 		record: root as TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>,
 		select,
-		remainingDepth: depth ?? Number.POSITIVE_INFINITY,
+		reach: { remainingDepth: depth ?? Number.POSITIVE_INFINITY, hoisted: false },
 	}
 	const levels = await readLevels<GenericConfig>({ context, frontier: [rootNode], shaping })
 	const recordsById: KnownRecords<GenericConfig> = new Map([
@@ -109,11 +113,7 @@ async function readLevels<GenericConfig extends AnyDialecteConfig>(params: {
 	const { context, frontier, shaping } = params
 	const expanding = frontier
 		.filter((node) =>
-			expandsChildren<GenericConfig>({
-				record: node.record,
-				remainingDepth: node.remainingDepth,
-				compiledOmit: shaping.compiledOmit,
-			}),
+			expandsChildren<GenericConfig>({ record: node.record, reach: node.reach, shaping }),
 		)
 		.map((node) => ({
 			node,
@@ -132,7 +132,14 @@ async function readLevels<GenericConfig extends AnyDialecteConfig>(params: {
 			}),
 			select: node.select,
 			shaping,
-		}).map((kept) => ({ ...kept, remainingDepth: node.remainingDepth - 1 })),
+		}).map((kept) => ({
+			...kept,
+			reach: childReach<GenericConfig>({
+				tagName: kept.record.tagName,
+				reach: node.reach,
+				shaping,
+			}),
+		})),
 	)
 	const deeper = await readLevels<GenericConfig>({ context, frontier: nextFrontier, shaping })
 	return [level, ...deeper]
