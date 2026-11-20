@@ -5,7 +5,7 @@ import { callsSince, holdOf, openCountedProject } from './transaction-read-cache
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { StoreHold } from './transaction-read-cache.fixtures'
+import type { StoreHold } from './transaction-read-cache.fixtures.types'
 import type { ProjectChannelMessage } from '@/project/types'
 
 /** What the Project does with what another realm tells: private, reached as the channel does. */
@@ -58,7 +58,7 @@ describe('transaction read cache - what another view commits, and the next trans
 	})
 
 	it('a tag being read whole when another view commits, the cache emptied before the read lands → the next lookup finds the record', async () => {
-		const held = holdOf('getByTagNameInDocument')
+		const held = holdOf({ member: 'getByTagNameInDocument' })
 		const { document, commitFromAnotherView } = await openWithAnotherView({ hold: held.hold })
 		const found = await document.transaction(async function completeAcrossAForeignCommit(tx) {
 			for (let index = 1; index < COMPLETE_TAG_AT_LOOKUP; index++) {
@@ -77,6 +77,30 @@ describe('transaction read cache - what another view commits, and the next trans
 			return tx.findByAttributes({ tagName: 'A', attributes: { aA: 'foreign' } })
 		})
 		expect(found).toHaveLength(1)
+	})
+
+	it('a lookup answering while another view changes its record, the cache emptied before it lands → a read of the record after it, the new value', async () => {
+		const held = holdOf({ member: 'getByAttributes' })
+		const { document, commitFromAnotherView } = await openWithAnotherView({ hold: held.hold })
+		const [stored] = await document.query.findByAttributes({
+			tagName: 'A',
+			attributes: { aA: 'v4' },
+		})
+		const ref = { tagName: 'A' as const, id: stored.id }
+		const value = await document.transaction(async function lookUpAcrossAForeignCommit(tx) {
+			held.hold.armed = true
+			const lookup = tx.findByAttributes({ tagName: 'A', attributes: { aA: 'v4' } })
+			await held.reached
+			await commitFromAnotherView(async function changeIt(otherTx) {
+				await otherTx.update(ref, { attributes: { aA: 'changed' } })
+			})
+			// a read after the told change: the transaction's cache is emptied while the lookup is in flight
+			await tx.getRecordsByTagName('B')
+			held.release()
+			await lookup
+			return tx.getAttribute(ref, { name: 'aA' })
+		})
+		expect(value).toBe('changed')
 	})
 
 	it('a record read, then another view changes it → read again, the new value', async () => {

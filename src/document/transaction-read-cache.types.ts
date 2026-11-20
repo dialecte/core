@@ -19,6 +19,10 @@ export type TransactionReadCache = {
 	 * (an answer read before a told change is handed back, never kept).
 	 */
 	generation: number
+	/** The whole-tag reads in flight, by tag: lookups that reach the threshold together wait for the one read. */
+	readonly completions: Map<string, Promise<void>>
+	/** The record count read in flight, once per transaction: lookups past the threshold together wait for it. */
+	documentCountRead: Promise<number> | undefined
 }
 
 /** What a transaction knows of one tag's stored records. */
@@ -27,6 +31,8 @@ export type CachedTag = {
 	readonly ids: Set<string>
 	/** Every stored record of the tag is in `ids`: set by a whole-tag read only. */
 	complete: boolean
+	/** `ids` in id order, kept until an id is added. */
+	sorted: string[] | undefined
 	/** The value lookups of the tag the store answered in this transaction. */
 	lookups: number
 	/** Layer 3: per attribute name, the ids holding each value; built from layer 1 when a complete tag is first asked. */

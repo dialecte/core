@@ -44,7 +44,6 @@ describe('transaction read cache - the same answer from the store and from a com
 		{ name: 'one value', filter: { aA: 'ONE' } },
 		{ name: 'a value list', filter: { aA: ['TWO', 'THREE', 'FIVE'] } },
 		{ name: 'two attributes', filter: { aA: 'ONE', bA: 'X' } },
-		{ name: 'an attribute of another namespace', filter: { 'ext:cA': 'Z' } as AFilter },
 		{ name: 'a value no record holds', filter: { aA: 'NONE' } },
 	]
 

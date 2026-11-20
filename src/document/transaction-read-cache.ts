@@ -3,6 +3,7 @@ import {
 	LARGE_DOCUMENT_RECORDS,
 	READ_EPOCH_KEY,
 	RECORDS_PER_LOOKUP,
+	TRANSACTION_READ_CACHE_PERF,
 } from './transaction-read-cache.constants'
 
 import { idsByValueOf, idsOfLookup } from '@/utils/ids-by-attribute-value'
@@ -23,6 +24,8 @@ export function createTransactionReadCache(): TransactionReadCache {
 		epoch: undefined,
 		documentCount: undefined,
 		generation: 0,
+		completions: new Map(),
+		documentCountRead: undefined,
 	}
 }
 
@@ -33,6 +36,8 @@ export function dropTransactionReadCache(params: { cache: TransactionReadCache }
 	cache.records.clear()
 	cache.tags.clear()
 	cache.documentCount = undefined
+	cache.completions.clear()
+	cache.documentCountRead = undefined
 	cache.generation += 1
 }
 
@@ -71,8 +76,13 @@ export function noteStoredRecords(params: {
 		const held = cache.records.get(record.id)
 		cache.records.set(record.id, record)
 		const tag = tagOf({ cache, tagName: record.tagName })
-		tag.ids.add(record.id)
-		if (held && held.attributes !== record.attributes) tag.byAttribute.clear()
+		if (!tag.ids.has(record.id)) {
+			tag.ids.add(record.id)
+			tag.sorted = undefined
+		}
+		if (held && !sameAttributes({ left: held.attributes, right: record.attributes })) {
+			tag.byAttribute.clear()
+		}
 	}
 	if (completes !== undefined) tagOf({ cache, tagName: completes }).complete = true
 }
@@ -107,7 +117,8 @@ export function storedRecordsOfTag(params: {
 	const { cache, tagName } = params
 	const tag = cache.tags.get(tagName)
 	if (!tag?.complete) return undefined
-	return recordsOf({ cache, ids: [...tag.ids].sort() })
+	tag.sorted ??= [...tag.ids].sort()
+	return recordsOf({ cache, ids: tag.sorted })
 }
 
 /**
@@ -141,7 +152,13 @@ function tagOf(params: { cache: TransactionReadCache; tagName: string }): Cached
 	const { cache, tagName } = params
 	const known = cache.tags.get(tagName)
 	if (known) return known
-	const tag: CachedTag = { ids: new Set(), complete: false, lookups: 0, byAttribute: new Map() }
+	const tag: CachedTag = {
+		ids: new Set(),
+		complete: false,
+		sorted: undefined,
+		lookups: 0,
+		byAttribute: new Map(),
+	}
 	cache.tags.set(tagName, tag)
 	return tag
 }
@@ -209,6 +226,74 @@ export function wireReadEpoch(params: { transaction: object; readEpoch: () => nu
 }
 
 /** The read epoch wired into a transaction, `undefined` when no Document wired one. */
-export function readEpochOf(transaction: object): (() => number) | undefined {
-	return Reflect.get(transaction, READ_EPOCH_KEY) as (() => number) | undefined
+export function readEpochOf(params: { transaction: object }): (() => number) | undefined {
+	return Reflect.get(params.transaction, READ_EPOCH_KEY) as (() => number) | undefined
+}
+
+/**
+ * The document's record count, read once per transaction: lookups that need it together wait for the one read, and a
+ * read whose cache was emptied while it was in flight is answered but not kept.
+ */
+// dialecte-allow argument-mutation: the cache keeps the count it read, and the read in flight
+export async function documentCountOf(params: {
+	context: Context<AnyDialecteConfig>
+	cache: TransactionReadCache
+}): Promise<number> {
+	const { context, cache } = params
+	if (cache.documentCount !== undefined) return cache.documentCount
+	cache.documentCountRead ??= readDocumentCount({ context, cache })
+	return cache.documentCountRead
+}
+
+/** One read of the document's record count, kept in the cache unless it was emptied meanwhile. */
+// dialecte-allow argument-mutation: the cache keeps the count it read
+async function readDocumentCount(params: {
+	context: Context<AnyDialecteConfig>
+	cache: TransactionReadCache
+}): Promise<number> {
+	const { context, cache } = params
+	const readAt = cache.generation
+	context.perf.count(TRANSACTION_READ_CACHE_PERF.storeCount)
+	const documentCount = await context.store.count(context.documentId)
+	if (cache.generation === readAt) cache.documentCount = documentCount
+	return documentCount
+}
+
+/**
+ * Read a tag whole once: lookups reaching the threshold together wait for the one read (`read`), dropped from the
+ * in-flight reads when it settles, unless the cache was emptied meanwhile (a later read starts anew).
+ */
+// dialecte-allow argument-mutation: the cache keeps the whole-tag read in flight
+export async function completeTagOnce(params: {
+	cache: TransactionReadCache
+	tagName: string
+	read: () => Promise<unknown>
+}): Promise<void> {
+	const { cache, tagName, read } = params
+	const inFlight = cache.completions.get(tagName)
+	if (inFlight) return inFlight
+	const completion = read().then(function settled() {
+		if (cache.completions.get(tagName) === completion) cache.completions.delete(tagName)
+	})
+	cache.completions.set(tagName, completion)
+	return completion
+}
+
+/** Whether two attribute lists hold the same attributes, in the same order (name, value, namespace). */
+function sameAttributes(params: {
+	left: AnyRawRecord['attributes']
+	right: AnyRawRecord['attributes']
+}): boolean {
+	const { left, right } = params
+	if (left === right) return true
+	if (left.length !== right.length) return false
+	return left.every(function sameAt(attribute, index) {
+		const other = right[index]
+		return (
+			attribute.name === other.name &&
+			attribute.value === other.value &&
+			attribute.namespace?.uri === other.namespace?.uri &&
+			attribute.namespace?.prefix === other.namespace?.prefix
+		)
+	})
 }

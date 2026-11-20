@@ -1,4 +1,5 @@
 import { readThroughScope } from '../../read-scope/read-through-scope'
+import { storedRecordsOfTagIn } from './get-records-by-tagname'
 import { getLatestStagedRecord } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
@@ -55,9 +56,10 @@ export async function getRecord<
 		} else {
 			context.perf.count('core::query::getRecord.miss')
 			const readAt = readGenerationOf({ context })
-			const records = (await readThroughScope({
+			// a tag a transaction read whole answers from its cache; else read, and kept whole
+			const records = (await storedRecordsOfTagIn({
 				context,
-				read: { member: 'getByTagNameInDocument', args: [ref.tagName, context.documentId] },
+				tagName: ref.tagName,
 			})) as RawRecord<GenericConfig, GenericElement>[]
 			raw = records[0]
 			if (raw) noteReadsOf({ context, records: [raw], readAt, singletonKey: cacheKey })

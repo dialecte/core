@@ -117,7 +117,7 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 */
 	protected override get context(): Context<GenericConfig> {
 		// every read starts here: a change told since the cache was filled (another view's commit) empties it first
-		if (followReadEpoch({ cache: this.readCache, readEpoch: readEpochOf(this) })) {
+		if (followReadEpoch({ cache: this.readCache, readEpoch: readEpochOf({ transaction: this }) })) {
 			this.perf.count(TRANSACTION_READ_CACHE_PERF.dropped)
 		}
 		return {

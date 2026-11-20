@@ -4,7 +4,7 @@ import { callsSince, openCountedProject } from './transaction-read-cache.fixture
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { StoreCalls } from './transaction-read-cache.fixtures'
+import type { StoreCalls } from './transaction-read-cache.fixtures.types'
 import type { AnyRawRecord } from '@/types'
 
 /** The `aA` values of records, in the order answered. */
@@ -97,5 +97,28 @@ describe('transaction read cache - the store calls of repeated lookups of one ta
 		})
 		expect(answers.fromMemory).toEqual(answers.fromStore)
 		expect([...answers.values].sort()).toEqual(['new', 'v1', 'v1', 'v9', 'v9'])
+	})
+
+	it('lookups of one tag run together past the threshold → the tag read once and the record count read once', async () => {
+		const { document, calls } = await open()
+		const answers = await document.transaction(async function lookTogether(tx) {
+			for (let index = 1; index < COMPLETE_TAG_AT_LOOKUP; index++) {
+				await tx.findByAttributes({ tagName: 'A', attributes: { aA: `v${index}` } })
+			}
+			const before = { ...calls }
+			const together = await Promise.all(
+				['v1', 'v2', 'v3', 'v4', 'v5'].map(function lookUp(value) {
+					return tx.findByAttributes({ tagName: 'A', attributes: { aA: value } })
+				}),
+			)
+			return {
+				values: together.map((records) => valuesOf(records)),
+				calls: callsSince({ calls, before }),
+			}
+		})
+		expect(answers).toEqual({
+			values: [['v1'], ['v2'], ['v3'], ['v4'], ['v5']],
+			calls: { getByAttributes: 0, getByTagNameInDocument: 1, count: 1 },
+		})
 	})
 })

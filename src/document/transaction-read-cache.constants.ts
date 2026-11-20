@@ -19,6 +19,8 @@ export const TRANSACTION_READ_CACHE_PERF = {
 	complete: 'core::transaction::readCache.complete',
 	/** The cache emptied: the document's read epoch moved. */
 	dropped: 'core::transaction::readCache.dropped',
+	/** The document's record count read from the store (the store tally every count read takes). */
+	storeCount: 'core::store::count',
 } as const
 
 /** Where a transaction carries its document's read epoch (`wireReadEpoch`): off its public surface. */

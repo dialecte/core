@@ -5,7 +5,9 @@ import { getRecordsByTagName } from '@/document'
 import { storedRecordsOfTagIn } from '@/document/query/get/record/get-records-by-tagname'
 import { readThroughScope } from '@/document/query/read-scope/read-through-scope'
 import {
+	completeTagOnce,
 	completionThresholdOf,
+	documentCountOf,
 	noteLookup,
 	noteReadsOf,
 	readGenerationOf,
@@ -145,8 +147,14 @@ async function storedAnswerOf(params: {
 		}
 		const lookups = noteLookup({ cache, tagName })
 		if (await reachesThreshold({ context, cache, lookups })) {
-			context.perf.count(TRANSACTION_READ_CACHE_PERF.complete)
-			await storedRecordsOfTagIn({ context, tagName })
+			await completeTagOnce({
+				cache,
+				tagName,
+				read: function readTagWhole() {
+					context.perf.count(TRANSACTION_READ_CACHE_PERF.complete)
+					return storedRecordsOfTagIn({ context, tagName })
+				},
+			})
 			// a told change while the tag was read keeps it from being noted: the store's lookup answers then
 			const completed = storedAnswerOfLookup({ cache, tagName, attributes: pushed })
 			if (completed) return completed
@@ -166,9 +174,8 @@ async function storedAnswerOf(params: {
 
 /**
  * Whether a tag's lookup count reaches the lookup at which it is read whole. The document's record count is read once per
- * transaction, and only once a tag reaches the smallest threshold.
+ * transaction (`documentCountOf`), and only once a tag reaches the smallest threshold.
  */
-// dialecte-allow argument-mutation: the transaction's cache keeps the document's record count it read
 async function reachesThreshold(params: {
 	context: Context<AnyDialecteConfig>
 	cache: TransactionReadCache
@@ -176,11 +183,8 @@ async function reachesThreshold(params: {
 }): Promise<boolean> {
 	const { context, cache, lookups } = params
 	if (lookups < COMPLETE_TAG_AT_LOOKUP) return false
-	if (cache.documentCount === undefined) {
-		context.perf.count('core::store::count')
-		cache.documentCount = await context.store.count(context.documentId)
-	}
-	return lookups >= completionThresholdOf({ documentCount: cache.documentCount })
+	const documentCount = await documentCountOf({ context, cache })
+	return lookups >= completionThresholdOf({ documentCount })
 }
 
 /**

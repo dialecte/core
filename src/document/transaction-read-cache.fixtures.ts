@@ -1,25 +1,13 @@
 import { inMemoryTestStore, READ_SCOPE_DIALECTE } from './query/read-scope/read-scope.fixtures'
+import { COUNTED_MEMBERS } from './transaction-read-cache.fixtures.constants'
 
 import { createTestHelpers } from '@/test/create-test-helpers'
 
+import type { CountedMember, StoreCalls, StoreHold } from './transaction-read-cache.fixtures.types'
 import type { Store } from '@/store'
 
-/** The store members a transaction read is counted by. */
-export const COUNTED_MEMBERS = ['getByAttributes', 'getByTagNameInDocument', 'count'] as const
-
-/**
- * A counted member held once, when armed: the store answers as it is called, the hold tells it was `reached`, and the
- * answer is handed back only once `gate` settles (an answer in flight while other things happen).
- */
-export type StoreHold = {
-	member: (typeof COUNTED_MEMBERS)[number]
-	armed: boolean
-	reached: () => void
-	gate: Promise<void>
-}
-
 /** A hold of `member`, armed, with the promise that it was reached and the release of its gate. */
-export function holdOf(member: StoreHold['member']): {
+export function holdOf(params: { member: StoreHold['member'] }): {
 	hold: StoreHold
 	reached: Promise<void>
 	release: () => void
@@ -32,11 +20,12 @@ export function holdOf(member: StoreHold['member']): {
 	const reached = new Promise<void>((resolve) => {
 		tellReached = resolve
 	})
-	return { hold: { member, armed: false, reached: tellReached, gate }, reached, release }
+	return {
+		hold: { member: params.member, armed: false, reached: tellReached, gate },
+		reached,
+		release,
+	}
 }
-
-/** How many times each counted member was called. */
-export type StoreCalls = Record<(typeof COUNTED_MEMBERS)[number], number>
 
 const helpers = createTestHelpers({ dialecte: READ_SCOPE_DIALECTE })
 
@@ -52,7 +41,7 @@ export function countingStore(params: {
 		get: function memberOfStore(target, property) {
 			const member: unknown = Reflect.get(target, property, target)
 			if (typeof member !== 'function') return member
-			const name = String(property) as (typeof COUNTED_MEMBERS)[number]
+			const name = String(property) as CountedMember
 			if (!COUNTED_MEMBERS.includes(name)) return member.bind(target)
 			return async function countedMember(...args: unknown[]) {
 				calls[name]++
