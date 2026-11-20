@@ -37,7 +37,10 @@ export type {
 	InitEmptyDocumentParams,
 	InitEmptyDocumentResult,
 	ExportBlobParams,
+	ExportBlobAnswer,
 	ExportBlobResult,
+	SaveDownload,
+	SavedFor,
 } from './types'
 export type { RunImportParams } from './io/run-import.types'
 export type { StoreRuntime } from './io/store-runtime.types'

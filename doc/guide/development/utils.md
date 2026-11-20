@@ -429,14 +429,29 @@ Saves a `Blob` to disk using the native File System Access API when available (C
 ```ts
 import { saveToDisk } from '@dialecte/core/utils'
 
-await saveToDisk({
+const outcome = await saveToDisk({
 	data: new Blob([xmlString], { type: 'application/xml' }),
 	filename: 'export.xml',
 	pickerType: { description: 'XML file', accept: { 'application/xml': ['.xml'] } },
 })
 ```
 
-A cancelled save-file picker (`AbortError`) resolves and saves nothing; a picker refused because the user's gesture lapsed (`SecurityError`, `NotAllowedError`: work awaited before the save) falls back to the anchor download; any other failure of the picker or the write is thrown.
+It answers where the file went (`SaveOutcome`): `written` to the file chosen, `downloaded` through the anchor download, or `cancelled` when the user cancels the picker (`AbortError`), nothing written. A picker refused because the user's gesture lapsed (`SecurityError`, `NotAllowedError`: work awaited before the save) falls back to the anchor download; any other failure of the picker or the write is thrown.
+
+### `openSaveTarget`
+
+Asks where a file will be saved before it is made: the save dialog needs the user's gesture, which lapses after a few seconds. Open it at the click, do the long work, then write there; a cancelled target lets you skip the work.
+
+```ts
+import { openSaveTarget } from '@dialecte/core/utils'
+
+const target = await openSaveTarget({ filename: 'bay.ssd' })
+if (target.outcome === 'cancelled') return
+// ... build the document ...
+const { saved } = await project.export({ documentId, download: { target } })
+```
+
+The target says where the file will go: `written` (the file chosen), `downloaded` (no dialog in the browser, or one refused for a lapsed gesture) or `cancelled` (nothing to write to).
 
 ## XML formatting
 

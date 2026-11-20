@@ -34,7 +34,9 @@ import type {
 	ProjectExportResultMaybeDocument,
 	ProjectExportResultWithDocument,
 	ProjectExportBlobParams,
+	ExportBlobAnswer,
 	ExportBlobResult,
+	SavedFor,
 	ProjectChannelMessage,
 	ProjectChannelResync,
 	ProjectParams,
@@ -1103,15 +1105,18 @@ export class Project<
 	/**
 	 * Export a document through the store: its file (`Blob`, formatted unless `indent: false`) and filename. On the
 	 * page, `xmlDocument: true` also answers its DOM (parsed from the compact file: pass `indent: false` to export
-	 * once) and `download` saves the formatted file (the save dialog is asked first). Two store exports made for one
-	 * call may see two states of the document if a commit lands between them.
+	 * once) and `download` saves the formatted file (the save dialog is asked first, or `{ target }` writes to one
+	 * opened before with `openSaveTarget`), answering `saved`: `written`, `downloaded` or `cancelled`. Two store
+	 * exports made for one call may see two states of the document if a commit lands between them.
 	 *
 	 * @intent export a document to an XML file, get a document as a Blob, download a document, save a document as XML, read the exported XML as a DOM
 	 */
-	async export(
-		params: ProjectExportParams & { xmlDocument: true },
-	): Promise<ProjectExportResultWithDocument>
-	async export(params: ProjectExportParams & { xmlDocument?: false }): Promise<ProjectExportResult>
+	async export<Params extends ProjectExportParams & { xmlDocument: true }>(
+		params: Params,
+	): Promise<ProjectExportResultWithDocument & SavedFor<Params>>
+	async export<Params extends ProjectExportParams & { xmlDocument?: false }>(
+		params: Params,
+	): Promise<ProjectExportResult & SavedFor<Params>>
 	async export(params: ProjectExportParams): Promise<ProjectExportResultMaybeDocument>
 	async export(params: ProjectExportParams): Promise<ProjectExportResultMaybeDocument> {
 		return exportDocument({
@@ -1355,12 +1360,15 @@ export class Project<
 
 	/**
 	 * Export a blob from the store: `{ entry, data, filename }`; `download` also saves it (the save dialog, or a
-	 * browser download), under its name or the one given.
+	 * browser download), under its name or the one given, or to a `{ target }` opened before, answering `saved`.
 	 *
 	 * @intent download a stored file, save a blob to disk, read a blob with its file name
 	 */
-	async exportBlob(params: ProjectExportBlobParams): Promise<ExportBlobResult> {
-		return exportBlob({ store: this.store, request: params })
+	async exportBlob<Params extends ProjectExportBlobParams>(
+		params: Params,
+	): Promise<ExportBlobResult & SavedFor<Params>> {
+		const answer: ExportBlobAnswer = await exportBlob({ store: this.store, request: params })
+		return answer as ExportBlobResult & SavedFor<Params>
 	}
 
 	/**
