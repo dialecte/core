@@ -1,7 +1,7 @@
 import { invariant } from '@/utils'
 import { openSaveTarget, writeToTarget } from '@/utils/save-to-disk'
 
-import type { ExportBlobParams, ExportBlobResult } from '../types'
+import type { ExportBlobAnswer, ExportBlobParams } from '../types'
 
 /**
  * Export a blob from the project store, and save it when asked, with where it went: to a target the caller opened
@@ -10,7 +10,7 @@ import type { ExportBlobParams, ExportBlobResult } from '../types'
  *
  * @internal the store-level step behind `project.exportBlob`; callers use the project
  */
-export async function exportBlob(params: ExportBlobParams): Promise<ExportBlobResult> {
+export async function exportBlob(params: ExportBlobParams): Promise<ExportBlobAnswer> {
 	const { store, request } = params
 	const { blobId, download } = request
 

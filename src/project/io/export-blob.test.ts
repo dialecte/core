@@ -1,13 +1,14 @@
 import { exportBlob } from './export-blob'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 import { toDialecteError } from '@/errors'
 import { runTestCases } from '@/test'
 
 import type { ProjectExportBlobParams } from '../types'
+import type { Project } from '@/project'
 import type { Store } from '@/store/store.types'
-import type { BaseTestCase } from '@/test'
+import type { BaseTestCase, TestDialecteConfig } from '@/test'
 import type { BlobRecord } from '@/types'
 import type { SaveOutcome, SaveTarget } from '@/utils/save-to-disk.types'
 
@@ -159,6 +160,22 @@ describe('exportBlob', () => {
 		expect(writtenTo).toEqual(
 			testCase.expectedWrittenTo === 'nowhere' ? [] : [testCase.expectedWrittenTo],
 		)
+	})
+
+	it('the result type -> saved typed present exactly when a download is asked', () => {
+		// checked by the type-check of the tests; never called
+		async function typed(params: { project: Project<TestDialecteConfig>; target: SaveTarget }) {
+			const { project, target } = params
+			const saved = await project.exportBlob({ blobId: 'b1', download: true })
+			expectTypeOf(saved.saved).toEqualTypeOf<SaveOutcome>()
+			const toTarget = await project.exportBlob({ blobId: 'b1', download: { target } })
+			expectTypeOf(toTarget.saved).toEqualTypeOf<SaveOutcome>()
+			const notSaved = await project.exportBlob({ blobId: 'b1' })
+			expectTypeOf(notSaved).not.toHaveProperty('saved')
+			// @ts-expect-error a filename and a target together
+			await project.exportBlob({ blobId: 'b1', download: { filename: 'copy.pdf', target } })
+		}
+		expect(typed).toBeTypeOf('function')
 	})
 
 	it('a blob not in the store -> BLOB_NOT_FOUND', async () => {

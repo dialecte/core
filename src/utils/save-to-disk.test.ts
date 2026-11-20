@@ -93,6 +93,57 @@ describe('saveToDisk', () => {
 		})
 	})
 
+	describe('a write that fails -> the failure thrown, the chosen file released', () => {
+		type FailureCase = BaseTestCase & {
+			failing: 'createWritable' | 'write' | 'close'
+			error: DOMException
+			expectedAborted: boolean
+		}
+		const testCases: Record<string, FailureCase> = {
+			'the file cannot be opened for writing -> thrown, nothing to release': {
+				failing: 'createWritable',
+				error: new DOMException('locked', 'NoModificationAllowedError'),
+				expectedAborted: false,
+			},
+			'the write aborted -> thrown (no cancel by the user), the writable aborted': {
+				failing: 'write',
+				error: new DOMException('aborted', 'AbortError'),
+				expectedAborted: true,
+			},
+			'the close fails -> thrown, the writable aborted': {
+				failing: 'close',
+				error: new DOMException('disk full', 'QuotaExceededError'),
+				expectedAborted: true,
+			},
+		}
+
+		runTestCases.generic(testCases, async (testCase) => {
+			let aborted = false
+			const fail = (step: FailureCase['failing']) => async () => {
+				if (step === testCase.failing) throw testCase.error
+			}
+			;(window as any).showSaveFilePicker = vi.fn(async function showSaveFilePicker() {
+				return {
+					createWritable: async () => {
+						await fail('createWritable')()
+						return {
+							write: fail('write'),
+							close: fail('close'),
+							abort: async () => {
+								aborted = true
+							},
+						}
+					},
+				}
+			})
+
+			await expect(saveToDisk({ data: new Blob(['x']), filename: 'a.txt' })).rejects.toBe(
+				testCase.error,
+			)
+			expect(aborted).toBe(testCase.expectedAborted)
+		})
+	})
+
 	describe('openSaveTarget: the target opened before the file is made, with where it will go', () => {
 		type TargetCase = BaseTestCase & {
 			dialog: 'accepted' | 'cancelled' | 'lapsed' | 'none'

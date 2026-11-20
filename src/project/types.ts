@@ -337,8 +337,25 @@ export type ProjectExportParams = {
 	 * download otherwise; under the document's filename unless one is given. `{ target }` saves to a target the
 	 * caller opened before (`openSaveTarget`, at the user's click), with no dialog of its own.
 	 */
-	download?: boolean | { filename: string } | { target: SaveTarget }
+	download?: boolean | SaveDownload
 }
+
+/** A save asked of an export: under another filename, or to a target opened before; never both. */
+export type SaveDownload =
+	| { filename: string; target?: never }
+	| { target: SaveTarget; filename?: never }
+
+/**
+ * What the `download` asked adds to an export's answer: `saved` present exactly when it saves, possibly present when
+ * the download is a `boolean` known only at run time, absent otherwise.
+ */
+export type SavedFor<Params> = Params extends { download: infer Download }
+	? [Download] extends [undefined | false]
+		? unknown
+		: [Download] extends [true | SaveDownload]
+			? { saved: SaveOutcome }
+			: { saved?: SaveOutcome }
+	: unknown
 
 /** A document `Project.export` exported. */
 export type ProjectExportResult = {
@@ -346,15 +363,17 @@ export type ProjectExportResult = {
 	file: Blob
 	/** The document's name and extension */
 	filename: string
-	/** Where the saved file went, exactly when `download` was asked: nothing is written when `cancelled`. */
-	saved?: SaveOutcome
 }
 
 /** A document `Project.export` exported with its DOM. */
 export type ProjectExportResultWithDocument = ProjectExportResult & { xmlDocument: XMLDocument }
 
-/** A document `Project.export` exported, with its DOM when it was asked. */
-export type ProjectExportResultMaybeDocument = ProjectExportResult & { xmlDocument?: XMLDocument }
+/** A document `Project.export` exported, with its DOM when it was asked and where it was saved when that was asked. */
+export type ProjectExportResultMaybeDocument = ProjectExportResult & {
+	xmlDocument?: XMLDocument
+	/** Where the saved file went, exactly when `download` was asked: nothing is written when `cancelled`. */
+	saved?: SaveOutcome
+}
 
 /** What `exportDocument` runs on: the project's store and state. */
 export type ExportDocumentParams = {
@@ -384,7 +403,7 @@ export type ProjectExportBlobParams = {
 	 * (the dialog opened once the blob is read) or the one given (the dialog opened first). The result's
 	 * `filename` stays the blob's own name. `{ target }` saves to a target the caller opened before.
 	 */
-	download?: boolean | { filename: string } | { target: SaveTarget }
+	download?: boolean | SaveDownload
 }
 
 /** What `exportBlob` runs on: the project's store. */
@@ -397,6 +416,10 @@ export type ExportBlobResult = {
 	entry: BlobRecord
 	data: Blob
 	filename: string
+}
+
+/** What `exportBlob` answers: the blob, and where it was saved when that was asked. */
+export type ExportBlobAnswer = ExportBlobResult & {
 	/** Where the saved blob went, exactly when `download` was asked: nothing is written when `cancelled`. */
 	saved?: SaveOutcome
 }

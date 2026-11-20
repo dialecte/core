@@ -559,6 +559,34 @@ describe('Project.export', () => {
 		expect(typed).toBeTypeOf('function')
 	})
 
+	it('the result type -> saved typed present exactly when a download is asked', () => {
+		// checked by the type-check of the tests; never called
+		async function typed(params: {
+			project: Project<TestDialecteConfig>
+			asked: boolean
+			target: SaveTarget
+		}) {
+			const { project, asked, target } = params
+			const saved = await project.export({ documentId: 'd', download: true })
+			expectTypeOf(saved.saved).toEqualTypeOf<SaveOutcome>()
+			const toTarget = await project.export({ documentId: 'd', download: { target } })
+			expectTypeOf(toTarget.saved).toEqualTypeOf<SaveOutcome>()
+			const withDocument = await project.export({
+				documentId: 'd',
+				xmlDocument: true,
+				download: { filename: 'copy.scd' },
+			})
+			expectTypeOf(withDocument.saved).toEqualTypeOf<SaveOutcome>()
+			const notSaved = await project.export({ documentId: 'd' })
+			expectTypeOf(notSaved).not.toHaveProperty('saved')
+			const maybeSaved = await project.export({ documentId: 'd', download: asked })
+			expectTypeOf(maybeSaved.saved).toEqualTypeOf<SaveOutcome | undefined>()
+			// @ts-expect-error a filename and a target together
+			await project.export({ documentId: 'd', download: { filename: 'copy.scd', target } })
+		}
+		expect(typed).toBeTypeOf('function')
+	})
+
 	it('perf on, the DOM of the formatted file -> both store exports merged into the project perf', async () => {
 		const { project, source } = await createTestProject({
 			sourceXml: textLeafXml({ text: 'value' }),

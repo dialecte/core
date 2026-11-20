@@ -64,7 +64,11 @@ export async function openSaveTarget(params: {
 	return { outcome: 'written', write: (data) => writeToHandle({ handle, data }) }
 }
 
-/** Write the file to a target opened before, when it was not cancelled: where the file went. */
+/**
+ * Write the file to a target opened before, when it was not cancelled: where the file went.
+ *
+ * @internal the write step of `saveToDisk` and of the project's exports
+ */
 export async function writeToTarget(params: {
 	target: SaveTarget
 	data: Blob
@@ -77,8 +81,14 @@ export async function writeToTarget(params: {
 async function writeToHandle(params: { handle: FileSystemFileHandle; data: Blob }): Promise<void> {
 	const { handle, data } = params
 	const writable = await handle.createWritable()
-	await writable.write(data)
-	await writable.close()
+	try {
+		await writable.write(data)
+		await writable.close()
+	} catch (error) {
+		// an open writable keeps its lock and swap file, and leaves the chosen file empty
+		await writable.abort().catch(() => {})
+		throw error
+	}
 }
 
 function downloadTarget(params: { filename: string }): SaveTarget {

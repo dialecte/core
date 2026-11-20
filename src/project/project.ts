@@ -34,7 +34,9 @@ import type {
 	ProjectExportResultMaybeDocument,
 	ProjectExportResultWithDocument,
 	ProjectExportBlobParams,
+	ExportBlobAnswer,
 	ExportBlobResult,
+	SavedFor,
 	ProjectChannelMessage,
 	ProjectChannelResync,
 	ProjectParams,
@@ -1109,10 +1111,12 @@ export class Project<
 	 *
 	 * @intent export a document to an XML file, get a document as a Blob, download a document, save a document as XML, read the exported XML as a DOM
 	 */
-	async export(
-		params: ProjectExportParams & { xmlDocument: true },
-	): Promise<ProjectExportResultWithDocument>
-	async export(params: ProjectExportParams & { xmlDocument?: false }): Promise<ProjectExportResult>
+	async export<Params extends ProjectExportParams & { xmlDocument: true }>(
+		params: Params,
+	): Promise<ProjectExportResultWithDocument & SavedFor<Params>>
+	async export<Params extends ProjectExportParams & { xmlDocument?: false }>(
+		params: Params,
+	): Promise<ProjectExportResult & SavedFor<Params>>
 	async export(params: ProjectExportParams): Promise<ProjectExportResultMaybeDocument>
 	async export(params: ProjectExportParams): Promise<ProjectExportResultMaybeDocument> {
 		return exportDocument({
@@ -1360,8 +1364,11 @@ export class Project<
 	 *
 	 * @intent download a stored file, save a blob to disk, read a blob with its file name
 	 */
-	async exportBlob(params: ProjectExportBlobParams): Promise<ExportBlobResult> {
-		return exportBlob({ store: this.store, request: params })
+	async exportBlob<Params extends ProjectExportBlobParams>(
+		params: Params,
+	): Promise<ExportBlobResult & SavedFor<Params>> {
+		const answer: ExportBlobAnswer = await exportBlob({ store: this.store, request: params })
+		return answer as ExportBlobResult & SavedFor<Params>
 	}
 
 	/**
