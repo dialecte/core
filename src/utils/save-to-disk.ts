@@ -1,14 +1,19 @@
 import { LAPSED_GESTURE_ERRORS } from './save-to-disk.constants'
 
-import type { SaveFilePickerWindow, SavePickerType, SaveTarget } from './save-to-disk.types'
+import type {
+	SaveFilePickerWindow,
+	SaveOutcome,
+	SavePickerType,
+	SaveTarget,
+} from './save-to-disk.types'
 
-export type { SavePickerType, SaveTarget } from './save-to-disk.types'
+export type { SaveOutcome, SavePickerType, SaveTarget } from './save-to-disk.types'
 
 /**
  * Save a Blob to disk using the native File System Access API when available
  * (Chrome / Edge) and falling back to a hidden anchor download (Safari /
  * Firefox), also when the dialog is refused because the user's gesture lapsed. The user cancelling the dialog
- * saves nothing; any other failure is thrown.
+ * saves nothing; any other failure is thrown. Answers where the file went.
  *
  * Browser-only: relies on `window`, `document`, and `URL`.
  *
@@ -19,39 +24,54 @@ export async function saveToDisk(params: {
 	filename: string
 	/** Optional picker type descriptor for `showSaveFilePicker`. */
 	pickerType?: SavePickerType
-}): Promise<void> {
+}): Promise<SaveOutcome> {
 	const { data, filename, pickerType } = params
 	const target = await openSaveTarget({ filename, pickerType })
-	await target?.write(data)
+	return writeToTarget({ target, data })
 }
 
 /**
  * Where a file will be saved, asked BEFORE the file is made: the save dialog needs the user's gesture, which
- * lapses after a few seconds - shorter than a large export. `undefined` when the user cancels the dialog; a dialog
- * refused because the gesture lapsed, or no File System Access API, gives a browser download; any other failure is
- * thrown.
+ * lapses after a few seconds - shorter than a large export. Open it at the user's click, make the file, then write
+ * it (`project.export({ download: { target } })`); a cancelled target lets the caller skip the work. The target
+ * says where the file will go: the file chosen (`written`), a browser download when the dialog is refused because
+ * the gesture lapsed or the browser has none (`downloaded`), or nowhere when the user cancels (`cancelled`); any
+ * other failure is thrown.
+ *
+ * @intent ask where to save a file before making it, open a save dialog at a click, skip an export the user cancelled
  */
 export async function openSaveTarget(params: {
 	filename: string
 	pickerType?: SavePickerType
-}): Promise<SaveTarget | undefined> {
+}): Promise<SaveTarget> {
 	const { filename, pickerType } = params
-	if (!('showSaveFilePicker' in window)) return downloadTarget({ filename })
+	const { showSaveFilePicker } = window as unknown as Partial<SaveFilePickerWindow>
+	if (typeof showSaveFilePicker !== 'function') return downloadTarget({ filename })
 	let handle: FileSystemFileHandle
 	try {
-		handle = await (window as unknown as SaveFilePickerWindow).showSaveFilePicker({
+		handle = await showSaveFilePicker.call(window, {
 			suggestedName: filename,
 			...(pickerType ? { types: [pickerType] } : {}),
 		})
 	} catch (error) {
 		const name = error instanceof Error ? error.name : undefined
-		if (name === 'AbortError') return undefined
+		if (name === 'AbortError') return { outcome: 'cancelled' }
 		// the dialog refused because the user's gesture lapsed (work awaited before the save): download instead
 		if (name !== undefined && LAPSED_GESTURE_ERRORS.includes(name))
 			return downloadTarget({ filename })
 		throw error
 	}
-	return { write: (data) => writeToHandle({ handle, data }) }
+	return { outcome: 'written', write: (data) => writeToHandle({ handle, data }) }
+}
+
+/** Write the file to a target opened before, when it was not cancelled: where the file went. */
+export async function writeToTarget(params: {
+	target: SaveTarget
+	data: Blob
+}): Promise<SaveOutcome> {
+	const { target, data } = params
+	if (target.outcome !== 'cancelled') await target.write(data)
+	return target.outcome
 }
 
 async function writeToHandle(params: { handle: FileSystemFileHandle; data: Blob }): Promise<void> {
@@ -63,7 +83,7 @@ async function writeToHandle(params: { handle: FileSystemFileHandle; data: Blob 
 
 function downloadTarget(params: { filename: string }): SaveTarget {
 	const { filename } = params
-	return { write: (data) => downloadBlob({ data, filename }) }
+	return { outcome: 'downloaded', write: (data) => downloadBlob({ data, filename }) }
 }
 
 /** A browser download of the Blob, through a hidden anchor. */

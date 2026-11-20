@@ -22,6 +22,7 @@ import type {
 import type { Project } from '@/project'
 import type { ExportFileParams, Store } from '@/store/store.types'
 import type { BaseTestCase, TestDialecteConfig } from '@/test'
+import type { SaveOutcome, SaveTarget } from '@/utils/save-to-disk.types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -122,6 +123,38 @@ async function runExportDocument(params: {
 		projectName: 'project',
 		request: { documentId: document.id, ...options },
 	})
+}
+
+/** A save target its caller opened before the export, with that outcome; `written` gets what it was given. */
+function fakeTarget(params: { outcome?: SaveOutcome }): {
+	target: SaveTarget
+	written: () => Blob | undefined
+} {
+	const { outcome = 'written' } = params
+	let written: Blob | undefined
+	const target: SaveTarget =
+		outcome === 'cancelled'
+			? { outcome }
+			: {
+					outcome,
+					write: async (data: Blob) => {
+						written = data
+					},
+				}
+	return { target, written: () => written }
+}
+
+/** A browser download through a hidden anchor: whether one was made. */
+function stubDownload(): () => boolean {
+	let downloaded = false
+	const anchor = document.createElement('a')
+	anchor.click = () => {
+		downloaded = true
+	}
+	vi.spyOn(document, 'createElement').mockReturnValue(anchor)
+	vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:download')
+	vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+	return () => downloaded
 }
 
 // ── Test Cases ───────────────────────────────────────────────────────────────
@@ -253,15 +286,89 @@ describe('exportDocument', () => {
 			})
 		})
 
-		it('the dialog cancelled -> nothing saved, the file answered', async () => {
-			const calls: string[] = []
-			const dialog = stubSaveDialog({ calls, outcome: 'cancelled' })
-			const result = await runExportDocument({
-				store: exportingStore({ calls }),
-				options: { download: true },
+		describe('answers where the file went, the file answered in every case', () => {
+			type SavedCase = BaseTestCase & {
+				dialog?: 'cancelled' | 'lapsed'
+				download?: ProjectExportParams['download'] | 'a target'
+				target?: SaveOutcome
+				expectedCalls: string[]
+				expectedSaved: SaveOutcome | 'not answered'
+				expectedWrittenTo: 'dialog' | 'download' | 'target' | 'nowhere'
+			}
+			const testCases: Record<string, SavedCase> = {
+				'no download -> no saved answered, nothing written': {
+					expectedCalls: ['export:formatted'],
+					expectedSaved: 'not answered',
+					expectedWrittenTo: 'nowhere',
+				},
+				'the dialog accepted -> written, to the file chosen': {
+					download: true,
+					expectedCalls: ['picker', 'export:formatted'],
+					expectedSaved: 'written',
+					expectedWrittenTo: 'dialog',
+				},
+				'the dialog refused for a lapsed gesture -> downloaded': {
+					dialog: 'lapsed',
+					download: true,
+					expectedCalls: ['picker', 'export:formatted'],
+					expectedSaved: 'downloaded',
+					expectedWrittenTo: 'download',
+				},
+				'the dialog cancelled -> cancelled, nothing written': {
+					dialog: 'cancelled',
+					download: true,
+					expectedCalls: ['picker', 'export:formatted'],
+					expectedSaved: 'cancelled',
+					expectedWrittenTo: 'nowhere',
+				},
+				'a target opened before, on a file -> no dialog of its own, written to the target': {
+					download: 'a target',
+					target: 'written',
+					expectedCalls: ['export:formatted'],
+					expectedSaved: 'written',
+					expectedWrittenTo: 'target',
+				},
+				'a target opened before, a download -> written to the target, downloaded': {
+					download: 'a target',
+					target: 'downloaded',
+					expectedCalls: ['export:formatted'],
+					expectedSaved: 'downloaded',
+					expectedWrittenTo: 'target',
+				},
+				'a cancelled target -> no dialog of its own, nothing written, cancelled': {
+					download: 'a target',
+					target: 'cancelled',
+					expectedCalls: ['export:formatted'],
+					expectedSaved: 'cancelled',
+					expectedWrittenTo: 'nowhere',
+				},
+			}
+
+			runTestCases.generic(testCases, async (testCase) => {
+				const calls: string[] = []
+				const dialog = stubSaveDialog({ calls, outcome: testCase.dialog })
+				const downloads = stubDownload()
+				const target = fakeTarget({ outcome: testCase.target })
+				const download =
+					testCase.download === 'a target' ? { target: target.target } : testCase.download
+
+				const result = await runExportDocument({
+					store: exportingStore({ calls }),
+					options: download === undefined ? {} : { download },
+				})
+
+				expect(calls).toEqual(testCase.expectedCalls)
+				expect(await result.file.text()).toBe(FORMATTED)
+				expect('saved' in result ? result.saved : 'not answered').toBe(testCase.expectedSaved)
+				const writtenTo = [
+					dialog.saved() && 'dialog',
+					downloads() && 'download',
+					target.written() && 'target',
+				].filter(Boolean)
+				expect(writtenTo).toEqual(
+					testCase.expectedWrittenTo === 'nowhere' ? [] : [testCase.expectedWrittenTo],
+				)
 			})
-			expect(dialog.saved()).toBeUndefined()
-			expect(await result.file.text()).toBe(FORMATTED)
 		})
 
 		it('the dialog refused for a lapsed gesture -> the formatted file downloaded instead', async () => {

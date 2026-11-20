@@ -9,6 +9,7 @@ import type { ProjectExportBlobParams } from '../types'
 import type { Store } from '@/store/store.types'
 import type { BaseTestCase } from '@/test'
 import type { BlobRecord } from '@/types'
+import type { SaveOutcome, SaveTarget } from '@/utils/save-to-disk.types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,13 +38,19 @@ function blobStore(params: { calls: string[]; present?: boolean }): Store {
 	} as unknown as Store
 }
 
-/** A save dialog whose writable keeps what is written; `calls` gets `picker:<suggested name>` when it opens. */
-function stubSaveDialog(params: { calls: string[] }): { saved: () => Blob | undefined } {
-	const { calls } = params
+/**
+ * A save dialog whose writable keeps what is written; `calls` gets `picker:<suggested name>` when it opens. `cancelled`
+ * makes the user cancel it.
+ */
+function stubSaveDialog(params: { calls: string[]; cancelled?: boolean }): {
+	saved: () => Blob | undefined
+} {
+	const { calls, cancelled } = params
 	let written: Blob | undefined
 	;(window as unknown as { showSaveFilePicker: unknown }).showSaveFilePicker = vi.fn(
 		async function showSaveFilePicker(options: { suggestedName: string }) {
 			calls.push(`picker:${options.suggestedName}`)
+			if (cancelled) throw new DOMException('cancelled', 'AbortError')
 			return {
 				createWritable: async () => ({
 					write: async (data: Blob) => {
@@ -57,6 +64,23 @@ function stubSaveDialog(params: { calls: string[] }): { saved: () => Blob | unde
 	return { saved: () => written }
 }
 
+/** A save target its caller opened before, on a file or cancelled; `written` gets what it was given. */
+function fakeTarget(params: { cancelled: boolean }): {
+	target: SaveTarget
+	written: () => Blob | undefined
+} {
+	let written: Blob | undefined
+	const target: SaveTarget = params.cancelled
+		? { outcome: 'cancelled' }
+		: {
+				outcome: 'written',
+				write: async (data: Blob) => {
+					written = data
+				},
+			}
+	return { target, written: () => written }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('exportBlob', () => {
@@ -65,37 +89,76 @@ describe('exportBlob', () => {
 	})
 
 	type BlobCase = BaseTestCase & {
-		request: ProjectExportBlobParams
+		request: Omit<ProjectExportBlobParams, 'download'> & {
+			download?: ProjectExportBlobParams['download'] | 'a target' | 'a cancelled target'
+		}
+		cancelled?: boolean
 		expectedCalls: string[]
-		expectedSaved: boolean
+		expectedSaved: SaveOutcome | 'not answered'
+		expectedWrittenTo: 'dialog' | 'target' | 'nowhere'
 	}
 
 	const testCases: Record<string, BlobCase> = {
-		'no download -> the blob read, nothing saved': {
+		'no download -> the blob read, nothing saved, no saved answered': {
 			request: { blobId: 'b1' },
 			expectedCalls: ['read'],
-			expectedSaved: false,
+			expectedSaved: 'not answered',
+			expectedWrittenTo: 'nowhere',
 		},
-		'a download -> the blob read, then saved under its name': {
+		'a download -> the blob read, then saved under its name, written': {
 			request: { blobId: 'b1', download: true },
 			expectedCalls: ['read', 'picker:diagram.pdf'],
-			expectedSaved: true,
+			expectedSaved: 'written',
+			expectedWrittenTo: 'dialog',
 		},
-		'a download under another filename -> the dialog opened first, then the blob read and saved': {
-			request: { blobId: 'b1', download: { filename: 'copy.pdf' } },
-			expectedCalls: ['picker:copy.pdf', 'read'],
-			expectedSaved: true,
+		'a download under another filename -> the dialog opened first, then the blob read and saved, written':
+			{
+				request: { blobId: 'b1', download: { filename: 'copy.pdf' } },
+				expectedCalls: ['picker:copy.pdf', 'read'],
+				expectedSaved: 'written',
+				expectedWrittenTo: 'dialog',
+			},
+		'a download whose dialog is cancelled -> the blob read, nothing written, cancelled': {
+			request: { blobId: 'b1', download: true },
+			cancelled: true,
+			expectedCalls: ['read', 'picker:diagram.pdf'],
+			expectedSaved: 'cancelled',
+			expectedWrittenTo: 'nowhere',
+		},
+		'a target opened before -> no dialog of its own, the blob written to it': {
+			request: { blobId: 'b1', download: 'a target' },
+			expectedCalls: ['read'],
+			expectedSaved: 'written',
+			expectedWrittenTo: 'target',
+		},
+		'a cancelled target -> the blob read, nothing written, cancelled': {
+			request: { blobId: 'b1', download: 'a cancelled target' },
+			expectedCalls: ['read'],
+			expectedSaved: 'cancelled',
+			expectedWrittenTo: 'nowhere',
 		},
 	}
 
 	runTestCases.generic(testCases, async (testCase) => {
 		const calls: string[] = []
-		const dialog = stubSaveDialog({ calls })
-		const result = await exportBlob({ store: blobStore({ calls }), request: testCase.request })
+		const dialog = stubSaveDialog({ calls, cancelled: testCase.cancelled })
+		const target = fakeTarget({ cancelled: testCase.request.download === 'a cancelled target' })
+		const { download, ...rest } = testCase.request
+		const request: ProjectExportBlobParams =
+			download === 'a target' || download === 'a cancelled target'
+				? { ...rest, download: { target: target.target } }
+				: { ...rest, download }
+
+		const result = await exportBlob({ store: blobStore({ calls }), request })
 
 		expect(calls).toEqual(testCase.expectedCalls)
-		expect(result).toEqual({ entry: makeEntry(), data: DATA, filename: 'diagram.pdf' })
-		expect(dialog.saved()).toBe(testCase.expectedSaved ? DATA : undefined)
+		const { saved, ...exported } = result
+		expect(exported).toEqual({ entry: makeEntry(), data: DATA, filename: 'diagram.pdf' })
+		expect('saved' in result ? saved : 'not answered').toBe(testCase.expectedSaved)
+		const writtenTo = [dialog.saved() && 'dialog', target.written() && 'target'].filter(Boolean)
+		expect(writtenTo).toEqual(
+			testCase.expectedWrittenTo === 'nowhere' ? [] : [testCase.expectedWrittenTo],
+		)
 	})
 
 	it('a blob not in the store -> BLOB_NOT_FOUND', async () => {

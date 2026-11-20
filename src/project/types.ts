@@ -5,6 +5,7 @@ import type { Perf } from '@/perf'
 import type { DOCUMENT_UPDATE_FIELDS } from '@/store/document-path.constants'
 import type { ImportControl, ImportFileOptions, ImportProgress, Store } from '@/store/store.types'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
+import type { SaveOutcome, SaveTarget } from '@/utils/save-to-disk.types'
 
 // ── DocumentRecord ───────────────────────────────────────────────────────────
 
@@ -333,9 +334,10 @@ export type ProjectExportParams = {
 	xmlDocument?: boolean
 	/**
 	 * Also save the formatted file: the save dialog where the browser has one (asked before the export runs), a
-	 * download otherwise; under the document's filename unless one is given.
+	 * download otherwise; under the document's filename unless one is given. `{ target }` saves to a target the
+	 * caller opened before (`openSaveTarget`, at the user's click), with no dialog of its own.
 	 */
-	download?: boolean | { filename: string }
+	download?: boolean | { filename: string } | { target: SaveTarget }
 }
 
 /** A document `Project.export` exported. */
@@ -344,6 +346,8 @@ export type ProjectExportResult = {
 	file: Blob
 	/** The document's name and extension */
 	filename: string
+	/** Where the saved file went, exactly when `download` was asked: nothing is written when `cancelled`. */
+	saved?: SaveOutcome
 }
 
 /** A document `Project.export` exported with its DOM. */
@@ -378,9 +382,9 @@ export type ProjectExportBlobParams = {
 	/**
 	 * Also save the blob: the save dialog where the browser has one, a download otherwise; under the blob's name
 	 * (the dialog opened once the blob is read) or the one given (the dialog opened first). The result's
-	 * `filename` stays the blob's own name.
+	 * `filename` stays the blob's own name. `{ target }` saves to a target the caller opened before.
 	 */
-	download?: boolean | { filename: string }
+	download?: boolean | { filename: string } | { target: SaveTarget }
 }
 
 /** What `exportBlob` runs on: the project's store. */
@@ -393,4 +397,6 @@ export type ExportBlobResult = {
 	entry: BlobRecord
 	data: Blob
 	filename: string
+	/** Where the saved blob went, exactly when `download` was asked: nothing is written when `cancelled`. */
+	saved?: SaveOutcome
 }

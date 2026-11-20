@@ -1028,6 +1028,20 @@
 			"declaredAt": "src/utils/resolve-definition.ts:82"
 		},
 		{
+			"path": "@dialecte/core/utils.openSaveTarget",
+			"root": "export",
+			"entry": "@dialecte/core/utils",
+			"otherRoutes": [],
+			"signature": "(params: { filename: string; pickerType?: SavePickerType; }) => Promise<SaveTarget>",
+			"summary": "Where a file will be saved, asked BEFORE the file is made: the save dialog needs the user's gesture, which lapses after a few seconds - shorter than a large export. Open it at the user's click, make the file, then write it (`project.export({ download: { target } })`); a cancelled target lets the caller skip the work. The target says where the file will go: the file chosen (`written`), a browser download when the dialog is refused because the gesture lapsed or the browser has none (`downloaded`), or nowhere when the user cancels (`cancelled`); any other failure is thrown.",
+			"intents": [
+				"ask where to save a file before making it",
+				"open a save dialog at a click",
+				"skip an export the user cancelled"
+			],
+			"declaredAt": "src/utils/save-to-disk.ts:43"
+		},
+		{
 			"path": "@dialecte/core/utils.orderAttributesBySequence",
 			"root": "export",
 			"entry": "@dialecte/core/utils",
@@ -1142,14 +1156,14 @@
 			"root": "export",
 			"entry": "@dialecte/core/utils",
 			"otherRoutes": [],
-			"signature": "(params: { data: Blob; filename: string; pickerType?: SavePickerType; }) => Promise<void>",
-			"summary": "Save a Blob to disk using the native File System Access API when available (Chrome / Edge) and falling back to a hidden anchor download (Safari / Firefox), also when the dialog is refused because the user's gesture lapsed. The user cancelling the dialog saves nothing; any other failure is thrown.",
+			"signature": "(params: { data: Blob; filename: string; pickerType?: SavePickerType; }) => Promise<SaveOutcome>",
+			"summary": "Save a Blob to disk using the native File System Access API when available (Chrome / Edge) and falling back to a hidden anchor download (Safari / Firefox), also when the dialog is refused because the user's gesture lapsed. The user cancelling the dialog saves nothing; any other failure is thrown. Answers where the file went.",
 			"intents": [
 				"save a Blob as a file",
 				"download an exported document",
 				"open a save dialog in the browser"
 			],
-			"declaredAt": "src/utils/save-to-disk.ts:17"
+			"declaredAt": "src/utils/save-to-disk.ts:22"
 		},
 		{
 			"path": "@dialecte/core/utils.validateValue",

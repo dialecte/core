@@ -4,10 +4,20 @@ export type SavePickerType = {
 	accept: Record<string, string[]>
 }
 
-/** Where a file goes once it is ready: the file chosen in the save dialog, or a browser download. */
-export type SaveTarget = {
-	write: (data: Blob) => Promise<void>
-}
+/**
+ * Where a saved file went: `written` to the file chosen in the save dialog, `downloaded` through a browser
+ * download (no dialog in the browser, or one refused because the user's gesture lapsed; the browser may still
+ * ask), or `cancelled` with the dialog, nothing written.
+ */
+export type SaveOutcome = 'written' | 'downloaded' | 'cancelled'
+
+/**
+ * Where a file goes once it is ready, asked before it is made: the file chosen in the save dialog or a browser
+ * download, each with its `write`; a cancelled dialog leaves nothing to write to.
+ */
+export type SaveTarget =
+	| { outcome: Exclude<SaveOutcome, 'cancelled'>; write: (data: Blob) => Promise<void> }
+	| { outcome: 'cancelled' }
 
 /** The page's `showSaveFilePicker` (File System Access API; Chrome and Edge). */
 export type SaveFilePickerWindow = {
