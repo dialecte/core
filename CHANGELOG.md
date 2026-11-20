@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-20
+
+Core 0.13.0 lets a lazy tree open only the ids it lists (`getTree` `expanded`, depth skipping hoisted elements) and
+lets an export say where its file went, saving to a target opened at the user's click.
+
+### Added
+
+- `getTree` takes `expanded: ReadonlySet<string>`: only the listed ids open, one level each, starting from the root. Every other node keeps its `children` refs with an empty `tree`, as past `depth`, and a listed id under a node that does not open is never read. One call rebuilds a lazy tree view's open frontier (an open state restored, a reload after an `unknown` commit, a target revealed with its ancestors listed): the root, then one store read per open level, never the whole document, on the document root too. The tree is the full `getTree` with every node not opened cut to an empty `tree`.
+- **An export says where its file went, and can save to a target opened before.** `project.export` and `project.exportBlob` asked to `download` answer `saved`: `written` (the file chosen in the save dialog), `downloaded` (a browser download: no dialog, or one refused for a lapsed gesture) or `cancelled` (the user cancelled the dialog, nothing written; the file is still answered). `openSaveTarget` is public in `@dialecte/core/utils`: open the dialog at the user's click, do the long work, then `export({ download: { target } })` writes there with no dialog of its own; a cancelled target lets the caller skip the work. `saveToDisk` answers its outcome.
+
+### Changed
+
+- `getTree`'s `depth` counts the levels the caller sees: an element `unwrap` hoists (by default the dialecte's transparent elements) no longer uses up a level, so `depth: 1` on a parent of a transparent wrapper answers the wrapper's children too, each with an empty `tree`. With `unwrap: []` every element counts, as before.
+- `getSnapshot`'s `depth` is unchanged and still counts stored levels, a hoisted element included: it bounds the records the XML is written from too, so it no longer matches `getTree`'s `depth` under a transparent element.
+- `STORAGE_KINDS_VERSION` is 13: the shared `Query` shape gained `getTree`'s `expanded`, so a copy of the library at another version finds no storage kind registered by this one (`PROJECT_STORAGE_NOT_REGISTERED`) instead of a store whose query takes an option it does not know.
+- **`saveToDisk` answers where the file went** (`SaveOutcome`) instead of nothing; a cancelled dialog answers `cancelled`. A write that fails after the dialog releases the chosen file and is thrown.
+
 ## [0.12.1] - 2026-11-18
 
 `getTree` reads a root below the document root level by level instead of the whole document; a SQLite attribute pair's
