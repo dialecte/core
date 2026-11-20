@@ -11,7 +11,11 @@ import {
 	runTestCases,
 } from '@/test'
 
-import type { TransparentTestDialecteConfig, TreeShape } from './get-tree.fixtures.types'
+import type {
+	StoreCounts,
+	TransparentTestDialecteConfig,
+	TreeShape,
+} from './get-tree.fixtures.types'
 import type { GetTreeParams, Ref } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
 import type { AnyDialecteConfig, AnyTreeRecord, ElementsOf } from '@/types'
@@ -39,16 +43,14 @@ const xml = /* xml */ `
 	</Root>
 `
 
-type RecordsMoved = { get: number; getMany: number; getByTagName: number; getByDocumentId: number }
-
 type ReadsCase<GenericConfig extends AnyDialecteConfig> = BaseXmlTestCase & {
 	ref: Ref<GenericConfig, ElementsOf<GenericConfig>>
 	options: GetTreeParams<GenericConfig, ElementsOf<GenericConfig>>
-	expected: { shape: TreeShape; recordsMoved: RecordsMoved }
+	expected: { shape: TreeShape; recordsMoved: StoreCounts }
 }
 
 const a1 = { tagName: 'A', id: 'a1' } as const
-const none: RecordsMoved = { get: 0, getMany: 0, getByTagName: 0, getByDocumentId: 0 }
+const none: StoreCounts = { get: 0, getMany: 0, getByTagName: 0, getByDocumentId: 0 }
 
 function leaf(tagName: string): TreeShape {
 	return { tagName, tree: [] }
@@ -157,11 +159,9 @@ describe('getTree - reads through transparent elements under a select', () => {
 	})
 })
 
-type ReadCalls = RecordsMoved
-
 type NoOptionsCase<GenericConfig extends AnyDialecteConfig> = BaseXmlTestCase & {
 	ref: Ref<GenericConfig, ElementsOf<GenericConfig>>
-	expected: { shape: TreeShape; calls: ReadCalls; recordsMoved: RecordsMoved }
+	expected: { shape: TreeShape; calls: StoreCounts; recordsMoved: StoreCounts }
 }
 
 async function readsByLevelsBelowTheDocumentRoot<GenericConfig extends AnyDialecteConfig>({

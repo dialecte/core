@@ -516,10 +516,11 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	/**
 	 * Build a full tree structure from an element down. It reads level by level (one read per level) only the
 	 * branches it can keep: a ref with an `id` below the document root reads its own subtree, and a `select`, a
-	 * tag-only `omit` or a `depth` prunes further. The document root, or a ref without `id`, with nothing to prune
-	 * reads the whole document once.
+	 * tag-only `omit`, a `depth` or `expanded` prunes further. The document root, or a ref without `id`, with nothing
+	 * to prune reads the whole document once. For a lazy tree view, `depth` counts the levels seen after unwrap and
+	 * `expanded` opens only the listed ids, one level each, from the root.
 	 *
-	 * @intent read a subtree in document order, walk children recursively, project a filtered tree with select or omit, read a subtree to copy it with deepClone
+	 * @intent read a subtree in document order, walk children recursively, project a filtered tree with select or omit, read a subtree to copy it with deepClone, load a lazy tree view one open level at a time
 	 *
 	 * @param refOrRecord - The root of the subtree.
 	 * @param options - Optional depth/filter controls.
@@ -528,6 +529,7 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * @example
 	 * ```ts
 	 * const tree = await query.getTree(a)
+	 * const open = await query.getTree(root, { expanded: new Set([root.id, a.id]) }) // root and a opened
 	 * ```
 	 */
 	async getTree<GenericElement extends ElementsOf<GenericConfig>>(

@@ -3,25 +3,46 @@ import { CONFIG_KEYS } from './get-tree.constants'
 
 import { matchesAttributeFilter } from '@/document'
 
-import type { OmitSpecification } from '../../tree-filter'
 import type { RecordLink } from '../record/known-records.types'
 import type { TreeSelect } from './get-tree.types'
-import type { KeptChild, TreeShaping } from './tree-children.types'
+import type { KeptChild, TreeReach, TreeShaping } from './tree-children.types'
 import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 
 /**
- * Whether a node of the tree expands its children: not at the depth boundary (the node is kept, its subtree
- * dropped), nor on an `omit` entry of scope `children` its attributes match.
+ * Whether a node of the tree expands its children: within `depth`, listed in `expanded` when given (a hoisted node
+ * opens when reached), and not on an `omit` entry of scope `children` its attributes match. A node that does not
+ * expand is kept, its subtree dropped.
  *
  * @internal shared by the tree loader and the tree assembly of `getTree`
  */
 export function expandsChildren<GenericConfig extends AnyDialecteConfig>(params: {
 	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
-	remainingDepth: number
-	compiledOmit: OmitSpecification<GenericConfig>
+	reach: TreeReach
+	shaping: TreeShaping<GenericConfig>
 }): boolean {
-	const { record, remainingDepth, compiledOmit } = params
-	return remainingDepth > 0 && !shouldStopTraversal({ record, compiledOmit })
+	const { record, reach, shaping } = params
+	const { compiledOmit, expanded } = shaping
+	const listed = reach.hoisted || expanded === undefined || expanded.has(record.id)
+	return reach.remainingDepth > 0 && listed && !shouldStopTraversal({ record, compiledOmit })
+}
+
+/**
+ * The reach of a child: one visible level less than its parent, or its parent's own levels when the call hoists its
+ * tag, so `depth` counts the levels the caller sees after unwrap.
+ *
+ * @internal shared by the tree loader and the tree assembly of `getTree`
+ */
+export function childReach<GenericConfig extends AnyDialecteConfig>(params: {
+	tagName: string
+	reach: TreeReach
+	shaping: TreeShaping<GenericConfig>
+}): TreeReach {
+	const { tagName, reach, shaping } = params
+	const hoisted = shaping.unwrapTagNames.has(tagName)
+	return {
+		remainingDepth: hoisted ? reach.remainingDepth : reach.remainingDepth - 1,
+		hoisted,
+	}
 }
 
 /**

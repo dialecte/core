@@ -290,12 +290,13 @@ const tree = await doc.query.getTree(ref, {
 
 #### GetTreeParams
 
-| Option   | Type            | Description                                                   |
-| -------- | --------------- | ------------------------------------------------------------- |
-| `select` | `TreeSelect`    | Prisma-style nested projection to pick branches               |
-| `omit`   | `OmitEntry[]`   | Exclude elements - string or key-based object with conditions |
-| `unwrap` | `ElementName[]` | Skip these elements and promote their children                |
-| `depth`  | `number`        | Structural levels to expand (see below)                       |
+| Option     | Type                  | Description                                                    |
+| ---------- | --------------------- | -------------------------------------------------------------- |
+| `select`   | `TreeSelect`          | Prisma-style nested projection to pick branches                |
+| `omit`     | `OmitEntry[]`         | Exclude elements - string or key-based object with conditions  |
+| `unwrap`   | `ElementName[]`       | Skip these elements and promote their children                 |
+| `depth`    | `number`              | Structural levels to expand (see below)                        |
+| `expanded` | `ReadonlySet<string>` | Only these ids open, one level each, from the root (see below) |
 
 #### Depth-limited reads
 
@@ -306,13 +307,25 @@ const tree = await doc.query.getTree(ref, {
 - `1` — the node and its direct children.
 - `n` — `n` levels below the node.
 
+The levels counted are the ones the caller sees: an element `unwrap` hoists (by default the dialecte's transparent elements) takes no level, its children count at its parent's next level. With `unwrap: []` nothing is hoisted and every element counts.
+
 An unexpanded node keeps its `children` refs but returns an empty `tree`, so a collapsed branch is distinguishable from a leaf — exactly what a lazy / expand-on-demand UI needs.
 
 A bounded depth reads only the levels it needs (one batched store read per level) instead of the whole document, so a shallow expand on a large document is milliseconds rather than seconds, inside a transaction with pending writes too (staged records answer first).
 
+#### Open frontier
+
+`expanded` opens only the listed ids, one level each, starting from the root: a node's `tree` holds its children when its id is in the set and its parent opened. A listed id under a node that does not open is never reached, and an empty set answers the root alone. Every other node keeps its `children` refs with an empty `tree`, as past `depth`. A hoisted element opens when it is reached, its id needs no listing. With `depth` too, a node opens only when both allow it. The refs are the record's own: a hoisted element counts there even when it holds nothing, so `children.length > 0` on a node whose only child is an empty wrapper opens on an empty `tree`.
+
+Pass the root with its `id`: a ref without one below the document root resolves by tag name, which is not always the first record of its tag a full read picks. One call rebuilds a lazy view's open frontier: an open state restored, a reload after a commit reports `unknown`, a target revealed with its ancestors in the set. It reads the root, then one batched store read per open level (a hoisted level is one more), never the whole document, on the document root too. The tree is the full `getTree` with every node not opened cut to an empty `tree`.
+
+```ts
+const frontier = await doc.query.getTree(root, { expanded: new Set([root.id, ...openIds]) })
+```
+
 #### Reads
 
-`getTree` reads level by level and decides for each child, from its tag alone, before reading it: the `select` keys at that level (auto-recursion and the transparent elements it sees through included), a tag-only `omit` and `depth`. A branch it cannot keep is never read; `where` and an `omit` with `where` are checked once the child is read, before its own children are. A singleton ref without an `id` reads its root by its tag name first. A ref with an `id` below the document root reads only its own subtree by levels, with or without options: one read of the root, then one per level. Only on the document root, or a ref without an `id`, with no `select`, no tag-only `omit` and no `depth`, nothing prunes and `getTree` reads the whole document once. Narrow with `select` or `omit` rather than filter the returned tree.
+`getTree` reads level by level and decides for each child, from its tag alone, before reading it: the `select` keys at that level (auto-recursion and the transparent elements it sees through included), a tag-only `omit`, `depth` and `expanded`. A branch it cannot keep is never read; `where` and an `omit` with `where` are checked once the child is read, before its own children are. A singleton ref without an `id` reads its root by its tag name first. A ref with an `id` below the document root reads only its own subtree by levels, with or without options: one read of the root, then one per level. Only on the document root, or a ref without an `id`, with no `select`, no tag-only `omit`, no `depth` and no `expanded`, nothing prunes and `getTree` reads the whole document once. Narrow with `select` or `omit` rather than filter the returned tree.
 
 ```ts
 const root = await doc.query.getTree(ref, { depth: 1 }) // node + direct children
@@ -448,17 +461,17 @@ const { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })
 
 #### GetSnapshotOptions
 
-| Option                  | Type                              | Description                                                                                                                                                                                                                                      |
-| ----------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ref`                   | `RefOrRecord`                     | Scope root. Omit to start from the document root (`config.rootElementName`).                                                                                                                                                                     |
-| `ancestors`             | `number`                          | Include this many ancestor levels above `ref` (spine).                                                                                                                                                                                           |
-| `siblings`              | `boolean \| { expand?: boolean }` | At every ancestor-spine level, include the spine node's siblings (shows `ref` in context up the spine; implies at least `ancestors: 1`). `true` → shallow siblings; `{ expand: true }` → keep the siblings' subtrees (still bounded by `depth`). |
-| `depth`                 | `number`                          | Descend this many levels below the scope root (default: whole subtree). Honored even without `ref` — e.g. `{ depth: 1 }` is the root plus its direct children.                                                                                   |
-| `includeDeleted`        | `boolean`                         | Re-attach staged-deleted nodes as `status: 'deleted'` tombstones (tree only).                                                                                                                                                                    |
-| `omit` / `unwrap`       | see [getTree](#gettree)           | Tree-shape filters, applied to the tree output only.                                                                                                                                                                                             |
-| `as`                    | `'tree' \| 'xml' \| 'both'`       | Output format. Default `'tree'`; `'both'` → `{ tree, xmlString }`.                                                                                                                                                                               |
-| `declareNamespaces`     | `boolean`                         | XML only. Default `true`. `false` → bare fragment (literal/prefixed names, no `xmlns` declarations). See the fragment note below.                                                                                                                |
-| `includeXmlDeclaration` | `boolean`                         | XML only. Default `true`. `false` → omit the XML prolog (`<?xml version="1.0" encoding="UTF-8"?>`), e.g. for an excerpt embedded in another document.                                                                                            |
+| Option                  | Type                              | Description                                                                                                                                                                                                                                                                                          |
+| ----------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ref`                   | `RefOrRecord`                     | Scope root. Omit to start from the document root (`config.rootElementName`).                                                                                                                                                                                                                         |
+| `ancestors`             | `number`                          | Include this many ancestor levels above `ref` (spine).                                                                                                                                                                                                                                               |
+| `siblings`              | `boolean \| { expand?: boolean }` | At every ancestor-spine level, include the spine node's siblings (shows `ref` in context up the spine; implies at least `ancestors: 1`). `true` → shallow siblings; `{ expand: true }` → keep the siblings' subtrees (still bounded by `depth`).                                                     |
+| `depth`                 | `number`                          | Descend this many levels below the scope root (default: whole subtree). Honored even without `ref` — e.g. `{ depth: 1 }` is the root plus its direct children. It counts stored levels: unlike `getTree`'s `depth`, an element `unwrap` hoists still uses a level (it bounds the XML's records too). |
+| `includeDeleted`        | `boolean`                         | Re-attach staged-deleted nodes as `status: 'deleted'` tombstones (tree only).                                                                                                                                                                                                                        |
+| `omit` / `unwrap`       | see [getTree](#gettree)           | Tree-shape filters, applied to the tree output only.                                                                                                                                                                                                                                                 |
+| `as`                    | `'tree' \| 'xml' \| 'both'`       | Output format. Default `'tree'`; `'both'` → `{ tree, xmlString }`.                                                                                                                                                                                                                                   |
+| `declareNamespaces`     | `boolean`                         | XML only. Default `true`. `false` → bare fragment (literal/prefixed names, no `xmlns` declarations). See the fragment note below.                                                                                                                                                                    |
+| `includeXmlDeclaration` | `boolean`                         | XML only. Default `true`. `false` → omit the XML prolog (`<?xml version="1.0" encoding="UTF-8"?>`), e.g. for an excerpt embedded in another document.                                                                                                                                                |
 
 **Tree vs XML:** `omit`, `unwrap` and `includeDeleted` shape the **tree** only. The **XML** always reflects the full, unfiltered document — it is what `commit()` will write. When `unwrap` is omitted, the config's transparent elements are unwrapped (as in `getTree`), so the tree matches what the UI shows.
 
