@@ -223,8 +223,9 @@ describe('getTree - expanded is the full tree cut to the opened nodes', () => {
 })
 
 /**
- * Every id listed answers the full tree, with the case's options; every id but the root's answers the root alone,
- * committed and with a staged write outside the tree.
+ * Every id listed answers the full tree, with the case's options, committed; every id but the root's answers the root
+ * alone with a new A staged under the document root (one more child of the root when the case reads it, cut away
+ * all the same).
  */
 async function opensTheFullTreeWithEveryId<GenericConfig extends AnyDialecteConfig>({
 	source,

@@ -12,10 +12,9 @@ import {
 	createTestRunner,
 } from '@/test'
 
-import type { TransparentTestDialecteConfig, TreeShape } from './get-tree.fixtures.types'
-import type { GetTreeParams, Ref } from '@/document'
-import type { ActParams, BaseXmlTestCase, TestCases } from '@/test'
-import type { AnyTreeRecord, ElementsOf } from '@/types'
+import type { HoistedDepthCase, TransparentTestDialecteConfig } from './get-tree.fixtures.types'
+import type { ActParams, TestCases } from '@/test'
+import type { AnyTreeRecord } from '@/types'
 
 const ns = `${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE}`
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
@@ -111,12 +110,6 @@ describe('getTree — depth', () => {
 		}
 	})
 })
-
-type HoistedDepthCase = BaseXmlTestCase & {
-	ref: Ref<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
-	options: GetTreeParams<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
-	expected: { shape: TreeShape; childRefs: Record<string, number> }
-}
 
 /** The ids of a tree with the count of their `children` refs, every node past the root. */
 function childRefsOf(tree: AnyTreeRecord): Record<string, number> {

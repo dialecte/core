@@ -18,6 +18,9 @@ export type SnapshotFormat = 'tree' | 'xml' | 'both'
  * - `depth` → how many levels to descend below the start (default: whole
  *   subtree). Honored with or without `ref` (e.g. `{ depth: 1 }` = root + its
  *   direct children).
+ *   It counts stored levels: unlike `getTree`'s `depth`, an element `unwrap`
+ *   hoists still uses a level, since `depth` bounds the records the XML is
+ *   written from too.
  * - `includeDeleted` → re-attach staged-deleted nodes as `status:'deleted'`
  *   tombstones. Tree output only — XML always reflects what will be written.
  * - `omit` / `unwrap` → tree-shape filters applied to tree output only (shared

@@ -6,25 +6,20 @@ import { describe, expect } from 'vitest'
 
 import { createTestRunner } from '@/test'
 
-import type { TransparentTestDialecteConfig, TreeShape } from './get-tree.fixtures.types'
-import type { GetTreeParams, Ref, Transaction } from '@/document'
-import type { ActParams, BaseXmlTestCase, TestCases } from '@/test'
-import type { AnyTreeRecord, ElementsOf } from '@/types'
-
-type StoreCounts = { get: number; getMany: number; getByTagName: number; getByDocumentId: number }
+import type {
+	LazyReadsCase,
+	StoreCounts,
+	TransparentTestDialecteConfig,
+	TreeShape,
+} from './get-tree.fixtures.types'
+import type { ActParams, TestCases } from '@/test'
+import type { AnyTreeRecord } from '@/types'
 
 const none: StoreCounts = { get: 0, getMany: 0, getByTagName: 0, getByDocumentId: 0 }
 const a1 = { tagName: 'A', id: 'a1' } as const
 
 function leaf(tagName: string): TreeShape {
 	return { tagName, tree: [] }
-}
-
-type LazyReadsCase = BaseXmlTestCase & {
-	ref: Ref<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
-	options: GetTreeParams<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
-	stage?: (tx: Transaction<TransparentTestDialecteConfig>) => Promise<void>
-	expected: { shape: TreeShape; calls: StoreCounts; recordsMoved: StoreCounts }
 }
 
 /** The store calls and records moved by one lazy read, inside a transaction holding the staged writes when given. */
@@ -125,6 +120,26 @@ describe('getTree - a lazy read moves one level per open level, never the whole 
 				shape: { tagName: 'A', tree: [leaf('AA_2'), leaf('AAA_1'), leaf('AAA_2')] },
 				calls: { ...none, get: 1, getMany: 2 },
 				recordsMoved: { ...none, get: 1, getMany: 4 },
+			},
+		},
+		'an id listed that names no record → ignored, the same reads as without it': {
+			sourceXml: lazyXml,
+			ref: a1,
+			options: { expanded: new Set(['a1', 'not-in-the-document']) },
+			expected: {
+				shape: { tagName: 'A', tree: [leaf('AA_2'), leaf('AAA_1'), leaf('AAA_2')] },
+				calls: { ...none, get: 1, getMany: 2 },
+				recordsMoved: { ...none, get: 1, getMany: 4 },
+			},
+		},
+		'an empty set → the root alone, its own read only': {
+			sourceXml: lazyXml,
+			ref: a1,
+			options: { expanded: new Set() },
+			expected: {
+				shape: leaf('A'),
+				calls: { ...none, get: 1 },
+				recordsMoved: { ...none, get: 1 },
 			},
 		},
 		'expanded with a staged child in an open hoisted level → the staged child in the tree, never read from the store, no whole-document read':

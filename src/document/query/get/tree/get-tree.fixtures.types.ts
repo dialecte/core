@@ -28,3 +28,26 @@ export type RecursiveTestDialecteConfig = Omit<TestDialecteConfig, 'children'> &
 export type TransparentTestDialecteConfig = TestDialecteConfig & {
 	readonly transparentElements: readonly ['AA_1']
 }
+
+/** What one getTree read cost per store method: its calls, or the records it moved. */
+export type StoreCounts = {
+	get: number
+	getMany: number
+	getByTagName: number
+	getByDocumentId: number
+}
+
+/** A depth read on the transparent dialecte: the tree and the `children` refs count of each node below the root. */
+export type HoistedDepthCase = BaseXmlTestCase & {
+	ref: Ref<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
+	options: GetTreeParams<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
+	expected: { shape: TreeShape; childRefs: Record<string, number> }
+}
+
+/** A lazy read on the transparent dialecte, with `stage` staged first when given: the tree and its store cost. */
+export type LazyReadsCase = BaseXmlTestCase & {
+	ref: Ref<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
+	options: GetTreeParams<TransparentTestDialecteConfig, ElementsOf<TransparentTestDialecteConfig>>
+	stage?: (tx: Transaction<TransparentTestDialecteConfig>) => Promise<void>
+	expected: { shape: TreeShape; calls: StoreCounts; recordsMoved: StoreCounts }
+}
