@@ -333,6 +333,21 @@ await doc.transaction(async (tx) => {
 
 The synchronous [`readAttribute(s)`](/guide/development/helpers#readattribute-readattributes) from `@dialecte/core/helpers` do not see staged changes: they read the record as you hold it. Use `tx.getAttribute(s)` here.
 
+### What a transaction keeps of its reads
+
+A transaction keeps the stored records it read, for itself only:
+
+- **Lookups of one tag.** The first seven `findByAttributes` of a tag ask the store, one call each. The 8th reads the
+  tag whole, and every later lookup of it, and every `getRecordsByTagName` of it, is answered from memory with no store
+  call. The staged writes are laid on top as always, so the answers are the records, in the order, the store's lookup
+  gives. In a document above 250,000 records the tag is read whole at `records / 2,000` lookups instead.
+- **Tag reads.** A `getRecordsByTagName` in a transaction, and a lookup the store's own attribute lookup does not take
+  (a store without one, or a filter of only `xsi:type` or QName-typed values), read the tag whole as they always did,
+  and the transaction keeps it: its later lookups and tag reads of that tag make no store call.
+- **Freshness.** Nothing is kept from one transaction to the next: a commit, a discard or a prepared transaction
+  discarded drops it. A change told on the project channel while the transaction runs (another view's commit, an undo,
+  a reimport) drops it before the transaction's next read, which asks the store again.
+
 ## RefOrRecord
 
 Like Query, all Transaction methods accept any `RefOrRecord` — refs, records, or relationships:

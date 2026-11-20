@@ -1,7 +1,9 @@
 import { readThroughScope } from '../../read-scope/read-through-scope'
+import { storedRecordsOfTagIn } from './get-records-by-tagname'
 import { getLatestStagedRecord } from './staged-lookup'
 
 import { isTransactionContext } from '@/document'
+import { noteReadsOf, readGenerationOf } from '@/document/transaction-read-cache'
 import { throwDialecteError } from '@/errors'
 
 import type { Context } from '@/document'
@@ -15,7 +17,7 @@ import type { AnyDialecteConfig, ElementsOf, RawRecord, TrackedRecord } from '@/
  * For singleton elements (id absent), resolves by tagName.
  * Always returns a TrackedRecord — 'unchanged' for clean store reads.
  *
- * Side effect: populates context.recordCache on store hits.
+ * Side effect: notes store hits in a transaction's read cache (`noteReadsOf`).
  *
  * @internal the context-level read behind `doc.query.getRecord`; callers use the query
  *
@@ -53,15 +55,14 @@ export async function getRecord<
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
 			context.perf.count('core::query::getRecord.miss')
-			const records = (await readThroughScope({
+			const readAt = readGenerationOf({ context })
+			// a tag a transaction read whole answers from its cache; else read, and kept whole
+			const records = (await storedRecordsOfTagIn({
 				context,
-				read: { member: 'getByTagNameInDocument', args: [ref.tagName, context.documentId] },
+				tagName: ref.tagName,
 			})) as RawRecord<GenericConfig, GenericElement>[]
 			raw = records[0]
-			if (raw && isTransactionContext(context)) {
-				context.recordCache.set(raw.id, raw)
-				context.recordCache.set(cacheKey, raw)
-			}
+			if (raw) noteReadsOf({ context, records: [raw], readAt, singletonKey: cacheKey })
 		}
 	} else {
 		// Normal path — resolve by id
@@ -71,11 +72,12 @@ export async function getRecord<
 			raw = cached as RawRecord<GenericConfig, GenericElement>
 		} else {
 			context.perf.count('core::query::getRecord.miss')
+			const readAt = readGenerationOf({ context })
 			raw = (await readThroughScope({
 				context,
 				read: { member: 'get', args: [ref.id, context.documentId] },
 			})) as RawRecord<GenericConfig, GenericElement> | undefined
-			if (raw && isTransactionContext(context)) context.recordCache.set(ref.id, raw)
+			if (raw) noteReadsOf({ context, records: [raw], readAt })
 		}
 	}
 

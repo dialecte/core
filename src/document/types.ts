@@ -2,6 +2,7 @@ import type { Document } from './document'
 import type { ProgressReporter, DocumentProgress } from './progress/progress.types'
 import type { Query } from './query'
 import type { ReadScope } from './query/read-scope/read-scope.types'
+import type { TransactionReadCache } from './transaction-read-cache.types'
 import type { OperationsSummary } from './transaction/commit/summarize-operations.types'
 import type { ExtensionsRegistry, QueryExtensions } from './types.extensions'
 import type { ExtensionModules, MergedExtensions } from './types.extensions'
@@ -73,10 +74,15 @@ export type QueryContext<GenericConfig extends AnyDialecteConfig> = ContextBase<
 /**
  * A Transaction's context: its record cache, never a read scope (a transaction reads its own staged state).
  * Use isTransactionContext() to narrow before cache reads/writes.
+ *
+ * A Transaction's context carries its read cache (`readCache`, see `transaction-read-cache.ts`): `recordCache` is that
+ * cache's records by id, read here and written through the cache's entry point only. A context made without one (a
+ * test's) keeps a plain record cache: its tags are never read whole.
  */
 export type CachedContext<GenericConfig extends AnyDialecteConfig> = ContextBase<GenericConfig> & {
 	readonly kind: 'transaction'
 	readonly recordCache: Map<string, AnyRawRecord>
+	readonly readCache?: TransactionReadCache
 	readonly readScope?: undefined
 }
 

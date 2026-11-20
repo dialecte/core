@@ -1,4 +1,4 @@
-import { idsInEvery } from '@/utils/ids-in-every'
+import { idsByValueOf, idsOfLookup } from '@/utils/ids-by-attribute-value'
 
 import type { AttributeLookup } from '../store.types'
 import type { RecordTable, TagAttributeMap, TagIds } from './types'
@@ -58,13 +58,15 @@ export function createRecordTable(): RecordTable {
 		if (!tag || attributes.length === 0) return []
 		const tagMap: TagAttributeMap = byAttribute.get(tagName) ?? new Map()
 		byAttribute.set(tagName, tagMap)
-		const matched = attributes.map(function idsOfEntry({ name, values }) {
-			// each pair built from the tag's records the first time it is asked, kept until the tag's next write
-			const byValue = tagMap.get(name) ?? idsByValueOf({ ids: tag.ids, byId, name })
-			tagMap.set(name, byValue)
-			return new Set(values.flatMap((value) => [...(byValue.get(value) ?? [])]))
+		return idsOfLookup({
+			attributes,
+			byValueOf: function valueIndexOf(name) {
+				// each pair built from the tag's records the first time it is asked, kept until the tag's next write
+				const byValue = tagMap.get(name) ?? idsByValueOf({ ids: tag.ids, byId, name })
+				tagMap.set(name, byValue)
+				return byValue
+			},
 		})
-		return idsInEvery(matched).sort()
 	}
 
 	return {
@@ -77,23 +79,4 @@ export function createRecordTable(): RecordTable {
 		put,
 		drop,
 	}
-}
-
-/** The ids among `ids` by value of their attributes of that name: every attribute of the name, a record once per value. */
-function idsByValueOf(params: {
-	ids: ReadonlySet<string>
-	byId: ReadonlyMap<string, AnyRawRecord>
-	name: string
-}): Map<string, Set<string>> {
-	const { ids, byId, name } = params
-	const byValue = new Map<string, Set<string>>()
-	for (const id of ids) {
-		for (const attribute of byId.get(id)?.attributes ?? []) {
-			if (attribute.name !== name) continue
-			const holders = byValue.get(attribute.value) ?? new Set<string>()
-			byValue.set(attribute.value, holders)
-			holders.add(id)
-		}
-	}
-	return byValue
 }

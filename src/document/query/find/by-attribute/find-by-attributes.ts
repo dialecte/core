@@ -1,14 +1,29 @@
 import { pushedFilterOf } from './pushed-filter'
 import { stagedAnswerOf } from './staged-answer'
 
-import { getRecordsByTagName, isTransactionContext } from '@/document'
+import { getRecordsByTagName } from '@/document'
+import { storedRecordsOfTagIn } from '@/document/query/get/record/get-records-by-tagname'
 import { readThroughScope } from '@/document/query/read-scope/read-through-scope'
+import {
+	completeTagOnce,
+	completionThresholdOf,
+	documentCountOf,
+	noteLookup,
+	noteReadsOf,
+	readGenerationOf,
+	storedAnswerOfLookup,
+} from '@/document/transaction-read-cache'
+import {
+	COMPLETE_TAG_AT_LOOKUP,
+	TRANSACTION_READ_CACHE_PERF,
+} from '@/document/transaction-read-cache.constants'
 import { declaredAttributeTypeOf, declaredDefinitionOf } from '@/utils/qname-definition'
 import { qualifiedNameAttributesOf, readsQualifiedNames } from '@/utils/qname-typed'
 import { canonicalQNameValue, storedNamespaceLookup } from '@/utils/qname-value'
 import { canonicalXsiType, isXsiTypeAttribute } from '@/utils/xsi-type'
 
 import type { Context, FilterAttributes } from '@/document'
+import type { TransactionReadCache } from '@/document/transaction-read-cache.types'
 import type { AttributeLookup } from '@/store'
 import type {
 	AnyDialecteConfig,
@@ -82,7 +97,6 @@ export async function findByAttributes<
 }
 
 /** The store's lookup of the pushed attributes, one call, with the staged writes laid over it. */
-// dialecte-allow argument-mutation: a transaction's record cache is filled by its reads, as a tag read fills it
 async function findByPushedAttributes<
 	GenericConfig extends AnyDialecteConfig,
 	GenericElement extends ElementsOf<GenericConfig>,
@@ -93,17 +107,10 @@ async function findByPushedAttributes<
 	pushed: AttributeLookup['attributes']
 }): Promise<TrackedRecord<GenericConfig, GenericElement>[]> {
 	const { context, tagName, attributes, pushed } = params
-	const stored = (await readThroughScope({
-		context,
-		read: {
-			member: 'getByAttributes',
-			args: [{ documentId: context.documentId, tagName, attributes: pushed }],
-		},
-	})) as RawRecord<GenericConfig, GenericElement>[]
-
-	if (isTransactionContext(context)) {
-		for (const record of stored) context.recordCache.set(record.id, record)
-	}
+	const stored = (await storedAnswerOf({ context, tagName, pushed })) as RawRecord<
+		GenericConfig,
+		GenericElement
+	>[]
 
 	return stagedAnswerOf({
 		stagedOperations: context.stagedOperations,
@@ -118,6 +125,66 @@ async function findByPushedAttributes<
 		pushed,
 		stored,
 	})
+}
+
+/**
+ * The stored records the pushed attributes match, in id order: in a transaction whose read cache holds the tag whole,
+ * from memory; else from the store's lookup, one call. A transaction's lookups of one tag are counted: the one at the
+ * threshold (`completionThresholdOf`) reads the tag whole instead, and every later one is answered from memory.
+ */
+async function storedAnswerOf(params: {
+	context: Context<AnyDialecteConfig>
+	tagName: string
+	pushed: AttributeLookup['attributes']
+}): Promise<AnyRawRecord[]> {
+	const { context, tagName, pushed } = params
+	const cache = context.kind === 'transaction' ? context.readCache : undefined
+	if (cache) {
+		const held = storedAnswerOfLookup({ cache, tagName, attributes: pushed })
+		if (held) {
+			context.perf.count(TRANSACTION_READ_CACHE_PERF.hit)
+			return held
+		}
+		const lookups = noteLookup({ cache, tagName })
+		if (await reachesThreshold({ context, cache, lookups })) {
+			await completeTagOnce({
+				cache,
+				tagName,
+				read: function readTagWhole() {
+					context.perf.count(TRANSACTION_READ_CACHE_PERF.complete)
+					return storedRecordsOfTagIn({ context, tagName })
+				},
+			})
+			// a told change while the tag was read keeps it from being noted: the store's lookup answers then
+			const completed = storedAnswerOfLookup({ cache, tagName, attributes: pushed })
+			if (completed) return completed
+		}
+	}
+	const readAt = readGenerationOf({ context })
+	const stored = (await readThroughScope({
+		context,
+		read: {
+			member: 'getByAttributes',
+			args: [{ documentId: context.documentId, tagName, attributes: pushed }],
+		},
+	})) as AnyRawRecord[]
+	noteReadsOf({ context, records: stored, readAt })
+	return stored
+}
+
+/**
+ * Whether a tag's lookup count reaches the lookup at which it is read whole. The document's record count is read once per
+ * transaction (`documentCountOf`), and only once a tag reaches the smallest threshold.
+ */
+async function reachesThreshold(params: {
+	context: Context<AnyDialecteConfig>
+	cache: TransactionReadCache
+	lookups: number
+}): Promise<boolean> {
+	const { context, cache, lookups } = params
+	if (lookups < COMPLETE_TAG_AT_LOOKUP) return false
+	const documentCount = await documentCountOf({ context, cache })
+	return lookups >= completionThresholdOf({ documentCount })
 }
 
 /**

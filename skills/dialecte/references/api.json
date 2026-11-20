@@ -1195,7 +1195,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Close the connection to the project's store, shared by every document of the project: after it, no document of this project can read or write. With a built-in store (local, in-memory), opening the project again gives a new store: documents opened before stay closed, open them again from the project. A custom store is reopened in place. To finish with the project, use `project.close`.",
 			"intents": ["close the project's database connection from a document"],
-			"declaredAt": "src/document/document.ts:459"
+			"declaredAt": "src/document/document.ts:467"
 		},
 		{
 			"path": "doc.destroy",
@@ -1207,7 +1207,7 @@
 				"delete the whole project database from a document",
 				"wipe every document of the project"
 			],
-			"declaredAt": "src/document/document.ts:471"
+			"declaredAt": "src/document/document.ts:479"
 		},
 		{
 			"path": "doc.prepare",
@@ -1220,7 +1220,7 @@
 				"ask a user to confirm an edit",
 				"dry-run a transaction"
 			],
-			"declaredAt": "src/document/document.ts:317"
+			"declaredAt": "src/document/document.ts:325"
 		},
 		{
 			"path": "doc.query.findAncestors",
@@ -1585,7 +1585,7 @@
 				"refresh a view after a commit or an undo",
 				"follow transaction progress"
 			],
-			"declaredAt": "src/document/document.ts:71"
+			"declaredAt": "src/document/document.ts:72"
 		},
 		{
 			"path": "doc.transaction",
@@ -1598,7 +1598,7 @@
 				"add or update or delete elements and commit them",
 				"group edits into one undo step"
 			],
-			"declaredAt": "src/document/document.ts:219",
+			"declaredAt": "src/document/document.ts:227",
 			"example": "await doc.transaction(async (tx) => {\n  await tx.addChild(root, { tagName: 'A', attributes: { aA: 'a' } })\n}, { label: 'Add A' })"
 		},
 		{
@@ -1887,7 +1887,7 @@
 				"insert a child with attributes",
 				"build new content in a transaction"
 			],
-			"declaredAt": "src/document/transaction/main.ts:142",
+			"declaredAt": "src/document/transaction/main.ts:155",
 			"example": "const aRecord = await tx.addChild(root, {\n  tagName: 'A',\n  attributes: { name: 'aA1' },\n})"
 		},
 		{
@@ -1902,7 +1902,7 @@
 				"paste a tree read with getTree",
 				"map old ids to new ids"
 			],
-			"declaredAt": "src/document/transaction/main.ts:310",
+			"declaredAt": "src/document/transaction/main.ts:323",
 			"example": "const tree = await tx.getTree(aa1) // an AA_1 to copy\nconst { record, mappings } = await tx.deepClone(a, tree) // under an A"
 		},
 		{
@@ -1912,7 +1912,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined) => Promise<RawRecord<GenericConfig, ParentsOf<GenericConfig, GenericElement>>>",
 			"summary": "Delete an element and its entire subtree.",
 			"intents": ["remove an element", "delete a subtree", "prune a child from its parent"],
-			"declaredAt": "src/document/transaction/main.ts:245",
+			"declaredAt": "src/document/transaction/main.ts:258",
 			"example": "const parentRecord = await tx.delete(aRecord)"
 		},
 		{
@@ -1926,7 +1926,7 @@
 				"make sure a singleton container exists before adding under it",
 				"add a child without duplicating it"
 			],
-			"declaredAt": "src/document/transaction/main.ts:185",
+			"declaredAt": "src/document/transaction/main.ts:198",
 			"example": "const a = await tx.ensureChild(root, {\n  tagName: 'A',\n  attributes: {},\n})"
 		},
 		{
@@ -1941,7 +1941,7 @@
 				"move a subtree under another parent",
 				"reorder an element among its siblings"
 			],
-			"declaredAt": "src/document/transaction/main.ts:276",
+			"declaredAt": "src/document/transaction/main.ts:289",
 			"example": "await tx.move(aa1, { parent: otherA })"
 		},
 		{
@@ -1987,7 +1987,7 @@
 				"rename an element through its name attribute",
 				"set an element's text value"
 			],
-			"declaredAt": "src/document/transaction/main.ts:218",
+			"declaredAt": "src/document/transaction/main.ts:231",
 			"example": "await tx.update(root, {\n  attributes: { name: 'aA1', desc: 'new element' },\n})"
 		}
 	]
