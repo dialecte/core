@@ -9,7 +9,7 @@ import type {
 	ProjectExportResult,
 	ProjectExportResultMaybeDocument,
 } from '../types'
-import type { SavePickerType, SaveTarget } from '@/utils/save-to-disk'
+import type { SaveOutcome, SavePickerType, SaveTarget } from '@/utils/save-to-disk'
 
 /**
  * Export a document through the store: its file in the layout asked and, on the page, its DOM (parsed from a
@@ -33,15 +33,18 @@ export async function exportDocument(
 	const saveTarget = await saveTargetOf({ download, record })
 
 	const exported = await exportLayout({ store, documentId, indent, withDatabaseIds, perf })
-	const saved = saveTarget && {
-		saved: await writeToTarget({
-			target: saveTarget,
-			data:
-				indent || saveTarget.outcome === 'cancelled'
-					? exported.file
-					: (await exportLayout({ store, documentId, indent: true, withDatabaseIds, perf })).file,
-		}),
-	}
+	const outcome =
+		saveTarget &&
+		(await saveFormatted({
+			saveTarget,
+			exported,
+			store,
+			documentId,
+			indent,
+			withDatabaseIds,
+			perf,
+		}))
+	const saved = outcome && { saved: outcome }
 	if (!xmlDocument) return { ...exported, ...saved }
 	const compact = indent
 		? (await exportLayout({ store, documentId, indent: false, withDatabaseIds, perf })).file
@@ -62,6 +65,22 @@ async function saveTargetOf(params: {
 		filename: download === true ? `${record.name}${record.extension}` : download.filename,
 		pickerType: pickerTypeOf({ extension: record.extension }),
 	})
+}
+
+/** Save the formatted file to the target: the file exported when formatted, else a formatted export; none when cancelled. */
+async function saveFormatted(
+	params: Omit<ExportLayoutParams, 'indent'> & {
+		saveTarget: SaveTarget
+		exported: ProjectExportResult
+		indent: boolean
+	},
+): Promise<SaveOutcome> {
+	const { saveTarget, exported, indent, ...layout } = params
+	if (indent || saveTarget.outcome === 'cancelled') {
+		return writeToTarget({ target: saveTarget, data: exported.file })
+	}
+	const formatted = await exportLayout({ ...layout, indent: true })
+	return writeToTarget({ target: saveTarget, data: formatted.file })
 }
 
 /** One store export in that layout, its timings merged into the project's perf. */

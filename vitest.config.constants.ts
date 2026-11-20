@@ -136,7 +136,15 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 	},
 	{
 		path: 'src/project/io/export-document.test.ts',
-		why: "the save dialog, the download link and `xmlDocument: true` (the page's DOMParser)",
+		why: "`xmlDocument: true` (the page's DOMParser)",
+	},
+	{
+		path: 'src/project/io/export-document.store.test.ts',
+		why: "the save dialog and `xmlDocument: true` (the page's DOMParser)",
+	},
+	{
+		path: 'src/project/io/export-document.save.test.ts',
+		why: 'the save dialog and the download link',
 	},
 	{ path: 'src/project/io/export-blob.test.ts', why: 'the save dialog and the download link' },
 	{ path: 'src/utils/save-to-disk.test.ts', why: 'the save dialog and the download link' },

@@ -119,8 +119,10 @@ describe('saveToDisk', () => {
 
 		runTestCases.generic(testCases, async (testCase) => {
 			let aborted = false
-			const fail = (step: FailureCase['failing']) => async () => {
-				if (step === testCase.failing) throw testCase.error
+			function fail(step: FailureCase['failing']) {
+				return async function failing() {
+					if (step === testCase.failing) throw testCase.error
+				}
 			}
 			;(window as any).showSaveFilePicker = vi.fn(async function showSaveFilePicker() {
 				return {
