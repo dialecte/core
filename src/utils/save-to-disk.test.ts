@@ -161,26 +161,6 @@ describe('saveToDisk', () => {
 
 		await expect(saveToDisk({ data: new Blob(['x']), filename: 'a.txt' })).rejects.toThrow('boom')
 	})
-
-	it('falls back to anchor download when showSaveFilePicker is unavailable', async () => {
-		// Ensure the picker is absent.
-		delete (window as any).showSaveFilePicker
-		const click = vi.fn()
-		const anchor = document.createElement('a')
-		anchor.click = click
-		const createElement = vi.spyOn(document, 'createElement').mockReturnValue(anchor)
-		const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock')
-		const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-
-		await saveToDisk({ data: new Blob(['x']), filename: 'a.txt' })
-
-		expect(createElement).toHaveBeenCalledWith('a')
-		expect(anchor.download).toBe('a.txt')
-		expect(anchor.href).toContain('blob:mock')
-		expect(click).toHaveBeenCalled()
-		expect(createObjectURL).toHaveBeenCalled()
-		expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock')
-	})
 })
 
 /** The page's save dialog as the case says, and where a write went: the file chosen, a download, or nowhere. */
@@ -193,7 +173,9 @@ function stubDialog(params: {
 	if (dialog === 'none') {
 		;(window as any).showSaveFilePicker = undefined
 	} else {
-		;(window as any).showSaveFilePicker = vi.fn(async function showSaveFilePicker() {
+		;(window as any).showSaveFilePicker = vi.fn(async function showSaveFilePicker(this: unknown) {
+			// the native dialog refuses a call off its window
+			if (this !== window) throw new TypeError('Illegal invocation')
 			if (dialog === 'cancelled') throw new DOMException('cancelled', 'AbortError')
 			if (dialog === 'lapsed') throw new DOMException('the gesture lapsed', 'SecurityError')
 			return {

@@ -291,6 +291,7 @@ describe('exportDocument', () => {
 				dialog?: 'cancelled' | 'lapsed'
 				download?: ProjectExportParams['download'] | 'a target'
 				target?: SaveOutcome
+				indent?: boolean
 				expectedCalls: string[]
 				expectedSaved: SaveOutcome | 'not answered'
 				expectedWrittenTo: 'dialog' | 'download' | 'target' | 'nowhere'
@@ -318,6 +319,14 @@ describe('exportDocument', () => {
 					dialog: 'cancelled',
 					download: true,
 					expectedCalls: ['picker', 'export:formatted'],
+					expectedSaved: 'cancelled',
+					expectedWrittenTo: 'nowhere',
+				},
+				'a compact file, the dialog cancelled -> no second, formatted export, cancelled': {
+					dialog: 'cancelled',
+					download: true,
+					indent: false,
+					expectedCalls: ['picker', 'export:compact'],
 					expectedSaved: 'cancelled',
 					expectedWrittenTo: 'nowhere',
 				},
@@ -354,11 +363,14 @@ describe('exportDocument', () => {
 
 				const result = await runExportDocument({
 					store: exportingStore({ calls }),
-					options: download === undefined ? {} : { download },
+					options: {
+						...(download === undefined ? {} : { download }),
+						...(testCase.indent === undefined ? {} : { indent: testCase.indent }),
+					},
 				})
 
 				expect(calls).toEqual(testCase.expectedCalls)
-				expect(await result.file.text()).toBe(FORMATTED)
+				expect(await result.file.text()).toBe(testCase.indent === false ? COMPACT : FORMATTED)
 				expect('saved' in result ? result.saved : 'not answered').toBe(testCase.expectedSaved)
 				const writtenTo = [
 					dialog.saved() && 'dialog',

@@ -1103,8 +1103,9 @@ export class Project<
 	/**
 	 * Export a document through the store: its file (`Blob`, formatted unless `indent: false`) and filename. On the
 	 * page, `xmlDocument: true` also answers its DOM (parsed from the compact file: pass `indent: false` to export
-	 * once) and `download` saves the formatted file (the save dialog is asked first). Two store exports made for one
-	 * call may see two states of the document if a commit lands between them.
+	 * once) and `download` saves the formatted file (the save dialog is asked first, or `{ target }` writes to one
+	 * opened before with `openSaveTarget`), answering `saved`: `written`, `downloaded` or `cancelled`. Two store
+	 * exports made for one call may see two states of the document if a commit lands between them.
 	 *
 	 * @intent export a document to an XML file, get a document as a Blob, download a document, save a document as XML, read the exported XML as a DOM
 	 */
@@ -1355,7 +1356,7 @@ export class Project<
 
 	/**
 	 * Export a blob from the store: `{ entry, data, filename }`; `download` also saves it (the save dialog, or a
-	 * browser download), under its name or the one given.
+	 * browser download), under its name or the one given, or to a `{ target }` opened before, answering `saved`.
 	 *
 	 * @intent download a stored file, save a blob to disk, read a blob with its file name
 	 */
