@@ -12,6 +12,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        # the merge commit and its parents: the bench measures the change against the base it goes onto
+        with:
+          fetch-depth: 2
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -27,8 +30,20 @@ jobs:
           # the install job filled it: a miss stops here, never runs without the locked dependencies
           fail-on-cache-miss: true
 
-      # fails when the type instantiation counts regress past the baseline's tolerance
-      - name: Type-performance regression gate
+      # the base the change goes onto: the queue's base (fetched), else the pull request merge ref's first parent; a
+      # dispatched run has no change to measure
+      - name: Fetch the base the change goes onto
+        if: github.event_name == 'merge_group'
+        env:
+          BASE: ${{ github.event.merge_group.base_sha }}
+        run: git fetch --depth=1 origin "$BASE"
+
+      # fails when the change grows a type instantiation count past 5% of its base and its changelog fragment does not
+      # explain it ("- Type cost: <why>"); the base reaches the bench through the environment, on this step only
+      - name: Type-performance gate over the change
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          DIALECTE_CHANGE_BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || 'HEAD^1' }}
         run: npm run type-bench:check
 
       # fails when a schema-derived narrowing assertion no longer holds
