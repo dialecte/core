@@ -259,11 +259,11 @@ If public API or user-visible behaviour changed, it is not done until you also:
   extensions, scripts, layout, rules); `npm run skills:generate` refreshes the generated tables, and the
   check runs in the gate (step 6).
 
-Type performance: `npm run type-bench:check` compares type instantiations with
-`benchmarks/types/baseline.json` (one per version folder in a dialecte package:
-`benchmarks/types/<version>/baseline.json`; 5 % gate). A breach is a **think point**, not a wall: measure
-and explain the growth; if it is legitimate, re-baseline with `npm run type-bench` in its own lot.
-Never hand-edit `baseline.json`, never twist code to dodge the gate.
+Type performance: `npm run type-bench:check` measures the change's type instantiations against the base it
+goes onto, fresh; nothing is stored (CI's type-perf job hands the base). More than 5 % over the base is a
+**think point**, not a wall: measure and explain the growth. If it is legitimate, the change itself says so
+with a line `- Type cost: <why>` in its changelog fragment (`Type cost: <why>` in a no-entry note); the
+check then passes. No baseline file and no re-baseline lot exist any more; never twist code to dodge the gate.
 
 Run slow gates (create's `npm run proof`, corpora) once per lot before hand-over, not after every fix.
 Fast targeted runs while iterating. Mutation testing runs beside the lot instead (below).
@@ -330,8 +330,7 @@ Read [references/traps.md](references/traps.md) before trusting any gate output.
 solution tsconfig checks nothing; tests have their own tsconfig; stale `.vite` cache after a core
 swap; output-compacting shell wrappers can turn a failing gate into "ok" (run verdict gates raw and
 read the counts); a doc build can rewrite a generated data file (restore it before the hand-over
-script is written); before `@dialecte/cli` 0.2.0, `dialecte bench --help` runs the
-bench and writes the baseline; a test that passes on its first run may be green by accident.
+script is written); a test that passes on its first run may be green by accident.
 
 ## Skills ship with the code
 

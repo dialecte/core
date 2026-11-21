@@ -65,10 +65,9 @@ ran what you think it ran.
   generated docs page). If you did not mean to change it, restore it right after the doc build,
   before `check` and before any hand-over script exists - never while one is waiting. The
   package's own skill names such files.
-- Before `@dialecte/cli` 0.2.0, `dialecte bench --help` is not a help flag: it runs the bench and
-  writes `baseline.json`. From 0.2.0, `--help` on any command only prints the help.
 - Type bench counts are only order-stable single-threaded (TypeScript 7 runs parallel checkers that
-  each re-create types). Bench through the package's single-checker bench tsconfig.
+  each re-create types); the bench runs one checker on both trees itself. Outside CI and outside a lot it
+  has no base and measures the head alone: pass `--base <ref>` to compare.
 - `dialecte-xmlfmt` reformats `/* xml */` template literals; it can mangle a nested template
   literal - check the diff.
 
