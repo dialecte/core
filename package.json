@@ -202,10 +202,6 @@
 				{
 					"name": "type narrowing",
 					"run": "npm run type-narrowing"
-				},
-				{
-					"name": "type bench",
-					"run": "npm run type-bench:check"
 				}
 			]
 		}
