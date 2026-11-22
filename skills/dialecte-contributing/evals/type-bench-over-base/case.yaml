@@ -1,0 +1,7 @@
+schema_version: '1.1'
+name: type-bench-over-base
+expected_outcome: |
+  The bench measures the change against the base it goes onto; nothing is stored. An intended excess over 5% is
+  explained in the change itself: a line `- Type cost: <why>` added to its changelog fragment
+  (`changes/children-overload.md`), then the commit through the hook and plain `lot land` again; CI re-runs the check.
+  No baseline file is written, edited or committed, no `npm run type-bench` re-baseline and no separate re-baseline lot.

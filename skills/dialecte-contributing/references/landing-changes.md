@@ -32,7 +32,7 @@ workspace root, outside every repo); the hand-over files are written next to it 
 
 - **Lots**: paths are files, or folders ending with `/`. Every lot is build-safe on its own (compiles,
   tests green) and does not reference a later lot. Typical order: types/constants → implementation +
-  tests → docs → CHANGELOG → bench re-baseline (own lot) → release bump (own lot).
+  tests → docs → CHANGELOG (with a `Type cost:` line when the type bench is over its base) → release bump (own lot).
 - **A branch lands on main through a merge lot**, in a lots file whose `repository` is the main checkout:
   `{ "kind": "merge", "branch": "<branch>", "tip": "<sha>", "resolved": {}, "message": "merge: ..." }` -
   a merge commit, never a fast-forward. `resolved` maps each conflicting path to the file holding its

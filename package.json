@@ -69,8 +69,8 @@
 		"type-check:node": "tsc -p tsconfig.node.json --noEmit",
 		"//====== TYPE PERF ======//": "",
 		"coverage:gen": "dialecte coverage",
-		"type-bench": "npm run coverage:gen && dialecte bench",
-		"type-bench:check": "npm run coverage:gen && dialecte bench --check",
+		"type-bench": "dialecte bench",
+		"type-bench:check": "dialecte bench --check",
 		"type-narrowing": "npm run coverage:gen && dialecte narrowing",
 		"lint:check": "oxlint --deny-warnings",
 		"lint:fix": "oxlint . --fix -D correctness --ignore-path .gitignore",
@@ -88,7 +88,7 @@
 		"sax": "^1.4.3"
 	},
 	"devDependencies": {
-		"@dialecte/cli": "0.9.0",
+		"@dialecte/cli": "0.10.0",
 		"@tsconfig/node24": "^24.0.4",
 		"@types/node": "^24.12.4",
 		"@typescript/native": "npm:typescript@^7.0.2",
@@ -202,10 +202,6 @@
 				{
 					"name": "type narrowing",
 					"run": "npm run type-narrowing"
-				},
-				{
-					"name": "type bench",
-					"run": "npm run type-bench:check"
 				}
 			]
 		}

@@ -111,7 +111,7 @@ describe('the full gate', () => {
 })
 
 describe('the release gate', () => {
-	it('runs the full matrix: checks, build, every node tier, the whole browser suite with the full table, the type gates', () => {
+	it('runs the full matrix: checks, build, every node tier, the whole browser suite with the full table, the type narrowing; the type bench runs per change in CI, against its base', () => {
 		const runs = (readPackageJson().dialecte.gate.release ?? []).map((step) => step.run)
 		expect(runs).toEqual([
 			'npm run check',
@@ -120,7 +120,6 @@ describe('the release gate', () => {
 			'npm run test:node',
 			'npm run test:browser:release',
 			'npm run type-narrowing',
-			'npm run type-bench:check',
 		])
 	})
 
