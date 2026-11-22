@@ -619,6 +619,86 @@ runDialecteTestCases.withExport({
 
 ---
 
+## Proving a read cache: runReadModelCases
+
+A read cache must answer what the store holds. `runReadModelCases` proves it against the uncached path, on every store
+you give it, when a change reaches the reader late, never, or while a read is in flight.
+
+Per case it opens two projects of one name: a **writer** that imports `sourceXml`, and a **reader** that reads through
+a gate. The case gets:
+
+| Field        | What it is                                                                                                                                           |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `writer`     | the project that commits                                                                                                                             |
+| `reader`     | the project whose reads the case checks                                                                                                              |
+| `documentId` | the document both hold                                                                                                                               |
+| `gate`       | the reader's store behind a gate: `hold({ member })` keeps its next call in flight, `holdNotices()` delays what the store tells, `counts` per member |
+| `channel`    | the realm's BroadcastChannel made lossy: `drop({ type })` loses a message, `hold({ type })` delays it, `flush({ reversed })` sends the held ones     |
+| `around`     | a store of the name held directly: `writeAround({ store: around, ... })` commits a change no project makes or tells                                  |
+| `announces`  | whether the store tells its changes itself (otherwise the project channel carries them)                                                              |
+
+A case states one of three outcomes:
+
+- **exact**: the cached answer equals the uncached one (`answerUncached` runs the read on a query no document wired).
+- **snapshot**: `expectSnapshot({ answer, trail, from })`: the answer equals one of the uncached answers recorded since
+  the session started (`createVersionTrail`, one point per write the case scripts).
+- **exposed**: `expectExposed({ answer, trail, staleAt, because })` pins a known staleness as the old answer it gives;
+  the change that fixes it turns the case red.
+
+```ts
+import {
+	answerUncached,
+	createVersionTrail,
+	runReadModelCases,
+	waitForChange,
+} from '@dialecte/core/test'
+import { expect } from 'vitest'
+
+function readB(query) {
+	return query.getAttribute({ tagName: 'B', id: 'b' }, { name: 'aB' })
+}
+
+runReadModelCases({
+	title: 'my index - against the uncached path',
+	storages: {
+		'in memory': async function inMemory() {
+			return { type: 'inMemory' }
+		},
+	},
+	config,
+	dialecteId,
+	sourceXml,
+	cases: [
+		{
+			title: 'a commit heard between two reads → the second read answers it',
+			act: async function betweenReads(context) {
+				const { writer, reader, documentId, around } = context
+				const trail = createVersionTrail({
+					answer: function uncachedB() {
+						return answerUncached({ store: around, config, documentId, read: readB })
+					},
+				})
+				const told = waitForChange({ project: reader, documentId })
+				await writer.openDocument(documentId).transaction(async function writeB(tx) {
+					await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'after' } })
+				})
+				await told
+				await trail.record()
+				const answer = await readB(reader.openDocument(documentId).query)
+				expect(answer).toBe(trail.answers.at(-1))
+			},
+		},
+	],
+})
+```
+
+`waitForChange` settles once the reader has folded the change in: register it before the write.
+
+A case with `announces: true` runs only on stores that tell their changes, `announces: false` only on the others; on
+the other stores it is reported skipped. `gate.holdNotices()` and `channel.drop()` answer a `reached` promise, so a case
+proves the notice was really held or the message really lost before it reads. Whatever a case leaves held is released
+before its projects close.
+
 ## Test definition
 
 The test definition follows a **Rule of 3** pattern - a deterministic, predictable tree structure designed for comprehensive testing.
