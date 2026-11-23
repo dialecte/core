@@ -1,5 +1,10 @@
 import type { LinkNotice } from '../engine-store.types'
-import type { EngineApi, EngineControlAnswer, EngineControlRequest } from '../engine.types'
+import type {
+	EngineApi,
+	EngineControlAnswer,
+	EngineControlRequest,
+	EngineLockMode,
+} from '../engine.types'
 import type { EngineEventSignal } from '../host/host.types'
 import type { DistributiveOmit } from '@/store/store.types'
 
@@ -107,6 +112,18 @@ export type RealmEngine = {
  * name may start (its lock let go, or waited for within the budget its answer gave it).
  */
 export type EngineEnding = { ended: Promise<unknown>; released: Promise<void> }
+
+/** What a destroy through a fresh worker is asked with. */
+export type FreshWorkerDestroyParams = {
+	name: string
+	dialecteId: string
+	engineUrl: string
+	/** How long the worker has to delete the project (its lock taken as `lock` says). */
+	budgetMs: number
+	/** The realm's open window (`ENGINE_OPEN_WINDOW_MS` when absent): the worker's start is waited for within it. */
+	openWindowMs?: number
+	lock: EngineLockMode
+}
 
 /** A destroy through a fresh worker: `done` answers it, `released` as for any worker the realm ends. */
 export type FreshWorkerDestroy = { done: Promise<void>; released: Promise<void> }

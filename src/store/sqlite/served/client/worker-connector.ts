@@ -13,12 +13,12 @@ import {
 	ENGINE_FOLLOW_REARM_MAX_MS,
 	ENGINE_HEARTBEAT_TIMEOUT_MS,
 	ENGINE_OPEN_BUDGET_MS,
-	ENGINE_OPEN_WINDOW_MS,
 	CONNECTION_LOST_DETAILS,
 	UNANSWERED,
 } from './client.constants'
 import { createEngineClient } from './engine-client'
 import { answeredOrSilent, createEngineControl } from './engine-control'
+import { startWindowOf } from './start-window'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
@@ -32,6 +32,7 @@ import type {
 	EngineControl,
 	EngineEnding,
 	FreshWorkerDestroy,
+	FreshWorkerDestroyParams,
 	RealmEngine,
 	WorkerConnectorParams,
 	WorkerLinkState,
@@ -591,28 +592,12 @@ function assertNoEngine(params: { name: string; key: string }): void {
  * budget to answer. One that does not answer within it is ended, and the destroy refused
  * `PROJECT_DESTROY_FAILED` (the project may still be there).
  */
-export async function destroyFromFreshWorker(params: {
-	name: string
-	dialecteId: string
-	engineUrl: string
-	budgetMs: number
-	/** The realm's open window (`ENGINE_OPEN_WINDOW_MS` when absent): the worker's start is waited for within it. */
-	openWindowMs?: number
-	lock: EngineLockMode
-}): Promise<void> {
+export async function destroyFromFreshWorker(params: FreshWorkerDestroyParams): Promise<void> {
 	await startFreshWorkerDestroy(params).done
 }
 
 /** The fresh worker's destroy started: its answer, and when the next engine of the name may start after it. */
-function startFreshWorkerDestroy(params: {
-	name: string
-	dialecteId: string
-	engineUrl: string
-	budgetMs: number
-	/** The realm's open window (`ENGINE_OPEN_WINDOW_MS` when absent). */
-	openWindowMs?: number
-	lock: EngineLockMode
-}): FreshWorkerDestroy {
+function startFreshWorkerDestroy(params: FreshWorkerDestroyParams): FreshWorkerDestroy {
 	const { name, dialecteId, engineUrl, budgetMs, lock } = params
 	// counted from the worker's spawn: its start (seconds under load) is not taken for a worker deaf to destroy
 	const windowMs = startWindowOf({ openWindowMs: params.openWindowMs, budgetMs })
@@ -804,16 +789,6 @@ function withinBudget<GenericAnswer>(params: {
 	return Promise.race([work, budget]).finally(function clearBudget() {
 		clearTimeout(timer)
 	})
-}
-
-/**
- * How long the realm waits for a worker it spawned to answer the first thing it asked (its open, or a destroy):
- * the open window (`ENGINE_OPEN_WINDOW_MS` when absent), never shorter than the engine's own budget and the close
- * budget to answer. It covers the worker's start - its module and engine loaded, seconds under load.
- */
-function startWindowOf(params: { openWindowMs: number | undefined; budgetMs: number }): number {
-	const { openWindowMs = ENGINE_OPEN_WINDOW_MS, budgetMs } = params
-	return Math.max(openWindowMs, budgetMs + ENGINE_CLOSE_BUDGET_MS)
 }
 
 /** The project's key in this realm's maps and in its engine's lock (`projectKeyOf`; a connector names its project `name`). */

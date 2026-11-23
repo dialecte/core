@@ -1,8 +1,10 @@
+// dialecte-allow test-file-long: grown long before this lot; its split by behaviour is its own lot
 import { ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import { createHubRouter } from './hub-router'
 import {
 	ENGINE_IDLE_CLOSE_MS,
 	ENGINE_OPEN_MIN_BUDGET_MS,
+	HUB_HELD_OPEN_BUDGET_MS,
 	HUB_OPEN_BUDGET_MS,
 	HUB_PROTOCOL_VERSION,
 } from './hub.constants'
@@ -2755,7 +2757,7 @@ describe('createHubRouter', () => {
 					},
 				],
 			},
-		'a destroy never said done → the open made meanwhile refused PROJECT_ENGINE_UNAVAILABLE once the open budget has passed; the project still held':
+		'a destroy never said done → the open made meanwhile refused PROJECT_ENGINE_UNAVAILABLE once the held-open budget has passed; the project still held':
 			{
 				history: [
 					hello({ realmId: 'shell' }),
@@ -2766,10 +2768,10 @@ describe('createHubRouter', () => {
 					{
 						event: open({ realmId: 'other-tab', now: 1_000 }),
 						commands: [],
-						wakeAt: 1_000 + HUB_OPEN_BUDGET_MS,
+						wakeAt: 1_000 + HUB_HELD_OPEN_BUDGET_MS,
 					},
 					{
-						event: tick({ now: 1_000 + HUB_OPEN_BUDGET_MS }),
+						event: tick({ now: 1_000 + HUB_HELD_OPEN_BUDGET_MS }),
 						commands: [
 							{
 								type: 'refuse-open',
@@ -2779,16 +2781,43 @@ describe('createHubRouter', () => {
 								refusal: {
 									origin: 'hub',
 									key: 'PROJECT_ENGINE_UNAVAILABLE',
-									detail: `"${PROJECT}" is being destroyed and was not done within ${HUB_OPEN_BUDGET_MS} ms`,
-									meta: { project: PROJECT, openBudgetMs: HUB_OPEN_BUDGET_MS },
+									detail: `"${PROJECT}" is being destroyed and was not done within ${HUB_HELD_OPEN_BUDGET_MS} ms`,
+									meta: { project: PROJECT, openBudgetMs: HUB_HELD_OPEN_BUDGET_MS },
 								},
 							},
 						],
 						wakeAt: undefined,
 					},
-					{ event: open({ realmId: 'other-tab', now: 2_000 + HUB_OPEN_BUDGET_MS }), commands: [] },
 					{
-						event: destroyed({ realmId: 'shell', now: 3_000 + HUB_OPEN_BUDGET_MS }),
+						event: open({ realmId: 'other-tab', now: 2_000 + HUB_HELD_OPEN_BUDGET_MS }),
+						commands: [],
+					},
+					{
+						event: destroyed({ realmId: 'shell', now: 3_000 + HUB_HELD_OPEN_BUDGET_MS }),
+						commands: [{ ...SPAWN_SHELL_1, realmId: 'other-tab' }],
+					},
+				],
+			},
+		'a destroy through a fresh worker deaf to it, said done once that worker has been given up → the open made meanwhile still held when the open budget has passed: elected once destroyed':
+			{
+				history: [
+					hello({ realmId: 'shell' }),
+					hello({ realmId: 'other-tab' }),
+					destroy({ realmId: 'shell' }),
+				],
+				steps: [
+					{
+						event: open({ realmId: 'other-tab', now: 1_000 }),
+						commands: [],
+						wakeAt: 1_000 + HUB_HELD_OPEN_BUDGET_MS,
+					},
+					{
+						event: tick({ now: 1_000 + HUB_OPEN_BUDGET_MS }),
+						commands: [],
+						wakeAt: 1_000 + HUB_HELD_OPEN_BUDGET_MS,
+					},
+					{
+						event: destroyed({ realmId: 'shell', now: HUB_HELD_OPEN_BUDGET_MS }),
 						commands: [{ ...SPAWN_SHELL_1, realmId: 'other-tab' }],
 					},
 				],

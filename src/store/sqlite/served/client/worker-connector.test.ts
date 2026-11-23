@@ -168,25 +168,15 @@ function holdLockOnceFreeUntilLetGo(params: { name: string }): {
 	letGo: () => void
 	released: Promise<void>
 } {
-	let letGo: () => void = letGoNothingYet
-	const held = new Promise<void>(function untilLetGo(resolve) {
-		letGo = resolve
-	})
+	const held = Promise.withResolvers<void>()
 	const released = navigator.locks.request(
 		engineLockNameOf({ dialecteId: FIXTURE_DIALECTE.dialecteId, project: params.name }),
 		function holdUntilLetGo() {
-			return held
+			return held.promise
 		},
 	)
-	return {
-		letGo: function letGoOfLock() {
-			letGo()
-		},
-		released,
-	}
+	return { letGo: held.resolve, released }
 }
-
-function letGoNothingYet(): void {}
 
 /**
  * The engine lock of `name` asked for from this page while its engine holds it: granted once that
