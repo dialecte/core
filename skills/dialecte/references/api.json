@@ -709,6 +709,19 @@
 			"declaredAt": "src/sqlite.ts:51"
 		},
 		{
+			"path": "@dialecte/core/test.answerUncached",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericAnswer, GenericConfig extends AnyDialecteConfig = AnyDialecteConfig>(params: { store: Store; config: GenericConfig; documentId: string; read: (query: Query<GenericConfig>) => Promise<GenericAnswer>; }) => Promise<GenericAnswer>",
+			"summary": "What a read answers with no cache at all: `read` runs on a query over `store` that no document wired, so no read scope opens and nothing is kept.",
+			"intents": [
+				"read without any cache in a test",
+				"compare a read cache with the uncached path"
+			],
+			"declaredAt": "src/test/read-model/uncached-answer.ts:12"
+		},
+		{
 			"path": "@dialecte/core/test.assertExpectedElementQueries",
 			"root": "export",
 			"entry": "@dialecte/core/test",
@@ -798,6 +811,16 @@
 			"declaredAt": "src/test/run-test-cases.ts:184"
 		},
 		{
+			"path": "@dialecte/core/test.createVersionTrail",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericAnswer>(params: { answer: () => Promise<GenericAnswer>; }) => VersionTrail<GenericAnswer>",
+			"summary": "The uncached answers of a case, recorded at the points it chooses (its start, after each write it scripts): what a cached answer may equal.",
+			"intents": ["record the uncached answers of a read over a test's writes"],
+			"declaredAt": "src/test/read-model/version-trail.ts:9"
+		},
+		{
 			"path": "@dialecte/core/test.createXmlAssertions",
 			"root": "export",
 			"entry": "@dialecte/core/test",
@@ -825,6 +848,53 @@
 			"declaredAt": "src/test/assert-valid-xml/assert-valid-xml.ts:46"
 		},
 		{
+			"path": "@dialecte/core/test.expectExposed",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericAnswer>(params: { answer: GenericAnswer; trail: VersionTrail<GenericAnswer>; staleAt: number; because: string; }) => void",
+			"summary": "Asserts a known exposure: the cached answer equals the uncached answer of an older point (`staleAt`) and not the newest one. `because` says what the cache misses; a fix of it turns this assertion red.",
+			"intents": ["pin a read cache's known staleness in a test until it is fixed"],
+			"declaredAt": "src/test/read-model/expect-exposed.ts:11"
+		},
+		{
+			"path": "@dialecte/core/test.expectSnapshot",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericAnswer>(params: { answer: GenericAnswer; trail: VersionTrail<GenericAnswer>; from: number; notBefore?: GenericAnswer; }) => void",
+			"summary": "Asserts a cached answer is a snapshot: equal to one of the uncached answers the trail recorded from point `from` (the session's start) on. Whether a later read moved on is the case's own next assertion.",
+			"intents": ["assert a cached read answers a moment of its session"],
+			"declaredAt": "src/test/read-model/expect-snapshot.ts:11"
+		},
+		{
+			"path": "@dialecte/core/test.gateStore",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params: { store: Store; }) => StoreGate",
+			"summary": "A store behind a gate: every member answers as `store` does, counted; a member can be held so its next call waits (a read in flight while a change lands), and the notices the store tells can be held (a late notice).",
+			"intents": [
+				"hold a store read in flight in a test",
+				"delay a store's change notices",
+				"count store calls of a project"
+			],
+			"declaredAt": "src/test/read-model/gated-store.ts:11"
+		},
+		{
+			"path": "@dialecte/core/test.installLossyChannel",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "() => LossyChannel",
+			"summary": "Replaces the realm's BroadcastChannel until `restore`: a project message of a type can then be dropped (lost) or held (late) as it is posted, and the held ones flushed in the order asked. Install it before the projects open; installs nest, restored last first.",
+			"intents": [
+				"lose a project channel message in a test",
+				"deliver a change late or out of order"
+			],
+			"declaredAt": "src/test/read-model/lossy-channel.ts:11"
+		},
+		{
 			"path": "@dialecte/core/test.normalizeUuids",
 			"root": "export",
 			"entry": "@dialecte/core/test",
@@ -836,6 +906,29 @@
 				"compare XML holding generated ids"
 			],
 			"declaredAt": "src/test/normalize-uuids.ts:15"
+		},
+		{
+			"path": "@dialecte/core/test.openRawStore",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params: { storage: ReadModelStorage; name: string; dialecteId: string; config: AnyDialecteConfig; open?: boolean; }) => Promise<Store>",
+			"summary": "A store of a project's name held directly, opened (unless `open` is false: a project given it as its `custom` storage opens it): what a write around every project goes through, and what an uncached answer reads. Close it before the project is destroyed.",
+			"intents": [
+				"write to a project's store without a project in a test",
+				"read a store directly"
+			],
+			"declaredAt": "src/test/read-model/raw-store.ts:14"
+		},
+		{
+			"path": "@dialecte/core/test.runReadModelCases",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig>(params: RunReadModelCasesParams<GenericConfig>) => void",
+			"summary": "Runs read-model cases on every store given, one at a time: per case, a writer project imports the source and a reader project of the same name opens it through a gate, with the realm's channel made lossy; after it, whatever it left held is released and both projects are closed and destroyed. A case meant for the other kind of store (one that announces, or one that does not) is reported skipped on this one.",
+			"intents": ["prove a read cache against the uncached path on every store"],
+			"declaredAt": "src/test/read-model/run-read-model-cases.ts:27"
 		},
 		{
 			"path": "@dialecte/core/test.useTestStorage",
@@ -850,6 +943,26 @@
 				"run tests on SQLite"
 			],
 			"declaredAt": "src/test/test-storage/use-test-storage.ts:17"
+		},
+		{
+			"path": "@dialecte/core/test.waitForChange",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "<GenericConfig extends AnyDialecteConfig>(params: { project: Project<GenericConfig>; documentId: string; }) => Promise<void>",
+			"summary": "Settles once the project's document heard its next change to the end (a commit, an undo, a change another view made and the project folded in): by then the project has moved what its reads keep. Call it before the change is made.",
+			"intents": ["wait until a project has heard a change in a test"],
+			"declaredAt": "src/test/read-model/heard-change.ts:10"
+		},
+		{
+			"path": "@dialecte/core/test.writeAround",
+			"root": "export",
+			"entry": "@dialecte/core/test",
+			"otherRoutes": [],
+			"signature": "(params: { store: Store; documentId: string; updates?: AnyRawRecord[]; creates?: AnyRawRecord[]; }) => Promise<void>",
+			"summary": "Commits a change to a document through a store held directly: it lands like any commit, but no project makes it, so no project tells it (a store that announces still tells its connections).",
+			"intents": ["write around a project in a test"],
+			"declaredAt": "src/test/read-model/bypass-write.ts:10"
 		},
 		{
 			"path": "@dialecte/core/utils.admittedXsiTypes",
