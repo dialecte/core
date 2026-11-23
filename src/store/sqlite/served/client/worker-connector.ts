@@ -13,12 +13,12 @@ import {
 	ENGINE_FOLLOW_REARM_MAX_MS,
 	ENGINE_HEARTBEAT_TIMEOUT_MS,
 	ENGINE_OPEN_BUDGET_MS,
-	ENGINE_OPEN_WINDOW_MS,
 	CONNECTION_LOST_DETAILS,
 	UNANSWERED,
 } from './client.constants'
 import { createEngineClient } from './engine-client'
 import { answeredOrSilent, createEngineControl } from './engine-control'
+import { startWindowOf } from './start-window'
 
 import { createDialecteError, toDialecteError } from '@/errors'
 import { throwStoreClosed } from '@/store/store-errors'
@@ -32,6 +32,7 @@ import type {
 	EngineControl,
 	EngineEnding,
 	FreshWorkerDestroy,
+	FreshWorkerDestroyParams,
 	RealmEngine,
 	WorkerConnectorParams,
 	WorkerLinkState,
@@ -266,11 +267,10 @@ function spawnEngine(params: {
 		liveness = {},
 		settings,
 	} = connector
-	// never shorter than the engine's own budget and the time to answer
-	const openWindowMs = Math.max(
-		connector.openWindowMs ?? ENGINE_OPEN_WINDOW_MS,
-		openBudgetMs + ENGINE_CLOSE_BUDGET_MS,
-	)
+	const openWindowMs = startWindowOf({
+		openWindowMs: connector.openWindowMs,
+		budgetMs: openBudgetMs,
+	})
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const control = createEngineControl({ worker })
 	generations.next += 1
@@ -518,7 +518,13 @@ async function destroyProject(params: {
 	own: OwnEngineLink | undefined
 }): Promise<void> {
 	const { connector, own } = params
-	const { name, dialecteId, engineUrl, openBudgetMs = ENGINE_OPEN_BUDGET_MS } = connector
+	const {
+		name,
+		dialecteId,
+		engineUrl,
+		openBudgetMs = ENGINE_OPEN_BUDGET_MS,
+		openWindowMs,
+	} = connector
 	const key = keyOf(connector)
 	refuseWhileOpen({ name, key, own: own === undefined ? undefined : linkStates.get(own.link) })
 	// its engine closed with it when it was the last connection: waited for below, as any still ending
@@ -542,6 +548,7 @@ async function destroyProject(params: {
 			dialecteId,
 			engineUrl,
 			budgetMs: openBudgetMs,
+			openWindowMs,
 			lock: 'if-available',
 		})
 		released = destroying.released
@@ -581,28 +588,19 @@ function assertNoEngine(params: { name: string; key: string }): void {
 /**
  * A worker that opens nothing deletes the project, the lock taken as `lock` says (only if free in
  * direct mode; waited for through the hub, whose engine just released may hold it a moment); ended
- * after. It has the open budget to delete and the close budget to answer: one that does not is ended,
- * and the destroy refused `PROJECT_DESTROY_FAILED` (the project may still be there).
+ * after. It has the window an open has (`startWindowOf`): its start, the budget to delete and the close
+ * budget to answer. One that does not answer within it is ended, and the destroy refused
+ * `PROJECT_DESTROY_FAILED` (the project may still be there).
  */
-export async function destroyFromFreshWorker(params: {
-	name: string
-	dialecteId: string
-	engineUrl: string
-	budgetMs: number
-	lock: EngineLockMode
-}): Promise<void> {
+export async function destroyFromFreshWorker(params: FreshWorkerDestroyParams): Promise<void> {
 	await startFreshWorkerDestroy(params).done
 }
 
 /** The fresh worker's destroy started: its answer, and when the next engine of the name may start after it. */
-function startFreshWorkerDestroy(params: {
-	name: string
-	dialecteId: string
-	engineUrl: string
-	budgetMs: number
-	lock: EngineLockMode
-}): FreshWorkerDestroy {
+function startFreshWorkerDestroy(params: FreshWorkerDestroyParams): FreshWorkerDestroy {
 	const { name, dialecteId, engineUrl, budgetMs, lock } = params
+	// counted from the worker's spawn: its start (seconds under load) is not taken for a worker deaf to destroy
+	const windowMs = startWindowOf({ openWindowMs: params.openWindowMs, budgetMs })
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const { ended, released } = endEngine({
 		name,
@@ -618,14 +616,14 @@ function startFreshWorkerDestroy(params: {
 				budgetMs,
 				lock,
 			}),
-			budgetMs: budgetMs + ENGINE_CLOSE_BUDGET_MS,
+			budgetMs: windowMs,
 		}),
 	})
 	const done = ended.then(function refuseUnanswered(answer) {
 		if (answer !== UNANSWERED) return
 		throw createDialecteError('PROJECT_DESTROY_FAILED', {
-			detail: `Project "${name}" was not destroyed: its engine worker gave no answer within ${budgetMs + ENGINE_CLOSE_BUDGET_MS} ms`,
-			meta: { project: name, budgetMs },
+			detail: `Project "${name}" was not destroyed: its engine worker gave no answer within ${windowMs} ms`,
+			meta: { project: name, budgetMs, windowMs },
 		})
 	})
 	return { done, released }

@@ -1,5 +1,10 @@
 import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
-import { ENGINE_OPEN_WINDOW_MS } from '../client/client.constants'
+import {
+	ENGINE_CLOSE_BUDGET_MS,
+	ENGINE_OPEN_BUDGET_MS,
+	ENGINE_OPEN_WINDOW_MS,
+} from '../client/client.constants'
+import { startWindowOf } from '../client/start-window'
 
 import type { SqliteRaisedErrorKey } from '../../sqlite-errors.types'
 
@@ -25,6 +30,16 @@ export const ENGINE_OPEN_MIN_BUDGET_MS = 1_000
  * answers busy early.
  */
 export const HUB_OPEN_BUDGET_MS = ENGINE_OPEN_WINDOW_MS
+
+/**
+ * The longest an open waits behind a destroy of its project before the hub refuses it: the start window its fresh
+ * worker is waited for (a deaf one given up then, the destroy said done right after), with the lock and close budgets
+ * as a safety margin over it - so an open is never refused while the destroy it waits for may still end.
+ */
+export const HUB_HELD_OPEN_BUDGET_MS =
+	startWindowOf({ openWindowMs: undefined, budgetMs: ENGINE_OPEN_BUDGET_MS }) +
+	ENGINE_OPEN_BUDGET_MS +
+	ENGINE_CLOSE_BUDGET_MS
 
 /** The prefix of the hub's own Web Lock, held for the hub's life: a realm granted it knows the hub is gone. */
 export const HUB_LOCK_PREFIX = 'dialecte:hub:'

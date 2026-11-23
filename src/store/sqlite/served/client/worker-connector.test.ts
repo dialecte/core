@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: grown long before this lot; its split by behaviour is its own lot
 import {
 	CONTRACT_ENGINE_URL,
 	CONTRACT_SESSION_FAIL_VALUE,
@@ -28,6 +29,7 @@ import {
 	SILENT_ENGINE_WAIT_MS,
 	RUNTIME_FIXTURE_CHANNEL,
 	SLOW_DESTROY_MS,
+	SLOW_START_MS,
 } from '../../runtime/runtime.fixtures.constants'
 import { SQLITE_WASM_URL } from '../../sqlite-wasm-url'
 import { engineLockNameOf } from '../engine-lock'
@@ -156,6 +158,24 @@ async function keyOfRejection(action: Promise<unknown>): Promise<string | undefi
 async function errorOfRejection(action: Promise<unknown>): Promise<unknown> {
 	const thrown = await rejectionOf(action)
 	return toDialecteError(thrown)
+}
+
+/**
+ * The project's engine lock taken by another holder (another tab) once it is free, held until the case lets it go:
+ * `released` settles once it is let go.
+ */
+function holdLockOnceFreeUntilLetGo(params: { name: string }): {
+	letGo: () => void
+	released: Promise<void>
+} {
+	const held = Promise.withResolvers<void>()
+	const released = navigator.locks.request(
+		engineLockNameOf({ dialecteId: FIXTURE_DIALECTE.dialecteId, project: params.name }),
+		function holdUntilLetGo() {
+			return held.promise
+		},
+	)
+	return { letGo: held.resolve, released }
 }
 
 /**
@@ -813,12 +833,17 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				name,
 				engineUrl: fixtureUrl({ scenario: 'ignore-destroy' }),
 				openBudgetMs: DEAF_DESTROY_BUDGET_MS,
+				openWindowMs: SILENT_ENGINE_WAIT_MS,
 			})
 			const startedAt = performance.now()
 			const refused = await errorOfRejection(connector.destroy())
 			expect(refused).toMatchObject({
 				key: 'PROJECT_DESTROY_FAILED',
-				meta: { project: name, budgetMs: DEAF_DESTROY_BUDGET_MS },
+				meta: {
+					project: name,
+					budgetMs: DEAF_DESTROY_BUDGET_MS,
+					windowMs: DEAF_DESTROY_BUDGET_MS + ENGINE_CLOSE_BUDGET_MS,
+				},
 			})
 			expect(performance.now() - startedAt).toBeLessThan(
 				DEAF_DESTROY_BUDGET_MS + 2 * ENGINE_CLOSE_BUDGET_MS,
@@ -875,6 +900,32 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			expect(documents).toEqual([])
 			again.close()
 			await connector.destroy()
+		})
+
+		it('the worker it is destroyed through slow to start (its engine loaded past a 500 ms budget and the close budget) → its answer awaited within the open window: the project destroyed', async () => {
+			const name = projectName()
+			const plain = createSqliteWorkerConnector({
+				...FIXTURE_DIALECTE,
+				name,
+				engineUrl: TEST_ENGINE_URL,
+			})
+			const link = await plain.connect()
+			await registerThrough({ link })
+			await link.close()
+			const slowToStart = createSqliteWorkerConnector({
+				...FIXTURE_DIALECTE,
+				name,
+				engineUrl: fixtureUrl({ scenario: 'slow-start' }),
+				openBudgetMs: 500,
+			})
+			expect(SLOW_START_MS).toBeGreaterThan(500 + ENGINE_CLOSE_BUDGET_MS)
+			const refusalKey = await keyOfRejection(slowToStart.destroy())
+			expect(refusalKey).toBeUndefined()
+			const again = await plain.connect()
+			const documents = await documentsOf({ link: again })
+			expect(documents).toEqual([])
+			again.close()
+			await plain.destroy()
 		})
 
 		it('a connection made while the worker it is destroyed through is still at work → it waits for the destroy, then opens: the project read empty', async () => {
@@ -959,7 +1010,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			await connector.destroy()
 		})
 
-		it('a connector whose open budget is 500 ms, deaf to close, its lock let go 3 s after its worker ended, then destroyed → PROJECT_OPEN_ELSEWHERE: the project kept', async () => {
+		it('a connector whose open budget is 500 ms, deaf to close, its lock taken by another holder once its worker ended, then destroyed → PROJECT_OPEN_ELSEWHERE: the project kept', async () => {
 			const name = projectName()
 			const connector = createSqliteWorkerConnector({
 				...FIXTURE_DIALECTE,
@@ -969,11 +1020,12 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			})
 			const link = await connector.connect()
 			await registerThrough({ link })
-			const lateRelease = holdLockOnceFree({ name, holdMs: 3_000 })
+			const anotherHolder = holdLockOnceFreeUntilLetGo({ name })
 			link.close()
 			const key = await keyOfRejection(connector.destroy())
 			expect(key).toBe('PROJECT_OPEN_ELSEWHERE')
-			await lateRelease
+			anotherHolder.letGo()
+			await anotherHolder.released
 			const again = await connector.connect()
 			const documents = await documentsOf({ link: again })
 			expect(documents).toEqual([makeDocument()])
@@ -1125,7 +1177,7 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 			await connector.destroy()
 		})
 
-		it('a connector whose open budget is 500 ms, deaf to close, its lock let go 3 s after its worker ended → the next connection waits that budget only: PROJECT_OPEN_ELSEWHERE', async () => {
+		it('a connector whose open budget is 500 ms, deaf to close, its lock taken by another holder once its worker ended → the next connection waits that budget only: PROJECT_OPEN_ELSEWHERE', async () => {
 			const name = projectName()
 			const connector = createSqliteWorkerConnector({
 				...FIXTURE_DIALECTE,
@@ -1134,11 +1186,12 @@ describe('a SQLite store whose engine runs in a worker of this realm', () => {
 				openBudgetMs: 500,
 			})
 			const link = await connector.connect()
-			const lateRelease = holdLockOnceFree({ name, holdMs: 3_000 })
+			const anotherHolder = holdLockOnceFreeUntilLetGo({ name })
 			link.close()
 			const key = await keyOfRejection(connector.connect())
 			expect(key).toBe('PROJECT_OPEN_ELSEWHERE')
-			await lateRelease
+			anotherHolder.letGo()
+			await anotherHolder.released
 			await connector.destroy()
 		})
 

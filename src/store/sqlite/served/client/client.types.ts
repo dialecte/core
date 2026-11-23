@@ -1,5 +1,10 @@
 import type { LinkNotice } from '../engine-store.types'
-import type { EngineApi, EngineControlAnswer, EngineControlRequest } from '../engine.types'
+import type {
+	EngineApi,
+	EngineControlAnswer,
+	EngineControlRequest,
+	EngineLockMode,
+} from '../engine.types'
 import type { EngineEventSignal } from '../host/host.types'
 import type { DistributiveOmit } from '@/store/store.types'
 
@@ -52,15 +57,16 @@ export type WorkerConnectorParams<GenericSettings> = {
 	/**
 	 * The realm's budget for the project's engine (`ENGINE_OPEN_BUDGET_MS` when absent): how long its
 	 * open may take in all (its lock and its own setup); how long the worker a destroy runs through has
-	 * to delete the project, with the close budget besides to answer before it counts as deaf and is
-	 * ended (`PROJECT_DESTROY_FAILED`); and how long the realm waits for the lock of a worker it ended
+	 * to delete the project (that worker answering within the open window, else counted as deaf and
+	 * ended: `PROJECT_DESTROY_FAILED`); and how long the realm waits for the lock of a worker it ended
 	 * deaf to close or to destroy before the next engine of the name starts, or the destroy runs.
 	 */
 	openBudgetMs?: number
 	/**
-	 * How long the realm waits for its engine's answer to an open (`ENGINE_OPEN_WINDOW_MS` when absent; never
-	 * less than `openBudgetMs` and the close budget): past it the worker is ended and the open refused
-	 * `PROJECT_ENGINE_UNAVAILABLE`.
+	 * How long the realm waits for a worker it spawned to answer its open, or the destroy it runs
+	 * (`ENGINE_OPEN_WINDOW_MS` when absent; never less than `openBudgetMs` and the close budget): the worker's
+	 * start counts in it. Past it the worker is ended, the open refused `PROJECT_ENGINE_UNAVAILABLE`, the
+	 * destroy `PROJECT_DESTROY_FAILED`.
 	 */
 	openWindowMs?: number
 	/**
@@ -106,6 +112,18 @@ export type RealmEngine = {
  * name may start (its lock let go, or waited for within the budget its answer gave it).
  */
 export type EngineEnding = { ended: Promise<unknown>; released: Promise<void> }
+
+/** What a destroy through a fresh worker is asked with. */
+export type FreshWorkerDestroyParams = {
+	name: string
+	dialecteId: string
+	engineUrl: string
+	/** How long the worker has to delete the project (its lock taken as `lock` says). */
+	budgetMs: number
+	/** The realm's open window (`ENGINE_OPEN_WINDOW_MS` when absent): the worker's start is waited for within it. */
+	openWindowMs?: number
+	lock: EngineLockMode
+}
 
 /** A destroy through a fresh worker: `done` answers it, `released` as for any worker the realm ends. */
 export type FreshWorkerDestroy = { done: Promise<void>; released: Promise<void> }

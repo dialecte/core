@@ -86,7 +86,7 @@ export const ONE_BUDGET_SLACK_MS = 1_000
 
 /**
  * The open budget of a case whose worker is deaf to `destroy`: the realm counts it deaf after this and
- * the close budget.
+ * the close budget, the case's open window set shorter than those two (the window is never less).
  */
 export const DEAF_DESTROY_BUDGET_MS = 1_500
 
@@ -174,6 +174,12 @@ export const UNSERVED_DIALECTE_VERSION = '9.9.9'
  * posts at once have reached the worker, so they arrive while the chunk is still loading.
  */
 export const SLOW_ENGINE_CHUNK_MS = 1_000
+
+/**
+ * How long the `slow-start` fixture holds the engine's chunk back, as a loaded machine starts a worker: longer than a
+ * 500 ms budget and the close budget, far within the open window.
+ */
+export const SLOW_START_MS = 4_000
 
 /** What the `failing-engine-chunk` fixture's chunk fails to load with: an answer carrying it came from that failure. */
 export const ENGINE_CHUNK_FAILURE = 'the engine chunk could not be loaded'

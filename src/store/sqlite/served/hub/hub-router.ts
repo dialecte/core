@@ -4,6 +4,7 @@ import { ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import {
 	ENGINE_IDLE_CLOSE_MS,
 	ENGINE_OPEN_MIN_BUDGET_MS,
+	HUB_HELD_OPEN_BUDGET_MS,
 	HUB_OPEN_BUDGET_MS,
 	HUB_PROTOCOL_VERSION,
 } from './hub.constants'
@@ -1029,13 +1030,13 @@ function passDeadlines(params: { step: HubStep }): void {
 }
 
 /**
- * The opens a destroy has held for the whole open budget refused (the realm destroying it may never say
- * it is done): the project stays held, a later open waits again.
+ * The opens a destroy has held for the whole held-open budget refused (the realm destroying it may never say
+ * it is done; a destroy that may still end is outlasted): the project stays held, a later open waits again.
  */
 function refuseLateHeldOpens(params: { step: HubStep; hold: HubHold }): void {
 	const { step, hold } = params
 	for (const open of hold.opens.values()) {
-		if (open.now + HUB_OPEN_BUDGET_MS > step.now) continue
+		if (open.now + HUB_HELD_OPEN_BUDGET_MS > step.now) continue
 		hold.opens.delete(open.realmId)
 		refuseOpen({
 			step,
@@ -1045,8 +1046,8 @@ function refuseLateHeldOpens(params: { step: HubStep; hold: HubHold }): void {
 			refusal: {
 				origin: 'hub',
 				key: SQLITE_ERRORS.PROJECT_ENGINE_UNAVAILABLE.key,
-				detail: `"${hold.project}" is being destroyed and was not done within ${HUB_OPEN_BUDGET_MS} ms`,
-				meta: { project: hold.project, openBudgetMs: HUB_OPEN_BUDGET_MS },
+				detail: `"${hold.project}" is being destroyed and was not done within ${HUB_HELD_OPEN_BUDGET_MS} ms`,
+				meta: { project: hold.project, openBudgetMs: HUB_HELD_OPEN_BUDGET_MS },
 			},
 		})
 	}
@@ -1103,7 +1104,7 @@ function earliestDeadline(params: { state: HubState }): number | undefined {
 		[project.openDeadline, project.idleDeadline].filter((deadline) => deadline !== undefined),
 	)
 	for (const hold of params.state.holds.values()) {
-		for (const open of hold.opens.values()) deadlines.push(open.now + HUB_OPEN_BUDGET_MS)
+		for (const open of hold.opens.values()) deadlines.push(open.now + HUB_HELD_OPEN_BUDGET_MS)
 	}
 	return deadlines.length > 0 ? Math.min(...deadlines) : undefined
 }
