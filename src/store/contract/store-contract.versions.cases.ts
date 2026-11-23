@@ -115,6 +115,15 @@ const versions: StoreContractCases = {
 			expect(registered).toEqual(removed)
 		},
 	},
+	'a removal of an id never registered → its count moves by one, as for a registered one': {
+		act: async ({ store }) => {
+			await seed({ store })
+			const before = await versionNow({ store, documentId: 'never-registered' })
+			await store.removeDocument('never-registered')
+			const after = await versionNow({ store, documentId: 'never-registered' })
+			expect(after).toEqual({ engineId: before.engineId, count: before.count + 1 })
+		},
+	},
 	'a bulk write → the count moves on': {
 		act: async ({ store }) => {
 			await seed({ store })

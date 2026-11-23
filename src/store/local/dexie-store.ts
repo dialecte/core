@@ -472,7 +472,7 @@ export class DexieStore implements Store {
 		})
 	}
 
-	/** The document's version now, read without a record, from the database's own version table. */
+	/** The document's version now, read without a record: its `writes:<id>` row and the engine row of `_meta`. */
 	async readVersion(params: { documentId: string }): Promise<StoreVersion> {
 		return this.operation(() => this.readVersionUnguarded(params))
 	}

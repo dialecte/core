@@ -121,15 +121,15 @@ describe('the version a write produced, told with its message', () => {
 				const storage = await storageOf({ name, dialecteId: SWITCH_DIALECTE_ID })
 				const { project, documentId } = await importedOn({ storage, name })
 				const store = storeOf({ project })
-				expect(store.readVersion, 'the store reads a version').toBeTypeOf('function')
-				const before = await store.readVersion!({ documentId })
+				if (!store.readVersion) throw new Error('the store reads a version')
+				const before = await store.readVersion({ documentId })
 				const heard = versionsHeard({ project })
 
 				await updateB({ project, documentId, value: 'second' })
 				await project.undo(documentId)
 				await project.redo(documentId)
 
-				const now = await store.readVersion!({ documentId })
+				const now = await store.readVersion({ documentId })
 				await vi.waitFor(function everyStepHeard() {
 					expect({ heard, now }).toEqual({
 						heard: [1, 2, 3].map((step) => ({
@@ -146,6 +146,7 @@ describe('the version a write produced, told with its message', () => {
 				const storage = await storageOf({ name, dialecteId: SWITCH_DIALECTE_ID })
 				const { project, documentId } = await importedOn({ storage, name })
 				const store = storeOf({ project })
+				if (!store.readVersion) throw new Error('the store reads a version')
 				const heard = versionsHeard({ project })
 
 				const prepared = await project.openDocument(documentId).prepare(async function writeB(tx) {
@@ -153,7 +154,7 @@ describe('the version a write produced, told with its message', () => {
 				})
 				await prepared.commit()
 
-				const now = await store.readVersion!({ documentId })
+				const now = await store.readVersion({ documentId })
 				await vi.waitFor(function commitHeard() {
 					expect(heard).toEqual([now])
 				})
