@@ -33,6 +33,7 @@ export type RuntimeFixtureScenario =
 	| 'stranded-window'
 	| 'mute-clients'
 	| 'slow-engine-chunk'
+	| 'slow-start'
 	| 'failing-engine-chunk'
 
 /** What a runtime test orders its engine worker on the fixture channel. */

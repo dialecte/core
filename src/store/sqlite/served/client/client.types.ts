@@ -52,15 +52,16 @@ export type WorkerConnectorParams<GenericSettings> = {
 	/**
 	 * The realm's budget for the project's engine (`ENGINE_OPEN_BUDGET_MS` when absent): how long its
 	 * open may take in all (its lock and its own setup); how long the worker a destroy runs through has
-	 * to delete the project, with the close budget besides to answer before it counts as deaf and is
-	 * ended (`PROJECT_DESTROY_FAILED`); and how long the realm waits for the lock of a worker it ended
+	 * to delete the project (that worker answering within the open window, else counted as deaf and
+	 * ended: `PROJECT_DESTROY_FAILED`); and how long the realm waits for the lock of a worker it ended
 	 * deaf to close or to destroy before the next engine of the name starts, or the destroy runs.
 	 */
 	openBudgetMs?: number
 	/**
-	 * How long the realm waits for its engine's answer to an open (`ENGINE_OPEN_WINDOW_MS` when absent; never
-	 * less than `openBudgetMs` and the close budget): past it the worker is ended and the open refused
-	 * `PROJECT_ENGINE_UNAVAILABLE`.
+	 * How long the realm waits for a worker it spawned to answer its open, or the destroy it runs
+	 * (`ENGINE_OPEN_WINDOW_MS` when absent; never less than `openBudgetMs` and the close budget): the worker's
+	 * start counts in it. Past it the worker is ended, the open refused `PROJECT_ENGINE_UNAVAILABLE`, the
+	 * destroy `PROJECT_DESTROY_FAILED`.
 	 */
 	openWindowMs?: number
 	/**

@@ -15,6 +15,7 @@ import {
 	SLOW_DESTROY_MS,
 	SLOW_DDL_PATTERN,
 	SLOW_ENGINE_CHUNK_MS,
+	SLOW_START_MS,
 	SLOW_STATEMENT_STEP_MS,
 	UNSAFE_POOL_SQLITE,
 	YIELDING_SLICE_MS,
@@ -145,7 +146,11 @@ function serveEngine(): void {
 	if (scenario === 'mute-clients') muteClientsWhenOrdered()
 	if (scenario === 'other-wire') answerAnotherWire()
 	if (scenario === 'unchecked-open') openWhateverAsked()
-	if (scenario === 'slow-engine-chunk' || scenario === 'failing-engine-chunk') {
+	if (
+		scenario === 'slow-engine-chunk' ||
+		scenario === 'slow-start' ||
+		scenario === 'failing-engine-chunk'
+	) {
 		runEngineControlLoop({
 			dialectes: dialectesOfScenario(),
 			loadEngine: loadEngineChunkOfScenario,
@@ -157,12 +162,14 @@ function serveEngine(): void {
 
 /**
  * The engine's chunk as the light side of the worker asks for it: held back (`slow-engine-chunk`) so control messages
- * reach the worker while it loads, or failing to load (`failing-engine-chunk`).
+ * reach the worker while it loads, held back longer as a loaded machine starts a worker (`slow-start`), or failing to
+ * load (`failing-engine-chunk`).
  */
 function loadEngineChunkOfScenario(): Promise<SqliteEngineChunk> {
 	if (scenario === 'failing-engine-chunk') return Promise.reject(new Error(ENGINE_CHUNK_FAILURE))
+	const heldBackMs = scenario === 'slow-start' ? SLOW_START_MS : SLOW_ENGINE_CHUNK_MS
 	return new Promise<void>(function holdBack(resolve) {
-		setTimeout(resolve, SLOW_ENGINE_CHUNK_MS)
+		setTimeout(resolve, heldBackMs)
 	}).then(function loadChunk() {
 		return import('@/sqlite-engine')
 	})

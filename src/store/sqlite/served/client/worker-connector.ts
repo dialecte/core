@@ -266,11 +266,10 @@ function spawnEngine(params: {
 		liveness = {},
 		settings,
 	} = connector
-	// never shorter than the engine's own budget and the time to answer
-	const openWindowMs = Math.max(
-		connector.openWindowMs ?? ENGINE_OPEN_WINDOW_MS,
-		openBudgetMs + ENGINE_CLOSE_BUDGET_MS,
-	)
+	const openWindowMs = startWindowOf({
+		openWindowMs: connector.openWindowMs,
+		budgetMs: openBudgetMs,
+	})
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const control = createEngineControl({ worker })
 	generations.next += 1
@@ -518,7 +517,13 @@ async function destroyProject(params: {
 	own: OwnEngineLink | undefined
 }): Promise<void> {
 	const { connector, own } = params
-	const { name, dialecteId, engineUrl, openBudgetMs = ENGINE_OPEN_BUDGET_MS } = connector
+	const {
+		name,
+		dialecteId,
+		engineUrl,
+		openBudgetMs = ENGINE_OPEN_BUDGET_MS,
+		openWindowMs,
+	} = connector
 	const key = keyOf(connector)
 	refuseWhileOpen({ name, key, own: own === undefined ? undefined : linkStates.get(own.link) })
 	// its engine closed with it when it was the last connection: waited for below, as any still ending
@@ -542,6 +547,7 @@ async function destroyProject(params: {
 			dialecteId,
 			engineUrl,
 			budgetMs: openBudgetMs,
+			openWindowMs,
 			lock: 'if-available',
 		})
 		released = destroying.released
@@ -581,14 +587,17 @@ function assertNoEngine(params: { name: string; key: string }): void {
 /**
  * A worker that opens nothing deletes the project, the lock taken as `lock` says (only if free in
  * direct mode; waited for through the hub, whose engine just released may hold it a moment); ended
- * after. It has the open budget to delete and the close budget to answer: one that does not is ended,
- * and the destroy refused `PROJECT_DESTROY_FAILED` (the project may still be there).
+ * after. It has the window an open has (`startWindowOf`): its start, the budget to delete and the close
+ * budget to answer. One that does not answer within it is ended, and the destroy refused
+ * `PROJECT_DESTROY_FAILED` (the project may still be there).
  */
 export async function destroyFromFreshWorker(params: {
 	name: string
 	dialecteId: string
 	engineUrl: string
 	budgetMs: number
+	/** The realm's open window (`ENGINE_OPEN_WINDOW_MS` when absent): the worker's start is waited for within it. */
+	openWindowMs?: number
 	lock: EngineLockMode
 }): Promise<void> {
 	await startFreshWorkerDestroy(params).done
@@ -600,9 +609,13 @@ function startFreshWorkerDestroy(params: {
 	dialecteId: string
 	engineUrl: string
 	budgetMs: number
+	/** The realm's open window (`ENGINE_OPEN_WINDOW_MS` when absent). */
+	openWindowMs?: number
 	lock: EngineLockMode
 }): FreshWorkerDestroy {
 	const { name, dialecteId, engineUrl, budgetMs, lock } = params
+	// counted from the worker's spawn: its start (seconds under load) is not taken for a worker deaf to destroy
+	const windowMs = startWindowOf({ openWindowMs: params.openWindowMs, budgetMs })
 	const worker = new Worker(engineUrl, { type: 'module' })
 	const { ended, released } = endEngine({
 		name,
@@ -618,14 +631,14 @@ function startFreshWorkerDestroy(params: {
 				budgetMs,
 				lock,
 			}),
-			budgetMs: budgetMs + ENGINE_CLOSE_BUDGET_MS,
+			budgetMs: windowMs,
 		}),
 	})
 	const done = ended.then(function refuseUnanswered(answer) {
 		if (answer !== UNANSWERED) return
 		throw createDialecteError('PROJECT_DESTROY_FAILED', {
-			detail: `Project "${name}" was not destroyed: its engine worker gave no answer within ${budgetMs + ENGINE_CLOSE_BUDGET_MS} ms`,
-			meta: { project: name, budgetMs },
+			detail: `Project "${name}" was not destroyed: its engine worker gave no answer within ${windowMs} ms`,
+			meta: { project: name, budgetMs, windowMs },
 		})
 	})
 	return { done, released }
@@ -791,6 +804,16 @@ function withinBudget<GenericAnswer>(params: {
 	return Promise.race([work, budget]).finally(function clearBudget() {
 		clearTimeout(timer)
 	})
+}
+
+/**
+ * How long the realm waits for a worker it spawned to answer the first thing it asked (its open, or a destroy):
+ * the open window (`ENGINE_OPEN_WINDOW_MS` when absent), never shorter than the engine's own budget and the close
+ * budget to answer. It covers the worker's start - its module and engine loaded, seconds under load.
+ */
+function startWindowOf(params: { openWindowMs: number | undefined; budgetMs: number }): number {
+	const { openWindowMs = ENGINE_OPEN_WINDOW_MS, budgetMs } = params
+	return Math.max(openWindowMs, budgetMs + ENGINE_CLOSE_BUDGET_MS)
 }
 
 /** The project's key in this realm's maps and in its engine's lock (`projectKeyOf`; a connector names its project `name`). */

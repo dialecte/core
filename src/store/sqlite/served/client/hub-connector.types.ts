@@ -16,7 +16,8 @@ export type HubConnectorParams = {
 	engineUrl?: string
 	/**
 	 * How long the destroy's fresh worker has to delete the project (`ENGINE_OPEN_BUDGET_MS` when absent),
-	 * the close budget besides to answer; the hub keeps its own budget for opening engines.
+	 * that worker answering within the open window (`ENGINE_OPEN_WINDOW_MS`), else ended: `PROJECT_DESTROY_FAILED`;
+	 * the hub keeps its own budget for opening engines.
 	 */
 	destroyBudgetMs?: number
 	/** How long a call waits on a silent engine (the default when absent). */
