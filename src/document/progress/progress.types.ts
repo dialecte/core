@@ -31,8 +31,10 @@ export type PlanInput = {
  *
  * Balancing rule: every `plan()` you open you close with `endPlan()`, EXCEPT the
  * transaction body's main plan, which the transaction closes for you via
- * `forceClear()`. On a throw you skip `endPlan()` — `forceClear()` unwinds the
- * whole stack.
+ * `forceClear()`. Close it in a `finally` when your op may throw and the caller may
+ * catch: core's own ops (deepClone, commit) already pop their own frame when they throw, so
+ * your `endPlan()` closes yours. Run plan-opening ops on one transaction one at a time. A
+ * transaction, a prepare or a prepared commit that ends clears the whole stack.
  */
 export type ProgressReporter = {
 	/**
@@ -60,4 +62,15 @@ export type ProgressReporter = {
 	 * @internal Used by the transaction to reset progress when it ends.
 	 */
 	forceClear(): void
+}
+
+/**
+ * The depth of a real reporter's plan stack, and a cut back to a depth: what `runInPlan` needs to unwind an op that
+ * throws without widening the public reporter.
+ *
+ * @internal reached through `planStackOf`, never through `tx.progress`
+ */
+export type PlanStack = {
+	depth(): number
+	unwindTo(depth: number): void
 }
