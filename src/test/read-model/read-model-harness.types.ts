@@ -9,14 +9,17 @@ export type ReadModelStorage = (params: {
 	dialecteId: string
 }) => Promise<StorageParam>
 
-/** A store member a gate can hold: any method of the store. */
-export type GatedMember = {
-	[GenericKey in keyof Store]-?: NonNullable<Store[GenericKey]> extends (
-		...args: never[]
-	) => unknown
-		? GenericKey
-		: never
-}[keyof Store]
+/** A store member a gate can hold: any member answering a promise (`subscribe` answers at once, so it is never held). */
+export type GatedMember = Exclude<
+	{
+		[GenericKey in keyof Store]-?: NonNullable<Store[GenericKey]> extends (
+			...args: never[]
+		) => Promise<unknown>
+			? GenericKey
+			: never
+	}[keyof Store],
+	'subscribe'
+>
 
 /** One held call of a gated store's member: reached once the call is made, answered once released. */
 export type HeldCall = {
@@ -33,8 +36,13 @@ export type HeldCall = {
 export type StoreGate = {
 	/** The gated store: pass it to a project as a `custom` storage. */
 	readonly store: Store
-	/** Holds the next call of `member` at the gate until released. */
+	/** Holds the next call of `member` at the gate until released: it reaches the store only then. */
 	hold(params: { member: GatedMember }): HeldCall
+	/**
+	 * Holds the answer of the next call of `member`: the store answers at once, its answer is given back only when
+	 * released (an answer read before a change, coming back after it).
+	 */
+	holdAnswer(params: { member: GatedMember }): HeldCall
 	/** Holds every notice the store tells its listeners until `releaseNotices`; reached once one is held. */
 	holdNotices(): { readonly reached: Promise<void> }
 	/** Tells the listeners every held notice, in the order the store told them, and stops holding. */
@@ -42,7 +50,7 @@ export type StoreGate = {
 	/** Releases every held call and every held notice: what a case left held never outlives it. */
 	releaseAll(): void
 	/** How many times each member was called through the gate. */
-	readonly counts: ReadonlyMap<string, number>
+	readonly counts: ReadonlyMap<GatedMember | 'subscribe', number>
 }
 
 /**
@@ -69,11 +77,11 @@ export type VersionTrail<GenericAnswer> = {
 }
 
 /** What one case of the runner is given: two projects of one name, the document they share, the reader's gate. */
-export type ReadModelContext = {
+export type ReadModelContext<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> = {
 	/** The project that writes. */
-	readonly writer: Project<AnyDialecteConfig>
+	readonly writer: Project<GenericConfig>
 	/** The project that reads, through `gate`. */
-	readonly reader: Project<AnyDialecteConfig>
+	readonly reader: Project<GenericConfig>
 	/** The document the writer imported, open in both. */
 	readonly documentId: string
 	/** The gate the reader's store answers through. */
@@ -85,26 +93,26 @@ export type ReadModelContext = {
 	/** A store of the name held directly: a write through it goes around both projects. */
 	readonly around: Store
 	/** The dialecte config both projects are of. */
-	readonly config: AnyDialecteConfig
+	readonly config: GenericConfig
 }
 
 /** One case: its title (`<initial state> → <outcome>`) and what it does with the context. */
-export type ReadModelCase = {
+export type ReadModelCase<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> = {
 	readonly title: string
 	/** Runs only on stores that announce (`true`) or only on stores that do not (`false`); every store without it. */
 	readonly announces?: boolean
-	readonly act: (context: ReadModelContext) => Promise<void>
+	readonly act: (context: ReadModelContext<GenericConfig>) => Promise<void>
 }
 
 /** The runner's params: the stores to prove on, the dialecte of the two projects, the document they share, the cases. */
-export type RunReadModelCasesParams = {
+export type RunReadModelCasesParams<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig> = {
 	/** The describe block's title. */
 	readonly title: string
 	/** Each store a case runs on, by the name its describe block shows. */
 	readonly storages: Readonly<Record<string, ReadModelStorage>>
-	readonly config: AnyDialecteConfig
+	readonly config: GenericConfig
 	readonly dialecteId: string
 	/** The document the writer imports before each case, its records keeping the ids it gives. */
 	readonly sourceXml: string
-	readonly cases: readonly ReadModelCase[]
+	readonly cases: readonly ReadModelCase<GenericConfig>[]
 }

@@ -12,7 +12,23 @@ export function expectSnapshot<GenericAnswer>(params: {
 	answer: GenericAnswer
 	trail: VersionTrail<GenericAnswer>
 	from: number
+	/** An answer the session gave before this one: this one may not be of an older point. */
+	notBefore?: GenericAnswer
 }): void {
-	const { answer, trail, from } = params
-	expect(trail.answers.slice(from)).toContainEqual(answer)
+	const { answer, trail, from, notBefore } = params
+	const points = trail.answers.slice(from)
+	expect(points).toContainEqual(answer)
+	if (notBefore === undefined) return
+	// the newest point the answer can be, against the oldest the earlier answer can be: never older
+	const latestOfAnswer = points.findLastIndex((point) => sameAnswer({ left: point, right: answer }))
+	const earliestBefore = points.findIndex((point) => sameAnswer({ left: point, right: notBefore }))
+	expect(
+		latestOfAnswer,
+		'an answer goes back to an older point than one given before',
+	).toBeGreaterThanOrEqual(earliestBefore)
+}
+
+/** Two answers alike as data (answers are plain values: records, strings, lists). */
+function sameAnswer(params: { left: unknown; right: unknown }): boolean {
+	return JSON.stringify(params.left) === JSON.stringify(params.right)
 }

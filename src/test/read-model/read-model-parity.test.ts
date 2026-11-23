@@ -130,7 +130,7 @@ runReadModelCases({
 				const trail = await trailOf(context)
 				const member =
 					typeof context.gate.store.readVersioned === 'function' ? 'readVersioned' : 'get'
-				const held = context.gate.hold({ member })
+				const held = context.gate.holdAnswer({ member })
 				const answer = readB(context.reader.openDocument(context.documentId).query)
 				await held.reached
 				const told = heard(context)
@@ -139,6 +139,8 @@ runReadModelCases({
 				await trail.record()
 				held.release()
 				const answered = await answer
+				// the answer was read before the change and comes back after it was heard: the old one
+				expect(answered).toBe(trail.answers[0])
 				expectSnapshot({ answer: answered, trail, from: 0 })
 				await expectNextCallFresh({ context, trail })
 			},
@@ -168,7 +170,7 @@ runReadModelCases({
 				const answer = await context.reader
 					.openDocument(context.documentId)
 					.transaction(async function readAcross(tx) {
-						const held = context.gate.hold({ member: 'get' })
+						const held = context.gate.holdAnswer({ member: 'get' })
 						const read = readB(tx)
 						await held.reached
 						const told = heard(context)
@@ -180,7 +182,10 @@ runReadModelCases({
 						const next = await readB(tx)
 						return { inFlight, next }
 					})
+				// the answer was read before the change and comes back after it was heard: the old one
+				expect(answer.inFlight).toBe(trail.answers[0])
 				expectSnapshot({ answer: answer.inFlight, trail, from: 0 })
+				expectSnapshot({ answer: answer.next, trail, from: 0, notBefore: answer.inFlight })
 				expect(answer.next).toBe(trail.answers.at(-1))
 			},
 		},
@@ -281,7 +286,7 @@ runReadModelCases({
 				const trail = await trailOf(context)
 				const member =
 					typeof context.gate.store.readVersioned === 'function' ? 'readVersioned' : 'get'
-				const held = context.gate.hold({ member })
+				const held = context.gate.holdAnswer({ member })
 				const answer = readB(context.reader.openDocument(context.documentId).query)
 				await held.reached
 				const told = context.announces ? heard(context) : Promise.resolve()
@@ -295,6 +300,8 @@ runReadModelCases({
 				await trail.record()
 				held.release()
 				const answered = await answer
+				// the answer was read before the change and comes back after it was heard: the old one
+				expect(answered).toBe(trail.answers[0])
 				expectSnapshot({ answer: answered, trail, from: 0 })
 				await expectNextCallFresh({ context, trail })
 			},
@@ -305,7 +312,7 @@ runReadModelCases({
 			announces: true,
 			act: async function lateNoticeWhileACallReads(context) {
 				const trail = await trailOf(context)
-				const held = context.gate.hold({ member: 'readVersioned' })
+				const held = context.gate.holdAnswer({ member: 'readVersioned' })
 				const notices = context.gate.holdNotices()
 				const answer = readB(context.reader.openDocument(context.documentId).query)
 				await held.reached
@@ -314,6 +321,8 @@ runReadModelCases({
 				await trail.record()
 				held.release()
 				const answered = await answer
+				// the answer was read before the change and comes back after it was heard: the old one
+				expect(answered).toBe(trail.answers[0])
 				expectSnapshot({ answer: answered, trail, from: 0 })
 				const told = heard(context)
 				context.gate.releaseNotices()
@@ -350,6 +359,33 @@ runReadModelCases({
 						return readB(tx)
 					})
 				expect(answer).toBe(trail.answers.at(-1))
+			},
+		},
+		{
+			title: 'a write around the projects → no message reaches the reader, its read epoch stays',
+			announces: false,
+			act: async function aroundTellsNothing(context) {
+				const heardMessages: string[] = []
+				const listener = context.reader.createChannel()
+				listener.onmessage = function keep(event: MessageEvent<{ type: string }>) {
+					heardMessages.push(event.data.type)
+				}
+				const internals = context.reader as unknown as {
+					readEpochOf: (documentId: string) => number
+				}
+				const epochBefore = internals.readEpochOf(context.documentId)
+				const around = await bWith({ context, value: 'around' })
+				await writeAround({
+					store: context.around,
+					documentId: context.documentId,
+					updates: [around],
+				})
+				await silence()
+				listener.close()
+				expect({ heardMessages, epochAfter: internals.readEpochOf(context.documentId) }).toEqual({
+					heardMessages: [],
+					epochAfter: epochBefore,
+				})
 			},
 		},
 	],

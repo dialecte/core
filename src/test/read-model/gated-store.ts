@@ -13,6 +13,7 @@ export function gateStore(params: { store: Store }): StoreGate {
 		store: params.store,
 		counts: new Map(),
 		holds: new Map(),
+		answerHolds: new Map(),
 		released: [],
 		notices: { held: false, waiting: [], reached: noOp },
 	}
@@ -26,7 +27,7 @@ export function gateStore(params: { store: Store }): StoreGate {
 			}
 			return gatedMember({
 				state,
-				member: property,
+				member: property as GatedMember,
 				call: value as (...args: unknown[]) => unknown,
 			})
 		},
@@ -36,6 +37,9 @@ export function gateStore(params: { store: Store }): StoreGate {
 		counts: state.counts,
 		hold: function hold(holdParams) {
 			return holdMember({ state, member: holdParams.member })
+		},
+		holdAnswer: function holdAnswer(holdParams) {
+			return holdMember({ state, member: holdParams.member, holds: state.answerHolds })
 		},
 		holdNotices: function holdNotices() {
 			state.notices.held = true
@@ -49,6 +53,7 @@ export function gateStore(params: { store: Store }): StoreGate {
 		},
 		releaseAll: function releaseAll() {
 			state.holds.clear()
+			state.answerHolds.clear()
 			for (const release of state.released.splice(0)) release()
 			releaseHeldNotices({ state })
 		},
@@ -57,7 +62,11 @@ export function gateStore(params: { store: Store }): StoreGate {
 
 /** A hold of the next call of `member`: reached when the call arrives, sent on when released. */
 // dialecte-allow argument-mutation: the gate's own state, filled by the holds set on it
-function holdMember(params: { state: GateState; member: GatedMember }): HeldCall {
+function holdMember(params: {
+	state: GateState
+	member: GatedMember
+	holds?: GateState['holds']
+}): HeldCall {
 	let arrive: () => void = noOp
 	let release: () => void = noOp
 	const reached = new Promise<void>(function onArrival(resolve) {
@@ -66,16 +75,21 @@ function holdMember(params: { state: GateState; member: GatedMember }): HeldCall
 	const opened = new Promise<void>(function onRelease(resolve) {
 		release = resolve
 	})
-	const queue = params.state.holds.get(params.member) ?? []
+	const holds = params.holds ?? params.state.holds
+	const queue = holds.get(params.member) ?? []
 	queue.push({ arrive, opened })
-	params.state.holds.set(params.member, queue)
+	holds.set(params.member, queue)
 	params.state.released.push(release)
 	return { reached, release }
 }
 
 /** The next hold of `member`, if one waits: the call meets it and waits until it is released. */
-function nextHold(params: { state: GateState; member: string }): Promise<void> | undefined {
-	const waiting = params.state.holds.get(params.member)?.shift()
+function nextHold(params: {
+	state: GateState
+	member: GatedMember
+	holds?: GateState['holds']
+}): Promise<void> | undefined {
+	const waiting = (params.holds ?? params.state.holds).get(params.member)?.shift()
 	if (!waiting) return undefined
 	waiting.arrive()
 	return waiting.opened
@@ -86,6 +100,7 @@ function nextHold(params: { state: GateState; member: string }): Promise<void> |
 function gatedSubscribe(params: { state: GateState; subscribe: NonNullable<Store['subscribe']> }) {
 	const { state, subscribe } = params
 	return function subscribeThroughGate(listener: (notice: StoreNotice) => void): () => void {
+		state.counts.set('subscribe', (state.counts.get('subscribe') ?? 0) + 1)
 		return subscribe.call(state.store, function tellThroughGate(notice: StoreNotice) {
 			if (!state.notices.held) {
 				listener(notice)
@@ -103,17 +118,20 @@ function gatedSubscribe(params: { state: GateState; subscribe: NonNullable<Store
 // dialecte-allow argument-mutation: the gate's own call counts
 function gatedMember(params: {
 	state: GateState
-	member: string
+	member: GatedMember
 	call: (...args: unknown[]) => unknown
 }) {
 	const { state, member, call } = params
 	return function callThroughGate(...args: unknown[]): unknown {
 		state.counts.set(member, (state.counts.get(member) ?? 0) + 1)
 		const opened = nextHold({ state, member })
-		if (!opened) return call.apply(state.store, args)
-		return opened.then(function callOnceReleased() {
-			return call.apply(state.store, args)
-		})
+		const answered = opened
+			? opened.then(function callOnceReleased() {
+					return call.apply(state.store, args)
+				})
+			: call.apply(state.store, args)
+		if (!state.answerHolds.get(member)?.length) return answered
+		return holdTheAnswer({ state, member, answered: answered as Promise<unknown> })
 	}
 }
 
@@ -122,6 +140,19 @@ function releaseHeldNotices(params: { state: GateState }): void {
 	const { notices } = params.state
 	notices.held = false
 	for (const tell of notices.waiting.splice(0)) tell()
+}
+
+/** The store's answer, given back once the answer hold of `member` is released (it is reached when the store answered). */
+async function holdTheAnswer(params: {
+	state: GateState
+	member: GatedMember
+	answered: Promise<unknown>
+}): Promise<unknown> {
+	const { state, member, answered } = params
+	const answer = await answered
+	const opened = nextHold({ state, member, holds: state.answerHolds })
+	if (opened) await opened
+	return answer
 }
 
 /** Nothing, until a promise hands its resolver over. */

@@ -627,21 +627,22 @@ you give it, when a change reaches the reader late, never, or while a read is in
 Per case it opens two projects of one name: a **writer** that imports `sourceXml`, and a **reader** that reads through
 a gate. The case gets:
 
-| Field        | What it is                                                                                                                                           |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `writer`     | the project that commits                                                                                                                             |
-| `reader`     | the project whose reads the case checks                                                                                                              |
-| `documentId` | the document both hold                                                                                                                               |
-| `gate`       | the reader's store behind a gate: `hold({ member })` keeps its next call in flight, `holdNotices()` delays what the store tells, `counts` per member |
-| `channel`    | the realm's BroadcastChannel made lossy: `drop({ type })` loses a message, `hold({ type })` delays it, `flush({ reversed })` sends the held ones     |
-| `around`     | a store of the name held directly: `writeAround({ store: around, ... })` commits a change no project makes or tells                                  |
-| `announces`  | whether the store tells its changes itself (otherwise the project channel carries them)                                                              |
+| Field        | What it is                                                                                                                                                                                                                                                                                    |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `writer`     | the project that commits                                                                                                                                                                                                                                                                      |
+| `reader`     | the project whose reads the case checks                                                                                                                                                                                                                                                       |
+| `documentId` | the document both hold                                                                                                                                                                                                                                                                        |
+| `gate`       | the reader's store behind a gate: `hold({ member })` keeps its next call from reaching the store, `holdAnswer({ member })` lets the store answer and keeps the answer back (an answer read before a change, given after it), `holdNotices()` delays what the store tells, `counts` per member |
+| `channel`    | the realm's BroadcastChannel made lossy: `drop({ type })` loses a message, `hold({ type })` delays it, `flush({ reversed })` sends the held ones                                                                                                                                              |
+| `around`     | a store of the name held directly: `writeAround({ store: around, ... })` commits a change no project makes or tells                                                                                                                                                                           |
+| `announces`  | whether the store tells its changes itself (otherwise the project channel carries them)                                                                                                                                                                                                       |
 
 A case states one of three outcomes:
 
 - **exact**: the cached answer equals the uncached one (`answerUncached` runs the read on a query no document wired).
-- **snapshot**: `expectSnapshot({ answer, trail, from })`: the answer equals one of the uncached answers recorded since
-  the session started (`createVersionTrail`, one point per write the case scripts).
+- **snapshot**: `expectSnapshot({ answer, trail, from, notBefore })`: the answer equals one of the uncached answers
+  recorded since the session started (`createVersionTrail`, one point per write the case scripts, in write order), and
+  is never of an older point than `notBefore`, an answer the session gave before.
 - **exposed**: `expectExposed({ answer, trail, staleAt, because })` pins a known staleness as the old answer it gives;
   the change that fixes it turns the case red.
 
@@ -654,15 +655,17 @@ import {
 } from '@dialecte/core/test'
 import { expect } from 'vitest'
 
-function readB(query) {
+import type { Query } from '@dialecte/core'
+
+function readB(query: Query<MyConfig>): Promise<string> {
 	return query.getAttribute({ tagName: 'B', id: 'b' }, { name: 'aB' })
 }
 
-runReadModelCases({
+runReadModelCases<MyConfig>({
 	title: 'my index - against the uncached path',
 	storages: {
 		'in memory': async function inMemory() {
-			return { type: 'inMemory' }
+			return { type: 'inMemory' as const }
 		},
 	},
 	config,
@@ -692,7 +695,8 @@ runReadModelCases({
 })
 ```
 
-`waitForChange` settles once the reader has folded the change in: register it before the write.
+`waitForChange` settles once the reader has folded the change in: register it before the write. The context, the
+queries and `answerUncached` are typed by your dialecte's config (`MyConfig` above).
 
 A case with `announces: true` runs only on stores that tell their changes, `announces: false` only on the others; on
 the other stores it is reported skipped. `gate.holdNotices()` and `channel.drop()` answer a `reached` promise, so a case

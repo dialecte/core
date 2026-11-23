@@ -713,7 +713,7 @@
 			"root": "export",
 			"entry": "@dialecte/core/test",
 			"otherRoutes": [],
-			"signature": "<GenericAnswer>(params: { store: Store; config: AnyDialecteConfig; documentId: string; read: (query: Query<AnyDialecteConfig>) => Promise<GenericAnswer>; }) => Promise<GenericAnswer>",
+			"signature": "<GenericAnswer, GenericConfig extends AnyDialecteConfig = AnyDialecteConfig>(params: { store: Store; config: GenericConfig; documentId: string; read: (query: Query<GenericConfig>) => Promise<GenericAnswer>; }) => Promise<GenericAnswer>",
 			"summary": "What a read answers with no cache at all: `read` runs on a query over `store` that no document wired, so no read scope opens and nothing is kept.",
 			"intents": [
 				"read without any cache in a test",
@@ -862,7 +862,7 @@
 			"root": "export",
 			"entry": "@dialecte/core/test",
 			"otherRoutes": [],
-			"signature": "<GenericAnswer>(params: { answer: GenericAnswer; trail: VersionTrail<GenericAnswer>; from: number; }) => void",
+			"signature": "<GenericAnswer>(params: { answer: GenericAnswer; trail: VersionTrail<GenericAnswer>; from: number; notBefore?: GenericAnswer; }) => void",
 			"summary": "Asserts a cached answer is a snapshot: equal to one of the uncached answers the trail recorded from point `from` (the session's start) on. Whether a later read moved on is the case's own next assertion.",
 			"intents": ["assert a cached read answers a moment of its session"],
 			"declaredAt": "src/test/read-model/expect-snapshot.ts:11"
@@ -925,7 +925,7 @@
 			"root": "export",
 			"entry": "@dialecte/core/test",
 			"otherRoutes": [],
-			"signature": "(params: RunReadModelCasesParams) => void",
+			"signature": "<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig>(params: RunReadModelCasesParams<GenericConfig>) => void",
 			"summary": "Runs read-model cases on every store given, one at a time: per case, a writer project imports the source and a reader project of the same name opens it through a gate, with the realm's channel made lossy; after it, whatever it left held is released and both projects are closed and destroyed. A case meant for the other kind of store (one that announces, or one that does not) is reported skipped on this one.",
 			"intents": ["prove a read cache against the uncached path on every store"],
 			"declaredAt": "src/test/read-model/run-read-model-cases.ts:27"
@@ -949,7 +949,7 @@
 			"root": "export",
 			"entry": "@dialecte/core/test",
 			"otherRoutes": [],
-			"signature": "(params: { project: Project<AnyDialecteConfig>; documentId: string; }) => Promise<void>",
+			"signature": "<GenericConfig extends AnyDialecteConfig>(params: { project: Project<GenericConfig>; documentId: string; }) => Promise<void>",
 			"summary": "Settles once the project's document heard its next change to the end (a commit, an undo, a change another view made and the project folded in): by then the project has moved what its reads keep. Call it before the change is made.",
 			"intents": ["wait until a project has heard a change in a test"],
 			"declaredAt": "src/test/read-model/heard-change.ts:10"

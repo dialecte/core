@@ -2,93 +2,37 @@ import { writeAround } from './bypass-write'
 import { gateStore } from './gated-store'
 import { installLossyChannel } from './lossy-channel'
 import { openRawStore } from './raw-store'
+import {
+	aBOf,
+	bWith,
+	closeTracked,
+	trackedOfFile,
+	inMemoryStorage,
+	observed,
+	openSource,
+} from './read-model-harness.fixtures'
 import { answerUncached } from './uncached-answer'
 import { createVersionTrail } from './version-trail'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import { Project } from '@/project/project'
 import { SWITCH_CONFIG, SWITCH_DIALECTE_ID } from '@/project/store-switch.fixtures'
-import { InMemoryStore } from '@/store/in-memory/in-memory-store'
-import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE } from '@/test/constant'
 import { SILENCE_WAIT_MS } from '@/test/test-timing.constants'
 
 import type { Query } from '@/document/query/main'
 import type { ProjectChannelMessage } from '@/project/types'
-import type { Store, StoreNotice } from '@/store/store.types'
-import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
+import type { StoreNotice } from '@/store/store.types'
+import type { AnyDialecteConfig } from '@/types'
 
 // The harness's own parts, on the in-memory store: a gate holds a call or the notices, the lossy channel drops or holds
 // a message, a write goes around the projects, the uncached answer keeps nothing, the trail keeps each answer.
 
-const customId = CUSTOM_RECORD_ID_ATTRIBUTE
-
-const SOURCE_XML = /* xml */ `
-	<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} ${customId}="root">
-		<B ${customId}="b" aB="first" />
-	</Root>
-`
-
-const opened: Project<AnyDialecteConfig>[] = []
-const stores: Store[] = []
-const restores: Array<() => void> = []
+const tracked = trackedOfFile()
+const { restores, stores } = tracked
 
 afterEach(async () => {
-	for (const restore of restores.splice(0)) restore()
-	for (const store of stores.splice(0)) await store.close()
-	const projects = opened.splice(0)
-	for (const project of projects) await project.close()
-	for (const project of projects) await project.destroy()
+	await closeTracked()
 })
-
-async function inMemoryStorage() {
-	return { type: 'inMemory' as const }
-}
-
-/** A project holding the source, and a store of its name held directly. */
-async function openSource(): Promise<{ store: Store; documentId: string; name: string }> {
-	const name = `read-model-harness-${crypto.randomUUID()}`
-	const project = await new Project({
-		configs: { default: SWITCH_CONFIG },
-		storage: { type: 'inMemory' },
-		dialecteId: SWITCH_DIALECTE_ID,
-	}).open(name)
-	opened.push(project)
-	const file = new File([SOURCE_XML], 'source.xml', { type: 'text/xml' })
-	const { documentId } = await project.importFile(file, { useCustomRecordsIds: true })
-	const store = new InMemoryStore(name, {
-		dialecteId: SWITCH_DIALECTE_ID,
-		runtime: { configs: { default: SWITCH_CONFIG }, defaultConfigKey: 'default' },
-	})
-	await store.open()
-	stores.push(store)
-	return { store, documentId, name }
-}
-
-/** B as stored, with `aB` set to `value`. */
-async function bWith(params: {
-	store: Store
-	documentId: string
-	value: string
-}): Promise<AnyRawRecord> {
-	const { store, documentId, value } = params
-	const stored = await store.get('b', documentId)
-	if (!stored) throw new Error('the source holds B')
-	const others = stored.attributes.filter((attribute) => attribute.name !== 'aB')
-	return { ...stored, attributes: [...others, { name: 'aB', value }] }
-}
-
-function aBOf(record: AnyRawRecord | undefined): string | undefined {
-	return record?.attributes.find((attribute) => attribute.name === 'aB')?.value
-}
-
-/** What the case observes, asserted whole: a stub's error then fails inside the matcher. */
-function observed<GenericOutcome>(
-	observe: () => Promise<GenericOutcome> | GenericOutcome,
-): Promise<GenericOutcome> {
-	return Promise.resolve().then(observe)
-}
 
 describe('read-model harness - a gated store', () => {
 	it('a held member call → waits until released, then answers as the store does', async () => {
@@ -294,100 +238,5 @@ describe('read-model harness - writes around the projects, uncached answers, the
 			return aBOf(stored)
 		}
 		await expect(observed(openThenRead)).resolves.toBe('first')
-	})
-})
-
-describe('read-model harness - holds made visible, released at the end', () => {
-	it('notices held, the store tells one → the hold is reached', async () => {
-		const { store, documentId } = await openSource()
-		const update = await bWith({ store, documentId, value: 'one' })
-		async function holdThenCommit() {
-			const gate = gateStore({ store })
-			const subscribe = gate.store.subscribe
-			if (!subscribe) throw new Error('the in-memory store announces')
-			restores.push(subscribe.call(gate.store, function ignore() {}))
-			const held = gate.holdNotices()
-			await writeAround({ store, documentId, updates: [update] })
-			await held.reached
-			return 'reached'
-		}
-		await expect(observed(holdThenCommit)).resolves.toBe('reached')
-	})
-
-	it('a call and notices held, everything released → the call answers, the notice told', async () => {
-		const { store, documentId } = await openSource()
-		const update = await bWith({ store, documentId, value: 'one' })
-		async function holdThenReleaseAll() {
-			const gate = gateStore({ store })
-			const told: string[] = []
-			const subscribe = gate.store.subscribe
-			if (!subscribe) throw new Error('the in-memory store announces')
-			restores.push(
-				subscribe.call(gate.store, function keep(notice: StoreNotice) {
-					if (notice.type === 'change') told.push(notice.message.type)
-				}),
-			)
-			const heldCall = gate.hold({ member: 'getMany' })
-			const notices = gate.holdNotices()
-			const answer = gate.store.getMany(['b'], documentId)
-			await heldCall.reached
-			await writeAround({ store, documentId, updates: [update] })
-			await notices.reached
-			gate.releaseAll()
-			const records = await answer
-			return { answered: records.map(aBOf), told }
-		}
-		await expect(observed(holdThenReleaseAll)).resolves.toEqual({
-			answered: ['one'],
-			told: ['commit'],
-		})
-	})
-
-	it('a message type dropped, one posted → the drop is reached', async () => {
-		async function dropThenPost() {
-			const lossy = installLossyChannel()
-			restores.push(lossy.restore)
-			const sender = new BroadcastChannel(`lossy-${crypto.randomUUID()}`)
-			restores.push(() => sender.close())
-			const dropped = lossy.drop({ type: 'commit' })
-			sender.postMessage({
-				type: 'commit',
-				documentId: 'lost',
-				timestamp: 1,
-				changeId: 'lost',
-				changes: { unknown: true },
-			})
-			await dropped.reached
-			return 'reached'
-		}
-		await expect(observed(dropThenPost)).resolves.toBe('reached')
-	})
-
-	it('messages held, the channel restored, then flushed → nothing posted, nothing thrown', async () => {
-		async function holdRestoreFlush() {
-			const lossy = installLossyChannel()
-			const name = `lossy-${crypto.randomUUID()}`
-			const heard: unknown[] = []
-			const listener = new BroadcastChannel(name)
-			listener.onmessage = function keep(event: MessageEvent) {
-				heard.push(event.data)
-			}
-			restores.push(() => listener.close())
-			const sender = new BroadcastChannel(name)
-			lossy.hold({ type: 'commit' })
-			sender.postMessage({
-				type: 'commit',
-				documentId: 'held',
-				timestamp: 1,
-				changeId: 'held',
-				changes: { unknown: true },
-			})
-			sender.close()
-			lossy.restore()
-			lossy.flush()
-			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
-			return heard.length
-		}
-		await expect(observed(holdRestoreFlush)).resolves.toBe(0)
 	})
 })

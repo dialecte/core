@@ -24,9 +24,13 @@ import type { AnyDialecteConfig } from '@/types'
  *
  * @intent prove a read cache against the uncached path on every store
  */
-export function runReadModelCases(params: RunReadModelCasesParams): void {
+export function runReadModelCases<GenericConfig extends AnyDialecteConfig = AnyDialecteConfig>(
+	params: RunReadModelCasesParams<GenericConfig>,
+): void {
 	const { title, storages, cases } = params
 	const opened: OpenedByCase = { projects: [], stores: [], channels: [], gates: [] }
+	// whether each store announces, probed once per store
+	const announcing = new Map<ReadModelStorage, Promise<boolean>>()
 
 	describe(title, () => {
 		afterEach(async function closeEverything() {
@@ -37,8 +41,11 @@ export function runReadModelCases(params: RunReadModelCasesParams): void {
 			describe(storageName, () => {
 				for (const readModelCase of cases) {
 					it(readModelCase.title, async ({ skip }) => {
-						const context = await openContext({ params, storage, opened })
-						if (!appliesTo({ readModelCase, context })) skip()
+						const probed = announcing.get(storage) ?? storageAnnounces({ params, storage })
+						announcing.set(storage, probed)
+						const announces = await probed
+						if (!appliesTo({ readModelCase, announces })) skip()
+						const context = await openContext({ params, storage, opened, announces })
 						await readModelCase.act(context)
 					})
 				}
@@ -47,18 +54,41 @@ export function runReadModelCases(params: RunReadModelCasesParams): void {
 	})
 }
 
-function appliesTo(params: { readModelCase: ReadModelCase; context: ReadModelContext }): boolean {
-	const { readModelCase, context } = params
-	return readModelCase.announces === undefined || readModelCase.announces === context.announces
+function appliesTo<GenericConfig extends AnyDialecteConfig>(params: {
+	readModelCase: ReadModelCase<GenericConfig>
+	announces: boolean
+}): boolean {
+	const { readModelCase, announces } = params
+	return readModelCase.announces === undefined || readModelCase.announces === announces
+}
+
+/** Whether the store tells its changes itself: read from a store of the storage, never opened, then closed. */
+async function storageAnnounces<GenericConfig extends AnyDialecteConfig>(params: {
+	params: RunReadModelCasesParams<GenericConfig>
+	storage: ReadModelStorage
+}): Promise<boolean> {
+	const { config, dialecteId } = params.params
+	const name = `read-model-probe-${crypto.randomUUID()}`
+	const store = await openRawStore({
+		storage: params.storage,
+		name,
+		dialecteId,
+		config,
+		open: false,
+	})
+	const announces = typeof store.subscribe === 'function'
+	await store.close()
+	return announces
 }
 
 /** The writer with the source imported, the reader through a gate, a store held directly, the lossy channel. */
-async function openContext(params: {
-	params: RunReadModelCasesParams
+async function openContext<GenericConfig extends AnyDialecteConfig>(params: {
+	params: RunReadModelCasesParams<GenericConfig>
 	storage: ReadModelStorage
 	opened: OpenedByCase
-}): Promise<ReadModelContext> {
-	const { storage, opened } = params
+	announces: boolean
+}): Promise<ReadModelContext<GenericConfig>> {
+	const { storage, opened, announces } = params
 	const { config, dialecteId, sourceXml } = params.params
 	const name = `read-model-${crypto.randomUUID()}`
 	// before any project opens: their channels are made from it
@@ -87,19 +117,19 @@ async function openContext(params: {
 		reader,
 		documentId,
 		gate,
-		announces: typeof readerStore.subscribe === 'function',
+		announces,
 		channel,
 		around,
 		config,
 	}
 }
 
-async function openProject(params: {
+async function openProject<GenericConfig extends AnyDialecteConfig>(params: {
 	storage: StorageParam
 	name: string
-	config: AnyDialecteConfig
+	config: GenericConfig
 	dialecteId: string
-}): Promise<Project<AnyDialecteConfig>> {
+}): Promise<Project<GenericConfig>> {
 	const { storage, name, config, dialecteId } = params
 	return new Project({ configs: { default: config }, storage, dialecteId }).open(name)
 }

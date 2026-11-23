@@ -7,8 +7,8 @@ import type { AnyDialecteConfig } from '@/types'
  *
  * @intent wait until a project has heard a change in a test
  */
-export function waitForChange(params: {
-	project: Project<AnyDialecteConfig>
+export function waitForChange<GenericConfig extends AnyDialecteConfig>(params: {
+	project: Project<GenericConfig>
 	documentId: string
 }): Promise<void> {
 	const { project, documentId } = params

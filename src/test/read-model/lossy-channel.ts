@@ -10,16 +10,17 @@ import type { ProjectChannelMessage } from '@/project/types'
  */
 export function installLossyChannel(): LossyChannel {
 	const RealmChannel = globalThis.BroadcastChannel
-	const dropped = new Set<string>()
+	/** The types dropped, each with the drops still waiting to be reached. */
+	const dropped = new Map<string, Array<() => void>>()
 	const heldTypes = new Set<string>()
 	const held: Array<() => void> = []
-	const drops = { reached: noOp }
 
 	/** What becomes of a message posted: sent, held or lost. */
 	function route(params: { message: unknown; send: () => void }): void {
 		const type = typeOf(params.message)
-		if (type !== undefined && dropped.has(type)) {
-			drops.reached()
+		const drops = type === undefined ? undefined : dropped.get(type)
+		if (drops) {
+			for (const reached of drops.splice(0)) reached()
 			return
 		}
 		if (type !== undefined && heldTypes.has(type)) {
@@ -46,9 +47,10 @@ export function installLossyChannel(): LossyChannel {
 
 	return {
 		drop: function drop(params) {
-			dropped.add(params.type)
+			const drops = dropped.get(params.type) ?? []
+			dropped.set(params.type, drops)
 			const reached = new Promise<void>(function onFirstDrop(resolve) {
-				drops.reached = resolve
+				drops.push(resolve)
 			})
 			return { reached }
 		},
@@ -69,9 +71,6 @@ export function installLossyChannel(): LossyChannel {
 		},
 	}
 }
-
-/** Nothing, until a promise hands its resolver over. */
-function noOp(): void {}
 
 /** The project message type a posted message carries, if it is one. */
 function typeOf(message: unknown): ProjectChannelMessage['type'] | undefined {
