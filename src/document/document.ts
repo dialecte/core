@@ -339,7 +339,10 @@ export class Document<
 		} catch (error) {
 			this.activeTransactions--
 			this.state.loading = false
-			throw this.reportFailure(error)
+			const failure = this.reportFailure(error)
+			// a failed build leaves no plan behind, as a failed transaction does
+			tx.progress.forceClear()
+			throw failure
 		}
 
 		// Stop loading — build phase done, waiting for user decision
@@ -403,7 +406,10 @@ export class Document<
 				} finally {
 					this.activeTransactions--
 					this.state.loading = false
+					// the write ends first, so a subscriber that throws as it is told below never holds the Project's close
 					endWrite()
+					// the prepared commit ends its progress as a transaction does: a plan the build left open goes too
+					tx.progress.forceClear()
 				}
 			},
 
@@ -414,6 +420,9 @@ export class Document<
 				settled = true
 				tx.clearStagedOperations()
 				tx.clearRecordCache()
+				// discarded, the prepare ends: a plan its build left open goes, as after a commit - unless another
+				// transaction runs now, whose bar the document's progress shows
+				if (this.activeTransactions === 0) tx.progress.forceClear()
 			},
 		}
 	}
