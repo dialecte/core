@@ -1,5 +1,6 @@
 // dialecte-allow test-file-long: grown long before this lot; its split by behaviour is its own lot
 import { ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
+import { startWindowOf } from '../client/start-window'
 import { createHubRouter } from './hub-router'
 import {
 	ENGINE_IDLE_CLOSE_MS,
@@ -2803,7 +2804,7 @@ describe('createHubRouter', () => {
 				history: [
 					hello({ realmId: 'shell' }),
 					hello({ realmId: 'other-tab' }),
-					destroy({ realmId: 'shell' }),
+					destroy({ realmId: 'shell', now: 1_000 }),
 				],
 				steps: [
 					{
@@ -2817,7 +2818,12 @@ describe('createHubRouter', () => {
 						wakeAt: 1_000 + HUB_HELD_OPEN_BUDGET_MS,
 					},
 					{
-						event: destroyed({ realmId: 'shell', now: HUB_HELD_OPEN_BUDGET_MS }),
+						// its fresh worker given up once its start window passed, as the open budget ends
+						event: destroyed({
+							realmId: 'shell',
+							now:
+								1_000 + startWindowOf({ openWindowMs: undefined, budgetMs: ENGINE_OPEN_BUDGET_MS }),
+						}),
 						commands: [{ ...SPAWN_SHELL_1, realmId: 'other-tab' }],
 					},
 				],

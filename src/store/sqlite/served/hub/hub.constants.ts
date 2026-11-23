@@ -32,9 +32,9 @@ export const ENGINE_OPEN_MIN_BUDGET_MS = 1_000
 export const HUB_OPEN_BUDGET_MS = ENGINE_OPEN_WINDOW_MS
 
 /**
- * The longest an open waits behind a destroy of its project before the hub refuses it: the destroy's longest run - its
- * fresh worker answering within its start window, then the lock and close budgets its realm may wait after a deaf
- * one - so an open is never refused while the destroy it waits for may still end.
+ * The longest an open waits behind a destroy of its project before the hub refuses it: the start window its fresh
+ * worker is waited for (a deaf one given up then, the destroy said done right after), with the lock and close budgets
+ * as a safety margin over it - so an open is never refused while the destroy it waits for may still end.
  */
 export const HUB_HELD_OPEN_BUDGET_MS =
 	startWindowOf({ openWindowMs: undefined, budgetMs: ENGINE_OPEN_BUDGET_MS }) +
