@@ -1,7 +1,7 @@
 /** Where the repository keeps its pull request template, from the package root. */
 export const TEMPLATE_PATH = '.github/pull_request_template.md'
 
-/** A template line `dialecte lot pr` fills: `<!-- dialecte:<part> -->` alone on its line. */
+/** A template line `dialecte lot describe` fills: `<!-- dialecte:<part> -->` alone on its line. */
 export const PART_MARKER_PATTERN = /^<!-- dialecte:([a-z]+) -->$/
 
 /** The parts the renderer fills from a lot's records, in the order the body shows them. */

@@ -1,5 +1,5 @@
 /**
- * The pull request template is the one `dialecte lot pr` renders a lot's body through: a template without its
+ * The pull request template is the one `dialecte lot describe` renders a lot's body through: a template without its
  * markers, or with them out of order, is refused and no lot lands.
  */
 import { readFileSync } from 'node:fs'

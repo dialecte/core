@@ -1,4 +1,4 @@
-<!-- dialecte: `dialecte lot pr` renders this body from the lot's records; text after the kept marker is kept -->
+<!-- dialecte: `dialecte lot describe` renders this body from the lot's records; text after the kept marker is kept -->
 
 ### Summary
 

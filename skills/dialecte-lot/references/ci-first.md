@@ -67,9 +67,9 @@ for the cli's own lots only). The lot agent never runs `lot approve`, `gh pr rea
 
 - `npx dialecte lot forecast [<id>]`: the conflict forecast of the lot's work against main (as last fetched) and
   every other open lot, without a checkout. Run it before landing and when another lot lands in the same area.
-- `npx dialecte lot pr <id> --print`: the pull request text the records render, before or after the landing.
+- `npx dialecte lot describe <id> --print`: the pull request text the records render, before or after the landing.
 - `npx dialecte lot review <id> --no-open`: the private half of the review (state, records, findings, what
-  `lot approve` would refuse); `lot review <id> --pull --round <n>` brings the pull request's line comments back as
+  `lot approve` would refuse); `lot review <id> --comments --round <n>` brings the pull request's line comments back as
   findings of round `<n>`.
 - `npx dialecte plan mark <plan.md> <id> superseded --by <who> --reason <text> [--replaced-by <id>]`: a plan entry
   another one replaced.
