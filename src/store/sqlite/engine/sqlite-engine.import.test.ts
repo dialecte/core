@@ -779,7 +779,7 @@ describe('an engine importing files', () => {
 		/** An edit of the document `other` (one record, one commit in its history), and the records it holds after. */
 		const EDITS_OF_ANOTHER_CLIENT: Record<
 			string,
-			{ run: (engine: SqliteEngine) => Promise<void>; expectedCount: number }
+			{ run: (engine: SqliteEngine) => Promise<unknown>; expectedCount: number }
 		> = {
 			'a commit': {
 				run: (engine) =>

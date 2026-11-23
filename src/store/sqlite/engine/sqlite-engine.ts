@@ -99,6 +99,7 @@ import type {
 	HistoryStep,
 	ImportControl,
 	ImportFileResult,
+	StoreVersion,
 	VersionedAnswer,
 	VersionedRead,
 } from '@/store/store.types'
@@ -463,6 +464,11 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				},
 			})
 		},
+		/** The document's version now, read without a record. */
+		readVersion: async function readVersion({ documentId }) {
+			refuseClosed({ state, name })
+			return versionOf({ documentId })
+		},
 		/** The member's answer and the document's version of the same moment: the engine's reads never await before they answer. */
 		readVersioned: async function readVersioned<GenericRead extends VersionedRead>(params: {
 			documentId: string
@@ -474,7 +480,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 				reads: members,
 				read,
 				versionOf: function versionNow() {
-					return { engineId, count: versions.get(documentId) ?? 0 }
+					return versionOf({ documentId })
 				},
 			})
 		},
@@ -542,8 +548,9 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					settleImport({ importing })
 				},
 			})
-			noteWrite({ documentId, gained })
+			const version = noteWrite({ documentId, gained })
 			tellCommitProgress({ onProgress, parts: [creates.length, updates.length, deletes.length] })
+			return { version }
 		},
 		undo: async function undo({ documentId, changeId }) {
 			refuseClosed({ state, name })
@@ -684,17 +691,26 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 	 * A write landed on the document (a bulk write, a commit, an undo, a redo): its count kept in step
 	 * when the engine holds it, its version moved on - an export reading it starts again.
 	 */
-	function noteWrite(params: { documentId: string; gained: number }): void {
+	function noteWrite(params: { documentId: string; gained: number }): StoreVersion {
 		const { documentId, gained } = params
 		const held = counts.get(documentId)
 		if (held !== undefined) counts.set(documentId, held + gained)
-		moveVersionOn({ documentId })
+		return moveVersionOn({ documentId })
 	}
 
-	/** What reads of the document answer changed: its version moves on (an export reading it starts again). */
-	function moveVersionOn(params: { documentId: string }): void {
+	/**
+	 * What reads of the document answer changed: its version moves on (an export reading it starts again); answers the
+	 * version it moved to.
+	 */
+	function moveVersionOn(params: { documentId: string }): StoreVersion {
 		const { documentId } = params
 		versions.set(documentId, (versions.get(documentId) ?? 0) + 1)
+		return versionOf({ documentId })
+	}
+
+	/** The document's version now, under this engine's id. */
+	function versionOf(params: { documentId: string }): StoreVersion {
+		return { engineId, count: versions.get(params.documentId) ?? 0 }
 	}
 
 	/**
@@ -770,8 +786,8 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 			},
 		})
 		if (stepped === undefined) return false
-		noteWrite({ documentId, gained: stepped.gained })
-		return { changeId, changes: stepped.changes }
+		const version = noteWrite({ documentId, gained: stepped.gained })
+		return { changeId, changes: stepped.changes, version }
 	}
 
 	/**

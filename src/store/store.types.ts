@@ -212,6 +212,16 @@ export interface Store {
 		read: GenericRead
 	}): Promise<VersionedAnswer<GenericRead['member']>>
 
+	/**
+	 * Optional. The document's version now, read without a record. Every commit, undo, redo and removal of the
+	 * document moves its count by exactly one and answers the version it produced; an import and a bulk write move it
+	 * by any amount. A document never written answers a count of 0; an id removed then registered again goes on from
+	 * its count. Every connection to one state answers one `engineId`; another state (a database made again, an engine
+	 * started again) answers another. A store with `readVersioned` answers the same version through both. A store
+	 * without it keeps no version: its writes answer none.
+	 */
+	readVersion?(params: { documentId: string }): Promise<StoreVersion>
+
 	// --- Import ---
 
 	/**
@@ -282,7 +292,7 @@ export interface Store {
 		updates: AnyRawRecord[]
 		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
-	}): Promise<void>
+	}): Promise<CommitAnswer | void>
 
 	// --- History (document-scoped) ---
 
@@ -513,9 +523,9 @@ export type VersionedRead = {
 }[VersionedReadMember]
 
 /**
- * A document's version as a store answers it with a read: `engineId` names what keeps the count (drawn again when it
- * starts again, so a count started over is never taken for an older one), `count` the writes it has taken since.
- * Versions are compared for equality only, never ordered: another version says the document changed, not which is newer.
+ * A document's version as a store answers it: `engineId` names what keeps the count (another one when it starts again,
+ * so a count started over is never taken for an older one; unique among the states one copy of core can reach), `count` the writes it has taken since. Two counts of one
+ * `engineId` are ordered (the higher is newer); counts of two engine ids are never compared.
  */
 export type StoreVersion = { engineId: string; count: number }
 
@@ -529,7 +539,15 @@ export type VersionedAnswer<GenericMember extends VersionedReadMember = Versione
  * What an undo or a redo applied: the id its caller gave it (`changeId`, told with it), and the records it created,
  * updated and deleted, or `{ unknown: true }` past the cap.
  */
-export type HistoryStep = { changeId: string; changes: CommitChanges | UnknownCommitChanges }
+export type HistoryStep = {
+	changeId: string
+	changes: CommitChanges | UnknownCommitChanges
+	/** The version the step produced, on a store that keeps one (`Store.readVersion`) */
+	version?: StoreVersion
+}
+
+/** What a commit answers on a store that keeps a version (`Store.readVersion`): the version it produced. */
+export type CommitAnswer = { version: StoreVersion }
 
 /** What became of a write asked by its id. */
 export type WriteOutcome = 'applied' | 'running' | 'not-applied'

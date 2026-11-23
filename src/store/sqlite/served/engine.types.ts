@@ -2,6 +2,7 @@ import type { ENGINE_SIGNAL } from './engine.constants'
 import type { ThrownData } from './wire/wire.types'
 import type { ChangedRecord } from '@/project/types'
 import type {
+	CommitAnswer,
 	ExportControl,
 	ExportFileOptions,
 	ExportFileResult,
@@ -116,6 +117,7 @@ export type EngineMember =
 	| 'count'
 	| 'getByTagNameInDocument'
 	| 'getByAttributes'
+	| 'readVersion'
 	| 'readVersioned'
 	| 'getMany'
 	| 'bulkWrite'
@@ -177,14 +179,18 @@ export type EngineChangeMembers = {
 
 /**
  * The port members an engine serves alike to every client, with the port's signatures: registry,
- * reads, bulk writes, write outcomes, history; and a commit, its progress listener an argument of its own.
+ * reads, bulk writes, write outcomes, history; and a commit answering the version it produced, its progress listener an
+ * argument of its own.
  */
 export type EngineMembers = Omit<
 	Required<Pick<Store, EngineMember>> & EngineBlobMembers,
 	EngineChangeMember
 > &
 	EngineChangeMembers & {
-		commit: (params: EngineCommitParams, onProgress?: CommitProgressListener) => Promise<void>
+		commit: (
+			params: EngineCommitParams,
+			onProgress?: CommitProgressListener,
+		) => Promise<CommitAnswer>
 	}
 
 /** The blob members of the port an engine serves, with the port's signatures (a `Blob` crosses a port as it is). */

@@ -4,16 +4,17 @@ import { mergeOperations } from './merge-operations'
 import { NOOP_PERF } from '@/perf'
 import { isConnectionLost, lostWriteError, outcomeAfterLoss } from '@/store/lost-write'
 
+import type { CommittedTransaction } from './commit.types'
 import type { ProgressReporter } from '@/document/progress'
 import type { DocumentState } from '@/document/types'
 import type { Perf } from '@/perf'
-import type { CommitChanges, UnknownCommitChanges } from '@/project/types'
-import type { Store } from '@/store/store.types'
+import type { CommitAnswer, Store } from '@/store/store.types'
 import type { AnyDialecteConfig, Operation } from '@/types'
 
 /**
  * Write the merged staged operations as one commit under the caller's `writeId` and answer what it changed (`describeCommitChanges` over the
- * writes it handed the store); a commit lost with its connection whose outcome reads `applied` answers the same.
+ * writes it handed the store) and the version the store answered for it; a commit lost with its connection whose
+ * outcome reads `applied` answers the same changes and no version (its answer was lost).
  */
 export async function commitTransaction<GenericConfig extends AnyDialecteConfig>(params: {
 	/** The commit's id, drawn by its caller: kept on its history entry, asked after a lost connection, never committed again. */
@@ -24,7 +25,7 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	documentState: DocumentState
 	progress: ProgressReporter
 	perf?: Perf
-}): Promise<CommitChanges | UnknownCommitChanges> {
+}): Promise<CommittedTransaction> {
 	const {
 		writeId,
 		stagedOperations,
@@ -60,11 +61,12 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 		}
 	}
 
+	let answer: CommitAnswer | void = undefined
 	try {
 		perf.count('core::store::commit')
 		perf.start('core::store::commit')
 		try {
-			await store.commit({
+			answer = await store.commit({
 				documentId,
 				writeId,
 				creates: writes.creates,
@@ -91,5 +93,5 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	documentState.lastUpdate = Date.now()
 	progress.endPlan()
 	perf.stop('core::commit')
-	return describeCommitChanges(writes)
+	return { changes: describeCommitChanges(writes), version: answer?.version }
 }

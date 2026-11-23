@@ -163,7 +163,7 @@ function holdingEngine(params: { port: MessagePort }): HeldCommit[] {
 	return held
 }
 
-function commitOf(params: { client: EngineClient; heard: number[] }): Promise<void> {
+function commitOf(params: { client: EngineClient; heard: number[] }): Promise<unknown> {
 	return params.client.api.commit(
 		{ documentId: 'doc-1', operations: [] } as never,
 		function hearProgress(current: number) {

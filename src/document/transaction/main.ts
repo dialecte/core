@@ -26,13 +26,13 @@ import type { TransactionReadCache } from '../transaction-read-cache.types'
 import type { DocumentState } from '../types'
 import type { Context, StagedOperations } from '../types'
 import type { CloneResult } from './clone'
+import type { CommittedTransaction } from './commit/commit.types'
 import type { AddChildParams } from './create'
 import type { MoveParams } from './move'
 import type { MovePointer } from './move/move.types'
 import type { UpdateParams } from './update'
 import type { Ref, RefOrRecord } from '@/document'
 import type { Perf } from '@/perf'
-import type { CommitChanges, UnknownCommitChanges } from '@/project/types'
 import type { Store } from '@/store'
 import type {
 	AnyDialecteConfig,
@@ -384,12 +384,12 @@ export class Transaction<GenericConfig extends AnyDialecteConfig> extends Query<
 	 *
 	 * Updates documentState (loading, progress, lastCommit).
 	 * Merges operations by ID to optimize database writes.
-	 * Writes under the caller's `writeId` (the commit message's `changeId`); answers what the commit changed, for the
-	 * commit message.
+	 * Writes under the caller's `writeId` (the commit message's `changeId`); answers what the commit changed and the
+	 * version its store answered, for the commit message.
 	 *
 	 * @internal Used by Document.transaction to write staged operations to the store.
 	 */
-	async commit(params: { writeId: string }): Promise<CommitChanges | UnknownCommitChanges> {
+	async commit(params: { writeId: string }): Promise<CommittedTransaction> {
 		return commitTransaction({
 			writeId: params.writeId,
 			stagedOperations: this.stagedOperations.log,

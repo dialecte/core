@@ -18,3 +18,12 @@ export const CLOSING_IN_MEMORY_CONNECTIONS = createClosingConnections()
 
 /** The instances of each project (its key) listening to its changes: each change told to every one. */
 export const LISTENERS = new Map<string, Set<InMemoryListener>>()
+
+/**
+ * How many in-memory states this copy of core made: each state's engine id is the next count. No random draw: an id
+ * spends nothing a seeded id sequence counts on.
+ */
+export const STATES_MADE = { count: 0 }
+
+/** The engine id of the state made `<count>`th: `<prefix><count>`. */
+export const IN_MEMORY_ENGINE_PREFIX = 'in-memory#'

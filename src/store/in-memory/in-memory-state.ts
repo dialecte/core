@@ -1,10 +1,20 @@
 import { projectKeyOf } from '../project-key'
-import { LISTENERS, STATES } from './in-memory-state.constants'
+import {
+	IN_MEMORY_ENGINE_PREFIX,
+	LISTENERS,
+	STATES,
+	STATES_MADE,
+} from './in-memory-state.constants'
 
 import { changesOfProject, tellListener } from '@/utils/tell-listener'
 
-import type { StoreNotice } from '../store.types'
-import type { InMemoryChange, InMemoryListener, InMemoryState } from './types'
+import type { StoreNotice, StoreVersion } from '../store.types'
+import type {
+	InMemoryChange,
+	InMemoryListener,
+	InMemoryState,
+	ReadonlyInMemoryState,
+} from './types'
 import type { ProjectChannelMessage } from '@/project/types'
 
 /** `listener` of the project (its key) told its changes, as `connection`; answers the unsubscribe. */
@@ -73,8 +83,11 @@ export function dropInMemoryState(params: { key: string }): void {
 	STATES.delete(params.key)
 }
 
+/** A state started empty, under an engine id of its own. */
 export function createInMemoryState(): InMemoryState {
+	STATES_MADE.count += 1
 	return {
+		engineId: `${IN_MEMORY_ENGINE_PREFIX}${STATES_MADE.count}`,
 		documents: new Map(),
 		records: new Map(),
 		changelog: new Map(),
@@ -87,8 +100,23 @@ export function createInMemoryState(): InMemoryState {
 	}
 }
 
-/** A write landed on the document: its version moves on (in the write's synchronous section, so an export reading it sees the write). */
-export function bumpVersion(params: { state: InMemoryState; documentId: string }): void {
+/**
+ * A write landed on the document: its version moves on (in the write's synchronous section, so an export reading it
+ * sees the write); answers the version it moved to.
+ */
+// dialecte-allow argument-mutation: the state's own count, moved in the write's synchronous section as every write of it is
+export function bumpVersion(params: { state: InMemoryState; documentId: string }): StoreVersion {
 	const { state, documentId } = params
-	state.versions.set(documentId, (state.versions.get(documentId) ?? 0) + 1)
+	const count = (state.versions.get(documentId) ?? 0) + 1
+	state.versions.set(documentId, count)
+	return { engineId: state.engineId, count }
+}
+
+/** The document's version in the state now. */
+export function versionIn(params: {
+	state: ReadonlyInMemoryState
+	documentId: string
+}): StoreVersion {
+	const { state, documentId } = params
+	return { engineId: state.engineId, count: state.versions.get(documentId) ?? 0 }
 }

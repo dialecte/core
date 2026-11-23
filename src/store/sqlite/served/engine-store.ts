@@ -12,6 +12,7 @@ import { changesOfProject, tellListeners } from '@/utils/tell-listener'
 import type {
 	AttributeLookup,
 	ChangeLogEntry,
+	CommitAnswer,
 	ExportFileParams,
 	ExportFileResult,
 	HistoryStep,
@@ -20,6 +21,7 @@ import type {
 	Store,
 	StoreChange,
 	StoreNotice,
+	StoreVersion,
 	VersionedAnswer,
 	VersionedRead,
 	WriteOutcome,
@@ -225,6 +227,10 @@ export class EngineStore implements Store {
 		return this.call('getByAttributes', params)
 	}
 
+	async readVersion(params: { documentId: string }): Promise<StoreVersion> {
+		return this.call('readVersion', params)
+	}
+
 	async readVersioned<GenericRead extends VersionedRead>(params: {
 		documentId: string
 		read: GenericRead
@@ -323,7 +329,7 @@ export class EngineStore implements Store {
 		updates: AnyRawRecord[]
 		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
-	}): Promise<void> {
+	}): Promise<CommitAnswer> {
 		const { documentId, writeId, creates, updates, deletes, onProgress } = params
 		return this.call('commit', { documentId, writeId, creates, updates, deletes }, onProgress)
 	}

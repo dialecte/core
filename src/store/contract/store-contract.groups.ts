@@ -8,6 +8,7 @@ import { STORE_PATH_CONTRACT } from './store-contract.path.cases'
 import { STORE_TAG_INDEX_CONTRACT } from './store-contract.tag-index.cases'
 import { STORE_TEXT_CONTRACT } from './store-contract.text.cases'
 import { STORE_VERSIONED_READ_CONTRACT } from './store-contract.versioned-read.cases'
+import { STORE_VERSIONS_CONTRACT } from './store-contract.versions.cases'
 import { STORE_WELL_FORMED_CONTRACT } from './store-contract.well-formed.cases'
 
 import type {
@@ -25,6 +26,7 @@ export function contractGroups(): StoreContractGroup[] {
 			...STORE_MOVE_CONTRACT,
 			...STORE_ATTRIBUTE_CONTRACT,
 			...STORE_VERSIONED_READ_CONTRACT,
+			...STORE_VERSIONS_CONTRACT,
 			...STORE_COMMIT_CHANGES_CONTRACT,
 		},
 		announce: STORE_ANNOUNCE_CONTRACT,

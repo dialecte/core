@@ -152,7 +152,7 @@ export const INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING =
 
 /** Why the IndexedDB leg has no `readVersioned`: it keeps no document version, so what reads through it keeps nothing between reads. */
 export const INDEXEDDB_VERSIONED_READ_PENDING =
-	'IndexedDB keeps no document version (its history head can come back to an older value): a read scope does not open on it, reads go to the store each time'
+	'IndexedDB answers a document version alone (`readVersion`), never with a read in the same step: a read scope does not open on it, reads go to the store each time'
 
 /** Why the in-memory leg has no `readVersioned` yet: the read scope lot adds it with the scope that reads through it. */
 export const IN_MEMORY_VERSIONED_READ_PENDING =
@@ -163,7 +163,8 @@ export const IN_MEMORY_VERSIONED_READ_PENDING =
  * engine of its own has none to end); a project of the name under another dialecte (`dialecte-key`: a
  * store named by the project's name alone has no other dialecte's); a view away while its project is
  * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away); the
- * changes told to every connection (`announce`: a store that tells none leaves it to the project's channel).
+ * changes told to every connection (`announce`: a store that tells none leaves it to the project's channel); the
+ * versions after the store is opened again (`engine-restart`: an engine that ended with its store counts anew).
  */
 export const STORE_CONTRACT_DIFFERENCES = [
 	'engine-end',
@@ -171,7 +172,12 @@ export const STORE_CONTRACT_DIFFERENCES = [
 	'away',
 	'import-liveness',
 	'announce',
+	'engine-restart',
 ] as const
+
+/** Why the in-process leg answers another engine id once opened again: its engine ends with its last store. */
+export const ENGINE_RESTART_REASON =
+	'the in-process engine ends with its last store and a new one starts at the next open: its counts start over under another engine id'
 
 /** Why the IndexedDB leg announces nothing itself (`subscribe`): the project's channel does it for it. */
 export const ANNOUNCED_BY_PROJECT_REASON =

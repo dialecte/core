@@ -5,9 +5,9 @@ import {
 	holdContractImport,
 	untilHeld,
 } from '../contract/store-contract.import-session'
-import { recordTableName, TABLE_META } from '../store.constants'
+import { recordTableName } from '../store.constants'
 import { DexieStore, buildDexieSchema } from './dexie-store'
-import { DESTROY_LOCK_WAIT_MS, OPEN_LOCK_PREFIX, VERSION_KEY_PREFIX } from './dexie-store.constants'
+import { DESTROY_LOCK_WAIT_MS, OPEN_LOCK_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -173,18 +173,18 @@ describe('DexieStore cross-instance reconciliation', () => {
 		const file = makeFile()
 		await a.registerDocument(file)
 
-		expect(await b.isDocumentReadable(file.id)).toBe(false)
+		await expect(b.isDocumentReadable(file.id)).resolves.toBe(false)
 
 		await b.reconcile()
 
-		expect(await b.isDocumentReadable(file.id)).toBe(true)
+		await expect(b.isDocumentReadable(file.id)).resolves.toBe(true)
 		const docs = await b.getDocuments()
 		expect(docs.map((d) => d.id)).toContain(file.id)
 	})
 
 	it('isDocumentReadable is false for an unknown document', async () => {
 		const { b } = await openPair()
-		expect(await b.isDocumentReadable(crypto.randomUUID())).toBe(false)
+		await expect(b.isDocumentReadable(crypto.randomUUID())).resolves.toBe(false)
 	})
 })
 
@@ -253,12 +253,12 @@ describe('DexieStore - an import running in another connection', () => {
 		markOtherOpened()
 
 		const result = await importing
-		expect(await other.getWriteOutcome({ writeId: 'w-concurrent' })).toBe('applied')
+		await expect(other.getWriteOutcome({ writeId: 'w-concurrent' })).resolves.toBe('applied')
 		// a fresh connection reads it whole (the one opened mid-upgrade keeps its old schema: an
 		// IndexedDB-store limit of its own, not the import's)
 		const fresh = new DexieStore(name)
 		await fresh.open()
-		expect(await fresh.getByDocumentId(result.record.id)).toHaveLength(3)
+		await expect(fresh.getByDocumentId(result.record.id)).resolves.toHaveLength(3)
 		fresh.close()
 		other.close()
 		await importer.destroy()
@@ -347,10 +347,10 @@ describe('DexieStore - a destroy while another connection has the project open',
 		// within the moment the destroy waits for the open lock alone
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		first.close()
-		expect(await refusing).toBe('PROJECT_OPEN_ELSEWHERE')
+		await expect(refusing).resolves.toBe('PROJECT_OPEN_ELSEWHERE')
 		second.close()
 
-		expect(await destroyOutcome({ store: new DexieStore(name) })).toBeUndefined()
+		await expect(destroyOutcome({ store: new DexieStore(name) })).resolves.toBeUndefined()
 	})
 
 	it('a connection closed just before → the destroy waits for its hold to go: destroyed', async () => {
@@ -362,7 +362,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 
 		second.close()
 
-		expect(await destroyOutcome({ store: first })).toBeUndefined()
+		await expect(destroyOutcome({ store: first })).resolves.toBeUndefined()
 	})
 
 	it('a read through a store while its own destroy waits for a connection closed just before → the destroy goes on, the read answers after it', async () => {
@@ -378,8 +378,8 @@ describe('DexieStore - a destroy while another connection has the project open',
 		await new Promise((resolve) => setTimeout(resolve, 0))
 		const reading = store.getDocuments()
 
-		expect(await destroying).toBeUndefined()
-		expect(await reading).toEqual([])
+		await expect(destroying).resolves.toBeUndefined()
+		await expect(reading).resolves.toEqual([])
 		store.close()
 		await store.destroy()
 	})
@@ -404,7 +404,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 		store.close()
 		letGo()
 
-		expect(await reading).toBe('STORE_CLOSED')
+		await expect(reading).resolves.toBe('STORE_CLOSED')
 	})
 
 	it('a store never opened, its destroy refused → it holds nothing: the other closed, a destroy goes on', async () => {
@@ -413,10 +413,10 @@ describe('DexieStore - a destroy while another connection has the project open',
 		await open.open()
 		const never = new DexieStore(name)
 
-		expect(await destroyOutcome({ store: never })).toBe('PROJECT_OPEN_ELSEWHERE')
+		await expect(destroyOutcome({ store: never })).resolves.toBe('PROJECT_OPEN_ELSEWHERE')
 		open.close()
 
-		expect(await destroyOutcome({ store: new DexieStore(name) })).toBeUndefined()
+		await expect(destroyOutcome({ store: new DexieStore(name) })).resolves.toBeUndefined()
 	})
 
 	it('a store closed while its open waits for the open lock → its hold let go once granted: a destroy goes on', async () => {
@@ -437,7 +437,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 		letGo()
 		await opening
 
-		expect(await destroyOutcome({ store: new DexieStore(name) })).toBeUndefined()
+		await expect(destroyOutcome({ store: new DexieStore(name) })).resolves.toBeUndefined()
 	})
 
 	it('a store closed with an import running → it holds the open lock until the import ends: a destroy of another tab refused meanwhile', async () => {
@@ -455,12 +455,12 @@ describe('DexieStore - a destroy while another connection has the project open',
 			// a hold let go at close() would be gone by then
 			await new Promise((resolve) => setTimeout(resolve, 100))
 
-			expect(await openLockFree({ name })).toBe(false)
+			await expect(openLockFree({ name })).resolves.toBe(false)
 			hold.release()
 			await importing
 			// let go once the import has ended
 			await vi.waitFor(async () => {
-				expect(await openLockFree({ name })).toBe(true)
+				await expect(openLockFree({ name })).resolves.toBe(true)
 			})
 		} finally {
 			hold.release()
@@ -487,7 +487,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 			// the hold let go with the import would be gone by then
 			await new Promise((resolve) => setTimeout(resolve, 100))
 
-			expect(await openLockFree({ name })).toBe(false)
+			await expect(openLockFree({ name })).resolves.toBe(false)
 		} finally {
 			hold.release()
 			await importing.catch(() => undefined)
@@ -514,7 +514,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 			hold.release()
 			await importing
 
-			expect(await destroying).toBeUndefined()
+			await expect(destroying).resolves.toBeUndefined()
 		} finally {
 			hold.release()
 			await importing.catch(() => undefined)
@@ -544,8 +544,10 @@ describe('DexieStore - a destroy while another connection has the project open',
 		const destroying = destroyOutcome({ store })
 		letReloadGo()
 
-		expect(await settlesWithin({ work: Promise.all([opening, destroying]), ms: 3_000 })).toBe(true)
-		expect(await destroying).toBeUndefined()
+		await expect(
+			settlesWithin({ work: Promise.all([opening, destroying]), ms: 3_000 }),
+		).resolves.toBe(true)
+		await expect(destroying).resolves.toBeUndefined()
 		store.close()
 	})
 
@@ -570,9 +572,9 @@ describe('DexieStore - a destroy while another connection has the project open',
 			hold.release()
 			await importing
 
-			expect(await destroying).toBeUndefined()
-			expect(await reading).toBe('STORE_CLOSED')
-			expect(await destroyOutcome({ store: new DexieStore(name) })).toBeUndefined()
+			await expect(destroying).resolves.toBeUndefined()
+			await expect(reading).resolves.toBe('STORE_CLOSED')
+			await expect(destroyOutcome({ store: new DexieStore(name) })).resolves.toBeUndefined()
 		} finally {
 			hold.release()
 			await importing.catch(() => undefined)
@@ -585,7 +587,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 		await Promise.all([store.open(), store.open()])
 		store.close()
 
-		expect(await destroyOutcome({ store: new DexieStore(name) })).toBeUndefined()
+		await expect(destroyOutcome({ store: new DexieStore(name) })).resolves.toBeUndefined()
 	})
 
 	it('no Web Locks → the connections of the page counted: a destroy refused while another is open; that one closed with an import running → the destroy waits for it, then goes on', async () => {
@@ -598,7 +600,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 			await first.open()
 			await second.open()
 
-			expect(await destroyOutcome({ store: first })).toBe('PROJECT_OPEN_ELSEWHERE')
+			await expect(destroyOutcome({ store: first })).resolves.toBe('PROJECT_OPEN_ELSEWHERE')
 			// closed with an import running: the destroy lets it complete first
 			const hold = holdContractImport()
 			const importing = second.importFile({
@@ -611,7 +613,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 				const destroying = destroyOutcome({ store: first })
 				hold.release()
 				await importing
-				expect(await destroying).toBeUndefined()
+				await expect(destroying).resolves.toBeUndefined()
 			} finally {
 				hold.release()
 				await importing.catch(() => undefined)
@@ -623,7 +625,7 @@ describe('DexieStore - a destroy while another connection has the project open',
 })
 
 describe('DexieStore - the write version of a document', () => {
-	it('a document removed and registered again under its id -> its version goes on from the old value', async () => {
+	it('a document removed and registered again under its id -> its version goes on from the old value, the removal counted', async () => {
 		const store = new DexieStore(`version-${crypto.randomUUID()}`)
 		await store.open()
 		try {
@@ -636,22 +638,20 @@ describe('DexieStore - the write version of a document', () => {
 				status: 'ready',
 			}
 			async function versionOf(): Promise<number | undefined> {
-				const row = await store
-					.getDatabaseInstance()
-					.table(TABLE_META)
-					.get(`${VERSION_KEY_PREFIX}again`)
-				return row?.value
+				expect(store.readVersion, 'the store reads a version').toBeTypeOf('function')
+				const version = await store.readVersion({ documentId: 'again' })
+				return version.count
 			}
 			await store.registerDocument(document)
 			await store.bulkWrite('again', { creates: [makeContractRecord({ id: 'r1' })] })
 			await store.bulkWrite('again', { creates: [makeContractRecord({ id: 'r2' })] })
-			expect(await versionOf()).toBe(2)
+			await expect(versionOf()).resolves.toBe(2)
 
 			await store.removeDocument('again')
 			await store.registerDocument(document)
 			await store.bulkWrite('again', { creates: [makeContractRecord({ id: 'r1' })] })
 
-			expect(await versionOf()).toBe(3)
+			await expect(versionOf()).resolves.toBe(4)
 		} finally {
 			await store.destroy()
 		}
@@ -678,7 +678,8 @@ describe('DexieStore - a place taken while a registration ran', () => {
 			const fresh = new DexieStore(name)
 			await fresh.open()
 			try {
-				expect((await fresh.getByDocumentId('x')).map((record) => record.id)).toEqual(['r1'])
+				const records = await fresh.getByDocumentId('x')
+				expect(records.map((record) => record.id)).toEqual(['r1'])
 			} finally {
 				fresh.close()
 			}
@@ -725,8 +726,10 @@ describe('DexieStore - a place taken while a registration ran', () => {
 			const fresh = new DexieStore(name)
 			await fresh.open()
 			try {
-				expect((await fresh.getDocument('x'))?.path).toBe('b/m.scd')
-				expect((await fresh.getByDocumentId('x')).map((record) => record.id)).toEqual(['r1'])
+				const document = await fresh.getDocument('x')
+				expect(document?.path).toBe('b/m.scd')
+				const records = await fresh.getByDocumentId('x')
+				expect(records.map((record) => record.id)).toEqual(['r1'])
 			} finally {
 				fresh.close()
 			}

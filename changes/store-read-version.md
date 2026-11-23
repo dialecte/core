@@ -1,0 +1,9 @@
+### Added
+
+- Every store keeps one version per document under one contract: `Store.readVersion({ documentId })` answers `{ engineId, count }` without reading a record, on the in-memory store, IndexedDB and SQLite (in the page, in a worker, through the hub). Every commit, undo, redo and removal moves the count by exactly one and answers the version it produced: `Store.commit` answers `{ version }`, an undo's or a redo's `HistoryStep` carries `version`. An import and a bulk write move it by any amount. A document never written answers a count of 0; an id removed and registered again goes on from its count. Every connection to one state answers one `engineId`; a database made again, an in-memory state made anew or an engine started again answers another, and counts of two engine ids are never compared. `readVersion` and `readVersioned` answer the same version. A store without the member (a custom one) works as before: its writes answer no version.
+- A commit message (`ProjectChannelMessage` `commit`) carries `version`, the version its write produced, from a commit, an undo and a redo, on every store. A commit whose answer was lost with its connection, then found applied, carries none.
+
+### Changed
+
+- IndexedDB keeps the document versions in a table of its own (`_versions`): one row per document and one row naming the database's engine, drawn once. A database written before is upgraded when first opened: its version rows are copied once. A removal now moves the document's version. A record count is answered again only while the document is at the version it was counted at: a write through another connection or tab running this version of core no longer leaves `count` behind.
+- `STORAGE_KINDS_VERSION` 16, the engine wire 9, the hub protocol 13: copies of core of another version find no storage kind, and an engine or a hub of another version is refused.

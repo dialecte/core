@@ -16,6 +16,7 @@ import {
 	IN_PROCESS_ENGINE_REASON,
 	INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING,
 	INDEXEDDB_VERSIONED_READ_PENDING,
+	ENGINE_RESTART_REASON,
 	REALM_PAGES,
 } from './store-contract.constants'
 import { makeDocument } from './store-contract.fixtures'
@@ -159,7 +160,11 @@ export const sqliteInProcessStoreFactory: StoreContractFactory = {
 	connectAsOtherDialecte: async function connectSqliteAsOther({ store }) {
 		return openSqliteStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
 	},
-	differs: { 'engine-end': IN_PROCESS_ENGINE_REASON, away: AWAY_UNREACHABLE_REASON },
+	differs: {
+		'engine-end': IN_PROCESS_ENGINE_REASON,
+		away: AWAY_UNREACHABLE_REASON,
+		'engine-restart': ENGINE_RESTART_REASON,
+	},
 	fillStorage: async function fillSqliteFile({ store }) {
 		await fillInProcessFile({ name: store.name, dialecteId: TEST_DIALECTE.id })
 	},
