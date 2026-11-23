@@ -13,7 +13,7 @@ import {
 	recordTableName,
 } from '../store.constants'
 import { DexieStore, buildDexieSchema } from './dexie-store'
-import { DEFAULT_RECORD_SCHEMA, VERSION_KEY_PREFIX } from './dexie-store.constants'
+import { DEFAULT_RECORD_SCHEMA, ENGINE_META_KEY, VERSION_KEY_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -175,6 +175,39 @@ describe('DexieStore - the versions in _meta', () => {
 			versionOf({ store: second, documentId: 'any' }),
 		])
 		expect(ofSecond.engineId).toBe(ofFirst.engineId)
+	})
+
+	it('the engine row drawn while the store reloads its connection (a second open at once) → drawn on the connection it then holds', async () => {
+		const name = nameOfCase()
+		const store = await openStore(name)
+		const first = store.getDatabaseInstance()
+		// a database with no engine row yet, as a store first opening a fresh one finds it
+		await first.table(TABLE_META).delete(ENGINE_META_KEY)
+		const reloaded = Promise.withResolvers<void>()
+		const drawRead = Promise.withResolvers<void>()
+		const original = first.transaction.bind(first)
+		let reads = 0
+		// the engine row's read answers only once the store has reloaded: the draw that follows meets the new connection
+		first.transaction = async function readAcrossAReload(...args: unknown[]) {
+			const answer = await (original as (...given: unknown[]) => Promise<unknown>)(...args)
+			if (args[0] !== 'r') return answer
+			reads += 1
+			// the version's read first, then the engine row's read before its draw
+			if (reads !== 2) return answer
+			drawRead.resolve()
+			await reloaded.promise
+			return answer
+		} as typeof first.transaction
+		const reading = store.readVersion({ documentId: 'a' }).then(
+			(version) => ({ engineId: version.engineId }),
+			(thrown: unknown) => ({ thrown: String(thrown) }),
+		)
+		await drawRead.promise
+		await (store as unknown as { reloadFromPersisted: () => Promise<void> }).reloadFromPersisted()
+		reloaded.resolve()
+		const answered = await reading
+		const engine = await store.getDatabaseInstance().table(TABLE_META).get(ENGINE_META_KEY)
+		expect(answered).toEqual({ engineId: engine?.engineId })
 	})
 
 	it('a record count, then a write through another connection → the count after the write', async () => {

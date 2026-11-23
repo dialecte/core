@@ -1250,8 +1250,9 @@ export class DexieStore implements Store {
 	 */
 	private async readVersionUnguarded(params: { documentId: string }): Promise<StoreVersion> {
 		await this.ensureCurrentSchema()
-		const meta = this.db.table(TABLE_META)
-		const read = await this.db.transaction('r', meta, async () => {
+		const db = this.db
+		const meta = db.table(TABLE_META)
+		const read = await db.transaction('r', meta, async () => {
 			const [engine, current] = await meta.bulkGet([ENGINE_META_KEY, versionKey(params.documentId)])
 			return {
 				engineId: (engine as EngineMetaRow | undefined)?.engineId,
@@ -1265,13 +1266,20 @@ export class DexieStore implements Store {
 
 	/**
 	 * The database's engine id: its `_meta` row read first; drawn, add-if-absent in a read-write transaction, only when
-	 * none is there - an open that finds it writes nothing.
+	 * none is there - an open that finds it writes nothing. Each transaction takes its table from the connection it runs
+	 * on, at the moment it starts: a second open of the store may reload the connection between the two (a table of the
+	 * connection before is refused by the one after).
 	 */
 	private async ensureEngineRow(): Promise<string> {
-		const meta = this.db.table(TABLE_META)
-		const held = await this.db.transaction('r', meta, () => meta.get(ENGINE_META_KEY))
-		if (held) return (held as EngineMetaRow).engineId
-		return this.db.transaction('rw', meta, () => engineIdIn({ meta }))
+		const reading = this.db
+		const held: EngineMetaRow | undefined = await reading.transaction('r', TABLE_META, () =>
+			reading.table(TABLE_META).get(ENGINE_META_KEY),
+		)
+		if (held) return held.engineId
+		const drawing = this.db
+		return drawing.transaction('rw', TABLE_META, () =>
+			engineIdIn({ meta: drawing.table(TABLE_META) }),
+		)
 	}
 
 	/** How many writes a `ready` document has taken, read with its registry row in one transaction. */
@@ -1296,8 +1304,9 @@ export class DexieStore implements Store {
 		await this.ensureCurrentSchema()
 		const table = await this.recordTable(documentId)
 		if (!table) return 0
-		const meta = this.db.table<ChangeLogMeta>(TABLE_META)
-		return this.db.transaction('r', table, meta, async () => {
+		// the record table's own connection: the store may have reloaded its connection while the table was looked up
+		const meta = table.db.table<ChangeLogMeta>(TABLE_META)
+		return table.db.transaction('r', table, meta, async () => {
 			const at = (await meta.get(versionKey(documentId)))?.value ?? 0
 			const known = this.recordCounts.get(documentId)
 			if (known?.at === at) return known.count
