@@ -33,8 +33,9 @@ export type PlanInput = {
  * transaction body's main plan, which the transaction closes for you via
  * `forceClear()`. Close it in a `finally` when your op may throw and the caller may
  * catch: core's own ops (deepClone, commit) already pop their own frame when they throw, so
- * your `endPlan()` closes yours. Run plan-opening ops on one transaction one at a time. A
- * transaction, a prepare or a prepared commit that ends clears the whole stack.
+ * your `endPlan()` closes yours. Run plan-opening ops on one transaction one at a time: one
+ * stack cannot hold ops running at once. A transaction that ends, a prepare that throws and a
+ * prepared transaction committed or discarded clear the whole stack.
  */
 export type ProgressReporter = {
 	/**

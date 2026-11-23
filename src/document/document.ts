@@ -420,6 +420,8 @@ export class Document<
 				settled = true
 				tx.clearStagedOperations()
 				tx.clearRecordCache()
+				// discarded, the prepare ends: a plan its build left open goes, as after a commit
+				tx.progress.forceClear()
 			},
 		}
 	}

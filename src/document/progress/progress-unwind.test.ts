@@ -1,9 +1,10 @@
 import { createProgressReporter } from './create-progress-reporter'
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { commitTransaction } from '@/document/transaction/commit/commit'
-import { createTestProject, createTestRecord } from '@/test'
+import { InMemoryStore } from '@/store'
+import { TEST_DIALECTE_CONFIG, createTestProject, createTestRecord } from '@/test'
 
 import type { DocumentProgress } from './progress.types'
 import type { DocumentState } from '@/document/types'
@@ -28,6 +29,20 @@ const THROW_AT_AA_1: TransactionHooks<TestDialecteConfig> = {
 		if (record.tagName === 'AA_1') throw new Error(CLONE_FAILURE)
 		return { shouldBeCloned: true, transformedRecord: record }
 	},
+}
+
+const STORE_RUNTIME = { configs: { default: TEST_DIALECTE_CONFIG }, defaultConfigKey: 'default' }
+
+/** A real in-memory store whose every commit reports its first of two writes, then is refused with `failure`. */
+function storeRefusingCommits(params: { failure: Error }): Store {
+	const store = new InMemoryStore(`refusing-commits-${crypto.randomUUID()}`, {
+		runtime: STORE_RUNTIME,
+	})
+	store.commit = async function refuseHalfway({ onProgress }) {
+		onProgress(1, 2)
+		throw params.failure
+	}
+	return store
 }
 
 function copyOf(progress: DocumentProgress): DocumentProgress {
@@ -142,12 +157,7 @@ describe('progress after a commit throws', () => {
 		}
 		const progress = createProgressReporter(state)
 		const failure = new Error('store failure')
-		const store = {
-			commit: async (params: { onProgress?: (current: number) => void }) => {
-				params.onProgress?.(1)
-				throw failure
-			},
-		} as unknown as Store
+		const store = storeRefusingCommits({ failure })
 		const operations: Operation<TestDialecteConfig>[] = ['r1', 'r2'].map((id) => ({
 			status: 'created',
 			oldRecord: undefined,
@@ -240,17 +250,86 @@ describe('progress after a prepare', () => {
 	})
 
 	it('a prepared commit whose store write throws, after a body that left its plan open -> progress null, the store error thrown', async () => {
-		const { source } = await createTestProject({ sourceXml: SOURCE_XML })
+		const { source } = await createTestProject({
+			sourceXml: SOURCE_XML,
+			storage: {
+				type: 'custom',
+				store: storeRefusingCommits({ failure: new Error('store refused') }),
+			},
+		})
 		const document = source.document
 		const [root] = await document.query.getRecordsByTagName('Root')
-		const { store } = document as unknown as { store: Store }
-		vi.spyOn(store, 'commit').mockRejectedValue(new Error('store refused'))
 
 		const prepared = await document.prepare(async (tx) => {
 			tx.progress.plan({ steps: 1, label: 'Preparing' })
 			await tx.addChild(root, { tagName: 'A', attributes: { aA: 'added' } })
 		})
 		await expect(prepared.commit()).rejects.toThrow('store refused')
+
+		expect(document.state.progress).toBeNull()
+	})
+
+	it('a prepare discarded after a body that left its plan open -> progress null', async () => {
+		const { source } = await createTestProject({ sourceXml: SOURCE_XML })
+		const document = source.document
+		const [root] = await document.query.getRecordsByTagName('Root')
+
+		const prepared = await document.prepare(async (tx) => {
+			tx.progress.plan({ steps: 1, label: 'Preparing' })
+			await tx.addChild(root, { tagName: 'A', attributes: { aA: 'added' } })
+		})
+		prepared.discard()
+
+		expect(document.state.progress).toBeNull()
+	})
+})
+
+describe('an extension op closing its own plan in a finally, a nested deepClone throwing inside it', () => {
+	it('the error caught inside the body -> the prepare resolves, progress null', async () => {
+		const { source } = await createTestProject({ sourceXml: SOURCE_XML, hooks: THROW_AT_AA_1 })
+		const document = source.document
+		const [root] = await document.query.getRecordsByTagName('Root')
+		const [parent] = await document.query.getRecordsByTagName('A')
+		let caught: unknown
+
+		const prepared = await document.prepare(async (tx) => {
+			tx.progress.plan({ steps: 2, label: 'Applying' })
+			try {
+				tx.progress.nextStep('Cloning')
+				const tree = await tx.getTree(parent)
+				if (!tree) throw new Error('tree required')
+				await tx.deepClone(root, tree).catch((error: unknown) => {
+					caught = error
+				})
+			} finally {
+				tx.progress.endPlan()
+			}
+		})
+
+		expect(caught).toBeInstanceOf(Error)
+		expect(document.state.progress).toBeNull()
+		prepared.discard()
+	})
+
+	it('the error not caught -> the prepare throws the clone error, progress null', async () => {
+		const { source } = await createTestProject({ sourceXml: SOURCE_XML, hooks: THROW_AT_AA_1 })
+		const document = source.document
+		const [root] = await document.query.getRecordsByTagName('Root')
+		const [parent] = await document.query.getRecordsByTagName('A')
+
+		await expect(
+			document.prepare(async (tx) => {
+				tx.progress.plan({ steps: 2, label: 'Applying' })
+				try {
+					tx.progress.nextStep('Cloning')
+					const tree = await tx.getTree(parent)
+					if (!tree) throw new Error('tree required')
+					await tx.deepClone(root, tree)
+				} finally {
+					tx.progress.endPlan()
+				}
+			}),
+		).rejects.toThrow(CLONE_FAILURE)
 
 		expect(document.state.progress).toBeNull()
 	})

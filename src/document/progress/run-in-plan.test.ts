@@ -133,35 +133,33 @@ describe('runInPlan', () => {
 		})
 	})
 
-	it('two runs at once under one frame, the one opened first throws while the later one runs -> the later one succeeds without popping the frame below them', async () => {
-		const { state, reporter } = makeRecordedReporter()
-		openFrames({ reporter, count: 1 })
-		const before = state.progress && { ...state.progress }
-		const thrown = new Error('boom')
-		let failFirst: () => void = () => {}
-		const firstMayThrow = new Promise<void>((resolve) => {
-			failFirst = resolve
+	it('two runs at once under one frame, the one opened first ends while the later one runs -> the same values as the hand-written plan()/endPlan() calls in that order', async () => {
+		const byHand = makeRecordedReporter()
+		openFrames({ reporter: byHand.reporter, count: 1 })
+		byHand.reporter.plan(OP_PLAN)
+		byHand.reporter.plan(OP_PLAN)
+		byHand.reporter.endPlan()
+		byHand.reporter.endPlan()
+
+		const helped = makeRecordedReporter()
+		openFrames({ reporter: helped.reporter, count: 1 })
+		let releaseFirst: () => void = () => {}
+		const firstMayEnd = new Promise<void>((resolve) => {
+			releaseFirst = resolve
 		})
 		let releaseLater: () => void = () => {}
 		const laterMayEnd = new Promise<void>((resolve) => {
 			releaseLater = resolve
 		})
-
-		const first = runInPlan({
-			progress: reporter,
-			plan: OP_PLAN,
-			run: async () => {
-				await firstMayThrow
-				throw thrown
-			},
-		})
-		const later = runInPlan({ progress: reporter, plan: OP_PLAN, run: () => laterMayEnd })
-		failFirst()
-		await expect(first).rejects.toBe(thrown)
+		const first = runInPlan({ progress: helped.reporter, plan: OP_PLAN, run: () => firstMayEnd })
+		const later = runInPlan({ progress: helped.reporter, plan: OP_PLAN, run: () => laterMayEnd })
+		releaseFirst()
+		await expect(first).resolves.toBeUndefined()
 		releaseLater()
 		await expect(later).resolves.toBeUndefined()
 
-		expect(state.progress).toEqual(before)
+		expect(helped.values).toEqual(byHand.values)
+		expect(helped.terminals).toEqual(byHand.terminals)
 	})
 
 	describe('on the no-op reporter of a query', () => {
