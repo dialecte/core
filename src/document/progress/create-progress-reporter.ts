@@ -1,4 +1,4 @@
-import type { ProgressReporter } from './progress.types'
+import type { PlanStack, ProgressReporter } from './progress.types'
 import type { DocumentState } from '@/document/types'
 
 /** One level of the plan stack. `open` drives close-previous stepping. */
@@ -7,6 +7,21 @@ type PlanFrame = {
 	total: number
 	label: string
 	open: boolean
+}
+
+/**
+ * The plan stack of each reporter made here, kept beside it so the public reporter does not grow; the no-op reporter
+ * of a query has none. Module state, not a constant: a reporter's entry goes with the reporter.
+ */
+const planStacks = new WeakMap<ProgressReporter, PlanStack>()
+
+/**
+ * The plan stack behind a reporter `createProgressReporter` made, or `undefined` for any other (the no-op one).
+ *
+ * @internal used by `runInPlan` to unwind an op that throws
+ */
+export function planStackOf(reporter: ProgressReporter): PlanStack | undefined {
+	return planStacks.get(reporter)
 }
 
 /**
@@ -46,7 +61,7 @@ export function createProgressReporter(
 		}
 	}
 
-	return {
+	const reporter: ProgressReporter = {
 		plan({ steps, label }) {
 			stack.push({ current: 0, total: steps, label: label ?? '', open: false })
 			render()
@@ -77,4 +92,19 @@ export function createProgressReporter(
 			signalStateChange(true)
 		},
 	}
+
+	planStacks.set(reporter, {
+		depth() {
+			return stack.length
+		},
+		// Cut the stack back to `depth`: the frames an op and its nested ops opened. Nothing to cut, nothing told.
+		unwindTo(depth) {
+			if (stack.length <= depth) return
+			stack.length = depth
+			render()
+			signalStateChange(depth === 0)
+		},
+	})
+
+	return reporter
 }

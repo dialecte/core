@@ -1308,7 +1308,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Close the connection to the project's store, shared by every document of the project: after it, no document of this project can read or write. With a built-in store (local, in-memory), opening the project again gives a new store: documents opened before stay closed, open them again from the project. A custom store is reopened in place. To finish with the project, use `project.close`.",
 			"intents": ["close the project's database connection from a document"],
-			"declaredAt": "src/document/document.ts:469"
+			"declaredAt": "src/document/document.ts:478"
 		},
 		{
 			"path": "doc.destroy",
@@ -1320,7 +1320,7 @@
 				"delete the whole project database from a document",
 				"wipe every document of the project"
 			],
-			"declaredAt": "src/document/document.ts:481"
+			"declaredAt": "src/document/document.ts:490"
 		},
 		{
 			"path": "doc.prepare",
@@ -2064,7 +2064,7 @@
 			"signature": "() => void",
 			"summary": "Pop the innermost plan. Clears progress only once the stack is empty.",
 			"intents": ["close a nested progress plan", "finish reporting progress for a step"],
-			"declaredAt": "src/document/progress/progress.types.ts:55"
+			"declaredAt": "src/document/progress/progress.types.ts:58"
 		},
 		{
 			"path": "tx.progress.nextStep",
@@ -2073,7 +2073,7 @@
 			"signature": "(label?: string | undefined) => void",
 			"summary": "Advance the innermost plan by one step (close-previous); optionally recaption.",
 			"intents": ["mark a progress step done", "update the progress caption"],
-			"declaredAt": "src/document/progress/progress.types.ts:49"
+			"declaredAt": "src/document/progress/progress.types.ts:52"
 		},
 		{
 			"path": "tx.progress.plan",
@@ -2086,7 +2086,7 @@
 				"announce how many steps a transaction or nested step has",
 				"show a progress bar caption"
 			],
-			"declaredAt": "src/document/progress/progress.types.ts:43"
+			"declaredAt": "src/document/progress/progress.types.ts:46"
 		},
 		{
 			"path": "tx.update",
