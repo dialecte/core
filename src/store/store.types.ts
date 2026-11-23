@@ -214,8 +214,9 @@ export interface Store {
 
 	/**
 	 * Optional. The document's version now, read without a record. Every commit, undo, redo and removal of the
-	 * document moves its count by exactly one and answers the version it produced; an import and a bulk write move it
-	 * by any amount. A document never written answers a count of 0; an id removed then registered again goes on from
+	 * document moves its count by exactly one; a commit, an undo and a redo answer the version they produced (a removal
+	 * answers nothing: read it here); a write refused or failed never moves it; an import and a bulk write move it by
+	 * any amount. A document never written answers a count of 0; an id removed then registered again goes on from
 	 * its count. Every connection to one state answers one `engineId`; another state (a database made again, an engine
 	 * started again) answers another. A store with `readVersioned` answers the same version through both. A store
 	 * without it keeps no version: its writes answer none.

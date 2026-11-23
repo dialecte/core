@@ -41,10 +41,7 @@ import {
 	OPEN_LOCAL_CONNECTIONS,
 	OPEN_LOCK_PREFIX,
 	VERSION_KEY_PREFIX,
-	TABLE_VERSIONS,
-	VERSIONS_DEXIE_SCHEMA,
-	ENGINE_VERSION_KEY,
-	DOCUMENT_VERSION_KEY_PREFIX,
+	ENGINE_META_KEY,
 } from './dexie-store.constants'
 
 import Dexie from 'dexie'
@@ -74,30 +71,32 @@ import type {
 	WriteOutcome,
 } from '../store.types'
 import type { HistoryStep } from '../store.types'
-import type {
-	DexieStoreOptions,
-	DocumentVersionRow,
-	EngineVersionRow,
-	StoredDocumentRow,
-} from './types'
+import type { DexieStoreOptions, EngineMetaRow, StoredDocumentRow } from './types'
 import type { Perf } from '@/perf'
 import type { ChangedRecord, DocumentRecord, DocumentUpdates } from '@/project'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
 import type { Table } from 'dexie'
 
-/** The `_versions` row of a document's version: how many writes it has taken. */
-function documentVersionKey(documentId: string): string {
-	return `${DOCUMENT_VERSION_KEY_PREFIX}${documentId}`
+/** The `_meta` row of a document's version: how many writes it has taken. */
+function versionKey(documentId: string): string {
+	return `${VERSION_KEY_PREFIX}${documentId}`
 }
 
 /**
- * A new engine id: 128 random bits, never drawn from `crypto.randomUUID` (an id spends nothing a seeded id sequence
- * counts on).
+ * The database's engine id, inside a read-write transaction holding `_meta`: its row read, drawn when there is none
+ * (128 random bits, never from `crypto.randomUUID`: an id spends nothing a seeded id sequence counts on). The one
+ * place the row is drawn.
  */
-function drawEngineId(): string {
+// dialecte-allow argument-mutation: the database's own `_meta`, written in the caller's read-write transaction
+async function engineIdIn(params: { meta: Table }): Promise<string> {
+	const { meta } = params
+	const held: EngineMetaRow | undefined = await meta.get(ENGINE_META_KEY)
+	if (held) return held.engineId
 	const bytes = crypto.getRandomValues(new Uint8Array(16))
-	return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+	const engineId = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+	await meta.add({ key: ENGINE_META_KEY, engineId })
+	return engineId
 }
 
 function importLockName(params: { storeName: string; writeId: string }): string {
@@ -475,7 +474,7 @@ export class DexieStore implements Store {
 
 	/** The document's version now, read without a record, from the database's own version table. */
 	async readVersion(params: { documentId: string }): Promise<StoreVersion> {
-		return this.operation(() => this.readVersionUnguarded(params.documentId))
+		return this.operation(() => this.readVersionUnguarded(params))
 	}
 
 	async count(documentId: string): Promise<number> {
@@ -576,7 +575,6 @@ export class DexieStore implements Store {
 						table,
 						this.db.table(TABLE_CHANGELOG),
 						this.db.table(TABLE_META),
-						this.db.table(TABLE_VERSIONS),
 						async () => {
 							// Snapshot before-state for undo; an update of a record the document does not
 							// hold aborts the commit before anything is written
@@ -637,7 +635,7 @@ export class DexieStore implements Store {
 							}
 							await this.db.table(TABLE_CHANGELOG).add(entry)
 							await this.setHead(documentId, newSeq)
-							return this.bumpVersion(documentId)
+							return this.bumpVersion({ documentId })
 						},
 					)
 					tellCommitProgress({
@@ -681,7 +679,6 @@ export class DexieStore implements Store {
 					'rw',
 					table,
 					this.db.table(TABLE_META),
-					this.db.table(TABLE_VERSIONS),
 					async () => {
 						// in reverse: the deleted records back, the records as they were before, the creates gone
 						const { creates, updates, deletes } = entry.operations
@@ -697,7 +694,7 @@ export class DexieStore implements Store {
 						}
 
 						await this.setHead(documentId, head - 1)
-						return this.bumpVersion(documentId)
+						return this.bumpVersion({ documentId })
 					},
 				)
 				return {
@@ -732,7 +729,6 @@ export class DexieStore implements Store {
 					'rw',
 					table,
 					this.db.table(TABLE_META),
-					this.db.table(TABLE_VERSIONS),
 					async () => {
 						const { creates, updates, deletes } = entry.operations
 
@@ -747,7 +743,7 @@ export class DexieStore implements Store {
 						}
 
 						await this.setHead(documentId, next)
-						return this.bumpVersion(documentId)
+						return this.bumpVersion({ documentId })
 					},
 				)
 				return {
@@ -1146,14 +1142,14 @@ export class DexieStore implements Store {
 				)
 				await this.db.transaction(
 					'rw',
-					[...ownTables, TABLE_BLOBS, TABLE_CHANGELOG, TABLE_META, TABLE_VERSIONS, TABLE_DOCUMENTS],
+					[...ownTables, TABLE_BLOBS, TABLE_CHANGELOG, TABLE_META, TABLE_DOCUMENTS],
 					async () => {
 						// records and blob data first (O(1) table clears)
 						for (const name of ownTables) await this.db.table(name).clear()
 						await this.db.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
 						await this.db.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
 						// the version moves on and its row stays: a document registered again under the id goes on from it
-						await this.bumpVersion(documentId)
+						await this.bumpVersion({ documentId })
 						await this.db.table(TABLE_META).delete(`head:${documentId}`)
 						await this.db.table(TABLE_DOCUMENTS).delete(documentId)
 					},
@@ -1180,7 +1176,7 @@ export class DexieStore implements Store {
 			// not hold is skipped
 			const creates = toStoredRecords({ records: ops.creates ?? [] })
 
-			await this.db.transaction('rw', table, this.db.table(TABLE_VERSIONS), async () => {
+			await this.db.transaction('rw', table, this.db.table(TABLE_META), async () => {
 				if (creates.length > 0) {
 					this.perf.start('core::store::bulkWrite::add')
 					await addRecords({ table, creates, documentId })
@@ -1216,7 +1212,7 @@ export class DexieStore implements Store {
 					await table.bulkDelete(deletes)
 					this.perf.stop('core::store::bulkWrite::delete')
 				}
-				await this.bumpVersion(documentId)
+				await this.bumpVersion({ documentId })
 			})
 		} finally {
 			this.recordCounts.delete(documentId)
@@ -1235,70 +1231,47 @@ export class DexieStore implements Store {
 	}
 
 	/**
-	 * A write landed on the document: its version moves on, inside the write's transaction (which holds `_versions`),
-	 * its own row only; answers the version it moved to.
+	 * A write landed on the document: its version moves on, inside the write's transaction (which holds `_meta`); answers
+	 * the version it moved to.
 	 */
-	private async bumpVersion(documentId: string): Promise<StoreVersion> {
-		const versions = this.db.table<DocumentVersionRow | EngineVersionRow>(TABLE_VERSIONS)
-		const key = documentVersionKey(documentId)
-		const [engine, current] = await versions.bulkGet([ENGINE_VERSION_KEY, key])
-		const count = ((current as DocumentVersionRow | undefined)?.count ?? 0) + 1
-		await versions.put({ key, count })
-		// a store written before it was opened (its schema made by a registration) draws the row here
-		const engineId = (engine as EngineVersionRow | undefined)?.engineId ?? drawEngineId()
-		if (!engine) await versions.add({ key: ENGINE_VERSION_KEY, engineId })
+	private async bumpVersion(params: { documentId: string }): Promise<StoreVersion> {
+		const meta = this.db.table(TABLE_META)
+		const key = versionKey(params.documentId)
+		const current: ChangeLogMeta | undefined = await meta.get(key)
+		const count = (current?.value ?? 0) + 1
+		await meta.put({ key, value: count })
+		const engineId = await engineIdIn({ meta })
 		return { engineId, count }
 	}
 
 	/**
-	 * The document's version now, read in a transaction of its own over `_versions` alone; a database with no engine row
-	 * yet (written by a store never opened) has it drawn first, once.
+	 * The document's version now: its count and the engine row read in one read transaction of `_meta`; a database
+	 * with no engine row yet (written by a store never opened) has it drawn first.
 	 */
-	private async readVersionUnguarded(documentId: string): Promise<StoreVersion> {
+	private async readVersionUnguarded(params: { documentId: string }): Promise<StoreVersion> {
 		await this.ensureCurrentSchema()
-		const read = await this.readVersionRows(documentId)
-		if (read) return read
-		await this.ensureVersionEngine()
-		const drawn = await this.readVersionRows(documentId)
-		return drawn!
-	}
-
-	/** The engine row and the document's row in one read transaction; `undefined` while no engine row is drawn. */
-	private async readVersionRows(documentId: string): Promise<StoreVersion | undefined> {
-		const versions = this.db.table<DocumentVersionRow | EngineVersionRow>(TABLE_VERSIONS)
-		return this.db.transaction('r', versions, async () => {
-			const [engine, current] = await versions.bulkGet([
-				ENGINE_VERSION_KEY,
-				documentVersionKey(documentId),
-			])
-			if (!engine) return undefined
+		const meta = this.db.table(TABLE_META)
+		const read = await this.db.transaction('r', meta, async () => {
+			const [engine, current] = await meta.bulkGet([ENGINE_META_KEY, versionKey(params.documentId)])
 			return {
-				engineId: (engine as EngineVersionRow).engineId,
-				count: (current as DocumentVersionRow | undefined)?.count ?? 0,
+				engineId: (engine as EngineMetaRow | undefined)?.engineId,
+				count: (current as ChangeLogMeta | undefined)?.value ?? 0,
 			}
 		})
+		if (read.engineId !== undefined) return { engineId: read.engineId, count: read.count }
+		const engineId = await this.ensureEngineRow()
+		return { engineId, count: read.count }
 	}
 
 	/**
-	 * The database's engine row, drawn once: the first connection opening the database with `_versions` draws it and
-	 * copies the version rows a store before that table kept in `_meta` (`writes:<id>`), then drops them - one
-	 * read-write transaction, so a connection opening at the same time finds the row and copies nothing.
+	 * The database's engine id: its `_meta` row read first; drawn, add-if-absent in a read-write transaction, only when
+	 * none is there - an open that finds it writes nothing.
 	 */
-	private async ensureVersionEngine(): Promise<void> {
-		const versions = this.db.table<DocumentVersionRow | EngineVersionRow>(TABLE_VERSIONS)
-		const meta = this.db.table<ChangeLogMeta>(TABLE_META)
-		await this.db.transaction('rw', versions, meta, async () => {
-			if (await versions.get(ENGINE_VERSION_KEY)) return
-			const kept = await meta.where('key').startsWith(VERSION_KEY_PREFIX).toArray()
-			await versions.bulkPut(
-				kept.map((row) => ({
-					key: documentVersionKey(row.key.slice(VERSION_KEY_PREFIX.length)),
-					count: row.value,
-				})),
-			)
-			await versions.add({ key: ENGINE_VERSION_KEY, engineId: drawEngineId() })
-			await meta.bulkDelete(kept.map((row) => row.key))
-		})
+	private async ensureEngineRow(): Promise<string> {
+		const meta = this.db.table(TABLE_META)
+		const held = await this.db.transaction('r', meta, () => meta.get(ENGINE_META_KEY))
+		if (held) return (held as EngineMetaRow).engineId
+		return this.db.transaction('rw', meta, () => engineIdIn({ meta }))
 	}
 
 	/** How many writes a `ready` document has taken, read with its registry row in one transaction. */
@@ -1306,11 +1279,11 @@ export class DexieStore implements Store {
 		const { documentId } = params
 		await this.ensureCurrentSchema()
 		const documents = this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
-		const versions = this.db.table<DocumentVersionRow>(TABLE_VERSIONS)
-		return this.db.transaction('r', documents, versions, async () => {
+		const meta = this.db.table<ChangeLogMeta>(TABLE_META)
+		return this.db.transaction('r', documents, meta, async () => {
 			const row = await documents.get(documentId)
 			if (!row || withStatus(row).status !== 'ready') return undefined
-			return (await versions.get(documentVersionKey(documentId)))?.count ?? 0
+			return (await meta.get(versionKey(documentId)))?.value ?? 0
 		})
 	}
 
@@ -1323,9 +1296,9 @@ export class DexieStore implements Store {
 		await this.ensureCurrentSchema()
 		const table = await this.recordTable(documentId)
 		if (!table) return 0
-		const versions = this.db.table<DocumentVersionRow>(TABLE_VERSIONS)
-		return this.db.transaction('r', table, versions, async () => {
-			const at = (await versions.get(documentVersionKey(documentId)))?.count ?? 0
+		const meta = this.db.table<ChangeLogMeta>(TABLE_META)
+		return this.db.transaction('r', table, meta, async () => {
+			const at = (await meta.get(versionKey(documentId)))?.value ?? 0
 			const known = this.recordCounts.get(documentId)
 			if (known?.at === at) return known.count
 			const count = await table.count()
@@ -1362,7 +1335,6 @@ export class DexieStore implements Store {
 			[TABLE_CHANGELOG]: buildDexieSchema(CHANGELOG_SCHEMA),
 			[TABLE_META]: buildDexieSchema(META_SCHEMA),
 			[TABLE_BLOBS]: buildDexieSchema(BLOBS_SCHEMA),
-			[TABLE_VERSIONS]: VERSIONS_DEXIE_SCHEMA,
 		}
 		const blobDataSchema = buildDexieSchema(BLOB_DATA_SCHEMA)
 		for (const fId of this.knownDocuments.keys()) {
@@ -1439,7 +1411,7 @@ export class DexieStore implements Store {
 		this.db.version(this.schemaVersion).stores(this.buildStores())
 		this.attachVersionChangeHandler()
 		await this.db.open()
-		await this.ensureVersionEngine()
+		await this.ensureEngineRow()
 		this.stale = false
 	}
 

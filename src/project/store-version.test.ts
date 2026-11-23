@@ -140,6 +140,24 @@ describe('the version a write produced, told with its message', () => {
 					})
 				})
 			})
+
+			it('a prepared commit → its message carries the version, the store’s version now', async () => {
+				const name = `store-version-${crypto.randomUUID()}`
+				const storage = await storageOf({ name, dialecteId: SWITCH_DIALECTE_ID })
+				const { project, documentId } = await importedOn({ storage, name })
+				const store = storeOf({ project })
+				const heard = versionsHeard({ project })
+
+				const prepared = await project.openDocument(documentId).prepare(async function writeB(tx) {
+					await tx.update({ tagName: 'B', id: 'b' }, { attributes: { aB: 'prepared' } })
+				})
+				await prepared.commit()
+
+				const now = await store.readVersion!({ documentId })
+				await vi.waitFor(function commitHeard() {
+					expect(heard).toEqual([now])
+				})
+			})
 		})
 	}
 

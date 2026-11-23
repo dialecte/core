@@ -637,13 +637,14 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					})
 					counts.delete(documentId)
 					attributeBuilds.forget({ documentId })
+					// committed: the document's version moves on (an export of the id - which may be registered and
+					// imported again - starts again); a removal that failed wrote nothing and moves none
+					moveVersionOn({ documentId })
 				},
 			})
 		} finally {
-			// a table may be gone: what reads it through a statement of its own prepares it again, and an
-			// export of the id - which may be registered and imported again - starts again
+			// a table may be gone: what reads it through a statement of its own prepares it again
 			removals.count += 1
-			moveVersionOn({ documentId })
 		}
 		try {
 			// the removal asked for: its pages given back now, settling an import that runs as any write does

@@ -22,23 +22,11 @@ export const DESTROY_LOCK_ASK_INTERVAL_MS = 50
 /** The Web Lock a local-store import holds while it runs: `<prefix><store name>:<writeId>`. */
 export const IMPORT_LOCK_PREFIX = 'dialecte:local-import:'
 
-/**
- * The `_meta` key prefix of a document's version row as stores before `_versions` kept it, `<prefix><documentId>`:
- * copied into `_versions` once, when a store first opens the database with that table.
- */
+/** The `_meta` key prefix of a document's version row (how many writes it has taken): `<prefix><documentId>`. */
 export const VERSION_KEY_PREFIX = 'writes:'
 
-/** The table of the document versions: one row per document written, and the row naming the database's engine. */
-export const TABLE_VERSIONS = '_versions'
-
-/** The `_versions` table: rows keyed by `key`, `{ key, count }` for a document, `{ key, engineId }` for the engine. */
-export const VERSIONS_DEXIE_SCHEMA = 'key'
-
-/** The `_versions` key of the row naming the database's engine: drawn once, when the table is first opened. */
-export const ENGINE_VERSION_KEY = 'engine'
-
-/** The `_versions` key prefix of a document's row, `<prefix><documentId>`: never the engine row's key. */
-export const DOCUMENT_VERSION_KEY_PREFIX = 'document:'
+/** The `_meta` key of the row naming the database's engine: drawn once, kept until the database is destroyed. */
+export const ENGINE_META_KEY = 'engine'
 
 /** The sequence number of a changelog entry a commit discarded (undone, then a commit came): it only keeps its write id. */
 export const DISCARDED_SEQUENCE = -1

@@ -154,10 +154,6 @@ export const INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING =
 export const INDEXEDDB_VERSIONED_READ_PENDING =
 	'IndexedDB answers a document version alone (`readVersion`), never with a read in the same step: a read scope does not open on it, reads go to the store each time'
 
-/** Why the in-memory leg has no `readVersioned` yet: the read scope lot adds it with the scope that reads through it. */
-export const IN_MEMORY_VERSIONED_READ_PENDING =
-	'the in-memory store gains its versioned read with the query read scope that consumes it'
-
 /**
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
  * engine of its own has none to end); a project of the name under another dialecte (`dialecte-key`: a

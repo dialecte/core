@@ -31,11 +31,12 @@ async function commitCreating(params: {
 	store: Store
 	id: string
 	writeId?: string
+	documentId?: string
 }): Promise<StoreVersion | undefined> {
-	const { store, id, writeId = newCallId() } = params
+	const { store, id, writeId = newCallId(), documentId = DOCUMENT_ID } = params
 	const creates: AnyRawRecord[] = [makeRecord({ id })]
 	const answer = await store.commit({
-		documentId: DOCUMENT_ID,
+		documentId,
 		writeId,
 		creates,
 		updates: [],
@@ -165,6 +166,38 @@ const versions: StoreContractCases = {
 			expect(read).toEqual(answered)
 		},
 	},
+	'two connections interleaving commits on two documents → each answer one more than the last of its document, both connections reading alike':
+		{
+			needs: ['second-connection'],
+			act: async ({ store, connect }) => {
+				await seed({ store })
+				await store.registerDocument(makeDocument({ id: 'doc-2' }))
+				const other = await connect()
+				const one = await versionNow({ store })
+				const two = await versionNow({ store, documentId: 'doc-2' })
+				const answered = [
+					await commitCreating({ store, id: 'm1' }),
+					await commitCreating({ store: other, id: 'm2', documentId: 'doc-2' }),
+					await commitCreating({ store: other, id: 'm3' }),
+					await commitCreating({ store, id: 'm4', documentId: 'doc-2' }),
+				]
+				const read = await Promise.all([
+					versionNow({ store }),
+					versionNow({ store: other }),
+					versionNow({ store, documentId: 'doc-2' }),
+					versionNow({ store: other, documentId: 'doc-2' }),
+				])
+				expect({ answered, read }).toEqual({
+					answered: [
+						{ engineId: one.engineId, count: one.count + 1 },
+						{ engineId: two.engineId, count: two.count + 1 },
+						{ engineId: one.engineId, count: one.count + 2 },
+						{ engineId: two.engineId, count: two.count + 2 },
+					],
+					read: [answered[2], answered[2], answered[3], answered[3]],
+				})
+			},
+		},
 	'the store opened again → the same engine id, the count where it was': {
 		needs: ['engine-restart'],
 		act: async ({ store, reopen }) => {
