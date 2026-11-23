@@ -101,14 +101,26 @@ describe('read-model harness - a gated store', () => {
 })
 
 describe('read-model harness - a lossy channel', () => {
-	function listen(name: string): ProjectChannelMessage[] {
+	/** What the channel of `name` hears, and a wait settled once it has heard `count` messages (never a timer). */
+	function listen(name: string): {
+		heard: ProjectChannelMessage[]
+		until: (count: number) => Promise<void>
+	} {
 		const heard: ProjectChannelMessage[] = []
+		const waits: Array<{ count: number; resolve: () => void }> = []
 		const channel = new BroadcastChannel(name)
 		channel.onmessage = function keep(event: MessageEvent<ProjectChannelMessage>) {
 			heard.push(event.data)
+			for (const wait of waits.filter((waiting) => heard.length >= waiting.count)) wait.resolve()
 		}
 		restores.push(() => channel.close())
-		return heard
+		function until(count: number): Promise<void> {
+			if (heard.length >= count) return Promise.resolve()
+			return new Promise(function onHeard(resolve) {
+				waits.push({ count, resolve })
+			})
+		}
+		return { heard, until }
 	}
 
 	function commitMessage(documentId: string): ProjectChannelMessage {
@@ -126,13 +138,14 @@ describe('read-model harness - a lossy channel', () => {
 			const lossy = installLossyChannel()
 			restores.push(lossy.restore)
 			const name = `lossy-${crypto.randomUUID()}`
-			const heard = listen(name)
+			const { heard, until } = listen(name)
 			const sender = new BroadcastChannel(name)
 			restores.push(() => sender.close())
 			lossy.drop({ type: 'commit' })
 			sender.postMessage(commitMessage('lost'))
 			sender.postMessage({ type: 'document-updated', documentId: 'kept', timestamp: 1 })
-			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
+			// one sender's messages arrive in order: the kept one heard, the dropped one would have come before it
+			await until(1)
 			return heard.map((told) => told.type)
 		}
 		await expect(observed(dropCommits)).resolves.toEqual(['document-updated'])
@@ -143,16 +156,18 @@ describe('read-model harness - a lossy channel', () => {
 			const lossy = installLossyChannel()
 			restores.push(lossy.restore)
 			const name = `lossy-${crypto.randomUUID()}`
-			const heard = listen(name)
+			const { heard, until } = listen(name)
 			const sender = new BroadcastChannel(name)
 			restores.push(() => sender.close())
 			lossy.hold({ type: 'commit' })
 			sender.postMessage(commitMessage('first'))
 			sender.postMessage(commitMessage('second'))
+			// nothing may arrive while held: a silence is all that shows it
 			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
 			const whileHeld = heard.length
 			lossy.flush({ reversed: true })
-			await new Promise((resolve) => setTimeout(resolve, SILENCE_WAIT_MS))
+			// delivered across the channel at its own pace: waited for, never timed
+			await until(2)
 			return {
 				whileHeld,
 				flushed: heard.map((told) => ('documentId' in told ? told.documentId : '')),
