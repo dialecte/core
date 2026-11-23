@@ -207,16 +207,20 @@ const versions: StoreContractCases = {
 				})
 			},
 		},
-	'the store opened again → the same engine id, the count where it was': {
-		needs: ['engine-restart'],
-		act: async ({ store, reopen }) => {
-			await seed({ store })
-			const before = await versionNow({ store })
-			const reopened = await reopen()
-			const after = await versionNow({ store: reopened })
-			expect(after).toEqual(before)
+	'the store opened again while another connection holds its state → the same engine id, the count where it was':
+		{
+			needs: ['second-connection', 'engine-restart'],
+			act: async ({ store, reopen, connect }) => {
+				await seed({ store })
+				const before = await versionNow({ store })
+				// held open across the reopen: an engine that ends with its last connection ends not here, so the reopen
+				// meets the same engine (a fresh one answers another id: the engine-end case)
+				await connect()
+				const reopened = await reopen()
+				const after = await versionNow({ store: reopened })
+				expect(after).toEqual(before)
+			},
 		},
-	},
 	'a commit refused, an undo and a redo with nothing to step → the count unchanged': {
 		needs: ['history'],
 		act: async ({ store }) => {

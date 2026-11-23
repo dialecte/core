@@ -16,7 +16,7 @@ import {
 	IN_PROCESS_ENGINE_REASON,
 	INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING,
 	INDEXEDDB_VERSIONED_READ_PENDING,
-	ENGINE_RESTART_REASON,
+	HUB_ENGINE_RESTART_REASON,
 	REALM_PAGES,
 } from './store-contract.constants'
 import { makeDocument } from './store-contract.fixtures'
@@ -160,11 +160,7 @@ export const sqliteInProcessStoreFactory: StoreContractFactory = {
 	connectAsOtherDialecte: async function connectSqliteAsOther({ store }) {
 		return openSqliteStore({ name: store.name, dialecteId: CONTRACT_OTHER_DIALECTE_ID })
 	},
-	differs: {
-		'engine-end': IN_PROCESS_ENGINE_REASON,
-		away: AWAY_UNREACHABLE_REASON,
-		'engine-restart': ENGINE_RESTART_REASON,
-	},
+	differs: { 'engine-end': IN_PROCESS_ENGINE_REASON, away: AWAY_UNREACHABLE_REASON },
 	fillStorage: async function fillSqliteFile({ store }) {
 		await fillInProcessFile({ name: store.name, dialecteId: TEST_DIALECTE.id })
 	},
@@ -450,6 +446,7 @@ export function createSqliteHubStoreFactory(params: {
 		},
 		storageUnfillable:
 			"a test cannot fill the private file system from the page: the runtime's disk-full cases cover this leg",
+		differs: { 'engine-restart': HUB_ENGINE_RESTART_REASON },
 		afterCase: async function closeCaseRealms() {
 			for (const realm of caseRealms.splice(0)) realm.close()
 		},

@@ -160,7 +160,7 @@ export const INDEXEDDB_VERSIONED_READ_PENDING =
  * store named by the project's name alone has no other dialecte's); a view away while its project is
  * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away); the
  * changes told to every connection (`announce`: a store that tells none leaves it to the project's channel); the
- * versions after the store is opened again (`engine-restart`: an engine that ended with its store counts anew).
+ * versions once opened again (`engine-restart`: a leg whose reopen ends the engine meets another one).
  */
 export const STORE_CONTRACT_DIFFERENCES = [
 	'engine-end',
@@ -171,9 +171,9 @@ export const STORE_CONTRACT_DIFFERENCES = [
 	'engine-restart',
 ] as const
 
-/** Why the in-process leg answers another engine id once opened again: its engine ends with its last store. */
-export const ENGINE_RESTART_REASON =
-	'the in-process engine ends with its last store and a new one starts at the next open: its counts start over under another engine id'
+/** Why the hub leg meets another engine once opened again: its reopen closes the realm (a tab) hosting the engine. */
+export const HUB_ENGINE_RESTART_REASON =
+	'its reopen closes the realm the engine runs in, as a tab closed: the engine starts again in another realm and counts anew under another engine id'
 
 /** Why the IndexedDB leg announces nothing itself (`subscribe`): the project's channel does it for it. */
 export const ANNOUNCED_BY_PROJECT_REASON =
