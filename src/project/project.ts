@@ -1276,6 +1276,7 @@ export class Project<
 				timestamp,
 				changeId: step.changeId,
 				changes: step.changes,
+				version: step.version,
 			})
 			this.signalStateChange(documentId, true)
 		})
@@ -1315,6 +1316,7 @@ export class Project<
 				timestamp,
 				changeId: step.changeId,
 				changes: step.changes,
+				version: step.version,
 			})
 			this.signalStateChange(documentId, true)
 		})

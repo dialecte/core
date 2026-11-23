@@ -19,3 +19,6 @@ export type DexieStoreOptions = {
 /** A `_documents` row as stored: one written before 0.7 has no `status`. */
 export type StoredDocumentRow = Omit<DocumentRecord, 'status'> &
 	Partial<Pick<DocumentRecord, 'status'>>
+
+/** The `_meta` row naming the database's engine: drawn once, kept until the database is destroyed. */
+export type EngineMetaRow = { key: string; engineId: string }

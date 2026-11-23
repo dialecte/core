@@ -246,7 +246,7 @@ export class Document<
 			const result = await fn(transaction)
 
 			await transaction.finishStaging()
-			const changes = await transaction.commit({ writeId: changeId })
+			const { changes, version } = await transaction.commit({ writeId: changeId })
 			this.voidReadScopes()
 			// Refresh canUndo/canRedo on the shared entry locally (mirrors
 			// Project.undo/redo) so state is correct synchronously — no channel
@@ -258,6 +258,7 @@ export class Document<
 				timestamp: this.state.lastUpdate ?? Date.now(),
 				changeId,
 				changes,
+				version,
 			})
 			transaction.clearStagedOperations()
 			transaction.clearRecordCache()
@@ -378,7 +379,7 @@ export class Document<
 				// this attempt's id: one refused not-applied and committed again is another write, under another id
 				const changeId = newCallId()
 				try {
-					const changes = await tx.commit({ writeId: changeId })
+					const { changes, version } = await tx.commit({ writeId: changeId })
 					this.voidReadScopes()
 					// Refresh canUndo/canRedo locally so the shared entry is correct
 					// synchronously — no channel echo required.
@@ -389,6 +390,7 @@ export class Document<
 						timestamp: this.state.lastUpdate ?? Date.now(),
 						changeId,
 						changes,
+						version,
 					})
 
 					tx.clearStagedOperations()

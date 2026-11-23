@@ -6,7 +6,12 @@ import { newCallId } from '@/store/json-values'
 import type { EngineCommitParams } from '../engine.types'
 import type { StoreEventOf } from './host.types'
 import type { DocumentRecord, ProjectChannelMessage } from '@/project/types'
-import type { DistributiveOmit, HistoryStep, ImportFileResult } from '@/store/store.types'
+import type {
+	CommitAnswer,
+	DistributiveOmit,
+	HistoryStep,
+	ImportFileResult,
+} from '@/store/store.types'
 import type { BlobAttachment, BlobRecord } from '@/types'
 
 /**
@@ -14,7 +19,7 @@ import type { BlobAttachment, BlobRecord } from '@/types'
  * neither does one whose answer says it changed nothing (`false`: an undo with nothing to undo, an unknown document
  * removed or updated, an empty bulk write, a blob attached where it is or detached where it is not, an unknown blob
  * removed). A commit tells its changes from its arguments under its `writeId`, an undo or a redo the changes it
- * answered under the `changeId` it was given; a bulk write tells them unknown (its patches carry no tag) under an id
+ * answered under the `changeId` it was given, each with the version it answered; a bulk write tells them unknown (its patches carry no tag) under an id
  * drawn here - the event is built once and posted to every port, so every connection hears the same id.
  */
 export const STORE_EVENT_OF_MEMBER: StoreEventOf = {
@@ -41,13 +46,14 @@ export const STORE_EVENT_OF_MEMBER: StoreEventOf = {
 				}
 			: undefined
 	},
-	commit: function committed({ args }) {
+	commit: function committed({ args, value }) {
 		const { documentId, writeId, creates, updates, deletes } = args[0] as EngineCommitParams
 		return {
 			type: 'commit',
 			documentId,
 			changeId: writeId,
 			changes: describeCommitChanges({ creates, updates, deletes }),
+			version: (value as CommitAnswer).version,
 		}
 	},
 	undo: function undone({ args, value }) {
@@ -87,5 +93,11 @@ function historyStepEvent(params: {
 }): DistributiveOmit<ProjectChannelMessage, 'timestamp'> {
 	const { args, step } = params
 	const { documentId } = args[0] as { documentId: string }
-	return { type: 'commit', documentId, changeId: step.changeId, changes: step.changes }
+	return {
+		type: 'commit',
+		documentId,
+		changeId: step.changeId,
+		changes: step.changes,
+		version: step.version,
+	}
 }

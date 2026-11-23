@@ -242,6 +242,9 @@ const MEMBER_ACTS: MemberActs = {
 			attributes: [{ name: 'a', values: ['1'] }],
 		})
 	},
+	readVersion: function readVersion(store) {
+		return store.readVersion({ documentId: 'doc-1' })
+	},
 	readVersioned: function readVersioned(store) {
 		return store.readVersioned({
 			documentId: 'doc-1',

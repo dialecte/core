@@ -152,18 +152,15 @@ export const INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING =
 
 /** Why the IndexedDB leg has no `readVersioned`: it keeps no document version, so what reads through it keeps nothing between reads. */
 export const INDEXEDDB_VERSIONED_READ_PENDING =
-	'IndexedDB keeps no document version (its history head can come back to an older value): a read scope does not open on it, reads go to the store each time'
-
-/** Why the in-memory leg has no `readVersioned` yet: the read scope lot adds it with the scope that reads through it. */
-export const IN_MEMORY_VERSIONED_READ_PENDING =
-	'the in-memory store gains its versioned read with the query read scope that consumes it'
+	'IndexedDB answers a document version alone (`readVersion`), never with a read in the same step: a read scope does not open on it, reads go to the store each time'
 
 /**
  * What a leg may answer otherwise by design: an engine ended mid-import (`engine-end`: a store with no
  * engine of its own has none to end); a project of the name under another dialecte (`dialecte-key`: a
  * store named by the project's name alone has no other dialecte's); a view away while its project is
  * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away); the
- * changes told to every connection (`announce`: a store that tells none leaves it to the project's channel).
+ * changes told to every connection (`announce`: a store that tells none leaves it to the project's channel); the
+ * versions once opened again (`engine-restart`: a leg whose reopen ends the engine meets another one).
  */
 export const STORE_CONTRACT_DIFFERENCES = [
 	'engine-end',
@@ -171,7 +168,12 @@ export const STORE_CONTRACT_DIFFERENCES = [
 	'away',
 	'import-liveness',
 	'announce',
+	'engine-restart',
 ] as const
+
+/** Why the hub leg meets another engine once opened again: its reopen closes the realm (a tab) hosting the engine. */
+export const HUB_ENGINE_RESTART_REASON =
+	'its reopen closes the realm the engine runs in, as a tab closed: the engine starts again in another realm and counts anew under another engine id'
 
 /** Why the IndexedDB leg announces nothing itself (`subscribe`): the project's channel does it for it. */
 export const ANNOUNCED_BY_PROJECT_REASON =

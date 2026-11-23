@@ -65,7 +65,7 @@ export function deletedRef(
 }
 
 /** A commit of creates, updates and deletes on one document, progress ignored; its id when given, a fresh one otherwise. */
-export function commit(params: {
+export async function commit(params: {
 	store: Store
 	documentId: string
 	writeId?: string
@@ -81,7 +81,8 @@ export function commit(params: {
 		updates = [],
 		deletes = [],
 	} = params
-	return store.commit({ documentId, writeId, creates, updates, deletes, onProgress: () => {} })
+	// what the commit answers (its version) is the versions group's: here only that it wrote
+	await store.commit({ documentId, writeId, creates, updates, deletes, onProgress: () => {} })
 }
 
 /** The action rejects with the structured error of that key, and that `meta` and `detail` when given. */

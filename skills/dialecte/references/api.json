@@ -1308,7 +1308,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Close the connection to the project's store, shared by every document of the project: after it, no document of this project can read or write. With a built-in store (local, in-memory), opening the project again gives a new store: documents opened before stay closed, open them again from the project. A custom store is reopened in place. To finish with the project, use `project.close`.",
 			"intents": ["close the project's database connection from a document"],
-			"declaredAt": "src/document/document.ts:476"
+			"declaredAt": "src/document/document.ts:478"
 		},
 		{
 			"path": "doc.destroy",
@@ -1320,7 +1320,7 @@
 				"delete the whole project database from a document",
 				"wipe every document of the project"
 			],
-			"declaredAt": "src/document/document.ts:488"
+			"declaredAt": "src/document/document.ts:490"
 		},
 		{
 			"path": "doc.prepare",
@@ -1333,7 +1333,7 @@
 				"ask a user to confirm an edit",
 				"dry-run a transaction"
 			],
-			"declaredAt": "src/document/document.ts:325"
+			"declaredAt": "src/document/document.ts:326"
 		},
 		{
 			"path": "doc.query.findAncestors",
@@ -1721,7 +1721,7 @@
 			"signature": "(documentId: string, file: File, attachedTo?: BlobAttachment[]) => Promise<string>",
 			"summary": "Add a blob owned by `documentId`. The binary lives in `blob_{documentId}`. Returns the generated blob id.",
 			"intents": ["store a binary file in the project", "add an attachment owned by a document"],
-			"declaredAt": "src/project/project.ts:1331"
+			"declaredAt": "src/project/project.ts:1333"
 		},
 		{
 			"path": "project.attachBlob",
@@ -1730,7 +1730,7 @@
 			"signature": "(blobId: string, ref: BlobAttachment) => Promise<void>",
 			"summary": "Reference an existing blob from an element of a document (optionally from one of its attributes) and tell other tabs.",
 			"intents": ["link a stored file to an element", "attach a blob to a record"],
-			"declaredAt": "src/project/project.ts:1406"
+			"declaredAt": "src/project/project.ts:1408"
 		},
 		{
 			"path": "project.close",
@@ -1766,7 +1766,7 @@
 			"signature": "(blobId: string, ref: { documentId: string; recordRef: string; }) => Promise<void>",
 			"summary": "Drop the reference from an element of a document to a blob; the blob itself stays stored.",
 			"intents": ["unlink a file from an element", "detach a blob from a record"],
-			"declaredAt": "src/project/project.ts:1418"
+			"declaredAt": "src/project/project.ts:1420"
 		},
 		{
 			"path": "project.export",
@@ -1794,7 +1794,7 @@
 				"save a blob to disk",
 				"read a blob with its file name"
 			],
-			"declaredAt": "src/project/project.ts:1367"
+			"declaredAt": "src/project/project.ts:1369"
 		},
 		{
 			"path": "project.getBlob",
@@ -1803,7 +1803,7 @@
 			"signature": "(blobId: string) => Promise<{ entry: BlobRecord; data: Blob; } | undefined>",
 			"summary": "Read a stored blob: its metadata entry and its binary data, or `undefined` when the id is unknown.",
 			"intents": ["read an attached file's content", "load a blob by id"],
-			"declaredAt": "src/project/project.ts:1357"
+			"declaredAt": "src/project/project.ts:1359"
 		},
 		{
 			"path": "project.getBlobsByDocument",
@@ -1812,7 +1812,7 @@
 			"signature": "(documentId: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from a document (any of their attachments points into it).",
 			"intents": ["list the files attached to a document"],
-			"declaredAt": "src/project/project.ts:1379"
+			"declaredAt": "src/project/project.ts:1381"
 		},
 		{
 			"path": "project.getBlobsByRecord",
@@ -1821,7 +1821,7 @@
 			"signature": "(documentId: string, recordRef: string) => Promise<BlobRecord[]>",
 			"summary": "The blobs referenced from one element of a document.",
 			"intents": ["list the files attached to one element"],
-			"declaredAt": "src/project/project.ts:1388"
+			"declaredAt": "src/project/project.ts:1390"
 		},
 		{
 			"path": "project.getDatabaseInstance",
@@ -1830,7 +1830,7 @@
 			"signature": "() => ReturnType<GenericStore['getDatabaseInstance']>",
 			"summary": "Expose the store's own database object, for debugging: the Dexie instance on `local` (cast it: the type is the store's, `unknown` unless the Project's store type is given), `null` on `inMemory` and on a store with no such object.",
 			"intents": ["inspect the underlying database", "debug what the store holds"],
-			"declaredAt": "src/project/project.ts:1524"
+			"declaredAt": "src/project/project.ts:1526"
 		},
 		{
 			"path": "project.getDocument",
@@ -1878,7 +1878,7 @@
 			"signature": "() => Promise<BlobRecord[]>",
 			"summary": "The blobs of the project that no document references (no attachment).",
 			"intents": ["list unattached files", "find orphan blobs to clean up"],
-			"declaredAt": "src/project/project.ts:1397"
+			"declaredAt": "src/project/project.ts:1399"
 		},
 		{
 			"path": "project.import",
@@ -1939,7 +1939,7 @@
 			"signature": "<Result>(queryFunction: (query: Query<GenericConfig> & QueryExtensions<MergedExtensions<GenericModules>>) => Promise<Result[]>) => Promise<Result[]>",
 			"summary": "Run a query function across all documents, collect and flatten results. Iterates documents sequentially; merges all non-empty arrays.",
 			"intents": ["collect results from every document", "run one query over all documents"],
-			"declaredAt": "src/project/project.ts:1466"
+			"declaredAt": "src/project/project.ts:1468"
 		},
 		{
 			"path": "project.queryFirst",
@@ -1951,7 +1951,7 @@
 				"find the first match across every document",
 				"search all documents of a project"
 			],
-			"declaredAt": "src/project/project.ts:1445"
+			"declaredAt": "src/project/project.ts:1447"
 		},
 		{
 			"path": "project.redo",
@@ -1960,7 +1960,7 @@
 			"signature": "(documentId: string) => Promise<void>",
 			"summary": "Re-apply the last undone transaction of a document and tell other tabs what it changed (the commit's changes). Does nothing, and tells nothing, when there is nothing to redo.",
 			"intents": ["redo an undone change to a document"],
-			"declaredAt": "src/project/project.ts:1290"
+			"declaredAt": "src/project/project.ts:1291"
 		},
 		{
 			"path": "project.removeBlob",
@@ -1969,7 +1969,7 @@
 			"signature": "(blobId: string) => Promise<void>",
 			"summary": "Delete a blob and its binary data from the project and tell other tabs. Does nothing when the id is unknown.",
 			"intents": ["delete a stored file", "remove a blob for good"],
-			"declaredAt": "src/project/project.ts:1430"
+			"declaredAt": "src/project/project.ts:1432"
 		},
 		{
 			"path": "project.removeDocument",

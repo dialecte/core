@@ -42,8 +42,8 @@ function losingStore(params: { name: string; outcome: 'applied' | 'refused' }): 
 	const commit = store.commit.bind(store)
 	let losses = 1
 	store.commit = async function landedThenLost(commitParams) {
-		await commit(commitParams)
-		if (losses <= 0) return
+		const answer = await commit(commitParams)
+		if (losses <= 0) return answer
 		losses -= 1
 		throw lost({ writeId: commitParams.writeId ?? '' })
 	}

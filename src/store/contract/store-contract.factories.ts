@@ -16,6 +16,7 @@ import {
 	IN_PROCESS_ENGINE_REASON,
 	INDEXEDDB_ATTRIBUTE_LOOKUP_PENDING,
 	INDEXEDDB_VERSIONED_READ_PENDING,
+	HUB_ENGINE_RESTART_REASON,
 	REALM_PAGES,
 } from './store-contract.constants'
 import { makeDocument } from './store-contract.fixtures'
@@ -445,6 +446,7 @@ export function createSqliteHubStoreFactory(params: {
 		},
 		storageUnfillable:
 			"a test cannot fill the private file system from the page: the runtime's disk-full cases cover this leg",
+		differs: { 'engine-restart': HUB_ENGINE_RESTART_REASON },
 		afterCase: async function closeCaseRealms() {
 			for (const realm of caseRealms.splice(0)) realm.close()
 		},

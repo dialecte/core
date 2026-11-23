@@ -51,7 +51,7 @@ function commitOf(params: {
 	creates?: AnyRawRecord[]
 	updates?: AnyRawRecord[]
 	deletes?: ReadonlyArray<ChangedRecord>
-}): (engine: SqliteEngine) => Promise<void> {
+}): (engine: SqliteEngine) => Promise<unknown> {
 	const { creates = [], updates = [], deletes = [] } = params
 	return function commitWrites(engine) {
 		return engine.commit({

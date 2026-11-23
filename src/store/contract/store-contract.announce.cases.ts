@@ -32,9 +32,13 @@ function shapeOf(notice: StoreNotice): unknown {
 	return { own: notice.own, ...subjectOf({ message: notice.message }) }
 }
 
-/** What a message is about: its type and the ids it names, its timestamp left out. */
+/** What a message is about: its type and the ids it names, its timestamp and its version left out (the versions group's). */
 function subjectOf(params: { message: ProjectChannelMessage }): Record<string, unknown> {
-	const { timestamp: _timestamp, ...subject } = params.message
+	const {
+		timestamp: _timestamp,
+		version: _version,
+		...subject
+	} = params.message as ProjectChannelMessage & { version?: unknown }
 	return subject
 }
 

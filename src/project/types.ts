@@ -3,7 +3,13 @@ import type { DocumentState, ExtensionModules } from '@/document'
 import type { DialecteError } from '@/errors'
 import type { Perf } from '@/perf'
 import type { DOCUMENT_UPDATE_FIELDS } from '@/store/document-path.constants'
-import type { ImportControl, ImportFileOptions, ImportProgress, Store } from '@/store/store.types'
+import type {
+	ImportControl,
+	ImportFileOptions,
+	ImportProgress,
+	Store,
+	StoreVersion,
+} from '@/store/store.types'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord, DialecteHooks } from '@/types'
 import type { SaveOutcome, SaveTarget } from '@/utils/save-to-disk.types'
 
@@ -145,6 +151,8 @@ export type ProjectChannelMessage =
 			timestamp: number
 			changeId: string
 			changes: CommitChanges | UnknownCommitChanges
+			/** The version the write produced, when its store keeps one and the writer knows it (`Store.readVersion`) */
+			version?: StoreVersion
 	  }
 	| { type: 'init-empty-document'; documentId: string; timestamp: number }
 	| { type: 'document-removed'; documentId: string; timestamp: number }

@@ -36,8 +36,10 @@ export type InMemoryState = {
 	blobData: Map<string, Map<string, Blob>>
 	/** The `writeId`s of the imports running on a store of this project: an `open` keeps their documents. */
 	runningImports: Set<string>
-	/** How many writes each document has taken (bulk writes, commits, undos, redos): what an export checks. */
+	/** How many writes each document has taken (bulk writes, commits, undos, redos, removals): its version's count. */
 	versions: Map<string, number>
+	/** What keeps the counts: drawn with the state, so a state made anew after a destroy counts under another id. */
+	readonly engineId: string
 }
 
 /** A state as read: what a project with no state reads as, and all a placeholder store reads. */
@@ -51,6 +53,7 @@ export type ReadonlyInMemoryState = {
 	blobData: ReadonlyMap<string, ReadonlyMap<string, Blob>>
 	runningImports: ReadonlySet<string>
 	versions: ReadonlyMap<string, number>
+	readonly engineId: string
 }
 
 /** A connection of an in-memory project listening to its changes: the store it is, and its listener. */

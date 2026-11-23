@@ -30,6 +30,7 @@ import {
 	findInMemoryState,
 	inMemoryStateKeyOf,
 	listenToInMemoryProject,
+	versionIn,
 } from './in-memory-state'
 import {
 	CLOSING_IN_MEMORY_CONNECTIONS,
@@ -51,6 +52,7 @@ import { tellSessionWritten } from '@/store/import-progress/import-progress'
 import type {
 	Store,
 	AttributeLookup,
+	CommitAnswer,
 	ChangeLogEntry,
 	ExportFileParams,
 	ExportFileResult,
@@ -143,15 +145,6 @@ export class InMemoryStore implements Store {
 	private readonly operations = createRunningOperations()
 	/** This store's own destroy while it runs: an operation started meanwhile goes on once it has ended. */
 	private destroying: Promise<void> | undefined
-	/**
-	 * What the versions this store answers count from: each state it reads gets the next id of this store (a state made
-	 * anew after a destroy counts from zero again, under another id, so its count is never taken for an older one). No
-	 * random draw: an id spends nothing a seeded id sequence counts on.
-	 */
-	private versionEngine: { state: ReadonlyInMemoryState; engineId: string } | undefined
-	/** How many states this store has read versions from. */
-	private versionEngines = 0
-
 	constructor(name: string, options?: InMemoryStoreOptions) {
 		refuseUnnamableProject({ project: name, dialecteId: options?.dialecteId })
 		this.name = name
@@ -332,6 +325,12 @@ export class InMemoryStore implements Store {
 		})
 	}
 
+	/** The document's version now, read without a record: every connection to the state answers the same. */
+	async readVersion(params: { documentId: string }): Promise<StoreVersion> {
+		await this.guardOpen()
+		return this.versionOf(params.documentId)
+	}
+
 	/** The read members as they read once the store is open: each reads before its first await. */
 	private unguardedReads(): VersionedReads {
 		return {
@@ -346,12 +345,7 @@ export class InMemoryStore implements Store {
 
 	/** The document's version now: the writes it took in the state this store reads, under that state's id. */
 	private versionOf(documentId: string): StoreVersion {
-		const state = this.readState()
-		if (this.versionEngine?.state !== state) {
-			this.versionEngines += 1
-			this.versionEngine = { state, engineId: `${this.name}#${this.versionEngines}` }
-		}
-		return { engineId: this.versionEngine.engineId, count: state.versions.get(documentId) ?? 0 }
+		return versionIn({ state: this.readState(), documentId })
 	}
 
 	private async getUnguarded(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
@@ -474,7 +468,7 @@ export class InMemoryStore implements Store {
 		updates: AnyRawRecord[]
 		deletes: ReadonlyArray<ChangedRecord>
 		onProgress: (current: number, total: number) => void
-	}): Promise<void> {
+	}): Promise<CommitAnswer> {
 		await this.guardOpen()
 		this.guardWritable()
 		const { documentId, writeId, deletes, onProgress } = params
@@ -497,7 +491,7 @@ export class InMemoryStore implements Store {
 		guardNoDuplicate({ table, creates, documentId })
 		const updates = toStoredRecords({ records: params.updates })
 
-		bumpVersion({ state, documentId })
+		const version = bumpVersion({ state, documentId })
 		for (const record of creates) table.put(record)
 		for (const record of updates) table.put(record)
 		// the deleted records as they are at this step: one the commit created or updated is kept so
@@ -507,33 +501,16 @@ export class InMemoryStore implements Store {
 		})
 		for (const { id } of deletes) table.drop(id)
 
-		// Changelog, in the state the records went to; the undone entries are discarded, their ids kept
-		const { heads, changelog, discardedCommits } = state
-		const head = heads.get(documentId) ?? 0
-		const entries = changelog.get(documentId) ?? []
-		const trimmed = entries.filter((entry) => entry.sequenceNumber <= head)
-		const discarded = discardedCommits.get(documentId) ?? new Set<string>()
-		for (const entry of entries) {
-			if (entry.sequenceNumber > head) discarded.add(entry.writeId)
-		}
-		discardedCommits.set(documentId, discarded)
-
-		const newSeq = head + 1
-		const entry: ChangeLogEntry = {
-			id: trimmed.length + 1,
+		appendCommitEntry({
+			state,
 			documentId,
-			sequenceNumber: newSeq,
-			timestamp: Date.now(),
 			writeId,
 			operations: {
 				creates,
-				updates: updates.map((after, i) => ({ before: beforeSnapshots[i], after })),
+				updates: updates.map((after, index) => ({ before: beforeSnapshots[index], after })),
 				deletes: deletedSnapshots,
 			},
-		}
-		trimmed.push(entry)
-		changelog.set(documentId, trimmed)
-		heads.set(documentId, newSeq)
+		})
 		tellCommitProgress({
 			onProgress,
 			parts: [creates.length, updates.length, deletes.length],
@@ -544,7 +521,9 @@ export class InMemoryStore implements Store {
 			documentId,
 			changeId: writeId,
 			changes: describeCommitChanges({ creates: params.creates, updates: params.updates, deletes }),
+			version,
 		})
+		return { version }
 	}
 
 	// --- History ---
@@ -571,10 +550,10 @@ export class InMemoryStore implements Store {
 		for (const record of creates) table.drop(record.id)
 
 		state.heads.set(documentId, head - 1)
-		bumpVersion({ state, documentId })
+		const version = bumpVersion({ state, documentId })
 		const changes = describeChangeLogStep({ operations: entry.operations, direction: 'back' })
-		this.announce({ type: 'commit', documentId, changeId, changes })
-		return { changeId, changes }
+		this.announce({ type: 'commit', documentId, changeId, changes, version })
+		return { changeId, changes, version }
 	}
 
 	async redo(params: { documentId: string; changeId: string }): Promise<HistoryStep | false> {
@@ -599,10 +578,10 @@ export class InMemoryStore implements Store {
 		for (const record of deletes) table.drop(record.id)
 
 		state.heads.set(documentId, next)
-		bumpVersion({ state, documentId })
+		const version = bumpVersion({ state, documentId })
 		const changes = describeChangeLogStep({ operations: entry.operations, direction: 'forward' })
-		this.announce({ type: 'commit', documentId, changeId, changes })
-		return { changeId, changes }
+		this.announce({ type: 'commit', documentId, changeId, changes, version })
+		return { changeId, changes, version }
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
@@ -1033,3 +1012,37 @@ export class InMemoryStore implements Store {
 
 /** The unsubscribe of a placeholder's listener, never added. */
 function listenToNothing(): void {}
+
+/**
+ * A commit's history entry, in the state the records went to: the undone entries are discarded (their ids kept, so
+ * their outcome still reads applied), the entry appended after the head, the head moved to it.
+ */
+// dialecte-allow argument-mutation: the state's own history, written in the commit's synchronous section
+function appendCommitEntry(params: {
+	state: InMemoryState
+	documentId: string
+	writeId: string
+	operations: ChangeLogEntry['operations']
+}): void {
+	const { state, documentId, writeId, operations } = params
+	const { heads, changelog, discardedCommits } = state
+	const head = heads.get(documentId) ?? 0
+	const entries = changelog.get(documentId) ?? []
+	const trimmed = entries.filter((entry) => entry.sequenceNumber <= head)
+	const discarded = discardedCommits.get(documentId) ?? new Set<string>()
+	for (const entry of entries) {
+		if (entry.sequenceNumber > head) discarded.add(entry.writeId)
+	}
+	discardedCommits.set(documentId, discarded)
+	const sequenceNumber = head + 1
+	trimmed.push({
+		id: trimmed.length + 1,
+		documentId,
+		sequenceNumber,
+		timestamp: Date.now(),
+		writeId,
+		operations,
+	})
+	changelog.set(documentId, trimmed)
+	heads.set(documentId, sequenceNumber)
+}
