@@ -282,6 +282,25 @@ describe('progress after a prepare', () => {
 
 		expect(document.state.progress).toBeNull()
 	})
+
+	it('a prepare discarded while another transaction runs -> that transaction keeps its progress', async () => {
+		const { source } = await createTestProject({ sourceXml: SOURCE_XML })
+		const document = source.document
+		const [root] = await document.query.getRecordsByTagName('Root')
+		const prepared = await document.prepare(async (tx) => {
+			tx.progress.plan({ steps: 1, label: 'Preparing' })
+			await tx.addChild(root, { tagName: 'A', attributes: { aA: 'added' } })
+		})
+		let afterDiscard: DocumentProgress = null
+
+		await document.transaction(async (tx) => {
+			tx.progress.plan({ steps: 2, label: 'Running' })
+			prepared.discard()
+			afterDiscard = copyOf(document.state.progress)
+		})
+
+		expect(afterDiscard).toEqual({ current: 0, total: 2, label: 'Running', step: null })
+	})
 })
 
 describe('an extension op closing its own plan in a finally, a nested deepClone throwing inside it', () => {

@@ -1308,7 +1308,7 @@
 			"signature": "() => Promise<void>",
 			"summary": "Close the connection to the project's store, shared by every document of the project: after it, no document of this project can read or write. With a built-in store (local, in-memory), opening the project again gives a new store: documents opened before stay closed, open them again from the project. A custom store is reopened in place. To finish with the project, use `project.close`.",
 			"intents": ["close the project's database connection from a document"],
-			"declaredAt": "src/document/document.ts:475"
+			"declaredAt": "src/document/document.ts:476"
 		},
 		{
 			"path": "doc.destroy",
@@ -1320,7 +1320,7 @@
 				"delete the whole project database from a document",
 				"wipe every document of the project"
 			],
-			"declaredAt": "src/document/document.ts:487"
+			"declaredAt": "src/document/document.ts:488"
 		},
 		{
 			"path": "doc.prepare",
