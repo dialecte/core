@@ -1643,7 +1643,7 @@ export class DexieStore implements Store {
 		retried: boolean
 	}): Promise<GenericAnswer> {
 		const { params, retried } = attempt
-		const { mode = 'rw', documentId, requiredTable, tables, run, onUnregistered } = params
+		const { mode = 'rw', documentId, tables, run, onUnregistered } = params
 		await this.currentConnection()
 		const db = this.db
 		const scope = [...tables]
@@ -1658,7 +1658,7 @@ export class DexieStore implements Store {
 		// a table of the transaction that may be gone with its document: answered `onUnregistered` then
 		if (
 			params.requiredTable !== undefined &&
-			!db.tables.some((table) => table.name === requiredTable)
+			!db.tables.some((table) => table.name === params.requiredTable)
 		) {
 			return params.onUnregistered()
 		}

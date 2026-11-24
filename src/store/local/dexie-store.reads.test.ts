@@ -65,6 +65,18 @@ function untilHeld(params: { reached: Promise<void>; reopening: Promise<void> })
 	])
 }
 
+/** What a write settles with: nothing when it lands, else its refusal's key (or text, for an error of no key). */
+function refusalOf(write: Promise<unknown>): Promise<string | undefined> {
+	return write.then(
+		function landed() {
+			return undefined
+		},
+		function refusalKey(thrown: unknown) {
+			return toDialecteError(thrown)?.key ?? String(thrown)
+		},
+	)
+}
+
 /** What a call settles with: its answer, or the refusal's text. */
 function settled(call: Promise<unknown>): Promise<unknown> {
 	return call.then(
@@ -284,14 +296,7 @@ describe('DexieStore - a read while its connection reloads', () => {
 			const reopening = store.open()
 			await asked.promise
 			navigator.locks.request = request
-			const writing = store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }).then(
-				function landed() {
-					return undefined
-				},
-				function refusalKey(thrown: unknown) {
-					return toDialecteError(thrown)?.key ?? String(thrown)
-				},
-			)
+			const writing = refusalOf(store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }))
 			await Dexie.delete(store.name)
 			releasing.resolve()
 			const [outcome] = await Promise.all([writing, destroying, reopening])
@@ -326,14 +331,7 @@ describe('DexieStore - a read while its connection reloads', () => {
 				if (args[0] === `${OPEN_LOCK_PREFIX}${store.name}`) asked.resolve()
 				return (request as (...given: unknown[]) => Promise<unknown>)(...args)
 			} as typeof navigator.locks.request
-			const writing = store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }).then(
-				function landed() {
-					return undefined
-				},
-				function refusalKey(thrown: unknown) {
-					return toDialecteError(thrown)?.key ?? String(thrown)
-				},
-			)
+			const writing = refusalOf(store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }))
 			await asked.promise
 			navigator.locks.request = request
 			// its own destroy while the write waits: the write is not counted yet
