@@ -76,7 +76,7 @@ import type {
 	EngineMetaRow,
 	SteppedHistory,
 	StoredDocumentRow,
-	WriteTransactionParams,
+	StoreTransactionParams,
 } from './types'
 import type { Perf } from '@/perf'
 import type { ChangedRecord, DocumentRecord, DocumentUpdates } from '@/project'
@@ -572,20 +572,23 @@ export class DexieStore implements Store {
 				const { documentId, writeId, creates, updates, deletes: deleteRefs, onProgress } = params
 				// deleted by id: a ref's tag and parent only tell the change
 				const deletes = deleteRefs.map((ref) => ref.id)
-				// a document not registered refused first, in the order every store refuses (the write's tables are taken later)
+				// a document not registered refused first, in the order every store refuses: a check of the schema only, the
+				// write's tables are taken in its transaction
 				await this.writeTable(documentId)
-				const document = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
-				if (document && withStatus(document).status === 'importing') {
-					throwDocumentNotRegistered({ documentId, what: 'a commit' })
-				}
-				checkCallId({ field: 'writeId', value: writeId })
+				const recordName = this.resolveTableName(documentId)
 
 				try {
-					const version = await this.inWriteTransaction({
+					const version = await this.inTransaction({
 						documentId,
-						tables: [TABLE_CHANGELOG, TABLE_META],
-						run: async (db) => {
-							const table = db.table<AnyRawRecord>(this.resolveTableName(documentId))
+						tables: [TABLE_DOCUMENTS, TABLE_CHANGELOG, TABLE_META],
+						run: async function commitInTransaction(db) {
+							// still importing: refused as not registered, then a writeId that is not well-formed text
+							const document = await db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+							if (document && withStatus(document).status === 'importing') {
+								throwDocumentNotRegistered({ documentId, what: 'a commit' })
+							}
+							checkCallId({ field: 'writeId', value: writeId })
+							const table = db.table<AnyRawRecord>(recordName)
 							const changelog = db.table<ChangeLogEntry, number, Omit<ChangeLogEntry, 'id'>>(
 								TABLE_CHANGELOG,
 							)
@@ -718,12 +721,15 @@ export class DexieStore implements Store {
 		direction: 'back' | 'forward'
 	}): Promise<SteppedHistory | undefined> {
 		const { documentId, direction } = params
-		return this.inWriteTransaction({
+		const recordName = this.resolveTableName(documentId)
+		return this.inTransaction({
 			documentId,
 			tables: [TABLE_CHANGELOG, TABLE_META],
-			onUnregistered: () => undefined,
-			run: async (db) => {
-				const table = db.table<AnyRawRecord>(this.resolveTableName(documentId))
+			onUnregistered: function nothingToStep() {
+				return undefined
+			},
+			run: async function stepInTransaction(db) {
+				const table = db.table<AnyRawRecord>(recordName)
 				const meta = db.table<ChangeLogMeta>(TABLE_META)
 				const head = await getHead({ meta, documentId })
 				const sequenceNumber = direction === 'back' ? head : head + 1
@@ -782,9 +788,11 @@ export class DexieStore implements Store {
 			invariantBlobOwnerKnown(this.knownDocuments, entry.documentId)
 			const checked = toJsonCopy({ value: entry })
 			const blobTableOf = blobTableName(entry.documentId)
-			await this.inWriteTransaction({
+			// a document removed meanwhile (its tables gone with it) refused DOCUMENT_NOT_REGISTERED
+			await this.inTransaction({
+				documentId: entry.documentId,
 				tables: [TABLE_BLOBS, blobTableOf],
-				run: async (db) => {
+				run: async function addInTransaction(db) {
 					await db.table<BlobRecord>(TABLE_BLOBS).put(checked)
 					await db.table<{ id: string; data: Blob }>(blobTableOf).put({ id: entry.id, data })
 				},
@@ -833,49 +841,70 @@ export class DexieStore implements Store {
 
 	async attachBlob(blobId: string, ref: BlobAttachment): Promise<void> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-			if (!entry) {
-				throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
-			}
-			const checked = toJsonCopy({ value: ref })
-			const exists = entry.attachedTo.some(
-				(a) =>
-					a.documentId === ref.documentId &&
-					a.recordRef === ref.recordRef &&
-					a.attribute === ref.attribute,
-			)
-			if (exists) return
-			const attachedTo = [...entry.attachedTo, checked]
-			await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
+			await this.inTransaction({
+				tables: [TABLE_BLOBS],
+				run: async function attachInTransaction(db) {
+					const blobs = db.table<BlobRecord>(TABLE_BLOBS)
+					const entry = await blobs.get(blobId)
+					if (!entry) {
+						throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+					}
+					// the blob checked first, then the reference
+					const checked = toJsonCopy({ value: ref })
+					const exists = entry.attachedTo.some(
+						(attached) =>
+							attached.documentId === ref.documentId &&
+							attached.recordRef === ref.recordRef &&
+							attached.attribute === ref.attribute,
+					)
+					if (exists) return
+					await blobs.update(blobId, { attachedTo: [...entry.attachedTo, checked] })
+				},
+			})
 		})
 	}
 
 	async detachBlob(blobId: string, ref: { documentId: string; recordRef: string }): Promise<void> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-			if (!entry) {
-				throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
-			}
-			const attachedTo = entry.attachedTo.filter(
-				(a) => !(a.documentId === ref.documentId && a.recordRef === ref.recordRef),
-			)
-			await this.db.table<BlobRecord>(TABLE_BLOBS).update(blobId, { attachedTo })
+			await this.inTransaction({
+				tables: [TABLE_BLOBS],
+				run: async function detachInTransaction(db) {
+					const blobs = db.table<BlobRecord>(TABLE_BLOBS)
+					const entry = await blobs.get(blobId)
+					if (!entry) {
+						throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
+					}
+					const attachedTo = entry.attachedTo.filter(
+						(attached) =>
+							!(attached.documentId === ref.documentId && attached.recordRef === ref.recordRef),
+					)
+					await blobs.update(blobId, { attachedTo })
+				},
+			})
 		})
 	}
 
 	async removeBlob(blobId: string): Promise<void> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-			if (!entry) return
-			const blobTableOf = blobTableName(entry.documentId)
-			await this.inWriteTransaction({
+			// which document's table holds its data, read first: the removal reads the entry again in its own transaction
+			const owner = await this.inTransaction({
+				mode: 'r',
+				tables: [TABLE_BLOBS],
+				run: async function readOwner(db) {
+					const entry = await db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+					return entry?.documentId
+				},
+			})
+			if (owner === undefined) return
+			const blobTableOf = blobTableName(owner)
+			await this.inTransaction({
 				tables: [TABLE_BLOBS, blobTableOf],
-				run: async (db) => {
+				run: async function removeInTransaction(db) {
+					const blobs = db.table<BlobRecord>(TABLE_BLOBS)
+					// removed meanwhile: nothing left to remove
+					if (!(await blobs.get(blobId))) return
 					await db.table<{ id: string }>(blobTableOf).delete(blobId)
-					await db.table<BlobRecord>(TABLE_BLOBS).delete(blobId)
+					await blobs.delete(blobId)
 				},
 			})
 		})
@@ -1058,19 +1087,21 @@ export class DexieStore implements Store {
 		updates: DocumentUpdates,
 	): Promise<void> {
 		const checked = toJsonCopy({ value: updates })
-		await this.ensureCurrentSchema()
-		const documents = this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
 		// read, checked and written in one transaction: no other write of the registry lands in between
-		const updated = await this.db.transaction('rw', documents, async () => {
-			const held = await documents.get(documentId)
-			if (!held) return undefined
-			const document = applyDocumentUpdates({ document: withStatus(held), updates: checked })
-			if (document.path !== held.path) {
-				const placed = await documents.toArray()
-				assertDocumentPlace({ document, documents: placed })
-			}
-			await documents.put(document)
-			return document
+		const updated = await this.inTransaction({
+			tables: [TABLE_DOCUMENTS],
+			run: async function updateInTransaction(db) {
+				const documents = db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+				const held = await documents.get(documentId)
+				if (!held) return undefined
+				const document = applyDocumentUpdates({ document: withStatus(held), updates: checked })
+				if (document.path !== held.path) {
+					const placed = await documents.toArray()
+					assertDocumentPlace({ document, documents: placed })
+				}
+				await documents.put(document)
+				return document
+			},
 		})
 		if (updated && this.knownDocuments.has(documentId)) {
 			this.knownDocuments.set(documentId, updated)
@@ -1083,15 +1114,17 @@ export class DexieStore implements Store {
 		registered: DocumentRecord | undefined
 	}): Promise<void> {
 		const { documentId, registered } = params
-		await this.ensureCurrentSchema()
-		const documents = this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
 		// read and marked in one transaction: a removal by another connection lands before or after, never between
-		const ready = await this.db.transaction('rw', documents, async () => {
-			const held = await documents.get(documentId)
-			if (!held || !isOwnImporting({ held: withStatus(held), registered })) return undefined
-			const document: DocumentRecord = { ...withStatus(held), status: 'ready' }
-			await documents.put(document)
-			return document
+		const ready = await this.inTransaction({
+			tables: [TABLE_DOCUMENTS],
+			run: async function markReadyInTransaction(db) {
+				const documents = db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+				const held = await documents.get(documentId)
+				if (!held || !isOwnImporting({ held: withStatus(held), registered })) return undefined
+				const document: DocumentRecord = { ...withStatus(held), status: 'ready' }
+				await documents.put(document)
+				return document
+			},
 		})
 		if (!ready) throwDocumentNotRegistered({ documentId, what: 'its ready state' })
 		if (this.knownDocuments.has(documentId)) this.knownDocuments.set(documentId, ready)
@@ -1107,12 +1140,7 @@ export class DexieStore implements Store {
 		registered: DocumentRecord | undefined
 	}): Promise<void> {
 		const { documentId, ops, registered } = params
-		await this.ensureCurrentSchema()
-		const held = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
-		if (!held || !isOwnImporting({ held: withStatus(held), registered })) {
-			throwDocumentNotRegistered({ documentId, what: 'records' })
-		}
-		await this.bulkWriteUnguarded(documentId, ops)
+		await this.bulkWriteUnguarded(documentId, ops, { registered })
 	}
 
 	/**
@@ -1124,8 +1152,13 @@ export class DexieStore implements Store {
 		registered: DocumentRecord | undefined
 	}): Promise<void> {
 		const { documentId, registered } = params
-		await this.ensureCurrentSchema()
-		const held = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+		const held = await this.inTransaction({
+			mode: 'r',
+			tables: [TABLE_DOCUMENTS],
+			run: function readImported(db) {
+				return db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+			},
+		})
 		if (!held || !isOwnImporting({ held: withStatus(held), registered })) return
 		await this.removeDocumentUnguarded(documentId)
 	}
@@ -1170,56 +1203,54 @@ export class DexieStore implements Store {
 	private async bulkWriteUnguarded(
 		documentId: string,
 		ops: { creates?: AnyRawRecord[]; updates?: RecordPatch[]; deletes?: string[] },
+		ownImport?: { registered: DocumentRecord | undefined },
 	): Promise<void> {
 		try {
 			const { updates, deletes } = ops
-			// a document not registered refused first, in the order every store refuses (the write's tables are taken later)
+			// a document not registered refused first, in the order every store refuses: a check of the schema only
 			await this.writeTable(documentId)
 			// refused in the order every store answers in: a create that is not JSON, a taken id, then
 			// a patch that is not JSON - of the patches that apply: one of a record the document does
 			// not hold is skipped
 			const creates = toStoredRecords({ records: ops.creates ?? [] })
-
-			await this.inWriteTransaction({
+			const recordName = this.resolveTableName(documentId)
+			const perf = this.perf
+			await this.inTransaction({
 				documentId,
-				tables: [TABLE_META],
-				run: async (db) => {
-					const table = db.table<AnyRawRecord>(this.resolveTableName(documentId))
+				tables: ownImport ? [TABLE_DOCUMENTS, TABLE_META] : [TABLE_META],
+				run: async function bulkWriteInTransaction(db) {
+					// an import's records go into its own document only, read in the write's transaction
+					if (ownImport) {
+						const held = await db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+						if (
+							!held ||
+							!isOwnImporting({ held: withStatus(held), registered: ownImport.registered })
+						) {
+							throwDocumentNotRegistered({ documentId, what: 'records' })
+						}
+					}
+					const table = db.table<AnyRawRecord>(recordName)
 					const meta = db.table<ChangeLogMeta>(TABLE_META)
 					if (creates.length > 0) {
-						this.perf.start('core::store::bulkWrite::add')
-						await addRecords({ table, creates, documentId })
-						this.perf.stop('core::store::bulkWrite::add')
+						await measured({
+							perf,
+							name: 'core::store::bulkWrite::add',
+							work: () => addRecords({ table, creates, documentId }),
+						})
 					}
-
 					if (updates?.length) {
-						this.perf.start('core::store::bulkWrite::update')
-						try {
-							// the patches that apply are checked as one list, as every store checks them
-							const held = await table.bulkGet(updates.map((patch) => patch.recordId))
-							const applying = updates.filter((_patch, index) => held[index] !== undefined)
-							const checked = toJsonCopy({ value: applying })
-							const patched = new Map<string, AnyRawRecord>()
-							for (const record of held) if (record) patched.set(record.id, record)
-							for (const patch of checked) {
-								const record = patched.get(patch.recordId)
-								if (record) patched.set(patch.recordId, applyRecordPatch({ record, patch }))
-							}
-							await table.bulkPut([...patched.values()])
-						} catch (error) {
-							if (toDialecteError(error)) throw error
-							throwDialecteError('STORE_BULK_UPDATE_FAILED', {
-								detail: error instanceof Error ? error.message : String(error),
-								cause: error instanceof Error ? error : undefined,
-							})
-						}
-						this.perf.stop('core::store::bulkWrite::update')
+						await measured({
+							perf,
+							name: 'core::store::bulkWrite::update',
+							work: () => patchRecords({ table, updates }),
+						})
 					}
-
 					if (deletes?.length) {
-						this.perf.start('core::store::bulkWrite::delete')
-						await table.bulkDelete(deletes)
-						this.perf.stop('core::store::bulkWrite::delete')
+						await measured({
+							perf,
+							name: 'core::store::bulkWrite::delete',
+							work: () => table.bulkDelete(deletes),
+						})
 					}
 					await bumpVersion({ meta, documentId })
 				},
@@ -1451,24 +1482,35 @@ export class DexieStore implements Store {
 
 	/** The document's history head, read on the connection current now (before a write's transaction). */
 	private readHead(params: { documentId: string }): Promise<number> {
-		return getHead({ meta: this.db.table(TABLE_META), documentId: params.documentId })
+		return getHead({
+			meta: this.db.table<ChangeLogMeta>(TABLE_META),
+			documentId: params.documentId,
+		})
 	}
 
 	/**
-	 * A read-write transaction on the store's connection once no reload of it runs (every reload holds the schema
-	 * lock): the connection and the tables taken in the step that starts the transaction, `run` handed that
+	 * A transaction on the store's connection once no reload of it runs (every reload holds the schema lock) and it is
+	 * current: the connection and the tables taken in the step that starts the transaction, `run` handed that
 	 * connection - never a table of a connection reloaded or closed meanwhile. With `documentId`, its record table is
 	 * in the transaction too; a document the connection does not hold is refused `DOCUMENT_NOT_REGISTERED` (or answered
 	 * `onUnregistered`). A connection closed under the transaction (a reload taking the lock in that very step, a
 	 * versionchange from another tab) aborts it before it writes anything: it is run once more, on the connection made
 	 * again.
 	 */
-	private async inWriteTransaction<GenericAnswer>(
-		params: WriteTransactionParams<GenericAnswer>,
+	private inTransaction<GenericAnswer>(
+		params: StoreTransactionParams<GenericAnswer>,
 	): Promise<GenericAnswer> {
-		const { documentId, tables, run, onUnregistered, retried = false } = params
-		await this.ensureCurrentSchema()
-		await this.schemaLock.catch(ignoreSchemaFailure)
+		return this.runTransaction({ params, retried: false })
+	}
+
+	/** `inTransaction`, `retried` once a connection closed under its first run. */
+	private async runTransaction<GenericAnswer>(attempt: {
+		params: StoreTransactionParams<GenericAnswer>
+		retried: boolean
+	}): Promise<GenericAnswer> {
+		const { params, retried } = attempt
+		const { mode = 'rw', documentId, tables, run, onUnregistered } = params
+		await this.currentConnection()
 		const db = this.db
 		const scope = [...tables]
 		if (documentId !== undefined) {
@@ -1481,15 +1523,25 @@ export class DexieStore implements Store {
 		}
 		try {
 			// an async callback: Dexie keeps the transaction open across the native awaits of an async function only
-			return await db.transaction('rw', scope, async function runInTransaction() {
+			return await db.transaction(mode, scope, async function runInTransaction() {
 				return run(db)
 			})
 		} catch (thrown) {
 			if (retried || !closedUnder({ thrown, db })) throw thrown
 			// nothing written: the connection is made again (a reload under way gives its own), the write run once more
 			if (this.db === db) this.stale = true
-			return this.inWriteTransaction({ ...params, retried: true })
+			return this.runTransaction({ params, retried: true })
 		}
+	}
+
+	/**
+	 * Settled once no reload of the connection runs and it is current: a versionchange landing while the schema lock was
+	 * waited for (the connection made stale) is reloaded before anything takes the connection.
+	 */
+	private async currentConnection(): Promise<void> {
+		await this.ensureCurrentSchema()
+		await this.schemaLock.catch(ignoreSchemaFailure)
+		if (this.stale) await this.currentConnection()
 	}
 
 	/** The record table of a document to write; a document that is not registered takes no write. */
@@ -1545,6 +1597,50 @@ async function bumpVersion(params: {
 	await meta.put({ key, value: count })
 	const engineId = await engineIdIn({ meta })
 	return { engineId, count }
+}
+
+/** `work` measured under `name`: its stop told however it ends, so an aborted transaction leaves no open measure. */
+async function measured<GenericAnswer>(params: {
+	perf: Perf
+	name: string
+	work: () => Promise<GenericAnswer>
+}): Promise<GenericAnswer> {
+	const { perf, name, work } = params
+	perf.start(name)
+	try {
+		return await work()
+	} finally {
+		perf.stop(name)
+	}
+}
+
+/**
+ * The patches that apply (of records the table holds), checked as one list as every store checks them, written back:
+ * a patch that is not JSON refuses them all.
+ */
+async function patchRecords(params: {
+	table: Table<AnyRawRecord>
+	updates: RecordPatch[]
+}): Promise<void> {
+	const { table, updates } = params
+	try {
+		const held = await table.bulkGet(updates.map((patch) => patch.recordId))
+		const applying = updates.filter((_patch, index) => held[index] !== undefined)
+		const checked = toJsonCopy({ value: applying })
+		const patched = new Map<string, AnyRawRecord>()
+		for (const record of held) if (record) patched.set(record.id, record)
+		for (const patch of checked) {
+			const record = patched.get(patch.recordId)
+			if (record) patched.set(patch.recordId, applyRecordPatch({ record, patch }))
+		}
+		await table.bulkPut([...patched.values()])
+	} catch (error) {
+		if (toDialecteError(error)) throw error
+		throwDialecteError('STORE_BULK_UPDATE_FAILED', {
+			detail: error instanceof Error ? error.message : String(error),
+			cause: error instanceof Error ? error : undefined,
+		})
+	}
 }
 
 /** Whether a write's transaction failed because its connection was closed under it: it wrote nothing. */

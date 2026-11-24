@@ -25,16 +25,16 @@ export type StoredDocumentRow = Omit<DocumentRecord, 'status'> &
 /** The `_meta` row naming the database's engine: drawn once, kept until the database is destroyed. */
 export type EngineMetaRow = { key: string; engineId: string }
 
-/** What `DexieStore`'s write transaction is asked: the tables beside the record one, what runs in it, and its retry. */
-export type WriteTransactionParams<GenericAnswer> = {
+/** What `DexieStore`'s transaction on its current connection is asked: its mode, its tables, what runs in it. */
+export type StoreTransactionParams<GenericAnswer> = {
+	/** `rw` when absent */
+	mode?: 'r' | 'rw'
 	/** The document whose record table is in the transaction too, refused when the connection does not hold it */
 	documentId?: string
 	tables: string[]
 	run: (db: Dexie) => Promise<GenericAnswer>
 	/** What a document the connection does not hold answers, instead of a refusal */
 	onUnregistered?: () => GenericAnswer
-	/** Set on the one run after a connection closed under the first */
-	retried?: boolean
 }
 
 /** One step of a document's history applied: the entry's operations, and the version the step produced. */
