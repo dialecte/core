@@ -9,3 +9,6 @@ export type StoreInternals = Record<ReloadPoint, (...args: unknown[]) => Promise
 
 /** The connection's events as a case fires one: a versionchange, as another tab's schema upgrade sends it. */
 export type VersionchangeEvents = { versionchange: { fire: (event: Event) => void } }
+
+/** A connection's open held in a test: reached once held, released on demand, the prototype restored after. */
+export type HeldOpen = { reached: Promise<void>; release: () => void; restore: () => void }
