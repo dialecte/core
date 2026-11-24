@@ -230,6 +230,7 @@ export const NODE_STORE_CONTRACT_TEST_FILES: readonly string[] = [
 	// the IndexedDB-specific files: at every step on fake-indexeddb, once per lot in the browser on IndexedDB
 	'src/store/local/dexie-store.test.ts',
 	'src/store/local/dexie-store.versions.test.ts',
+	'src/store/local/dexie-store.connection.test.ts',
 	'src/store/local/dexie-store.instrumentation.test.ts',
 	'src/project/import.indexeddb.test.ts',
 	'src/project/open-sweep.indexeddb.test.ts',
