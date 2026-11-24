@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { toDialecteError } from '@/errors'
 import { newCallId } from '@/store/json-values'
 
-import type { ReloadPoint, StoreInternals } from './dexie-store.connection.types'
+import type {
+	ReloadPoint,
+	StoreInternals,
+	VersionchangeEvents,
+} from './dexie-store.connection.types'
 import type { DocumentRecord } from '@/project'
 
 // A write whose store reloads its connection meanwhile (a second open of the store at once, a stale schema reloaded
@@ -126,23 +130,114 @@ describe('DexieStore - a write whose connection is reloaded meanwhile', () => {
 		)
 		expect(thrown).toBe('DOCUMENT_NOT_REGISTERED')
 	})
+})
 
-	// undo and redo took their tables right before their transaction already: this pins that they keep landing when the
-	// head is read on the connection before a reload
-	it('an undo, then a redo, the connection reloaded after each reads its head → each lands', async () => {
+describe('DexieStore - a write while its connection closes or reloads', () => {
+	it('a commit started while a second open of the store runs → lands, its connection never closed under it', async () => {
+		const store = await seededStore()
+		const reached = Promise.withResolvers<void>()
+		const release = Promise.withResolvers<void>()
+		const original = Dexie.prototype.open
+		let held = false
+		// the first open of the database by a reload (its registry read) held
+		Dexie.prototype.open = function openHeld(this: Dexie) {
+			if (held || this.name !== store.name || this === store.getDatabaseInstance()) {
+				return original.call(this)
+			}
+			held = true
+			reached.resolve()
+			return release.promise.then(() => original.call(this))
+		} as typeof Dexie.prototype.open
+		try {
+			// a reload, if the open makes one, held at its registry read: the old connection closed by then
+			const reopening = store.open()
+			await Promise.race([reached.promise, reopening])
+			const committing = outcomeOf(commitCreating({ store, id: 'r2' }))
+			// the commit runs its steps up to its transaction in microtasks; the held open needs the event loop
+			release.resolve()
+			const [outcome] = await Promise.all([committing, reopening])
+			const heldIds = await idsHeld({ name: store.name })
+			expect({ outcome, held: heldIds }).toEqual({ outcome: 'landed', held: ['r1', 'r2'] })
+		} finally {
+			Dexie.prototype.open = original
+		}
+	})
+
+	it('a commit whose connection a versionchange closes between its table’s lookup and its write → lands on the connection reloaded', async () => {
+		const store = await seededStore()
+		const internals = store as unknown as StoreInternals
+		const original = internals.writeTable.bind(store)
+		internals.writeTable = async function answerThenVersionchange(...args: unknown[]) {
+			const answer = await original(...args)
+			// what another tab's schema upgrade does to this connection
+			const events = store.getDatabaseInstance().on as unknown as VersionchangeEvents
+			events.versionchange.fire(new Event('versionchange'))
+			return answer
+		} as never
+		const outcome = await outcomeOf(commitCreating({ store, id: 'r2' }))
+		const held = await idsHeld({ name: store.name })
+		expect({ outcome, held }).toEqual({ outcome: 'landed', held: ['r1', 'r2'] })
+	})
+
+	it('a commit whose connection closes as its transaction starts → run once more on the connection made again, landed once', async () => {
+		const store = await seededStore()
+		const original = Dexie.prototype.transaction
+		let closed = false
+		// the connection closed in the very step the write's transaction starts on it: what a reload taking the lock then does
+		Dexie.prototype.transaction = function closeFirst(this: Dexie, ...args: unknown[]) {
+			if (!closed && args[0] === 'rw' && this === store.getDatabaseInstance()) {
+				closed = true
+				this.close()
+			}
+			return (original as (...given: unknown[]) => unknown).apply(this, args)
+		} as typeof Dexie.prototype.transaction
+		try {
+			const outcome = await outcomeOf(commitCreating({ store, id: 'r2' }))
+			const held = await idsHeld({ name: store.name })
+			const log = await store.getChangeLog('a')
+			expect({ outcome, held, entries: log.length }).toEqual({
+				outcome: 'landed',
+				held: ['r1', 'r2'],
+				entries: 1,
+			})
+		} finally {
+			Dexie.prototype.transaction = original
+		}
+	})
+
+	it('two undos of one document at once → two steps undone, never one twice', async () => {
 		const store = await seededStore()
 		await commitCreating({ store, id: 'r2' })
-		reloadAfter({ store, point: 'readHead' })
-		const undone = await outcomeOf(store.undo({ documentId: 'a', changeId: 'undo-1' }))
-		const afterUndo = await idsHeld({ name: store.name })
-		reloadAfter({ store, point: 'readHead' })
-		const redone = await outcomeOf(store.redo({ documentId: 'a', changeId: 'redo-1' }))
-		const afterRedo = await idsHeld({ name: store.name })
-		expect({ undone, afterUndo, redone, afterRedo }).toEqual({
-			undone: 'landed',
-			afterUndo: ['r1'],
-			redone: 'landed',
-			afterRedo: ['r1', 'r2'],
-		})
+		await commitCreating({ store, id: 'r3' })
+		const steps = await Promise.all([
+			store.undo({ documentId: 'a', changeId: 'undo-1' }),
+			store.undo({ documentId: 'a', changeId: 'undo-2' }),
+		])
+		const held = await idsHeld({ name: store.name })
+		const status = await store.getHistoryStatus('a')
+		expect({
+			stepped: steps.filter((step) => step !== false).length,
+			held,
+			canUndo: status.canUndo,
+		}).toEqual({ stepped: 2, held: ['r1'], canUndo: false })
+	})
+
+	it('two redos of one document at once → two steps redone, never one twice', async () => {
+		const store = await seededStore()
+		await commitCreating({ store, id: 'r2' })
+		await commitCreating({ store, id: 'r3' })
+		await store.undo({ documentId: 'a', changeId: 'undo-1' })
+		await store.undo({ documentId: 'a', changeId: 'undo-2' })
+		const steps = await Promise.all([
+			store.redo({ documentId: 'a', changeId: 'redo-1' }),
+			store.redo({ documentId: 'a', changeId: 'redo-2' }),
+		])
+		const held = await idsHeld({ name: store.name })
+		const status = await store.getHistoryStatus('a')
+		expect({
+			stepped: steps.filter((step) => step !== false).length,
+			held,
+			canRedo: status.canRedo,
+		}).toEqual({ stepped: 2, held: ['r1', 'r2', 'r3'], canRedo: false })
 	})
 })

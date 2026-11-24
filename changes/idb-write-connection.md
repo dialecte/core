@@ -1,3 +1,4 @@
 ### Fixed
 
-- An IndexedDB commit or bulk write whose store reloaded its connection meanwhile (a second open of the store at once, a schema reloaded after another tab's import) no longer fails with "Invalid table argument": every write - a commit, a bulk write, an undo, a redo, a removal - now takes all the tables it writes through from the connection current as its transaction starts, and its history head and version are read and written in that transaction's own `_meta`.
+- On IndexedDB, a write no longer fails with "Invalid table argument" or "Database has been closed" when the store opens again or another tab changes the database while the write runs: the write waits for the store's connection and lands. A write to a document another tab removed meanwhile is refused `DOCUMENT_NOT_REGISTERED`, no longer `STORE_COMMIT_FAILED` or a raw error.
+- On IndexedDB, two undos (or two redos) of one document at once now step two changes, never the same one twice.
