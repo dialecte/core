@@ -1346,7 +1346,7 @@
 				"find the enclosing element of a tag",
 				"build a path from the root"
 			],
-			"declaredAt": "src/document/query/main.ts:484",
+			"declaredAt": "src/document/query/main.ts:485",
 			"example": "const ancestors = await query.findAncestors(aa1)\n// [A, Root]"
 		},
 		{
@@ -1360,7 +1360,7 @@
 				"build paths for a list of elements",
 				"group elements by an ancestor"
 			],
-			"declaredAt": "src/document/query/main.ts:509",
+			"declaredAt": "src/document/query/main.ts:511",
 			"example": "const [ofAaa1, ofBbb1] = await query.findAncestorsOfEach([aaa1, bbb1], { order: 'top-down' })\n// [[Root, A, AA_1], [Root, B, BB_1]]"
 		},
 		{
@@ -1375,7 +1375,7 @@
 				"filter one tag's elements by attribute",
 				"look up many elements by a list of values in one call"
 			],
-			"declaredAt": "src/document/query/main.ts:724",
+			"declaredAt": "src/document/query/main.ts:726",
 			"example": "const records = await query.findByAttributes({\n  tagName: 'A',\n  attributes: { aA: 'val' },\n})"
 		},
 		{
@@ -1413,7 +1413,7 @@
 				"read a namespaced attribute",
 				"read an attribute with its schema default"
 			],
-			"declaredAt": "src/document/query/main.ts:597",
+			"declaredAt": "src/document/query/main.ts:599",
 			"example": "const val = await query.getAttribute(a, { name: 'aA' })\nconst cA = await query.getAttribute(a, { name: 'cA', namespace: 'ext' })"
 		},
 		{
@@ -1428,7 +1428,7 @@
 				"destructure several attributes at once",
 				"read attributes of one namespace"
 			],
-			"declaredAt": "src/document/query/main.ts:647",
+			"declaredAt": "src/document/query/main.ts:649",
 			"example": "const { aA, 'ext:cA': cA } = await query.getAttributes(a)"
 		},
 		{
@@ -1553,7 +1553,7 @@
 				"read staged changes as XML or as a tree",
 				"show what a prepared transaction would produce"
 			],
-			"declaredAt": "src/document/query/main.ts:563",
+			"declaredAt": "src/document/query/main.ts:565",
 			"example": "const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))\nconst { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })"
 		},
 		{
@@ -1569,7 +1569,7 @@
 				"read a subtree to copy it with deepClone",
 				"load a lazy tree view one open level at a time"
 			],
-			"declaredAt": "src/document/query/main.ts:535",
+			"declaredAt": "src/document/query/main.ts:537",
 			"example": "const tree = await query.getTree(a)\nconst open = await query.getTree(root, { expanded: new Set([root.id, a.id]) }) // root and a opened"
 		},
 		{

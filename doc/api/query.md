@@ -133,7 +133,7 @@ const [ofA1, ofA2] = await doc.query.getChildrenOfEach([a1, a2], { tagName: 'AA_
 
 ### findAncestors
 
-Walks the parent chain upward from a record and returns ancestors bottom-up: `[parent, grandparent, …, root]`. The starting record is **not** included.
+Walks the parent chain upward from a record and returns ancestors bottom-up: `[parent, grandparent, …, root]`. The starting record is **not** included. The dialecte's transparent elements (`transparentElements`) are walked through and left out, as `getTree` and `getSnapshot` unwrap them: pass `unwrap: []` for every stored ancestor.
 
 ```ts
 const ancestors = await doc.query.findAncestors(ref)
@@ -151,11 +151,12 @@ const ancestors = await doc.query.findAncestors(ref, {
 
 #### FindAncestorsOptions
 
-| Option          | Type                        | Description                                                                                                 |
-| --------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `depth`         | `number`                    | Maximum number of ancestors to collect. Default: unlimited.                                                 |
-| `stopAtTagName` | `ElementName`               | Stop walking after collecting the first ancestor with this tag name.                                        |
-| `order`         | `'bottom-up' \| 'top-down'` | Result order. `'bottom-up'` (default): `[parent, grandparent, …, root]`. `'top-down'`: `[root, …, parent]`. |
+| Option          | Type                        | Description                                                                                                                                                                                        |
+| --------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `depth`         | `number`                    | Maximum number of ancestors to collect. Default: unlimited.                                                                                                                                        |
+| `stopAtTagName` | `ElementName`               | Stop walking after collecting the first ancestor with this tag name.                                                                                                                               |
+| `order`         | `'bottom-up' \| 'top-down'` | Result order. `'bottom-up'` (default): `[parent, grandparent, …, root]`. `'top-down'`: `[root, …, parent]`.                                                                                        |
+| `unwrap`        | `ElementName[]`             | Elements walked through and left out of the result: they take no `depth` level and `stopAtTagName` never matches them. Default: the dialecte's `transparentElements`. `[]`: every stored ancestor. |
 
 ### findAncestorsOfEach
 

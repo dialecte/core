@@ -206,6 +206,10 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		}) as Promise<Record<string, AnyTrackedRecord[]>[]>
 	}
 
+	/**
+	 * The ancestors of an element, bottom-up, the dialecte's transparent elements left out as `query.findAncestors`
+	 * does by default; `query.findAncestors` takes the options (`unwrap: []` for every stored ancestor).
+	 */
 	async findAncestors(refOrRecord: AnyRefOrRecord | undefined): Promise<AnyTrackedRecord[]> {
 		if (!refOrRecord) return []
 		return findAncestors({
@@ -216,7 +220,8 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 
 	/**
 	 * The ancestors of each element, one list per input position: one read per ancestor level, a record given used as
-	 * given. Bottom-up, no options, as `findAncestors` here; `query.findAncestorsOfEach` takes them.
+	 * given. Bottom-up, no options, as `findAncestors` here: the dialecte's transparent elements are left out, as
+	 * `query.findAncestorsOfEach` does by default; `query.findAncestorsOfEach` takes the options.
 	 */
 	async findAncestorsOfEach(
 		refsOrRecords: ReadonlyArray<AnyRefOrRecord>,

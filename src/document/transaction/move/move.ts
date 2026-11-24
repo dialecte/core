@@ -131,9 +131,14 @@ async function assertNotIntoOwnSubtree<GenericConfig extends AnyDialecteConfig>(
 	if (newParent.id === record.parent?.id) return
 	const inside =
 		newParent.id === record.id ||
-		(await findAncestors({ context, ref: toRef(newParent) as AnyRefOf<GenericConfig> })).some(
-			(ancestor) => ancestor.id === record.id,
-		)
+		// every stored ancestor: a transparent element moved under its own descendant is still found
+		(
+			await findAncestors({
+				context,
+				ref: toRef(newParent) as AnyRefOf<GenericConfig>,
+				options: { unwrap: [] },
+			})
+		).some((ancestor) => ancestor.id === record.id)
 	invariant(!inside, {
 		detail: `Cannot move ${record.tagName} under itself or one of its descendants (${newParent.tagName} ${newParent.id})`,
 		key: 'MOVE_INTO_OWN_SUBTREE',
