@@ -1,5 +1,6 @@
 import { makeRecord } from '../contract/store-contract.fixtures'
 import { DexieStore } from './dexie-store'
+import { holdNextOpen } from './dexie-store.connection.fixtures'
 
 import Dexie from 'dexie'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -25,10 +26,6 @@ afterEach(async () => {
 	for (const store of opened.splice(0)) await store.close()
 	for (const name of names.splice(0)) await Dexie.delete(name)
 })
-
-function documentOfB(): DocumentRecord {
-	return documentOf('b')
-}
 
 function documentOf(id: string): DocumentRecord {
 	return { id, name: id, extension: '.xml', configKey: 'default', createdAt: 0, status: 'ready' }
@@ -68,40 +65,6 @@ function reloadAfter(params: {
 		}
 		return answer
 	} as never
-}
-
-/**
- * The next open of the database by a connection other than the one the store holds now (a reload's registry read, a
- * schema reopen's new connection) held until released: `reached` once it is.
- */
-function holdNextOpen(params: { store: DexieStore }): {
-	reached: Promise<void>
-	release: () => void
-	restore: () => void
-} {
-	const { store } = params
-	const reached = Promise.withResolvers<void>()
-	const released = Promise.withResolvers<void>()
-	const original = Dexie.prototype.open
-	const current = store.getDatabaseInstance()
-	let held = false
-	Dexie.prototype.open = function openHeld(this: Dexie) {
-		if (held || this.name !== store.name || this === current) {
-			return original.call(this)
-		}
-		held = true
-		reached.resolve()
-		return released.promise.then(() => original.call(this))
-	} as typeof Dexie.prototype.open
-	return {
-		reached: reached.promise,
-		release: function release() {
-			released.resolve()
-		},
-		restore: function restore() {
-			Dexie.prototype.open = original
-		},
-	}
 }
 
 function commitCreating(params: {
@@ -177,31 +140,19 @@ describe('DexieStore - a write whose connection is reloaded meanwhile', () => {
 describe('DexieStore - a write while its connection closes or reloads', () => {
 	it('a second open of an open store while a commit starts → its connection kept, never closed under the commit', async () => {
 		const store = await seededStore()
-		const reached = Promise.withResolvers<void>()
-		const release = Promise.withResolvers<void>()
-		const original = Dexie.prototype.open
-		let held = false
-		// the first open of the database by a reload (its registry read) held
-		Dexie.prototype.open = function openHeld(this: Dexie) {
-			if (held || this.name !== store.name || this === store.getDatabaseInstance()) {
-				return original.call(this)
-			}
-			held = true
-			reached.resolve()
-			return release.promise.then(() => original.call(this))
-		} as typeof Dexie.prototype.open
+		const hold = holdNextOpen({ store })
 		try {
 			// a reload, if the open makes one, held at its registry read: the old connection closed by then
 			const reopening = store.open()
-			await Promise.race([reached.promise, reopening])
+			await Promise.race([hold.reached, reopening])
 			const committing = outcomeOf(commitCreating({ store, id: 'r2' }))
 			// the commit runs its steps up to its transaction in microtasks; the held open needs the event loop
-			release.resolve()
+			hold.release()
 			const [outcome] = await Promise.all([committing, reopening])
-			const heldIds = await idsHeld({ name: store.name })
-			expect({ outcome, held: heldIds }).toEqual({ outcome: 'landed', held: ['r1', 'r2'] })
+			const held = await idsHeld({ name: store.name })
+			expect({ outcome, held }).toEqual({ outcome: 'landed', held: ['r1', 'r2'] })
 		} finally {
-			Dexie.prototype.open = original
+			hold.restore()
 		}
 	})
 
@@ -291,7 +242,13 @@ describe('DexieStore - a write while a reload of its connection runs', () => {
 		const hold = holdNextOpen({ store })
 		try {
 			const reopening = store.open()
-			await hold.reached
+			// an open after a close always makes the connection again: its reload is what the case holds
+			await Promise.race([
+				hold.reached,
+				reopening.then(function settledUnheld() {
+					throw new Error('the open settled before its reload was held')
+				}),
+			])
 			// the old connection closed, the new one not made yet: the commit waits for the reload under the lock
 			const committing = outcomeOf(commitCreating({ store, id: 'r2' }))
 			hold.release()
@@ -303,12 +260,17 @@ describe('DexieStore - a write while a reload of its connection runs', () => {
 		}
 	})
 
-	it('a commit started while another document’s registration reopens the schema → waits for it and lands', async () => {
+	it('(pin) a commit started while another document’s registration reopens the schema → waits for it and lands', async () => {
 		const store = await seededStore()
 		const hold = holdNextOpen({ store })
 		try {
-			const registering = store.registerDocument(documentOfB())
-			await hold.reached
+			const registering = store.registerDocument(documentOf('b'))
+			await Promise.race([
+				hold.reached,
+				registering.then(function settledUnheld() {
+					throw new Error('the registration settled before its schema reopen was held')
+				}),
+			])
 			const committing = outcomeOf(commitCreating({ store, id: 'r2' }))
 			hold.release()
 			const [outcome] = await Promise.all([committing, registering])

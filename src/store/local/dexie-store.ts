@@ -70,7 +70,7 @@ import type {
 	StoreVersion,
 	WriteOutcome,
 } from '../store.types'
-import type { HistoryStep } from '../store.types'
+import type { DistributiveOmit, HistoryStep } from '../store.types'
 import type {
 	DexieStoreOptions,
 	EngineMetaRow,
@@ -185,11 +185,12 @@ export class DexieStore implements Store {
 	/** Serialization lock for schema-changing operations */
 	private schemaLock: Promise<void> = Promise.resolve()
 	/**
-	 * Set when another connection/realm upgraded the shared schema (an import
-	 * elsewhere added an xel_<id> table) and IndexedDB closed our connection via
-	 * `versionchange`. The next data access self-heals through ensureCurrentSchema.
+	 * Set when the connection does not hold the shared schema as it is: before the first open (the connection is not
+	 * made yet), after the store closed its own connection, or when another connection/realm upgraded the schema (an
+	 * import elsewhere added an xel_<id> table) and IndexedDB closed ours via `versionchange`. The next data access
+	 * self-heals through ensureCurrentSchema.
 	 */
-	private stale = false
+	private stale = true
 	/**
 	 * Record count per document, as `count` last read it, with the document's version count it was read at: answered
 	 * again only while the document is at that version (IndexedDB counts by iterating: about 50 ms for 90,000 records).
@@ -206,6 +207,8 @@ export class DexieStore implements Store {
 	 * granted (none while this connection holds none).
 	 */
 	private openHold: Promise<() => void> | undefined
+	/** `openHold` once granted (the same promise): an operation then runs on at once, without a turn of waiting. */
+	private grantedHold: Promise<() => void> | undefined
 	/** This store's own destroy while it runs: an operation started meanwhile goes on once it has ended. */
 	private destroying: Promise<void> | undefined
 	/** Settles once this connection's last hold of the open lock is let go for good. */
@@ -261,7 +264,7 @@ export class DexieStore implements Store {
 		if (this.operations.count === 0) {
 			const holdEnded = this.openHoldEnded
 			this.letOpenHoldGo()
-			this.db.close()
+			this.closeConnection()
 			await holdEnded
 			return
 		}
@@ -379,8 +382,22 @@ export class DexieStore implements Store {
 	 * counted in the realm. Waits while a destroy holds the lock alone; an open at once shares the hold.
 	 */
 	private async holdOpen(): Promise<void> {
-		this.openHold ??= this.askOpenHold()
+		if (this.openHold === undefined) {
+			const asked = this.askOpenHold()
+			this.openHold = asked
+			void asked.then(this.markGranted.bind(this, asked))
+		}
 		await this.openHold
+	}
+
+	/** The hold granted, unless let go or asked again since. */
+	private markGranted(asked: Promise<() => void>): void {
+		if (this.openHold === asked) this.grantedHold = asked
+	}
+
+	/** Whether this connection's open hold is granted now: an operation needs no wait for it. */
+	private holdsOpen(): boolean {
+		return this.openHold !== undefined && this.grantedHold === this.openHold
 	}
 
 	/** The open lock asked for shared, its release once granted; with no Web Locks, counted in the realm. */
@@ -426,21 +443,24 @@ export class DexieStore implements Store {
 	 * removal broadcast arrives, so a subsequent read sees the new partition.
 	 */
 	async reconcile(): Promise<void> {
-		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-		})
+		return this.operation(() => this.currentConnection())
 	}
 
 	/**
 	 * Read-only probe: can this connection serve the document's records right now?
 	 * True only when the document is registered here and its backing table exists
-	 * in the current schema. Does not mutate - call reconcile() first to self-heal.
+	 * in the current schema. Does not mutate - call reconcile() first to self-heal (the Store contract's probe, read by
+	 * the Project's document status). Answered once no reload of the connection runs (an open making it again is
+	 * waited for); it never starts one itself, so before a store's first open, or before an open after a close queues
+	 * its reload, it answers false.
 	 */
 	async isDocumentReadable(documentId: string): Promise<boolean> {
 		return this.operation(async () => {
+			// once no reload runs (an open making the connection again is waited for); a probe: it starts none itself
+			await this.schemaLock.catch(ignoreSchemaFailure)
 			if (!this.knownDocuments.has(documentId)) return false
 			const tableName = this.resolveTableName(documentId)
-			return this.db.isOpen() && this.db.tables.some((t) => t.name === tableName)
+			return this.db.isOpen() && this.db.tables.some((table) => table.name === tableName)
 		})
 	}
 
@@ -469,16 +489,30 @@ export class DexieStore implements Store {
 	// --- Record access ---
 
 	async get(id: string, documentId: string): Promise<AnyRawRecord | undefined> {
-		return this.operation(async () => {
-			const table = await this.recordTable(documentId)
-			return table?.get(id)
+		return this.operation(() => {
+			const recordName = this.resolveTableName(documentId)
+			return this.read({
+				documentId,
+				tables: [],
+				onUnregistered: noRecord,
+				run: function getInTransaction(db) {
+					return db.table<AnyRawRecord>(recordName).get(id)
+				},
+			})
 		})
 	}
 
 	async getByDocumentId(documentId: string): Promise<AnyRawRecord[]> {
-		return this.operation(async () => {
-			const table = await this.recordTable(documentId)
-			return table ? table.toArray() : []
+		return this.operation(() => {
+			const recordName = this.resolveTableName(documentId)
+			return this.read({
+				documentId,
+				tables: [],
+				onUnregistered: noRecords,
+				run: function listInTransaction(db) {
+					return db.table<AnyRawRecord>(recordName).toArray()
+				},
+			})
 		})
 	}
 
@@ -541,11 +575,17 @@ export class DexieStore implements Store {
 		return this.operation(async () => {
 			const { writeId } = params
 			const documents = await this.getDocumentsUnguarded()
-			await this.ensureCurrentSchema()
-			const committed = await this.db
-				.table<ChangeLogEntry>(TABLE_CHANGELOG)
-				.filter((entry) => entry.writeId === writeId)
-				.first()
+			const committed = await this.read({
+				tables: [TABLE_CHANGELOG],
+				run: function committedInTransaction(db) {
+					return db
+						.table<ChangeLogEntry>(TABLE_CHANGELOG)
+						.filter(function ofTheWrite(entry) {
+							return entry.writeId === writeId
+						})
+						.first()
+				},
+			})
 			return writeOutcomeOf({ documents, writeId, committed: committed !== undefined })
 		})
 	}
@@ -758,25 +798,36 @@ export class DexieStore implements Store {
 	}
 
 	async getHistoryStatus(documentId: string): Promise<{ canUndo: boolean; canRedo: boolean }> {
-		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const head = await this.readHead({ documentId })
-			const next = await this.db
-				.table<ChangeLogEntry>(TABLE_CHANGELOG)
-				.where({ documentId, sequenceNumber: head + 1 })
-				.first()
-			return { canUndo: head > 0, canRedo: next !== undefined }
-		})
+		return this.operation(() =>
+			// the head and the next entry read in one transaction: never a head of one moment beside an entry of another
+			this.read({
+				tables: [TABLE_META, TABLE_CHANGELOG],
+				run: async function statusInTransaction(db) {
+					const head = await getHead({ meta: db.table<ChangeLogMeta>(TABLE_META), documentId })
+					const next = await db
+						.table<ChangeLogEntry>(TABLE_CHANGELOG)
+						.where({ documentId, sequenceNumber: head + 1 })
+						.first()
+					return { canUndo: head > 0, canRedo: next !== undefined }
+				},
+			}),
+		)
 	}
 
 	async getChangeLog(documentId: string): Promise<ChangeLogEntry[]> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const entries = await this.db
-				.table<ChangeLogEntry>(TABLE_CHANGELOG)
-				.where({ documentId })
-				.sortBy('sequenceNumber')
-			return entries.filter((entry) => entry.sequenceNumber !== DISCARDED_SEQUENCE)
+			const entries = await this.read({
+				tables: [TABLE_CHANGELOG],
+				run: function changeLogInTransaction(db) {
+					return db
+						.table<ChangeLogEntry>(TABLE_CHANGELOG)
+						.where({ documentId })
+						.sortBy('sequenceNumber')
+				},
+			})
+			return entries.filter(function applied(entry) {
+				return entry.sequenceNumber !== DISCARDED_SEQUENCE
+			})
 		})
 	}
 
@@ -784,7 +835,8 @@ export class DexieStore implements Store {
 
 	async addBlob(entry: BlobRecord, data: Blob): Promise<void> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
+			// the registry this connection knows, once current: a document registered elsewhere meanwhile is known
+			await this.currentConnection()
 			invariantBlobOwnerKnown(this.knownDocuments, entry.documentId)
 			const checked = toJsonCopy({ value: entry })
 			const blobTableOf = blobTableName(entry.documentId)
@@ -802,40 +854,58 @@ export class DexieStore implements Store {
 
 	async getBlob(blobId: string): Promise<{ entry: BlobRecord; data: Blob } | undefined> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const entry = await this.db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-			if (!entry) return undefined
-			const row = await this.db
-				.table<{ id: string; data: Blob }>(blobTableName(entry.documentId))
-				.get(blobId)
-			if (!row) return undefined
-			return { entry, data: row.data }
+			// which document's table holds its data, read first; the entry and the data then read in one transaction
+			const owner = await this.read({
+				tables: [TABLE_BLOBS],
+				run: async function ownerInTransaction(db) {
+					const entry = await db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+					return entry?.documentId
+				},
+			})
+			if (owner === undefined) return undefined
+			const blobTableOf = blobTableName(owner)
+			// gated on the blob table it reads: gone with its document, the blob reads as absent
+			return this.read({
+				requiredTable: blobTableOf,
+				tables: [TABLE_BLOBS, blobTableOf],
+				onUnregistered: noBlob,
+				run: async function blobInTransaction(db) {
+					const entry = await db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+					const row = await db.table<{ id: string; data: Blob }>(blobTableOf).get(blobId)
+					return entry && row ? { entry, data: row.data } : undefined
+				},
+			})
 		})
 	}
 
 	async getBlobsByDocument(documentId: string): Promise<BlobRecord[]> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
-			return all.filter((b) => b.attachedTo.some((a) => a.documentId === documentId))
+			const all = await this.read({ tables: [TABLE_BLOBS], run: readAllBlobs })
+			return all.filter(function attachedToTheDocument(blob) {
+				return blob.attachedTo.some(function ofTheDocument(attached) {
+					return attached.documentId === documentId
+				})
+			})
 		})
 	}
 
 	async getBlobsByRecord(documentId: string, recordRef: string): Promise<BlobRecord[]> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
-			return all.filter((b) =>
-				b.attachedTo.some((a) => a.documentId === documentId && a.recordRef === recordRef),
-			)
+			const all = await this.read({ tables: [TABLE_BLOBS], run: readAllBlobs })
+			return all.filter(function attachedToTheRecord(blob) {
+				return blob.attachedTo.some(function ofTheRecord(attached) {
+					return attached.documentId === documentId && attached.recordRef === recordRef
+				})
+			})
 		})
 	}
 
 	async getStandaloneBlobs(): Promise<BlobRecord[]> {
 		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-			const all = await this.db.table<BlobRecord>(TABLE_BLOBS).toArray()
-			return all.filter((b) => b.attachedTo.length === 0)
+			const all = await this.read({ tables: [TABLE_BLOBS], run: readAllBlobs })
+			return all.filter(function attachedToNothing(blob) {
+				return blob.attachedTo.length === 0
+			})
 		})
 	}
 
@@ -851,12 +921,13 @@ export class DexieStore implements Store {
 					}
 					// the blob checked first, then the reference
 					const checked = toJsonCopy({ value: ref })
-					const exists = entry.attachedTo.some(
-						(attached) =>
+					const exists = entry.attachedTo.some(function sameAttachment(attached) {
+						return (
 							attached.documentId === ref.documentId &&
 							attached.recordRef === ref.recordRef &&
-							attached.attribute === ref.attribute,
-					)
+							attached.attribute === ref.attribute
+						)
+					})
 					if (exists) return
 					await blobs.update(blobId, { attachedTo: [...entry.attachedTo, checked] })
 				},
@@ -874,10 +945,9 @@ export class DexieStore implements Store {
 					if (!entry) {
 						throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
 					}
-					const attachedTo = entry.attachedTo.filter(
-						(attached) =>
-							!(attached.documentId === ref.documentId && attached.recordRef === ref.recordRef),
-					)
+					const attachedTo = entry.attachedTo.filter(function otherAttachment(attached) {
+						return !(attached.documentId === ref.documentId && attached.recordRef === ref.recordRef)
+					})
 					await blobs.update(blobId, { attachedTo })
 				},
 			})
@@ -933,12 +1003,27 @@ export class DexieStore implements Store {
 			// closed while it waited: refused before it holds the store open again
 			if (this.closed) throwStoreClosed({ storeName: this.name })
 		}
-		// counted open again after its own destroy (or a destroy racing its open), as a SQLite store
-		// connects again on its next operation
-		if (this.openHold === undefined) await this.holdOpen()
+		// counted open before it touches the database: its open hold asked (again after its own destroy, as a SQLite store
+		// connects again on its next operation) or still pending (an open waiting for the lock another connection holds
+		// alone - a destroy): never run while a destroy may delete the database under it; resolved at once once granted
+		if (!this.holdsOpen()) {
+			await this.holdOpen()
+			// this store's own destroy started while it waited (not counted yet, its hold let go by that destroy): it
+			// waits for the destroy to end and holds again, as one started during that destroy does
+			if (this.destroying || !this.holdsOpen()) return this.operation(run)
+		}
 		// closed while it waited: refused, as one started after the close is
 		if (this.closed) throwStoreClosed({ storeName: this.name })
 		return this.tracked(run)
+	}
+
+	/**
+	 * The store's own connection closed (a close, the last operation ending on a closed store): marked stale, so the next
+	 * operation - one started before `open()` queues its reload included - makes the connection again first.
+	 */
+	private closeConnection(): void {
+		this.db.close()
+		this.stale = true
 	}
 
 	/** Counted while it runs; the last one to end on a closed store closes the connection. */
@@ -948,7 +1033,7 @@ export class DexieStore implements Store {
 			return await run()
 		} finally {
 			// closed before `end` resolves a waiting open(), which then reopens
-			if (this.operations.count === 1 && this.closed) this.db.close()
+			if (this.operations.count === 1 && this.closed) this.closeConnection()
 			this.operations.end()
 		}
 	}
@@ -1071,14 +1156,22 @@ export class DexieStore implements Store {
 	}
 
 	private async getDocumentsUnguarded(): Promise<DocumentRecord[]> {
-		await this.ensureCurrentSchema()
-		const rows = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+		const rows = await this.read({
+			tables: [TABLE_DOCUMENTS],
+			run: function documentsInTransaction(db) {
+				return db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+			},
+		})
 		return rows.map(withStatus)
 	}
 
 	private async getDocumentUnguarded(documentId: string): Promise<DocumentRecord | undefined> {
-		await this.ensureCurrentSchema()
-		const row = await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+		const row = await this.read({
+			tables: [TABLE_DOCUMENTS],
+			run: function documentInTransaction(db) {
+				return db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+			},
+		})
 		return row && withStatus(row)
 	}
 
@@ -1235,21 +1328,27 @@ export class DexieStore implements Store {
 						await measured({
 							perf,
 							name: 'core::store::bulkWrite::add',
-							work: () => addRecords({ table, creates, documentId }),
+							work: function addCreates() {
+								return addRecords({ table, creates, documentId })
+							},
 						})
 					}
 					if (updates?.length) {
 						await measured({
 							perf,
 							name: 'core::store::bulkWrite::update',
-							work: () => patchRecords({ table, updates }),
+							work: function applyPatches() {
+								return patchRecords({ table, updates })
+							},
 						})
 					}
 					if (deletes?.length) {
 						await measured({
 							perf,
 							name: 'core::store::bulkWrite::delete',
-							work: () => table.bulkDelete(deletes),
+							work: function deleteRecords() {
+								return table.bulkDelete(deletes)
+							},
 						})
 					}
 					await bumpVersion({ meta, documentId })
@@ -1267,18 +1366,27 @@ export class DexieStore implements Store {
 	 * with no engine row yet (written by a store never opened) has it drawn first.
 	 */
 	private async readVersionUnguarded(params: { documentId: string }): Promise<StoreVersion> {
-		await this.ensureCurrentSchema()
-		const db = this.db
-		const meta = db.table(TABLE_META)
-		const read = await db.transaction('r', meta, async () => {
-			const [engine, current] = await meta.bulkGet([ENGINE_META_KEY, versionKey(params.documentId)])
-			return {
-				engineId: (engine as EngineMetaRow | undefined)?.engineId,
-				count: (current as ChangeLogMeta | undefined)?.value ?? 0,
-			}
+		const { documentId } = params
+		const read = await this.read({
+			tables: [TABLE_META],
+			run: async function versionInTransaction(db) {
+				const [engine, current] = await db
+					.table(TABLE_META)
+					.bulkGet([ENGINE_META_KEY, versionKey(documentId)])
+				return {
+					engineId: (engine as EngineMetaRow | undefined)?.engineId,
+					count: (current as ChangeLogMeta | undefined)?.value ?? 0,
+				}
+			},
 		})
 		if (read.engineId !== undefined) return { engineId: read.engineId, count: read.count }
-		const engineId = await this.ensureEngineRow()
+		// a database no store opened yet: its engine row drawn through the gate, add-if-absent
+		const engineId = await this.inTransaction({
+			tables: [TABLE_META],
+			run: function drawInTransaction(db) {
+				return engineIdIn({ meta: db.table(TABLE_META) })
+			},
+		})
 		return { engineId, count: read.count }
 	}
 
@@ -1286,7 +1394,8 @@ export class DexieStore implements Store {
 	 * The database's engine id: its `_meta` row read first; drawn, add-if-absent in a read-write transaction, only when
 	 * none is there - an open that finds it writes nothing. Each transaction takes its table from the connection it runs
 	 * on, at the moment it starts: a second open of the store may reload the connection between the two (a table of the
-	 * connection before is refused by the one after).
+	 * connection before is refused by the one after). Called by the reload only, under the schema lock: never through
+	 * the gate (a gated call inside the lock would wait for itself).
 	 */
 	private async ensureEngineRow(): Promise<string> {
 		const reading = this.db
@@ -1303,13 +1412,13 @@ export class DexieStore implements Store {
 	/** How many writes a `ready` document has taken, read with its registry row in one transaction. */
 	private async getExportVersion(params: { documentId: string }): Promise<number | undefined> {
 		const { documentId } = params
-		await this.ensureCurrentSchema()
-		const documents = this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
-		const meta = this.db.table<ChangeLogMeta>(TABLE_META)
-		return this.db.transaction('r', documents, meta, async () => {
-			const row = await documents.get(documentId)
-			if (!row || withStatus(row).status !== 'ready') return undefined
-			return (await meta.get(versionKey(documentId)))?.value ?? 0
+		return this.read({
+			tables: [TABLE_DOCUMENTS, TABLE_META],
+			run: async function exportVersionInTransaction(db) {
+				const row = await db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+				if (!row || withStatus(row).status !== 'ready') return undefined
+				return (await db.table<ChangeLogMeta>(TABLE_META).get(versionKey(documentId)))?.value ?? 0
+			},
 		})
 	}
 
@@ -1317,42 +1426,67 @@ export class DexieStore implements Store {
 	 * The count kept, when the document is still at the version it was counted at (read with it in one transaction):
 	 * a write through another connection moves the version, so the records are counted again.
 	 */
-	private async countUnguarded(documentId: string): Promise<number> {
-		// a connection made stale by another one forgets its counts before answering from them
-		await this.ensureCurrentSchema()
-		const table = await this.recordTable(documentId)
-		if (!table) return 0
-		// the record table's own connection: the store may have reloaded its connection while the table was looked up
-		const meta = table.db.table<ChangeLogMeta>(TABLE_META)
-		return table.db.transaction('r', table, meta, async () => {
-			const at = (await meta.get(versionKey(documentId)))?.value ?? 0
-			const known = this.recordCounts.get(documentId)
-			if (known?.at === at) return known.count
-			const count = await table.count()
-			this.recordCounts.set(documentId, { count, at })
-			return count
+	private countUnguarded(documentId: string): Promise<number> {
+		const recordName = this.resolveTableName(documentId)
+		const counts = this.recordCounts
+		return this.read({
+			documentId,
+			tables: [TABLE_META],
+			onUnregistered: noCount,
+			run: async function countAtVersion(db) {
+				const at =
+					(await db.table<ChangeLogMeta>(TABLE_META).get(versionKey(documentId)))?.value ?? 0
+				const known = counts.get(documentId)
+				if (known?.at === at) return known.count
+				const count = await db.table<AnyRawRecord>(recordName).count()
+				counts.set(documentId, { count, at })
+				return count
+			},
 		})
 	}
 
-	private async countStored(documentId: string): Promise<number> {
-		const table = await this.recordTable(documentId)
-		return table ? table.count() : 0
+	private countStored(documentId: string): Promise<number> {
+		const recordName = this.resolveTableName(documentId)
+		return this.read({
+			documentId,
+			tables: [],
+			onUnregistered: noCount,
+			run: function countInTransaction(db) {
+				return db.table<AnyRawRecord>(recordName).count()
+			},
+		})
 	}
 
-	private async getByTagNameInDocumentUnguarded(
+	private getByTagNameInDocumentUnguarded(
 		tagName: string,
 		documentId: string,
 	): Promise<AnyRawRecord[]> {
-		const table = await this.recordTable(documentId)
-		return table ? table.where({ tagName }).toArray() : []
+		const recordName = this.resolveTableName(documentId)
+		return this.read({
+			documentId,
+			tables: [],
+			onUnregistered: noRecords,
+			run: function tagInTransaction(db) {
+				return db.table<AnyRawRecord>(recordName).where({ tagName }).toArray()
+			},
+		})
 	}
 
-	private async getManyUnguarded(
+	private getManyUnguarded(
 		ids: string[],
 		documentId: string,
 	): Promise<(AnyRawRecord | undefined)[]> {
-		const table = await this.recordTable(documentId)
-		return table ? table.bulkGet(ids) : ids.map(() => undefined)
+		const recordName = this.resolveTableName(documentId)
+		return this.read({
+			documentId,
+			tables: [],
+			onUnregistered: function noneOfThem() {
+				return ids.map(noRecord)
+			},
+			run: function manyInTransaction(db) {
+				return db.table<AnyRawRecord>(recordName).bulkGet(ids)
+			},
+		})
 	}
 
 	/** Build Dexie stores object from current knownDocuments */
@@ -1480,14 +1614,6 @@ export class DexieStore implements Store {
 		return recordTableName(documentId)
 	}
 
-	/** The document's history head, read on the connection current now (before a write's transaction). */
-	private readHead(params: { documentId: string }): Promise<number> {
-		return getHead({
-			meta: this.db.table<ChangeLogMeta>(TABLE_META),
-			documentId: params.documentId,
-		})
-	}
-
 	/**
 	 * A transaction on the store's connection once no reload of it runs (every reload holds the schema lock) and it is
 	 * current: the connection and the tables taken in the step that starts the transaction, `run` handed that
@@ -1495,12 +1621,20 @@ export class DexieStore implements Store {
 	 * in the transaction too; a document the connection does not hold is refused `DOCUMENT_NOT_REGISTERED` (or answered
 	 * `onUnregistered`). A connection closed under the transaction (a reload taking the lock in that very step, a
 	 * versionchange from another tab) aborts it before it writes anything: it is run once more, on the connection made
-	 * again.
+	 * again. Never called from inside `withSchemaLock` (the reload, a registration, a removal): it waits for the lock,
+	 * so a call there would wait for itself.
 	 */
 	private inTransaction<GenericAnswer>(
 		params: StoreTransactionParams<GenericAnswer>,
 	): Promise<GenericAnswer> {
 		return this.runTransaction({ params, retried: false })
+	}
+
+	/** `inTransaction` in read mode: a read on the current connection, made again once if it closes under the read. */
+	private read<GenericAnswer>(
+		params: DistributiveOmit<StoreTransactionParams<GenericAnswer>, 'mode'>,
+	): Promise<GenericAnswer> {
+		return this.inTransaction({ ...params, mode: 'r' })
 	}
 
 	/** `inTransaction`, `retried` once a connection closed under its first run. */
@@ -1520,6 +1654,13 @@ export class DexieStore implements Store {
 				throwDocumentNotRegistered({ documentId, what: 'records' })
 			}
 			scope.unshift(recordName)
+		}
+		// a table of the transaction that may be gone with its document: answered `onUnregistered` then
+		if (
+			params.requiredTable !== undefined &&
+			!db.tables.some((table) => table.name === params.requiredTable)
+		) {
+			return params.onUnregistered()
 		}
 		try {
 			// an async callback: Dexie keeps the transaction open across the native awaits of an async function only
@@ -1557,7 +1698,8 @@ export class DexieStore implements Store {
 	 * of it answers empty, it is not a backend error.
 	 */
 	private async recordTable(documentId: string): Promise<Table<AnyRawRecord> | undefined> {
-		await this.ensureCurrentSchema()
+		// once no reload runs: the table list read is never the one of a connection a reload is replacing
+		await this.currentConnection()
 		const tableName = this.resolveTableName(documentId)
 		if (!this.db.tables.some((table) => table.name === tableName)) return undefined
 		return this.db.table<AnyRawRecord>(tableName)
@@ -1597,6 +1739,31 @@ async function bumpVersion(params: {
 	await meta.put({ key, value: count })
 	const engineId = await engineIdIn({ meta })
 	return { engineId, count }
+}
+
+/** What a read of a document the connection does not hold answers: no record. */
+function noRecord(): undefined {
+	return undefined
+}
+
+/** No records. */
+function noRecords(): AnyRawRecord[] {
+	return []
+}
+
+/** A count of 0. */
+function noCount(): number {
+	return 0
+}
+
+/** No blob. */
+function noBlob(): undefined {
+	return undefined
+}
+
+/** Every blob entry of the project. */
+function readAllBlobs(db: Dexie): Promise<BlobRecord[]> {
+	return db.table<BlobRecord>(TABLE_BLOBS).toArray()
 }
 
 /** `work` measured under `name`: its stop told however it ends, so an aborted transaction leaves no open measure. */

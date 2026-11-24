@@ -13,6 +13,7 @@ import {
 	recordTableName,
 } from '../store.constants'
 import { DexieStore, buildDexieSchema } from './dexie-store'
+import { holdNextOpen } from './dexie-store.connection.fixtures'
 import { DEFAULT_RECORD_SCHEMA, ENGINE_META_KEY, VERSION_KEY_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
@@ -177,37 +178,46 @@ describe('DexieStore - the versions in _meta', () => {
 		expect(ofSecond.engineId).toBe(ofFirst.engineId)
 	})
 
-	it('the engine row drawn while the store reloads its connection (a second open at once) → drawn on the connection it then holds', async () => {
+	it('the version read while the store makes its connection again, no engine row drawn yet → the engine row of the connection made', async () => {
 		const name = nameOfCase()
 		const store = await openStore(name)
-		const first = store.getDatabaseInstance()
 		// a database with no engine row yet, as a store first opening a fresh one finds it
-		await first.table(TABLE_META).delete(ENGINE_META_KEY)
-		const reloaded = Promise.withResolvers<void>()
-		const drawRead = Promise.withResolvers<void>()
-		const original = first.transaction.bind(first)
-		let reads = 0
-		// the engine row's read answers only once the store has reloaded: the draw that follows meets the new connection
-		first.transaction = async function readAcrossAReload(...args: unknown[]) {
-			const answer = await (original as (...given: unknown[]) => Promise<unknown>)(...args)
-			if (args[0] !== 'r') return answer
-			reads += 1
-			// the version's read first, then the engine row's read before its draw
-			if (reads !== 2) return answer
-			drawRead.resolve()
-			await reloaded.promise
-			return answer
-		} as typeof first.transaction
-		const reading = store.readVersion({ documentId: 'a' }).then(
-			(version) => ({ engineId: version.engineId }),
-			(thrown: unknown) => ({ thrown: String(thrown) }),
-		)
-		await drawRead.promise
-		await (store as unknown as { reloadFromPersisted: () => Promise<void> }).reloadFromPersisted()
-		reloaded.resolve()
-		const answered = await reading
+		await store.getDatabaseInstance().table(TABLE_META).delete(ENGINE_META_KEY)
+		await store.close()
+		const hold = holdNextOpen({ store })
+		try {
+			const reopening = store.open()
+			await Promise.race([
+				hold.reached,
+				reopening.then(function settledUnheld() {
+					throw new Error('the open settled before its reload was held')
+				}),
+			])
+			// the old connection closed, the new one not made yet: the version waits for it
+			const reading = store.readVersion({ documentId: 'a' }).then(
+				function engineOf(version) {
+					return { engineId: version.engineId }
+				},
+				function refusalOf(thrown: unknown) {
+					return { thrown: String(thrown) }
+				},
+			)
+			hold.release()
+			const [answered] = await Promise.all([reading, reopening])
+			const engine = await store.getDatabaseInstance().table(TABLE_META).get(ENGINE_META_KEY)
+			expect(answered).toEqual({ engineId: engine?.engineId })
+		} finally {
+			hold.restore()
+		}
+	})
+
+	it('(pin) the version read on an open store whose engine row is gone → the row drawn, the version under it', async () => {
+		const name = nameOfCase()
+		const store = await openStore(name)
+		await store.getDatabaseInstance().table(TABLE_META).delete(ENGINE_META_KEY)
+		const version = await versionOf({ store, documentId: 'a' })
 		const engine = await store.getDatabaseInstance().table(TABLE_META).get(ENGINE_META_KEY)
-		expect(answered).toEqual({ engineId: engine?.engineId })
+		expect(version).toEqual({ engineId: engine?.engineId, count: 0 })
 	})
 
 	it('a record count, then a write through another connection → the count after the write', async () => {
