@@ -1,6 +1,7 @@
 import { getRecords } from '../../get/record'
 import { isRecordGiven } from '../../get/record/is-record-given'
 import { readUnknownRecords } from '../../get/record/read-unknown-records'
+import { isUnwrapped, unwrapSetOf } from '../../tree-filter'
 
 import { toRef } from '@/helpers'
 
@@ -17,8 +18,9 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  * together in one `getRecords`. Then each level's parents not read yet in this call are read in one
  * `getRecords` (staged operations and the transaction cache first, as `getRecords` resolves them), until
  * every chain stops at its `depth`, at its `stopAtTagName` element (included) or at the root. The elements
- * `unwrap` lists (default: the dialecte's `transparentElements`) are walked through, left out of the chain: they
- * take no `depth` level and `stopAtTagName` never matches them; `unwrap: []` keeps every stored ancestor. A parent
+ * `unwrap` lists (default: the dialecte's `transparentElements`) are walked through, left out of the chain, when they
+ * are in their own namespace (a same-name element in another namespace is an ancestor like any other): they take no
+ * `depth` level and `stopAtTagName` never matches them; `unwrap: []` keeps every stored ancestor. A parent
  * cycle (a corrupt store) ends its walk once it has gone through as many records as were read. An ancestor
  * shared by several elements is read once; each position gets its own shallow copy of it.
  *
@@ -41,9 +43,10 @@ export async function findAncestorsOfEach<
 	const { context, refsOrRecords, options } = params
 	const maxDepth = options?.depth ?? Infinity
 	const stopAtTagName = options?.stopAtTagName
-	const unwrapped = new Set<string>(
-		options?.unwrap ?? context.dialecteConfig.transparentElements ?? [],
-	)
+	const unwrapSet = unwrapSetOf({
+		dialecteConfig: context.dialecteConfig,
+		tagNames: options?.unwrap ?? context.dialecteConfig.transparentElements ?? [],
+	})
 
 	const chains: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[][] = refsOrRecords.map(
 		() => [],
@@ -74,7 +77,7 @@ export async function findAncestorsOfEach<
 			if (!record || steps[position] >= known.size) continue
 			steps[position] += 1
 			// an unwrapped element is walked through: left out of the chain, it takes no depth level and never stops it
-			if (unwrapped.has(record.tagName)) {
+			if (isUnwrapped({ record, unwrapSet })) {
 				if (record.parent) next.push({ position, parent: record.parent })
 				continue
 			}

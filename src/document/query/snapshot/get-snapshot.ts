@@ -1,4 +1,4 @@
-import { applyOmit, applyOrder, applyUnwrap } from '../tree-filter'
+import { applyOmit, applyOrder, applyUnwrap, unwrapSetOf } from '../tree-filter'
 import { collectSnapshotRecords } from './collect-snapshot'
 import { recordsToTree } from './records-to-tree'
 
@@ -81,7 +81,10 @@ function toTree<GenericConfig extends AnyDialecteConfig>(
 		filters.unwrap ?? (transparentElements?.length ? [...transparentElements] : undefined)
 
 	if (unwrapTagNames?.length) {
-		tree = applyUnwrap({ tree, unwrapTagNames: unwrapTagNames as ElementsOf<GenericConfig>[] })
+		tree = applyUnwrap({
+			tree,
+			unwrapSet: unwrapSetOf({ dialecteConfig: context.dialecteConfig, tagNames: unwrapTagNames }),
+		})
 	}
 
 	// Final post-pass: order children by the config sequence (matches XML order).

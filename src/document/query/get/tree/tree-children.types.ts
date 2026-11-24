@@ -1,4 +1,4 @@
-import type { OmitSpecification } from '../../tree-filter'
+import type { OmitSpecification, UnwrapSet } from '../../tree-filter'
 import type { TreeSelect } from './get-tree.types'
 import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
 
@@ -7,9 +7,10 @@ export type TreeShaping<GenericConfig extends AnyDialecteConfig> = {
 	compiledOmit: OmitSpecification<GenericConfig>
 	/** The dialecte auto-recursion reads its self-recursive elements from; none, no auto-recursion. */
 	dialecteConfig?: GenericConfig
-	transparentElements?: readonly string[]
-	/** The tags the call hoists (`unwrap`, else the transparent elements): a node of these takes no depth level. */
-	unwrapTagNames: ReadonlySet<string>
+	/** The dialecte's transparent elements: a `select` is passed through them to their children. */
+	transparent: UnwrapSet
+	/** The elements the call hoists (`unwrap`, else the transparent elements): a node of these takes no depth level. */
+	unwrapSet: UnwrapSet
 	/** The ids that open (`expanded`); none, every node opens within `depth`. */
 	expanded?: ReadonlySet<string>
 }

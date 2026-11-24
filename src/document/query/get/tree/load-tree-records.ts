@@ -135,7 +135,7 @@ async function readLevels<GenericConfig extends AnyDialecteConfig>(params: {
 		}).map((kept) => ({
 			...kept,
 			reach: childReach<GenericConfig>({
-				tagName: kept.record.tagName,
+				record: kept.record,
 				reach: node.reach,
 				shaping,
 			}),

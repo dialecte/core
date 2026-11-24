@@ -8,6 +8,7 @@ import type {
 	ContentDefinition,
 	DeclarationDefinition,
 	ElementDefinition,
+	Namespace,
 	ResolvedDefinition,
 } from '@/types'
 
@@ -51,6 +52,27 @@ export function resolveDefinition(params: {
 	if (declaration === tagLevel && type === undefined && tagLevel.declarations === undefined)
 		return tagLevel
 	return resolved({ tagLevel, declaration, type })
+}
+
+/**
+ * The namespaces a tag is declared in: its tag level's and each of its declarations', each once (by URI); none for a tag
+ * the definition does not know. An element of the tag in any other namespace is not the dialecte's element.
+ *
+ * @intent list the namespaces an element is declared in, tell a dialecte element from a same-name foreign one
+ */
+export function declaredNamespaces(params: {
+	dialecteConfig: Pick<DefinitionConfig, 'definition'>
+	tagName: string
+}): readonly Namespace[] {
+	const { dialecteConfig, tagName } = params
+	const tagLevel = dialecteConfig.definition[tagName]
+	if (tagLevel === undefined) return []
+	const byUri = new Map<string, Namespace>()
+	for (const declaration of [tagLevel, ...Object.values(tagLevel.declarations ?? {})]) {
+		if (!byUri.has(declaration.namespace.uri))
+			byUri.set(declaration.namespace.uri, declaration.namespace)
+	}
+	return [...byUri.values()]
 }
 
 /**
