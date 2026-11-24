@@ -70,7 +70,7 @@ import type {
 	StoreVersion,
 	WriteOutcome,
 } from '../store.types'
-import type { HistoryStep } from '../store.types'
+import type { DistributiveOmit, HistoryStep } from '../store.types'
 import type {
 	DexieStoreOptions,
 	EngineMetaRow,
@@ -1006,7 +1006,12 @@ export class DexieStore implements Store {
 		// counted open before it touches the database: its open hold asked (again after its own destroy, as a SQLite store
 		// connects again on its next operation) or still pending (an open waiting for the lock another connection holds
 		// alone - a destroy): never run while a destroy may delete the database under it; resolved at once once granted
-		if (!this.holdsOpen()) await this.holdOpen()
+		if (!this.holdsOpen()) {
+			await this.holdOpen()
+			// this store's own destroy started while it waited (not counted yet, its hold let go by that destroy): it
+			// waits for the destroy to end and holds again, as one started during that destroy does
+			if (this.destroying || !this.holdsOpen()) return this.operation(run)
+		}
 		// closed while it waited: refused, as one started after the close is
 		if (this.closed) throwStoreClosed({ storeName: this.name })
 		return this.tracked(run)
@@ -1627,7 +1632,7 @@ export class DexieStore implements Store {
 
 	/** `inTransaction` in read mode: a read on the current connection, made again once if it closes under the read. */
 	private read<GenericAnswer>(
-		params: Omit<StoreTransactionParams<GenericAnswer>, 'mode'>,
+		params: DistributiveOmit<StoreTransactionParams<GenericAnswer>, 'mode'>,
 	): Promise<GenericAnswer> {
 		return this.inTransaction({ ...params, mode: 'r' })
 	}
@@ -1651,11 +1656,11 @@ export class DexieStore implements Store {
 			scope.unshift(recordName)
 		}
 		// a table of the transaction that may be gone with its document: answered `onUnregistered` then
-		if (requiredTable !== undefined && !db.tables.some((table) => table.name === requiredTable)) {
-			if (onUnregistered) return onUnregistered()
-			throwDialecteError('ASSERTION_FAILED', {
-				detail: `Table "${requiredTable}" not in the schema`,
-			})
+		if (
+			params.requiredTable !== undefined &&
+			!db.tables.some((table) => table.name === requiredTable)
+		) {
+			return params.onUnregistered()
 		}
 		try {
 			// an async callback: Dexie keeps the transaction open across the native awaits of an async function only

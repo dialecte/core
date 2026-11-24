@@ -31,13 +31,20 @@ export type StoreTransactionParams<GenericAnswer> = {
 	mode?: 'r' | 'rw'
 	/** The document whose record table is in the transaction too, refused when the connection does not hold it */
 	documentId?: string
-	/** A table of `tables` that may be gone (with its document): answered `onUnregistered` when the schema lacks it */
-	requiredTable?: string
 	tables: string[]
 	run: (db: Dexie) => Promise<GenericAnswer>
-	/** What a document the connection does not hold answers, instead of a refusal */
-	onUnregistered?: () => GenericAnswer
-}
+} & (
+	| {
+			/** What a document the connection does not hold answers, instead of a refusal */
+			onUnregistered?: () => GenericAnswer
+			requiredTable?: undefined
+	  }
+	| {
+			/** A table of `tables` that may be gone (with its document): answered `onUnregistered` when the schema lacks it */
+			requiredTable: string
+			onUnregistered: () => GenericAnswer
+	  }
+)
 
 /** One step of a document's history applied: the entry's operations, and the version the step produced. */
 export type SteppedHistory = { operations: ChangeLogEntry['operations']; version: StoreVersion }

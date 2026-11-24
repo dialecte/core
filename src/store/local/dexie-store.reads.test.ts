@@ -6,6 +6,7 @@ import { OPEN_LOCK_PREFIX } from './dexie-store.constants'
 import Dexie from 'dexie'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { toDialecteError } from '@/errors'
 import { newCallId } from '@/store/json-values'
 
 import type { DocumentRecord } from '@/project'
@@ -283,18 +284,67 @@ describe('DexieStore - a read while its connection reloads', () => {
 			const reopening = store.open()
 			await asked.promise
 			navigator.locks.request = request
-			const writing = settled(store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }))
+			const writing = store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }).then(
+				function landed() {
+					return undefined
+				},
+				function refusalKey(thrown: unknown) {
+					return toDialecteError(thrown)?.key ?? String(thrown)
+				},
+			)
 			await Dexie.delete(store.name)
 			releasing.resolve()
 			const [outcome] = await Promise.all([writing, destroying, reopening])
 			const documents = await store.getDocuments()
-			expect({
-				refused: (outcome as { thrown?: string }).thrown?.includes('not registered'),
-				documents,
-			}).toEqual({
-				refused: true,
+			expect({ refusal: outcome, documents }).toEqual({
+				refusal: 'DOCUMENT_NOT_REGISTERED',
 				documents: [],
 			})
+		} finally {
+			navigator.locks.request = request
+			releasing.resolve()
+		}
+	})
+
+	it('a write waiting for its open hold while this store’s own destroy runs → waits for the destroy, then refused DOCUMENT_NOT_REGISTERED', async () => {
+		const seeded = await seededStore()
+		await seeded.close()
+		// a store of the name never opened: its write asks the open hold, which another holder keeps waiting
+		const store = new DexieStore(seeded.name)
+		opened.push(store)
+		const holding = Promise.withResolvers<void>()
+		const releasing = Promise.withResolvers<void>()
+		const held = navigator.locks.request(`${OPEN_LOCK_PREFIX}${store.name}`, function holdAlone() {
+			holding.resolve()
+			return releasing.promise
+		})
+		await holding.promise
+		const asked = Promise.withResolvers<void>()
+		const request = navigator.locks.request.bind(navigator.locks)
+		try {
+			navigator.locks.request = function seeTheAsk(...args: unknown[]) {
+				if (args[0] === `${OPEN_LOCK_PREFIX}${store.name}`) asked.resolve()
+				return (request as (...given: unknown[]) => Promise<unknown>)(...args)
+			} as typeof navigator.locks.request
+			const writing = store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }).then(
+				function landed() {
+					return undefined
+				},
+				function refusalKey(thrown: unknown) {
+					return toDialecteError(thrown)?.key ?? String(thrown)
+				},
+			)
+			await asked.promise
+			navigator.locks.request = request
+			// its own destroy while the write waits: the write is not counted yet
+			const destroying = store.destroy()
+			releasing.resolve()
+			const [refusal] = await Promise.all([writing, destroying, held])
+			const after = new DexieStore(seeded.name)
+			opened.push(after)
+			await after.open()
+			const documents = await after.getDocuments()
+			expect({ refusal, documents }).toEqual({ refusal: 'DOCUMENT_NOT_REGISTERED', documents: [] })
 		} finally {
 			navigator.locks.request = request
 			releasing.resolve()
