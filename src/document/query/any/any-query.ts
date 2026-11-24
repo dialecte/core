@@ -206,6 +206,10 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 		}) as Promise<Record<string, AnyTrackedRecord[]>[]>
 	}
 
+	/**
+	 * The ancestors of an element, bottom-up, the dialecte's transparent elements left out as `query.findAncestors`
+	 * does by default; `query.findAncestors` takes the options (`unwrap: []` for every stored ancestor).
+	 */
 	async findAncestors(refOrRecord: AnyRefOrRecord | undefined): Promise<AnyTrackedRecord[]> {
 		if (!refOrRecord) return []
 		return findAncestors({

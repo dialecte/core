@@ -70,7 +70,7 @@ export async function findAncestorsOfEach<
 
 		for (const { position, parent } of frontier) {
 			const record = known.get(parent.id)
-			// a walk goes through distinct records, all read in this call: one as long as what was read repeats one, a cycle
+			// a walk past as many records as were read has repeated one: a cycle (a corrupt store)
 			if (!record || steps[position] >= known.size) continue
 			steps[position] += 1
 			// an unwrapped element is walked through: left out of the chain, it takes no depth level and never stops it
