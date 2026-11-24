@@ -261,7 +261,7 @@ export class DexieStore implements Store {
 		if (this.operations.count === 0) {
 			const holdEnded = this.openHoldEnded
 			this.letOpenHoldGo()
-			this.db.close()
+			this.closeConnection()
 			await holdEnded
 			return
 		}
@@ -426,22 +426,22 @@ export class DexieStore implements Store {
 	 * removal broadcast arrives, so a subsequent read sees the new partition.
 	 */
 	async reconcile(): Promise<void> {
-		return this.operation(async () => {
-			await this.ensureCurrentSchema()
-		})
+		return this.operation(() => this.currentConnection())
 	}
 
 	/**
 	 * Read-only probe: can this connection serve the document's records right now?
 	 * True only when the document is registered here and its backing table exists
-	 * in the current schema. Does not mutate - call reconcile() first to self-heal. Answers for the connection as it
-	 * is now: while an open makes the connection again it answers false until the new one is made.
+	 * in the current schema. Does not mutate - call reconcile() first to self-heal. Answered once no reload of the
+	 * connection runs (an open making it again is waited for); it never starts one itself.
 	 */
 	async isDocumentReadable(documentId: string): Promise<boolean> {
 		return this.operation(async () => {
+			// once no reload runs (an open making the connection again is waited for); a probe: it starts none itself
+			await this.schemaLock.catch(ignoreSchemaFailure)
 			if (!this.knownDocuments.has(documentId)) return false
 			const tableName = this.resolveTableName(documentId)
-			return this.db.isOpen() && this.db.tables.some((t) => t.name === tableName)
+			return this.db.isOpen() && this.db.tables.some((table) => table.name === tableName)
 		})
 	}
 
@@ -991,6 +991,15 @@ export class DexieStore implements Store {
 		return this.tracked(run)
 	}
 
+	/**
+	 * The store's own connection closed (a close, the last operation ending on a closed store): marked stale, so the next
+	 * operation - one started before `open()` queues its reload included - makes the connection again first.
+	 */
+	private closeConnection(): void {
+		this.db.close()
+		this.stale = true
+	}
+
 	/** Counted while it runs; the last one to end on a closed store closes the connection. */
 	private async tracked<GenericResult>(run: () => Promise<GenericResult>): Promise<GenericResult> {
 		this.operations.start()
@@ -998,7 +1007,7 @@ export class DexieStore implements Store {
 			return await run()
 		} finally {
 			// closed before `end` resolves a waiting open(), which then reopens
-			if (this.operations.count === 1 && this.closed) this.db.close()
+			if (this.operations.count === 1 && this.closed) this.closeConnection()
 			this.operations.end()
 		}
 	}

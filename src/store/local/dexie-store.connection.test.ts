@@ -243,7 +243,12 @@ describe('DexieStore - a write while a reload of its connection runs', () => {
 		try {
 			const reopening = store.open()
 			// an open after a close always makes the connection again: its reload is what the case holds
-			await hold.reached
+			await Promise.race([
+				hold.reached,
+				reopening.then(function settledUnheld() {
+					throw new Error('the open settled before its reload was held')
+				}),
+			])
 			// the old connection closed, the new one not made yet: the commit waits for the reload under the lock
 			const committing = outcomeOf(commitCreating({ store, id: 'r2' }))
 			hold.release()
@@ -260,7 +265,12 @@ describe('DexieStore - a write while a reload of its connection runs', () => {
 		const hold = holdNextOpen({ store })
 		try {
 			const registering = store.registerDocument(documentOf('b'))
-			await hold.reached
+			await Promise.race([
+				hold.reached,
+				registering.then(function settledUnheld() {
+					throw new Error('the registration settled before its schema reopen was held')
+				}),
+			])
 			const committing = outcomeOf(commitCreating({ store, id: 'r2' }))
 			hold.release()
 			const [outcome] = await Promise.all([committing, registering])

@@ -187,7 +187,12 @@ describe('DexieStore - the versions in _meta', () => {
 		const hold = holdNextOpen({ store })
 		try {
 			const reopening = store.open()
-			await hold.reached
+			await Promise.race([
+				hold.reached,
+				reopening.then(function settledUnheld() {
+					throw new Error('the open settled before its reload was held')
+				}),
+			])
 			// the old connection closed, the new one not made yet: the version waits for it
 			const reading = store.readVersion({ documentId: 'a' }).then(
 				function engineOf(version) {
@@ -204,6 +209,15 @@ describe('DexieStore - the versions in _meta', () => {
 		} finally {
 			hold.restore()
 		}
+	})
+
+	it('(pin) the version read on an open store whose engine row is gone → the row drawn, the version under it', async () => {
+		const name = nameOfCase()
+		const store = await openStore(name)
+		await store.getDatabaseInstance().table(TABLE_META).delete(ENGINE_META_KEY)
+		const version = await versionOf({ store, documentId: 'a' })
+		const engine = await store.getDatabaseInstance().table(TABLE_META).get(ENGINE_META_KEY)
+		expect(version).toEqual({ engineId: engine?.engineId, count: 0 })
 	})
 
 	it('a record count, then a write through another connection → the count after the write', async () => {

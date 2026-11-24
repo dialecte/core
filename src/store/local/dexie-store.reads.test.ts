@@ -1,6 +1,7 @@
 import { makeBlobEntry, makeRecord } from '../contract/store-contract.fixtures'
 import { DexieStore } from './dexie-store'
 import { holdNextOpen } from './dexie-store.connection.fixtures'
+import { OPEN_LOCK_PREFIX } from './dexie-store.constants'
 
 import Dexie from 'dexie'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -52,6 +53,17 @@ async function seededStore(): Promise<DexieStore> {
 	return store
 }
 
+/** Settled once the reload is held; fails at once if the open settles (or fails) without holding one. */
+function untilHeld(params: { reached: Promise<void>; reopening: Promise<void> }): Promise<void> {
+	const { reached, reopening } = params
+	return Promise.race([
+		reached,
+		reopening.then(function settledUnheld() {
+			throw new Error('the open settled before its reload was held')
+		}),
+	])
+}
+
 /** What a call settles with: its answer, or the refusal's text. */
 function settled(call: Promise<unknown>): Promise<unknown> {
 	return call.then(
@@ -68,6 +80,10 @@ function idOf(record: { id: string } | undefined): string | undefined {
 	return record?.id
 }
 
+function idsOrNone(records: ReadonlyArray<{ id: string } | undefined>): (string | undefined)[] {
+	return records.map(idOf)
+}
+
 function idsOf(records: ReadonlyArray<{ id: string }>): string[] {
 	return records.map(function recordId(record) {
 		return record.id
@@ -81,7 +97,7 @@ describe('DexieStore - a read while its connection reloads', () => {
 		const hold = holdNextOpen({ store })
 		try {
 			const reopening = store.open()
-			await hold.reached
+			await untilHeld({ reached: hold.reached, reopening })
 			// the old connection closed, the new one not made yet
 			const reading = Promise.all([
 				settled(store.get('r1', 'a').then(idOf)),
@@ -105,6 +121,11 @@ describe('DexieStore - a read while its connection reloads', () => {
 					}),
 				),
 				settled(store.getBlobsByDocument('a').then(idsOf)),
+				settled(store.getMany(['r2', 'none', 'r1'], 'a').then(idsOrNone)),
+				settled(store.getByTagNameInDocument('A', 'a').then(idsOf)),
+				settled(store.getDocument('a').then(idOf)),
+				settled(store.getBlobsByRecord('a', 'r1').then(idsOf)),
+				settled(store.getStandaloneBlobs().then(idsOf)),
 			])
 			hold.release()
 			const [answers] = await Promise.all([reading, reopening])
@@ -118,6 +139,11 @@ describe('DexieStore - a read while its connection reloads', () => {
 				{ answer: 1 },
 				{ answer: 'blob-a' },
 				{ answer: ['blob-a'] },
+				{ answer: ['r2', undefined, 'r1'] },
+				{ answer: ['r1', 'r2'] },
+				{ answer: 'a' },
+				{ answer: ['blob-a'] },
+				{ answer: [] },
 			])
 		} finally {
 			hold.restore()
@@ -130,7 +156,7 @@ describe('DexieStore - a read while its connection reloads', () => {
 		const hold = holdNextOpen({ store })
 		try {
 			const reopening = store.open()
-			await hold.reached
+			await untilHeld({ reached: hold.reached, reopening })
 			const other = new DexieStore(store.name)
 			opened.push(other)
 			await other.open()
@@ -153,5 +179,64 @@ describe('DexieStore - a read while its connection reloads', () => {
 		} finally {
 			hold.restore()
 		}
+	})
+
+	it('the connection probed and reconciled while an open makes it again → both wait for it: readable, open', async () => {
+		const store = await seededStore()
+		await store.close()
+		const hold = holdNextOpen({ store })
+		try {
+			const reopening = store.open()
+			await untilHeld({ reached: hold.reached, reopening })
+			const readable = store.isDocumentReadable('a')
+			const reconciled = store.reconcile().then(function openNow() {
+				return store.getDatabaseInstance().isOpen()
+			})
+			hold.release()
+			const [isReadable, isOpen] = await Promise.all([readable, reconciled, reopening])
+			expect({ isReadable, isOpen }).toEqual({ isReadable: true, isOpen: true })
+		} finally {
+			hold.restore()
+		}
+	})
+
+	it('a write before an open queues its reload (the open lock still asked) → lands on the connection made again', async () => {
+		const store = await seededStore()
+		await store.close()
+		const other = new DexieStore(store.name)
+		opened.push(other)
+		await other.open()
+		await other.registerDocument(documentOf('b'))
+		await other.close()
+		// the open lock held alone: this store's open waits for its grant, its reload not queued yet
+		const holding = Promise.withResolvers<void>()
+		const releasing = Promise.withResolvers<void>()
+		const exclusive = navigator.locks.request(
+			`${OPEN_LOCK_PREFIX}${store.name}`,
+			function holdAlone() {
+				holding.resolve()
+				return releasing.promise
+			},
+		)
+		await holding.promise
+		// the open's ask for the lock seen: by then the store counts open again, its reload not queued yet
+		const asked = Promise.withResolvers<void>()
+		const request = navigator.locks.request.bind(navigator.locks)
+		navigator.locks.request = function seeTheAsk(...args: unknown[]) {
+			if (args[0] === `${OPEN_LOCK_PREFIX}${store.name}`) asked.resolve()
+			return (request as (...given: unknown[]) => Promise<unknown>)(...args)
+		} as typeof navigator.locks.request
+		const reopening = store.open()
+		await asked.promise
+		navigator.locks.request = request
+		const writing = settled(store.bulkWrite('b', { creates: [makeRecord({ id: 'b1' })] }))
+		const outcome = await writing
+		releasing.resolve()
+		await Promise.all([exclusive, reopening])
+		const records = await store.getByDocumentId('b')
+		expect({ outcome, held: idsOf(records) }).toEqual({
+			outcome: { answer: undefined },
+			held: ['b1'],
+		})
 	})
 })
