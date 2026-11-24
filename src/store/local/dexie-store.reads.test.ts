@@ -200,7 +200,7 @@ describe('DexieStore - a read while its connection reloads', () => {
 		}
 	})
 
-	it('a write before an open queues its reload (the open lock still asked) → lands on the connection made again', async () => {
+	it('a write while the open lock is held elsewhere → waits for the grant, then lands', async () => {
 		const store = await seededStore()
 		await store.close()
 		const other = new DexieStore(store.name)
@@ -222,21 +222,82 @@ describe('DexieStore - a read while its connection reloads', () => {
 		// the open's ask for the lock seen: by then the store counts open again, its reload not queued yet
 		const asked = Promise.withResolvers<void>()
 		const request = navigator.locks.request.bind(navigator.locks)
-		navigator.locks.request = function seeTheAsk(...args: unknown[]) {
-			if (args[0] === `${OPEN_LOCK_PREFIX}${store.name}`) asked.resolve()
-			return (request as (...given: unknown[]) => Promise<unknown>)(...args)
-		} as typeof navigator.locks.request
-		const reopening = store.open()
-		await asked.promise
-		navigator.locks.request = request
-		const writing = settled(store.bulkWrite('b', { creates: [makeRecord({ id: 'b1' })] }))
-		const outcome = await writing
-		releasing.resolve()
-		await Promise.all([exclusive, reopening])
-		const records = await store.getByDocumentId('b')
+		try {
+			navigator.locks.request = function seeTheAsk(...args: unknown[]) {
+				if (args[0] === `${OPEN_LOCK_PREFIX}${store.name}`) asked.resolve()
+				return (request as (...given: unknown[]) => Promise<unknown>)(...args)
+			} as typeof navigator.locks.request
+			const reopening = store.open()
+			await asked.promise
+			navigator.locks.request = request
+			// the write waits for the open lock: it is granted once the holder lets it go
+			const writing = settled(store.bulkWrite('b', { creates: [makeRecord({ id: 'b1' })] }))
+			releasing.resolve()
+			const [outcome] = await Promise.all([writing, exclusive, reopening])
+			const records = await store.getByDocumentId('b')
+			expect({ outcome, held: idsOf(records) }).toEqual({
+				outcome: { answer: undefined },
+				held: ['b1'],
+			})
+		} finally {
+			navigator.locks.request = request
+			releasing.resolve()
+		}
+	})
+
+	it('a write on a store never opened, to a document another connection registered → lands, never refused as not registered', async () => {
+		const seeded = await seededStore()
+		await seeded.registerDocument(documentOf('b'))
+		// a second store of the name, never opened: its connection holds no schema yet
+		const fresh = new DexieStore(seeded.name)
+		opened.push(fresh)
+		const outcome = await settled(fresh.bulkWrite('b', { creates: [makeRecord({ id: 'b1' })] }))
+		const records = await seeded.getByDocumentId('b')
 		expect({ outcome, held: idsOf(records) }).toEqual({
 			outcome: { answer: undefined },
 			held: ['b1'],
 		})
+	})
+
+	it('a write while a destroy elsewhere holds the open lock and deletes the database → refused DOCUMENT_NOT_REGISTERED, nothing written', async () => {
+		const store = await seededStore()
+		await store.close()
+		// a destroy of another realm: the open lock held alone while the database is deleted
+		const holding = Promise.withResolvers<void>()
+		const releasing = Promise.withResolvers<void>()
+		const destroying = navigator.locks.request(
+			`${OPEN_LOCK_PREFIX}${store.name}`,
+			function holdAlone() {
+				holding.resolve()
+				return releasing.promise
+			},
+		)
+		await holding.promise
+		const asked = Promise.withResolvers<void>()
+		const request = navigator.locks.request.bind(navigator.locks)
+		try {
+			navigator.locks.request = function seeTheAsk(...args: unknown[]) {
+				if (args[0] === `${OPEN_LOCK_PREFIX}${store.name}`) asked.resolve()
+				return (request as (...given: unknown[]) => Promise<unknown>)(...args)
+			} as typeof navigator.locks.request
+			const reopening = store.open()
+			await asked.promise
+			navigator.locks.request = request
+			const writing = settled(store.bulkWrite('a', { creates: [makeRecord({ id: 'a9' })] }))
+			await Dexie.delete(store.name)
+			releasing.resolve()
+			const [outcome] = await Promise.all([writing, destroying, reopening])
+			const documents = await store.getDocuments()
+			expect({
+				refused: (outcome as { thrown?: string }).thrown?.includes('not registered'),
+				documents,
+			}).toEqual({
+				refused: true,
+				documents: [],
+			})
+		} finally {
+			navigator.locks.request = request
+			releasing.resolve()
+		}
 	})
 })

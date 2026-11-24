@@ -185,11 +185,12 @@ export class DexieStore implements Store {
 	/** Serialization lock for schema-changing operations */
 	private schemaLock: Promise<void> = Promise.resolve()
 	/**
-	 * Set when another connection/realm upgraded the shared schema (an import
-	 * elsewhere added an xel_<id> table) and IndexedDB closed our connection via
-	 * `versionchange`. The next data access self-heals through ensureCurrentSchema.
+	 * Set when the connection does not hold the shared schema as it is: before the first open (the connection is not
+	 * made yet), after the store closed its own connection, or when another connection/realm upgraded the schema (an
+	 * import elsewhere added an xel_<id> table) and IndexedDB closed ours via `versionchange`. The next data access
+	 * self-heals through ensureCurrentSchema.
 	 */
-	private stale = false
+	private stale = true
 	/**
 	 * Record count per document, as `count` last read it, with the document's version count it was read at: answered
 	 * again only while the document is at that version (IndexedDB counts by iterating: about 50 ms for 90,000 records).
@@ -206,6 +207,8 @@ export class DexieStore implements Store {
 	 * granted (none while this connection holds none).
 	 */
 	private openHold: Promise<() => void> | undefined
+	/** `openHold` once granted (the same promise): an operation then runs on at once, without a turn of waiting. */
+	private grantedHold: Promise<() => void> | undefined
 	/** This store's own destroy while it runs: an operation started meanwhile goes on once it has ended. */
 	private destroying: Promise<void> | undefined
 	/** Settles once this connection's last hold of the open lock is let go for good. */
@@ -379,8 +382,22 @@ export class DexieStore implements Store {
 	 * counted in the realm. Waits while a destroy holds the lock alone; an open at once shares the hold.
 	 */
 	private async holdOpen(): Promise<void> {
-		this.openHold ??= this.askOpenHold()
+		if (this.openHold === undefined) {
+			const asked = this.askOpenHold()
+			this.openHold = asked
+			void asked.then(this.markGranted.bind(this, asked))
+		}
 		await this.openHold
+	}
+
+	/** The hold granted, unless let go or asked again since. */
+	private markGranted(asked: Promise<() => void>): void {
+		if (this.openHold === asked) this.grantedHold = asked
+	}
+
+	/** Whether this connection's open hold is granted now: an operation needs no wait for it. */
+	private holdsOpen(): boolean {
+		return this.openHold !== undefined && this.grantedHold === this.openHold
 	}
 
 	/** The open lock asked for shared, its release once granted; with no Web Locks, counted in the realm. */
@@ -432,8 +449,10 @@ export class DexieStore implements Store {
 	/**
 	 * Read-only probe: can this connection serve the document's records right now?
 	 * True only when the document is registered here and its backing table exists
-	 * in the current schema. Does not mutate - call reconcile() first to self-heal. Answered once no reload of the
-	 * connection runs (an open making it again is waited for); it never starts one itself.
+	 * in the current schema. Does not mutate - call reconcile() first to self-heal (the Store contract's probe, read by
+	 * the Project's document status). Answered once no reload of the connection runs (an open making it again is
+	 * waited for); it never starts one itself, so before a store's first open, or before an open after a close queues
+	 * its reload, it answers false.
 	 */
 	async isDocumentReadable(documentId: string): Promise<boolean> {
 		return this.operation(async () => {
@@ -845,8 +864,9 @@ export class DexieStore implements Store {
 			})
 			if (owner === undefined) return undefined
 			const blobTableOf = blobTableName(owner)
+			// gated on the blob table it reads: gone with its document, the blob reads as absent
 			return this.read({
-				documentId: owner,
+				requiredTable: blobTableOf,
 				tables: [TABLE_BLOBS, blobTableOf],
 				onUnregistered: noBlob,
 				run: async function blobInTransaction(db) {
@@ -983,9 +1003,10 @@ export class DexieStore implements Store {
 			// closed while it waited: refused before it holds the store open again
 			if (this.closed) throwStoreClosed({ storeName: this.name })
 		}
-		// counted open again after its own destroy (or a destroy racing its open), as a SQLite store
-		// connects again on its next operation
-		if (this.openHold === undefined) await this.holdOpen()
+		// counted open before it touches the database: its open hold asked (again after its own destroy, as a SQLite store
+		// connects again on its next operation) or still pending (an open waiting for the lock another connection holds
+		// alone - a destroy): never run while a destroy may delete the database under it; resolved at once once granted
+		if (!this.holdsOpen()) await this.holdOpen()
 		// closed while it waited: refused, as one started after the close is
 		if (this.closed) throwStoreClosed({ storeName: this.name })
 		return this.tracked(run)
@@ -1617,7 +1638,7 @@ export class DexieStore implements Store {
 		retried: boolean
 	}): Promise<GenericAnswer> {
 		const { params, retried } = attempt
-		const { mode = 'rw', documentId, tables, run, onUnregistered } = params
+		const { mode = 'rw', documentId, requiredTable, tables, run, onUnregistered } = params
 		await this.currentConnection()
 		const db = this.db
 		const scope = [...tables]
@@ -1628,6 +1649,13 @@ export class DexieStore implements Store {
 				throwDocumentNotRegistered({ documentId, what: 'records' })
 			}
 			scope.unshift(recordName)
+		}
+		// a table of the transaction that may be gone with its document: answered `onUnregistered` then
+		if (requiredTable !== undefined && !db.tables.some((table) => table.name === requiredTable)) {
+			if (onUnregistered) return onUnregistered()
+			throwDialecteError('ASSERTION_FAILED', {
+				detail: `Table "${requiredTable}" not in the schema`,
+			})
 		}
 		try {
 			// an async callback: Dexie keeps the transaction open across the native awaits of an async function only
