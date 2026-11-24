@@ -1,3 +1,0 @@
-### Fixed
-
-- Destroying a SQLite project no longer fails with `PROJECT_DESTROY_FAILED` while the worker that deletes it is still starting. That worker is now waited for within the open window (30 s), as an engine's open is: its start (seconds on a loaded machine) no longer counts as a worker deaf to the destroy. A worker that never answers is still ended and the destroy refused `PROJECT_DESTROY_FAILED`, once the window has passed; the error's `meta.windowMs` names it. A short `openBudgetMs` (500 ms, say) no longer bounds how long a destroy waits for a worker that never answers: like an open, it waits the open window.

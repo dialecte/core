@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-24
+
+Core 0.15.0: every store keeps one version per document, progress clears after a throw, findAncestors unwraps by default, and IndexedDB and SQLite races fixed.
+
+### Added
+
+- `FindAncestorsOptions.unwrap`: the elements the ancestor reads walk through and leave out (default: the dialecte's `transparentElements`), the same option `getTree` and `getSnapshot` take.
+- `@dialecte/core/test` proves a read cache against the uncached path: `runReadModelCases` runs cases on every store given, each with a writer and a reader project of one name, typed by the dialecte's config. The reader's store sits behind a gate (`gateStore`: hold a call before the store, hold the store's answer until after a change, hold the store's notices, count calls), the realm's BroadcastChannel is made lossy (`installLossyChannel`: drop, hold or reorder a message) and a store is held directly (`openRawStore`, `writeAround`: a change no project makes or tells). `waitForChange`, `answerUncached`, `createVersionTrail`, `expectSnapshot` (an answer of the session, never older than one it gave before) and `expectExposed` state what a cached answer may be.
+- Every store keeps one version per document under one contract: `Store.readVersion({ documentId })` answers `{ engineId, count }` without reading a record, on the in-memory store, IndexedDB and SQLite (in the page, in a worker, through the hub). Every commit, undo, redo and removal moves the count by exactly one; a commit, an undo and a redo answer the version they produced (`Store.commit` answers `{ version }`, an undo's or a redo's `HistoryStep` carries `version`); a removal answers nothing: read it with `readVersion`. A write refused or failed never moves it. An import and a bulk write move it by any amount. A document never written answers a count of 0; an id removed and registered again goes on from its count. Every connection to one state answers one `engineId`; a database made again, an in-memory state made anew or an engine started again answers another, and counts of two engine ids are never compared. `readVersion` and `readVersioned` answer the same version. A store without the member (a custom one) works as before: its writes answer no version.
+- A commit message (`ProjectChannelMessage` `commit`) carries `version`, the version its write produced, from a commit, an undo and a redo, on every store. A commit whose answer was lost with its connection, then found applied, carries none.
+
+### Changed
+
+- **Breaking** - `findAncestors` and `findAncestorsOfEach` (on `query`, `tx` and `any`) walk through the dialecte's transparent elements and leave them out of the result, as `getTree` and `getSnapshot` unwrap them: a transparent element takes no `depth` level and `stopAtTagName` never matches it. A caller that needs the wrapper in the chain (to read child positions from its parent, to find the wrapper itself, or to follow `record.parent` through the result) passes `unwrap: []`, which answers every stored ancestor as before; `any.findAncestors` takes no options, so such a caller moves to `query.findAncestors(ref, { unwrap: [] })`.
+- **Breaking** for library copies: `STORAGE_KINDS_VERSION` is 17 (0.14.0: 15): the shared shape gained the store's document version and `FindAncestorsOptions.unwrap`, so a copy of the library at another version finds no storage kind registered by this one (`PROJECT_STORAGE_NOT_REGISTERED`). Stored data is unchanged: existing projects open as they are. Every package of an app must resolve the same core version.
+- **Breaking** - the SQLite engine wire protocol is 9 (0.14.0: 8) and the hub protocol 13 (0.14.0: 12): an engine or a hub of another core version is refused. Close the tabs running an older core before opening a project with this one: their removals move no version and their messages carry none.
+- On IndexedDB, a database written before keeps its document versions and goes on from its counts, nothing to migrate. A removal now moves the document's version. A record count is answered again only while the document is at the version it was counted at: a write through another connection or tab no longer leaves `count` behind.
+
+### Fixed
+
+- Destroying a SQLite project no longer fails with `PROJECT_DESTROY_FAILED` while the worker that deletes it is still starting. That worker is now waited for within the open window (30 s), as an engine's open is: its start (seconds on a loaded machine) no longer counts as a worker deaf to the destroy. A worker that never answers is still ended and the destroy refused `PROJECT_DESTROY_FAILED`, once the window has passed; the error's `meta.windowMs` names it.
+- On IndexedDB, a write no longer fails with "Invalid table argument" or "Database has been closed" when it runs while the store reopens its connection (an open after a close, another document registered, another tab's change to the database): it waits for the new connection and lands. Opening a store that is already open keeps its connection.
+- On IndexedDB, a commit or a bulk write to a document another tab removed meanwhile is refused `DOCUMENT_NOT_REGISTERED`, no longer `STORE_COMMIT_FAILED` or a raw error; an undo or a redo of it answers `false`, nothing to step, as for any document not registered.
+- On IndexedDB, two undos (or two redos) of one document at once now step two changes, never the same one twice.
+- A failed operation no longer leaves a stale progress bar. A `deepClone` that throws pops its own progress plan (and any plan a hook left open inside it), so a body that catches the error goes on with the bar it had before the clone. `doc.prepare` clears progress when its body throws, and a prepared transaction clears it when it is committed (successfully or not) or discarded, as `doc.transaction` does, even when the prepare body left its own plan open.
+
 ## [0.14.0] - 2026-11-22
 
 Core 0.14.0 keeps what a transaction reads in a read cache, so repeated attribute lookups inside one transaction
