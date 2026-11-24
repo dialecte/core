@@ -107,7 +107,8 @@ export async function collectSnapshotRecords<GenericConfig extends AnyDialecteCo
 		const ancestorRecords = await findAncestors({
 			context,
 			ref: startRef,
-			options: { depth: ancestorDepth, order: 'bottom-up' },
+			// stored levels: the spine's siblings are read from each stored parent, the tree unwraps afterwards
+			options: { depth: ancestorDepth, order: 'bottom-up', unwrap: [] },
 		})
 
 		for (const ancestor of ancestorRecords) {

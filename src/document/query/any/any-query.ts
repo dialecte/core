@@ -216,7 +216,8 @@ export class AnyQuery<GenericConfig extends AnyDialecteConfig> {
 
 	/**
 	 * The ancestors of each element, one list per input position: one read per ancestor level, a record given used as
-	 * given. Bottom-up, no options, as `findAncestors` here; `query.findAncestorsOfEach` takes them.
+	 * given. Bottom-up, no options, as `findAncestors` here: the dialecte's transparent elements are left out, as
+	 * `query.findAncestorsOfEach` does by default; `query.findAncestorsOfEach` takes the options.
 	 */
 	async findAncestorsOfEach(
 		refsOrRecords: ReadonlyArray<AnyRefOrRecord>,

@@ -472,7 +472,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * @intent list the ancestors of an element, find the enclosing element of a tag, build a path from the root
 	 *
 	 * @param refOrRecord - The starting element (not included in results).
-	 * @param options - Optional depth limit or stop-at tag name.
+	 * @param options - Optional depth limit, stop-at tag name, order and `unwrap`: the elements walked through and left
+	 *   out (default: the dialecte's `transparentElements`; `[]` keeps every stored ancestor).
 	 * @returns Ancestors bottom-up: [parent, grandparent, …, root]. Stop element is included.
 	 *
 	 * @example
@@ -497,7 +498,8 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	 * @intent find the ancestors of many elements at once, build paths for a list of elements, group elements by an ancestor
 	 *
 	 * @param refsOrRecords - The starting elements (not included in results), in any order, repeats allowed.
-	 * @param options - Depth limit, stop-at tag name (inclusive) and order, applied to each element as `findAncestors` does.
+	 * @param options - Depth limit, stop-at tag name (inclusive), order and `unwrap`, applied to each element as
+	 *   `findAncestors` does.
 	 * @returns One ancestor list per input position, in the input order; `[]` for a ref that names no element.
 	 *
 	 * @example

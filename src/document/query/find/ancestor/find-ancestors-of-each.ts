@@ -16,8 +16,10 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord } from '@/types'
  * A record given is used as given: its `parent` is followed and it is not read again. The refs are read
  * together in one `getRecords`. Then each level's parents not read yet in this call are read in one
  * `getRecords` (staged operations and the transaction cache first, as `getRecords` resolves them), until
- * every chain stops at its `depth`, at its `stopAtTagName` element (included) or at the root. A parent
- * cycle (a corrupt store) ends its chain once the chain is as long as the records read. An ancestor
+ * every chain stops at its `depth`, at its `stopAtTagName` element (included) or at the root. The elements
+ * `unwrap` lists (default: the dialecte's `transparentElements`) are walked through, left out of the chain: they
+ * take no `depth` level and `stopAtTagName` never matches them; `unwrap: []` keeps every stored ancestor. A parent
+ * cycle (a corrupt store) ends its walk once it has gone through as many records as were read. An ancestor
  * shared by several elements is read once; each position gets its own shallow copy of it.
  *
  * Returns one list per input position, in input order, bottom-up unless `order: 'top-down'`; a ref that
@@ -39,6 +41,9 @@ export async function findAncestorsOfEach<
 	const { context, refsOrRecords, options } = params
 	const maxDepth = options?.depth ?? Infinity
 	const stopAtTagName = options?.stopAtTagName
+	const unwrapped = new Set<string>(
+		options?.unwrap ?? context.dialecteConfig.transparentElements ?? [],
+	)
 
 	const chains: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>[][] = refsOrRecords.map(
 		() => [],
@@ -55,6 +60,8 @@ export async function findAncestorsOfEach<
 
 	// the first chain to reach an ancestor takes the record read, every later one a copy of it
 	const handedOut = new Set<string>()
+	// the records each chain went through, the unwrapped ones included: the cycle guard counts them
+	const steps = refsOrRecords.map(() => 0)
 	while (frontier.length > 0) {
 		const links = frontier.map(({ parent }) => parent)
 		const found = await readUnknownRecords({ context, links, known })
@@ -63,8 +70,14 @@ export async function findAncestorsOfEach<
 
 		for (const { position, parent } of frontier) {
 			const record = known.get(parent.id)
-			// a chain holds distinct records, all read in this call: one as long as what was read repeats one, a parent cycle
-			if (!record || chains[position].length >= known.size) continue
+			// a walk goes through distinct records, all read in this call: one as long as what was read repeats one, a cycle
+			if (!record || steps[position] >= known.size) continue
+			steps[position] += 1
+			// an unwrapped element is walked through: left out of the chain, it takes no depth level and never stops it
+			if (unwrapped.has(record.tagName)) {
+				if (record.parent) next.push({ position, parent: record.parent })
+				continue
+			}
 			chains[position].push(handedOut.has(record.id) ? { ...record } : record)
 			handedOut.add(record.id)
 
