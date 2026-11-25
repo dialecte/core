@@ -1,6 +1,5 @@
 import { stageAddChild } from '../create'
 
-import { runInPlan } from '@/document/progress'
 import { toRef } from '@/helpers'
 
 import type { CloneResult, CloneMapping } from './clone.types'
@@ -47,9 +46,8 @@ export async function stageDeepClone<
 	context.perf.start('core::deepClone::countNodes')
 	const totalNodes = countNodes(record)
 	context.perf.stop('core::deepClone::countNodes')
-	// a clone that throws pops its own frame (and any a hook left open), whoever catches it
-	const clonedRecord = await runInPlan({
-		progress: context.progress,
+	// the clone's plan closes on success and on a throw (with any frame a hook left open), whoever catches it
+	const clonedRecord = await context.progress.runInPlan({
 		plan: { steps: totalNodes },
 		run: () =>
 			cloneRecursively({
