@@ -266,7 +266,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get the first direct child of an element matching a given tag name; it looks one level down only.
+	 * Get the first direct child of an element matching a given tag name; it looks one level down only. When the element
+	 * has no direct child of the tag, it looks inside its transparent wrappers (the dialecte's `transparentElements`, in
+	 * their own namespace only: a same-name element of another namespace is not one), one level only. A direct child wins
+	 * over a wrapper's.
 	 *
 	 * @intent get one direct child by tag name, check whether a child exists
 	 *
@@ -291,7 +294,10 @@ export class Query<GenericConfig extends AnyDialecteConfig> {
 	}
 
 	/**
-	 * Get all direct children of an element matching a given tag name; it looks one level down only, no recursion.
+	 * Get all direct children of an element matching a given tag name; it looks one level down only, no recursion. When
+	 * the element has no direct child of the tag, it answers those inside its transparent wrappers (the dialecte's
+	 * `transparentElements`, in their own namespace only: a same-name element of another namespace is not one), one level
+	 * only. Direct children win over wrappers'.
 	 *
 	 * @intent list direct children of one tag name, iterate one level below an element
 	 *
