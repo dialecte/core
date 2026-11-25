@@ -83,7 +83,7 @@ When the dialecte config defines `transparentElements`, `getChild` and `getChild
 
 **Fast path:** if a direct child matches the requested tag name, it is returned immediately - no transparent lookup occurs.
 
-**Fallback:** if no direct match exists, both methods iterate over children of transparent wrapper types and collect matching children from inside them. Single-level only - the wrappers are not recursed.
+**Fallback:** if no direct match exists, both methods iterate over children of transparent wrapper types and collect matching children from inside them. Single-level only - the wrappers are not recursed. A wrapper is looked into only in its own namespace (one the dialecte's definition declares for its tag): a same-name element in another namespace is not a wrapper.
 
 ```ts
 // Config: transparentElements: ['AA_1']

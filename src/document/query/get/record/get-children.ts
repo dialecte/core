@@ -9,7 +9,7 @@ import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@
  * Fetch all direct children of a parent matching a given tag name.
  *
  * When no direct match is found and the config declares `transparentElements`,
- * looks through those wrapper elements to find matching children one level deeper.
+ * looks through those wrapper elements to find matching children one level deeper, a wrapper only in its own namespace.
  *
  * Returns an empty array when the parent does not exist or has no matching children.
  * The reads are `getChildrenOfEach`'s with one parent, given as a ref: a record given is read again
