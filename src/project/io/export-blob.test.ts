@@ -43,43 +43,58 @@ function blobStore(params: { calls: string[]; present?: boolean }): Store {
  * A save dialog whose writable keeps what is written; `calls` gets `picker:<suggested name>` when it opens. `cancelled`
  * makes the user cancel it.
  */
-function stubSaveDialog(params: { calls: string[]; cancelled?: boolean }): {
+function stubSaveDialog(params: { calls: string[]; cancelled?: boolean; failWrite?: Error }): {
 	saved: () => Blob | undefined
+	removed: () => boolean
 } {
-	const { calls, cancelled } = params
+	const { calls, cancelled, failWrite } = params
 	let written: Blob | undefined
+	let removed = false
 	;(window as unknown as { showSaveFilePicker: unknown }).showSaveFilePicker = vi.fn(
 		async function showSaveFilePicker(options: { suggestedName: string }) {
 			calls.push(`picker:${options.suggestedName}`)
 			if (cancelled) throw new DOMException('cancelled', 'AbortError')
 			return {
+				getFile: async () => new File([], options.suggestedName),
 				createWritable: async () => ({
+					abort: async () => {},
 					write: async (data: Blob) => {
+						if (failWrite) throw failWrite
 						written = data
 					},
 					close: async () => {},
 				}),
+				remove: async () => {
+					removed = true
+				},
 			}
 		},
 	)
-	return { saved: () => written }
+	return { saved: () => written, removed: () => removed }
 }
 
 /** A save target its caller opened before, on a file or cancelled; `written` gets what it was given. */
-function fakeTarget(params: { cancelled: boolean }): {
+function fakeTarget(params: { cancelled: boolean; failWrite?: Error }): {
 	target: SaveTarget
 	written: () => Blob | undefined
+	discarded: () => boolean
 } {
 	let written: Blob | undefined
+	let discarded = false
+	async function discard() {
+		discarded = true
+	}
 	const target: SaveTarget = params.cancelled
-		? { outcome: 'cancelled' }
+		? { outcome: 'cancelled', discard }
 		: {
 				outcome: 'written',
 				write: async (data: Blob) => {
+					if (params.failWrite) throw params.failWrite
 					written = data
 				},
+				discard,
 			}
-	return { target, written: () => written }
+	return { target, written: () => written, discarded: () => discarded }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -176,6 +191,81 @@ describe('exportBlob', () => {
 			await project.exportBlob({ blobId: 'b1', download: { filename: 'copy.pdf', target } })
 		}
 		expect(typed).toBeTypeOf('function')
+	})
+
+	describe('a blob not in the store after the save was asked -> BLOB_NOT_FOUND, the dialog it opened discarded', () => {
+		type FailedCase = BaseTestCase & {
+			download: 'a filename' | 'a target'
+			expectedDiscarded: boolean
+		}
+		const testCases: Record<string, FailedCase> = {
+			'the dialog opened first for another filename -> the file it created removed': {
+				download: 'a filename',
+				expectedDiscarded: true,
+			},
+			'a target the caller opened -> left to the caller, not discarded': {
+				download: 'a target',
+				expectedDiscarded: false,
+			},
+		}
+
+		runTestCases.generic(testCases, async (testCase) => {
+			const calls: string[] = []
+			const dialog = stubSaveDialog({ calls })
+			const target = fakeTarget({ cancelled: false })
+			const download =
+				testCase.download === 'a target' ? { target: target.target } : { filename: 'copy.pdf' }
+
+			const thrown = await exportBlob({
+				store: blobStore({ calls, present: false }),
+				request: { blobId: 'missing', download },
+			}).catch((error: unknown) => error)
+
+			expect(toDialecteError(thrown)?.key).toBe('BLOB_NOT_FOUND')
+			expect(dialog.removed() || target.discarded()).toBe(testCase.expectedDiscarded)
+		})
+	})
+
+	describe('a write failing -> the failure thrown, the dialog the export opened discarded', () => {
+		type WriteFailedCase = BaseTestCase & {
+			download: 'its name' | 'a filename' | 'a target'
+			expectedDiscarded: boolean
+		}
+		const testCases: Record<string, WriteFailedCase> = {
+			"the dialog opened for the blob's name -> the file left empty removed": {
+				download: 'its name',
+				expectedDiscarded: true,
+			},
+			'the dialog opened first for another filename -> the file left empty removed': {
+				download: 'a filename',
+				expectedDiscarded: true,
+			},
+			'a target the caller opened -> left to the caller, not discarded': {
+				download: 'a target',
+				expectedDiscarded: false,
+			},
+		}
+
+		runTestCases.generic(testCases, async (testCase) => {
+			const calls: string[] = []
+			const failWrite = new DOMException('disk full', 'QuotaExceededError')
+			const dialog = stubSaveDialog({ calls, failWrite })
+			const target = fakeTarget({ cancelled: false, failWrite })
+			const download =
+				testCase.download === 'a target'
+					? { target: target.target }
+					: testCase.download === 'a filename'
+						? { filename: 'copy.pdf' }
+						: true
+
+			const exported = exportBlob({
+				store: blobStore({ calls }),
+				request: { blobId: 'b1', download },
+			})
+
+			await expect(exported).rejects.toBe(failWrite)
+			expect(dialog.removed() || target.discarded()).toBe(testCase.expectedDiscarded)
+		})
 	})
 
 	it('a blob not in the store -> BLOB_NOT_FOUND', async () => {

@@ -453,6 +453,25 @@ const { saved } = await project.export({ documentId, download: { target } })
 
 The target says where the file will go: `written` (the file chosen), `downloaded` (no dialog in the browser, or one refused for a lapsed gesture) or `cancelled` (nothing to write to).
 
+The browser may create the chosen file, empty, as the dialog closes. When the work is then refused or fails, give the target up with `discard()`: it removes that file while it is empty (`FileSystemFileHandle.remove()`, where the browser has it; elsewhere nothing happens). A picked file that holds content, an existing one the user chose to replace, is never removed. Every target has it, so a cleanup needs no check of the outcome:
+
+```ts
+const target = await openSaveTarget({ filename: 'bay.isd' })
+if (target.outcome === 'cancelled') return
+try {
+	const { saved } = await project.export({ documentId, download: { target } })
+} catch (error) {
+	await target.discard()
+	throw error
+}
+```
+
+- A download or a cancelled target has nothing to remove: `discard()` does nothing.
+- Once a write succeeded, `discard()` does nothing: the saved file is the user's, so a cleanup that always discards never deletes it. A `discard()` during a write waits for it; two at once settle together; a second one does nothing.
+- A write to a file or download target after a `discard()` is refused with `SAVE_TARGET_DISCARDED` (D7032), nothing written; a cancelled target still answers `cancelled`.
+- A file already gone counts as removed; any other failure to remove it is thrown, and the next `discard()` tries again.
+- An export that opened its own dialog (`download: true` or `{ filename }`) discards it when it fails, where the browser can, then throws the export's failure (a removal that fails then is not reported); a `{ target }` you passed stays yours to discard.
+
 ## XML formatting
 
 ### `formatXml`

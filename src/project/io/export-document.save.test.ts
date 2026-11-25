@@ -15,13 +15,15 @@ const FORMATTED =
 	'<?xml version="1.0" encoding="UTF-8"?>\r\n<Root xmlns="urn:r">\r\n    <A a="1"/>\r\n</Root>'
 const COMPACT = '<?xml version="1.0" encoding="UTF-8"?><Root xmlns="urn:r"><A a="1"/></Root>'
 
-/** A store whose export answers the formatted or compact bytes; `calls` keeps every call in order. */
+/** A store whose export answers the formatted or compact bytes, or throws `failing`; `calls` keeps every call in order. */
 function exportingStore(params: {
 	calls: string[]
+	failing?: Error
 }): Store & { exportFile: ReturnType<typeof vi.fn> } {
-	const { calls } = params
+	const { calls, failing } = params
 	return {
 		exportFile: vi.fn(async function exportFile(exportParams: ExportFileParams) {
+			if (failing) throw failing
 			const indent = exportParams.options?.indent ?? true
 			const ids = exportParams.options?.withDatabaseIds ? ':ids' : ''
 			calls.push(`export:${indent ? 'formatted' : 'compact'}${ids}`)
@@ -72,28 +74,37 @@ function stateOf(document: DocumentRecord): ProjectState {
 function stubSaveDialog(params: {
 	calls: string[]
 	outcome?: 'cancelled' | 'lapsed' | 'failing'
+	failWrite?: Error
 }): {
 	saved: () => Blob | undefined
+	removed: () => boolean
 	picker: ReturnType<typeof vi.fn>
 } {
-	const { calls, outcome } = params
+	const { calls, outcome, failWrite } = params
 	let written: Blob | undefined
+	let removed = false
 	const picker = vi.fn(async function showSaveFilePicker() {
 		calls.push('picker')
 		if (outcome === 'cancelled') throw new DOMException('cancelled', 'AbortError')
 		if (outcome === 'lapsed') throw new DOMException('no gesture', 'SecurityError')
 		if (outcome === 'failing') throw new TypeError('no gesture')
 		return {
+			getFile: async () => new File([], 'plant.scd'),
 			createWritable: async () => ({
+				abort: async () => {},
 				write: async (data: Blob) => {
+					if (failWrite) throw failWrite
 					written = data
 				},
 				close: async () => {},
 			}),
+			remove: async () => {
+				removed = true
+			},
 		}
 	})
 	;(window as unknown as { showSaveFilePicker: unknown }).showSaveFilePicker = picker
-	return { saved: () => written, picker }
+	return { saved: () => written, removed: () => removed, picker }
 }
 
 async function runExportDocument(params: {
@@ -110,23 +121,30 @@ async function runExportDocument(params: {
 	})
 }
 
-/** A save target its caller opened before the export, with that outcome; `written` gets what it was given. */
-function fakeTarget(params: { outcome?: SaveOutcome }): {
+/** A save target its caller opened before the export, with that outcome; `written` gets what it was given, `discarded` whether it was discarded. */
+function fakeTarget(params: { outcome?: SaveOutcome; failWrite?: Error }): {
 	target: SaveTarget
 	written: () => Blob | undefined
+	discarded: () => boolean
 } {
 	const { outcome = 'written' } = params
 	let written: Blob | undefined
+	let discarded = false
+	async function discard() {
+		discarded = true
+	}
 	const target: SaveTarget =
 		outcome === 'cancelled'
-			? { outcome }
+			? { outcome, discard }
 			: {
 					outcome,
 					write: async (data: Blob) => {
+						if (params.failWrite) throw params.failWrite
 						written = data
 					},
+					discard,
 				}
-	return { target, written: () => written }
+	return { target, written: () => written, discarded: () => discarded }
 }
 
 /** A browser download through a hidden anchor: whether one was made. */
@@ -289,6 +307,60 @@ describe('exportDocument', () => {
 			expect(createObjectURL).toHaveBeenCalledWith(result.file)
 			expect(anchor.download).toBe('plant.scd')
 			expect(click).toHaveBeenCalled()
+		})
+
+		describe('an export failing once the save was asked -> the failure thrown, the dialog it opened discarded', () => {
+			type FailedCase = BaseTestCase & {
+				download: 'the dialog' | 'a filename' | 'a target'
+				failing?: 'the write'
+				expectedDiscarded: boolean
+			}
+			const testCases: Record<string, FailedCase> = {
+				'the dialog opened for the export -> the file it created removed': {
+					download: 'the dialog',
+					expectedDiscarded: true,
+				},
+				'a target the caller opened -> left to the caller, not discarded': {
+					download: 'a target',
+					expectedDiscarded: false,
+				},
+				'the dialog opened for another filename -> the file it created removed': {
+					download: 'a filename',
+					expectedDiscarded: true,
+				},
+				'the write failing to the dialog opened for the export -> the file left empty removed': {
+					download: 'the dialog',
+					failing: 'the write',
+					expectedDiscarded: true,
+				},
+				'the write failing to a target the caller opened -> left to the caller, not discarded': {
+					download: 'a target',
+					failing: 'the write',
+					expectedDiscarded: false,
+				},
+			}
+
+			runTestCases.generic(testCases, async (testCase) => {
+				const calls: string[] = []
+				const failure = new Error('the export failed')
+				const failWrite = testCase.failing === 'the write' ? failure : undefined
+				const dialog = stubSaveDialog({ calls, failWrite })
+				const target = fakeTarget({ failWrite })
+				const download =
+					testCase.download === 'a target'
+						? { target: target.target }
+						: testCase.download === 'a filename'
+							? { filename: 'copy.scd' }
+							: true
+
+				const exported = runExportDocument({
+					store: exportingStore({ calls, failing: failWrite ? undefined : failure }),
+					options: { download },
+				})
+
+				await expect(exported).rejects.toBe(failure)
+				expect(dialog.removed() || target.discarded()).toBe(testCase.expectedDiscarded)
+			})
 		})
 
 		it('the dialog failing -> the failure thrown, nothing exported', async () => {

@@ -171,7 +171,7 @@ await project.export({ documentId, download: true })
 
 - One store export per call when the options agree; a second one when `xmlDocument` is asked with a formatted `file` (the DOM is parsed from the compact layout) or `download` with a compact one (the saved file is formatted). Two exports may see two states of the document if a commit lands between them: pass `indent: false` with `xmlDocument: true` to export once.
 - The DOM and the save happen in the calling page; the store never builds them, so a store behind a worker exports the same way.
-- A cancelled save dialog (or a cancelled target) saves nothing and the call still answers, `saved: 'cancelled'`, with no second export for the save; a dialog refused because the user's gesture lapsed falls back to a download of the formatted file; any other save failure is thrown. The browser may create the chosen file as the dialog closes: an export that then fails (`EXPORT_CONFLICT`, an abort) can leave it empty.
+- A cancelled save dialog (or a cancelled target) saves nothing and the call still answers, `saved: 'cancelled'`, with no second export for the save; a dialog refused because the user's gesture lapsed falls back to a download of the formatted file; any other save failure is thrown. The browser may create the chosen file as the dialog closes: an export that then fails (`EXPORT_CONFLICT`, an abort) removes it, where the browser can and while it is empty, when the export opened the dialog itself (a removal that fails is not reported, the export's failure is thrown); a `{ target }` the caller passed is left to the caller, who removes it with [`target.discard()`](/guide/development/utils#opensavetarget).
 - A document not in the project throws `DOCUMENT_NOT_REGISTERED`; a commit on the document while it is exported restarts the export once, a second one throws `EXPORT_CONFLICT` (see [Export inside the store](/io/#export-inside-the-store)). A record holding a character XML does not allow throws `XML_CHARACTER_NOT_ALLOWED`, no file.
 - The DOM equals the document the records make, element by element; its attributes also hold the namespace declarations written into the file (the root `xmlns` is an attribute of the xmlns namespace). The compact file writes a carriage return of a text value as `&#13;`, so the DOM keeps it (a raw one would be read as a line feed).
 
@@ -339,7 +339,7 @@ const { entry, data, filename } = await project.exportBlob({ blobId, download: t
 
 **Returns** `Promise<{ entry: BlobRecord; data: Blob; filename: string; saved?: SaveOutcome }>` - `saved` exactly when `download` is asked (`written`, `downloaded` or `cancelled`)
 
-Throws `BLOB_NOT_FOUND` (D7004) if the blob id is unknown.
+Throws `BLOB_NOT_FOUND` (D7004) if the blob id is unknown; a save dialog the call opened first (`{ filename }`) is discarded then, the empty file the browser created removed where the browser can.
 
 ## Undo / Redo
 

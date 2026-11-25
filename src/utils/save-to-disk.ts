@@ -1,10 +1,14 @@
-import { LAPSED_GESTURE_ERRORS } from './save-to-disk.constants'
+import { FILE_ALREADY_GONE_ERROR, LAPSED_GESTURE_ERRORS } from './save-to-disk.constants'
+
+import { throwDialecteError } from '@/errors'
 
 import type {
 	SaveFilePickerWindow,
 	SaveOutcome,
 	SavePickerType,
 	SaveTarget,
+	SaveTargetState,
+	RemovableHandle,
 } from './save-to-disk.types'
 
 export type { SaveOutcome, SavePickerType, SaveTarget } from './save-to-disk.types'
@@ -38,6 +42,9 @@ export async function saveToDisk(params: {
  * the gesture lapsed or the browser has none (`downloaded`), or nowhere when the user cancels (`cancelled`); any
  * other failure is thrown.
  *
+ * The browser may create the chosen file, empty, as the dialog closes: when the work is refused or fails, call
+ * `target.discard()` to remove it (see `SaveTarget`).
+ *
  * @intent ask where to save a file before making it, open a save dialog at a click, skip an export the user cancelled
  */
 export async function openSaveTarget(params: {
@@ -55,13 +62,17 @@ export async function openSaveTarget(params: {
 		})
 	} catch (error) {
 		const name = error instanceof Error ? error.name : undefined
-		if (name === 'AbortError') return { outcome: 'cancelled' }
+		if (name === 'AbortError') return { outcome: 'cancelled', discard: async () => {} }
 		// the dialog refused because the user's gesture lapsed (work awaited before the save): download instead
 		if (name !== undefined && LAPSED_GESTURE_ERRORS.includes(name))
 			return downloadTarget({ filename })
 		throw error
 	}
-	return { outcome: 'written', write: (data) => writeToHandle({ handle, data }) }
+	return trackedTarget({
+		outcome: 'written',
+		write: (data) => writeToHandle({ handle, data }),
+		discard: () => removeHandle({ handle }),
+	})
 }
 
 /**
@@ -76,6 +87,25 @@ export async function writeToTarget(params: {
 	const { target, data } = params
 	if (target.outcome !== 'cancelled') await target.write(data)
 	return target.outcome
+}
+
+/**
+ * Run the work for a target opened for it (by an export, not by its caller): a failure discards the target, then
+ * is thrown as it was (a discard that fails too is dropped, the work's failure is the one to see).
+ *
+ * @internal the cleanup of the project's exports
+ */
+export async function discardOnFailure<Result>(params: {
+	target: SaveTarget | undefined
+	work: () => Promise<Result>
+}): Promise<Result> {
+	const { target, work } = params
+	try {
+		return await work()
+	} catch (error) {
+		await target?.discard().catch(() => {})
+		throw error
+	}
 }
 
 async function writeToHandle(params: { handle: FileSystemFileHandle; data: Blob }): Promise<void> {
@@ -93,7 +123,11 @@ async function writeToHandle(params: { handle: FileSystemFileHandle; data: Blob 
 
 function downloadTarget(params: { filename: string }): SaveTarget {
 	const { filename } = params
-	return { outcome: 'downloaded', write: (data) => downloadBlob({ data, filename }) }
+	return trackedTarget({
+		outcome: 'downloaded',
+		write: (data) => downloadBlob({ data, filename }),
+		discard: async () => {},
+	})
 }
 
 /** A browser download of the Blob, through a hidden anchor. */
@@ -107,4 +141,82 @@ async function downloadBlob(params: { data: Blob; filename: string }): Promise<v
 	anchor.click()
 	anchor.remove()
 	URL.revokeObjectURL(url)
+}
+
+/**
+ * A target whose `discard` runs only while nothing was written to it. A discard during a write waits for it: a
+ * write that succeeded keeps the file (the saved file is the user's), one that failed leaves it to remove.
+ * Concurrent discards share one removal; a removal that fails can be retried. A write is refused once a discard
+ * was asked, unless that discard found the file written.
+ */
+function trackedTarget(params: {
+	outcome: Exclude<SaveOutcome, 'cancelled'>
+	write: (data: Blob) => Promise<void>
+	discard: () => Promise<void>
+}): SaveTarget {
+	const { outcome, write, discard } = params
+	let state: SaveTargetState = 'open'
+	let writing: Promise<void> | undefined
+	let discarding: Promise<void> | undefined
+
+	async function writeOnce(data: Blob): Promise<void> {
+		await write(data)
+		state = 'written'
+	}
+
+	async function discardOnce(): Promise<void> {
+		await writing?.catch(() => {})
+		if (state !== 'open') return
+		state = 'discarded'
+		try {
+			await discard()
+		} catch (error) {
+			// the file is still there: the next discard tries again
+			state = 'open'
+			discarding = undefined
+			throw error
+		}
+	}
+
+	return {
+		outcome,
+		write: async function writeTarget(data) {
+			if (discarding !== undefined && state !== 'written') {
+				throwDialecteError('SAVE_TARGET_DISCARDED', {
+					detail: 'The save target was discarded: nothing is written to it.',
+				})
+			}
+			const run = writeOnce(data)
+			writing = run
+			try {
+				await run
+			} finally {
+				// a newer write keeps its own: a discard waits for the latest one
+				if (writing === run) writing = undefined
+			}
+		},
+		discard: function discardTarget() {
+			discarding ??= discardOnce()
+			return discarding
+		},
+	}
+}
+
+/**
+ * Remove the chosen file where the browser can (`FileSystemFileHandle.remove`), only while it is empty: a file the
+ * user picked that holds content (an existing file, or one a failed write left as it was) is kept. A file already
+ * gone is removed.
+ */
+async function removeHandle(params: { handle: FileSystemFileHandle }): Promise<void> {
+	const { handle } = params
+	const { remove } = handle as FileSystemFileHandle & Partial<RemovableHandle>
+	if (typeof remove !== 'function') return
+	try {
+		const file = await handle.getFile()
+		if (file.size > 0) return
+		await remove.call(handle)
+	} catch (error) {
+		if (error instanceof Error && error.name === FILE_ALREADY_GONE_ERROR) return
+		throw error
+	}
 }

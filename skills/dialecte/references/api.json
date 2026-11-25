@@ -1152,7 +1152,7 @@
 				"open a save dialog at a click",
 				"skip an export the user cancelled"
 			],
-			"declaredAt": "src/utils/save-to-disk.ts:43"
+			"declaredAt": "src/utils/save-to-disk.ts:50"
 		},
 		{
 			"path": "@dialecte/core/utils.orderAttributesBySequence",
@@ -1276,7 +1276,7 @@
 				"download an exported document",
 				"open a save dialog in the browser"
 			],
-			"declaredAt": "src/utils/save-to-disk.ts:22"
+			"declaredAt": "src/utils/save-to-disk.ts:26"
 		},
 		{
 			"path": "@dialecte/core/utils.validateValue",
