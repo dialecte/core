@@ -1,31 +1,23 @@
+import { TRANSPARENT_CONFIG } from '../../get/tree/get-tree.transparent.fixtures'
+
 import { describe, expect } from 'vitest'
 
-import { defineDialecte } from '@/dialecte'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
 import {
-	TEST_CONFIG_KEY,
-	TEST_DIALECTE_CONFIG,
 	XMLNS_DEFAULT_NAMESPACE,
 	XMLNS_DEV_NAMESPACE,
 	XMLNS_EXT_NAMESPACE,
 	createTestRunner,
 } from '@/test'
 
+import type { TransparentTestDialecteConfig } from '../../get/tree/get-tree.fixtures.types'
 import type { FindAncestorsOptions } from './find-ancestor.types'
-import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
+import type { ActParams, BaseXmlTestCase, TestCases } from '@/test'
 
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
-
-/** The test dialecte with AA_1 a transparent element. */
-const TRANSPARENT_DIALECTE = defineDialecte({
-	id: 'core/test-transparent-ancestors-namespace',
-	version: '0.0.0',
-	configs: {
-		[TEST_CONFIG_KEY]: { ...TEST_DIALECTE_CONFIG, transparentElements: ['AA_1'] as const },
-	},
-	defaultConfigKey: TEST_CONFIG_KEY,
+const runTransparentCases = createTestRunner<TransparentTestDialecteConfig>({
+	dialecteConfig: TRANSPARENT_CONFIG,
 })
-const runTransparentCases = createTestRunner({ dialecte: TRANSPARENT_DIALECTE })
 
 /**
  * a1 holds the dialecte's AA_1, a2 an AA_1 in another namespace, each over AAA_1 > AAAA_1; a3 the dialecte's AA_1 with
@@ -79,6 +71,29 @@ const extSourceXml = /* xml */ `
 	</Root>
 `
 
+/**
+ * AA_1 by URI, not by prefix: a6 holds an AA_1 in no namespace, a7 an AA_1 in the dialecte's namespace under the
+ * prefix d; each over AAA_1 > AAAA_1 in the dialecte's namespace.
+ */
+const uriSourceXml = /* xml */ `
+	<Root ${XMLNS_DEFAULT_NAMESPACE} ${XMLNS_DEV_NAMESPACE} xmlns:d="${TRANSPARENT_CONFIG.namespaces.default.uri}">
+		<A ${customId}="a6" aA="v">
+			<AA_1 xmlns="" ${customId}="aa7">
+				<d:AAA_1 ${customId}="aaa7" aAAA_1="v">
+					<d:AAAA_1 ${customId}="aaaa7" aAAAA_1="v" />
+				</d:AAA_1>
+			</AA_1>
+		</A>
+		<A ${customId}="a7" aA="v">
+			<d:AA_1 ${customId}="aa8" aAA_1="v">
+				<AAA_1 ${customId}="aaa8" aAAA_1="v">
+					<AAAA_1 ${customId}="aaaa8" aAAAA_1="v" />
+				</AAA_1>
+			</d:AA_1>
+		</A>
+	</Root>
+`
+
 /** An ancestor's id, `root` for the root (it carries no custom id). */
 function labelOf(ancestor: { tagName: string; id: string }): string {
 	return ancestor.tagName === 'Root' ? 'root' : ancestor.id
@@ -88,7 +103,7 @@ function labelOf(ancestor: { tagName: string; id: string }): string {
 describe('findAncestors - transparent only in its own namespace', () => {
 	type TestCase = BaseXmlTestCase & {
 		id: string
-		options?: FindAncestorsOptions<TestDialecteConfig>
+		options?: FindAncestorsOptions<TransparentTestDialecteConfig>
 		expectedIds: string[]
 	}
 
@@ -126,6 +141,16 @@ describe('findAncestors - transparent only in its own namespace', () => {
 			options: { unwrap: ['AA_3'] },
 			expectedIds: ['aaa6', 'aa6', 'a5', 'root'],
 		},
+		'AA_1 in no namespace → in the chain': {
+			sourceXml: uriSourceXml,
+			id: 'aaaa7',
+			expectedIds: ['aaa7', 'aa7', 'a6', 'root'],
+		},
+		"the dialecte's URI under another prefix → left out": {
+			sourceXml: uriSourceXml,
+			id: 'aaaa8',
+			expectedIds: ['aaa8', 'a7', 'root'],
+		},
 		'foreign AA_1, stopAtTagName AA_1 → stops there': {
 			sourceXml,
 			id: 'aaaa2',
@@ -134,7 +159,10 @@ describe('findAncestors - transparent only in its own namespace', () => {
 		},
 	}
 
-	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TransparentTestDialecteConfig, TestCase>): Promise<void> {
 		const ancestors = await source.query.findAncestors(
 			{ tagName: 'AAAA_1', id: testCase.id },
 			testCase.options,
@@ -142,7 +170,7 @@ describe('findAncestors - transparent only in its own namespace', () => {
 		expect(ancestors.map(labelOf)).toEqual(testCase.expectedIds)
 	}
 
-	runTransparentCases.withoutExport({ testCases, act: act as never })
+	runTransparentCases.withoutExport({ testCases, act })
 })
 
 /** Contract: findAncestorsOfEach applies the same rule to each position. */
@@ -159,7 +187,10 @@ describe('findAncestorsOfEach - transparent only in its own namespace', () => {
 		},
 	}
 
-	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TransparentTestDialecteConfig, TestCase>): Promise<void> {
 		const chains = await source.query.findAncestorsOfEach([
 			{ tagName: 'AAAA_1', id: 'aaaa1' },
 			{ tagName: 'AAAA_1', id: 'aaaa2' },
@@ -167,5 +198,5 @@ describe('findAncestorsOfEach - transparent only in its own namespace', () => {
 		expect(chains.map((chain) => chain.map(labelOf))).toEqual(testCase.expectedIds)
 	}
 
-	runTransparentCases.withoutExport({ testCases, act: act as never })
+	runTransparentCases.withoutExport({ testCases, act })
 })

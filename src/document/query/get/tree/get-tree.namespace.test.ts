@@ -1,3 +1,4 @@
+import { toNamespaceShape } from '../../tree-filter/unwrap.fixtures'
 import { TRANSPARENT_CONFIG } from './get-tree.transparent.fixtures'
 
 import { describe, expect } from 'vitest'
@@ -10,23 +11,13 @@ import {
 	createTestRunner,
 } from '@/test'
 
+import type { NamespaceShape as Shape } from '../../tree-filter/unwrap.fixtures.types'
 import type { TransparentTestDialecteConfig } from './get-tree.fixtures.types'
 import type { GetTreeParams } from '@/document'
 import type { ActParams, BaseXmlTestCase, TestCases } from '@/test'
 import type { AnyTreeRecord, ElementsOf } from '@/types'
 
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
-
-type Shape = { tagName: string; uri: string; tree: Shape[] }
-
-/** A tree node's tag, namespace URI and children. */
-function toShape(record: AnyTreeRecord): Shape {
-	return {
-		tagName: record.tagName,
-		uri: record.namespace.uri,
-		tree: record.tree.map((child) => toShape(child as AnyTreeRecord)),
-	}
-}
 
 const own = TRANSPARENT_CONFIG.namespaces.default.uri
 const other = 'urn:test:other'
@@ -182,7 +173,7 @@ describe('getTree - transparent only in its own namespace', () => {
 		testCase,
 	}: ActParams<TransparentTestDialecteConfig, TestCase>): Promise<void> {
 		const tree = await source.query.getTree({ tagName: 'A', id: testCase.id }, testCase.options)
-		expect(toShape(tree as AnyTreeRecord)).toEqual(testCase.expectedShape)
+		expect(toNamespaceShape(tree as AnyTreeRecord)).toEqual(testCase.expectedShape)
 	}
 
 	createTestRunner<TransparentTestDialecteConfig>({

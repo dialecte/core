@@ -5,7 +5,3 @@
 ### Added
 
 - `declaredNamespaces({ dialecteConfig, tagName })` from `@dialecte/core/utils`: the namespaces a tag is declared in (its tag level and each declaration, once each); none for a tag the definition does not know.
-
-### Changed
-
-- `applyUnwrap` (internal, reachable from the package root) takes `unwrapSet`, built by `unwrapSetOf({ dialecteConfig, tagNames })`, instead of `unwrapTagNames`; `isUnwrapped`, `unwrapSetOf` and the `UnwrapSet` type are internal helpers of the same reads.

@@ -1,43 +1,19 @@
+import { TRANSPARENT_CONFIG } from '../get/tree/get-tree.transparent.fixtures'
+import { toNamespaceShape } from '../tree-filter/unwrap.fixtures'
+
 import { describe, expect } from 'vitest'
 
-import { defineDialecte } from '@/dialecte'
 import { CUSTOM_RECORD_ID_ATTRIBUTE } from '@/helpers'
-import {
-	TEST_CONFIG_KEY,
-	TEST_DIALECTE_CONFIG,
-	XMLNS_DEFAULT_NAMESPACE,
-	XMLNS_DEV_NAMESPACE,
-	createTestRunner,
-} from '@/test'
+import { XMLNS_DEFAULT_NAMESPACE, XMLNS_DEV_NAMESPACE, createTestRunner } from '@/test'
 
-import type { ActParams, BaseXmlTestCase, TestCases, TestDialecteConfig } from '@/test'
+import type { TransparentTestDialecteConfig } from '../get/tree/get-tree.fixtures.types'
+import type { NamespaceShape as Shape } from '../tree-filter/unwrap.fixtures.types'
+import type { ActParams, BaseXmlTestCase, TestCases } from '@/test'
 import type { AnyTreeRecord } from '@/types'
 
 const customId = CUSTOM_RECORD_ID_ATTRIBUTE
 
-/** The test dialecte with AA_1 a transparent element. */
-const TRANSPARENT_DIALECTE = defineDialecte({
-	id: 'core/test-transparent-snapshot-namespace',
-	version: '0.0.0',
-	configs: {
-		[TEST_CONFIG_KEY]: { ...TEST_DIALECTE_CONFIG, transparentElements: ['AA_1'] as const },
-	},
-	defaultConfigKey: TEST_CONFIG_KEY,
-})
-const runTransparentCases = createTestRunner({ dialecte: TRANSPARENT_DIALECTE })
-
-type Shape = { tagName: string; uri: string; tree: Shape[] }
-
-/** A tree node's tag, namespace URI and children. */
-function toShape(record: AnyTreeRecord): Shape {
-	return {
-		tagName: record.tagName,
-		uri: record.namespace.uri,
-		tree: record.tree.map((child) => toShape(child as AnyTreeRecord)),
-	}
-}
-
-const own = TEST_DIALECTE_CONFIG.namespaces.default.uri
+const own = TRANSPARENT_CONFIG.namespaces.default.uri
 const other = 'urn:test:other'
 
 /** a1 holds the dialecte's AA_1, a2 an AA_1 in another namespace; each over AAA_1 > AAAA_1. */
@@ -93,13 +69,18 @@ describe('getSnapshot - transparent only in its own namespace', () => {
 		},
 	}
 
-	async function act({ source, testCase }: ActParams<TestDialecteConfig, TestCase>): Promise<void> {
+	async function act({
+		source,
+		testCase,
+	}: ActParams<TransparentTestDialecteConfig, TestCase>): Promise<void> {
 		const tree = await source.query.getSnapshot({
 			ref: { tagName: 'AAAA_1', id: testCase.id },
 			ancestors: 3,
 		})
-		expect(toShape(tree as AnyTreeRecord)).toEqual(testCase.expectedShape)
+		expect(toNamespaceShape(tree as AnyTreeRecord)).toEqual(testCase.expectedShape)
 	}
 
-	runTransparentCases.withoutExport({ testCases, act: act as never })
+	createTestRunner<TransparentTestDialecteConfig>({
+		dialecteConfig: TRANSPARENT_CONFIG,
+	}).withoutExport({ testCases, act })
 })
