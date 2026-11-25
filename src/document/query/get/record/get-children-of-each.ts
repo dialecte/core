@@ -1,3 +1,4 @@
+import { isUnwrapped, unwrapSetOf } from '../../tree-filter/unwrap'
 import { getRecords } from './get-records'
 import { isRecordGiven } from './is-record-given'
 import { readUnknownRecords } from './read-unknown-records'
@@ -5,6 +6,7 @@ import { readUnknownRecords } from './read-unknown-records'
 import { throwDialecteError } from '@/errors'
 import { toRef } from '@/helpers'
 
+import type { UnwrapSet } from '../../tree-filter/unwrap.types'
 import type { ChildLookup, ParentChildren } from './get-children-of-each.types'
 import type { KnownRecords, RecordLink } from './known-records.types'
 import type { Context, RefOrRecord } from '@/document'
@@ -17,8 +19,9 @@ import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@
  * in one `getRecords` (a ref without an id costs its own `getByTagName`, as in `getRecords`). Then one `getRecords`
  * reads the direct children of the tag of every parent, and the transparent wrappers
  * (`dialecteConfig.transparentElements`) of the parents that have none directly; one more reads the children of the
- * tag inside those wrappers, one level only. Staged operations and the transaction cache answer first, as
- * `getRecords` resolves them. A record already read in this call is not read again; a record answered at several
+ * tag inside those wrappers, one level only. A wrapper is looked into only in its own namespace (one the definition
+ * declares for its tag): a same-name wrapper of another namespace is read, then left out. Staged operations and the
+ * transaction cache answer first, as `getRecords` resolves them. A record already read in this call is not read again; a record answered at several
  * positions is a shallow copy at each one after the first.
  *
  * Returns one list per input position, in input order, each in the order of its parent's children; a parent that names
@@ -43,6 +46,10 @@ export async function getChildrenOfEach<
 }): Promise<TrackedRecord<GenericConfig, GenericChildElement>[][]> {
 	const { context, refsOrRecords, tagName } = params
 	const transparentElements: readonly string[] = context.dialecteConfig.transparentElements ?? []
+	const transparent = unwrapSetOf({
+		dialecteConfig: context.dialecteConfig,
+		tagNames: transparentElements,
+	})
 
 	const { parents, read } = await readParents({ context, refsOrRecords })
 	const lookups = parents.map((parent) => lookupOf({ parent, tagName, transparentElements }))
@@ -54,7 +61,13 @@ export async function getChildrenOfEach<
 		direct.length > 0
 			? direct
 			: wrappers.flatMap((wrapper) =>
-					childrenOfTag({ record: knownRecordOf({ known: firstKnown, link: wrapper }), tagName }),
+					childrenOfTag({
+						record: ownWrapperOf({
+							record: knownRecordOf({ known: firstKnown, link: wrapper }),
+							transparent,
+						}),
+						tagName,
+					}),
 				),
 	)
 	const secondFound = await readUnknownRecords({
@@ -94,6 +107,15 @@ function lookupOf(params: {
 		direct: [],
 		wrappers: parent.children.filter((child) => transparentElements.includes(child.tagName)),
 	}
+}
+
+/** A wrapper read, when it is the dialecte's transparent element (in its own namespace); `undefined` otherwise. */
+function ownWrapperOf<GenericConfig extends AnyDialecteConfig>(params: {
+	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined
+	transparent: UnwrapSet
+}): TrackedRecord<GenericConfig, ElementsOf<GenericConfig>> | undefined {
+	const { record, transparent } = params
+	return record && isUnwrapped({ record, unwrapSet: transparent }) ? record : undefined
 }
 
 /** The children of the tag a record names; none for a record not found. */

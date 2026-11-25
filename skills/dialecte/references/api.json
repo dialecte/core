@@ -1359,7 +1359,7 @@
 				"find the enclosing element of a tag",
 				"build a path from the root"
 			],
-			"declaredAt": "src/document/query/main.ts:485",
+			"declaredAt": "src/document/query/main.ts:491",
 			"example": "const ancestors = await query.findAncestors(aa1)\n// [A, Root]"
 		},
 		{
@@ -1373,7 +1373,7 @@
 				"build paths for a list of elements",
 				"group elements by an ancestor"
 			],
-			"declaredAt": "src/document/query/main.ts:511",
+			"declaredAt": "src/document/query/main.ts:517",
 			"example": "const [ofAaa1, ofBbb1] = await query.findAncestorsOfEach([aaa1, bbb1], { order: 'top-down' })\n// [[Root, A, AA_1], [Root, B, BB_1]]"
 		},
 		{
@@ -1388,7 +1388,7 @@
 				"filter one tag's elements by attribute",
 				"look up many elements by a list of values in one call"
 			],
-			"declaredAt": "src/document/query/main.ts:726",
+			"declaredAt": "src/document/query/main.ts:732",
 			"example": "const records = await query.findByAttributes({\n  tagName: 'A',\n  attributes: { aA: 'val' },\n})"
 		},
 		{
@@ -1401,7 +1401,7 @@
 				"collect descendants of given tag names under an element",
 				"find nested elements at any depth below a scope"
 			],
-			"declaredAt": "src/document/query/main.ts:394",
+			"declaredAt": "src/document/query/main.ts:400",
 			"example": "// All descendants\nconst all = await query.findDescendants(a)\n// Specific collect\nconst { AA_1 } = await query.findDescendants(a, { collect: 'AA_1' })"
 		},
 		{
@@ -1411,7 +1411,7 @@
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericCollect extends Collect<GenericConfig, GenericElement>>(refsOrRecords: ReadonlyArray<RefOrRecord<GenericConfig, GenericElement>>, options: FindDescendantsParams<GenericConfig, GenericElement, GenericCollect>) => Promise<FindDescendantsReturn<GenericConfig, GenericElement, GenericCollect>[]>",
 			"summary": "What `findDescendants` answers for each element given, in one walk: a record given used as given, the refs in one store read, then one read per level over every element's subtree at once.",
 			"intents": ["collect descendants under many scope elements at once"],
-			"declaredAt": "src/document/query/main.ts:454",
+			"declaredAt": "src/document/query/main.ts:460",
 			"example": "const [underA1, underB1] = await query.findDescendantsOfEach([a1, b1], { collect: 'AAA_1' })"
 		},
 		{
@@ -1426,7 +1426,7 @@
 				"read a namespaced attribute",
 				"read an attribute with its schema default"
 			],
-			"declaredAt": "src/document/query/main.ts:599",
+			"declaredAt": "src/document/query/main.ts:605",
 			"example": "const val = await query.getAttribute(a, { name: 'aA' })\nconst cA = await query.getAttribute(a, { name: 'cA', namespace: 'ext' })"
 		},
 		{
@@ -1441,7 +1441,7 @@
 				"destructure several attributes at once",
 				"read attributes of one namespace"
 			],
-			"declaredAt": "src/document/query/main.ts:649",
+			"declaredAt": "src/document/query/main.ts:655",
 			"example": "const { aA, 'ext:cA': cA } = await query.getAttributes(a)"
 		},
 		{
@@ -1449,9 +1449,9 @@
 			"root": "q",
 			"otherRoutes": [],
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement> | undefined>",
-			"summary": "Get the first direct child of an element matching a given tag name; it looks one level down only.",
+			"summary": "Get the first direct child of an element matching a given tag name; it looks one level down only. When the element has no direct child of the tag, it looks inside its transparent wrappers (the dialecte's `transparentElements`, in their own namespace only: a same-name element of another namespace is not one), one level only. A direct child wins over a wrapper's.",
 			"intents": ["get one direct child by tag name", "check whether a child exists"],
-			"declaredAt": "src/document/query/main.ts:282",
+			"declaredAt": "src/document/query/main.ts:285",
 			"example": "const aa1 = await query.getChild(a, 'AA_1')"
 		},
 		{
@@ -1459,9 +1459,9 @@
 			"root": "q",
 			"otherRoutes": [],
 			"signature": "<GenericElement extends ElementsOf<GenericConfig>, GenericChildElement extends ChildrenOf<GenericConfig, GenericElement>>(refOrRecord: RefOrRecord<GenericConfig, GenericElement> | undefined, tagName: GenericChildElement) => Promise<TrackedRecord<GenericConfig, GenericChildElement>[]>",
-			"summary": "Get all direct children of an element matching a given tag name; it looks one level down only, no recursion.",
+			"summary": "Get all direct children of an element matching a given tag name; it looks one level down only, no recursion. When the element has no direct child of the tag, it answers those inside its transparent wrappers (the dialecte's `transparentElements`, in their own namespace only: a same-name element of another namespace is not one), one level only. Direct children win over wrappers'.",
 			"intents": ["list direct children of one tag name", "iterate one level below an element"],
-			"declaredAt": "src/document/query/main.ts:307",
+			"declaredAt": "src/document/query/main.ts:313",
 			"example": "const children = await query.getChildren(a, 'AA_1')"
 		},
 		{
@@ -1474,7 +1474,7 @@
 				"read the children of many elements at once",
 				"the children of each of many parents"
 			],
-			"declaredAt": "src/document/query/main.ts:334",
+			"declaredAt": "src/document/query/main.ts:340",
 			"example": "const [ofA1, ofA2] = await query.getChildrenOfEach([a1, a2], { tagName: 'AA_1' })"
 		},
 		{
@@ -1542,7 +1542,7 @@
 				"list every element of a tag in the whole document",
 				"scan all elements of one type regardless of position"
 			],
-			"declaredAt": "src/document/query/main.ts:358",
+			"declaredAt": "src/document/query/main.ts:364",
 			"example": "const records = await query.getRecordsByTagName('A')"
 		},
 		{
@@ -1566,7 +1566,7 @@
 				"read staged changes as XML or as a tree",
 				"show what a prepared transaction would produce"
 			],
-			"declaredAt": "src/document/query/main.ts:565",
+			"declaredAt": "src/document/query/main.ts:571",
 			"example": "const prepared = await doc.prepare(async (tx) => tx.addChild(parent, payload))\nconst { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })"
 		},
 		{
@@ -1582,7 +1582,7 @@
 				"read a subtree to copy it with deepClone",
 				"load a lazy tree view one open level at a time"
 			],
-			"declaredAt": "src/document/query/main.ts:537",
+			"declaredAt": "src/document/query/main.ts:543",
 			"example": "const tree = await query.getTree(a)\nconst open = await query.getTree(root, { expanded: new Set([root.id, a.id]) }) // root and a opened"
 		},
 		{

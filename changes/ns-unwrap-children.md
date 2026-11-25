@@ -1,0 +1,3 @@
+### Fixed
+
+- `getChild`, `getChildren` and `getChildrenOfEach` look through a transparent element only when it is in its own namespace, one the dialecte's definition declares for its tag. A same-name element in another namespace (`<other:AA_1 xmlns:other="urn:other">` where `AA_1` is transparent) was looked into, so a child under it was answered as a child of the parent; it is no longer looked into. `tx.ensureChild`, which finds an existing child through `getChildren`, follows the same rule: a child under such a foreign element is no longer taken as the one to ensure, so a new one is staged. The direct-child match is unchanged.

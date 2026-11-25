@@ -1,3 +1,4 @@
+import { isUnwrapped, unwrapSetOf } from '../../tree-filter/unwrap'
 import { getRecord } from './get-record'
 
 import type { Context, RefOrRecord } from '@/document'
@@ -7,7 +8,8 @@ import type { AnyDialecteConfig, ChildrenOf, ElementsOf, TrackedRecord } from '@
  * Fetch the first direct child of a parent matching a given tag name.
  *
  * When no direct match is found and the config declares `transparentElements`,
- * looks through those wrapper elements to find a matching child one level deeper.
+ * looks through those wrapper elements to find a matching child one level deeper. A wrapper is looked into only in its
+ * own namespace (one the definition declares for its tag): a same-name wrapper of another namespace is skipped.
  *
  * Returns `undefined` when the parent does not exist or has no matching child.
  *
@@ -34,13 +36,18 @@ export async function getChild<
 	const transparentElements = context.dialecteConfig.transparentElements
 	if (!transparentElements?.length) return undefined
 
+	const transparent = unwrapSetOf({
+		dialecteConfig: context.dialecteConfig,
+		tagNames: transparentElements,
+	})
 	const transparentRefs = parent.children.filter((child) =>
 		transparentElements.includes(child.tagName),
 	)
 
 	for (const transparentRef of transparentRefs) {
 		const transparentRecord = await getRecord({ context, ref: transparentRef })
-		if (!transparentRecord) continue
+		if (!transparentRecord || !isUnwrapped({ record: transparentRecord, unwrapSet: transparent }))
+			continue
 
 		const match = transparentRecord.children.find((child) => child.tagName === tagName)
 		if (match) return getRecord<GenericConfig, GenericChildElement>({ context, ref: match })
