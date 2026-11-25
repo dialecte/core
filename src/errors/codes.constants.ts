@@ -586,4 +586,13 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/project#a-document-s-path`,
 		},
 	},
+	SAVE_TARGET_DISCARDED: {
+		code: 'D7032',
+		message: 'The save target was discarded',
+		explanation: {
+			when: 'A file was written to a save target after its `discard()`: the chosen file may be removed already, so nothing is written.',
+			fix: "Open a new target with `openSaveTarget` at the user's next click, or write before discarding.",
+			docs: `${CORE_DOCS_URL}/guide/development/utils#opensavetarget`,
+		},
+	},
 } as const

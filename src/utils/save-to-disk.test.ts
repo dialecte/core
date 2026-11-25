@@ -1,4 +1,5 @@
 import { openSaveTarget, saveToDisk } from './save-to-disk'
+import { stubDialog } from './save-to-disk.fixtures'
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
@@ -215,38 +216,3 @@ describe('saveToDisk', () => {
 		await expect(saveToDisk({ data: new Blob(['x']), filename: 'a.txt' })).rejects.toThrow('boom')
 	})
 })
-
-/** The page's save dialog as the case says, and where a write went: the file chosen, a download, or nowhere. */
-function stubDialog(params: {
-	dialog: 'accepted' | 'cancelled' | 'lapsed' | 'none'
-}): () => 'file' | 'download' | 'nowhere' {
-	const { dialog } = params
-	let writtenTo: 'file' | 'download' | 'nowhere' = 'nowhere'
-	// the test browser has its own dialog: no dialog is a page without the function
-	if (dialog === 'none') {
-		;(window as any).showSaveFilePicker = undefined
-	} else {
-		;(window as any).showSaveFilePicker = vi.fn(async function showSaveFilePicker(this: unknown) {
-			// the native dialog refuses a call off its window
-			if (this !== window) throw new TypeError('Illegal invocation')
-			if (dialog === 'cancelled') throw new DOMException('cancelled', 'AbortError')
-			if (dialog === 'lapsed') throw new DOMException('the gesture lapsed', 'SecurityError')
-			return {
-				createWritable: async () => ({
-					write: async () => {
-						writtenTo = 'file'
-					},
-					close: async () => {},
-				}),
-			}
-		})
-	}
-	const anchor = document.createElement('a')
-	anchor.click = () => {
-		writtenTo = 'download'
-	}
-	vi.spyOn(document, 'createElement').mockReturnValue(anchor)
-	vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x')
-	vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-	return () => writtenTo
-}

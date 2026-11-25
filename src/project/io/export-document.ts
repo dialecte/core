@@ -1,5 +1,5 @@
 import { invariant } from '@/utils'
-import { openSaveTarget, writeToTarget } from '@/utils/save-to-disk'
+import { discardOnFailure, openSaveTarget, writeToTarget } from '@/utils/save-to-disk'
 import { parseXmlDocument } from '@/xml/dom'
 
 import type {
@@ -15,7 +15,8 @@ import type { SaveOutcome, SavePickerType, SaveTarget } from '@/utils/save-to-di
  * Export a document through the store: its file in the layout asked and, on the page, its DOM (parsed from a
  * compact export) and its save (a formatted export), with where it went. The save target is asked first, while the
  * user's gesture still counts, unless the caller opened one before; a store export is made once more when an option
- * needs the other layout, never for a cancelled save.
+ * needs the other layout, never for a cancelled save. An export that fails discards a dialog it opened (the empty
+ * file the browser created removed); a target the caller passed is left to the caller.
  */
 export async function exportDocument(
 	params: ExportDocumentParams,
@@ -31,26 +32,33 @@ export async function exportDocument(
 	const { record } = documentState
 
 	const saveTarget = await saveTargetOf({ download, record })
+	// a dialog the export opened is its own to discard when the export fails; a caller's target stays the caller's
+	const opened = typeof download === 'object' && 'target' in download ? undefined : saveTarget
 
-	const exported = await exportLayout({ store, documentId, indent, withDatabaseIds, perf })
-	const outcome =
-		saveTarget &&
-		(await saveFormatted({
-			saveTarget,
-			exported,
-			store,
-			documentId,
-			indent,
-			withDatabaseIds,
-			perf,
-		}))
-	const saved = outcome && { saved: outcome }
-	if (!xmlDocument) return { ...exported, ...saved }
-	const compact = indent
-		? (await exportLayout({ store, documentId, indent: false, withDatabaseIds, perf })).file
-		: exported.file
-	const parsed = await parseXmlDocument({ file: compact })
-	return { ...exported, ...saved, xmlDocument: parsed }
+	return discardOnFailure({
+		target: opened,
+		work: async () => {
+			const exported = await exportLayout({ store, documentId, indent, withDatabaseIds, perf })
+			const outcome =
+				saveTarget &&
+				(await saveFormatted({
+					saveTarget,
+					exported,
+					store,
+					documentId,
+					indent,
+					withDatabaseIds,
+					perf,
+				}))
+			const saved = outcome && { saved: outcome }
+			if (!xmlDocument) return { ...exported, ...saved }
+			const compact = indent
+				? (await exportLayout({ store, documentId, indent: false, withDatabaseIds, perf })).file
+				: exported.file
+			const parsed = await parseXmlDocument({ file: compact })
+			return { ...exported, ...saved, xmlDocument: parsed }
+		},
+	})
 }
 
 /** Where the file is saved: nowhere, the target the caller opened, or a save dialog opened now. */
