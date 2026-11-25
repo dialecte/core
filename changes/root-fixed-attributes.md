@@ -1,3 +1,0 @@
-### Changed
-
-- `project.initEmptyDocument` writes on the new document's root every attribute its definition marks required and fixed, with that value (in its namespace when qualified), before `afterStandardizedRecord` runs: a created document's root now holds what an imported one of the dialecte states, readable with `defaults: 'none'`. A test that compares a created root's stored attributes, or a fresh document's export, sees them (a qualified one now exported with its namespace declaration). A required attribute with no fixed value and an optional fixed one stay absent; no config field is needed.

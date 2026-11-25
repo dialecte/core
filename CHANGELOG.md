@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-25
+
+Core 0.17.0: getChild and getChildren look through transparent elements only in the dialecte's own namespace, and created document roots carry their schema-fixed required attributes.
+
+### Changed
+
+- **Breaking** - `project.initEmptyDocument` writes on the new document's root every attribute its definition marks required and fixed, with that value (in its namespace when qualified), before `afterStandardizedRecord` runs: a created document's root now holds what an imported one of the dialecte states, readable with `defaults: 'none'`. A test that compares a created root's stored attributes, or a fresh document's export, sees them (a qualified one now exported with its namespace declaration). A required attribute with no fixed value and an optional fixed one stay absent; no config field is needed.
+- **Breaking** - `getChild`, `getChildren` and `getChildrenOfEach` look through a transparent element only when it is in its own namespace, one the dialecte's definition declares for its tag. A same-name element in another namespace (`<other:AA_1 xmlns:other="urn:other">` where `AA_1` is transparent) was looked into, so a child under it was answered as a child of the parent; it is no longer looked into. `tx.ensureChild`, which finds an existing child through `getChildren`, follows the same rule: a child under such a foreign element is no longer taken as the one to ensure, so a new one is staged. The direct-child match is unchanged.
+
 ## [0.16.0] - 2026-11-25
 
 Core 0.16.0: a public scoped plan runner (tx.progress.runInPlan), transparent elements unwrapped only in the dialecte's namespace, SaveTarget.discard(), IndexedDB reads through one connection gate.
