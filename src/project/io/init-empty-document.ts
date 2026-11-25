@@ -3,6 +3,7 @@ import { resolveConfig } from './resolve-config'
 
 import { standardizeRecord } from '@/helpers'
 import { parseDocumentPath, readableExtensionsOf, splitFileName } from '@/store/document-path'
+import { resolveDefinition } from '@/utils/resolve-definition'
 
 import type {
 	InitEmptyDocumentOptions,
@@ -10,11 +11,11 @@ import type {
 	InitEmptyDocumentResult,
 	DocumentRecord,
 } from '../types'
-import type { AnyDialecteConfig, AnyRawRecord } from '@/types'
+import type { AnyDialecteConfig, AnyRawRecord, AttributeInputOf } from '@/types'
 
 /**
- * Build a DocumentRecord, persist it, and create a root record in the store.
- * Pure orchestration - no class state mutation.
+ * Build a DocumentRecord, persist it, and create a root record in the store: the root holds every attribute its
+ * definition marks required and fixed, with that value. Pure orchestration - no class state mutation.
  *
  * @internal the store-level step behind `project.initEmptyDocument`; callers use the project
  */
@@ -52,6 +53,7 @@ export async function initEmptyDocument(
 			id: crypto.randomUUID(),
 			tagName: config.rootElementName,
 			namespace: config.namespaces.default,
+			attributes: requiredFixedRootAttributesOf({ config }),
 			parent: null,
 			children: [],
 		},
@@ -60,6 +62,40 @@ export async function initEmptyDocument(
 	await store.bulkWrite(documentId, { creates: [rootRecord] })
 
 	return { documentId, record: doc, documentState: buildDocumentState(doc) }
+}
+
+/**
+ * The root's attributes its declared type marks required and fixed, each with its fixed value and its namespace:
+ * what any document of the dialecte states on its root (a type the root names with xsi:type is not known yet). A required attribute with no fixed value has none to give; an optional one stays
+ * absent, as in a file that leaves it out. Not the export's `required` view (`resolveSchemaAttributeValue`), which
+ * also writes an empty required value and an optional fixed one into the file: a record stores only what the
+ * schema leaves no choice about.
+ */
+function requiredFixedRootAttributesOf(params: {
+	config: AnyDialecteConfig
+}): AttributeInputOf<AnyDialecteConfig, string>[] {
+	const { config } = params
+	const definition = resolveDefinition({
+		dialecteConfig: config,
+		record: {
+			tagName: config.rootElementName,
+			parent: null,
+			attributes: [],
+			namespace: config.namespaces.default,
+		},
+	})
+	const details = definition?.attributes.details ?? {}
+	return Object.entries(details).flatMap(([name, attribute]) =>
+		attribute.required && attribute.fixed !== undefined
+			? [
+					{
+						name,
+						value: attribute.fixed,
+						...(attribute.namespace && { namespace: attribute.namespace }),
+					},
+				]
+			: [],
+	)
 }
 
 /**

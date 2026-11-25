@@ -236,3 +236,5 @@ For `initEmptyDocument`:
 ```
 afterStandardizedRecord (once, on the root)
 ```
+
+The root it sees already holds the attributes its definition marks required and fixed.
