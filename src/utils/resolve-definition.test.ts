@@ -1,5 +1,5 @@
 import { getAttributeRules, resolveSchemaAttributeValue } from './attribute-rules'
-import { resolveDefinition } from './resolve-definition'
+import { declaredNamespaces, resolveDefinition } from './resolve-definition'
 
 import { describe, expect, it } from 'vitest'
 
@@ -343,4 +343,27 @@ describe('attribute rules read the declaration that applies', () => {
 		expect(value('Positional', none)).toBe('x')
 		expect(value('ByNamespace', other)).toBeUndefined()
 	})
+})
+
+describe('declaredNamespaces', () => {
+	type TestCase = { tagName: string; expectedUris: string[] }
+
+	const testCases: Record<string, TestCase> = {
+		'AAA_1 declared in two namespaces → both, once each': {
+			tagName: 'AAA_1',
+			expectedUris: ['', 'urn:other'],
+		},
+		'One declared one way → its tag level namespace': { tagName: 'One', expectedUris: [''] },
+		'a tag the definition does not know → none': { tagName: 'Unknown', expectedUris: [] },
+	}
+
+	for (const [name, testCase] of Object.entries(testCases)) {
+		it(name, () => {
+			expect(
+				declaredNamespaces({ dialecteConfig: config, tagName: testCase.tagName }).map(
+					(namespace) => namespace.uri,
+				),
+			).toEqual(testCase.expectedUris)
+		})
+	}
 })

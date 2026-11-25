@@ -133,7 +133,7 @@ const [ofA1, ofA2] = await doc.query.getChildrenOfEach([a1, a2], { tagName: 'AA_
 
 ### findAncestors
 
-Walks the parent chain upward from a record and returns ancestors bottom-up: `[parent, grandparent, …, root]`. The starting record is **not** included. The dialecte's transparent elements (`transparentElements`) are walked through and left out, as `getTree` and `getSnapshot` unwrap them: pass `unwrap: []` for every stored ancestor.
+Walks the parent chain upward from a record and returns ancestors bottom-up: `[parent, grandparent, …, root]`. The starting record is **not** included. The dialecte's transparent elements (`transparentElements`) are walked through and left out, as `getTree` and `getSnapshot` unwrap them: pass `unwrap: []` for every stored ancestor. Only an element in its own namespace (one the dialecte's definition declares for its tag) is walked through: a same-name element in another namespace is an ancestor like any other.
 
 ```ts
 const ancestors = await doc.query.findAncestors(ref)
@@ -151,12 +151,12 @@ const ancestors = await doc.query.findAncestors(ref, {
 
 #### FindAncestorsOptions
 
-| Option          | Type                        | Description                                                                                                                                                                                        |
-| --------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `depth`         | `number`                    | Maximum number of ancestors to collect. Default: unlimited.                                                                                                                                        |
-| `stopAtTagName` | `ElementName`               | Stop walking after collecting the first ancestor with this tag name.                                                                                                                               |
-| `order`         | `'bottom-up' \| 'top-down'` | Result order. `'bottom-up'` (default): `[parent, grandparent, …, root]`. `'top-down'`: `[root, …, parent]`.                                                                                        |
-| `unwrap`        | `ElementName[]`             | Elements walked through and left out of the result: they take no `depth` level and `stopAtTagName` never matches them. Default: the dialecte's `transparentElements`. `[]`: every stored ancestor. |
+| Option          | Type                        | Description                                                                                                                                                                                                                     |
+| --------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `depth`         | `number`                    | Maximum number of ancestors to collect. Default: unlimited.                                                                                                                                                                     |
+| `stopAtTagName` | `ElementName`               | Stop walking after collecting the first ancestor with this tag name.                                                                                                                                                            |
+| `order`         | `'bottom-up' \| 'top-down'` | Result order. `'bottom-up'` (default): `[parent, grandparent, …, root]`. `'top-down'`: `[root, …, parent]`.                                                                                                                     |
+| `unwrap`        | `ElementName[]`             | Elements walked through and left out of the result, in their own namespace only: they take no `depth` level and `stopAtTagName` never matches them. Default: the dialecte's `transparentElements`. `[]`: every stored ancestor. |
 
 ### findAncestorsOfEach
 
@@ -291,13 +291,13 @@ const tree = await doc.query.getTree(ref, {
 
 #### GetTreeParams
 
-| Option     | Type                  | Description                                                    |
-| ---------- | --------------------- | -------------------------------------------------------------- |
-| `select`   | `TreeSelect`          | Prisma-style nested projection to pick branches                |
-| `omit`     | `OmitEntry[]`         | Exclude elements - string or key-based object with conditions  |
-| `unwrap`   | `ElementName[]`       | Skip these elements and promote their children                 |
-| `depth`    | `number`              | Structural levels to expand (see below)                        |
-| `expanded` | `ReadonlySet<string>` | Only these ids open, one level each, from the root (see below) |
+| Option     | Type                  | Description                                                             |
+| ---------- | --------------------- | ----------------------------------------------------------------------- |
+| `select`   | `TreeSelect`          | Prisma-style nested projection to pick branches                         |
+| `omit`     | `OmitEntry[]`         | Exclude elements - string or key-based object with conditions           |
+| `unwrap`   | `ElementName[]`       | Skip these elements, in their own namespace, and promote their children |
+| `depth`    | `number`              | Structural levels to expand (see below)                                 |
+| `expanded` | `ReadonlySet<string>` | Only these ids open, one level each, from the root (see below)          |
 
 #### Depth-limited reads
 
@@ -308,7 +308,7 @@ const tree = await doc.query.getTree(ref, {
 - `1` — the node and its direct children.
 - `n` — `n` levels below the node.
 
-The levels counted are the ones the caller sees: an element `unwrap` hoists (by default the dialecte's transparent elements) takes no level, its children count at its parent's next level. With `unwrap: []` nothing is hoisted and every element counts.
+The levels counted are the ones the caller sees: an element `unwrap` hoists (by default the dialecte's transparent elements, in their own namespace only) takes no level, its children count at its parent's next level. With `unwrap: []` nothing is hoisted and every element counts.
 
 An unexpanded node keeps its `children` refs but returns an empty `tree`, so a collapsed branch is distinguishable from a leaf — exactly what a lazy / expand-on-demand UI needs.
 
@@ -384,6 +384,8 @@ When the config defines `transparentElements`, `getTree` handles them automatica
 1. **Select pass-through:** transparent elements are always fetched, even when not listed in select keys. Their children are matched against the parent's select - as if the wrapper didn't exist.
 
 2. **Auto-unwrap:** transparent elements are removed from the result tree by default (their children are promoted). No need to pass `unwrap`.
+
+Both apply, as `unwrap` does, only to an element in its own namespace (one the dialecte's definition declares for its tag): a same-name element in another namespace is a node like any other, takes a `depth` level and gets no select pass-through.
 
 ```ts
 // Config: transparentElements: ['AA_1']
@@ -474,7 +476,7 @@ const { tree, xmlString } = await prepared.query.getSnapshot({ as: 'both' })
 | `declareNamespaces`     | `boolean`                         | XML only. Default `true`. `false` → bare fragment (literal/prefixed names, no `xmlns` declarations). See the fragment note below.                                                                                                                                                                    |
 | `includeXmlDeclaration` | `boolean`                         | XML only. Default `true`. `false` → omit the XML prolog (`<?xml version="1.0" encoding="UTF-8"?>`), e.g. for an excerpt embedded in another document.                                                                                                                                                |
 
-**Tree vs XML:** `omit`, `unwrap` and `includeDeleted` shape the **tree** only. The **XML** always reflects the full, unfiltered document — it is what `commit()` will write. When `unwrap` is omitted, the config's transparent elements are unwrapped (as in `getTree`), so the tree matches what the UI shows.
+**Tree vs XML:** `omit`, `unwrap` and `includeDeleted` shape the **tree** only. The **XML** always reflects the full, unfiltered document — it is what `commit()` will write. When `unwrap` is omitted, the config's transparent elements are unwrapped (as in `getTree`, in their own namespace only), so the tree matches what the UI shows.
 
 **Ordering:** children are returned in config order (same as `getTree` and the XML), so the snapshot tree and its `xmlString` share one element order.
 

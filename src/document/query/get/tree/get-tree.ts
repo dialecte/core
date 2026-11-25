@@ -1,4 +1,4 @@
-import { applyUnwrap, applyOrder, parseOmit } from '../../tree-filter'
+import { applyUnwrap, applyOrder, parseOmit, unwrapSetOf } from '../../tree-filter'
 import { loadTreeRecords } from './load-tree-records'
 import { childRefsToRead, childReach, expandsChildren, keptChildren } from './tree-children'
 
@@ -20,7 +20,8 @@ import type { AnyDialecteConfig, ElementsOf, TrackedRecord, TreeRecord } from '@
  * Reads only the branches it can keep, one `getRecords` per level: a ref with an id below the document root reads
  * its own subtree, and a `select`, an unconditional `omit`, a `depth` or `expanded` prunes further. The document
  * root, or a ref without id, with nothing to prune reads the whole document once (see `loadTreeRecords`). The
- * elements `unwrap` hoists take no `depth` level and open when reached (see `childReach`).
+ * elements `unwrap` hoists take no `depth` level and open when reached (see `childReach`); a same-name element in
+ * another namespace is a node like any other.
  *
  * @internal the context-level read behind `doc.query.getTree`; callers use the query
  */
@@ -37,16 +38,20 @@ export async function getTree<
 	const { omit, unwrap, depth, expanded } = options
 	const select = options.select as TreeSelect<GenericConfig, ElementsOf<GenericConfig>> | undefined
 
-	const transparentElements = context.dialecteConfig.transparentElements as
-		| readonly string[]
-		| undefined
+	const transparentElements: readonly string[] = context.dialecteConfig.transparentElements ?? []
+	const transparent = unwrapSetOf({
+		dialecteConfig: context.dialecteConfig,
+		tagNames: transparentElements,
+	})
 	// Auto-unwrap transparent elements when unwrap is not explicitly provided
-	const unwrapTagNames = unwrap ?? (transparentElements?.length ? transparentElements : undefined)
+	const unwrapSet = unwrap
+		? unwrapSetOf({ dialecteConfig: context.dialecteConfig, tagNames: unwrap })
+		: transparent
 	const shaping: TreeShaping<GenericConfig> = {
 		compiledOmit: parseOmit({ omit, dialecteConfig: context.dialecteConfig }),
 		dialecteConfig,
-		transparentElements,
-		unwrapTagNames: new Set(unwrapTagNames),
+		transparent,
+		unwrapSet,
 		expanded,
 	}
 
@@ -70,9 +75,7 @@ export async function getTree<
 		reach: { remainingDepth: depth ?? Number.POSITIVE_INFINITY, hoisted: false },
 	})
 
-	const unwrapped = unwrapTagNames
-		? applyUnwrap({ tree, unwrapTagNames: unwrapTagNames as ElementsOf<GenericConfig>[] })
-		: tree
+	const unwrapped = unwrapSet.size > 0 ? applyUnwrap({ tree, unwrapSet }) : tree
 
 	// Final post-pass: order children by the config sequence (matches XML order).
 	return applyOrder({
@@ -112,7 +115,7 @@ function buildNode<GenericConfig extends AnyDialecteConfig>(params: {
 				record: kept.record,
 				select: kept.select,
 				shaping,
-				reach: childReach<GenericConfig>({ tagName: kept.record.tagName, reach, shaping }),
+				reach: childReach<GenericConfig>({ record: kept.record, reach, shaping }),
 			}),
 	)
 

@@ -1,8 +1,8 @@
-import { applyUnwrap } from './unwrap'
+import { applyUnwrap, unwrapSetOf } from './unwrap'
 
 import { describe, expect } from 'vitest'
 
-import { createTestRecord, runTestCases } from '@/test'
+import { TEST_DIALECTE_CONFIG, createTestRecord, runTestCases } from '@/test'
 
 import type { BaseTestCase, TestDialecteConfig, TestRecord } from '@/test'
 import type { AnyTreeRecord, ElementsOf, TreeRecord } from '@/types'
@@ -84,7 +84,8 @@ describe('applyUnwrap', () => {
 	}
 
 	runTestCases.generic(testCases, (tc) => {
-		const result = applyUnwrap({ tree: tc.tree, unwrapTagNames: tc.unwrap })
+		const unwrapSet = unwrapSetOf({ dialecteConfig: TEST_DIALECTE_CONFIG, tagNames: tc.unwrap })
+		const result = applyUnwrap({ tree: tc.tree, unwrapSet })
 		expect(toShape(result)).toEqual(tc.expected)
 	})
 })

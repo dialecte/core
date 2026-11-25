@@ -1,8 +1,9 @@
-import { isOmitted, shouldStopTraversal } from '../../tree-filter'
+import { isOmitted, isUnwrapped, shouldStopTraversal } from '../../tree-filter'
 import { CONFIG_KEYS } from './get-tree.constants'
 
 import { matchesAttributeFilter } from '@/document'
 
+import type { UnwrapSet } from '../../tree-filter'
 import type { RecordLink } from '../record/known-records.types'
 import type { TreeSelect } from './get-tree.types'
 import type { KeptChild, TreeReach, TreeShaping } from './tree-children.types'
@@ -27,18 +28,18 @@ export function expandsChildren<GenericConfig extends AnyDialecteConfig>(params:
 }
 
 /**
- * The reach of a child: one visible level less than its parent, or its parent's own levels when the call hoists its
- * tag, so `depth` counts the levels the caller sees after unwrap.
+ * The reach of a child: one visible level less than its parent, or its parent's own levels when the call hoists it
+ * (its tag, in its own namespace), so `depth` counts the levels the caller sees after unwrap.
  *
  * @internal shared by the tree loader and the tree assembly of `getTree`
  */
 export function childReach<GenericConfig extends AnyDialecteConfig>(params: {
-	tagName: string
+	record: TrackedRecord<GenericConfig, ElementsOf<GenericConfig>>
 	reach: TreeReach
 	shaping: TreeShaping<GenericConfig>
 }): TreeReach {
-	const { tagName, reach, shaping } = params
-	const hoisted = shaping.unwrapTagNames.has(tagName)
+	const { record, reach, shaping } = params
+	const hoisted = isUnwrapped({ record, unwrapSet: shaping.unwrapSet })
 	return {
 		remainingDepth: hoisted ? reach.remainingDepth : reach.remainingDepth - 1,
 		hoisted,
@@ -87,7 +88,7 @@ export function keptChildren<GenericConfig extends AnyDialecteConfig>(params: {
 		select,
 		record,
 		dialecteConfig: shaping.dialecteConfig,
-		transparentElements: shaping.transparentElements,
+		transparent: shaping.transparent,
 	})
 }
 
@@ -123,8 +124,9 @@ function isReadable<GenericConfig extends AnyDialecteConfig>(params: {
 	const { tagName, selectKeys, shaping } = params
 	if (shaping.compiledOmit.unconditional.has(tagName)) return false
 	if (!selectKeys || selectKeys.has(tagName)) return true
-	// a transparent element is kept so that its children can be matched
-	return shaping.transparentElements?.includes(tagName) ?? false
+	// a transparent element is kept so that its children can be matched; a ref carries no namespace, so a same-name
+	// element of another namespace is read too, then dropped by `keptChildren` when the select names it not
+	return shaping.transparent.has(tagName)
 }
 
 //== Select resolution
@@ -136,9 +138,10 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 	dialecteConfig?: GenericConfig
 	/** The dialecte the `where` filters are read against (an `xsi:type` value names a type of it). */
 	filterConfig: GenericConfig
-	transparentElements?: readonly string[]
+	/** The dialecte's transparent elements, in their own namespaces. */
+	transparent: UnwrapSet
 }): KeptChild<GenericConfig>[] {
-	const { children, select, record, dialecteConfig, filterConfig, transparentElements } = params
+	const { children, select, record, dialecteConfig, filterConfig, transparent } = params
 
 	// No select = include all descendants
 	if (!select) {
@@ -149,7 +152,7 @@ function resolveChildSelect<GenericConfig extends AnyDialecteConfig>(params: {
 		const entry = (select as Record<string, unknown>)[child.tagName]
 
 		// Transparent element without explicit select entry: pass parent select through
-		if (entry === undefined && transparentElements?.includes(child.tagName)) {
+		if (entry === undefined && isUnwrapped({ record: child, unwrapSet: transparent })) {
 			return [{ record: child, select }]
 		}
 
