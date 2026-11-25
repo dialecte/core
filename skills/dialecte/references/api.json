@@ -2089,6 +2089,18 @@
 			"declaredAt": "src/document/progress/progress.types.ts:46"
 		},
 		{
+			"path": "tx.progress.runInPlan",
+			"root": "tx",
+			"otherRoutes": [],
+			"signature": "<GenericResult>(params: { plan: PlanInput; run: () => Promise<GenericResult>; }) => Promise<GenericResult>",
+			"summary": "Run `run` inside one plan of its own: push `plan`, await `run`, then cut the stack back to the depth it had before - this plan's frame and any frame a nested op left open above it, in one event - whether `run` answers or throws (a synchronous throw included); a throw is thrown again. A balanced body ends exactly as a hand-written `plan()` / `endPlan()` pair. `run` steps its own plan with `nextStep()`; runs nest. One plan-opening op at a time per transaction: a run that ends cuts the frames of another run started after it. A body that calls `forceClear()` leaves the run nothing to close. The query's no-op reporter answers `run`'s result and rejects with its error.",
+			"intents": [
+				"run a step inside a progress plan that always closes",
+				"report progress of a nested op that may throw"
+			],
+			"declaredAt": "src/document/progress/progress.types.ts:70"
+		},
+		{
 			"path": "tx.update",
 			"root": "tx",
 			"otherRoutes": [],

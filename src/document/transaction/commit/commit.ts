@@ -49,7 +49,33 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 	const totalOperations = creates.length + updates.length + deletes.length
 
 	documentState.loading = true
-	progress.plan({ steps: totalOperations })
+	let answer: CommitAnswer | void
+	try {
+		answer = await progress.runInPlan({
+			plan: { steps: totalOperations },
+			run: () => writeCommit({ writeId, store, documentId, documentState, progress, perf, writes }),
+		})
+	} finally {
+		perf.stop('core::commit')
+	}
+	return { changes: describeCommitChanges(writes), version: answer?.version }
+}
+
+/**
+ * The store write of a commit, run inside the commit's own plan: each record the store reports written is one step.
+ * On a throw `loading` is false before the plan's cut; on success `lastUpdate` is set before it, so the subscriber told
+ * of the cut sees the commit's outcome, `loading` still true until the transaction ends.
+ */
+async function writeCommit(params: {
+	writeId: string
+	store: Store
+	documentId: string
+	documentState: DocumentState
+	progress: ProgressReporter
+	perf: Perf
+	writes: Pick<Parameters<Store['commit']>[0], 'creates' | 'updates' | 'deletes'>
+}): Promise<CommitAnswer | void> {
+	const { writeId, store, documentId, documentState, progress, perf, writes } = params
 
 	// store.commit reports absolute cumulative progress; convert it to relative
 	// nextStep() calls (robust to batched jumps).
@@ -85,13 +111,8 @@ export async function commitTransaction<GenericConfig extends AnyDialecteConfig>
 		perf.stop('core::store::commit')
 	} catch (error) {
 		documentState.loading = false
-		progress.endPlan()
-		perf.stop('core::commit')
 		throw error
 	}
-
 	documentState.lastUpdate = Date.now()
-	progress.endPlan()
-	perf.stop('core::commit')
-	return { changes: describeCommitChanges(writes), version: answer?.version }
+	return answer
 }

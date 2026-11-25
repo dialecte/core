@@ -78,20 +78,32 @@ is close-previous: it captions the new step **and** advances the bar in one call
 closing the _previous_ step, so the first `nextStep` opens step 0 without
 advancing and `current` stays = **completed** steps.
 
-**Balancing rule:** every `plan()` you open you close with `endPlan()`, **except**
-the transaction body's main plan — the transaction closes that one for you (its
-`finally` runs `forceClear()`). You never inspect the stack: a nested op writes
-`plan()`/`nextStep()`/`endPlan()` identically whether it runs top-level or inside
-another plan. On a throw you skip `endPlan()` entirely — `forceClear()` unwinds
-the whole stack.
+**Balancing rule:** open a plan with `runInPlan({ plan, run })` when your op runs
+nested ops or may throw: it pushes the plan, awaits `run`, and cuts the stack back
+to where it was before - its own plan and any plan a nested op left open - whether
+`run` answers or throws, so a caller that catches the error goes on with the bar it
+had. A hand-written `plan()` / `endPlan()` pair stays for a flat plan that cannot
+throw. The transaction body's main plan is the exception: the transaction closes it
+for you (its `finally` runs `forceClear()`). You never inspect the stack: a nested op
+reports the same way whether it runs top-level or inside another plan.
 
 ```ts
 async function cloneStuff(tx, nodes) {
-	tx.progress.plan({ steps: nodes.length }) // no label → inherits the main's caption
-	for (const n of nodes) tx.progress.nextStep()
-	tx.progress.endPlan() // balanced close
+	await tx.progress.runInPlan({
+		plan: { steps: nodes.length }, // no label → inherits the main's caption
+		run: async () => {
+			for (const node of nodes) {
+				tx.progress.nextStep()
+				await cloneOne(tx, node) // may throw: the plan still closes
+			}
+		},
+	})
 }
 ```
+
+Run plan-opening ops on one transaction **one at a time** (no `Promise.all` of two
+ops that each open a plan): one stack cannot hold ops running at once, and the end
+of one, on success or on a throw, cuts the plans of the other.
 
 Nested plans **compose safely**. `plan`/`endPlan` push/pop an internal stack, so
 a nested op (e.g. a `deepClone` called inside an `importTypes` loop) reports into

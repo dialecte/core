@@ -304,12 +304,13 @@ await doc.transaction(async (tx) => {
 })
 ```
 
-| Method                    | Purpose                                                                                             |
-| ------------------------- | --------------------------------------------------------------------------------------------------- |
-| `plan({ steps, label? })` | Push a plan level (child of the current innermost, or the main when none is open)                   |
-| `nextStep(label?)`        | Advance the innermost plan one step (close-previous: `current` = completed steps); optional caption |
-| `endPlan()`               | Pop the innermost plan; balance every `plan()` you open **except** the main (transaction owns it)   |
-| `forceClear()`            | Unconditional clear — called by `Document.transaction`'s outer `finally` regardless of balance      |
+| Method                     | Purpose                                                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plan({ steps, label? })`  | Push a plan level (child of the current innermost, or the main when none is open)                                                                                                     |
+| `nextStep(label?)`         | Advance the innermost plan one step (close-previous: `current` = completed steps); optional caption                                                                                   |
+| `endPlan()`                | Pop the innermost plan; balance every hand-written `plan()` **except** the main (transaction owns it)                                                                                 |
+| `runInPlan({ plan, run })` | Run `run` inside a plan of its own that closes on success and on a throw (with any plan a nested op left open); answers `run`'s result. One plan-opening op at a time per transaction |
+| `forceClear()`             | Unconditional clear — called by `Document.transaction`'s outer `finally` regardless of balance                                                                                        |
 
 ## Reading inside a transaction
 

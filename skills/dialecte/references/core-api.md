@@ -102,7 +102,7 @@ in the installed `.d.ts` or the repo before calling. Paths are relative to the c
 | `update(ref, { attributes?, value? })`                               | change; an `undefined`/`null` attribute value removes it; no-op updates stage nothing  |
 | `delete(ref)`                                                        | delete with cascade; root is protected                                                 |
 | `deepClone(parent, treeRecord)`                                      | copy a `getTree` result under a parent; always new ids; returns source→target mappings |
-| `progress`                                                           | `plan`, `nextStep`, `endPlan` for long operations                                      |
+| `progress`                                                           | `plan`, `nextStep`, `endPlan`; `runInPlan` for an op that nests or may throw           |
 
 `finishStaging`, `commit`, `getStagedOperations`, `clear*` are internal - Document calls them.
 
