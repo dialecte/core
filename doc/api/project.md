@@ -57,7 +57,7 @@ A type no kind is registered for in this realm is refused `PROJECT_STORAGE_NOT_R
 
 ## initEmptyDocument
 
-Registers a new empty document with a root element pre-populated from the config's definition.
+Registers a new empty document with a root element pre-populated from the config's definition: the root holds every attribute its definition marks required and fixed, with that value, as a file of the dialecte must state them. A required attribute with no fixed value, and an optional one with a fixed value, are left out (an export still adds the required and fixed values the root does not hold, in the namespaces the written records use).
 
 ```ts
 const documentId = await project.initEmptyDocument({
