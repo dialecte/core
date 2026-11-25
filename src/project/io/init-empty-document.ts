@@ -66,10 +66,10 @@ export async function initEmptyDocument(
 
 /**
  * The root's attributes its declared type marks required and fixed, each with its fixed value and its namespace:
- * what any document of the dialecte states on its root (a type the root names with xsi:type is not known yet). A required attribute with no fixed value has none to give; an optional one stays
- * absent, as in a file that leaves it out. Not the export's `required` view (`resolveSchemaAttributeValue`), which
- * also writes an empty required value and an optional fixed one into the file: a record stores only what the
- * schema leaves no choice about.
+ * what any document of the dialecte states on its root (a type the root names with xsi:type is not known yet). A
+ * required attribute with no fixed value has none to give; an optional one stays absent, as in a file that leaves it
+ * out. Not the export's `required` view (`resolveSchemaAttributeValue`), which also writes an empty required value
+ * and an optional fixed one into the file: a record stores only what the schema leaves no choice about.
  */
 function requiredFixedRootAttributesOf(params: {
 	config: AnyDialecteConfig
