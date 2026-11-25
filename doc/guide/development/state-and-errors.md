@@ -103,7 +103,7 @@ async function cloneStuff(tx, nodes) {
 
 Run plan-opening ops on one transaction **one at a time** (no `Promise.all` of two
 ops that each open a plan): one stack cannot hold ops running at once, and the end
-of one, on success or on a throw, cuts the plans of the other.
+of one, on success or on a throw, cuts the frames of one started after it.
 
 Nested plans **compose safely**. `plan`/`endPlan` push/pop an internal stack, so
 a nested op (e.g. a `deepClone` called inside an `importTypes` loop) reports into

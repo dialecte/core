@@ -132,6 +132,7 @@ describe('progress after a successful commit', () => {
 		progress.plan({ steps: 2, label: 'Applying' })
 		progress.nextStep()
 		const before = copyOf(state.progress)
+		const eventsBefore = seenAtEachEvent.length
 
 		await expect(
 			commitTransaction({
@@ -142,8 +143,13 @@ describe('progress after a successful commit', () => {
 				documentState: state,
 				progress,
 			}),
-		).resolves.toMatchObject({ changes: expect.anything() })
+		).resolves.toMatchObject({
+			changes: expect.anything(),
+			version: { engineId: 'engine-a', count: 1 },
+		})
 
+		// the commit plan, one step per record written, then its close in one event
+		expect(seenAtEachEvent.length - eventsBefore).toBe(4)
 		const atClose = seenAtEachEvent.at(-1)
 		expect(atClose?.progress).toEqual(before)
 		expect(atClose?.loading).toBe(true)

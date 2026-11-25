@@ -46,7 +46,7 @@ export async function stageDeepClone<
 	context.perf.start('core::deepClone::countNodes')
 	const totalNodes = countNodes(record)
 	context.perf.stop('core::deepClone::countNodes')
-	// a clone that throws pops its own frame (and any a hook left open), whoever catches it
+	// the clone's plan closes on success and on a throw (with any frame a hook left open), whoever catches it
 	const clonedRecord = await context.progress.runInPlan({
 		plan: { steps: totalNodes },
 		run: () =>

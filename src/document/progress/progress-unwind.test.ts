@@ -155,7 +155,10 @@ describe('progress after a commit throws', () => {
 			history: [],
 			lastUpdate: null,
 		}
-		const progress = createProgressReporter(state)
+		const loadingAtEachEvent: boolean[] = []
+		const progress = createProgressReporter(state, () => {
+			loadingAtEachEvent.push(state.loading)
+		})
 		const failure = new Error('store failure')
 		const store = storeRefusingCommits({ failure })
 		const operations: Operation<TestDialecteConfig>[] = ['r1', 'r2'].map((id) => ({
@@ -179,6 +182,8 @@ describe('progress after a commit throws', () => {
 		).rejects.toBe(failure)
 
 		expect(state.progress).toEqual(before)
+		// the cut that closes the commit plan is told after loading went false
+		expect(loadingAtEachEvent.at(-1)).toBe(false)
 	})
 })
 

@@ -22,7 +22,7 @@ type PlanFrame = {
  *
  * `signalStateChange(terminal)` is fired after every mutation so a subscriber (the
  * owning Document's reactive registry) can react. `terminal` is `true` only for the
- * final frame of an operation (an `endPlan()` that empties the stack, or
+ * final frame of an operation (an `endPlan()` or a `runInPlan()` cut that empties the stack, or
  * `forceClear()`), letting the UI flush it synchronously instead of coalescing it away.
  */
 // dialecte-allow argument-mutation: the reporter is the sole writer of `DocumentState.progress`, its whole job
@@ -94,7 +94,10 @@ export function createProgressReporter(
 	return reporter
 }
 
-/** Project the plan stack onto the two-level `DocumentProgress` shape: the main frame drives the bar, the deepest the caption and the sub-bar. */
+/**
+ * Project the plan stack onto the two-level `DocumentProgress` shape: the main frame drives the bar, the deepest the
+ * caption and the sub-bar.
+ */
 function projectProgress(stack: readonly PlanFrame[]): DocumentProgress {
 	if (stack.length === 0) return null
 	const main = stack[0]
