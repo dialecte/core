@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-25
+
+Core 0.16.0: a public scoped plan runner (tx.progress.runInPlan), transparent elements unwrapped only in the dialecte's namespace, SaveTarget.discard(), IndexedDB reads through one connection gate.
+
+### Added
+
+- `declaredNamespaces({ dialecteConfig, tagName })` from `@dialecte/core/utils`: the namespaces a tag is declared in (its tag level and each declaration, once each); none for a tag the definition does not know.
+- `tx.progress.runInPlan({ plan, run })` runs a step inside a progress plan of its own that always closes: on success and on a throw it cuts the plan stack back to where it was before the plan - its own plan and any plan a nested op left open - and a throw is thrown again. An extension op whose nested op throws no longer leaves its plan stuck when a caller catches the error. A balanced body reports the same progress as a hand-written `plan()` / `endPlan()` pair; runs nest, and on a query's no-op reporter it answers `run`'s result. Run plan-opening ops on one transaction one at a time: a run that ends cuts the plans of another run started after it. `deepClone` and the commit run their plans through it.
+- `SaveTarget.discard()`, on every target `openSaveTarget` answers: gives the target up when the file will not be written. The browser may create the chosen file, empty, as the save dialog closes; `discard()` removes it while it is empty (`FileSystemFileHandle.remove()`, where the browser has it; elsewhere it does nothing), so a picked file that holds content is kept. A download or a cancelled target has nothing to remove. Once a write succeeded, `discard()` does nothing (the saved file is the user's); one during a write waits for it; concurrent ones settle together; a write to a file or download target after it is refused with `SAVE_TARGET_DISCARDED` (`D7032`). A file already gone counts as removed; any other failure to remove it is thrown, and the next `discard()` tries again.
+
+### Changed
+
+- **Breaking** - `findAncestors`, `findAncestorsOfEach`, `getTree` and `getSnapshot` unwrap a transparent element (or one `unwrap` names) only when it is in its own namespace, one the dialecte's definition declares for its tag (a tag the definition does not know: its default namespace). A same-name element in another namespace (`<other:AA_1 xmlns:other="urn:other">` where `AA_1` is transparent) was walked through or hoisted as if it were the dialecte's own; it is now a normal element: it stays in the ancestor chain and the tree, takes a `depth` level, can be the `stopAtTagName` element and gets no `select` pass-through. Answers for the dialecte's own transparent elements are unchanged, and `unwrap: []` still unwraps nothing.
+- **Breaking** - `SaveTarget` has a required `discard()` on every member: a target a caller builds itself (a wrapper, a test fake) adds one, `async () => {}` when it has nothing to undo.
+- **Breaking** - `ProgressReporter` has a required `runInPlan()`: a custom implementation of the type (a wrapper, a test fake) adds one.
+- **Breaking** for library copies: `STORAGE_KINDS_VERSION` is 18 (0.15.0: 17): the shared shape gained `ProgressReporter.runInPlan`, so a copy of the library at another version finds no storage kind registered by this one (`PROJECT_STORAGE_NOT_REGISTERED`). Stored data is unchanged: existing projects open as they are. Every package of an app must resolve the same core version.
+
+### Fixed
+
+- On IndexedDB, a read (a record, the documents, a blob, a document's version, its history or its changelog) no longer fails with "Database has been closed" when it runs while the store makes its connection again (an open after a close, another tab's change to the database): it waits for the new connection and answers from it.
+- On IndexedDB, a write to a document another tab registered while this store was making its connection again is no longer refused `DOCUMENT_NOT_REGISTERED`: the store's list of documents is read once its new connection is ready.
+- On IndexedDB, reading a blob whose document's tables are gone (an inconsistent registry) answers no blob instead of throwing.
+- On IndexedDB, a write started while a closed store is opened again, before its connection is made again, lands on the new connection; `reconcile()` and `isDocumentReadable` wait for a reload of the connection that runs.
+- On IndexedDB, an operation started while the store's open waits for the open lock (another tab destroying the project holds it) waits for the lock: it is never run on a database being deleted, and a write to a document the destroy removed is refused `DOCUMENT_NOT_REGISTERED`.
+- On IndexedDB, a write on a store never opened, to a document another tab registered, lands instead of being refused `DOCUMENT_NOT_REGISTERED`: a store reads the shared schema before its first operation.
+- On IndexedDB, an operation waiting for the open lock while the same store is destroyed waits for that destroy to end, then runs on what the project holds after it.
+- `project.export` and `project.exportBlob` with `download: true` or `{ filename }` no longer leave an empty file behind when they fail after opening the save dialog: they discard the dialog they opened (where the browser can remove the file), then throw the export's failure. A `{ target }` the caller passed is left to the caller.
+
 ## [0.15.0] - 2026-11-24
 
 Core 0.15.0: every store keeps one version per document, progress clears after a throw, findAncestors unwraps by default, and IndexedDB and SQLite races fixed.
