@@ -4,7 +4,7 @@ import type { ChangeLogEntry, StoreVersion } from '../store.types'
 import type { Perf } from '@/perf'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { DocumentRecord } from '@/project/types'
-import type Dexie from 'dexie'
+import type { Transaction } from 'dexie'
 
 export type DexieStoreOptions = {
 	/** Backend-agnostic record schema. Comes from dialecteConfig.recordSchema */
@@ -32,7 +32,8 @@ export type StoreTransactionParams<GenericAnswer> = {
 	/** The document whose record table is in the transaction too, refused when the connection does not hold it */
 	documentId?: string
 	tables: string[]
-	run: (db: Dexie) => Promise<GenericAnswer>
+	/** Handed the transaction: its tables (`tx.table`) place every request in it, whatever zone an await resumes in */
+	run: (tx: Transaction) => Promise<GenericAnswer>
 } & (
 	| {
 			/** What a document the connection does not hold answers, instead of a refusal */

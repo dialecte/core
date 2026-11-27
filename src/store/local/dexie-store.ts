@@ -82,7 +82,7 @@ import type { Perf } from '@/perf'
 import type { ChangedRecord, DocumentRecord, DocumentUpdates } from '@/project'
 import type { StoreRuntime } from '@/project/io/store-runtime.types'
 import type { AnyRawRecord, BlobAttachment, BlobRecord, RecordPatch } from '@/types'
-import type { Table } from 'dexie'
+import type { Table, Transaction } from 'dexie'
 
 /** The `_meta` row of a document's version: how many writes it has taken. */
 function versionKey(documentId: string): string {
@@ -495,8 +495,8 @@ export class DexieStore implements Store {
 				documentId,
 				tables: [],
 				onUnregistered: noRecord,
-				run: function getInTransaction(db) {
-					return db.table<AnyRawRecord>(recordName).get(id)
+				run: function getInTransaction(tx) {
+					return tx.table<AnyRawRecord>(recordName).get(id)
 				},
 			})
 		})
@@ -509,8 +509,8 @@ export class DexieStore implements Store {
 				documentId,
 				tables: [],
 				onUnregistered: noRecords,
-				run: function listInTransaction(db) {
-					return db.table<AnyRawRecord>(recordName).toArray()
+				run: function listInTransaction(tx) {
+					return tx.table<AnyRawRecord>(recordName).toArray()
 				},
 			})
 		})
@@ -577,8 +577,8 @@ export class DexieStore implements Store {
 			const documents = await this.getDocumentsUnguarded()
 			const committed = await this.read({
 				tables: [TABLE_CHANGELOG],
-				run: function committedInTransaction(db) {
-					return db
+				run: function committedInTransaction(tx) {
+					return tx
 						.table<ChangeLogEntry>(TABLE_CHANGELOG)
 						.filter(function ofTheWrite(entry) {
 							return entry.writeId === writeId
@@ -621,18 +621,18 @@ export class DexieStore implements Store {
 					const version = await this.inTransaction({
 						documentId,
 						tables: [TABLE_DOCUMENTS, TABLE_CHANGELOG, TABLE_META],
-						run: async function commitInTransaction(db) {
+						run: async function commitInTransaction(tx) {
 							// still importing: refused as not registered, then a writeId that is not well-formed text
-							const document = await db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+							const document = await tx.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
 							if (document && withStatus(document).status === 'importing') {
 								throwDocumentNotRegistered({ documentId, what: 'a commit' })
 							}
 							checkCallId({ field: 'writeId', value: writeId })
-							const table = db.table<AnyRawRecord>(recordName)
-							const changelog = db.table<ChangeLogEntry, number, Omit<ChangeLogEntry, 'id'>>(
+							const table = tx.table<AnyRawRecord>(recordName)
+							const changelog = tx.table<ChangeLogEntry, number, Omit<ChangeLogEntry, 'id'>>(
 								TABLE_CHANGELOG,
 							)
-							const meta = db.table<ChangeLogMeta>(TABLE_META)
+							const meta = tx.table<ChangeLogMeta>(TABLE_META)
 							// Snapshot before-state for undo; an update of a record the document does not
 							// hold aborts the commit before anything is written
 							const beforeSnapshots = await snapshotBefore({ table, updates, documentId })
@@ -768,13 +768,13 @@ export class DexieStore implements Store {
 			onUnregistered: function nothingToStep() {
 				return undefined
 			},
-			run: async function stepInTransaction(db) {
-				const table = db.table<AnyRawRecord>(recordName)
-				const meta = db.table<ChangeLogMeta>(TABLE_META)
+			run: async function stepInTransaction(tx) {
+				const table = tx.table<AnyRawRecord>(recordName)
+				const meta = tx.table<ChangeLogMeta>(TABLE_META)
 				const head = await getHead({ meta, documentId })
 				const sequenceNumber = direction === 'back' ? head : head + 1
 				if (sequenceNumber === 0) return undefined
-				const entry = await db
+				const entry = await tx
 					.table<ChangeLogEntry>(TABLE_CHANGELOG)
 					.where({ documentId, sequenceNumber })
 					.first()
@@ -802,9 +802,9 @@ export class DexieStore implements Store {
 			// the head and the next entry read in one transaction: never a head of one moment beside an entry of another
 			this.read({
 				tables: [TABLE_META, TABLE_CHANGELOG],
-				run: async function statusInTransaction(db) {
-					const head = await getHead({ meta: db.table<ChangeLogMeta>(TABLE_META), documentId })
-					const next = await db
+				run: async function statusInTransaction(tx) {
+					const head = await getHead({ meta: tx.table<ChangeLogMeta>(TABLE_META), documentId })
+					const next = await tx
 						.table<ChangeLogEntry>(TABLE_CHANGELOG)
 						.where({ documentId, sequenceNumber: head + 1 })
 						.first()
@@ -818,8 +818,8 @@ export class DexieStore implements Store {
 		return this.operation(async () => {
 			const entries = await this.read({
 				tables: [TABLE_CHANGELOG],
-				run: function changeLogInTransaction(db) {
-					return db
+				run: function changeLogInTransaction(tx) {
+					return tx
 						.table<ChangeLogEntry>(TABLE_CHANGELOG)
 						.where({ documentId })
 						.sortBy('sequenceNumber')
@@ -844,9 +844,9 @@ export class DexieStore implements Store {
 			await this.inTransaction({
 				documentId: entry.documentId,
 				tables: [TABLE_BLOBS, blobTableOf],
-				run: async function addInTransaction(db) {
-					await db.table<BlobRecord>(TABLE_BLOBS).put(checked)
-					await db.table<{ id: string; data: Blob }>(blobTableOf).put({ id: entry.id, data })
+				run: async function addInTransaction(tx) {
+					await tx.table<BlobRecord>(TABLE_BLOBS).put(checked)
+					await tx.table<{ id: string; data: Blob }>(blobTableOf).put({ id: entry.id, data })
 				},
 			})
 		})
@@ -857,8 +857,8 @@ export class DexieStore implements Store {
 			// which document's table holds its data, read first; the entry and the data then read in one transaction
 			const owner = await this.read({
 				tables: [TABLE_BLOBS],
-				run: async function ownerInTransaction(db) {
-					const entry = await db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+				run: async function ownerInTransaction(tx) {
+					const entry = await tx.table<BlobRecord>(TABLE_BLOBS).get(blobId)
 					return entry?.documentId
 				},
 			})
@@ -869,9 +869,9 @@ export class DexieStore implements Store {
 				requiredTable: blobTableOf,
 				tables: [TABLE_BLOBS, blobTableOf],
 				onUnregistered: noBlob,
-				run: async function blobInTransaction(db) {
-					const entry = await db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
-					const row = await db.table<{ id: string; data: Blob }>(blobTableOf).get(blobId)
+				run: async function blobInTransaction(tx) {
+					const entry = await tx.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+					const row = await tx.table<{ id: string; data: Blob }>(blobTableOf).get(blobId)
 					return entry && row ? { entry, data: row.data } : undefined
 				},
 			})
@@ -913,8 +913,8 @@ export class DexieStore implements Store {
 		return this.operation(async () => {
 			await this.inTransaction({
 				tables: [TABLE_BLOBS],
-				run: async function attachInTransaction(db) {
-					const blobs = db.table<BlobRecord>(TABLE_BLOBS)
+				run: async function attachInTransaction(tx) {
+					const blobs = tx.table<BlobRecord>(TABLE_BLOBS)
 					const entry = await blobs.get(blobId)
 					if (!entry) {
 						throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
@@ -939,8 +939,8 @@ export class DexieStore implements Store {
 		return this.operation(async () => {
 			await this.inTransaction({
 				tables: [TABLE_BLOBS],
-				run: async function detachInTransaction(db) {
-					const blobs = db.table<BlobRecord>(TABLE_BLOBS)
+				run: async function detachInTransaction(tx) {
+					const blobs = tx.table<BlobRecord>(TABLE_BLOBS)
 					const entry = await blobs.get(blobId)
 					if (!entry) {
 						throwDialecteError('STORE_BLOB_NOT_FOUND', { detail: `Blob "${blobId}" not found` })
@@ -960,8 +960,8 @@ export class DexieStore implements Store {
 			const owner = await this.inTransaction({
 				mode: 'r',
 				tables: [TABLE_BLOBS],
-				run: async function readOwner(db) {
-					const entry = await db.table<BlobRecord>(TABLE_BLOBS).get(blobId)
+				run: async function readOwner(tx) {
+					const entry = await tx.table<BlobRecord>(TABLE_BLOBS).get(blobId)
 					return entry?.documentId
 				},
 			})
@@ -969,11 +969,11 @@ export class DexieStore implements Store {
 			const blobTableOf = blobTableName(owner)
 			await this.inTransaction({
 				tables: [TABLE_BLOBS, blobTableOf],
-				run: async function removeInTransaction(db) {
-					const blobs = db.table<BlobRecord>(TABLE_BLOBS)
+				run: async function removeInTransaction(tx) {
+					const blobs = tx.table<BlobRecord>(TABLE_BLOBS)
 					// removed meanwhile: nothing left to remove
 					if (!(await blobs.get(blobId))) return
-					await db.table<{ id: string }>(blobTableOf).delete(blobId)
+					await tx.table<{ id: string }>(blobTableOf).delete(blobId)
 					await blobs.delete(blobId)
 				},
 			})
@@ -1115,14 +1115,15 @@ export class DexieStore implements Store {
 			this.knownDocuments.set(document.id, document)
 			await this.reopenWithNewSchema()
 			try {
-				await this.db.transaction('rw', TABLE_DOCUMENTS, async () => {
+				await this.db.transaction('rw!', TABLE_DOCUMENTS, async (tx) => {
+					const documents = tx.table<StoredDocumentRow>(TABLE_DOCUMENTS)
 					// the id first, as every registration refuses: a place refused below then names no other
 					// connection's document of this id
-					if (await this.db.table(TABLE_DOCUMENTS).get(document.id)) {
+					if (await documents.get(document.id)) {
 						throwDocumentAlreadyRegistered({ documentId: document.id })
 					}
-					await this.assertPlaceFree({ document })
-					await this.db.table(TABLE_DOCUMENTS).add(document)
+					await this.assertPlaceFree({ document, documents })
+					await documents.add(document)
 				})
 			} catch (failure) {
 				if (toDialecteError(failure)?.key === 'DOCUMENT_PATH_TAKEN') {
@@ -1143,23 +1144,24 @@ export class DexieStore implements Store {
 	}
 
 	/**
-	 * The document's path valid and its place free among the registered documents, read in the caller's transaction
-	 * when there is one.
+	 * The document's path valid and its place free among the registered documents: read from `documents`, the table of
+	 * the caller's transaction, when given.
 	 */
-	private async assertPlaceFree(params: { document: DocumentRecord }): Promise<void> {
+	private async assertPlaceFree(params: {
+		document: DocumentRecord
+		documents?: Table<StoredDocumentRow>
+	}): Promise<void> {
 		const { document } = params
-		const documents =
-			document.path === undefined
-				? []
-				: await this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+		const table = params.documents ?? this.db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+		const documents = document.path === undefined ? [] : await table.toArray()
 		assertDocumentPlace({ document, documents })
 	}
 
 	private async getDocumentsUnguarded(): Promise<DocumentRecord[]> {
 		const rows = await this.read({
 			tables: [TABLE_DOCUMENTS],
-			run: function documentsInTransaction(db) {
-				return db.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
+			run: function documentsInTransaction(tx) {
+				return tx.table<StoredDocumentRow>(TABLE_DOCUMENTS).toArray()
 			},
 		})
 		return rows.map(withStatus)
@@ -1168,8 +1170,8 @@ export class DexieStore implements Store {
 	private async getDocumentUnguarded(documentId: string): Promise<DocumentRecord | undefined> {
 		const row = await this.read({
 			tables: [TABLE_DOCUMENTS],
-			run: function documentInTransaction(db) {
-				return db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+			run: function documentInTransaction(tx) {
+				return tx.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
 			},
 		})
 		return row && withStatus(row)
@@ -1183,8 +1185,8 @@ export class DexieStore implements Store {
 		// read, checked and written in one transaction: no other write of the registry lands in between
 		const updated = await this.inTransaction({
 			tables: [TABLE_DOCUMENTS],
-			run: async function updateInTransaction(db) {
-				const documents = db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+			run: async function updateInTransaction(tx) {
+				const documents = tx.table<StoredDocumentRow>(TABLE_DOCUMENTS)
 				const held = await documents.get(documentId)
 				if (!held) return undefined
 				const document = applyDocumentUpdates({ document: withStatus(held), updates: checked })
@@ -1210,8 +1212,8 @@ export class DexieStore implements Store {
 		// read and marked in one transaction: a removal by another connection lands before or after, never between
 		const ready = await this.inTransaction({
 			tables: [TABLE_DOCUMENTS],
-			run: async function markReadyInTransaction(db) {
-				const documents = db.table<StoredDocumentRow>(TABLE_DOCUMENTS)
+			run: async function markReadyInTransaction(tx) {
+				const documents = tx.table<StoredDocumentRow>(TABLE_DOCUMENTS)
 				const held = await documents.get(documentId)
 				if (!held || !isOwnImporting({ held: withStatus(held), registered })) return undefined
 				const document: DocumentRecord = { ...withStatus(held), status: 'ready' }
@@ -1248,8 +1250,8 @@ export class DexieStore implements Store {
 		const held = await this.inTransaction({
 			mode: 'r',
 			tables: [TABLE_DOCUMENTS],
-			run: function readImported(db) {
-				return db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+			run: function readImported(tx) {
+				return tx.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
 			},
 		})
 		if (!held || !isOwnImporting({ held: withStatus(held), registered })) return
@@ -1269,18 +1271,18 @@ export class DexieStore implements Store {
 					db.tables.some((table) => table.name === name),
 				)
 				await db.transaction(
-					'rw',
+					'rw!',
 					[...ownTables, TABLE_BLOBS, TABLE_CHANGELOG, TABLE_META, TABLE_DOCUMENTS],
-					async () => {
-						const meta = db.table<ChangeLogMeta>(TABLE_META)
+					async function removeInTransaction(tx) {
+						const meta = tx.table<ChangeLogMeta>(TABLE_META)
 						// records and blob data first (O(1) table clears)
-						for (const name of ownTables) await db.table(name).clear()
-						await db.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
-						await db.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
+						for (const name of ownTables) await tx.table(name).clear()
+						await tx.table<BlobRecord>(TABLE_BLOBS).where({ documentId }).delete()
+						await tx.table<ChangeLogEntry>(TABLE_CHANGELOG).where({ documentId }).delete()
 						// the version moves on and its row stays: a document registered again under the id goes on from it
 						await bumpVersion({ meta, documentId })
 						await meta.delete(`head:${documentId}`)
-						await db.table(TABLE_DOCUMENTS).delete(documentId)
+						await tx.table(TABLE_DOCUMENTS).delete(documentId)
 					},
 				)
 
@@ -1311,10 +1313,10 @@ export class DexieStore implements Store {
 			await this.inTransaction({
 				documentId,
 				tables: ownImport ? [TABLE_DOCUMENTS, TABLE_META] : [TABLE_META],
-				run: async function bulkWriteInTransaction(db) {
+				run: async function bulkWriteInTransaction(tx) {
 					// an import's records go into its own document only, read in the write's transaction
 					if (ownImport) {
-						const held = await db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+						const held = await tx.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
 						if (
 							!held ||
 							!isOwnImporting({ held: withStatus(held), registered: ownImport.registered })
@@ -1322,8 +1324,8 @@ export class DexieStore implements Store {
 							throwDocumentNotRegistered({ documentId, what: 'records' })
 						}
 					}
-					const table = db.table<AnyRawRecord>(recordName)
-					const meta = db.table<ChangeLogMeta>(TABLE_META)
+					const table = tx.table<AnyRawRecord>(recordName)
+					const meta = tx.table<ChangeLogMeta>(TABLE_META)
 					if (creates.length > 0) {
 						await measured({
 							perf,
@@ -1369,8 +1371,8 @@ export class DexieStore implements Store {
 		const { documentId } = params
 		const read = await this.read({
 			tables: [TABLE_META],
-			run: async function versionInTransaction(db) {
-				const [engine, current] = await db
+			run: async function versionInTransaction(tx) {
+				const [engine, current] = await tx
 					.table(TABLE_META)
 					.bulkGet([ENGINE_META_KEY, versionKey(documentId)])
 				return {
@@ -1383,8 +1385,8 @@ export class DexieStore implements Store {
 		// a database no store opened yet: its engine row drawn through the gate, add-if-absent
 		const engineId = await this.inTransaction({
 			tables: [TABLE_META],
-			run: function drawInTransaction(db) {
-				return engineIdIn({ meta: db.table(TABLE_META) })
+			run: function drawInTransaction(tx) {
+				return engineIdIn({ meta: tx.table(TABLE_META) })
 			},
 		})
 		return { engineId, count: read.count }
@@ -1399,14 +1401,18 @@ export class DexieStore implements Store {
 	 */
 	private async ensureEngineRow(): Promise<string> {
 		const reading = this.db
-		const held: EngineMetaRow | undefined = await reading.transaction('r', TABLE_META, () =>
-			reading.table(TABLE_META).get(ENGINE_META_KEY),
+		const held: EngineMetaRow | undefined = await reading.transaction(
+			'r!',
+			TABLE_META,
+			function readEngineRow(tx) {
+				return tx.table(TABLE_META).get(ENGINE_META_KEY)
+			},
 		)
 		if (held) return held.engineId
 		const drawing = this.db
-		return drawing.transaction('rw', TABLE_META, () =>
-			engineIdIn({ meta: drawing.table(TABLE_META) }),
-		)
+		return drawing.transaction('rw!', TABLE_META, function drawEngineRow(tx) {
+			return engineIdIn({ meta: tx.table(TABLE_META) })
+		})
 	}
 
 	/** How many writes a `ready` document has taken, read with its registry row in one transaction. */
@@ -1414,10 +1420,10 @@ export class DexieStore implements Store {
 		const { documentId } = params
 		return this.read({
 			tables: [TABLE_DOCUMENTS, TABLE_META],
-			run: async function exportVersionInTransaction(db) {
-				const row = await db.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
+			run: async function exportVersionInTransaction(tx) {
+				const row = await tx.table<StoredDocumentRow>(TABLE_DOCUMENTS).get(documentId)
 				if (!row || withStatus(row).status !== 'ready') return undefined
-				return (await db.table<ChangeLogMeta>(TABLE_META).get(versionKey(documentId)))?.value ?? 0
+				return (await tx.table<ChangeLogMeta>(TABLE_META).get(versionKey(documentId)))?.value ?? 0
 			},
 		})
 	}
@@ -1433,12 +1439,12 @@ export class DexieStore implements Store {
 			documentId,
 			tables: [TABLE_META],
 			onUnregistered: noCount,
-			run: async function countAtVersion(db) {
+			run: async function countAtVersion(tx) {
 				const at =
-					(await db.table<ChangeLogMeta>(TABLE_META).get(versionKey(documentId)))?.value ?? 0
+					(await tx.table<ChangeLogMeta>(TABLE_META).get(versionKey(documentId)))?.value ?? 0
 				const known = counts.get(documentId)
 				if (known?.at === at) return known.count
-				const count = await db.table<AnyRawRecord>(recordName).count()
+				const count = await tx.table<AnyRawRecord>(recordName).count()
 				counts.set(documentId, { count, at })
 				return count
 			},
@@ -1451,8 +1457,8 @@ export class DexieStore implements Store {
 			documentId,
 			tables: [],
 			onUnregistered: noCount,
-			run: function countInTransaction(db) {
-				return db.table<AnyRawRecord>(recordName).count()
+			run: function countInTransaction(tx) {
+				return tx.table<AnyRawRecord>(recordName).count()
 			},
 		})
 	}
@@ -1466,8 +1472,8 @@ export class DexieStore implements Store {
 			documentId,
 			tables: [],
 			onUnregistered: noRecords,
-			run: function tagInTransaction(db) {
-				return db.table<AnyRawRecord>(recordName).where({ tagName }).toArray()
+			run: function tagInTransaction(tx) {
+				return tx.table<AnyRawRecord>(recordName).where({ tagName }).toArray()
 			},
 		})
 	}
@@ -1483,8 +1489,8 @@ export class DexieStore implements Store {
 			onUnregistered: function noneOfThem() {
 				return ids.map(noRecord)
 			},
-			run: function manyInTransaction(db) {
-				return db.table<AnyRawRecord>(recordName).bulkGet(ids)
+			run: function manyInTransaction(tx) {
+				return tx.table<AnyRawRecord>(recordName).bulkGet(ids)
 			},
 		})
 	}
@@ -1663,9 +1669,12 @@ export class DexieStore implements Store {
 			return params.onUnregistered()
 		}
 		try {
-			// an async callback: Dexie keeps the transaction open across the native awaits of an async function only
-			return await db.transaction(mode, scope, async function runInTransaction() {
-				return run(db)
+			// a transaction of its own (`!`), never one the zone of another call holds; `run` is handed it, so each request
+			// of a table it takes lands there whatever zone a native await resumes in - a table of the connection finds its
+			// transaction through Dexie's zone only, which a busy page can lose: that request then runs on its own and the
+			// transaction, left with nothing to do, commits under the call
+			return await db.transaction(`${mode}!`, scope, async function runInTransaction(tx) {
+				return run(tx)
 			})
 		} catch (thrown) {
 			if (retried || !closedUnder({ thrown, db })) throw thrown
@@ -1762,8 +1771,8 @@ function noBlob(): undefined {
 }
 
 /** Every blob entry of the project. */
-function readAllBlobs(db: Dexie): Promise<BlobRecord[]> {
-	return db.table<BlobRecord>(TABLE_BLOBS).toArray()
+function readAllBlobs(tx: Transaction): Promise<BlobRecord[]> {
+	return tx.table<BlobRecord>(TABLE_BLOBS).toArray()
 }
 
 /** `work` measured under `name`: its stop told however it ends, so an aborted transaction leaves no open measure. */

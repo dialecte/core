@@ -236,6 +236,7 @@ export const NODE_STORE_CONTRACT_TEST_FILES: readonly string[] = [
 	'src/store/local/dexie-store.versions.test.ts',
 	'src/store/local/dexie-store.connection.test.ts',
 	'src/store/local/dexie-store.reads.test.ts',
+	'src/store/local/dexie-store.zone.test.ts',
 	'src/store/local/dexie-store.instrumentation.test.ts',
 	'src/project/import.indexeddb.test.ts',
 	'src/project/open-sweep.indexeddb.test.ts',
