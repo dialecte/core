@@ -12,7 +12,7 @@ import { InMemoryStore } from '@/store/in-memory/in-memory-store'
 import { SQLITE_ERRORS } from '@/store/sqlite/sqlite-errors.constants'
 import { TEST_DIALECTE_CONFIG } from '@/test'
 
-import type { HistoryStep } from '@/store'
+import type { HistoryStep, StoreOpenOptions } from '@/store'
 import type { AnyDialecteConfig, BlobAttachment, BlobRecord } from '@/types'
 
 // A Project's open, close and destroy run one at a time, in the order called; an open on a Project already open
@@ -29,7 +29,7 @@ class CountingStore extends InMemoryStore {
 	closeCalls = 0
 	destroys = 0
 
-	override async open(): Promise<void> {
+	override async open(options?: StoreOpenOptions): Promise<void> {
 		if (this.refusing) {
 			throw createDialecteError(SQLITE_ERRORS.PROJECT_DATABASE_LOST, {
 				detail: `Project "${this.name}" holds data but its database is gone`,
@@ -37,7 +37,7 @@ class CountingStore extends InMemoryStore {
 			})
 		}
 		this.opens += 1
-		await super.open()
+		await super.open(options)
 		this.armedGate = this.hydrationGate
 		this.hydrationGate = undefined
 		this.failHydration = this.hydrationFailure
@@ -979,5 +979,22 @@ describe('Project - an open whose hydration fails', () => {
 		expect(documentsRejection).toBe('PROJECT_NOT_OPENED')
 		await project.destroy()
 		expect(store.destroys).toBe(1)
+	})
+})
+
+describe('Project - open(name, { create: false }): the project must already exist', () => {
+	it('a name never made → refused PROJECT_NOT_FOUND, the Project closed; open(name) then makes it, and { create: false } opens it from then on', async () => {
+		const name = uniqueName({ prefix: 'must-exist' })
+		const project = new Project({ configs: { default: CONFIG }, storage: { type: 'inMemory' } })
+		const refused = await rejectionKey({ action: project.open(name, { create: false }) })
+		expect(refused).toBe('PROJECT_NOT_FOUND')
+		const documentsRejection = await rejectionKey({ action: project.initEmptyDocument() })
+		expect(documentsRejection).toBe('PROJECT_NOT_OPENED')
+		await project.open(name)
+		const documentId = await project.initEmptyDocument()
+		await project.close()
+		await project.open(name, { create: false })
+		expect([...project.state.documents.keys()]).toEqual([documentId])
+		await project.destroy()
 	})
 })

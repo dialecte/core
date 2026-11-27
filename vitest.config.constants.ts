@@ -75,6 +75,10 @@ export const BROWSER_ONLY_TEST_FILES: readonly TierOnlyTestFile[] = [
 		why: 'the SQLite engine served from a worker, its files in OPFS',
 	},
 	{
+		path: 'src/store/sqlite/runtime/serve-sqlite-engine.must-exist.test.ts',
+		why: 'the SQLite engine served from a worker opening a project that must exist, its files in OPFS',
+	},
+	{
 		path: 'src/store/sqlite/runtime/engine-control-loop.test.ts',
 		why: 'engine workers: the control loop of the worker file answering messages posted in its first turn',
 	},

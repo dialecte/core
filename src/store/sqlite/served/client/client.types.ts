@@ -149,6 +149,11 @@ export type WorkerLinkState = {
 	 * before ended) must open that project, else the connection is refused `PROJECT_DESTROYED_WHILE_AWAY`.
 	 */
 	creationId: string | undefined
+	/**
+	 * Opened `{ create: false }`: the first engine it reaches must run its project, a missing one refused
+	 * `PROJECT_NOT_FOUND`; once it reached one, `creationId` says which project it expects.
+	 */
+	mustExist: boolean
 	/** Its project destroyed while it was away (`PROJECT_DESTROYED_WHILE_AWAY`): every later call refused with it. */
 	refusal: unknown
 	/** Its release under way or done, once closed: a later close settles with it. */

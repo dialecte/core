@@ -60,6 +60,9 @@ function differenceOf(params: {
 		if (need === 'away' && !factory.destroyWhileAway) {
 			throw new Error(`${factory.name} neither sends a view away nor says why it cannot`)
 		}
+		if (need === 'lost-files' && !factory.loseFiles) {
+			throw new Error(`${factory.name} neither loses its files nor says why it cannot`)
+		}
 	}
 	return undefined
 }

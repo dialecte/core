@@ -4,7 +4,6 @@ import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
 import { CONNECTION_LOST_DETAILS, ENGINE_OPEN_BUDGET_MS } from '../client/client.constants'
 import { createEngineClient } from '../client/engine-client'
 import { destroyFromFreshWorker } from '../client/worker-connector'
-import { refuseOtherCreation } from '../creation-refusal'
 import { fromThrownData, toThrownData } from '../wire/error-envelope'
 import {
 	HUB_REGISTRY_KEY,
@@ -22,6 +21,7 @@ import {
 import { createRealmHost } from './realm-host'
 
 import { createDialecteError, throwDialecteError, toDialecteError } from '@/errors'
+import { refuseOtherCreation } from '@/store/creation-refusal'
 import { tellListeners } from '@/utils/tell-listener'
 import { TOLD_OF } from '@/utils/tell-listener.constants'
 
@@ -457,6 +457,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 					entry: entries.get(projectKeyOf(message)),
 					error: fromThrownData({ data: message.error }),
 					forget: forgetEntry,
+					askAgain: ask,
 				})
 			case 'destroy-granted':
 				destroys.get(projectKeyOf(message))?.granted()
@@ -703,6 +704,9 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 			dialecteVersion: entry.dialecteVersion,
 			// coming back to the project it had: the hub starts no engine that would make it again empty
 			...(entry.creationId !== undefined && { expectedCreationId: entry.creationId }),
+			// opened `{ create: false }`, the project not reached yet: none made either
+			...(entry.creationId === undefined &&
+				entry.mustExist === true && { mustExist: true as const }),
 		})
 	}
 
@@ -1012,6 +1016,8 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 				dialecteMismatch({ entry: existing, asked: projectParams })
 			if (mismatch) return refusedLink({ error: mismatch, project: projectParams.project })
 			const entry = existing ?? newEntry(projectParams)
+			// a link of the realm opening the project anew: the realm may make it
+			if (!projectParams.mustExist) entry.mustExist = false
 			entries.set(key, entry)
 			entry.users += 1
 			let released = false
@@ -1046,7 +1052,7 @@ export async function startHubConnection(params: HubConnectionParams): Promise<H
 					if (entry.refusal !== undefined) return Promise.reject(entry.refusal)
 					if (entry.current) return Promise.resolve(entry.current.client)
 					return new Promise(function waitForEngine(resolve, reject) {
-						entry.waiters.push({ resolve, reject })
+						entry.waiters.push({ resolve, reject, mustExist: projectParams.mustExist === true })
 						ask(entry)
 					})
 				},
@@ -1271,11 +1277,13 @@ function openRefused(params: {
 	entry: ProjectEntry | undefined
 	error: unknown
 	forget: (entry: ProjectEntry) => void
+	askAgain: (entry: ProjectEntry) => void
 }): void {
 	const { entry, error } = params
 	if (!entry) return
 	entry.asked = false
 	const key = toDialecteError(error)?.key
+	if (key === 'PROJECT_NOT_FOUND') return projectNotFound({ ...params, entry })
 	if (
 		LASTING_REFUSALS.some(function isKey(lasting) {
 			return lasting === key
@@ -1285,6 +1293,32 @@ function openRefused(params: {
 	for (const waiter of entry.waiters.splice(0)) rejectWaiter({ waiter, error })
 	// destroyed while the realm was away: the links that had the project are refused, not a fresh one
 	if (key === 'PROJECT_DESTROYED_WHILE_AWAY') params.forget(entry)
+}
+
+// dialecte-allow argument-mutation: an entry is the realm's state of the project, its refusals update it in place as openRefused does
+/**
+ * The project not there for an ask made `{ create: false }`: the calls of links that opened it so are refused; a link of
+ * the realm that opened it anew since still waits, and the realm asks again for it, the project made then. With none
+ * left waiting, a later link of the project gets a fresh entry.
+ */
+function projectNotFound(params: {
+	entry: ProjectEntry
+	error: unknown
+	forget: (entry: ProjectEntry) => void
+	askAgain: (entry: ProjectEntry) => void
+}): void {
+	const { entry, error } = params
+	const waiters = entry.waiters.splice(0)
+	for (const waiter of waiters) {
+		if (waiter.mustExist) rejectWaiter({ waiter, error })
+	}
+	const anew = waiters.filter(function opensAnew(waiter) {
+		return !waiter.mustExist
+	})
+	if (anew.length === 0) return params.forget(entry)
+	entry.mustExist = false
+	entry.waiters.push(...anew)
+	params.askAgain(entry)
 }
 
 function rejectWaiter(params: { waiter: EngineWaiter; error: unknown }): void {

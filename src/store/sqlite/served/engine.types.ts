@@ -46,6 +46,11 @@ export type EngineOpenParams<GenericSettings = unknown> = {
 	 * started again): none there, or another, is refused `PROJECT_DESTROYED_WHILE_AWAY`, nothing written.
 	 */
 	expectedCreationId?: string
+	/**
+	 * The realm's view opened its project `{ create: false }`: none there (no pool, blank files, a database with no
+	 * table) is refused `PROJECT_NOT_FOUND`, nothing written. A project there opens, whatever its creation id.
+	 */
+	mustExist?: boolean
 	lock: EngineLockMode
 	/**
 	 * How long the engine may take to take its project: the lock, then its own checks of the files (SQLite

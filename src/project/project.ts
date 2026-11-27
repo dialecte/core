@@ -40,6 +40,7 @@ import type {
 	ProjectChannelMessage,
 	ProjectChannelResync,
 	ProjectParams,
+	ProjectOpenOptions,
 	ProjectState,
 	DocumentRecord,
 } from './types'
@@ -521,13 +522,13 @@ export class Project<
 	 *
 	 * @intent open or create a project database, start working on a project, reopen a project after close
 	 */
-	async open(name: string): Promise<this> {
+	async open(name: string, options?: ProjectOpenOptions): Promise<this> {
 		// a project open now is closed first: a call made from now on is refused, as after close()
 		if (this._channel !== undefined) this.closing = true
-		return this.inLifecycleTurn(() => this.openNow({ name }))
+		return this.inLifecycleTurn(() => this.openNow({ name, options }))
 	}
 
-	private async openNow(params: { name: string }): Promise<this> {
+	private async openNow(params: { name: string; options?: ProjectOpenOptions }): Promise<this> {
 		const { name } = params
 		await this.closeNow()
 		this._store = undefined
@@ -557,8 +558,8 @@ export class Project<
 					this.onChannelHeard(event.data)
 				})
 			}
-			// The store removes, as it opens, any import left unfinished.
-			await store.open()
+			// The store removes, as it opens, any import left unfinished; `{ create: false }` refuses a missing project.
+			await store.open(params.options)
 		} catch (thrown) {
 			// what this open opened is closed again; its store is kept only for destroy()
 			this.stopListeningToStore()

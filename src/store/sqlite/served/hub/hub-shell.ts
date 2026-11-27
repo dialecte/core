@@ -271,6 +271,7 @@ function perform(params: {
 					...(command.expectedCreationId !== undefined && {
 						expectedCreationId: command.expectedCreationId,
 					}),
+					...(command.mustExist && { mustExist: command.mustExist }),
 				},
 			})
 		case 'connect-client':

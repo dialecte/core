@@ -1,6 +1,7 @@
 import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
 import { compareById } from '../compare-by-id'
+import { refuseMissingProject } from '../creation-refusal'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkCallId, newCallId, toJsonCopy } from '../json-values'
@@ -68,6 +69,7 @@ import type {
 	VersionedRead,
 	VersionedReads,
 	WriteOutcome,
+	StoreOpenOptions,
 } from '../store.types'
 import type {
 	InMemoryChange,
@@ -155,14 +157,28 @@ export class InMemoryStore implements Store {
 
 	// --- Lifecycle ---
 
-	/** Open: an import found unfinished - it never outlives the store - is removed; one it runs stays. */
-	async open(): Promise<void> {
+	/**
+	 * Open: an import found unfinished - it never outlives the store - is removed; one it runs stays. The project's
+	 * state is made when there is none (`{ create: false }`: refused `PROJECT_NOT_FOUND` instead, the store closed);
+	 * a placeholder holds none and is never refused.
+	 */
+	async open(options?: StoreOpenOptions): Promise<void> {
 		const closingsAtCall = this.closings
 		// an import still running completes first, and this store's own destroy
 		await this.operations.whenIdle()
 		while (this.destroying) await this.destroying.catch(ignoreDestroyOutcome)
 		// a close() called after this open() wins: the store stays closed
 		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
+		if (this.writable) {
+			if (options?.create === false) {
+				const exists = findInMemoryState({ key: this.stateKey }) !== undefined
+				// a refused open leaves the store closed: nothing made through it
+				if (!exists) this.closed = true
+				refuseMissingProject({ project: this.name, exists })
+			}
+			// made as it opens: a project opened, even left empty, is there for an open that must find it
+			ensureInMemoryState({ key: this.stateKey })
+		}
 		this.closed = false
 		// a placeholder never holds the project's state: it keeps no destroy of the project from going on
 		if (this.writable)

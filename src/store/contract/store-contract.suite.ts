@@ -54,8 +54,14 @@ export function defineStoreContractLeg(params: {
 					opened.push(other)
 					return other
 				},
-				createNamed: async function createNamedStore({ name }) {
-					const store = await factory.createNamed({ name })
+				createNamed: async function createNamedStore({ name, create }) {
+					const store = await factory.createNamed({ name, create })
+					others.push(store)
+					return store
+				},
+				buildNamed: async function buildNamedStore({ name }) {
+					if (!factory.buildNamed) throw new Error(`${factory.name} builds no store unopened`)
+					const store = await factory.buildNamed({ name })
 					others.push(store)
 					return store
 				},
@@ -83,6 +89,11 @@ export function defineStoreContractLeg(params: {
 				fillStorage: async function fillStorage() {
 					if (!factory.fillStorage) throw new Error(`${factory.name} cannot fill its storage`)
 					await factory.fillStorage({ store: current.store })
+				},
+				loseFiles: async function loseFiles({ store }) {
+					if (!factory.loseFiles) throw new Error(`${factory.name} cannot lose its files`)
+					await store.close()
+					await factory.loseFiles({ store })
 				},
 			}
 			context = current

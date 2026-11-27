@@ -1,6 +1,11 @@
 import { InMemoryStore } from '../in-memory'
+import { dropInMemoryState, inMemoryStateKeyOf } from '../in-memory/in-memory-state'
 import { DexieStore } from '../local'
-import { createInProcessConnector, fillInProcessFile } from '../sqlite/adapter/in-process-link'
+import {
+	createInProcessConnector,
+	fillInProcessFile,
+	loseInProcessFile,
+} from '../sqlite/adapter/in-process-link'
 import { EngineStore } from '../sqlite/served/engine-store'
 import {
 	CONTRACT_ENGINE_CHANNEL,
@@ -23,9 +28,15 @@ import { makeDocument } from './store-contract.fixtures'
 import { createContractRuntime } from './store-contract.import-session'
 import { recordingConnector } from './store-contract.wire-recorder'
 
+import Dexie from 'dexie'
+
 import { sqliteHubSpawner } from '@/store/sqlite/adapter/sqlite-hub-spawner'
 import { createSqliteWorkerConnector } from '@/store/sqlite/adapter/sqlite-worker-connector'
-import { fixtureUrl, isEngineLockFree } from '@/store/sqlite/runtime/runtime.fixtures'
+import {
+	fixtureUrl,
+	isEngineLockFree,
+	removePoolDirectory,
+} from '@/store/sqlite/runtime/runtime.fixtures'
 import { ENGINE_OPEN_BUDGET_MS } from '@/store/sqlite/served/client/client.constants'
 import { createHubConnector } from '@/store/sqlite/served/client/hub-connector'
 import { destroyFromFreshWorker } from '@/store/sqlite/served/client/worker-connector'
@@ -39,7 +50,7 @@ import type { ContractEngineOrder, StoreContractFactory } from './store-contract
 import type { EngineApi } from '@/store/sqlite/served/engine.types'
 import type { HubConnection } from '@/store/sqlite/served/hub/hub-client.types'
 import type { HubShell } from '@/store/sqlite/served/hub/hub-shell.types'
-import type { Store } from '@/store/store.types'
+import type { Store, StoreOpenOptions } from '@/store/store.types'
 
 function uniqueName(prefix: string): string {
 	return `${prefix}-${crypto.randomUUID()}`
@@ -49,23 +60,32 @@ function uniqueName(prefix: string): string {
 async function openInMemoryStore(params: {
 	name: string
 	dialecteId?: string
+	create?: boolean
 }): Promise<InMemoryStore> {
-	const { name, dialecteId = TEST_DIALECTE.id } = params
-	const store = new InMemoryStore(name, {
-		writable: true,
-		runtime: createContractRuntime(),
-		dialecteId,
-	})
-	await store.open()
+	const { name, dialecteId, create } = params
+	const store = buildInMemoryStore({ name, dialecteId })
+	await store.open(openOptionsOf({ create }))
 	return store
+}
+
+/** An in-memory store of that name, of the test dialecte unless another is named, never opened. */
+function buildInMemoryStore(params: { name: string; dialecteId?: string }): InMemoryStore {
+	const { name, dialecteId = TEST_DIALECTE.id } = params
+	return new InMemoryStore(name, { writable: true, runtime: createContractRuntime(), dialecteId })
+}
+
+/** The options a leg hands its store's `open`: none unless the case sets `create`. */
+function openOptionsOf(params: { create: boolean | undefined }): StoreOpenOptions | undefined {
+	return params.create === undefined ? undefined : { create: params.create }
 }
 
 export const inMemoryStoreFactory: StoreContractFactory = {
 	name: 'InMemoryStore',
-	createNamed: async function createNamedInMemoryStore({ name }) {
-		const store = new InMemoryStore(name, { writable: true, runtime: createContractRuntime() })
-		await store.open()
-		return store
+	createNamed: async function createNamedInMemoryStore({ name, create }) {
+		return openInMemoryStore({ name, create })
+	},
+	buildNamed: async function buildNamedInMemoryStore({ name }) {
+		return buildInMemoryStore({ name })
 	},
 	create: async function createInMemoryStore() {
 		return openInMemoryStore({ name: uniqueName('store-contract-memory') })
@@ -82,6 +102,11 @@ export const inMemoryStoreFactory: StoreContractFactory = {
 	},
 	storageUnfillable: 'an in-memory store has no storage limit',
 	differs: { 'engine-end': IN_PAGE_IMPORT_REASON, away: AWAY_UNREACHABLE_REASON },
+	loseFiles: async function loseInMemoryState({ store }) {
+		dropInMemoryState({
+			key: inMemoryStateKeyOf({ project: store.name, dialecteId: TEST_DIALECTE.id }),
+		})
+	},
 }
 
 export const dexieStoreFactory: StoreContractFactory = {
@@ -99,10 +124,16 @@ export const dexieStoreFactory: StoreContractFactory = {
 		announce: ANNOUNCED_BY_PROJECT_REASON,
 	},
 	name: 'DexieStore',
-	createNamed: async function createNamedDexieStore({ name }) {
+	buildNamed: async function buildNamedDexieStore({ name }) {
+		return new DexieStore(name, { runtime: createContractRuntime() })
+	},
+	createNamed: async function createNamedDexieStore({ name, create }) {
 		const store = new DexieStore(name, { runtime: createContractRuntime() })
-		await store.open()
+		await store.open(openOptionsOf({ create }))
 		return store
+	},
+	loseFiles: async function deleteDexieDatabase({ store }) {
+		await Dexie.delete(store.name)
 	},
 	storageUnfillable:
 		"a test cannot fill IndexedDB; IndexedDB refusing a write for want of space answers the write's own key (STORE_COMMIT_FAILED, STORE_BULK_ADD_FAILED...), not STORE_QUOTA_EXCEEDED, until the local store moves to SQLite",
@@ -130,22 +161,35 @@ export const dexieStoreFactory: StoreContractFactory = {
 async function openSqliteStore(params: {
 	name: string
 	dialecteId?: string
+	create?: boolean
 }): Promise<EngineStore> {
+	const { name, dialecteId, create } = params
+	const store = buildSqliteStore({ name, dialecteId })
+	await store.open(openOptionsOf({ create }))
+	return store
+}
+
+/** A SQLite store of that name run in this realm on an in-memory file, never opened. */
+function buildSqliteStore(params: { name: string; dialecteId?: string }): EngineStore {
 	const { name, dialecteId = TEST_DIALECTE.id } = params
 	const connector = createInProcessConnector({
 		name,
 		dialecteId,
 		runtime: createContractRuntime(),
 	})
-	const store = new EngineStore({ name, connector })
-	await store.open()
-	return store
+	return new EngineStore({ name, connector })
 }
 
 export const sqliteInProcessStoreFactory: StoreContractFactory = {
 	name: 'EngineStore in-process',
-	createNamed: async function createNamedSqliteStore({ name }) {
-		return openSqliteStore({ name })
+	buildNamed: async function buildNamedSqliteStore({ name }) {
+		return buildSqliteStore({ name })
+	},
+	createNamed: async function createNamedSqliteStore({ name, create }) {
+		return openSqliteStore({ name, create })
+	},
+	loseFiles: async function loseSqliteFile({ store }) {
+		loseInProcessFile({ name: store.name, dialecteId: TEST_DIALECTE.id })
 	},
 	create: async function createSqliteStore() {
 		return openSqliteStore({ name: uniqueName('store-contract-sqlite') })
@@ -174,7 +218,20 @@ async function openWorkerStore(params: {
 	name: string
 	called: Set<keyof EngineApi>
 	dialecteId?: string
+	create?: boolean
 }): Promise<EngineStore> {
+	const { create, ...storeParams } = params
+	const store = buildWorkerStore(storeParams)
+	await store.open(openOptionsOf({ create }))
+	return store
+}
+
+/** A SQLite store of that name whose engine runs in a worker of this realm, never opened. */
+function buildWorkerStore(params: {
+	name: string
+	called: Set<keyof EngineApi>
+	dialecteId?: string
+}): EngineStore {
 	const { name, called, dialecteId = TEST_DIALECTE.id } = params
 	const other = dialecteId === CONTRACT_OTHER_DIALECTE_ID
 	const workerConnector = createSqliteWorkerConnector({
@@ -185,9 +242,7 @@ async function openWorkerStore(params: {
 		perf: true,
 	})
 	const connector = recordingConnector({ connector: workerConnector, called })
-	const store = new EngineStore({ name, connector })
-	await store.open()
-	return store
+	return new EngineStore({ name, connector })
 }
 
 /**
@@ -222,9 +277,13 @@ export function createSqliteWorkerStoreFactory(params: {
 			await endContractEngine({ project: store.name })
 		},
 		name: 'EngineStore worker',
-		createNamed: async function createNamedWorkerStore({ name }) {
-			return openWorkerStore({ name, called })
+		buildNamed: async function buildNamedWorkerStore({ name }) {
+			return buildWorkerStore({ name, called })
 		},
+		createNamed: async function createNamedWorkerStore({ name, create }) {
+			return openWorkerStore({ name, called, create })
+		},
+		loseFiles: loseEngineFiles,
 		create: async function createWorkerStore() {
 			return openWorkerStore({ name: uniqueName(WORKER_LEG_PREFIX), called })
 		},
@@ -244,6 +303,15 @@ export function createSqliteWorkerStoreFactory(params: {
 }
 
 /** The contract's engine worker serving `project` ended, as one that dies (its work in flight lost). */
+/**
+ * The project's pool directory removed once its engine has ended, as a browser clearing the site's data while no tab
+ * runs the project: the next open starts an engine on no file of it.
+ */
+async function loseEngineFiles(params: { store: Store }): Promise<void> {
+	await endContractEngine({ project: params.store.name })
+	await removePoolDirectory({ project: params.store.name })
+}
+
 async function endContractEngine(params: { project: string }): Promise<void> {
 	const order: ContractEngineOrder = { type: 'end', project: params.project }
 	const channel = new BroadcastChannel(CONTRACT_ENGINE_CHANNEL)
@@ -380,9 +448,11 @@ async function openHubStore(params: {
 	realm: HubConnection
 	called: Set<keyof EngineApi>
 	dialecteId?: string
+	create?: boolean
 }): Promise<HubContractStore> {
-	const store = new HubContractStore(params)
-	await store.open()
+	const { create, ...storeParams } = params
+	const store = new HubContractStore(storeParams)
+	await store.open(openOptionsOf({ create }))
 	return store
 }
 
@@ -404,10 +474,15 @@ export function createSqliteHubStoreFactory(params: {
 	const { called } = params
 	return {
 		name: 'EngineStore hub',
-		createNamed: async function createNamedHubStore({ name }) {
+		buildNamed: async function buildNamedHubStore({ name }) {
 			const realm = await joinContractHub()
-			return openHubStore({ name, realm, called })
+			return new HubContractStore({ name, realm, called })
 		},
+		createNamed: async function createNamedHubStore({ name, create }) {
+			const realm = await joinContractHub()
+			return openHubStore({ name, realm, called, create })
+		},
+		loseFiles: loseEngineFiles,
 		create: async function createHubStore() {
 			const realm = await joinContractHub()
 			return openHubStore({ name: uniqueName(HUB_LEG_PREFIX), realm, called })

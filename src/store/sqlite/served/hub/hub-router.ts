@@ -250,6 +250,7 @@ function startProject(params: { step: HubStep; open: Extract<HubEvent, { type: '
 		dialecteId: open.dialecteId,
 		clients,
 		expectations: new Map(),
+		mustExist: new Set(),
 		engine: spawnEngine({
 			step,
 			project: open.project,
@@ -257,6 +258,7 @@ function startProject(params: { step: HubStep; open: Extract<HubEvent, { type: '
 			host,
 			openDeadline,
 			expectedCreationId: open.expectedCreationId,
+			mustExist: open.expectedCreationId === undefined && open.mustExist === true,
 		}),
 		openDeadline,
 		idleDeadline: undefined,
@@ -266,7 +268,11 @@ function startProject(params: { step: HubStep; open: Extract<HubEvent, { type: '
 	step.state.projects.set(projectKeyOf(open), project)
 }
 
-/** What the opening realm expects of the project: the creation id it had, coming back to it; none, opening it anew. */
+// dialecte-allow argument-mutation: a hub step updates its project's state in place, as its creation ids beside
+/**
+ * What the opening realm expects of the project: the creation id it had, coming back to it; that it is there, opening
+ * it `{ create: false }`; nothing, opening it anew.
+ */
 function noteExpectation(params: {
 	project: HubProject
 	open: Extract<HubEvent, { type: 'open' }>
@@ -274,23 +280,33 @@ function noteExpectation(params: {
 	const { project, open } = params
 	if (open.expectedCreationId === undefined) project.expectations.delete(open.realmId)
 	else project.expectations.set(open.realmId, open.expectedCreationId)
+	if (open.expectedCreationId === undefined && open.mustExist === true) {
+		project.mustExist.add(open.realmId)
+	} else project.mustExist.delete(open.realmId)
 }
 
 /**
  * The creation id an engine started for the project's clients is told to expect: none when a client opens it
  * anew (the engine then makes a missing project, and a client that expected another refuses it as it gets its
  * port); when every client comes back, the first one's - clients that had another creation are refused by the
- * engine and ask again, never served a new project nobody asked for.
+ * engine and ask again, never served a new project nobody asked for. Clients that opened it `{ create: false }` agree
+ * with any creation id; when they are all there is, the engine is told to make no missing project.
  */
-function sharedExpectation(params: { project: HubProject }): string | undefined {
+function sharedExpectation(params: { project: HubProject }): {
+	expectedCreationId: string | undefined
+	mustExist: boolean
+} {
 	const { project } = params
-	const expected = [...project.clients.keys()].map(function expectationOf(realmId) {
-		return project.expectations.get(realmId)
+	const realmIds = [...project.clients.keys()]
+	const anew = realmIds.some(function opensAnew(realmId) {
+		return !project.expectations.has(realmId) && !project.mustExist.has(realmId)
 	})
-	const anew = expected.some(function opensAnew(one) {
-		return one === undefined
+	if (anew) return { expectedCreationId: undefined, mustExist: false }
+	const [expectedCreationId] = realmIds.flatMap(function creationIdOf(realmId) {
+		const creationId = project.expectations.get(realmId)
+		return creationId === undefined ? [] : [creationId]
 	})
-	return anew ? undefined : expected[0]
+	return { expectedCreationId, mustExist: expectedCreationId === undefined }
 }
 
 /**
@@ -705,7 +721,7 @@ function replaceEngine(params: { step: HubStep; project: HubProject }): void {
 		dialecteId: project.dialecteId,
 		host,
 		openDeadline: openWindow({ step, project }),
-		expectedCreationId: sharedExpectation({ project }),
+		...sharedExpectation({ project }),
 	})
 }
 
@@ -806,8 +822,10 @@ function spawnEngine(params: {
 	host: HubCandidate
 	openDeadline: number
 	expectedCreationId: string | undefined
+	/** No client it starts for opens the project anew: a missing project is refused `PROJECT_NOT_FOUND`. */
+	mustExist: boolean
 }): HubEngine {
-	const { step, project, dialecteId, host, openDeadline, expectedCreationId } = params
+	const { step, project, dialecteId, host, openDeadline, expectedCreationId, mustExist } = params
 	const engine: HubEngine = {
 		hostRealmId: host.realm.realmId,
 		generation: step.state.nextGeneration++,
@@ -815,6 +833,7 @@ function spawnEngine(params: {
 		status: 'opening',
 		creationId: undefined,
 		expectedCreationId,
+		mustExist,
 	}
 	step.commands.push({
 		type: 'spawn-engine',
@@ -824,6 +843,7 @@ function spawnEngine(params: {
 		generation: engine.generation,
 		openBudgetMs: Math.min(ENGINE_OPEN_BUDGET_MS, openDeadline - step.now),
 		...(expectedCreationId !== undefined && { expectedCreationId }),
+		...(mustExist && { mustExist: true as const }),
 	})
 	return engine
 }
@@ -868,7 +888,10 @@ function engineOpenFailed(params: {
 	releaseEngine({ step, project })
 	const openDeadline = openWindow({ step, project })
 	project.triedHosts.push(project.engine.hostRealmId)
-	if (failed.failure.key === ('PROJECT_DESTROYED_WHILE_AWAY' satisfies DialecteErrorKey)) {
+	if (
+		failed.failure.key === ('PROJECT_DESTROYED_WHILE_AWAY' satisfies DialecteErrorKey) ||
+		failed.failure.key === ('PROJECT_NOT_FOUND' satisfies DialecteErrorKey)
+	) {
 		return refuseAwayClients({ step, project, error: failed.failure.error, openDeadline })
 	}
 	const retry =
@@ -893,14 +916,15 @@ function engineOpenFailed(params: {
 		dialecteId: project.dialecteId,
 		host,
 		openDeadline,
-		expectedCreationId: sharedExpectation({ project }),
+		...sharedExpectation({ project }),
 	})
 }
 
 /**
- * The engine started for clients coming back to the project refused it: destroyed meanwhile. Those clients are
- * refused as it said; a client that opened the project anew meanwhile gets an engine of its own, expecting
- * nothing (it makes the project again), if the window leaves time for one.
+ * The engine started for clients coming back to the project refused it: destroyed meanwhile - or, started for clients
+ * that opened it `{ create: false }`, found none. Those clients are refused as it said; a client that opened the
+ * project anew meanwhile gets an engine of its own, expecting nothing (it makes the project again), if the window
+ * leaves time for one.
  */
 function refuseAwayClients(params: {
 	step: HubStep
@@ -909,9 +933,10 @@ function refuseAwayClients(params: {
 	openDeadline: number
 }): void {
 	const { step, project, error, openDeadline } = params
-	const expected = project.engine.expectedCreationId
+	const { expectedCreationId: expected, mustExist } = project.engine
 	const away = new Map(
 		[...project.clients].filter(function cameBack([realmId]) {
+			if (mustExist) return project.mustExist.has(realmId)
 			return project.expectations.get(realmId) === expected
 		}),
 	)
@@ -945,14 +970,16 @@ function refuseAwayClients(params: {
 		dialecteId: project.dialecteId,
 		host,
 		openDeadline,
-		expectedCreationId: sharedExpectation({ project }),
+		...sharedExpectation({ project }),
 	})
 }
 
+// dialecte-allow argument-mutation: a hub step updates its project's state in place, as its creation ids beside
 /** A client the project counts no more, with what it expected of it. */
 function forgetClient(params: { project: HubProject; realmId: string }): boolean {
 	const { project, realmId } = params
 	project.expectations.delete(realmId)
+	project.mustExist.delete(realmId)
 	return project.clients.delete(realmId)
 }
 
@@ -1109,6 +1136,7 @@ function earliestDeadline(params: { state: HubState }): number | undefined {
 	return deadlines.length > 0 ? Math.min(...deadlines) : undefined
 }
 
+// dialecte-allow argument-mutation: a hub step updates its project's state in place, as its creation ids beside
 /** A client given a port to the ready engine, with the id its project was created with (the client checks it). */
 function connectClient(params: { step: HubStep; project: HubProject; realmId: string }): void {
 	const { step, project, realmId } = params
@@ -1117,6 +1145,7 @@ function connectClient(params: { step: HubStep; project: HubProject; realmId: st
 	if (creationId === undefined) return
 	// the client now has that project: an engine started for it later must open the same one
 	project.expectations.set(realmId, creationId)
+	project.mustExist.delete(realmId)
 	step.commands.push({
 		type: 'connect-client',
 		creationId,

@@ -14,7 +14,7 @@ import {
 import { inWriteTransaction } from './transaction'
 
 import { throwDialecteError } from '@/errors'
-import { refuseOtherCreation } from '@/store/sqlite/served/creation-refusal'
+import { refuseOtherCreation } from '@/store/creation-refusal'
 import { TABLE_BLOBS, TABLE_CHANGELOG, TABLE_DOCUMENTS, TABLE_META } from '@/store/store.constants'
 
 import type { MetaRow, RecordIndex } from './engine.types'
@@ -103,15 +103,17 @@ export function prepareFile(params: {
 	dialecteId: string
 	/** The creation id the opener knows (a view coming back): a new file or one of another id is refused. */
 	expectedCreationId?: string
+	/** The opener must find its project (`{ create: false }`): a new file is refused `PROJECT_NOT_FOUND`. */
+	mustExist?: boolean
 	steadyCacheMiB: number
 }): { creationId: string } {
-	const { sqlite3, db, project, dialecteId, expectedCreationId, steadyCacheMiB } = params
+	const { sqlite3, db, project, dialecteId, expectedCreationId, mustExist, steadyCacheMiB } = params
 	// read before any pragma: a refused file is never written, nor locked by this connection
 	const layoutVersion = Number(db.selectValue('PRAGMA user_version'))
 	const tables = Number(db.selectValue('SELECT count(*) FROM sqlite_schema'))
 	if (layoutVersion === 0 && tables === 0) {
-		// a view coming back to a project finds none: destroyed meanwhile, never made again empty here
-		refuseOtherCreation({ project, expectedCreationId, creationId: undefined })
+		// a view coming back to a project, or an open that must find it, finds none: never made empty here
+		refuseOtherCreation({ project, expectedCreationId, mustExist, creationId: undefined })
 		applyConnectionPragmas({ db, steadyCacheMiB })
 		return { creationId: createFile({ sqlite3, db, dialecteId }) }
 	}

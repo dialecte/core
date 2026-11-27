@@ -1,5 +1,6 @@
 import { applyRecordPatch } from '../apply-record-patch'
 import { tellCommitProgress } from '../commit-progress'
+import { refuseMissingProject } from '../creation-refusal'
 import { applyDocumentUpdates, assertDocumentPlace } from '../document-path'
 import { ignoreDestroyOutcome } from '../ignore-destroy-outcome'
 import { checkCallId, toJsonCopy } from '../json-values'
@@ -69,6 +70,7 @@ import type {
 	RecordSchema,
 	StoreVersion,
 	WriteOutcome,
+	StoreOpenOptions,
 } from '../store.types'
 import type { DistributiveOmit, HistoryStep } from '../store.types'
 import type {
@@ -227,9 +229,11 @@ export class DexieStore implements Store {
 
 	/**
 	 * Open: an import found unfinished is removed - unless a connection still runs it (its Web Lock
-	 * is held). Where Web Locks are missing, every unfinished import is removed.
+	 * is held). Where Web Locks are missing, every unfinished import is removed. With `{ create: false }`, a
+	 * project with no database is refused `PROJECT_NOT_FOUND`, nothing made, the store closed (its operations refused
+	 * `STORE_CLOSED` until opened again).
 	 */
-	async open(): Promise<void> {
+	async open(options?: StoreOpenOptions): Promise<void> {
 		const closingsAtCall = this.closings
 		// an operation still running keeps its connection: the store opens once it is done, and once its
 		// own destroy has ended
@@ -239,6 +243,13 @@ export class DexieStore implements Store {
 		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
 		this.closed = false
 		await this.holdOpen()
+		// looked for under the hold, which a destroy waits for; a connection open now holds the database already
+		if (options?.create === false && !this.db.isOpen()) {
+			const exists = await Dexie.exists(this.name)
+			// a refused open leaves the store closed, its hold let go: nothing made through it
+			if (!exists) await this.close()
+			refuseMissingProject({ project: this.name, exists })
+		}
 		// counted as an operation: a close() meanwhile closes the connection this reopens
 		await this.tracked(async () => {
 			// under the schema lock: a write waits for the connection this reload makes, never takes the one it closes; a

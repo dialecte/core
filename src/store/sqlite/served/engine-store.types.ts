@@ -24,6 +24,9 @@ export type EngineLink = {
 	close: () => Promise<void>
 }
 
+/** What a connector's connect is handed. */
+export type EngineConnectParams = { mustExist?: boolean }
+
 /** What a connector's destroy is handed: the destroying store's own connection, when it has one. */
 export type EngineDestroyParams = { own?: OwnEngineLink }
 
@@ -32,7 +35,11 @@ export type OwnEngineLink = { link: EngineLink; letGo: () => Promise<void> }
 
 /** How a store reaches its project's engine, and how the project is deleted. */
 export type EngineConnector = {
-	connect: () => Promise<EngineLink>
+	/**
+	 * A connection to the project's engine; `mustExist`, the store opened `{ create: false }`: a project that is not
+	 * there is refused `PROJECT_NOT_FOUND`, never made (a connection coming back to its project expects it anyway).
+	 */
+	connect: (params?: EngineConnectParams) => Promise<EngineLink>
 	/**
 	 * Delete the project's file, its engine closed first; the next connection starts on a new file. `own`,
 	 * the destroying store's own connection, does not count against it, and is let go only once the destroy

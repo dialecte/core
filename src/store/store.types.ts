@@ -30,6 +30,12 @@ export type RecordSchema = {
 	arrayIndexes: string[]
 }
 
+/** How a store opens its project (`Store.open`). */
+export type StoreOpenOptions = {
+	/** `false`: the project must already exist - a missing one is refused `PROJECT_NOT_FOUND`, nothing made. Default `true`. */
+	create?: boolean
+}
+
 /**
  * Store — the database port.
  *
@@ -75,9 +81,12 @@ export interface Store {
 
 	/**
 	 * Open the connection (if not already open), once the operations still running have completed;
-	 * refused with `STORE_CLOSED` when a `close()` was called after it (the close wins)
+	 * refused with `STORE_CLOSED` when a `close()` was called after it (the close wins). With
+	 * `{ create: false }` the project must already exist: one never made, destroyed, or whose storage is gone
+	 * (no database, no file, a database with no table) is refused `PROJECT_NOT_FOUND`, nothing made in its
+	 * place; a project made and still empty opens. By default a missing project is made, empty.
 	 */
-	open(): Promise<void>
+	open(options?: StoreOpenOptions): Promise<void>
 
 	/**
 	 * Close this connection: every operation started through it from now on is refused with

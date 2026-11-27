@@ -3156,6 +3156,89 @@ const oneStateAfterDestroy: StoreContractCases = {
 				expect(documentIdsOfOther).toEqual(['doc-1'])
 			},
 		},
+	'a name never made, opened { create: false } → PROJECT_NOT_FOUND, nothing made: refused again; a plain open of it then makes it, empty, and { create: false } opens it from then on':
+		{
+			act: async ({ createNamed }) => {
+				const name = `never-made-${crypto.randomUUID()}`
+				await expectRejectsWith({
+					action: createNamed({ name, create: false }),
+					key: 'PROJECT_NOT_FOUND',
+					meta: { project: name },
+				})
+				await expectRejectsWith({
+					action: createNamed({ name, create: false }),
+					key: 'PROJECT_NOT_FOUND',
+					meta: { project: name },
+				})
+				const made = await createNamed({ name })
+				const documentIds = await documentIdsOf({ store: made })
+				expect(documentIds).toEqual([])
+				await made.close()
+				const opened = await createNamed({ name, create: false })
+				const documentIdsOfOpened = await documentIdsOf({ store: opened })
+				expect(documentIdsOfOpened).toEqual([])
+				await opened.close()
+			},
+		},
+	'a store whose { create: false } open was refused → its operations refused STORE_CLOSED until opened again: nothing made through it':
+		{
+			act: async ({ buildNamed, createNamed }) => {
+				const name = `refused-${crypto.randomUUID()}`
+				const store = await buildNamed({ name })
+				await expectRejectsWith({
+					action: store.open({ create: false }),
+					key: 'PROJECT_NOT_FOUND',
+				})
+				await expectRejectsWith({
+					action: store.registerDocument(makeDocument()),
+					key: 'STORE_CLOSED',
+				})
+				await expectRejectsWith({
+					action: createNamed({ name, create: false }),
+					key: 'PROJECT_NOT_FOUND',
+				})
+			},
+		},
+	'a project made and closed with no document, opened { create: false } → opened, empty: made is not missing':
+		{
+			act: async ({ createNamed }) => {
+				const name = `made-empty-${crypto.randomUUID()}`
+				const made = await createNamed({ name })
+				await made.close()
+				const opened = await createNamed({ name, create: false })
+				const documentIds = await documentIdsOf({ store: opened })
+				expect(documentIds).toEqual([])
+				// closed for the case's destroy of the project, refused while a connection has it open
+				await opened.close()
+			},
+		},
+	'a project with a document, closed, opened { create: false } → its documents': {
+		act: async ({ createNamed }) => {
+			const name = `kept-${crypto.randomUUID()}`
+			const made = await createNamed({ name })
+			await made.registerDocument(makeDocument())
+			await made.close()
+			const opened = await createNamed({ name, create: false })
+			const documentIds = await documentIdsOf({ store: opened })
+			expect(documentIds).toEqual(['doc-1'])
+			await opened.close()
+		},
+	},
+	'a project whose storage was removed behind its back, opened { create: false } → PROJECT_NOT_FOUND: never an empty project in its place':
+		{
+			needs: ['lost-files'],
+			act: async ({ createNamed, loseFiles }) => {
+				const name = `lost-${crypto.randomUUID()}`
+				const made = await createNamed({ name })
+				await made.registerDocument(makeDocument())
+				await loseFiles({ store: made })
+				await expectRejectsWith({
+					action: createNamed({ name, create: false }),
+					key: 'PROJECT_NOT_FOUND',
+					meta: { project: name },
+				})
+			},
+		},
 	'a view away while another view destroys its project → back, its calls refused PROJECT_DESTROYED_WHILE_AWAY: never an empty project in its place':
 		{
 			needs: ['away'],

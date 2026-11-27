@@ -35,9 +35,11 @@ Keep the instance before opening it: when `open` is refused, that Project is the
 | `hooks`            | `DialecteHooks`                                          | All lifecycle hooks (IO + record) applied to every Document — see [Hooks](/api/hooks)                                                                                                                                                       |
 | `dialecteId`       | `string`                                                 | The project's dialecte (a dialecte's project factory gives it): with the name, which project a store holds; read as `project.dialecteId`                                                                                                    |
 
-**`project.open(name: string): Promise<this>`**
+**`project.open(name: string, options?: { create?: boolean }): Promise<this>`**
 
 Connects the store, hydrates existing file registrations into `project.state.documents` (including each document's `canUndo`/`canRedo` from persisted history), and returns `this` for chaining. Accessing `project.name` or `project.channelName` before calling `open` throws `PROJECT_NOT_OPENED` (D7003).
+
+A project that is not there is made, empty. Reopening a name you remember (the last project of a previous session), pass `{ create: false }`: a project that is not there - never made, destroyed, or its storage cleared by the browser - is refused `PROJECT_NOT_FOUND` (D7019, `meta.project`) on every store, nothing made in its place and the Project left closed; a project made and still empty opens. On SQLite storage a project another engine holds is still refused `PROJECT_ENGINE_BUSY` first.
 
 ::: tip Dialecte packages
 A dialecte package exposes a factory function (`createSclProject` in `@dialecte/scl`) that pre-configures the `Project` constructor. The way to build one is `createProjectFactory` from the dialecte's declaration: every config, the default key, the extensions and a fresh hooks instance per project come from there, and consumer code chooses its storage and its own extensions, then calls `.open(name)`. See [Dialecte declaration](/api/dialecte).

@@ -25,6 +25,8 @@ export type RealmToHubMessage =
 			dialecteVersion: string
 			/** The creation id of the project the realm had, coming back to it. */
 			expectedCreationId?: string
+			/** The realm opened the project `{ create: false }`: an engine started for it makes no missing project. */
+			mustExist?: true
 	  }
 	| { type: 'leave'; project: string; dialecteId: string }
 	| { type: 'destroy'; project: string; dialecteId: string }
@@ -106,6 +108,8 @@ export type HubToRealmMessage =
 			generation: number
 			openBudgetMs: number
 			expectedCreationId?: string
+			/** Every client waiting opened `{ create: false }`: a missing project is refused, never made. */
+			mustExist?: true
 	  }
 	| {
 			type: 'adopt-client'

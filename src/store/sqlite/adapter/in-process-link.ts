@@ -3,11 +3,11 @@ import { refuseUnnamableProject } from '../../project-name'
 import { throwOpenElsewhere, throwStoreClosed } from '../../store-errors'
 import { openSqliteEngine } from '../engine/sqlite-engine'
 import { loadSqlite } from '../load-sqlite'
-import { refuseOtherCreation } from '../served/creation-refusal'
 import { storeEventOf } from '../served/host/store-events'
 import { realmWasmUrl } from '../sqlite-wasm-url'
 import { CLIENTS, FILES, LISTENERS } from './in-process-link.constants'
 
+import { refuseOtherCreation } from '@/store/creation-refusal'
 import { tellListeners } from '@/utils/tell-listener'
 import { TOLD_OF } from '@/utils/tell-listener.constants'
 
@@ -26,8 +26,19 @@ import type { InProcessConnectorParams } from './in-process-link.types'
 export function createInProcessConnector(params: InProcessConnectorParams): EngineConnector {
 	refuseUnnamableProject({ project: params.name, dialecteId: params.dialecteId })
 	return {
-		connect: function connectInProcess() {
-			return connectToEngine(params)
+		connect: async function connectInProcess(connectParams) {
+			const link = await connectToEngine({
+				...params,
+				mustExist: connectParams?.mustExist ?? false,
+			})
+			// its engine reached once (as the worker and the hub connections do): a refused open counts no connection
+			try {
+				await link.engine()
+			} catch (thrown) {
+				await link.close()
+				throw thrown
+			}
+			return link
 		},
 		destroy: async function destroyInProcess(destroyParams) {
 			const own = destroyParams?.own
@@ -41,8 +52,11 @@ export function createInProcessConnector(params: InProcessConnectorParams): Engi
 	}
 }
 
-async function connectToEngine(params: InProcessConnectorParams): Promise<EngineLink> {
-	const { name } = params
+async function connectToEngine(
+	params: InProcessConnectorParams & { mustExist: boolean },
+): Promise<EngineLink> {
+	const { mustExist, ...connector } = params
+	const { name } = connector
 	const key = keyOf(params)
 	const clients = CLIENTS.get(key) ?? new Set<EngineLink>()
 	CLIENTS.set(key, clients)
@@ -61,7 +75,12 @@ async function connectToEngine(params: InProcessConnectorParams): Promise<Engine
 		engine: async function currentEngine() {
 			// a released connection is not counted: it must not start an engine nobody would close
 			if (released) throwStoreClosed({ storeName: name })
-			const engine = await engineOf({ ...params, expectedCreationId: creationId })
+			// the first engine this connection reaches must run its project when it opened `{ create: false }`
+			const engine = await engineOf({
+				...connector,
+				expectedCreationId: creationId,
+				mustExist: creationId === undefined && mustExist,
+			})
 			refuseOtherCreation({
 				project: name,
 				expectedCreationId: creationId,
@@ -146,13 +165,15 @@ function stopNothing(): void {}
  * the connection expects its project there: destroyed meanwhile, nothing made in its place).
  */
 async function engineOf(
-	params: InProcessConnectorParams & { expectedCreationId: string | undefined },
+	params: InProcessConnectorParams & { expectedCreationId: string | undefined; mustExist: boolean },
 ): Promise<SqliteEngine> {
-	const { name, dialecteId, runtime, options, expectedCreationId } = params
+	const { name, dialecteId, runtime, options, expectedCreationId, mustExist } = params
 	const key = keyOf(params)
 	const sqlite3 = await loadSqlite({ wasmUrl: realmWasmUrl() })
 	const existing = FILES.get(key)
-	if (!existing) refuseOtherCreation({ project: name, expectedCreationId, creationId: undefined })
+	if (!existing) {
+		refuseOtherCreation({ project: name, expectedCreationId, mustExist, creationId: undefined })
+	}
 	const file = existing ?? { keeper: new sqlite3.oo1.DB(fileName({ key }), 'c') }
 	FILES.set(key, file)
 	if (!file.engine) {
@@ -163,6 +184,7 @@ async function engineOf(
 			db,
 			dialecteId,
 			expectedCreationId,
+			mustExist,
 			name,
 			runtime,
 			options,
@@ -193,6 +215,14 @@ function fileName(params: { key: string }): string {
 /** The project's key in this realm's maps (`projectKeyOf`). */
 function keyOf(params: { name: string; dialecteId: string }): string {
 	return projectKeyOf({ dialecteId: params.dialecteId, project: params.name })
+}
+
+/**
+ * The project's in-memory file gone, its engine closed with it, as a browser clearing the site's data: a test tool, what
+ * a project whose files were removed is to the engine. Its connections are left as they are.
+ */
+export function loseInProcessFile(params: { name: string; dialecteId: string }): void {
+	closeFile({ key: keyOf(params) })
 }
 
 /**

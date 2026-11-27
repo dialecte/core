@@ -70,6 +70,12 @@ export type DocumentEntry = DocumentState & {
 	canRedo: boolean
 }
 
+/** How `project.open` opens its project. */
+export type ProjectOpenOptions = {
+	/** `false`: the project must already exist - a missing one is refused `PROJECT_NOT_FOUND`, nothing made. Default `true`. */
+	create?: boolean
+}
+
 /**
  * ProjectState - top-level observable state for a Project.
  * In Vue: reactive(project.state) makes all fields trigger re-renders.

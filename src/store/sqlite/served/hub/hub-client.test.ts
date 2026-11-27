@@ -1,3 +1,4 @@
+// dialecte-allow test-file-long: every case of the realm's hub client drives the one fake hub harness this file holds
 import { makeDocument, outcomeOf } from '../../../contract/store-contract.fixtures'
 import { storesHere } from '../../adapter/realm-storage'
 import { refuseRealmStorage, restoreRealmStorage } from '../../adapter/realm-storage.fixtures'
@@ -2993,3 +2994,42 @@ function refuseAfterFirst(helloIndex: number): boolean {
 }
 
 async function settleNothing(): Promise<void> {}
+
+describe('a realm opening a project that must exist ({ create: false })', () => {
+	it('asked of the hub mustExist, then a link of the realm opening it anew → the missing project refused PROJECT_NOT_FOUND to the first link only; the realm asks again without mustExist for the other', async () => {
+		const hub = fakeHub()
+		const connection = await joinFakeHub({ hub })
+		onTestFinished(connection.close)
+		const project = uniqueProject()
+		const mustExist = connection.openProject({
+			project,
+			dialecteId: TEST_DIALECTE.id,
+			dialecteVersion: TEST_DIALECTE.version,
+			mustExist: true,
+		})
+		links.push(mustExist)
+		const refused = outcomeOf({ promise: mustExist.engine() })
+		const asked = await hub.next('open')
+		expect(asked.mustExist).toBe(true)
+		const anew = openLink({ connection, project })
+		const waiting = outcomeOf({ promise: anew.engine() })
+		hub.reply({
+			type: 'open-refused',
+			project,
+			dialecteId: TEST_DIALECTE.id,
+			error: refusalData({ key: 'PROJECT_NOT_FOUND' }),
+		})
+		const refusedOutcome = await refused
+		expect(refusedOutcome).toBe('PROJECT_NOT_FOUND')
+		// the link opening anew is not refused for the other link's want: it still waits for its engine
+		const anewMeanwhile = await Promise.race([
+			waiting,
+			pause({ ms: 50 }).then(function stillWaiting() {
+				return 'waiting'
+			}),
+		])
+		expect(anewMeanwhile).toBe('waiting')
+		const askedAgain = await hub.next('open')
+		expect(askedAgain.mustExist).toBeUndefined()
+	})
+})

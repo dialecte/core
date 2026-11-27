@@ -33,8 +33,13 @@ export type StoreContractFactory = {
 	 * opens one there already.
 	 */
 	connectInRealm?: (store: Store) => Promise<Store>
-	/** An open store of the leg under that name, with nothing else of a case (`createOther`, its name chosen). */
-	createNamed: (params: { name: string }) => Promise<Store>
+	/**
+	 * An open store of the leg under that name, with nothing else of a case (`createOther`, its name chosen);
+	 * `create` is handed to its `open` (`StoreOpenOptions`).
+	 */
+	createNamed: (params: { name: string; create?: boolean }) => Promise<Store>
+	/** A store of the leg under that name, built and never opened: the case opens it (every leg of the package has one). */
+	buildNamed?: (params: { name: string }) => Promise<Store>
 	/**
 	 * The parts of the port this leg does not serve yet, each with the reason its waiting cases show:
 	 * a case needing one runs as expected to fail on this leg (never in a weaker form), so it turns red
@@ -68,6 +73,12 @@ export type StoreContractFactory = {
 	 * `differs` (`away`).
 	 */
 	destroyWhileAway?: (params: { store: Store; remake: boolean }) => Promise<void>
+	/**
+	 * The project's storage gone behind the store's back, the store closed: its files or its database removed as a
+	 * browser clearing the site's data does, never through the store's own `destroy`. A leg with none says why in
+	 * `differs` (`lost-files`).
+	 */
+	loseFiles?: (params: { store: Store }) => Promise<void>
 }
 
 /** A part of the port a leg may not serve yet. */
@@ -113,8 +124,10 @@ export type StoreContractContext = {
 	connect: () => Promise<Store>
 	/** A second open connection in the store's own realm (a second Project of the page); closed after the case. */
 	connectInRealm: () => Promise<Store>
-	/** An open store of the leg under that name; destroyed after the case. */
-	createNamed: (params: { name: string }) => Promise<Store>
+	/** An open store of the leg under that name, `create` handed to its `open`; destroyed after the case. */
+	createNamed: (params: { name: string; create?: boolean }) => Promise<Store>
+	/** A store of the leg under that name, built and never opened; destroyed after the case. */
+	buildNamed: (params: { name: string }) => Promise<Store>
 	/** A fresh, open store of another name; destroyed after the case. */
 	createOther: () => Promise<Store>
 	/** The store's engine ended at once, as one that dies; on a leg with no engine, refused. */
@@ -125,6 +138,8 @@ export type StoreContractContext = {
 	destroyWhileAway: (params: { remake: boolean }) => Promise<void>
 	/** The store's storage made full (`full-storage`): a write needing more room than it has is refused. */
 	fillStorage: () => Promise<void>
+	/** The given store closed, then its project's storage gone behind its back (`lost-files`). */
+	loseFiles: (params: { store: Store }) => Promise<void>
 }
 
 /** What a held import and its case say on the hold channel. */

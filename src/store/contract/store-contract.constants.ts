@@ -160,7 +160,8 @@ export const INDEXEDDB_VERSIONED_READ_PENDING =
  * store named by the project's name alone has no other dialecte's); a view away while its project is
  * destroyed elsewhere (`away`: a store whose connections all count until closed never has one away); the
  * changes told to every connection (`announce`: a store that tells none leaves it to the project's channel); the
- * versions once opened again (`engine-restart`: a leg whose reopen ends the engine meets another one).
+ * versions once opened again (`engine-restart`: a leg whose reopen ends the engine meets another one); the
+ * project's storage gone behind the store's back (`lost-files`: a leg whose storage a test cannot remove).
  */
 export const STORE_CONTRACT_DIFFERENCES = [
 	'engine-end',
@@ -169,6 +170,7 @@ export const STORE_CONTRACT_DIFFERENCES = [
 	'import-liveness',
 	'announce',
 	'engine-restart',
+	'lost-files',
 ] as const
 
 /** Why the hub leg meets another engine once opened again: its reopen closes the realm (a tab) hosting the engine. */
@@ -204,7 +206,8 @@ export const TRANSPORT_TAG: StoreContractTag = 'transport'
 
 /**
  * What makes a case a transport case: a second connection, the announcements, an engine ending or away, another
- * dialecte's project, an import's liveness, a full storage, an import or an export (listeners and aborts cross the port).
+ * dialecte's project, an import's liveness, a full storage, an import or an export (listeners and aborts cross the port),
+ * a project's storage lost (the open's `create: false` crosses the port to the engine that refuses it).
  */
 export const TRANSPORT_NEEDS: readonly StoreContractNeed[] = [
 	'second-connection',
@@ -216,6 +219,7 @@ export const TRANSPORT_NEEDS: readonly StoreContractNeed[] = [
 	'full-storage',
 	'import',
 	'export',
+	'lost-files',
 ]
 
 /**

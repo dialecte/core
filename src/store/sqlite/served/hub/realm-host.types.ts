@@ -41,6 +41,7 @@ export type RealmHost = {
 		generation: number
 		openBudgetMs: number
 		expectedCreationId?: string
+		mustExist?: true
 	}) => void
 	adopt: (params: {
 		project: string

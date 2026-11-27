@@ -7,6 +7,7 @@ export { runExport } from './io/run-export'
 export { resolveStore } from '../store/resolve-store'
 export type {
 	ProjectParams,
+	ProjectOpenOptions,
 	InitEmptyDocumentOptions,
 	ImportDocumentOptions,
 	ImportedDocument,

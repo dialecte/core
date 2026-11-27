@@ -25,6 +25,7 @@ import type {
 	VersionedAnswer,
 	VersionedRead,
 	WriteOutcome,
+	StoreOpenOptions,
 } from '../../store.types'
 import type {
 	EngineConnector,
@@ -81,7 +82,7 @@ export class EngineStore implements Store {
 	// --- Lifecycle ---
 
 	/** Connect to the project's engine (started when none runs: a file of another layout is refused there). */
-	async open(): Promise<void> {
+	async open(options?: StoreOpenOptions): Promise<void> {
 		const closingsAtCall = this.closings
 		// an operation still running keeps the link: the store opens once it is done, and once its own
 		// destroy has ended
@@ -90,9 +91,15 @@ export class EngineStore implements Store {
 		// a close() called after this open() wins: the store stays closed
 		if (this.closings !== closingsAtCall) throwStoreClosed({ storeName: this.name })
 		this.closed = false
-		await this.tracked(async () => {
-			await this.currentEngine()
-		})
+		try {
+			await this.tracked(async () => {
+				await this.currentEngine({ mustExist: options?.create === false })
+			})
+		} catch (thrown) {
+			// a project not there leaves the store closed: no later operation connects anew and makes it
+			if (toDialecteError(thrown)?.key === 'PROJECT_NOT_FOUND') this.closed = true
+			throw thrown
+		}
 	}
 
 	/**
@@ -482,16 +489,16 @@ export class EngineStore implements Store {
 	}
 
 	/** The engine through this store's link, connected on the first operation (once, however many run). */
-	private async currentEngine(): Promise<EngineApi> {
-		this.connecting ??= this.connectOnce()
+	private async currentEngine(params: { mustExist?: boolean } = {}): Promise<EngineApi> {
+		this.connecting ??= this.connectOnce(params)
 		this.link = await this.connecting
 		return this.link.engine()
 	}
 
 	/** A failed connection is forgotten: the next operation tries again. */
-	private async connectOnce(): Promise<EngineLink> {
+	private async connectOnce(params: { mustExist?: boolean }): Promise<EngineLink> {
 		try {
-			const link = await this.connector.connect()
+			const link = await this.connector.connect(params)
 			this.listenToLink({ link })
 			return link
 		} catch (thrown) {

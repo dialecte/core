@@ -201,6 +201,7 @@ async function openEngine(params: {
 		lock,
 		budgetMs,
 		expectedCreationId,
+		mustExist,
 		perf,
 		heartbeatIntervalMs = ENGINE_HEARTBEAT_INTERVAL_MS,
 		settings: { wasmUrl, options, progressBeatOps = PROGRESS_BEAT_OPS },
@@ -227,7 +228,13 @@ async function openEngine(params: {
 		})
 		state.releaseLock = lockHeld.release
 		try {
-			await probePausedPool({ dialecteId: dialecte.id, project, deadline, expectedCreationId })
+			await probePausedPool({
+				dialecteId: dialecte.id,
+				project,
+				deadline,
+				expectedCreationId,
+				mustExist,
+			})
 			await state.pool.unpauseVfs()
 		} catch (thrown) {
 			await releasePool({ state })
@@ -241,6 +248,7 @@ async function openEngine(params: {
 			lock,
 			budgetMs,
 			expectedCreationId,
+			mustExist,
 		})
 		state.pool = opened.pool
 		state.releaseLock = opened.lock.release
@@ -266,6 +274,7 @@ async function openEngine(params: {
 			db,
 			dialecteId: dialecte.id,
 			expectedCreationId,
+			mustExist,
 			name: project,
 			runtime,
 			options,

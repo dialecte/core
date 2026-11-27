@@ -123,6 +123,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 		db,
 		dialecteId,
 		expectedCreationId,
+		mustExist,
 		name,
 		runtime,
 		ensureImportSpace,
@@ -157,6 +158,7 @@ export function openSqliteEngine(params: OpenSqliteEngineParams): SqliteEngine {
 					project: name,
 					dialecteId,
 					expectedCreationId,
+					mustExist,
 					steadyCacheMiB,
 				}).creationId
 				// at the start no client waits on the engine yet (the open has its own budget): nobody to tell

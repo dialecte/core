@@ -83,6 +83,11 @@ export type HubProjectParams = {
 	dialecteVersion: string
 	/** How long a call waits on a silent engine (the default when absent). */
 	heartbeatTimeoutMs?: number
+	/**
+	 * The connection opened `{ create: false }`: until the realm reached the project, the hub starts no engine that
+	 * would make it - a missing one refused `PROJECT_NOT_FOUND` (a link of the realm opening it anew lifts it).
+	 */
+	mustExist?: boolean
 }
 
 /** One connection's use of the realm's link to a project. */
@@ -116,6 +121,8 @@ export type HubPortHandle = {
 export type EngineWaiter = {
 	resolve: (client: EngineClient) => void
 	reject: (thrown: unknown) => void
+	/** Its link opened `{ create: false }`: a missing project is its answer, never a project made for another link. */
+	mustExist: boolean
 }
 
 /** The realm's link to one project: the connections using it, the engine client now, the calls waiting. */

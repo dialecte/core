@@ -39,6 +39,8 @@ export type HubEvent =
 			dialecteVersion: string
 			/** The creation id of the project the realm had, coming back to it. */
 			expectedCreationId?: string
+			/** The realm opened the project `{ create: false }`: an engine started for it makes no missing project. */
+			mustExist?: true
 	  }
 	| {
 			/** A realm closes its link to a project. */ type: 'leave'
@@ -146,6 +148,8 @@ export type HubCommand =
 			openBudgetMs: number
 			/** The creation id every client waiting expects (realms coming back to the project), if they agree. */
 			expectedCreationId?: string
+			/** Every client waiting opened `{ create: false }`: a missing project is refused, never made. */
+			mustExist?: true
 	  }
 	/** One channel: an end to the engine for this client, the other to the realm as its engine port. */
 	| {
@@ -238,6 +242,8 @@ export type HubEngine = {
 	creationId: string | undefined
 	/** The creation id it was told to expect (its clients coming back to the project), if any. */
 	expectedCreationId: string | undefined
+	/** Told to make no missing project: every client it was started for opened `{ create: false }`. */
+	mustExist: boolean
 }
 
 /** A project exists while it has an engine, opening or ready. */
@@ -248,6 +254,8 @@ export type HubProject = {
 	clients: Map<string, string>
 	/** Realm id -> the creation id a client coming back to the project expects (none for a client opening it anew). */
 	expectations: Map<string, string>
+	/** The realm ids of the clients that opened the project `{ create: false }` and have not reached it yet. */
+	mustExist: Set<string>
 	engine: HubEngine
 	/** While the engine opens for waiting clients: when they are answered at the latest. */
 	openDeadline: number | undefined

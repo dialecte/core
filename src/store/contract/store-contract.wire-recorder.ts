@@ -34,8 +34,8 @@ export function recordingConnector(params: {
 	const { connector, called } = params
 	const innerOf = new WeakMap<EngineLink, EngineLink>()
 	return {
-		connect: async function connectRecorded() {
-			const inner = await connector.connect()
+		connect: async function connectRecorded(connectParams) {
+			const inner = await connector.connect(connectParams)
 			const recorded: EngineLink = {
 				connectionId: inner.connectionId,
 				engine: async function recordedEngine() {

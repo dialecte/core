@@ -30,6 +30,7 @@ export type {
 	VersionedRead,
 	VersionedReadMember,
 	VersionedReads,
+	StoreOpenOptions,
 } from './store.types'
 export { runVersionedRead } from './versioned-read'
 export { VERSIONED_READ_MEMBERS } from './versioned-read.constants'

@@ -75,9 +75,9 @@ export function createSqliteConnector(params: CreateSqliteConnectorParams): Engi
 	}
 
 	return {
-		connect: async function connectToEngine() {
+		connect: async function connectToEngine(connectParams) {
 			const connector = await chosen()
-			return connector.connect()
+			return connector.connect(connectParams)
 		},
 		destroy: async function destroyProject(destroyParams) {
 			const connector = await chosen()

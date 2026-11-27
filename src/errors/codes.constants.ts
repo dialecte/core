@@ -550,6 +550,15 @@ export const ERROR_CATALOG = {
 			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
 		},
 	},
+	PROJECT_NOT_FOUND: {
+		code: 'D7019',
+		message: 'The project does not exist',
+		explanation: {
+			when: 'A project was opened with `{ create: false }` and is not there: never made, destroyed, or its storage cleared (the browser removed its files or its database). Nothing is made in its place. `meta.project` names the project.',
+			fix: 'Tell the user the project is gone; open it without `{ create: false }` to start it again empty, or choose another project.',
+			docs: `${CORE_DOCS_URL}/api/project#lifecycle`,
+		},
+	},
 	PROJECT_NAME_INVALID: {
 		code: 'D7014',
 		message: "The project's name cannot name its files",

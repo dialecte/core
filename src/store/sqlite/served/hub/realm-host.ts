@@ -42,6 +42,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 			generation,
 			openBudgetMs,
 			expectedCreationId,
+			mustExist,
 		}) {
 			const spawner = spawners.get(dialecteId)
 			let worker: Worker
@@ -87,6 +88,7 @@ export function createRealmHost(params: RealmHostParams): RealmHost {
 							dialecteId,
 							dialecteVersion: spawner.dialecteVersion,
 							...(expectedCreationId !== undefined && { expectedCreationId }),
+							...(mustExist && { mustExist }),
 							lock: 'wait',
 							budgetMs: openBudgetMs,
 							perf,

@@ -3,7 +3,6 @@ import { projectKeyOf } from '../../../project-key'
 import { refuseUnnamableProject } from '../../../project-name'
 import { throwOpenElsewhere } from '../../../store-errors'
 import { SQLITE_ERRORS } from '../../sqlite-errors.constants'
-import { refuseOtherCreation } from '../creation-refusal'
 import { refuseAnotherDialecte } from '../dialecte-refusal'
 import { engineLockNameOf } from '../engine-lock'
 import { refuseAnotherWire } from './check-engine-wire'
@@ -21,6 +20,7 @@ import { answeredOrSilent, createEngineControl } from './engine-control'
 import { startWindowOf } from './start-window'
 
 import { createDialecteError, toDialecteError } from '@/errors'
+import { refuseOtherCreation } from '@/store/creation-refusal'
 import { throwStoreClosed } from '@/store/store-errors'
 import { tellListeners } from '@/utils/tell-listener'
 import { TOLD_OF } from '@/utils/tell-listener.constants'
@@ -60,8 +60,8 @@ export function createWorkerConnector<GenericSettings>(
 ): EngineConnector {
 	refuseUnnamableProject({ project: params.name, dialecteId: params.dialecteId })
 	return {
-		connect: function connectToWorker() {
-			return linkToEngine(params)
+		connect: function connectToWorker(connectParams) {
+			return linkToEngine({ connector: params, mustExist: connectParams?.mustExist ?? false })
 		},
 		destroy: function destroyThroughFreshWorker(destroyParams) {
 			return destroyProject({ connector: params, own: destroyParams?.own })
@@ -69,7 +69,11 @@ export function createWorkerConnector<GenericSettings>(
 	}
 }
 
-async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<EngineLink> {
+async function linkToEngine(linkParams: {
+	connector: WorkerConnectorParams<unknown>
+	mustExist: boolean
+}): Promise<EngineLink> {
+	const { connector: params, mustExist } = linkParams
 	const openBudgetMs = params.openBudgetMs ?? ENGINE_OPEN_BUDGET_MS
 	const state: WorkerLinkState = {
 		clientId: crypto.randomUUID(),
@@ -81,6 +85,7 @@ async function linkToEngine(params: WorkerConnectorParams<unknown>): Promise<Eng
 		followRearmMs: ENGINE_FOLLOW_REARM_FIRST_MS,
 		adoption: undefined,
 		creationId: undefined,
+		mustExist,
 		refusal: undefined,
 		releasing: undefined,
 	}
@@ -200,8 +205,13 @@ async function runningEngine(params: {
 	if (link.refusal !== undefined) throw link.refusal
 	let engine = realmEngines.get(key)
 	if (!engine) {
-		// a connection coming back to its project tells the engine which one it had: none made in its place
-		engine = spawnEngine({ connector, expectedCreationId: link.creationId })
+		// a connection coming back to its project tells the engine which one it had, one opened `{ create: false }`
+		// that it must find one: none made in its place
+		engine = spawnEngine({
+			connector,
+			expectedCreationId: link.creationId,
+			mustExist: link.creationId === undefined && link.mustExist,
+		})
 		realmEngines.set(key, engine)
 	}
 	// a page runs one version of each dialecte: the engine of the project runs another one, which it is not joined to
@@ -216,9 +226,14 @@ async function runningEngine(params: {
 	} catch (thrown) {
 		engine.links.delete(link)
 		if (realmEngines.get(key) === engine) realmEngines.delete(key)
+		const refusedKey = toDialecteError(thrown)?.key
 		// an engine another connection started expecting its project refused it: this one expects none
-		const destroyedWhileAway = toDialecteError(thrown)?.key === 'PROJECT_DESTROYED_WHILE_AWAY'
+		const destroyedWhileAway = refusedKey === 'PROJECT_DESTROYED_WHILE_AWAY'
 		if (destroyedWhileAway && link.creationId === undefined) return runningEngine(params)
+		// an engine another connection started `{ create: false }` found no project: this one, opening it anew or coming
+		// back to the project it had, asks again with what it expects
+		const mustFind = link.mustExist && link.creationId === undefined
+		if (refusedKey === 'PROJECT_NOT_FOUND' && !mustFind) return runningEngine(params)
 		if (destroyedWhileAway) link.refusal = thrown
 		throw thrown
 	}
@@ -255,8 +270,10 @@ function spawnEngine(params: {
 	connector: WorkerConnectorParams<unknown>
 	/** The creation id the connection starting it knows of the project (coming back to it). */
 	expectedCreationId: string | undefined
+	/** The connection starting it opened `{ create: false }`: a missing project is refused, never made. */
+	mustExist: boolean
 }): RealmEngine {
-	const { connector, expectedCreationId } = params
+	const { connector, expectedCreationId, mustExist } = params
 	const {
 		name,
 		dialecteId,
@@ -292,6 +309,7 @@ function spawnEngine(params: {
 			dialecteId,
 			dialecteVersion,
 			expectedCreationId,
+			...(mustExist && { mustExist }),
 			lock: 'if-available',
 			budgetMs: openBudgetMs,
 			perf,

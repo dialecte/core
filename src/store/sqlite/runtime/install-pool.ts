@@ -1,6 +1,5 @@
 import { projectKeyOf } from '../../project-key'
 import { refuseUnnamableProject } from '../../project-name'
-import { refuseOtherCreation } from '../served/creation-refusal'
 import { engineLockNameOf } from '../served/engine-lock'
 import { SQLITE_ERRORS } from '../sqlite-errors.constants'
 import { classifyPool } from './pool-header'
@@ -17,6 +16,7 @@ import {
 } from './runtime.constants'
 
 import { createDialecteError } from '@/errors'
+import { refuseOtherCreation } from '@/store/creation-refusal'
 
 import type { EngineLockMode } from '../served/engine.types'
 import type {
@@ -48,8 +48,18 @@ export async function openPool(params: {
 	budgetMs: number
 	/** The creation id a view coming back knows: a pool holding no database then means the project was destroyed. */
 	expectedCreationId?: string
+	/** The opener must find its project (`{ create: false }`): a pool holding no database is refused `PROJECT_NOT_FOUND`. */
+	mustExist?: boolean
 }): Promise<{ pool: SAHPoolUtil; lock: HeldEngineLock }> {
-	const { sqlite3, dialecteId, project, lock: mode, budgetMs, expectedCreationId } = params
+	const {
+		sqlite3,
+		dialecteId,
+		project,
+		lock: mode,
+		budgetMs,
+		expectedCreationId,
+		mustExist,
+	} = params
 	refuseUnsafeSqlite({ sqlite3, project })
 	// a name no directory can be named after is refused before the lock is asked: a refusal holds nothing
 	const directory = poolDirectoryOf({ dialecteId, project })
@@ -60,9 +70,10 @@ export async function openPool(params: {
 		const files = await poolFilesOf({ root, dialecteId, project })
 		const heads = files.length === 0 ? [] : await probePoolFiles({ project, files, deadline })
 		// a pool that never held pages (none, or blank files an install that ended left) is made as a new one -
-		// unless a view coming back expects its project there: destroyed meanwhile, nothing made in its place
+		// unless a view coming back expects its project there (destroyed meanwhile), or the open must find it: nothing
+		// made in its place
 		if (refuseLostDatabase({ project, heads }) === 'blank') {
-			refuseOtherCreation({ project, expectedCreationId, creationId: undefined })
+			refuseOtherCreation({ project, expectedCreationId, mustExist, creationId: undefined })
 			await refuseShortSpace({ project, bytes: NEW_POOL_FREE_BYTES })
 		}
 		const options: PoolInstallOptions = {
@@ -107,13 +118,15 @@ export async function probePausedPool(params: {
 	deadline: number
 	/** The creation id a view coming back knows: a pool holding no database then means the project was destroyed. */
 	expectedCreationId?: string
+	/** The opener must find its project (`{ create: false }`): a pool holding no database is refused `PROJECT_NOT_FOUND`. */
+	mustExist?: boolean
 }): Promise<void> {
-	const { dialecteId, project, deadline, expectedCreationId } = params
+	const { dialecteId, project, deadline, expectedCreationId, mustExist } = params
 	const root = await privateRoot({ project })
 	const files = await poolFilesOf({ root, dialecteId, project })
 	const heads = await probePoolFiles({ project, files, deadline })
 	if (refuseLostDatabase({ project, heads }) === 'blank') {
-		refuseOtherCreation({ project, expectedCreationId, creationId: undefined })
+		refuseOtherCreation({ project, expectedCreationId, mustExist, creationId: undefined })
 	}
 }
 

@@ -72,6 +72,8 @@ export type OpenSqliteEngineParams = {
 	 * is refused `PROJECT_DESTROYED_WHILE_AWAY`, nothing written - the project was destroyed meanwhile.
 	 */
 	expectedCreationId?: string
+	/** The opener must find its project (`{ create: false }`): a new file is refused `PROJECT_NOT_FOUND`, nothing written. */
+	mustExist?: boolean
 	/** The project's name, said in the engine's refusals. */
 	name: string
 	/** What the engine imports with: without it, an import is refused (`IMPORT_FAILED`). */

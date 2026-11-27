@@ -30,12 +30,13 @@ export function createHubConnector(params: HubConnectorParams): EngineConnector 
 		heartbeatTimeoutMs,
 	} = params
 	return {
-		connect: async function connectThroughHub() {
+		connect: async function connectThroughHub(connectParams) {
 			const link = connection.openProject({
 				project: name,
 				dialecteId,
 				dialecteVersion,
 				heartbeatTimeoutMs,
+				mustExist: connectParams?.mustExist ?? false,
 			})
 			try {
 				await link.engine()
