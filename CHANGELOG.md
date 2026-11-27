@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-27
+
+Core 0.17.1: the IndexedDB store no longer fails reads or writes with PrematureCommitError under load.
+
+### Fixed
+
+- The IndexedDB store no longer fails a read or a write with `PrematureCommitError: Transaction committed too early` under load. Each store transaction now opens at the top level and hands its work the transaction's own tables, so every request stays in that transaction even when Dexie loses track of it across an `await`. Parallel reads, such as two queries of one document started together, no longer fail.
+
 ## [0.17.0] - 2026-11-25
 
 Core 0.17.0: getChild and getChildren look through transparent elements only in the dialecte's own namespace, and created document roots carry their schema-fixed required attributes.
